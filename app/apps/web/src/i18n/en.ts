@@ -480,7 +480,7 @@ export const en: Messages = {
     storageInstructionB2:
       'Create a bucket-scoped application key with readFiles, writeFiles and deleteFiles capabilities. Use the key ID as the access key ID. Set bucket CORS AllowedHeaders to include Content-Type.',
     storageInstructionMinio:
-      'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket. Set bucket CORS AllowedHeaders to include Content-Type. Private endpoints require STORAGE_ALLOW_PRIVATE_ENDPOINTS=true on the server.',
+      'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket. Set bucket CORS AllowedHeaders to include Content-Type. Browser uploads require HTTPS unless MinIO shares the Together origin. Private endpoints also require STORAGE_ALLOW_PRIVATE_ENDPOINTS=true on the server.',
     storageInstructionLink: 'Open provider instructions',
     storageProbeDescription:
       'Together will upload a small scratch object, read it back byte for byte, delete it, and verify browser CORS. Nothing is saved yet.',

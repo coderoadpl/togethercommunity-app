@@ -201,13 +201,24 @@ describe('createS3StorageProvider', () => {
   });
 
   it('presigns PUT uploads and signs DELETE requests', async () => {
-    const requests: Array<{ url: string; method: string }> = [];
+    const requests: Array<{
+      url: string;
+      method: string;
+      dispatcher?: unknown;
+      redirect?: 'error';
+    }> = [];
     const storage = createS3StorageProvider(
       resolver,
       {
         now: () => new Date('2026-07-20T12:00:00.000Z'),
+        lookupAddresses: async () => ['52.216.0.1'],
         fetchStorage: async (url, init) => {
-          requests.push({ url, method: init.method });
+          requests.push({
+            url,
+            method: init.method,
+            ...(init.dispatcher === undefined ? {} : { dispatcher: init.dispatcher }),
+            ...(init.redirect === undefined ? {} : { redirect: init.redirect }),
+          });
           return storageResponse(204, '');
         },
       },
@@ -221,6 +232,8 @@ describe('createS3StorageProvider', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.method).toBe('DELETE');
     expect(requests[0]?.url).toContain('X-Amz-Signature=');
+    expect(requests[0]?.dispatcher).toBeDefined();
+    expect(requests[0]?.redirect).toBe('error');
   });
 
   it('reads the stored object size through a signed HEAD request', async () => {
@@ -228,6 +241,7 @@ describe('createS3StorageProvider', () => {
     const storage = createS3StorageProvider(resolver, {
       now: () => new Date('2026-08-03T12:00:00.000Z'),
       fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
     });
     const target = storage.objectUrl(MINIO_CONFIGURATION, 'attachments/file.txt').toString();
     await bucket.fetchStorage(target, { method: 'PUT', body: 'actual bytes' });
@@ -240,9 +254,11 @@ describe('createS3StorageProvider', () => {
     })).resolves.toEqual({ ok: true, value: { sizeBytes: 12 } });
     expect(bucket.requests.at(-1)?.method).toBe('HEAD');
     expect(bucket.requests.at(-1)?.url).toContain('X-Amz-Signature=');
+    expect(bucket.requests.at(-1)?.dispatcher).toBeDefined();
+    expect(bucket.requests.at(-1)?.redirect).toBe('error');
   });
 
-  it('uses the shared diagnostic contract after checking both stored credentials', async () => {
+  it('keeps legacy credentials healthy but requires wizard configuration for the connection test', async () => {
     const keys: string[] = [];
     const storage = createS3StorageProvider({
       resolve: async (_tenantId, key) => {
@@ -257,16 +273,14 @@ describe('createS3StorageProvider', () => {
       ok: true,
       value: { healthy: true },
     });
-    await expect(storage.test({ tenantId: 'tenant-1' })).resolves.toEqual({
-      ok: true,
-      value: { code: 'storage.available', message: 'Storage credentials are available.' },
+    await expect(storage.test({ tenantId: 'tenant-1' })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'integration_not_configured' },
     });
     expect(keys).toEqual([
       's3.accessKeyId',
       's3.secretAccessKey',
       's3.configuration',
-      's3.accessKeyId',
-      's3.secretAccessKey',
     ]);
   });
 
@@ -446,6 +460,33 @@ describe('createS3StorageProvider', () => {
     })).resolves.toMatchObject({
       ok: false,
       error: { details: { providerCode: 'storage.unavailable' } },
+    });
+    expect(requests).toEqual([]);
+  });
+
+  it.each(['DELETE', 'HEAD'] as const)('revalidates and blocks a rebound hostname before %s', async (method) => {
+    const requests: string[] = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['169.254.169.254'],
+      fetchStorage: async (url) => {
+        requests.push(url);
+        return storageResponse(204, '');
+      },
+    });
+    const input = {
+      url: 'https://storage.example.test/bucket/object.pdf',
+      accessKeyId: 'access-key',
+      secretAccessKey: 'secret-key',
+      region: 'eu-central-1',
+    };
+
+    const result = method === 'DELETE'
+      ? await storage.delete(input)
+      : await storage.head(input);
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'integration_unavailable', details: { providerCode: 'storage.unavailable' } },
     });
     expect(requests).toEqual([]);
   });

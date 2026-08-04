@@ -451,6 +451,21 @@ export const createS3StorageProvider = (
   const allowPrivateEndpoints = options.allowPrivateEndpoints ?? false;
   const lookupAddresses = options.lookupAddresses ?? (async (hostname: string) =>
     (await dns.lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address));
+  const sendObjectRequest = async (
+    url: string,
+    method: 'DELETE' | 'HEAD',
+  ): Promise<Result<StorageResponse, AppError>> => {
+    const safeTarget = await validateProbeEndpoint(new URL(url).origin, allowPrivateEndpoints, lookupAddresses);
+    if (!safeTarget.ok) return safeTarget;
+    const dispatcher = pinnedDispatcher(safeTarget.value);
+    try {
+      return ok(await fetchStorage(url, { method, dispatcher, redirect: 'error' }));
+    } catch {
+      return err(integrationUnavailable('Could not reach S3.'));
+    } finally {
+      await dispatcher.close();
+    }
+  };
   const probe = async (input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>> => {
     const target = objectUrl(input, 'together-probe');
     const safeTarget = await validateProbeEndpoint(target.origin, allowPrivateEndpoints, lookupAddresses);
@@ -471,31 +486,25 @@ export const createS3StorageProvider = (
     delete: async (input) => {
       const signed = presign('DELETE', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      try {
-        const response = await fetchStorage(signed.value, { method: 'DELETE', redirect: 'error' });
-        return response.ok
-          ? ok({ deleted: true })
-          : err(integrationUnavailable(`S3 rejected the delete request with status ${String(response.status)}`));
-      } catch {
-        return err(integrationUnavailable('Could not reach S3.'));
-      }
+      const response = await sendObjectRequest(signed.value, 'DELETE');
+      if (!response.ok) return response;
+      return response.value.ok
+        ? ok({ deleted: true })
+        : err(integrationUnavailable(`S3 rejected the delete request with status ${String(response.value.status)}`));
     },
     head: async (input) => {
       const signed = presign('HEAD', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      try {
-        const response = await fetchStorage(signed.value, { method: 'HEAD', redirect: 'error' });
-        if (!response.ok) {
-          return err(integrationUnavailable(`S3 rejected the object metadata request with status ${String(response.status)}`));
-        }
-        const contentLength = response.headers.get('content-length');
-        if (contentLength === null || !/^\d+$/.test(contentLength)) {
-          return err(integrationUnavailable('S3 returned invalid object size metadata.'));
-        }
-        return ok({ sizeBytes: Number(contentLength) });
-      } catch {
-        return err(integrationUnavailable('Could not reach S3.'));
+      const response = await sendObjectRequest(signed.value, 'HEAD');
+      if (!response.ok) return response;
+      if (!response.value.ok) {
+        return err(integrationUnavailable(`S3 rejected the object metadata request with status ${String(response.value.status)}`));
       }
+      const contentLength = response.value.headers.get('content-length');
+      if (contentLength === null || !/^\d+$/.test(contentLength)) {
+        return err(integrationUnavailable('S3 returned invalid object size metadata.'));
+      }
+      return ok({ sizeBytes: Number(contentLength) });
     },
     healthcheck: ({ tenantId }) => checkCredentials(resolver, tenantId),
     test: async ({ tenantId }) => {
@@ -504,10 +513,7 @@ export const createS3StorageProvider = (
       if (configuration.value !== null) {
         return probe(configuration.value);
       }
-      const checked = await checkCredentials(resolver, tenantId);
-      return checked.ok
-        ? ok({ code: 'storage.available', message: 'Storage credentials are available.' })
-        : checked;
+      return err(integrationNotConfigured('Storage is not configured.'));
     },
   };
 };

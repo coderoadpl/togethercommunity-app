@@ -313,9 +313,7 @@ export const IntegrationsPanel = () => {
     (settings.data?.settings.bunnyStreamLibraryId ?? null) !== null;
   const storageReady =
     storedSecrets !== undefined &&
-    (previewFor(storedSecrets, 's3.configuration') !== null ||
-      (previewFor(storedSecrets, 's3.accessKeyId') !== null &&
-        previewFor(storedSecrets, 's3.secretAccessKey') !== null));
+    previewFor(storedSecrets, 's3.configuration') !== null;
 
   return (
     <PanelPage title={t.integrations.heading} description={t.integrations.intro}>

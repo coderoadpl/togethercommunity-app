@@ -242,12 +242,22 @@ describe('IntegrationsPanel', () => {
     expect(screen.getByTestId('payment-test-connection')).toBeDisabled();
   });
 
+  it('requires the storage wizard when only legacy credentials are stored', async () => {
+    renderPanel([
+      { key: 's3.accessKeyId', maskedPreview: '••••KEY1', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 's3.secretAccessKey', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
+    ]);
+
+    expect(await screen.findByTestId('storage-provider-minio')).toBeInTheDocument();
+    expect(screen.getByTestId('storage-test-connection')).toBeDisabled();
+    expect(screen.getByTestId('storage-test-hint')).toHaveTextContent(pl.integrations.s3SaveFirst);
+  });
+
   it('runs storage, email and payment through one diagnostic contract', async () => {
     const { testedProviders } = renderPanel([
       { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
       { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 's3.accessKeyId', maskedPreview: '••••KEY1', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 's3.secretAccessKey', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 's3.configuration', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
     ]);
 
     await userEvent.click(await screen.findByTestId('payment-test-connection'));

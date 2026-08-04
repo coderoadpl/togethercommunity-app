@@ -121,6 +121,13 @@ export const completeLessonAttachmentUpload = async (
   });
   if (!storedObject.ok) return storedObject;
   if (storedObject.value.sizeBytes < 1 || storedObject.value.sizeBytes > LESSON_ATTACHMENT_MAX_BYTES) {
+    const removed = await deps.storage.delete({
+      url: deps.storage.objectUrl(configuration.value, attachment.storageKey).toString(),
+      accessKeyId: configuration.value.accessKeyId,
+      secretAccessKey: configuration.value.secretAccessKey,
+      region: configuration.value.region,
+    });
+    if (!removed.ok) return removed;
     return err(validation(`Uploaded attachment must be between 1 and ${String(LESSON_ATTACHMENT_MAX_BYTES)} bytes`));
   }
   const ready = await deps.attachments.markReady(tenant.value, attachmentId, storedObject.value.sizeBytes);

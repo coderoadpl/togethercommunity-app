@@ -178,6 +178,64 @@ const BunnyLibraryIdField = () => {
   );
 };
 
+const BunnyCdnHostnameField = () => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const value = draft ?? settings.data?.settings.bunnyStreamCdnHostname ?? '';
+
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      setDraft(null);
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    updateSettings.mutate({ bunnyStreamCdnHostname: value.trim() === '' ? null : value.trim() });
+  };
+
+  return (
+    <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.6rem' }}>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="bunny-cdn-hostname">{t.integrations.bunnyCdnHostnameLabel}</FormLabel>
+        <OutlinedInput
+          id="bunny-cdn-hostname"
+          value={value}
+          placeholder="vz-xxxxxxx-xxx.b-cdn.net"
+          disabled={settings.isPending}
+          onChange={(event) => setDraft(event.target.value)}
+          inputProps={{ 'data-testid': 'bunny-cdn-hostname' }}
+        />
+        <Typography variant="caption" component="p" sx={{ mt: '0.35rem' }}>
+          {t.integrations.bunnyCdnHostnameHelper}
+        </Typography>
+      </FormControl>
+      <Box>
+        <Button
+          type="submit"
+          variant="outlined"
+          data-testid="bunny-cdn-hostname-save"
+          disabled={updateSettings.isPending || settings.isPending}
+        >
+          {updateSettings.isPending ? t.integrations.saving : t.integrations.save}
+        </Button>
+      </Box>
+      {updateSettings.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="bunny-cdn-hostname-saved">
+          {t.integrations.saved}
+        </Typography>
+      ) : null}
+      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {settings.isError ? <Alert severity="error">{localizeError(settings.error, t)}</Alert> : null}
+    </Box>
+  );
+};
+
 const BunnyTestConnection = ({ ready }: { ready: boolean }) => {
   const t = useTranslations();
   const testConnection = useMutation(actions.testBunnyConnection);
@@ -430,6 +488,7 @@ export const IntegrationsPanel = () => {
                 {t.integrations.bunnySecurityHint}
               </Typography>
               <BunnyLibraryIdField />
+              <BunnyCdnHostnameField />
             </Stack>
           )}
 

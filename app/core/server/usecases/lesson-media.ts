@@ -9,13 +9,13 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { BunnyEmbedTokenSigner, StorageProvider, TenantSecretResolver } from '../ports.js';
+import type { BunnyTokenSigner, StorageProvider, TenantSecretResolver } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
 export interface PlayableLessonDeps extends CourseAccessDeps {
   secretResolver: TenantSecretResolver;
   storage: StorageProvider;
-  bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
+  bunnyTokenSigner: BunnyTokenSigner;
 }
 
 export const PDF_URL_TTL_SECONDS = 3600;
@@ -43,11 +43,11 @@ const signBunnyEmbedUrl = (
   block: Extract<LessonBlock, { type: 'video' }>,
   securityKey: string,
   expires: number,
-  signer: BunnyEmbedTokenSigner,
+  signer: BunnyTokenSigner,
 ): string | null => {
   const rawUrl = bunnyEmbedUrl(block);
   if (rawUrl === null) return null;
-  const token = signer.sign({ securityKey, videoId: block.streamVideoId, expires });
+  const token = signer.signEmbedToken({ securityKey, videoId: block.streamVideoId, expires });
   const url = new URL(rawUrl);
   url.searchParams.set('token', token);
   url.searchParams.set('expires', String(expires));
@@ -80,7 +80,7 @@ export const getPlayableLesson = async (
       const expires = Math.floor(Date.parse(deps.clock.nowIso()) / 1000) + BUNNY_EMBED_URL_TTL_SECONDS;
       contents = contents.map((block): PlayableLessonBlock => {
         if (block.type !== 'video') return block;
-        const embedUrl = signBunnyEmbedUrl(block, securityKey.value, expires, deps.bunnyEmbedTokenSigner);
+        const embedUrl = signBunnyEmbedUrl(block, securityKey.value, expires, deps.bunnyTokenSigner);
         return embedUrl === null ? block : { ...block, embedUrl };
       });
     }

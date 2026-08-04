@@ -63,6 +63,7 @@ const fakeTenants = (branding?: {
           socialLinks: [],
           billingPortalUrl: null,
           bunnyStreamLibraryId: null,
+          bunnyStreamCdnHostname: null,
           ogTitle: null,
           ogDescription: null,
           ogImageUrl: null,

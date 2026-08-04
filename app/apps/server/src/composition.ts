@@ -93,7 +93,7 @@ import { createKsefClient } from '#adapters/invoicing/ksef.js';
 import { createKsefInvoicePdf } from '#adapters/invoicing/ksef-pdf.js';
 import { createFa3XsdValidator } from '#adapters/invoicing/fa3-validator.js';
 import { createBunnyVideoLibrary } from '#adapters/video/bunny.js';
-import { createBunnyEmbedTokenSigner } from '#adapters/crypto/bunny-embed-token-signer.js';
+import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
@@ -152,7 +152,7 @@ import type {
   DevMagicLinkReader,
   DevSinkPurge,
   StorageProvider,
-  BunnyEmbedTokenSigner,
+  BunnyTokenSigner,
   HealthPort,
   IdGenerator,
   InvoiceRepository,
@@ -307,7 +307,8 @@ export interface AppDeps {
   couponStats?: CouponStatsRepository;
   videoLibrary: VideoLibraryPort;
   storage: StorageProvider;
-  bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
+  bunnyTokenSigner: BunnyTokenSigner;
+  playbackTokenTtlSeconds: number;
   email: EmailPort;
   emailSender: TransactionalEmailSender;
   emailTransports: EmailIntegrationTransportResolver;
@@ -898,7 +899,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     priceHistory: createProductPriceHistoryRepository(db),
     couponStats: createCouponStatsRepository(db),
     videoLibrary: createBunnyVideoLibrary(),
-    bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
+    bunnyTokenSigner: createBunnyTokenSigner(),
+    playbackTokenTtlSeconds: env.PLAYBACK_TOKEN_TTL_SECONDS,
     storage: createS3StorageProvider(secretResolver, {
       corsOrigin: env.APP_BASE_URL,
       allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,

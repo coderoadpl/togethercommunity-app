@@ -89,7 +89,7 @@ const product = (input: {
   published: input.published,
   accessItems: [],
   legacyId: null,
-  createdAt: '2026-07-12T00:00:00.000Z',
+  createdAt: '1998-07-12T00:00:00.000Z',
 });
 
 const deps = (input: {
@@ -274,9 +274,12 @@ const deps = (input: {
     videoLibrary: {
       listVideos: async () => ok({ videos: [], totalItems: 0 }),
     },
-    bunnyEmbedTokenSigner: {
-      sign: ({ videoId, expires }) => `${videoId}-${expires}`,
+    bunnyTokenSigner: {
+      signEmbedToken: ({ videoId, expires }) => `${videoId}-${expires}`,
+      signHlsPlaylistUrl: ({ cdnHostname, videoId, expires }) =>
+        `https://${cdnHostname}/${videoId}/playlist.m3u8?expires=${expires}`,
     },
+    playbackTokenTtlSeconds: 21_600,
     storage: {
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -556,7 +559,7 @@ const deps = (input: {
         tenants.some((tenant) => tenant.id === tenantId) ? {
           name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
           socialLinks: [],
-          billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
+          billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
           privacyUrl: null,
@@ -591,7 +594,7 @@ const deps = (input: {
     commitSha: 'test-sha',
     tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
-    clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
+    clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined },
     baseDomain: 'localhost',
     singleTenantMode: false,
@@ -620,9 +623,9 @@ const scopedApp = (
     tags: [],
     marketingConsents: {},
     externalCustomerIds: {},
-    createdAt: '2026-07-12T00:00:00.000Z',
+    createdAt: '1998-07-12T00:00:00.000Z',
     deletedAt: options.memberDeletedAt ?? null,
-    bannedAt: scope === 'banned-member' ? '2026-07-12T00:00:00.000Z' : null,
+    bannedAt: scope === 'banned-member' ? '1998-07-12T00:00:00.000Z' : null,
     bannedReason: null,
     bannedByUserId: null,
   };
@@ -638,7 +641,7 @@ const scopedApp = (
     authorDisplay: 'Author',
     authorIsStaff: false,
     body: 'Pinned',
-    createdAt: '2026-07-12T00:00:00.000Z',
+    createdAt: '1998-07-12T00:00:00.000Z',
     editedAt: null,
     deletedAt: null,
     pinnedAt: null,
@@ -696,7 +699,7 @@ const scopedApp = (
         productIds: [],
         position: 0,
         archivedAt: null,
-        createdAt: '2026-07-12T00:00:00.000Z',
+        createdAt: '1998-07-12T00:00:00.000Z',
       }),
     },
     reports: {
@@ -713,7 +716,7 @@ const scopedApp = (
         note: null,
         signals: null,
         status: 'open',
-        createdAt: '2026-07-12T00:00:00.000Z',
+        createdAt: '1998-07-12T00:00:00.000Z',
         resolvedAt: null,
         resolvedByUserId: null,
       }),
@@ -728,7 +731,7 @@ const scopedApp = (
         note: null,
         signals: null,
         status: input.status,
-        createdAt: '2026-07-12T00:00:00.000Z',
+        createdAt: '1998-07-12T00:00:00.000Z',
         resolvedAt: input.resolvedAt,
         resolvedByUserId: input.resolvedByUserId,
       }),
@@ -774,8 +777,8 @@ const marketingDeps = (): MarketingAppDeps => ({
     publishDraft: async () => null,
     findPublishedVersionById: async () => null,
     findLatestPublished: async (tenantId, slug) => tenantId === 't-acme' && slug === 'terms' ? {
-      document: { id: 'document-1', tenantId, slug, title: 'Terms', status: 'published', createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z' },
-      version: { id: 'version-1', tenantId, documentId: 'document-1', version: 1, content: 'Immutable terms', publishedAt: '2026-07-22T00:00:00.000Z', createdAt: '2026-07-22T00:00:00.000Z', createdBy: 'staff' },
+      document: { id: 'document-1', tenantId, slug, title: 'Terms', status: 'published', createdAt: '1998-07-22T00:00:00.000Z', updatedAt: '1998-07-22T00:00:00.000Z' },
+      version: { id: 'version-1', tenantId, documentId: 'document-1', version: 1, content: 'Immutable terms', publishedAt: '1998-07-22T00:00:00.000Z', createdAt: '1998-07-22T00:00:00.000Z', createdBy: 'staff' },
     } : null,
     findPublishedVersion: async () => null,
   },
@@ -806,7 +809,7 @@ const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> 
     create: async () => undefined,
     findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:marketing-key' ? {
       id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
-      createdAt: '2026-07-22T00:00:00.000Z', revokedAt: null,
+      createdAt: '1998-07-22T00:00:00.000Z', revokedAt: null,
     } : null,
     revoke: async () => null,
   };
@@ -827,7 +830,7 @@ const ksefApp = (
       }),
     },
     numbers: {
-      allocate: async () => ({ p2: 'FV/2026/000001', sequence: 1 }),
+      allocate: async () => ({ p2: 'FV/1998/000001', sequence: 1 }),
     },
     artifacts: {
       findByKey: async () => null,
@@ -871,35 +874,35 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
   await marketing.definitions.create('t-acme', {
     id: 'definition-news', tenantId: 't-acme', key: 'product-news', kind: 'optional_marketing',
     channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
-    status: 'active', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+    status: 'active', createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z',
   }, {
     id: 'definition-news-v1', tenantId: 't-acme', definitionId: 'definition-news', version: 1,
     label: 'Product news', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
-    createdAt: '2026-07-01T00:00:00.000Z', createdBy: 'staff',
+    createdAt: '1998-07-01T00:00:00.000Z', createdBy: 'staff',
   });
   await marketing.marketingConsents.record('t-acme', {
     id: 'consent-news', tenantId: 't-acme', memberId: null, email: 'member@example.test',
     definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
     documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'confirmed',
-    previousId: null, source: 'api', evidence: { collectedAt: '2026-07-01T00:00:00.000Z', proofRef: 'form' },
-    occurredAt: '2026-07-01T00:00:00.000Z',
+    previousId: null, source: 'api', evidence: { collectedAt: '1998-07-01T00:00:00.000Z', proofRef: 'form' },
+    occurredAt: '1998-07-01T00:00:00.000Z',
   });
   await marketing.unsubscribes.create('t-acme', {
     id: 'unsubscribe-news', tenantId: 't-acme', token: 'unsubscribe_token_123456789012345',
     email: 'member@example.test', memberId: null, campaignSendId: null,
-    scope: 'consent:definition-news', createdAt: '2026-07-01T00:00:00.000Z', usedAt: null,
+    scope: 'consent:definition-news', createdAt: '1998-07-01T00:00:00.000Z', usedAt: null,
   });
   await marketing.marketingConsents.record('t-acme', {
     id: 'consent-pending', tenantId: 't-acme', memberId: null, email: 'pending@example.test',
     definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
     documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'granted',
-    previousId: null, source: 'api', evidence: { collectedAt: '2026-07-01T00:00:00.000Z', proofRef: 'form' },
-    occurredAt: '2026-07-01T00:00:00.000Z',
+    previousId: null, source: 'api', evidence: { collectedAt: '1998-07-01T00:00:00.000Z', proofRef: 'form' },
+    occurredAt: '1998-07-01T00:00:00.000Z',
   });
   await marketing.confirmations.create('t-acme', {
     id: 'confirmation-news', tenantId: 't-acme', token: 'confirmation_token_123456789012345',
-    marketingConsentRowId: 'consent-pending', createdAt: '2026-07-01T00:00:00.000Z',
-    expiresAt: '2026-07-20T00:00:00.000Z', usedAt: null,
+    marketingConsentRowId: 'consent-pending', createdAt: '1998-07-01T00:00:00.000Z',
+    expiresAt: '1998-07-20T00:00:00.000Z', usedAt: null,
   });
   return marketing;
 };
@@ -935,11 +938,11 @@ describe('marketing HTTP surfaces', () => {
       const marketing = marketingDeps();
       marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
         tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-        identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+        identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
         identityCheckError: null, configurationSet: null, snsTopicArn: 'topic',
         trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token',
         quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0,
-        quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
+        quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
         webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
         broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
       }]);
@@ -973,7 +976,7 @@ describe('marketing HTTP surfaces', () => {
       create: async () => undefined,
       findActiveByHash: async (tenantId, hash) => tenantId === acme.id && hash === 'hash:marketing-key' ? {
         id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
-        createdAt: '2026-07-22T00:00:00.000Z', revokedAt: null,
+        createdAt: '1998-07-22T00:00:00.000Z', revokedAt: null,
       } : null,
       revoke: async () => null,
     };
@@ -1021,7 +1024,7 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.layouts = new InMemoryEmailLayoutRepository([{
       id: 'layout-1', tenantId: 't-acme', name: 'Default', bodyHtml: '<main>{{{content}}}</main>',
-      createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z',
+      createdAt: '1998-07-22T00:00:00.000Z', updatedAt: '1998-07-22T00:00:00.000Z',
     }]);
     const app = marketingApp(marketing);
     const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
@@ -1047,7 +1050,7 @@ describe('marketing HTTP surfaces', () => {
 
   it('exposes active consent definitions and ordered message events to API clients', async () => {
     const marketing = await memberSurfaceMarketing();
-    const now = '2026-07-22T00:00:00.000Z';
+    const now = '1998-07-22T00:00:00.000Z';
     await marketing.campaignSends.claimRecipient('t-acme', {
       id: 'send-1',
       tenantId: 't-acme',
@@ -1114,12 +1117,12 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: 'marketing',
       snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
       webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
-      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
-      webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
+      webhookVerifiedAt: '1998-07-22T00:00:00.000Z', footerLegalName: 'Acme',
       footerAddress: 'Warsaw', broadcastsEnabled: true,
       reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
@@ -1209,11 +1212,11 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: null,
       snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false,
       autoPauseOnCritical: false, webhookToken: 'webhook-token',
-      quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
+      quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
       broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
@@ -1228,7 +1231,7 @@ describe('marketing HTTP surfaces', () => {
 
   it('marks the webhook verified when an uncorrelated simulator bounce completes the signed SNS round-trip', async () => {
     const marketing = marketingDeps();
-    const now = '2026-07-22T00:00:00.000Z';
+    const now = '1998-07-22T00:00:00.000Z';
     const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
     const settings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
@@ -1266,7 +1269,7 @@ describe('marketing HTTP surfaces', () => {
 
   it('ingests SES configuration-set Open and Click records and tolerates unknown messages', async () => {
     const marketing = marketingDeps();
-    const now = '2026-07-22T00:00:00.000Z';
+    const now = '1998-07-22T00:00:00.000Z';
     const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
     const events = new InMemoryEmailEventRepository();
     const sends = new InMemoryCampaignSendRepository(events);
@@ -1318,7 +1321,7 @@ describe('marketing HTTP surfaces', () => {
 
   it('ingests configuration-set delivery records and acknowledges unsupported SES event types', async () => {
     const marketing = marketingDeps();
-    const now = '2026-07-22T00:00:00.000Z';
+    const now = '1998-07-22T00:00:00.000Z';
     const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
     const events = new InMemoryEmailEventRepository();
     const sends = new InMemoryCampaignSendRepository(events);
@@ -1626,7 +1629,7 @@ describe('lesson attachment download route', () => {
     isPreview: false,
     contents: [],
     legacyId: null,
-    createdAt: '2026-07-12T00:00:00.000Z',
+    createdAt: '1998-07-12T00:00:00.000Z',
   };
   const attachment: LessonAttachment = {
     id: 'attachment-download',
@@ -1637,7 +1640,7 @@ describe('lesson attachment download route', () => {
     sizeBytes: 4096,
     storageKey: 'lesson-attachments/private.pdf',
     status: 'ready',
-    createdAt: '2026-07-12T00:00:00.000Z',
+    createdAt: '1998-07-12T00:00:00.000Z',
   };
   const app = scopedApp('owner', {
     overrides: {
@@ -1705,6 +1708,76 @@ describe('lesson attachment download route', () => {
   });
 });
 
+describe('student lesson playback route', () => {
+  it('returns contract-checked signed playback URLs without caching', async () => {
+    const playbackLesson: CourseLesson = {
+      id: 'lesson-playback',
+      tenantId: acme.id,
+      name: 'Playback lesson',
+      isPreview: false,
+      contents: [{
+        type: 'video',
+        storageKey: 'videos/playback',
+        streamLibraryId: 'library-1',
+        streamVideoId: 'video-1',
+      }],
+      legacyId: null,
+      createdAt: '1998-08-07T00:00:00.000Z',
+    };
+    const base = deps();
+    const app = scopedApp('owner', {
+      overrides: {
+        lessons: {
+          ...base.lessons,
+          findById: async () => playbackLesson,
+        },
+        tenants: {
+          ...base.tenants,
+          findSettings: async () => ({
+            name: acme.name,
+            socialLinks: [],
+            billingPortalUrl: null,
+            bunnyStreamLibraryId: 'library-1',
+            bunnyStreamCdnHostname: 'vz-demo.b-cdn.net',
+            logoUrl: null,
+            accentColor: null,
+            faviconUrl: null,
+            ogTitle: null,
+            ogDescription: null,
+            ogImageUrl: null,
+            supportEmail: null,
+            supportUrl: null,
+            termsUrl: null,
+            privacyUrl: null,
+          }),
+        },
+        secretResolver: { resolve: async () => ok('security-key') },
+      },
+    });
+    const response = await app.request(
+      API_PATHS.studentLessonPlayback.replace(':lessonId', playbackLesson.id),
+      { headers: { host: 'acme.localhost:48730' } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        lessonId: playbackLesson.id,
+        videos: [{
+          kind: 'bunny',
+          storageKey: 'videos/playback',
+          videoId: 'video-1',
+          libraryId: 'library-1',
+          hlsUrl: expect.stringContaining('https://vz-demo.b-cdn.net/video-1/playlist.m3u8'),
+          signed: true,
+        }],
+      },
+    });
+  });
+});
+
 describe('purchased product download route', () => {
   const downloadProduct: Product = {
     ...product({ id: 'digital-download', tenantId: acme.id, title: 'Creator workbook', published: true }),
@@ -1719,7 +1792,7 @@ describe('purchased product download route', () => {
     sizeBytes: 4096,
     storageKey: 'product-downloads/digital-download/download-asset/workbook.pdf',
     status: 'ready',
-    createdAt: '2026-07-12T00:00:00.000Z',
+    createdAt: '1998-07-12T00:00:00.000Z',
   };
   const grant: ProductGrant = {
     id: 'download-grant',
@@ -1727,10 +1800,10 @@ describe('purchased product download route', () => {
     memberId: 'member-1',
     productId: downloadProduct.id,
     source: 'stripe',
-    startsAt: '2026-07-01T00:00:00.000Z',
+    startsAt: '1998-07-01T00:00:00.000Z',
     expiresAt: null,
     legacyId: null,
-    createdAt: '2026-07-01T00:00:00.000Z',
+    createdAt: '1998-07-01T00:00:00.000Z',
   };
   const path = API_PATHS.memberProductDownload
     .replace(':productId', downloadProduct.id)
@@ -1885,7 +1958,7 @@ describe('new route authorization', () => {
 
   it('maps a tombstoned grant mutation to conflict', async () => {
     const response = await scopedApp('staff', {
-      memberDeletedAt: '2026-07-12T00:00:00.000Z',
+      memberDeletedAt: '1998-07-12T00:00:00.000Z',
     }).request(API_PATHS.grantsCreate, {
       method: 'POST',
       headers,
@@ -2216,7 +2289,7 @@ describe('free lesson preview route', () => {
     isPreview,
     contents: [{ type: 'html', html: `<p>${id}</p>` }],
     legacyId: null,
-    createdAt: '2026-07-12T00:00:00.000Z',
+    createdAt: '1998-07-12T00:00:00.000Z',
   });
 
   it('serves an anonymous preview and returns 401 for a non-preview lesson', async () => {
@@ -2265,7 +2338,7 @@ describe('free lesson preview route', () => {
       imageUrl: null,
       moduleOrder: ['module-paid'],
       legacyId: null,
-      createdAt: '2026-07-12T00:00:00.000Z',
+      createdAt: '1998-07-12T00:00:00.000Z',
     };
     const courseModule: CourseModule = {
       id: 'module-paid',
@@ -2280,7 +2353,7 @@ describe('free lesson preview route', () => {
         contents: [{ id: 'content-paid', name: paid.name, lessonId: paid.id }],
       }],
       legacyId: null,
-      createdAt: '2026-07-12T00:00:00.000Z',
+      createdAt: '1998-07-12T00:00:00.000Z',
     };
     const base = deps({ lessons: [paid] });
     const app = scopedApp('member', {
@@ -2478,6 +2551,7 @@ const consentApp = (simulatedPayments: boolean) => {
               socialLinks: [],
               billingPortalUrl: null,
               bunnyStreamLibraryId: null,
+              bunnyStreamCdnHostname: null,
               logoUrl: null,
               accentColor: null,
               faviconUrl: null,
@@ -2521,7 +2595,7 @@ const consentApp = (simulatedPayments: boolean) => {
         iv: 'iv',
         authTag: 'auth-tag',
         maskedPreview: '••••text',
-        updatedAt: '2026-07-12T00:00:00.000Z',
+        updatedAt: '1998-07-12T00:00:00.000Z',
       }),
     },
     devEndpoints: { simulatedPayments, exposeMagicLinks: false },
@@ -2552,7 +2626,7 @@ describe('checkout consent ordering', () => {
       termsAccepted: true,
       selectedDefinitionIds: [],
       attachedDefinitionIds: [],
-      collectedAt: '2026-07-12T00:00:00.000Z',
+      collectedAt: '1998-07-12T00:00:00.000Z',
       confirmationBaseUrl: 'http://acme.localhost:48730/marketing/confirm',
     });
   });
@@ -2585,7 +2659,7 @@ describe('checkout consent ordering', () => {
         email: 'buyer@together.dev',
         termsUrl: 'https://acme.example/terms-v2',
         privacyUrl: 'https://acme.example/privacy-v3',
-        acceptedAt: '2026-07-12T00:00:00.000Z',
+        acceptedAt: '1998-07-12T00:00:00.000Z',
       }),
     ]);
   });
@@ -2613,8 +2687,8 @@ describe('checkout consent ordering', () => {
         doubleOptIn: false,
         documentRef: { mode: 'url', url: 'https://acme.example/webhook-news' },
         status: 'active',
-        createdAt: '2026-07-12T00:00:00.000Z',
-        updatedAt: '2026-07-12T00:00:00.000Z',
+        createdAt: '1998-07-12T00:00:00.000Z',
+        updatedAt: '1998-07-12T00:00:00.000Z',
       },
       {
         id: `${definitionId}-v1`,
@@ -2626,7 +2700,7 @@ describe('checkout consent ordering', () => {
           mode: 'url',
           url: 'https://acme.example/webhook-news',
         },
-        createdAt: '2026-07-12T00:00:00.000Z',
+        createdAt: '1998-07-12T00:00:00.000Z',
         createdBy: null,
       },
     );
@@ -2647,7 +2721,7 @@ describe('checkout consent ordering', () => {
           ...job,
           status: 'running',
           attempts: job.attempts + 1,
-          lockedAt: '2026-07-12T00:00:00.000Z',
+          lockedAt: '1998-07-12T00:00:00.000Z',
         };
         durableJobs[index] = claimed;
         return claimed;
@@ -2688,7 +2762,7 @@ describe('checkout consent ordering', () => {
       providerObjectIds: { checkoutSession: 'cs_webhook' },
       couponId: null,
       discountCents: 0,
-      createdAt: '2026-07-12T00:00:00.000Z',
+      createdAt: '1998-07-12T00:00:00.000Z',
     };
     const event: PaymentWebhookEvent = {
       id: 'evt_webhook',
@@ -2736,6 +2810,7 @@ describe('checkout consent ordering', () => {
                 socialLinks: [],
                 billingPortalUrl: null,
                 bunnyStreamLibraryId: null,
+                bunnyStreamCdnHostname: null,
                 logoUrl: null,
                 accentColor: null,
                 faviconUrl: null,
@@ -2786,7 +2861,7 @@ describe('checkout consent ordering', () => {
                 termsAccepted: true,
                 selectedDefinitionIds: [definitionId],
                 attachedDefinitionIds: [definitionId],
-                collectedAt: '2026-07-12T00:00:00.000Z',
+                collectedAt: '1998-07-12T00:00:00.000Z',
                 confirmationBaseUrl: 'https://acme.example/marketing/confirm',
                 ip: '203.0.113.90',
                 userAgent: 'Webhook Browser/99',
@@ -2826,7 +2901,7 @@ describe('checkout consent ordering', () => {
                 amountCents: 900,
                 currency: 'PLN',
                 active: true,
-                createdAt: '2026-07-12T00:00:00.000Z',
+                createdAt: '1998-07-12T00:00:00.000Z',
               }
             : null,
       },
@@ -2955,8 +3030,8 @@ describe('checkout consent ordering', () => {
       doubleOptIn: true,
       documentRef: { mode: 'url', url: 'https://acme.example/newsletter' },
       status: 'active',
-      createdAt: '2026-07-12T00:00:00.000Z',
-      updatedAt: '2026-07-12T00:00:00.000Z',
+      createdAt: '1998-07-12T00:00:00.000Z',
+      updatedAt: '1998-07-12T00:00:00.000Z',
     }, {
       id: 'checkout-news-v1',
       tenantId: acme.id,
@@ -2964,7 +3039,7 @@ describe('checkout consent ordering', () => {
       version: 1,
       label: 'Send me product news',
       documentVersionRef: { mode: 'url', url: 'https://acme.example/newsletter' },
-      createdAt: '2026-07-12T00:00:00.000Z',
+      createdAt: '1998-07-12T00:00:00.000Z',
       createdBy: null,
     });
     const logger = { error: vi.fn() };
@@ -2984,7 +3059,7 @@ describe('checkout consent ordering', () => {
           iv: 'iv',
           authTag: 'auth-tag',
           maskedPreview: '••••text',
-          updatedAt: '2026-07-12T00:00:00.000Z',
+          updatedAt: '1998-07-12T00:00:00.000Z',
         }),
       },
       emailOutbox: {
@@ -3198,7 +3273,7 @@ describe('scheduler operator routes', () => {
       id: 'run-global',
       kind: 'outbox_dispatch',
       trigger: 'cron',
-      startedAt: '2026-07-26T10:00:00.000Z',
+      startedAt: '1998-07-26T10:00:00.000Z',
       finishedAt: null,
       durationMs: null,
       status: 'running',
@@ -3206,10 +3281,10 @@ describe('scheduler operator routes', () => {
       totals: {
         campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
       },
-      createdAt: '2026-07-26T10:00:00.000Z',
+      createdAt: '1998-07-26T10:00:00.000Z',
     });
     await marketing.runs.finalize('run-global', {
-      finishedAt: '2026-07-26T10:00:01.000Z',
+      finishedAt: '1998-07-26T10:00:01.000Z',
       durationMs: 1000,
       status: 'completed',
       error: null,
@@ -3228,7 +3303,7 @@ describe('scheduler operator routes', () => {
         budgetComputed: 25,
         budgetUsed: 4,
         errors: ['SES rejected'],
-        createdAt: '2026-07-26T10:00:01.000Z',
+        createdAt: '1998-07-26T10:00:01.000Z',
       }],
     });
     const app = marketingApp(marketing);

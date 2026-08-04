@@ -540,6 +540,13 @@
       "when": 1785868320000,
       "tag": "0076_jazzy_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1785868380000,
+      "tag": "0077_classy_wrecker",
+      "breakpoints": true
     }
   ]
 }

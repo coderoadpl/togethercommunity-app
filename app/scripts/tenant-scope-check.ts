@@ -69,7 +69,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   AuthSettings: 'Authentication-provider callback configuration.',
   AuthClientPort: 'Client-side authentication transport boundary.',
   AuthPort: 'Authentication-provider boundary whose records are platform identities.',
-  BunnyEmbedTokenSigner: 'Media token-signing boundary with no persistence access.',
+  BunnyTokenSigner: 'Media token-signing boundary with no persistence access.',
   CliAuthAdapter: 'CLI authentication transport boundary.',
   Clock: 'Time source with no persistence access.',
   ContentHash: 'Hashing primitive with no persistence access.',

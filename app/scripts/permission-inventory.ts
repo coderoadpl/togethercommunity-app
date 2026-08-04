@@ -428,6 +428,7 @@ const beforeForUseCase = (
   if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
   if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
+  if (file === 'lesson-playback.ts') return tenantActors;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
@@ -514,7 +515,7 @@ const suspicious: SuspiciousPermission[] = [
   },
   {
     subject: 'staff lesson access',
-    behavior: 'Staff identities can use the student lesson and course-structure use-cases without a member row or product grant (`core/server/usecases/entitlements.ts`, `core/server/usecases/lesson-media.ts`).',
+    behavior: 'Staff identities can use the student lesson, playback, and course-structure use-cases without a member row or product grant (`core/server/usecases/entitlements.ts`, `core/server/usecases/lesson-media.ts`, `core/server/usecases/lesson-playback.ts`).',
   },
 ];
 

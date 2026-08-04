@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 94. Route rows: 220. Exported `Ctx` use-case rows: 188.
+Closed capability count: 94. Route rows: 221. Exported `Ctx` use-case rows: 189.
 
 ## Human-readable diff
 
@@ -212,6 +212,7 @@ no changes
 | `GET /api/student/courses/:courseId/structure` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/:lessonId/attachments` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/student/lessons/:lessonId/playback` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/student/lessons/complete` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
 | `POST /api/student/lessons/uncomplete` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/student/progress/last-viewed` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
@@ -325,6 +326,7 @@ no changes
 | `lesson-attachments.ts#deleteLessonAttachment` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-attachments.ts#deleteLessonAttachmentObjects` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts authorization call |
+| `lesson-playback.ts#getLessonPlayback` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-playback.ts authorization call |
 | `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#recordMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
@@ -447,11 +449,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:124` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:844` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:846` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1281` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1281` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:125` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:846` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:848` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1283` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1283` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -516,4 +518,4 @@ Identity resolution can carry both staffRole and memberId; staff checks take pre
 
 ### staff lesson access
 
-Staff identities can use the student lesson and course-structure use-cases without a member row or product grant (`core/server/usecases/entitlements.ts`, `core/server/usecases/lesson-media.ts`).
+Staff identities can use the student lesson, playback, and course-structure use-cases without a member row or product grant (`core/server/usecases/entitlements.ts`, `core/server/usecases/lesson-media.ts`, `core/server/usecases/lesson-playback.ts`).

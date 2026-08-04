@@ -1338,7 +1338,8 @@ describe('marketing HTTP surfaces', () => {
     const body = await response.text();
     expect(body).toContain('Immutable terms');
     expect(nonce).toBeDefined();
-    expect(body).toContain(`<script nonce="${nonce}">`);
+    expect(body).toContain('--bg:#fafafa;--surface:#fff;--ink:#09090b');
+    expect(body).not.toContain('together-theme-mode');
   });
 
   it('renders member preferences without mutating GET and returns a human confirmation after POST', async () => {

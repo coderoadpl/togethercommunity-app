@@ -189,14 +189,16 @@ describe('Creator panel routing', () => {
     await renderPanelAt('/panel/members');
 
     expect(await screen.findByTestId('tenant-name')).toHaveTextContent('Acme');
-    for (const id of [
+    const sectionIds = [
       'dashboard',
       'products',
       'courses',
       'lessons',
       'members',
       'reports',
+      'spaces',
       'sales',
+      'coupons',
       'integrations',
       'marketingActivity',
       'marketingSends',
@@ -206,9 +208,14 @@ describe('Creator panel routing', () => {
       'marketingDocuments',
       'marketingSettings',
       'settings',
-    ] as const) {
+    ] as const;
+    for (const id of sectionIds) {
       expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
     }
+    const iconPaths = sectionIds.map((id) =>
+      screen.getByTestId(`section-${id}`).querySelector('path')?.getAttribute('d'),
+    );
+    expect(new Set(iconPaths).size).toBe(sectionIds.length);
     expect(screen.getByTestId('section-members')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
     expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('3');

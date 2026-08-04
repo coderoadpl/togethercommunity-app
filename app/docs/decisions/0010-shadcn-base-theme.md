@@ -5,33 +5,32 @@ Status: accepted, 2026-07-29.
 ## Context
 
 `apps/web/src/theme.ts` compiles seven theme definitions (`MODES`): Logbook,
-Material, Quiet Studio, Scoreboard, Shadcn, Signal Mono, and Steady Frame. The
-theming engine itself — `ThemeMode`, `createThemeForMode`, the per-tenant
-accent hue, and `ThemeModeProvider` — is load-bearing across the app: the
-tenant-facing theme switcher, Storybook's theme toolbar, and
-`theme-branding.test.ts` all iterate the full `MODES` union. Maintaining pixel
-goldens for all seven multiplied the visual regression surface without a
-product reason; only one theme ships as Together's actual product look.
+Material, Quiet Studio, Scoreboard, Shadcn, Signal Mono, and Steady Frame.
+Maintaining pixel goldens for all seven multiplied the visual regression
+surface without a product reason; only one theme ships as Together's actual
+product look.
 
 ## Decision
 
-Shadcn becomes the only maintained base theme. The engine stays untouched: the
-`ThemeMode` union and all seven `create*Theme` functions remain compiled, and
-the tenant-facing `ThemeSwitcher` keeps offering all seven — the default was
-already `shadcn` and stays that way. The other six move from "maintained" to
-"unmaintained example" status: they keep working and keep their branding-test
-coverage, but they lose golden-image coverage and any claim to product
-support. Steady Frame stays in place as the showcase example for a future
-tenant bring-your-own-theme (BYO-theme) feature, since its structure is the
-most complete illustration of what a full custom theme definition looks like.
+Shadcn becomes the only maintained and selectable base theme. The product
+runtime hardcodes Shadcn, the tenant-facing `ThemeSwitcher` is removed, and
+legacy theme values in local storage are ignored. The other six definitions
+remain compiled only as unmaintained Storybook examples for a possible future
+tenant bring-your-own-theme (BYO-theme) feature; they keep their branding-test
+coverage but have no product runtime path, golden-image coverage, or support
+claim. Steady Frame stays as the most complete showcase reference.
+
+Shadcn currently has only a light palette. A light/dark/auto mode control must
+not ship until a reviewed dark token set exists; until then the runtime remains
+light-only.
 
 `scripts/visual-screenshots.ts`'s `THEMES` constant shrinks to `['shadcn']`,
 which drops both `pnpm run visual` and `pnpm run visual:argos-capture` to one
 theme. The non-Shadcn entries in `tasks/visual-goldens/` (140 of the 210
 files) are deleted rather than kept stale. The Storybook toolbar in
 `.storybook/preview.tsx` and the seven-theme matrix in
-`ThemeShowcase.stories.tsx` are untouched — they are cheap to keep and are the
-intended reference surface for the BYO-theme direction below.
+`ThemeShowcase.stories.tsx` remain the reference surface for the BYO-theme
+direction below.
 
 ## Consequences
 

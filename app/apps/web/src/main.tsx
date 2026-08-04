@@ -44,7 +44,6 @@ import { TenantBrandingBoundary } from './branding.js';
 import { AppChromeProvider } from './components/ui/app-chrome.js';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { LanguageSwitcher } from './components/ui/LanguageSwitcher.js';
-import { ThemeSwitcher } from './components/ui/ThemeSwitcher.js';
 import { LanguageProvider } from './i18n/index.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
@@ -126,7 +125,6 @@ const rootRoute = createRootRoute({
   component: () => (
     <>
       <LanguageSwitcher />
-      <ThemeSwitcher />
       <Outlet />
     </>
   ),

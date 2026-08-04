@@ -8,7 +8,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { API_PATHS } from '#core/contract/index.js';
 
-import { MODES, type ThemeMode } from '../apps/web/src/theme.js';
+import type { ThemeMode } from '../apps/web/src/theme.js';
 import {
   A11Y_CHECK_IDS,
   CONTRAST_SKIP_REASONS,
@@ -27,12 +27,11 @@ const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 const outDir = join(rootDir, 'out/a11y');
 
-const themeStorageKey = 'together-theme-mode';
 const languageStorageKey = 'together-language';
 
 const SEED_BASE_TIME = '2026-07-01T12:00:00.000Z';
 
-const THEMES: ThemeMode[] = MODES.map((mode) => mode.id);
+const THEMES: ThemeMode[] = ['shadcn'];
 
 const FAILING_IMPACTS: ImpactValue[] = ['serious', 'critical'];
 const IMPACT_ORDER: ImpactValue[] = ['critical', 'serious', 'moderate', 'minor'];
@@ -130,10 +129,7 @@ const SCREENS: ScreenSpec[] = [
     auth: 'member',
     path: '/account',
     viewports: memberViewports,
-    ready: async (page) => {
-      await page.getByTestId('account-email').waitFor(visible);
-      await page.getByTestId('theme-selector').waitFor(visible);
-    },
+    ready: (page) => page.getByTestId('account-email').waitFor(visible),
   },
   {
     name: 'panel-dashboard',
@@ -355,17 +351,16 @@ const stubNonDeterministicRequests = async (context: BrowserContext): Promise<vo
   });
 };
 
-const applyChrome = async (context: BrowserContext, mode: ThemeMode): Promise<void> => {
+const applyChrome = async (context: BrowserContext): Promise<void> => {
   await context.addInitScript(
-    ([themeKey, themeValue, langKey]) => {
+    (langKey) => {
       try {
-        window.localStorage.setItem(themeKey, themeValue);
         window.localStorage.setItem(langKey, 'pl');
       } catch {
         // storage disabled — the choice simply won't persist
       }
     },
-    [themeStorageKey, mode, languageStorageKey] as const,
+    languageStorageKey,
   );
 };
 
@@ -399,7 +394,7 @@ const bootstrapAuthState = async (
   signIn: (page: Page, baseUrl: string) => Promise<void>,
 ): Promise<StorageState> => {
   const context = await browser.newContext({ viewport: VIEWPORTS.desktop });
-  await applyChrome(context, 'shadcn');
+  await applyChrome(context);
   const page = await context.newPage();
   await signIn(page, studioBaseUrl);
   const state = await context.storageState();
@@ -502,7 +497,7 @@ try {
           deviceScaleFactor: 1,
           ...(storageState === undefined ? {} : { storageState }),
         });
-        await applyChrome(context, theme);
+        await applyChrome(context);
         await defineEsbuildNameHelper(context);
         await stubNonDeterministicRequests(context);
         const page = await context.newPage();

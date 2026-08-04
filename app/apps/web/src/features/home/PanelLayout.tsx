@@ -23,14 +23,12 @@ import { useTenantBranding } from '../../branding.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
-import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
 import { AppShell, BrandSplash } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
-import { useThemeMode } from '../../theme-mode.js';
 import {
   AppBarTitle,
   AppBarWordmark,
@@ -42,13 +40,22 @@ import {
 } from '../../theme.js';
 import {
   AccountIcon,
+  CouponsIcon,
   CoursesIcon,
   DashboardIcon,
   IntegrationsIcon,
   LessonsIcon,
+  MarketingActivityIcon,
+  MarketingCampaignsIcon,
+  MarketingConsentsIcon,
+  MarketingDocumentsIcon,
+  MarketingLayoutsIcon,
+  MarketingSendsIcon,
+  MarketingSettingsIcon,
   MembersIcon,
   MenuIcon,
   ProductsIcon,
+  ReportsIcon,
   SalesIcon,
   SettingsIcon,
   SignOutIcon,
@@ -126,22 +133,29 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
     case 'members':
       return <MembersIcon />;
     case 'reports':
-      return <MembersIcon />;
+      return <ReportsIcon />;
     case 'spaces':
       return <SpacesIcon />;
     case 'sales':
-    case 'coupons':
       return <SalesIcon />;
+    case 'coupons':
+      return <CouponsIcon />;
     case 'integrations':
       return <IntegrationsIcon />;
     case 'marketingActivity':
+      return <MarketingActivityIcon />;
     case 'marketingSends':
+      return <MarketingSendsIcon />;
     case 'marketingCampaigns':
+      return <MarketingCampaignsIcon />;
     case 'marketingConsents':
+      return <MarketingConsentsIcon />;
     case 'marketingDocuments':
+      return <MarketingDocumentsIcon />;
     case 'marketingLayouts':
+      return <MarketingLayoutsIcon />;
     case 'marketingSettings':
-      return <IntegrationsIcon />;
+      return <MarketingSettingsIcon />;
     case 'settings':
       return <SettingsIcon />;
   }
@@ -305,7 +319,6 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
             sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}
           >
             <LanguageSwitcher inline />
-            <ThemeSwitcher inline />
           </Box>
           <NotificationBell />
           <UserMenu
@@ -363,7 +376,6 @@ const PanelErrorShell = ({ message }: { message: string }) => {
 export const PanelLayout = () => {
   const navigate = useNavigate();
   const t = useTranslations();
-  const { mode } = useThemeMode();
   const me = useQuery(actions.me);
 
   useSuppressGlobalChrome();
@@ -381,8 +393,8 @@ export const PanelLayout = () => {
 
   const branding = useTenantBranding();
   const theme = useMemo(
-    () => applyBranding(createThemeForMode(mode, tenant ? tenantHue(tenant.slug) : 0), branding),
-    [mode, tenant, branding],
+    () => applyBranding(createThemeForMode('shadcn', tenant ? tenantHue(tenant.slug) : 0), branding),
+    [tenant, branding],
   );
 
   if (me.isPending || unauthorized || noTenant || memberOnly) {

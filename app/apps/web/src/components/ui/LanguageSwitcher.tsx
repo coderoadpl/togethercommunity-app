@@ -36,7 +36,7 @@ export const LanguageSwitcher = ({ inline = false }: { inline?: boolean }) => {
     <Box
       role="region"
       aria-label={t.common.language}
-      sx={{ position: 'fixed', top: 10, right: 214, zIndex: (t) => t.zIndex.appBar }}
+      sx={{ position: 'fixed', top: 10, right: 12, zIndex: (t) => t.zIndex.appBar }}
     >
       {group}
     </Box>

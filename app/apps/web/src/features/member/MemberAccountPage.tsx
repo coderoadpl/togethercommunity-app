@@ -19,7 +19,6 @@ import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
-import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -435,7 +434,6 @@ export const MemberAccountPage = () => {
         <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
             <LanguageSwitcher inline />
-            <ThemeSwitcher inline />
           </Stack>
         </SectionCard>
       </Stack>

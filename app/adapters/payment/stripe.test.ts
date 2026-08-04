@@ -440,7 +440,6 @@ describe('verifyWebhookEvent', () => {
       cancel_at_period_end: true,
       current_period_end: 916_387_200,
       ended_at: 916_387_200,
-      canceled_at: 1_700_000_000,
     }, {
       subscription: {
         id: 'sub_2',
@@ -448,7 +447,6 @@ describe('verifyWebhookEvent', () => {
         cancelAtPeriodEnd: true,
         currentPeriodEnd: '1999-01-15T08:00:00.000Z',
         endedAt: '1999-01-15T08:00:00.000Z',
-        canceledAt: '1995-11-14T22:13:20.000Z',
       },
     }],
     ['charge.refunded', {

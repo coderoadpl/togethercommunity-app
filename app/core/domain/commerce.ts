@@ -196,6 +196,12 @@ export const memberSubscriptionSchema = z.object({
 
 export type MemberSubscription = z.infer<typeof memberSubscriptionSchema>;
 
+export const memberSubscriptionListItemSchema = memberSubscriptionSchema.extend({
+  productTitle: z.string(),
+});
+
+export type MemberSubscriptionListItem = z.infer<typeof memberSubscriptionListItemSchema>;
+
 export const memberSubscriptionSummarySchema = z.object({
   id: z.string(),
   status: subscriptionStatusSchema,

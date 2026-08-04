@@ -1,6 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { describe, expect, it } from 'vitest';
 
 import type {
@@ -55,8 +62,11 @@ const products: Product[] = [
   {
     id: 'p3',
     tenantId: 't1',
+    type: 'course',
+    slug: 'new-workshop',
     title: 'New Workshop',
     description: '',
+    coverUrl: null,
     priceCents: 0,
     currency: 'PLN',
     published: true,
@@ -115,9 +125,86 @@ const setup = (): { banBodies: unknown[]; grantBodies: unknown[]; revoked: strin
   const revoked: string[] = [];
   server.use(
     http.get('/api/members/:memberId/grants', () => HttpResponse.json({ ok: true, data: { grants } })),
+    http.get('/api/members/:memberId/commerce', () => HttpResponse.json({
+      ok: true,
+      data: {
+        purchases: [{
+          id: 'order-1',
+          tenantId: 't1',
+          memberId: member.id,
+          productId: 'p1',
+          priceId: 'price-1',
+          kind: 'recurring',
+          status: 'paid',
+          amountCents: 4900,
+          currency: 'PLN',
+          provider: 'stripe',
+          providerObjectIds: { subscription: 'sub_stripe_1' },
+          couponId: null,
+          discountCents: 0,
+          createdAt: '1998-07-08T10:00:00.000Z',
+          memberEmail: member.email,
+          memberName: member.displayName,
+          productTitle: 'Full Course',
+          couponCode: null,
+        }],
+        activeSubscriptions: [{
+          id: 'subscription-1',
+          tenantId: 't1',
+          memberId: member.id,
+          productId: 'p1',
+          priceId: 'price-1',
+          provider: 'stripe',
+          providerSubscriptionId: 'sub_stripe_1',
+          status: 'active',
+          currentPeriodEnd: '1998-08-08T10:00:00.000Z',
+          cancelAtPeriodEnd: false,
+          couponId: null,
+          couponDiscountCents: 0,
+          couponRecurringDuration: null,
+          createdAt: '1998-07-08T10:00:00.000Z',
+          updatedAt: '1998-07-08T10:00:00.000Z',
+          productTitle: 'Full Course',
+        }],
+      },
+    })),
+    http.get('/api/members/:memberId/timeline', () => HttpResponse.json({
+      ok: true,
+      data: {
+        events: [{
+          id: 'purchase:order-1',
+          tenantId: 't1',
+          memberId: member.id,
+          type: 'purchase',
+          payload: {
+            orderId: 'order-1',
+            productId: 'p1',
+            kind: 'recurring',
+            status: 'paid',
+            amountCents: 4900,
+            currency: 'PLN',
+            provider: 'stripe',
+            productTitle: 'Full Course',
+          },
+          occurredAt: '1998-07-08T10:00:00.000Z',
+        }],
+      },
+    })),
     http.get('/api/members/:memberId/learning-summary', () => HttpResponse.json({
       ok: true,
-      data: { summary: { lastActivityAt: null, courses: [] } },
+      data: {
+        summary: {
+          lastActivityAt: '1998-07-09T10:00:00.000Z',
+          courses: [{
+            courseId: 'course-1',
+            courseName: 'JavaScript Foundations',
+            completedLessonCount: 1,
+            accessibleLessonCount: 4,
+            lastActivityAt: '1998-07-09T10:00:00.000Z',
+            latestCompletedLesson: { lessonId: 'lesson-1', name: 'Variables' },
+          }],
+        },
+      },
     })),
     http.get('/api/members/:memberId/emails', () => HttpResponse.json({
       ok: true,
@@ -150,10 +237,53 @@ const setup = (): { banBodies: unknown[]; grantBodies: unknown[]; revoked: strin
   return { banBodies, grantBodies, revoked };
 };
 
+const renderMemberDetail = (value: MemberWithProductIds = member) => {
+  const rootRoute = createRootRoute();
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/members/$memberId',
+    component: () => <MemberDetail member={value} onBack={() => undefined} />,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([detailRoute]),
+    history: createMemoryHistory({ initialEntries: [`/panel/members/${value.id}`] }),
+  });
+  return renderWithProviders(<RouterProvider router={router} />);
+};
+
 describe('MemberDetail', () => {
+  it('shows the complete 360 overview from account through commerce and domain events', async () => {
+    setup();
+    renderMemberDetail();
+
+    expect(await screen.findByText(`${pl.members.accountName}: ${member.displayName ?? '—'}`))
+      .toBeInTheDocument();
+    expect(screen.getByText(`${pl.members.accountEmail}: ${member.email}`)).toBeInTheDocument();
+    expect(await screen.findByTestId('member-purchase-row')).toHaveTextContent('Full Course');
+    expect(screen.getByTestId('member-purchase-row')).toHaveTextContent('49,00 zł');
+    expect(within(screen.getByTestId('member-purchase-row')).getByRole('link'))
+      .toHaveAttribute('href', '/panel/sales/order-1');
+    expect(await screen.findByTestId('member-subscription-row')).toHaveTextContent('Stripe');
+    expect(screen.getByTestId('member-subscription-row')).toHaveTextContent(
+      pl.members.subscriptionStatuses.active,
+    );
+    expect(await screen.findByTestId('member-timeline-row')).toHaveTextContent(
+      pl.members.timelineEventLabels.purchase,
+    );
+    expect(screen.getByTestId('member-timeline-row')).toHaveTextContent('Full Course');
+    const learningRow = await screen.findByTestId('learning-summary-row');
+    expect(learningRow).toHaveTextContent('JavaScript Foundations');
+    expect(learningRow).toHaveTextContent(pl.members.lessonsProgress({ completed: 1, total: 4 }));
+    expect(learningRow).toHaveTextContent('25%');
+    expect(learningRow).toHaveTextContent('Variables');
+    expect(learningRow.querySelector('time'))
+      .toHaveAttribute('datetime', '1998-07-09T10:00:00.000Z');
+    expect(await screen.findAllByTestId('grant-row')).toHaveLength(2);
+  });
+
   it('keeps grant and renew controls available for an active member', async () => {
     setup();
-    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+    renderMemberDetail();
 
     expect(await screen.findByText(pl.members.grantProduct)).toBeInTheDocument();
     expect(await screen.findAllByRole('button', { name: pl.members.renew })).toHaveLength(2);
@@ -162,12 +292,7 @@ describe('MemberDetail', () => {
 
   it('shows the tombstone while keeping grant history and revoke controls', async () => {
     setup();
-    renderWithProviders(
-      <MemberDetail
-        member={{ ...member, deletedAt: '1998-07-20T10:00:00.000Z' }}
-        onBack={() => undefined}
-      />,
-    );
+    renderMemberDetail({ ...member, deletedAt: '1998-07-20T10:00:00.000Z' });
 
     expect(await screen.findByTestId('member-tombstone-notice')).toHaveTextContent(
       pl.members.tombstoneNotice,
@@ -181,9 +306,9 @@ describe('MemberDetail', () => {
 
   it('renders active vs expired grants', async () => {
     setup();
-    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+    renderMemberDetail();
 
-    expect(await screen.findByText('Full Course')).toBeInTheDocument();
+    expect(await screen.findAllByText('Full Course')).toHaveLength(3);
     expect(screen.getAllByTestId('grant-row')).toHaveLength(2);
     expect(screen.getByText(pl.members.active)).toBeInTheDocument();
     expect(screen.getByText(pl.members.expired)).toBeInTheDocument();
@@ -192,7 +317,7 @@ describe('MemberDetail', () => {
 
   it('grants a product with the right mutation payload', async () => {
     const { grantBodies } = setup();
-    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+    renderMemberDetail();
 
     await userEvent.click(await screen.findByRole('combobox', { name: pl.members.productLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'New Workshop' }));
@@ -204,7 +329,7 @@ describe('MemberDetail', () => {
 
   it('revokes a grant through the confirmation dialog', async () => {
     const { revoked } = setup();
-    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+    renderMemberDetail();
 
     const [firstRevoke] = await screen.findAllByRole('button', { name: pl.members.revoke });
     if (firstRevoke) await userEvent.click(firstRevoke);
@@ -217,7 +342,7 @@ describe('MemberDetail', () => {
 
   it('bans a member with the staff-only reason from the confirmation dialog', async () => {
     const { banBodies } = setup();
-    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+    renderMemberDetail();
 
     await userEvent.click(await screen.findByRole('button', { name: pl.members.ban }));
     const dialog = await screen.findByRole('dialog', { name: pl.members.ban });
@@ -234,9 +359,9 @@ describe('MemberDetail', () => {
 
   it('shows all email kinds newest-first in the email tab and links to send history', async () => {
     setup();
-    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+    renderMemberDetail();
 
-    await userEvent.click(screen.getByRole('tab', { name: pl.members.emailsTab }));
+    await userEvent.click(await screen.findByRole('tab', { name: pl.members.emailsTab }));
 
     const rows = await screen.findAllByTestId('member-email-send');
     expect(rows).toHaveLength(2);

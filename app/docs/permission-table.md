@@ -12,7 +12,11 @@ The `member` and `authenticated` matrix rows carried historically derived edge c
 
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
-Closed capability count: 92. Route rows: 198. Exported `Ctx` use-case rows: 172.
+`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
+
+`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
+
+Closed capability count: 94. Route rows: 200. Exported `Ctx` use-case rows: 174.
 
 ## Human-readable diff
 
@@ -103,7 +107,6 @@ no changes
 | `POST /api/marketing/ses-onboarding/identity` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-onboarding/infrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-onboarding/simulator` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `POST /api/marketing/smtp/test` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/suppressions` | marketing:suppression:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/sends/export` | marketing:delivery:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/sends` | marketing:delivery:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -125,6 +128,8 @@ no changes
 | `GET /api/members/export` | member:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/ban` | member:ban | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/:memberId/grants` | member:grant:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/members/:memberId/commerce` | member:commerce:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/members/:memberId/timeline` | member:timeline:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/:memberId/learning-summary` | member:learning:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/:memberId/progress-reset` | member:progress:manage | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/members/:memberId` | member:remove | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -140,7 +145,8 @@ no changes
 | `POST /api/tenant/settings` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/onboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/onboarding/dismiss` | tenant:onboarding:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `POST /api/integrations/stripe/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/stripe/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ifirma/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ksef/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/integrations/bunny/videos` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -245,6 +251,7 @@ no changes
 | `community.ts#markNotificationRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#markAllNotificationsRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#unreadNotificationCount` | notification:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
+| `configure-stripe.ts#configureStripe` | tenant:secret:write | owner | owner | yes | core/server/usecases/configure-stripe.ts authorization call |
 | `content-history.ts#getContentHistory` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `content-history.ts#getContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `coupon-management.ts#createCoupon` | coupon:write | owner, admin | owner, admin | yes | core/server/usecases/coupon-management.ts authorization call |
@@ -334,17 +341,18 @@ no changes
 | `marketing-management.ts#updateMarketingCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#getTenantSesMarketingSettings` | marketing:ses:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#updateTenantSesMarketingSettings` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
-| `marketing-management.ts#sendTransactionalSmtpTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-ses-onboarding.ts#startSesIdentityVerification` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#provisionSesInfrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#pollSesOnboarding` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | member | member | yes | core/server/usecases/member-billing-orders.ts authorization call |
+| `member-commerce.ts#getMemberCommerceOverview` | member:commerce:read | owner, admin | owner, admin | yes | core/server/usecases/member-commerce.ts authorization call |
 | `member-data-export.ts#exportMyData` | member:data-export:self-read | member | member | yes | core/server/usecases/member-data-export.ts authorization call |
 | `member-erasure-requests.ts#requestMyErasure` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-erasure-requests.ts#getMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-erasure-requests.ts#cancelMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
+| `member-events.ts#listMemberTimeline` | member:timeline:read | owner, admin | owner, admin | yes | core/server/usecases/member-events.ts authorization call |
 | `member-learning.ts#getMemberLearningSummary` | member:learning:read | owner, admin | owner, admin | yes | core/server/usecases/member-learning.ts authorization call |
 | `members.ts#listMembers` | member:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#exportMembers` | member:export | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
@@ -363,7 +371,6 @@ no changes
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
-| `payment-integrations.ts#testStripeConnection` | integration:test | owner | owner | yes | core/server/usecases/payment-integrations.ts authorization call |
 | `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts authorization call |
 | `product-prices.ts#listProductPrices` | product:price:read | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#createProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
@@ -376,6 +383,7 @@ no changes
 | `progress.ts#resetMemberCourseProgress` | member:progress:manage | owner, admin | owner, admin | yes | core/server/usecases/progress.ts authorization call |
 | `progress.ts#updateLastViewed` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts authorization call |
 | `progress.ts#getProgress` | member:progress:read | member | member | yes | core/server/usecases/progress.ts authorization call |
+| `provider-diagnostics.ts#testIntegration` | integration:test | owner | owner | yes | core/server/usecases/provider-diagnostics.ts authorization call |
 | `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
@@ -405,11 +413,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:110` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:761` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:763` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1205` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1205` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:112` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:765` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:767` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1201` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1201` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

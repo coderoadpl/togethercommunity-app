@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createMultipleTenantsReporter,
   selectAuthTrustedProxyHeader,
+  selectDeploymentAuthOrigins,
   selectDevSinkPurge,
   selectTenantCreationMode,
   selectTenantRouting,
@@ -190,6 +191,60 @@ describe('deployed auth origin policy', () => {
     expect(localOrigins).toContain('https://courses.example');
     expect(localOrigins).not.toContain('http://courses.example');
     expect(deployedOrigins.some((origin) => origin.startsWith('http://'))).toBe(false);
+  });
+});
+
+describe('platform deployment auth origins', () => {
+  const productionEnv = (overrides: Record<string, string>) => envSchema.parse({
+    NODE_ENV: 'production',
+    APP_ENV: 'production',
+    APP_BASE_URL: 'https://together.example',
+    AUTH_TRUSTED_PROXY_HEADER: 'x-vercel-forwarded-for',
+    BETTER_AUTH_SECRET: 'production-secret-with-at-least-16-chars',
+    SECRETS_MASTER_KEY: 'production-master-key',
+    KSEF_ENVIRONMENT: 'production',
+    EMAIL_DISPATCH_SECRET: 'production-email-dispatch-secret',
+    MARKETING_TICK_SECRET: 'production-marketing-tick-secret',
+    CRON_SECRET: 'production-cron-secret',
+    ...overrides,
+  });
+
+  it('ignores the platform deployment URLs in production', () => {
+    expect(selectDeploymentAuthOrigins(productionEnv({
+      VERCEL_URL: 'together-app-9f3a1c.vercel.app',
+      VERCEL_BRANCH_URL: 'together-app-git-production.vercel.app',
+    }))).toEqual([]);
+  });
+
+  it('trusts the deployment and branch URLs outside production', () => {
+    expect(selectDeploymentAuthOrigins(envSchema.parse({
+      NODE_ENV: 'production',
+      APP_ENV: 'preview',
+      APP_BASE_URL: 'https://staging.example',
+      VERCEL_URL: 'together-app-9f3a1c.vercel.app',
+      VERCEL_BRANCH_URL: 'together-app-git-feature.vercel.app',
+    }))).toEqual([
+      'https://together-app-9f3a1c.vercel.app',
+      'https://together-app-git-feature.vercel.app',
+    ]);
+  });
+
+  it('trusts a branch URL that repeats the deployment URL only once', () => {
+    expect(selectDeploymentAuthOrigins(envSchema.parse({
+      APP_ENV: 'preview',
+      VERCEL_URL: 'together-app-git-feature.vercel.app',
+      VERCEL_BRANCH_URL: 'together-app-git-feature.vercel.app',
+    }))).toEqual(['https://together-app-git-feature.vercel.app']);
+  });
+
+  it('changes nothing when the platform sets no deployment URLs', () => {
+    expect(selectDeploymentAuthOrigins(envSchema.parse({ APP_ENV: 'preview' }))).toEqual([]);
+    expect(selectDeploymentAuthOrigins(envSchema.parse({
+      APP_ENV: 'preview',
+      VERCEL_URL: '',
+      VERCEL_BRANCH_URL: '',
+    }))).toEqual([]);
+    expect(selectDeploymentAuthOrigins(envSchema.parse({}))).toEqual([]);
   });
 });
 

@@ -419,7 +419,7 @@ export interface PdfPointer {
 export interface LessonContentLookups {
   videoById: ReadonlyMap<string, VideoPointer>;
   pdfById: ReadonlyMap<string, PdfPointer>;
-  streamLibraryId?: string;
+  streamLibraryId: string;
 }
 
 export const transformLessonContents = (
@@ -455,9 +455,7 @@ export const transformLessonContents = (
             type: 'video',
             storageKey: video.key,
             streamVideoId: video.bunnyStreamVideoId,
-            ...(lookups.streamLibraryId === undefined
-              ? {}
-              : { streamLibraryId: lookups.streamLibraryId }),
+            streamLibraryId: lookups.streamLibraryId,
             ...(video.bunnyStreamCollectionId !== undefined &&
             video.bunnyStreamCollectionId !== null &&
             video.bunnyStreamCollectionId.length > 0

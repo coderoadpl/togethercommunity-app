@@ -57,6 +57,7 @@
     "visual:update": "tsx scripts/visual-screenshots.ts --update",
     "visual:argos-capture": "tsx scripts/visual-screenshots.ts --argos-capture",
     "legacy:export": "tsx scripts/legacy-export.ts",
+    "migrate:payload": "tsx scripts/migrate-payload.ts",
     "import": "tsx scripts/import.ts",
     "e2e:auth": "tsx scripts/auth-e2e.ts",
     "e2e:coupon": "tsx scripts/coupon-e2e.ts",

@@ -18,7 +18,10 @@ import {
   type Result,
 } from '#core/domain/index.js';
 import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator } from '#core/server/index.js';
-import { verifyPasswordWithLegacyFallback } from '#adapters/auth/legacy-password.js';
+import {
+  isLegacyPasswordHash,
+  verifyPasswordWithLegacyFallback,
+} from '#adapters/auth/legacy-password.js';
 import type { Db } from '#adapters/db/client.js';
 import { devMagicLinks } from '#adapters/db/schema.js';
 
@@ -251,6 +254,12 @@ const successfulSignUpSchema = z.object({
   user: z.object({ email: z.string().email() }),
 });
 
+const successfulPasswordSignInSchema = z.object({
+  user: z.object({ id: z.string().min(1) }),
+});
+
+const passwordSignInBodySchema = z.object({ password: z.string() });
+
 const throwConsentError = (error: AppError): never => {
   throw APIError.from('BAD_REQUEST', {
     code: error.code,
@@ -336,6 +345,23 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         if (!consent.ok) throwConsentError(consent.error);
       }),
       after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === '/sign-in/email') {
+          const returned = successfulPasswordSignInSchema.safeParse(ctx.context.returned);
+          const body = passwordSignInBodySchema.safeParse(ctx.body);
+          if (!returned.success || !body.success) return;
+          const credential = (await ctx.context.internalAdapter.findAccounts(returned.data.user.id))
+            .find((entry) => entry.providerId === 'credential');
+          if (
+            credential?.password === undefined ||
+            credential.password === null ||
+            !isLegacyPasswordHash(credential.password)
+          ) {
+            return;
+          }
+          const password = await ctx.context.password.hash(body.data.password);
+          await ctx.context.internalAdapter.updatePassword(returned.data.user.id, password);
+          return;
+        }
         if (ctx.path !== '/sign-up/email') return;
         if (settings.recordSignUpConsent === undefined) return;
         if (!successfulSignUpSchema.safeParse(ctx.context.returned).success) return;

@@ -172,6 +172,7 @@ describe('member erasure requests', () => {
       },
       appBaseUrl: 'https://app.example.com',
       baseDomain: 'example.com',
+      singleTenantMode: false,
       dispatchEmail: () => {
         dispatched += 1;
       },
@@ -236,6 +237,7 @@ describe('member erasure requests', () => {
       },
       appBaseUrl: 'https://app.example.com',
       baseDomain: 'example.com',
+      singleTenantMode: false,
       dispatchEmail: () => undefined,
     };
 

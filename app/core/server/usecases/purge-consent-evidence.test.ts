@@ -82,7 +82,7 @@ describe('consent evidence retention purge', () => {
     expect(page.runs.every((run) => run.status === 'completed' && run.trigger === 'cron')).toBe(true);
     const details = await Promise.all(page.runs.map((run) => runs.getWithTenants(run.id)));
     expect(details.find((detail) => detail?.tenants.length === 1)).toMatchObject({
-      tenants: [{ tenantId: 'tenant-1', batchSize: 2 }],
+      tenants: [{ tenantId: 'tenant-1', batchSize: 2, purged: 2 }],
     });
   });
 
@@ -161,10 +161,10 @@ describe('consent evidence retention purge', () => {
     const [run] = (await runs.listPage({ kind: 'consent_evidence_purge', limit: 10 })).runs;
     expect(run).toMatchObject({ status: 'failed', error: 'deadlock detected' });
     expect((await runs.getWithTenants(run?.id ?? ''))?.tenants).toMatchObject([
-      { tenantId: 'tenant-1', batchSize: 0, errors: ['deadlock detected'] },
-      { tenantId: 'tenant-2', batchSize: 1, errors: [] },
-      { tenantId: 'tenant-3', batchSize: 1, errors: [] },
-      { tenantId: 'tenant-4', batchSize: 1, errors: [] },
+      { tenantId: 'tenant-1', batchSize: 0, purged: 0, errors: ['deadlock detected'] },
+      { tenantId: 'tenant-2', batchSize: 1, purged: 1, errors: [] },
+      { tenantId: 'tenant-3', batchSize: 1, purged: 1, errors: [] },
+      { tenantId: 'tenant-4', batchSize: 1, purged: 1, errors: [] },
     ]);
   });
 

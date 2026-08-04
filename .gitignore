@@ -11,3 +11,4 @@ app/storybook-static/
 app/coverage/
 .ksef-spike-ref/
 .claude/
+.tmp/

@@ -53,6 +53,7 @@ const harness = (options: {
   products: Product[];
   grants?: ProductGrant[];
   exposeMagicLinks?: boolean;
+  singleTenantMode?: boolean;
 }): Harness => {
   const grants: ProductGrant[] = options.grants ? [...options.grants] : [];
   const members: Member[] = [];
@@ -171,6 +172,7 @@ const harness = (options: {
       clock: { nowIso: () => NOW },
       appBaseUrl: 'https://tenant.example',
       baseDomain: 'example',
+      singleTenantMode: options.singleTenantMode ?? false,
       exposeMagicLinks: options.exposeMagicLinks ?? false,
     },
   };
@@ -290,6 +292,17 @@ describe('m2mEnroll', () => {
       baseUrl: 'https://tenant-one.example/',
     });
     expect(new URL(h.captured[0]?.baseUrl ?? '').host).not.toBe('tenant.example');
+  });
+
+  it('keeps the enrollment magic link on the app host in single-tenant mode', async () => {
+    const h = harness({ products: [product('p1', true)], singleTenantMode: true });
+
+    await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
+
+    expect(h.captured[0]).toMatchObject({
+      callbackURL: 'https://tenant.example/',
+      baseUrl: 'https://tenant.example/',
+    });
   });
 
   it('is not found for an unpublished product', async () => {

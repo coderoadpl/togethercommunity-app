@@ -22,8 +22,9 @@ export interface AuthSettings {
   secret: string;
   /** Public URL of the API, e.g. http://localhost:48730 */
   baseUrl: string;
-  /** Cookie domain root so sessions survive tenant subdomains, e.g. "localhost". */
+  /** Routing domain root, shared by auth cookies only in multi-tenant mode. */
   baseDomain: string;
+  singleTenantMode: boolean;
   trustedOrigins: string[] | ((request?: Request) => string[] | Promise<string[]>);
   secureCookies: boolean;
   /** Dev-only: persist issued magic links into dev_magic_links (no mailer in the PoC). */
@@ -223,9 +224,8 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     ],
     advanced: {
       useSecureCookies: settings.secureCookies,
-      // Browsers reject Domain=.localhost cookies, so sessions are per-subdomain
-      // in local dev; on a real base domain they span all tenant subdomains.
-      ...(settings.baseDomain === 'localhost'
+      // Domain=.localhost is invalid, and single-tenant sessions must stay host-only.
+      ...(settings.singleTenantMode || settings.baseDomain === 'localhost'
         ? {}
         : { crossSubDomainCookies: { enabled: true, domain: `.${settings.baseDomain}` } }),
     },

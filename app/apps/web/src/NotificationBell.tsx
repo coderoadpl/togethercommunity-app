@@ -135,7 +135,7 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
       <Badge badgeContent={unreadCount} color="error" data-testid="notification-tab-badge">
         <TabBellIcon />
       </Badge>
-      <Typography variant="caption" component="span" noWrap>{tabLabel}</Typography>
+      <Typography variant="caption" component="span" noWrap title={tabLabel} sx={{ maxWidth: '100%' }}>{tabLabel}</Typography>
     </ButtonBase>
   );
 

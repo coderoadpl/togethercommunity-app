@@ -23,6 +23,7 @@ import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/i
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import {
@@ -755,12 +756,11 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
           }}
         />
         {imageUrl.trim() === '' ? null : (
-          <Box
-            component="img"
+          <CoverPreview
+            key={imageUrl.trim()}
             src={imageUrl.trim()}
-            alt={t.courses.imagePreview}
-            data-testid="course-image-preview"
-            sx={{ display: 'block', mt: '0.75rem', width: '100%', maxWidth: '30rem', aspectRatio: '16 / 9', objectFit: 'cover' }}
+            label={t.courses.imagePreview}
+            testId="course-image-preview"
           />
         )}
       </FormControl>

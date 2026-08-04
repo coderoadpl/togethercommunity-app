@@ -35,6 +35,7 @@ import {
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
+import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatFileSize, formatPrice } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -123,12 +124,11 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         <FormHelperText>{t.products.coverUrlHint}</FormHelperText>
       </FormControl>
       {coverPreviewUrl === null ? null : (
-        <Box
-          component="img"
+        <CoverPreview
+          key={coverPreviewUrl}
           src={coverPreviewUrl}
-          alt={title}
-          data-testid="product-cover-preview"
-          sx={{ width: '100%', maxHeight: 320, objectFit: 'cover' }}
+          label={title}
+          testId="product-cover-preview"
         />
       )}
       {save.isSuccess ? <Alert severity="success">{t.products.detailsSaved}</Alert> : null}

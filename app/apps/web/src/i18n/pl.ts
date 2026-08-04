@@ -108,7 +108,9 @@ export const pl: Messages = {
   },
   auth: {
     signInTitle: 'Zaloguj się',
+    signInPlatformEyebrow: 'Logowanie',
     signInEyebrow: ({ host }) => format('Logowanie · przestrzeń {host}', { host }),
+    createAccountPlatformEyebrow: 'Zakładanie konta',
     createAccountEyebrow: ({ host }) => format('Zakładanie konta · przestrzeń {host}', { host }),
     emailLabel: 'E-mail',
     passwordLabel: 'Hasło',

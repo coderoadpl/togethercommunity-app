@@ -910,12 +910,12 @@ const createSignalMonoTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 4,
             padding: '0.62rem 1.1rem',
             boxShadow: 'none',
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: 2 },
+          }),
           contained: {
             backgroundColor: SIGNAL_INK,
             color: SIGNAL_SURFACE,
@@ -1052,14 +1052,14 @@ const createSignalMonoTheme = (): Theme =>
       MuiLink: {
         defaultProps: { underline: 'none' },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             color: SIGNAL_INK,
             fontWeight: 600,
             borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
             '&[aria-current="true"]': { borderBottom: `2px solid ${SIGNAL_ACCENT}` },
             '&:hover': { borderBottomColor: SIGNAL_ACCENT },
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiChip: {
@@ -1101,7 +1101,7 @@ const createSignalMonoTheme = (): Theme =>
       },
       MuiToggleButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             border: 0,
             borderRadius: 0,
             padding: '0.75rem 0 0.65rem',
@@ -1119,8 +1119,8 @@ const createSignalMonoTheme = (): Theme =>
               boxShadow: `inset 0 -2px 0 ${SIGNAL_ACCENT}`,
               '&:hover': { backgroundColor: 'transparent' },
             },
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiList: {
@@ -1161,22 +1161,22 @@ const createSignalMonoTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 0,
             color: SIGNAL_INK,
             '&:hover': { backgroundColor: alpha(SIGNAL_INK, 0.04) },
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: -3 },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: -3 },
             '& .MuiListItemText-secondary': {
               color: SIGNAL_INK_SOFT,
             },
-          },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiListItemText: {
@@ -1376,13 +1376,13 @@ const createSteadyFrameTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 8,
             padding: '0.55rem 1.2rem',
             boxShadow: 'none',
             '&:hover': { boxShadow: 'none' },
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
+          }),
           contained: {
             '&.Mui-disabled': {
               backgroundColor: FRAME_PRIMARY,
@@ -1466,12 +1466,12 @@ const createSteadyFrameTheme = (): Theme =>
       MuiLink: {
         defaultProps: { underline: 'hover' },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             color: FRAME_PRIMARY,
             fontWeight: 600,
             '&[aria-current="true"]': { fontWeight: 700 },
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiChip: {
@@ -1504,7 +1504,7 @@ const createSteadyFrameTheme = (): Theme =>
       },
       MuiToggleButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             border: 0,
             borderRadius: 8,
             padding: '0.5rem 1rem',
@@ -1520,8 +1520,8 @@ const createSteadyFrameTheme = (): Theme =>
               color: FRAME_PRIMARY,
               '&:hover': { backgroundColor: alpha(FRAME_PRIMARY, 0.16) },
             },
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiList: {
@@ -1544,20 +1544,20 @@ const createSteadyFrameTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 10,
             color: FRAME_INK,
             '&:hover': { backgroundColor: alpha(FRAME_PRIMARY, 0.05) },
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: -2 },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: -2 },
             '& .MuiListItemText-secondary': { color: FRAME_INK_SOFT },
-          },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiListItemText: {
@@ -1742,11 +1742,11 @@ const createScoreboardTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 8,
             padding: '0.6rem 1.15rem',
-            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SCORE_ACCENT}`, outlineOffset: 2 },
+          }),
           contained: {
             backgroundColor: SCORE_INK,
             color: SCORE_SURFACE,
@@ -1943,19 +1943,19 @@ const createScoreboardTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 6,
             color: SCORE_INK,
             '&:hover': { backgroundColor: alpha(SCORE_INK, 0.05) },
-            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: -3 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SCORE_ACCENT}`, outlineOffset: -3 },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SCORE_ACCENT}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiListItemText: {
@@ -2142,11 +2142,11 @@ const createQuietStudioTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 10,
             padding: '0.55rem 1.25rem',
-            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? STUDIO_PRIMARY}`, outlineOffset: 2 },
+          }),
           contained: {
             boxShadow: STUDIO_SHADOW_REST,
             '&:hover': { boxShadow: STUDIO_SHADOW_FLOAT },
@@ -2285,18 +2285,18 @@ const createQuietStudioTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 10,
             '&:hover': { backgroundColor: alpha(STUDIO_PRIMARY, 0.05) },
-            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: -2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? STUDIO_PRIMARY}`, outlineOffset: -2 },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? STUDIO_PRIMARY}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiTableCell: {
@@ -2431,9 +2431,9 @@ const createAppTheme = (accentHue = 24): Theme => {
       MuiButton: {
         defaultProps: { disableElevation: true, disableRipple: true },
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? accentInk}`, outlineOffset: 2 },
+          }),
           contained: {
             backgroundColor: INK,
             color: PAPER,
@@ -2568,17 +2568,17 @@ const createAppTheme = (accentHue = 24): Theme => {
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             '&:hover': { backgroundColor: accentWash },
-            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: -2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? accentInk}`, outlineOffset: -2 },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? accentInk}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiAlert: {
@@ -2969,6 +2969,34 @@ export const CourseCoverImage = styled('img')(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
 }));
 
+export const CoverPreviewSurface = styled(Box)(({ theme }) => ({
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '100%',
+  maxWidth: '30rem',
+  aspectRatio: '16 / 9',
+  overflow: 'hidden',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.action.hover,
+  color: theme.palette.text.secondary,
+}));
+
+export const CoverPreviewIcon = styled(SvgIcon)({
+  fontSize: '2.5rem',
+});
+
+export const CoverPreviewImage = styled('img')({
+  position: 'absolute',
+  inset: 0,
+  display: 'block',
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+});
+
 export const StatTile = styled(Box)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
@@ -2993,7 +3021,7 @@ export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
   transition: 'border-color 120ms ease',
   '&:hover': { borderColor: theme.palette.text.primary },
   '&:focus-visible': {
-    outline: `2px solid ${theme.palette.primary.main}`,
+    outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`,
     outlineOffset: 2,
   },
 }));

@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react';
 import {
-  Box,
   Button,
   Chip,
   FormControl,
@@ -20,6 +19,7 @@ import type { Course } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
+import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
@@ -80,12 +80,11 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
           aria-describedby={createCourse.isError ? errorId : undefined}
         />
         {imageUrl.trim() === '' ? null : (
-          <Box
-            component="img"
+          <CoverPreview
+            key={imageUrl.trim()}
             src={imageUrl.trim()}
-            alt={t.courses.imagePreview}
-            data-testid="course-image-preview"
-            sx={{ display: 'block', mt: '0.75rem', width: '100%', maxWidth: '30rem', aspectRatio: '16 / 9', objectFit: 'cover' }}
+            label={t.courses.imagePreview}
+            testId="course-image-preview"
           />
         )}
       </FormControl>

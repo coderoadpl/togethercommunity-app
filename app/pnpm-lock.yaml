@@ -160,9 +160,6 @@ importers:
       '@types/pg':
         specifier: ^8.15.4
         version: 8.20.0
-      '@types/pngjs':
-        specifier: ^6.0.5
-        version: 6.0.5
       '@types/react':
         specifier: ^19.1.8
         version: 19.2.17
@@ -220,9 +217,6 @@ importers:
       playwright-core:
         specifier: ^1.62.0
         version: 1.62.0
-      pngjs:
-        specifier: ^7.0.0
-        version: 7.0.0
       storybook:
         specifier: ^10.5.4
         version: 10.5.4(@types/react@19.2.17)(react@19.2.8)
@@ -2546,9 +2540,6 @@ packages:
 
   '@types/pg@8.20.0':
     resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
-
-  '@types/pngjs@6.0.5':
-    resolution: {integrity: sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -7574,10 +7565,6 @@ snapshots:
       '@types/node': 24.13.2
       pg-protocol: 1.15.0
       pg-types: 2.2.0
-
-  '@types/pngjs@6.0.5':
-    dependencies:
-      '@types/node': 24.13.2
 
   '@types/prop-types@15.7.15': {}
 

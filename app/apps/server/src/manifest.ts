@@ -15,6 +15,7 @@ type ManifestDeps = Pick<
 const PLATFORM_NAME = 'Together';
 const SHORT_NAME_MAX = 12;
 const BACKGROUND = '#fafafa';
+const EMBER = '#E8682A';
 
 const shortName = (name: string): string =>
   name.length <= SHORT_NAME_MAX ? name : `${name.slice(0, SHORT_NAME_MAX - 1).trimEnd()}…`;
@@ -43,7 +44,7 @@ export const registerManifestRoute = (app: Hono<Vars>, deps: ManifestDeps): void
       scope: '/',
       display: 'standalone',
       background_color: BACKGROUND,
-      theme_color: settings?.accentColor ?? BACKGROUND,
+      theme_color: settings?.accentColor ?? EMBER,
       icons: ICONS,
     };
     return c.body(JSON.stringify(manifest), 200, {

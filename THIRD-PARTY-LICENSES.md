@@ -61,6 +61,8 @@ files; each package carries the full license in its `LICENSE` file under
 - Space Grotesk — Copyright 2020 The Space Grotesk Project Authors
   ([floriankarsten/space-grotesk](https://github.com/floriankarsten/space-grotesk))
 
+The Together logo wordmarks contain letterforms of Poppins (Indian Type Foundry), used under the SIL Open Font License 1.1, converted to outlines; no font software is distributed.
+
 **sharp / libvips.** The dev-only Argos upload tooling installs sharp's
 prebuilt libvips binaries (`@img/sharp-libvips-*`, LGPL-3.0-or-later; the
 related `@img/sharp-*` prebuilds carry the same notice). They are
@@ -516,7 +518,6 @@ invoices can be checked locally.
 - [@types/nodemailer@8.0.1](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/nodemailer) - MIT
 - [@types/parse-json@4.0.2](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/parse-json) - MIT
 - [@types/pg@8.20.0](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/pg) - MIT
-- [@types/pngjs@6.0.5](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/pngjs) - MIT
 - [@types/prop-types@15.7.15](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/prop-types) - MIT
 - [@types/react-dom@19.2.3](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom) - MIT
 - [@types/react-transition-group@4.4.12](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-transition-group) - MIT

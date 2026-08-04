@@ -1,20 +1,15 @@
-import type { ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import pg from 'pg';
+import { chromium, type Browser } from 'playwright-core';
 import { z } from 'zod';
 
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 
-import {
-  bootServer,
-  ephemeralPort,
-  killServer,
-  run,
-  tsxBin,
-} from './server-harness.js';
+import { delay, ephemeralPort, rootDir, run, tsxBin } from './server-harness.js';
 
 const PROBE_DB = uniqueTestDatabaseName('together_quickstart');
 const baseDatabaseUrl =
@@ -23,12 +18,25 @@ const baseDatabaseUrl =
 const probeUrl = new URL(baseDatabaseUrl);
 probeUrl.pathname = `/${PROBE_DB}`;
 const probeDatabaseUrl = probeUrl.toString();
+const cloneToPanelBudgetMs = 15 * 60_000;
 
 class QuickstartFailure extends Error {}
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new QuickstartFailure(message);
 }
+
+const compose = async (
+  cloneApp: string,
+  project: string,
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> =>
+  run('docker', ['compose', '--project-name', project, ...args], {}, cloneApp);
+
+const composeLogs = async (cloneApp: string, project: string): Promise<string> => {
+  const result = await compose(cloneApp, project, ['logs', '--no-color', '--tail', '200']);
+  return `${result.stdout}${result.stderr}`;
+};
 
 const recreateDatabase = async (): Promise<void> => {
   const client = new pg.Client({ connectionString: baseDatabaseUrl });
@@ -55,12 +63,9 @@ const dropDatabase = async (): Promise<void> => {
   }
 };
 
-const runAppScript = async (script: string): Promise<void> => {
+const runDatabaseScript = async (script: string): Promise<void> => {
   const result = await run(tsxBin, [script], { DATABASE_URL: probeDatabaseUrl });
-  assert(
-    result.code === 0,
-    `${script} failed with exit ${String(result.code)}\n${result.stdout}${result.stderr}`,
-  );
+  assert(result.code === 0, `${script} failed\n${result.stdout}${result.stderr}`);
 };
 
 const tableSchema = z.array(z.object({ table_name: z.string() }));
@@ -90,68 +95,11 @@ const readCounts = async (): Promise<Record<string, number>> => {
   }
 };
 
-const okEnvelopeSchema = z.object({ ok: z.literal(true), data: z.unknown() });
-const healthSchema = z.object({
-  ok: z.literal(true),
-  data: z.object({
-    status: z.literal('ok'),
-    database: z.literal('up'),
-  }),
-});
-const productListSchema = z.object({
-  ok: z.literal(true),
-  data: z.object({
-    products: z.array(z.object({ id: z.string(), title: z.string() })).min(1),
-  }),
-});
-
-const cli = async (args: string[], baseUrl: string, configDir: string): Promise<unknown> => {
-  const result = await run(
-    tsxBin,
-    ['apps/cli/src/main.ts', '--json', '--api-url', baseUrl, ...args],
-    { HOME: configDir },
-  );
-  assert(
-    result.code === 0,
-    `CLI ${args.join(' ')} failed with exit ${String(result.code)}\n${result.stdout}${result.stderr}`,
-  );
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    throw new QuickstartFailure(`CLI ${args.join(' ')} returned invalid JSON\n${result.stdout}`);
-  }
-};
-
-const driveDocumentedCli = async (
-  port: number,
-  configDir: string,
-): Promise<void> => {
-  const baseUrl = `http://localhost:${String(port)}`;
-  healthSchema.parse(await cli(['health'], baseUrl, configDir));
-  okEnvelopeSchema.parse(
-    await cli(
-      ['login', '--email', 'creator2@together.dev', '--password', 'demo1234'],
-      baseUrl,
-      configDir,
-    ),
-  );
-  productListSchema.parse(
-    await cli(['--tenant', 'acme', 'product', 'list'], baseUrl, configDir),
-  );
-};
-
-const startedAt = Date.now();
-const temporaryDirectory = mkdtempSync(join(tmpdir(), 'together-quickstart-'));
-let server: ChildProcess | null = null;
-let databaseCreated = false;
-
-try {
-  console.log('quickstart:probe: preparing a fresh database...');
+const verifyRepeatableSeed = async (): Promise<void> => {
+  console.log('quickstart:probe: checking repeatable seed...');
   await recreateDatabase();
-  databaseCreated = true;
-  await runAppScript('adapters/db/migrate.ts');
-  await runAppScript('adapters/db/seed.ts');
-
+  await runDatabaseScript('adapters/db/migrate.ts');
+  await runDatabaseScript('adapters/db/seed.ts');
   const seededCounts = await readCounts();
   assert(
     (seededCounts['tenants'] ?? 0) > 0 &&
@@ -159,42 +107,156 @@ try {
       (seededCounts['products'] ?? 0) > 0,
     `Fresh seed did not create the documented demo data\n${JSON.stringify(seededCounts)}`,
   );
-
-  console.log('quickstart:probe: checking repeatable seed...');
-  await runAppScript('adapters/db/seed.ts');
+  await runDatabaseScript('adapters/db/seed.ts');
   const repeatedCounts = await readCounts();
   assert(
     JSON.stringify(repeatedCounts) === JSON.stringify(seededCounts),
     `Repeated seed changed row counts\nbefore=${JSON.stringify(seededCounts)}\nafter=${JSON.stringify(repeatedCounts)}`,
   );
+};
 
-  const port = await ephemeralPort();
-  server = await bootServer({
-    port,
-    healthUrl: `http://localhost:${String(port)}/api/health`,
-    env: {
-      DATABASE_URL: probeDatabaseUrl,
-      APP_BASE_URL: `http://localhost:${String(port)}`,
-      WEB_DIST_DIR: temporaryDirectory,
-      PAYMENT_PROVIDER: 'fake',
-      EMAIL_PROVIDER: 'dev',
-    },
-  });
-  console.log('quickstart:probe: driving the documented CLI path...');
-  await driveDocumentedCli(port, temporaryDirectory);
-  console.log(
-    `\nquickstart:probe: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`,
+const waitForReady = async (url: string, cloneApp: string, project: string): Promise<void> => {
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${url}/api/health/ready`);
+      if (response.ok) return;
+    } catch {
+      await delay(500);
+      continue;
+    }
+    await delay(500);
+  }
+  throw new QuickstartFailure(`Compose stack did not become ready\n${await composeLogs(cloneApp, project)}`);
+};
+
+const createEnvironment = (httpPort: number, httpsPort: number, project: string): string => {
+  const hex = (): string => randomBytes(32).toString('hex');
+  return [
+    'NODE_ENV=production',
+    'APP_ENV=self-host',
+    `APP_BASE_URL=http://localhost:${String(httpPort)}`,
+    'APP_BASE_DOMAIN=',
+    'TENANT_CREATION=open',
+    `BETTER_AUTH_SECRET=${hex()}`,
+    `SECRETS_MASTER_KEY=${randomBytes(32).toString('base64')}`,
+    'SECURE_COOKIES=false',
+    'PAYMENT_PROVIDER=fake',
+    'KSEF_ENVIRONMENT=production',
+    'SIMULATED_PAYMENTS=false',
+    'AUTH_DEV_EXPOSE_MAGIC_LINKS=false',
+    'EMAIL_PROVIDER=dev',
+    `EMAIL_DISPATCH_SECRET=${hex()}`,
+    `MARKETING_TICK_SECRET=${hex()}`,
+    `CRON_SECRET=${hex()}`,
+    'NOTIFY_EMAIL=false',
+    'POSTGRES_USER=together',
+    `POSTGRES_PASSWORD=${hex()}`,
+    'POSTGRES_DB=together',
+    `SELF_HOST_HTTP_PORT=${String(httpPort)}`,
+    `SELF_HOST_HTTPS_PORT=${String(httpsPort)}`,
+    `COMPOSE_PROJECT_NAME=${project}`,
+    '',
+  ].join('\n');
+};
+
+const driveFirstRun = async (baseUrl: string): Promise<void> => {
+  let browser: Browser | null = null;
+  try {
+    const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
+    browser = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
+    const page = await browser.newPage();
+    await page.goto(`${baseUrl}/register`, { waitUntil: 'networkidle' });
+    await page.locator('#register-name').fill('Probe Owner');
+    await page.locator('#register-email').fill('owner@probe.together');
+    await page.locator('#register-password').fill('probe-password-2026');
+    await page.locator('button[type="submit"]').click();
+    await page.locator('#tenant-name').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('#tenant-name').fill('Probe Community');
+    await page.locator('#tenant-slug').fill('probe-community');
+    await page.locator('button[type="submit"]').click();
+    await page.getByTestId('onboarding-checklist').waitFor({ state: 'visible', timeout: 30_000 });
+    assert(
+      (await page.getByTestId('tenant-name').textContent()) === 'Probe Community',
+      'First-run owner reached a panel for the wrong tenant',
+    );
+    assert(new URL(page.url()).pathname === '/panel', `First run ended on ${page.url()}, not /panel`);
+  } finally {
+    if (browser !== null) await browser.close();
+  }
+};
+
+const temporaryDirectory = mkdtempSync(join(tmpdir(), 'together-clone-to-panel-'));
+const cloneRoot = join(temporaryDirectory, 'together');
+const cloneApp = join(cloneRoot, 'app');
+const project = `together-probe-${String(process.pid)}-${randomBytes(4).toString('hex')}`;
+let composeStarted = false;
+let databaseCreated = false;
+
+try {
+  databaseCreated = true;
+  await verifyRepeatableSeed();
+
+  const startedAt = Date.now();
+  const repositoryRoot = join(rootDir, '..');
+  const headResult = await run('git', ['rev-parse', '--verify', 'HEAD^{commit}'], {}, repositoryRoot);
+  const headSha = process.env['GITHUB_SHA'] ?? headResult.stdout.trim();
+  assert(headResult.code === 0 && /^[0-9a-f]{40}$/.test(headSha), 'Quickstart probe could not resolve the current commit SHA');
+  const commitResult = await run('git', ['cat-file', '-e', `${headSha}^{commit}`], {}, repositoryRoot);
+  assert(commitResult.code === 0, `Quickstart probe cannot read commit ${headSha}`);
+
+  console.log(`quickstart:probe: cloning commit ${headSha.slice(0, 12)}...`);
+  const clone = await run(
+    'git',
+    ['clone', '--local', '--no-hardlinks', '--no-checkout', repositoryRoot, cloneRoot],
+    {},
+    temporaryDirectory,
   );
+  assert(clone.code === 0, `Clean clone failed\n${clone.stdout}${clone.stderr}`);
+  const checkout = await run('git', ['checkout', '--detach', headSha], {}, cloneRoot);
+  assert(checkout.code === 0, `Clean clone checkout failed\n${checkout.stdout}${checkout.stderr}`);
+
+  const [httpPort, httpsPort] = await Promise.all([ephemeralPort(), ephemeralPort()]);
+  assert(httpPort !== httpsPort, 'Could not allocate distinct self-host ports');
+  writeFileSync(join(cloneApp, '.env'), createEnvironment(httpPort, httpsPort, project), { mode: 0o600 });
+
+  console.log('quickstart:probe: building the production image...');
+  const build = await compose(cloneApp, project, ['build']);
+  assert(build.code === 0, `docker compose build failed\n${build.stdout}${build.stderr}`);
+
+  console.log('quickstart:probe: running docker compose up...');
+  const up = await compose(cloneApp, project, ['up', '-d']);
+  composeStarted = true;
+  assert(up.code === 0, `docker compose up failed\n${up.stdout}${up.stderr}`);
+
+  const baseUrl = `http://localhost:${String(httpPort)}`;
+  await waitForReady(baseUrl, cloneApp, project);
+  console.log('quickstart:probe: completing first-run setup in the browser...');
+  await driveFirstRun(baseUrl);
+
+  const elapsedMs = Date.now() - startedAt;
+  assert(elapsedMs < cloneToPanelBudgetMs, `Clone-to-panel exceeded 900 s (${(elapsedMs / 1000).toFixed(1)} s)`);
+  console.log(`quickstart:probe: PASS (${(elapsedMs / 1000).toFixed(1)}s clone-to-panel)`);
 } catch (error) {
-  const message =
-    error instanceof Error ? error.stack ?? error.message : String(error);
-  console.error(`\nquickstart:probe: FAIL\n${message}`);
+  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  if (composeStarted) console.error(await composeLogs(cloneApp, project));
+  console.error(`quickstart:probe: FAIL\n${message}`);
   process.exitCode = 1;
 } finally {
-  if (server !== null) await killServer(server);
+  if (composeStarted) {
+    const down = await compose(cloneApp, project, ['down', '-v', '--remove-orphans', '--rmi', 'local']);
+    if (down.code !== 0) {
+      console.error(`quickstart:probe: cleanup failed\n${down.stdout}${down.stderr}`);
+      process.exitCode = 1;
+    }
+  }
   if (databaseCreated) {
     await dropDatabase().catch((cause) => {
-      console.error(`quickstart:probe: cleanup failed\n${String(cause)}`);
+      console.error(`quickstart:probe: database cleanup failed\n${String(cause)}`);
       process.exitCode = 1;
     });
   }

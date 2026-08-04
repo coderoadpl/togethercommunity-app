@@ -497,8 +497,11 @@ const deps = (input: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
+      hasAny: async () => tenants.length > 0,
       findSettings: async (tenantId) =>
         tenants.some((tenant) => tenant.id === tenantId) ? {
+          name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
+          socialLinks: [],
           billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
@@ -1926,6 +1929,17 @@ describe('public auth-config route', () => {
 
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
   });
+
+  it('reports bootstrap tenant creation only while no tenant exists', async () => {
+    const empty = buildApp({ ...deps({ tenants: [] }), tenantCreationMode: 'bootstrap' });
+    const populated = buildApp({ ...deps(), tenantCreationMode: 'bootstrap' });
+
+    const emptyBody: unknown = await (await empty.request(API_PATHS.authConfig)).json();
+    const populatedBody: unknown = await (await populated.request(API_PATHS.authConfig)).json();
+
+    expect(emptyBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: true } });
+    expect(populatedBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: false } });
+  });
 });
 
 type RequestMagicLinkInput = Parameters<AppDeps['authPort']['requestMagicLink']>[0];
@@ -1994,6 +2008,8 @@ const consentApp = (simulatedPayments: boolean) => {
       findSettings: async (tenantId) =>
         tenantId === acme.id
           ? {
+              name: acme.name,
+              socialLinks: [],
               billingPortalUrl: null,
               bunnyStreamLibraryId: null,
               logoUrl: null,
@@ -2200,6 +2216,8 @@ describe('checkout consent ordering', () => {
         findSettings: async (tenantId) =>
           tenantId === acme.id
             ? {
+                name: acme.name,
+                socialLinks: [],
                 billingPortalUrl: null,
                 bunnyStreamLibraryId: null,
                 logoUrl: null,

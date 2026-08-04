@@ -32,5 +32,5 @@ WHERE "members"."tenant_id" = "evidence"."tenant_id"
 	AND "evidence"."retention_started_at" IS NULL;--> statement-breakpoint
 ALTER TABLE "campaign_sends" ADD CONSTRAINT "campaign_sends_consent_row_id_marketing_consents_id_fk" FOREIGN KEY ("consent_row_id") REFERENCES "public"."marketing_consents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "campaign_sends_consent_row_id_idx" ON "campaign_sends" USING btree ("consent_row_id");--> statement-breakpoint
-CREATE INDEX "consents_tenant_retention_started_idx" ON "consents" USING btree ("tenant_id","retention_started_at");--> statement-breakpoint
-CREATE INDEX "marketing_consents_tenant_retention_started_idx" ON "marketing_consents" USING btree ("tenant_id","retention_started_at");
+CREATE INDEX "consents_retention_started_tenant_idx" ON "consents" USING btree ("retention_started_at","tenant_id");--> statement-breakpoint
+CREATE INDEX "marketing_consents_retention_started_tenant_idx" ON "marketing_consents" USING btree ("retention_started_at","tenant_id");

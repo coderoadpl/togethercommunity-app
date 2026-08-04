@@ -5,6 +5,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 
 | Route | Access | Operation | Purpose |
 |---|---|---|---|
+| `GET /manifest.webmanifest` | public | read | PWA web app manifest with tenant name |
 | `GET /api/health/live` | public | read | Process liveness check |
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |

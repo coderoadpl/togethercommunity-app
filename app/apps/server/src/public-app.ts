@@ -53,6 +53,7 @@ import {
 
 import type { AppDeps } from './composition.js';
 import { trustedAuthRequest } from './auth-network.js';
+import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
 import {
   PUBLIC_REVALIDATED_CACHE_CONTROL,
@@ -269,6 +270,8 @@ const recordFulfilledCheckoutConsents = async (
 
 export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
+
+  registerManifestRoute(app, deps);
 
   app.get(API_PATHS.healthLive, () =>
     respond(ok({ status: 'ok' as const, ...attestation })),

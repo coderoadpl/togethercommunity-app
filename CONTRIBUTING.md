@@ -9,9 +9,7 @@ Thank you for helping improve Together.
    an issue or pull request; follow the private [security policy](SECURITY.md).
 2. Fork the repository and create a focused branch from `staging`, the
    integration trunk.
-3. Use Node.js 24 and run `pnpm install --frozen-lockfile` from `app/`. The
-   install step arms the repository's git hooks (`.githooks/`), including a
-   pre-push authorship check.
+3. Use Node.js 24 and run `pnpm install --frozen-lockfile` from `app/`.
 4. Prepare the local database before running any gate: start Docker, then run
    `pnpm run db:up && pnpm run db:migrate && pnpm run db:seed` from `app/`.
    The gates expect a migrated and seeded database and fail without one.

@@ -18,7 +18,6 @@
     "together": "./apps/cli/bin.js"
   },
   "scripts": {
-    "prepare": "git config core.hooksPath \"$(git rev-parse --show-toplevel)/.githooks\" || true",
     "dev:server": "tsx scripts/ensure-web-bundle.ts && tsx watch --env-file-if-exists=.env apps/server/src/entry.node.ts",
     "dev:web": "vite --config apps/web/vite.config.ts",
     "build": "pnpm run build:web && pnpm run typecheck",

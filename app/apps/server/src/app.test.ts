@@ -51,8 +51,12 @@ import {
   InMemoryUnsubscribeTokenRepository,
 } from '#core/server/testing/marketing-fakes.js';
 
-const acme: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 4 };
-const globex: Tenant = { id: 't-globex', slug: 'globex', name: 'Globex', contentVersion: 2 };
+const acme: Tenant = {
+  id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 4,
+};
+const globex: Tenant = {
+  id: 't-globex', slug: 'globex', name: 'Globex', status: 'active', plan: 'hosted_pro', contentVersion: 2,
+};
 
 const product = (input: {
   id: string;
@@ -62,8 +66,11 @@ const product = (input: {
 }): Product => ({
   id: input.id,
   tenantId: input.tenantId,
+  type: 'course',
+  slug: input.id,
   title: input.title,
   description: '',
+  coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
   published: input.published,
@@ -115,6 +122,10 @@ const deps = (input: {
       updateEmail: async () => null,
       setBanned: async () => null,
     },
+    memberEvents: {
+      append: async () => undefined,
+      listForMember: async () => [],
+    },
     memberErasure: {
       pseudonymize: async () => null,
     },
@@ -154,6 +165,7 @@ const deps = (input: {
     orders: {
       create: async () => undefined,
       list: async () => ({ orders: [], total: 0 }),
+      listForMember: async () => [],
       revenueSince: async () => [],
       countSince: async () => 0,
       listPaidWithoutGrant: async () => [],
@@ -196,6 +208,7 @@ const deps = (input: {
       resolve: async () => ok('plaintext'),
     },
     payment: {
+      test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
       createCheckoutSession: async () => ok({ url: 'https://checkout.local/cs', sessionId: 'cs' }),
       expireCheckoutSession: async () => ok({ expired: true }),
       cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
@@ -237,8 +250,12 @@ const deps = (input: {
     bunnyEmbedTokenSigner: {
       sign: ({ videoId, expires }) => `${videoId}-${expires}`,
     },
-    fileUrlSigner: {
+    storage: {
+      presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
+      delete: async () => ok({ deleted: true }),
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     },
     processedPaymentEvents: {
       claim: async () => 'claimed',
@@ -266,7 +283,19 @@ const deps = (input: {
       }),
     },
     email: {
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
       send: async () => ({ ok: true, value: { messageId: 'test-message-id' } }),
+    },
+    emailSender: {
+      send: async () => ok({ messageId: 'test-message-id', transport: 'platform' }),
+    },
+    emailTransports: {
+      resolve: async () => ({
+        healthcheck: async () => ok({ healthy: true }),
+        test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
+        send: async () => ok({ messageId: 'transport-test-message-id' }),
+      }),
     },
     emailOutbox: {
       enqueue: async (message) => ok({ id: message.id }),
@@ -336,7 +365,9 @@ const deps = (input: {
         products.filter((candidate) => candidate.tenantId === tenantId && candidate.published),
       findById: async (tenantId, id) =>
         products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
-      create: async () => undefined,
+      findByIds: async (tenantId, ids) =>
+        products.filter((candidate) => candidate.tenantId === tenantId && ids.includes(candidate.id)),
+      create: async () => 'created',
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
       bumpContentVersion: async () => undefined,
@@ -465,8 +496,12 @@ const deps = (input: {
     tenants: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
+      findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
+      hasAny: async () => tenants.length > 0,
       findSettings: async (tenantId) =>
         tenants.some((tenant) => tenant.id === tenantId) ? {
+          name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
+          socialLinks: [],
           billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
@@ -477,6 +512,8 @@ const deps = (input: {
         id: tenant.tenant.id,
         slug: tenant.tenant.slug,
         name: tenant.tenant.name,
+        status: 'active',
+        plan: 'self_hosted',
         contentVersion: 1,
       }),
     },
@@ -508,6 +545,7 @@ const deps = (input: {
       },
     },
     baseDomain: 'localhost',
+    singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
@@ -675,7 +713,6 @@ const marketingDeps = (): MarketingAppDeps => ({
     reserve: async () => true,
     settle: async () => undefined,
   },
-  smtpTest: { resolve: async () => null },
   documents: {
     create: async () => undefined,
     findById: async () => null,
@@ -1710,6 +1747,45 @@ describe('social preview route', () => {
   });
 });
 
+describe('single-tenant mode', () => {
+  const singleTenantApp = (tenant: Tenant) => {
+    const base = deps({ tenants: [tenant], authenticated: true });
+    return buildApp({
+      ...base,
+      singleTenantMode: true,
+      authPort: {
+        ...base.authPort,
+        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner' }),
+      },
+      tenantAccess: {
+        ...base.tenantAccess,
+        findStaffGrant: async () => ({ tenant, staffRole: 'owner' }),
+      },
+    });
+  };
+
+  it('serves the panel on the bare base host when no base domain is configured', async () => {
+    const response = await singleTenantApp(acme).request(API_PATHS.products, {
+      headers: { host: 'localhost:48730' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { products: [{ id: 'acme-published' }, { id: 'acme-draft' }] },
+    });
+  });
+
+  it('refuses a suspended sole tenant', async () => {
+    const response = await singleTenantApp({ ...acme, status: 'suspended' }).request(API_PATHS.products, {
+      headers: { host: 'localhost:48730' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+  });
+});
+
 describe('public payment-config route', () => {
   it('exposes the simulated-payments flag for a resolved tenant', async () => {
     const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
@@ -1853,6 +1929,17 @@ describe('public auth-config route', () => {
 
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
   });
+
+  it('reports bootstrap tenant creation only while no tenant exists', async () => {
+    const empty = buildApp({ ...deps({ tenants: [] }), tenantCreationMode: 'bootstrap' });
+    const populated = buildApp({ ...deps(), tenantCreationMode: 'bootstrap' });
+
+    const emptyBody: unknown = await (await empty.request(API_PATHS.authConfig)).json();
+    const populatedBody: unknown = await (await populated.request(API_PATHS.authConfig)).json();
+
+    expect(emptyBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: true } });
+    expect(populatedBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: false } });
+  });
 });
 
 type RequestMagicLinkInput = Parameters<AppDeps['authPort']['requestMagicLink']>[0];
@@ -1921,6 +2008,8 @@ const consentApp = (simulatedPayments: boolean) => {
       findSettings: async (tenantId) =>
         tenantId === acme.id
           ? {
+              name: acme.name,
+              socialLinks: [],
               billingPortalUrl: null,
               bunnyStreamLibraryId: null,
               logoUrl: null,
@@ -2127,6 +2216,8 @@ describe('checkout consent ordering', () => {
         findSettings: async (tenantId) =>
           tenantId === acme.id
             ? {
+                name: acme.name,
+                socialLinks: [],
                 billingPortalUrl: null,
                 bunnyStreamLibraryId: null,
                 logoUrl: null,

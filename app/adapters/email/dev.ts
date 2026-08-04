@@ -7,6 +7,8 @@ export const createDevEmailPort = (
   db: Db,
   clock: Clock = { nowIso: () => new Date().toISOString() },
 ): EmailPort => ({
+  healthcheck: async () => ok({ healthy: true }),
+  test: async () => ok({ code: 'email.available', message: 'Development email storage is available.' }),
   send: async (message): Promise<Result<{ messageId: string }, AppError>> => {
     const to = normalizeEmail(message.to);
     const createdAt = clock.nowIso();

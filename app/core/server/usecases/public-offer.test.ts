@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Product, Tenant } from '#core/domain/index.js';
+import type { Product, ProductType, Tenant } from '#core/domain/index.js';
 
 import type { ConsentDefinitionRepository, ProductRepository, TenantRepository } from '../ports.js';
 import { getPublicOffer } from './public-offer.js';
@@ -9,14 +9,24 @@ const tenant: Tenant = {
   id: 't-acme',
   slug: 'acme',
   name: 'Acme',
+  status: 'active',
+  plan: 'hosted',
   contentVersion: 7,
 };
 
-const product = (id: string, tenantId: string, published: boolean): Product => ({
+const product = (
+  id: string,
+  tenantId: string,
+  published: boolean,
+  type: ProductType = 'course',
+): Product => ({
   id,
   tenantId,
+  type,
+  slug: `${type.replaceAll('_', '-')}-${id}`,
   title: `Product ${id}`,
-  description: `Description ${id}`,
+  description: `<p>Description ${id}</p>`,
+  coverUrl: `https://cdn.test/${id}.jpg`,
   priceCents: 1000,
   currency: 'PLN',
   published,
@@ -37,13 +47,18 @@ const fakeTenants = (branding?: {
   logoUrl: string | null;
   accentColor: string | null;
   faviconUrl: string | null;
+  socialLinks?: Array<{ label: string; url: string }>;
 }): TenantRepository => ({
   findById: async () => null,
   findBySlug: async () => null,
+  findSole: async () => null,
+  hasAny: async () => false,
   findSettings: async () =>
     branding === undefined
       ? null
       : {
+          name: 'Acme',
+          socialLinks: [],
           billingPortalUrl: null,
           bunnyStreamLibraryId: null,
           ogTitle: null,
@@ -67,7 +82,7 @@ const fakeProducts = (initial: Product[]): ProductRepository => ({
     initial.filter((candidate) => candidate.tenantId === tenantId && candidate.published),
   findById: async (tenantId, id) =>
     initial.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
-  create: async () => undefined,
+  create: async () => 'created',
   updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,
@@ -77,7 +92,9 @@ describe('getPublicOffer', () => {
   it('returns only public product fields for published products', async () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([
-        product('published', 't-acme', true),
+        product('published', 't-acme', true, 'course'),
+        product('download', 't-acme', true, 'digital_download'),
+        product('club', 't-acme', true, 'membership'),
         product('draft', 't-acme', false),
         product('other', 't-other', true),
       ]),
@@ -92,6 +109,7 @@ describe('getPublicOffer', () => {
           slug: 'acme',
           name: 'Acme',
           branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+          socialLinks: [],
           legal: { termsUrl: null, privacyUrl: null },
           support: { url: null },
         },
@@ -99,8 +117,35 @@ describe('getPublicOffer', () => {
         products: [
           {
             id: 'published',
+            type: 'course',
+            slug: 'course-published',
             title: 'Product published',
-            description: 'Description published',
+            description: '<p>Description published</p>',
+            coverUrl: 'https://cdn.test/published.jpg',
+            priceCents: 1000,
+            currency: 'PLN',
+            prices: [],
+            marketingConsents: [],
+          },
+          {
+            id: 'download',
+            type: 'digital_download',
+            slug: 'digital-download-download',
+            title: 'Product download',
+            description: '<p>Description download</p>',
+            coverUrl: 'https://cdn.test/download.jpg',
+            priceCents: 1000,
+            currency: 'PLN',
+            prices: [],
+            marketingConsents: [],
+          },
+          {
+            id: 'club',
+            type: 'membership',
+            slug: 'membership-club',
+            title: 'Product club',
+            description: '<p>Description club</p>',
+            coverUrl: 'https://cdn.test/club.jpg',
             priceCents: 1000,
             currency: 'PLN',
             prices: [],
@@ -137,6 +182,20 @@ describe('getPublicOffer', () => {
     });
 
     expect(result).toMatchObject({ ok: true, value: { tenant: { branding } } });
+  });
+
+  it('exposes social profiles to public and member clients', async () => {
+    const socialLinks = [
+      { label: 'Instagram', url: 'https://instagram.com/akademia' },
+      { label: 'YouTube', url: 'https://youtube.com/@akademia' },
+    ];
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([]),
+      prices: noPrices,
+      tenants: fakeTenants({ logoUrl: null, accentColor: null, faviconUrl: null, socialLinks }),
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { tenant: { socialLinks } } });
   });
 
   it('exposes current wording for active checkout consent definitions', async () => {

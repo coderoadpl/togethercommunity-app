@@ -36,7 +36,12 @@ const meWithoutTenant = {
 };
 
 const tenantsBody = {
-  tenants: [{ tenant: { id: 't1', slug: 'acme', name: 'Acme', contentVersion: 1 }, staffRole: 'owner' }],
+  tenants: [{
+    tenant: {
+      id: 't1', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1,
+    },
+    staffRole: 'owner',
+  }],
 };
 
 const stub = (label: string) => () => <div>{label}</div>;

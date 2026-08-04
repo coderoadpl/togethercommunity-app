@@ -485,7 +485,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const message: unknown = (() => { try { return JSON.parse(verified.value.message); } catch { return null; } })();
     const applyEvent = async (event: Parameters<typeof applyVerifiedSesEvent>[1]) => {
       const applied = await applyVerifiedSesEvent({
-        identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', contentVersion: 1 }),
+        identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),
         capabilities: capabilitiesForPrincipal('webhook'),
       }, event, {
         sesSettings: marketing.value.sesSettings, sends: marketing.value.campaignSends,

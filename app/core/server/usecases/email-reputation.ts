@@ -40,7 +40,7 @@ export const getEmailReputation = async (
   }));
 };
 
-export const REPUTATION_ALERT_REPEAT_MS = 24 * 60 * 60 * 1000;
+const REPUTATION_ALERT_REPEAT_MS = 24 * 60 * 60 * 1000;
 
 export const runReputationAlerts = async (
   ctx: Ctx,

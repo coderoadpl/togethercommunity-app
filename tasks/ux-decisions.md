@@ -1,8 +1,9 @@
 # UX phase — owner decisions (2026-07-17)
 
-> Status: accepted by the owner in conversation. This file is the contract for
-> the UX implementation phase. It complements `tasks/ux-screen-inventory.md`
-> and `tasks/ux-layout-system.md` (both produced by the UX audit workflow).
+> Status: accepted by the owner in conversation. This file records the UX
+> implementation phase. The Lost Pixel and replacement story-shot experiments
+> were later retired; current Storybook and pixel policy lives in
+> `app/docs/storybook.md`.
 
 ## Accepted scope (6 points, owner-amended)
 
@@ -17,12 +18,13 @@
    (2026-07-17): **Lost Pixel (OSS mode) is the preferred candidate** — still
    confirm with a short spike before committing (fallbacks: Loki,
    storycap+reg-suit); baselines stored in-repo; we already have
-   playwright-core + pixelmatch.
-3. **Mobile-first is mandatory** — Storybook stories and visual tests run in
-   BOTH mobile and desktop viewports for every story.
+   playwright-core + pixelmatch. This visual-regression candidate was later
+   retired; Storybook remains the component workshop.
+3. **Mobile-first is mandatory** — route visual tests run in both mobile and
+   desktop viewports; stories expose responsive layout for manual review.
 4. **A11y runtime scanning** — accepted but explicitly LOWEST priority of the
-   six (MUI's built-in a11y does a lot already); axe-core scan hooked into the
-   screenshot/Storybook pipeline when the rest is done.
+   six (MUI's built-in a11y does a lot already); extend the permissively licensed
+   in-house scan to the screenshot/Storybook pipeline when the rest is done.
 5. **PL/EN terminology glossary** — accepted; produce the glossary and align
    microcopy during the layout refactor.
 6. **Creator first-run onboarding** — accepted with an architectural

@@ -7,15 +7,28 @@ import {
   type Coupon,
   type Product,
   type ProductPrice,
+  type Tenant,
   type TenantSecret,
 } from '#core/domain/index.js';
 import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
 
+const tenant: Tenant = {
+  id: 'tenant-a',
+  slug: 'alpha',
+  name: 'Alpha',
+  status: 'active',
+  plan: 'hosted',
+  contentVersion: 1,
+};
+
 const product: Product = {
   id: 'product-1',
   tenantId: 'tenant-a',
+  type: 'course',
+  slug: 'course-one',
   title: 'Course One',
   description: 'Learn.',
+  coverUrl: null,
   priceCents: 4900,
   currency: 'PLN',
   published: true,
@@ -72,7 +85,7 @@ const checkoutDeps = (): CheckoutDeps => ({
     listByTenant: async () => [],
     listPublishedByTenant: async () => [],
     findById: async () => product,
-    create: async () => undefined,
+    create: async () => 'created',
     updateAccessItems: async () => null,
     setPublished: async () => undefined,
     bumpContentVersion: async () => undefined,
@@ -91,6 +104,7 @@ const checkoutDeps = (): CheckoutDeps => ({
     delete: async () => false,
   },
   payment: {
+    test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
     createCheckoutSession: async () =>
       ok({ url: 'https://checkout.stripe.test/default', sessionId: 'default' }),
     expireCheckoutSession: async () => ok({ expired: true }),
@@ -104,7 +118,7 @@ describe('createCheckoutSession', () => {
   it('rejects an unpublished product', async () => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id },
       {
@@ -128,7 +142,7 @@ describe('createCheckoutSession', () => {
   ] as const)('rejects a %s price', async (_case, foundPrice) => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id, priceId: recurringPrice.id },
       {
@@ -148,10 +162,31 @@ describe('createCheckoutSession', () => {
     });
   });
 
+  it.each([
+    ['without a selected price', undefined, null],
+    ['on a one-time price', 'price-one-time', { ...recurringPrice, id: 'price-one-time', kind: 'one_time', interval: null }],
+  ] as const)('rejects a membership checkout %s', async (_case, priceId, foundPrice) => {
+    const base = checkoutDeps();
+    const result = await (await import('./checkout.js')).createCheckoutSession(
+      tenant,
+      'https://alpha.example.com',
+      { productId: product.id, ...(priceId === undefined ? {} : { priceId }) },
+      {
+        ...base,
+        products: { ...base.products, findById: async () => ({ ...product, type: 'membership' as const }) },
+        prices: { ...base.prices, findById: async () => foundPrice },
+      },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation', message: 'Membership products require a recurring price' },
+    });
+  });
+
   it('rejects checkout when tenant Stripe secrets are missing', async () => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id },
       {
@@ -165,7 +200,7 @@ describe('createCheckoutSession', () => {
   it('propagates provider failure with its error code', async () => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id },
       {
@@ -183,7 +218,7 @@ describe('createCheckoutSession', () => {
     let providerSessions = 0;
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id, email: 'buyer@example.com', couponCode: 'FREE' },
       {
@@ -232,7 +267,7 @@ describe('createCheckoutSession', () => {
     const base = checkoutDeps();
     let providerSessions = 0;
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       {
         productId: product.id,
@@ -290,7 +325,7 @@ describe('createCheckoutSession', () => {
         listByTenant: async () => [],
         listPublishedByTenant: async () => [],
         findById: async (tenantId) => (tenantId === 'tenant-a' ? product : null),
-        create: async () => undefined,
+        create: async () => 'created',
         updateAccessItems: async () => null,
         setPublished: async () => undefined,
         bumpContentVersion: async () => undefined,
@@ -309,6 +344,7 @@ describe('createCheckoutSession', () => {
         delete: async () => false,
       },
       payment: {
+        test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
         createCheckoutSession: async (input) => {
           calls.push(input);
           return ok({ url: 'https://checkout.stripe.test/cs_1', sessionId: 'cs_1' });
@@ -321,7 +357,7 @@ describe('createCheckoutSession', () => {
     };
     const checkout = await import('./checkout.js');
     const result = await checkout.createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: 'product-1', email: 'buyer@example.com', language: 'pl' },
       deps,
@@ -354,7 +390,7 @@ describe('createCheckoutSession', () => {
         listByTenant: async () => [],
         listPublishedByTenant: async () => [],
         findById: async () => product,
-        create: async () => undefined,
+        create: async () => 'created',
         updateAccessItems: async () => null,
         setPublished: async () => undefined,
         bumpContentVersion: async () => undefined,
@@ -383,6 +419,7 @@ describe('createCheckoutSession', () => {
         delete: async () => false,
       },
       payment: {
+        test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
         createCheckoutSession: async (input) => {
           calls.push(input);
           return ok({ url: 'https://checkout.stripe.test/cs_sub', sessionId: 'cs_sub' });
@@ -395,7 +432,7 @@ describe('createCheckoutSession', () => {
     };
     const checkout = await import('./checkout.js');
     const result = await checkout.createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id, priceId: 'price-monthly' },
       deps,

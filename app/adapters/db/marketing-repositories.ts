@@ -102,7 +102,18 @@ const parseIdempotency = (row: typeof marketingIdempotencyKeys.$inferSelect) => 
 
 export const createMarketingConsentRepository = (db: Db): MarketingConsentRepository => ({
   record: async (tenantId, consent) => {
-    await db.insert(marketingConsents).values(marketingConsentSchema.parse({ ...consent, tenantId }));
+    await db.transaction(async (tx) => {
+      await tx.insert(marketingConsents).values(marketingConsentSchema.parse({ ...consent, tenantId }));
+      if (consent.status === 'withdrawn') {
+        await tx.update(marketingConsents).set({ retentionStartedAt: consent.occurredAt }).where(and(
+          eq(marketingConsents.tenantId, tenantId),
+          eq(marketingConsents.email, normalizeEmail(consent.email)),
+          eq(marketingConsents.definitionId, consent.definitionId),
+          isNull(marketingConsents.retentionStartedAt),
+          lte(marketingConsents.occurredAt, consent.occurredAt),
+        ));
+      }
+    });
   },
   listByEmail: async (tenantId, email, definitionId) => {
     const filters = [eq(marketingConsents.tenantId, tenantId), eq(marketingConsents.email, normalizeEmail(email))];

@@ -3,7 +3,7 @@ import { z } from 'zod';
 const nonNegativeInteger = z.number().int().nonnegative();
 const isoDateTime = z.string().datetime();
 
-const schedulerRunKindSchema = z.enum(['marketing_tick', 'outbox_dispatch']);
+const schedulerRunKindSchema = z.enum(['marketing_tick', 'outbox_dispatch', 'consent_evidence_purge']);
 const schedulerRunTriggerSchema = z.enum(['cron', 'dev', 'manual']);
 const schedulerRunStatusSchema = z.enum(['running', 'completed', 'failed']);
 
@@ -46,6 +46,7 @@ export const schedulerRunTenantSchema = z.object({
   tenantId: z.string().min(1),
   campaignsTouched: nonNegativeInteger,
   batchSize: nonNegativeInteger,
+  purged: nonNegativeInteger.nullable().optional(),
   sent: nonNegativeInteger,
   failed: nonNegativeInteger,
   skipped: nonNegativeInteger,

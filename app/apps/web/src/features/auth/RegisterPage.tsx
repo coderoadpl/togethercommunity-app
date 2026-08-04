@@ -19,7 +19,7 @@ import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { appBaseDomain } from '../../lib/tenant.js';
+import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 
 const baseDomainUrl = (): string => {
@@ -27,7 +27,7 @@ const baseDomainUrl = (): string => {
   return `${protocol}//${appBaseDomain()}${port ? `:${port}` : ''}`;
 };
 
-export const RegisterPage = () => {
+export const RegisterPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -39,7 +39,7 @@ export const RegisterPage = () => {
   const navigate = useNavigate();
 
   const offer = useQuery(actions.publicOffer);
-  const onTenantHost = offer.data !== undefined;
+  const onOtherTenantHost = hostHasTenantSubdomain(hostname);
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
 
@@ -47,7 +47,7 @@ export const RegisterPage = () => {
     ...actions.signUp,
     onSuccess: async () => {
       await queryClient.invalidateQueries();
-      if (onTenantHost) {
+      if (onOtherTenantHost) {
         setRegisteredOnTenant(true);
         return;
       }
@@ -74,7 +74,7 @@ export const RegisterPage = () => {
     return (
       <FocusCard eyebrow={t.auth.registeredTitle}>
           <Typography variant="body1" sx={{ mb: '1.4rem' }}>
-            {t.auth.registeredOnTenantBody({ host: window.location.hostname })}
+            {t.auth.registeredOnTenantBody({ host: hostname })}
           </Typography>
           <Stack useFlexGap spacing="0.9rem">
             <Button variant="contained" fullWidth component="a" href={baseDomainUrl()}>
@@ -93,7 +93,7 @@ export const RegisterPage = () => {
 
   return (
     <FocusCard
-      eyebrow={t.auth.createAccountEyebrow({ host: window.location.hostname })}
+      eyebrow={t.auth.createAccountEyebrow({ host: hostname })}
       onSubmit={submit}
       footer={
         <FinePrint variant="caption" component="p">

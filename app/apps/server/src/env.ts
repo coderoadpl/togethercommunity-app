@@ -156,6 +156,27 @@ export const envSchema = z
         message: 'SECRETS_MASTER_KEY must be set to a production key (32 random bytes, base64)',
       });
     }
+    if (env.EMAIL_PROVIDER === 'dev') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_PROVIDER'],
+        message: "EMAIL_PROVIDER must be 'ses' or 'smtp' in production",
+      });
+    }
+    if (env.PAYMENT_PROVIDER !== 'stripe') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PAYMENT_PROVIDER'],
+        message: "PAYMENT_PROVIDER must be 'stripe' in production",
+      });
+    }
+    if (!env.SECURE_COOKIES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SECURE_COOKIES'],
+        message: 'SECURE_COOKIES must be true in production',
+      });
+    }
     if (env.SIMULATED_PAYMENTS) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

@@ -32,6 +32,29 @@ const persistedPreference = <T extends string>(
   },
 });
 
+export const persistedJsonPreference = <T,>(
+  key: string,
+  parse: (value: unknown) => T | undefined,
+  fallback: T,
+) => ({
+  load: (): T => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored === null) return fallback;
+      const value: unknown = JSON.parse(stored);
+      return parse(value) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  save: (value: T): void => {
+    try {
+      const serialized = JSON.stringify(value);
+      if (serialized !== undefined) localStorage.setItem(key, serialized);
+    } catch {}
+  },
+});
+
 const isLanguage = (value: string | null): value is Language =>
   value !== null && languageSchema.safeParse(value).success;
 

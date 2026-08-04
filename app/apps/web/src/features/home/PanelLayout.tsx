@@ -10,7 +10,6 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  ListSubheader,
   Menu,
   MenuItem,
   Snackbar,
@@ -23,6 +22,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
+import { z } from 'zod';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -37,7 +37,7 @@ import { AppShell, BrandLoader, StatusView } from '../../components/layout/index
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
-import { useColorScheme } from '../../theme-mode.js';
+import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
 import {
   AppBarTitle,
   AppBarWordmark,
@@ -108,8 +108,34 @@ type NavigationGroupId =
 interface NavigationGroupDescriptor {
   id: NavigationGroupId;
   sections: SectionDescriptor[];
-  collapsible?: boolean;
 }
+
+const navigationGroupStateSchema = z.object({
+  content: z.boolean(),
+  offer: z.boolean(),
+  community: z.boolean(),
+  sales: z.boolean(),
+  marketing: z.boolean(),
+});
+
+type NavigationGroupState = z.infer<typeof navigationGroupStateSchema>;
+
+const defaultNavigationGroupState: NavigationGroupState = {
+  content: true,
+  offer: true,
+  community: true,
+  sales: true,
+  marketing: false,
+};
+
+const navigationGroupPreference = persistedJsonPreference(
+  'together-nav-groups',
+  (value) => {
+    const result = navigationGroupStateSchema.safeParse(value);
+    return result.success ? result.data : undefined;
+  },
+  defaultNavigationGroupState,
+);
 
 const overviewDescriptor: SectionDescriptor = { id: 'dashboard', to: '/panel', exact: true };
 const settingsDescriptor: SectionDescriptor = { id: 'settings', to: '/panel/settings' };
@@ -146,7 +172,6 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
   },
   {
     id: 'marketing',
-    collapsible: true,
     sections: [
       { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
       { id: 'marketingActivity', to: '/panel/marketing/activity' },
@@ -274,11 +299,13 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const t = useTranslations();
   const { pathname } = useLocation();
   const openReports = useQuery(actions.reports({ status: 'open', limit: 1 }));
-  const [marketingOpen, setMarketingOpen] = useState(pathname.startsWith('/panel/marketing'));
+  const [groupState, setGroupState] = useState<NavigationGroupState>(navigationGroupPreference.load);
 
-  useEffect(() => {
-    if (pathname.startsWith('/panel/marketing')) setMarketingOpen(true);
-  }, [pathname]);
+  const toggleGroup = (groupId: NavigationGroupId) => {
+    const next = { ...groupState, [groupId]: !groupState[groupId] };
+    navigationGroupPreference.save(next);
+    setGroupState(next);
+  };
 
   return (
     <List component="nav" aria-label={t.sections.aria} sx={{ px: '0.6rem', py: '0.5rem' }}>
@@ -288,52 +315,44 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
         onNavigate={onNavigate}
         openReportCount={undefined}
       />
-      {sectionDescriptors.map((group) => (
-        <Box component="li" key={group.id} sx={{ listStyle: 'none' }}>
-          {group.collapsible ? (
+      {sectionDescriptors.map((group) => {
+        const active = group.sections.some((descriptor) =>
+          isActive(pathname, descriptor.to, descriptor.exact ?? false));
+        const expanded = active || groupState[group.id];
+        const controlsId = `panel-navigation-${group.id}`;
+
+        return (
+          <Box component="li" key={group.id} sx={{ listStyle: 'none' }}>
             <ListItemButton
               data-testid={`group-${group.id}`}
-              aria-expanded={marketingOpen}
-              aria-controls="panel-navigation-marketing"
-              onClick={() => setMarketingOpen((open) => !open)}
+              aria-expanded={expanded}
+              aria-controls={controlsId}
+              onClick={() => toggleGroup(group.id)}
               sx={navigationGroupHeaderSx}
             >
               <NavigationGroupLabel label={t.navigationGroups[group.id]} />
-              <ExpandIcon expanded={marketingOpen} />
+              <ExpandIcon expanded={expanded} />
             </ListItemButton>
-          ) : (
-            <ListSubheader
-              component="div"
-              disableSticky
-              data-testid={`group-${group.id}`}
-              sx={navigationGroupHeaderSx}
-            >
-              <NavigationGroupLabel label={t.navigationGroups[group.id]} />
-            </ListSubheader>
-          )}
-          <Collapse
-            in={group.collapsible ? marketingOpen : true}
-            timeout="auto"
-            unmountOnExit={group.collapsible}
-          >
-            <List
-              component="div"
-              disablePadding
-              id={group.id === 'marketing' ? 'panel-navigation-marketing' : undefined}
-            >
-              {group.sections.map((descriptor) => (
-                <NavigationItem
-                  key={descriptor.id}
-                  descriptor={descriptor}
-                  pathname={pathname}
-                  onNavigate={onNavigate}
-                  openReportCount={openReports.data?.openCount}
-                />
-              ))}
-            </List>
-          </Collapse>
-        </Box>
-      ))}
+            <Collapse in={expanded} timeout="auto" unmountOnExit>
+              <List
+                component="div"
+                disablePadding
+                id={controlsId}
+              >
+                {group.sections.map((descriptor) => (
+                  <NavigationItem
+                    key={descriptor.id}
+                    descriptor={descriptor}
+                    pathname={pathname}
+                    onNavigate={onNavigate}
+                    openReportCount={openReports.data?.openCount}
+                  />
+                ))}
+              </List>
+            </Collapse>
+          </Box>
+        );
+      })}
       <NavigationItem
         descriptor={settingsDescriptor}
         pathname={pathname}

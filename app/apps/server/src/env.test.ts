@@ -45,15 +45,15 @@ describe('tenant routing mode', () => {
     expect(selectTenantRouting(envSchema.parse({ APP_BASE_URL: 'https://learn.example.com' }))).toEqual({
       baseDomain: 'learn.example.com',
       singleTenantMode: true,
-      tenantCreationMode: 'open',
+      tenantCreationMode: 'closed',
     });
   });
 
-  it('keeps open creation in single-tenant mode outside production', () => {
+  it('closes tenant creation in single-tenant mode even when the environment requests open creation', () => {
     expect(selectTenantRouting(envSchema.parse({
       APP_BASE_URL: 'https://learn.example.com',
       TENANT_CREATION: 'open',
-    })).tenantCreationMode).toBe('open');
+    })).tenantCreationMode).toBe('closed');
   });
 
   it('uses bootstrap creation in production single-tenant mode', () => {

@@ -377,11 +377,15 @@ export const selectDevSinkPurge = (
 
 export const selectTenantRouting = (
   env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL' | 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
-): { baseDomain: string; singleTenantMode: boolean; tenantCreationMode: TenantCreationMode } => ({
-  baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
-  singleTenantMode: env.APP_BASE_DOMAIN === undefined,
-  tenantCreationMode: selectTenantCreationMode(env),
-});
+): { baseDomain: string; singleTenantMode: boolean; tenantCreationMode: TenantCreationMode } => {
+  const singleTenantMode = env.APP_BASE_DOMAIN === undefined;
+  const creationMode = selectTenantCreationMode(env);
+  return {
+    baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
+    singleTenantMode,
+    tenantCreationMode: singleTenantMode && creationMode === 'open' ? 'closed' : creationMode,
+  };
+};
 
 export const selectTenantCreationMode = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,

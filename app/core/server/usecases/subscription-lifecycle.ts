@@ -248,3 +248,33 @@ export const updateSubscriptionFromProvider = async (
   await deps.subscriptions.update(tenantId, subscription);
   return subscription;
 };
+
+export const syncGrantToSubscription = async (
+  tenantId: string,
+  subscription: MemberSubscription,
+  paidThrough: string | null,
+  deps: Pick<SubscriptionLifecycleDeps, 'grants' | 'clock'>,
+): Promise<string | null> => {
+  const grant = await deps.grants.findGrant(tenantId, subscription.memberId, subscription.productId);
+  if (grant === null) return null;
+  const { expiresAt } = grant;
+  const grantsLifetimeAccess = expiresAt === null;
+  if (grantsLifetimeAccess) return null;
+  const now = deps.clock.nowIso();
+  const alreadyExpired = expiresAt < now;
+  if (alreadyExpired) return null;
+  const computedExpiry =
+    subscription.status === 'canceled'
+      ? paidThrough ?? subscription.currentPeriodEnd
+      : subscription.cancelAtPeriodEnd
+        ? subscription.currentPeriodEnd
+        : graceExpiresAt(subscription.currentPeriodEnd);
+  const cancellation = subscription.status === 'canceled' || subscription.cancelAtPeriodEnd;
+  const appliedExpiry = cancellation || computedExpiry > expiresAt ? computedExpiry : expiresAt;
+  await deps.grants.setGrantWindow(tenantId, grant.id, {
+    startsAt: grant.startsAt,
+    expiresAt: appliedExpiry,
+    occurredAt: now,
+  });
+  return appliedExpiry;
+};

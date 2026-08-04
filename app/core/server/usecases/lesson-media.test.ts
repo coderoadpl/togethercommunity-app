@@ -21,7 +21,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
-  FileUrlSigner,
+  StorageProvider,
   MemberCourseProgressRepository,
   ProductGrantRepository,
   ProductRepository,
@@ -58,6 +58,7 @@ const pdfLesson: CourseLesson = {
   id: 'l1',
   tenantId: 't1',
   name: 'Lesson with documents',
+  isPreview: false,
   contents: [
     { type: 'pdf', pdfUrl: S3_PDF_URL, name: 'Handout' },
     { type: 'pdf', pdfUrl: PUBLIC_PDF_URL },
@@ -95,8 +96,11 @@ const c1: Course = {
 const pCourse: Product = {
   id: 'p-course',
   tenantId: 't1',
+  type: 'course',
+  slug: 'full-access',
   title: 'Full access',
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,
@@ -139,6 +143,7 @@ const modulesRepo: CourseModuleRepository = {
 
 const lessonsRepo: CourseLessonRepository = {
   list: async () => [pdfLesson],
+  listPreviews: async () => [],
   findById: async (_t, id) => (id === 'l1' ? pdfLesson : null),
   findByIds: async () => [pdfLesson],
   create: async () => undefined,
@@ -183,7 +188,7 @@ const productsRepo: ProductRepository = {
   listByTenant: async () => [pCourse],
   listPublishedByTenant: async () => [pCourse],
   findById: async () => pCourse,
-  create: async () => undefined,
+  create: async () => 'created',
   updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,
@@ -196,15 +201,22 @@ const secretsOf = (values: Record<string, string>): TenantSecretResolver => ({
   },
 });
 
-const recordingSigner = (): { signer: FileUrlSigner; calls: { url: string; expiresInSeconds: number }[] } => {
+const recordingSigner = (): { signer: StorageProvider; calls: { url: string; expiresInSeconds: number }[] } => {
   const calls: { url: string; expiresInSeconds: number }[] = [];
   return {
     calls,
     signer: {
+      objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
+      probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      presignPut: (input) => ok(input.url),
       presignGet: (input) => {
         calls.push({ url: input.url, expiresInSeconds: input.expiresInSeconds });
         return ok(`${input.url}?X-Amz-Signature=test`);
       },
+      delete: async () => ok({ deleted: true }),
+      head: async () => ok({ sizeBytes: 1 }),
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     },
   };
 };
@@ -224,7 +236,7 @@ const deps = (over: Partial<PlayableLessonDeps> = {}): PlayableLessonDeps => ({
     's3.accessKeyId': 'AKIA-TEST',
     's3.secretAccessKey': 'secret-test',
   }),
-  fileUrlSigner: recordingSigner().signer,
+  storage: recordingSigner().signer,
   ...over,
 });
 
@@ -277,7 +289,7 @@ describe('getPlayableLesson', () => {
 
   it('signs only S3-hosted pdf blocks and passes the TTL', async () => {
     const { signer, calls } = recordingSigner();
-    const result = await getPlayableLesson(ctx(), 'l1', deps({ fileUrlSigner: signer }));
+    const result = await getPlayableLesson(ctx(), 'l1', deps({ storage: signer }));
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.contents).toEqual([
       { type: 'pdf', pdfUrl: `${S3_PDF_URL}?X-Amz-Signature=test`, name: 'Handout' },
@@ -303,8 +315,17 @@ describe('getPlayableLesson', () => {
   });
 
   it('keeps the original url when the signer fails', async () => {
-    const failing: FileUrlSigner = { presignGet: () => err(validation('bad url')) };
-    const result = await getPlayableLesson(ctx(), 'l1', deps({ fileUrlSigner: failing }));
+    const failing: StorageProvider = {
+      objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
+      probe: async () => err(validation('bad url')),
+      presignPut: () => err(validation('bad url')),
+      presignGet: () => err(validation('bad url')),
+      delete: async () => err(validation('bad url')),
+      head: async () => err(validation('bad url')),
+      healthcheck: async () => err(validation('bad url')),
+      test: async () => err(validation('bad url')),
+    };
+    const result = await getPlayableLesson(ctx(), 'l1', deps({ storage: failing }));
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.contents[0]).toEqual({ type: 'pdf', pdfUrl: S3_PDF_URL, name: 'Handout' });
   });
@@ -313,5 +334,42 @@ describe('getPlayableLesson', () => {
     const result = await getPlayableLesson(ctx({ memberId: null }), 'l1', deps());
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('forbidden');
+  });
+
+  it('allows an anonymous preview while denying a paid lesson from the same course', async () => {
+    const preview = { ...pdfLesson, id: 'preview', isPreview: true };
+    const paid = { ...pdfLesson, id: 'paid', isPreview: false };
+    const courseModule: CourseModule = {
+      ...m1,
+      chapters: [{
+        id: 'ch1',
+        name: 'Chapter 1',
+        contents: [
+          { id: 'content-preview', name: preview.name, lessonId: preview.id },
+          { id: 'content-paid', name: paid.name, lessonId: paid.id },
+        ],
+      }],
+    };
+    const anonymous: Ctx = {
+      identity: identity({ memberId: null }),
+      capabilities: ['lesson:play'],
+    };
+    const repository: CourseLessonRepository = {
+      ...lessonsRepo,
+      list: async () => [preview, paid],
+      findById: async (_tenantId, id) => [preview, paid].find((lesson) => lesson.id === id) ?? null,
+      findByIds: async () => [preview, paid],
+    };
+    const moduleRepository: CourseModuleRepository = {
+      ...modulesRepo,
+      list: async () => [courseModule],
+      findById: async (_tenantId, id) => (id === courseModule.id ? courseModule : null),
+      findByIds: async () => [courseModule],
+    };
+
+    await expect(getPlayableLesson(anonymous, preview.id, deps({ lessons: repository, modules: moduleRepository })))
+      .resolves.toMatchObject({ ok: true, value: { id: preview.id, isPreview: true } });
+    await expect(getPlayableLesson(anonymous, paid.id, deps({ lessons: repository, modules: moduleRepository })))
+      .resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

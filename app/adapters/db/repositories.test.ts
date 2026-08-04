@@ -1,7 +1,4 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -37,6 +34,7 @@ import {
   createCheckoutConsentCaptureRepository,
   createDevSinkPurge,
   createHealthPort,
+  createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
   createMemberSubscriptionRepository,
@@ -44,6 +42,7 @@ import {
   createPostRepository,
   createPostReportRepository,
   createProcessedPaymentEventRepository,
+  createPurchaseRepository,
   createProductGrantRepository,
   createProductPriceRepository,
   createProductRepository,
@@ -51,7 +50,9 @@ import {
   createTenantApiKeyRepository,
   createTenantRepository,
   createTenantSecretRepository,
+  createUserDisplayReader,
 } from './repositories.js';
+import { createMemberEventRepository } from './member-events.js';
 import {
   createCouponRedemptionRepository,
   createCouponStatsRepository,
@@ -65,6 +66,7 @@ import {
   couponRedemptions,
   couponCheckoutSessions,
   coupons,
+  courses,
   devEmails,
   devMagicLinks,
   emailOutbox,
@@ -87,16 +89,9 @@ import {
   suppressions,
   user,
 } from './schema.js';
-import * as dbSchema from './schema.js';
-import { uniqueTestDatabaseName } from './test-database-name.js';
+import { createTestDatabase } from './test-database-name.js';
 
-const TEST_DB = uniqueTestDatabaseName('together_repositories_test');
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
-const testUrl = (() => {
-  const url = new URL(baseDatabaseUrl);
-  url.pathname = `/${TEST_DB}`;
-  return url.toString();
-})();
 
 const NOW = '2026-07-14T10:00:00.000Z';
 const PAST = '2026-01-01T00:00:00.000Z';
@@ -106,20 +101,19 @@ const ACME = 'tenant-acme';
 const GLOBEX = 'tenant-globex';
 
 let db: Db;
-let dbPool: pg.Pool;
+let closeTestDatabase: () => Promise<void>;
 const emailHmac = { compute: (tenantId: string, email: string) => `${tenantId}:${email.trim().toLowerCase()}` };
 
 afterAll(async () => {
-  await dbPool.end();
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.end();
+  await closeTestDatabase();
 });
 
 const product = (over: Partial<Product> & { id: string; tenantId: string }): Product => ({
+  type: 'course',
+  slug: over.id,
   title: 'Course',
   description: 'desc',
+  coverUrl: null,
   priceCents: 4900,
   currency: 'PLN',
   published: true,
@@ -193,18 +187,9 @@ const member = (over: Partial<Member> & { id: string; tenantId: string; userId: 
 });
 
 beforeAll(async () => {
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.query(`CREATE DATABASE ${TEST_DB}`);
-  await admin.end();
-
-  const migrationPool = new pg.Pool({ connectionString: testUrl });
-  await migrate(drizzle(migrationPool), { migrationsFolder: 'drizzle' });
-  await migrationPool.end();
-
-  dbPool = new pg.Pool({ connectionString: testUrl });
-  db = drizzle(dbPool, { schema: dbSchema });
+  const testDatabase = await createTestDatabase('together_repositories_test', baseDatabaseUrl);
+  db = testDatabase.db;
+  closeTestDatabase = testDatabase.close;
 
   await db.insert(user).values([
     { id: 'user-acme-owner', name: 'Acme Owner', email: 'owner-acme@together.dev' },
@@ -283,6 +268,17 @@ describe('product repository', () => {
     const repo = createProductRepository(db);
     expect(await repo.findById(ACME, 'prod-acme')).toMatchObject({ id: 'prod-acme', title: 'Acme Course' });
     expect(await repo.findById(GLOBEX, 'prod-acme')).toBeNull();
+    expect((await repo.findByIds(ACME, ['prod-acme', 'prod-globex'])).map((product) => product.id))
+      .toEqual(['prod-acme']);
+  });
+
+  it('returns slug_taken for the tenant slug unique constraint', async () => {
+    const repo = createProductRepository(db);
+    await expect(repo.create(ACME, product({
+      id: 'prod-acme-duplicate-slug',
+      tenantId: ACME,
+      slug: 'prod-acme',
+    }))).resolves.toBe('slug_taken');
   });
 });
 
@@ -309,8 +305,7 @@ describe('member repository', () => {
       tenantId: ACME,
       memberId: 'mem-acme',
       type: 'banned' as const,
-      reason: 'Repeated abuse',
-      actorUserId: 'user-acme-owner',
+      payload: { reason: 'Repeated abuse', actorUserId: 'user-acme-owner' },
       occurredAt: NOW,
     };
 
@@ -319,8 +314,8 @@ describe('member repository', () => {
       {
         memberId: 'mem-acme',
         bannedAt: NOW,
-        reason: event.reason,
-        actorUserId: event.actorUserId,
+        reason: event.payload.reason,
+        actorUserId: event.payload.actorUserId,
       },
       { ...event, id: 'member-event-invalid', memberId: 'missing-member' },
     )).rejects.toThrow();
@@ -331,27 +326,144 @@ describe('member repository', () => {
       {
         memberId: 'mem-acme',
         bannedAt: NOW,
-        reason: event.reason,
-        actorUserId: event.actorUserId,
+        reason: event.payload.reason,
+        actorUserId: event.payload.actorUserId,
       },
       event,
     )).resolves.toMatchObject({
       bannedAt: NOW,
-      bannedReason: event.reason,
-      bannedByUserId: event.actorUserId,
+      bannedReason: event.payload.reason,
+      bannedByUserId: event.payload.actorUserId,
     });
     expect(await db.select().from(memberEvents).where(eq(memberEvents.id, event.id))).toMatchObject([
       {
         tenantId: ACME,
         memberId: 'mem-acme',
         type: 'banned',
-        reason: event.reason,
-        actorUserId: event.actorUserId,
+        payload: event.payload,
       },
     ]);
     expect(
       (await repo.listWithProductIds(ACME, NOW)).find((row) => row.id === 'mem-acme'),
-    ).toMatchObject({ bannedAt: NOW, bannedReason: event.reason });
+    ).toMatchObject({ bannedAt: NOW, bannedReason: event.payload.reason });
+  });
+});
+
+describe('member event repository', () => {
+  it('merges commerce, access, subscription, and learning events newest-first', async () => {
+    await createCourseRepository(db).create(ACME, {
+      id: 'course-member-events',
+      tenantId: ACME,
+      name: 'Member events course',
+      description: '',
+      imageUrl: null,
+      moduleOrder: [],
+      legacyId: null,
+      createdAt: NOW,
+    });
+    const progress = createMemberCourseProgressRepository(db);
+    const row = await progress.findOrCreate(ACME, {
+      id: 'progress-member-events',
+      memberId: 'mem-acme',
+      courseId: 'course-member-events',
+      now: PAST,
+    });
+    await progress.update(ACME, {
+      ...row,
+      memberId: 'mem-globex',
+      completedLessonIds: ['lesson-member-events'],
+      updatedAt: FUTURE,
+    });
+
+    const events = await createMemberEventRepository(db).listForMember(ACME, 'mem-acme');
+    expect(events.map((event) => event.type)).toEqual(expect.arrayContaining([
+      'purchase',
+      'grant',
+      'subscription-change',
+      'lesson-completion',
+    ]));
+    expect(events[0]).toMatchObject({
+      type: 'lesson-completion',
+      payload: { courseId: 'course-member-events', lessonId: 'lesson-member-events' },
+    });
+    expect(events.every((event) => event.tenantId === ACME && event.memberId === 'mem-acme')).toBe(true);
+
+    await db.delete(memberCourseProgress).where(eq(memberCourseProgress.id, 'progress-member-events'));
+    await db.delete(courses).where(eq(courses.id, 'course-member-events'));
+  });
+
+  it('stores open event types and skips rows unsupported by the current registry', async () => {
+    await db.insert(memberEvents).values([
+      {
+        id: 'member-event-open-type',
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        type: 'community-post',
+        payload: { postId: 'post-1' },
+        occurredAt: NOW,
+      },
+      {
+        id: 'member-event-invalid-payload',
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        type: 'purchase',
+        payload: { orderId: 'legacy-order' },
+        occurredAt: NOW,
+      },
+    ]);
+    const [stored] = await db.select({
+      type: memberEvents.type,
+      payload: memberEvents.payload,
+    }).from(memberEvents).where(eq(memberEvents.id, 'member-event-open-type'));
+    expect(stored).toEqual({ type: 'community-post', payload: { postId: 'post-1' } });
+    const visible = await createMemberEventRepository(db).listForMember(ACME, 'mem-acme');
+    expect(visible.map((event) => event.id)).not.toEqual(expect.arrayContaining([
+      'member-event-open-type',
+      'member-event-invalid-payload',
+    ]));
+    await db.delete(memberEvents).where(inArray(memberEvents.id, [
+      'member-event-open-type',
+      'member-event-invalid-payload',
+    ]));
+  });
+});
+
+describe('purchase repository', () => {
+  it('records the access change created by a simulated purchase', async () => {
+    await db.insert(user).values({
+      id: 'user-simulated-purchase',
+      name: 'Simulated Buyer',
+      email: 'simulated-buyer@together.dev',
+    });
+    const result = await createPurchaseRepository(db).createMemberGrant({
+      tenantId: ACME,
+      userId: 'user-simulated-purchase',
+      email: 'simulated-buyer@together.dev',
+      memberId: 'member-simulated-purchase',
+      grantId: 'grant-simulated-purchase',
+      productId: 'prod-acme',
+      createdAt: NOW,
+    });
+
+    expect(result.grantCreated).toBe(true);
+    expect(await createMemberEventRepository(db).listForMember(
+      ACME,
+      'member-simulated-purchase',
+    )).toContainEqual(expect.objectContaining({
+      type: 'grant',
+      payload: {
+        grantId: 'grant-simulated-purchase',
+        productId: 'prod-acme',
+        source: 'simulated',
+        startsAt: NOW,
+        expiresAt: null,
+      },
+    }));
+
+    await db.delete(memberEvents).where(eq(memberEvents.memberId, 'member-simulated-purchase'));
+    await db.delete(productGrants).where(eq(productGrants.memberId, 'member-simulated-purchase'));
+    await db.delete(members).where(eq(members.id, 'member-simulated-purchase'));
+    await db.delete(user).where(eq(user.id, 'user-simulated-purchase'));
   });
 });
 
@@ -481,7 +593,17 @@ describe('product grant repository', () => {
     const repo = createProductGrantRepository(db);
     const revoked = await repo.revokeGrant(ACME, 'grant-acme', NOW);
     expect(revoked?.expiresAt).toBe(NOW);
-    await repo.setGrantWindow(ACME, 'grant-acme', { startsAt: PAST, expiresAt: FUTURE });
+    expect(await createMemberEventRepository(db).listForMember(ACME, 'mem-acme')).toContainEqual(
+      expect.objectContaining({
+        type: 'revoke',
+        payload: { grantId: 'grant-acme', productId: 'prod-acme', expiresAt: NOW },
+      }),
+    );
+    await repo.setGrantWindow(ACME, 'grant-acme', {
+      startsAt: PAST,
+      expiresAt: FUTURE,
+      occurredAt: NOW,
+    });
   });
 });
 
@@ -497,6 +619,14 @@ describe('order repository', () => {
 
     const globex = await repo.list(GLOBEX, { page: 1, pageSize: 20 });
     expect(globex.total).toBe(1);
+
+    const memberOrders = await repo.listForMember(ACME, 'mem-acme');
+    expect(memberOrders.map((entry) => entry.memberId)).toEqual(['mem-acme', 'mem-acme']);
+    expect(memberOrders[0]).toMatchObject({
+      memberEmail: 'buyer-acme@together.dev',
+      productTitle: 'Acme Course',
+    });
+    expect(await repo.listForMember(ACME, 'mem-globex')).toEqual([]);
   });
 
   it('sums paid revenue and counts every order since a cutoff', async () => {
@@ -626,6 +756,21 @@ describe('coupon redemption repository', () => {
         .from(couponRedemptions)
         .where(eq(couponRedemptions.couponId, 'coupon-race')),
     ).toHaveLength(1);
+    const [redemption] = await db
+      .select({ orderId: couponRedemptions.orderId })
+      .from(couponRedemptions)
+      .where(eq(couponRedemptions.couponId, 'coupon-race'));
+    expect(await db.select().from(memberEvents).where(
+      eq(memberEvents.id, `purchase:${redemption?.orderId ?? 'missing'}`),
+    )).toMatchObject([{
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      type: 'purchase',
+      payload: expect.objectContaining({
+        orderId: redemption?.orderId,
+        amountCents: 2450,
+      }),
+    }]);
     await db.insert(couponCheckoutSessions).values({
       id: 'coupon-race-session',
       tenantId: ACME,
@@ -836,10 +981,43 @@ describe('invoice repository', () => {
 
 describe('tenant, api-key, secret and processed-event repositories', () => {
   it('reads tenants by id and slug and round-trips settings', async () => {
-    const repo = createTenantRepository(db);
-    expect(await repo.findBySlug('acme')).toMatchObject({ id: ACME, slug: 'acme' });
+    let multipleTenantWarnings = 0;
+    const repo = createTenantRepository(db, {
+      onMultipleTenants: () => {
+        multipleTenantWarnings += 1;
+      },
+    });
+    expect(await repo.findBySlug('acme')).toMatchObject({
+      id: ACME,
+      slug: 'acme',
+      status: 'active',
+      plan: 'self_hosted',
+    });
     expect(await repo.findById(GLOBEX)).toMatchObject({ slug: 'globex' });
+    expect(await repo.findSole()).toBeNull();
+    expect(multipleTenantWarnings).toBe(1);
+    const previousVersion = (await repo.findById(ACME))?.contentVersion;
+    expect(await repo.hasAny()).toBe(true);
+    expect(await repo.createTenantWithOwnerGrant(
+      {
+        tenant: {
+          id: 'tenant-bootstrap-rejected',
+          slug: 'bootstrap-rejected',
+          name: 'Rejected',
+          createdAt: NOW,
+        },
+        ownerGrant: {
+          id: 'admin-bootstrap-rejected',
+          userId: 'user-acme-owner',
+          staffRole: 'owner',
+        },
+      },
+      { requireEmpty: true },
+    )).toBeNull();
+    expect(await repo.findById('tenant-bootstrap-rejected')).toBeNull();
     const updated = await repo.updateSettings(ACME, {
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       logoUrl: null,
@@ -857,19 +1035,36 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       invoiceExemptionBasisKind: 'other_statute',
       invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
-    expect(updated).toMatchObject({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
+    expect(updated).toMatchObject({
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+      billingPortalUrl: 'https://billing.acme.test',
+      bunnyStreamLibraryId: 'lib-1',
+    });
     expect(await repo.findSettings(ACME)).toMatchObject({
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       bunnyStreamLibraryId: 'lib-1',
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
       invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
+    expect((await repo.findById(ACME))?.contentVersion).toBe((previousVersion ?? 0) + 1);
   });
 
   it('rejects unsupported persisted VAT modes', async () => {
     await expect(db.execute(sql`
       UPDATE tenants SET invoice_vat_mode = 'reverse_charge' WHERE id = ${ACME}
+    `)).rejects.toThrow();
+  });
+
+  it('rejects unsupported tenant lifecycle values', async () => {
+    await expect(db.execute(sql`
+      UPDATE tenants SET status = 'deleted' WHERE id = ${ACME}
+    `)).rejects.toThrow();
+    await expect(db.execute(sql`
+      UPDATE tenants SET plan = 'enterprise' WHERE id = ${ACME}
     `)).rejects.toThrow();
   });
 
@@ -881,7 +1076,21 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       { userId: 'user-acme-owner', email: 'owner-acme@together.dev' },
     ]);
     expect(await reader.findStaffGrant('user-acme-owner', { tenantSlug: 'globex' })).toBeNull();
-    expect(await reader.findMember('user-acme-member', ACME)).toMatchObject({ id: 'mem-acme' });
+    expect(await reader.findMember(ACME, 'user-acme-member')).toMatchObject({ id: 'mem-acme' });
+  });
+
+  it('limits user display names to identities belonging to the tenant', async () => {
+    const reader = createUserDisplayReader(db);
+    const displays = await reader.findDisplayNames(ACME, [
+      'user-acme-owner',
+      'user-acme-member',
+      'user-globex-owner',
+      'user-globex-member',
+    ]);
+    expect(displays).toEqual(new Map([
+      ['user-acme-owner', 'Acme Owner'],
+      ['user-acme-member', 'Acme Member'],
+    ]));
   });
 
   it('stores and revokes API keys by hash within the tenant', async () => {
@@ -1321,8 +1530,12 @@ describe('course/module/lesson repositories', () => {
     const lessons = createCourseLessonRepository(db);
 
     const course: Course = { id: 'course-acme', tenantId: ACME, name: 'C', description: '', imageUrl: null, moduleOrder: [], legacyId: null, createdAt: NOW };
-    const module: CourseModule = { id: 'module-acme', tenantId: ACME, courseIds: ['course-acme'], title: 'M', prefix: null, name: 'M', chapters: [], legacyId: null, createdAt: NOW };
-    const lesson: CourseLesson = { id: 'lesson-acme', tenantId: ACME, name: 'L', contents: [], legacyId: null, createdAt: NOW };
+    const module: CourseModule = {
+      id: 'module-acme', tenantId: ACME, courseIds: ['course-acme'], title: 'M', prefix: null, name: 'M',
+      chapters: [{ id: 'chapter-acme', name: 'Chapter', contents: [{ id: 'content-acme', name: 'L', lessonId: 'lesson-acme' }] }],
+      legacyId: null, createdAt: NOW,
+    };
+    const lesson: CourseLesson = { id: 'lesson-acme', tenantId: ACME, name: 'L', isPreview: true, contents: [], legacyId: null, createdAt: NOW };
     await courses.create(ACME, course);
     await modules.create(ACME, module);
     await lessons.create(ACME, lesson);
@@ -1330,7 +1543,12 @@ describe('course/module/lesson repositories', () => {
     expect((await courses.list(ACME)).map((c) => c.id)).toEqual(['course-acme']);
     expect(await courses.list(GLOBEX)).toEqual([]);
     expect(await modules.findById(ACME, 'module-acme')).toMatchObject({ courseIds: ['course-acme'] });
+    expect(await lessons.findById(ACME, 'lesson-acme')).toMatchObject({ isPreview: true });
     expect(await lessons.findById(GLOBEX, 'lesson-acme')).toBeNull();
+    expect(await lessons.listPreviews(ACME)).toEqual([
+      { id: 'lesson-acme', name: 'L', courseId: 'course-acme' },
+    ]);
+    expect(await lessons.listPreviews(GLOBEX)).toEqual([]);
   });
 });
 
@@ -1777,7 +1995,11 @@ describe('member erasure repository', () => {
     });
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));
-    expect(consentRows[0]).toMatchObject({ userId: 'user-rodo-buyer', email: 'jan.kowalski@together.dev' });
+    expect(consentRows[0]).toMatchObject({
+      userId: 'user-rodo-buyer',
+      email: 'jan.kowalski@together.dev',
+    });
+    expect(new Date(consentRows[0]?.retentionStartedAt ?? '').toISOString()).toBe(REMOVAL_AT);
 
     const suppressionRows = await db.select().from(suppressions).where(eq(suppressions.sourceRef, 'mem-rodo'));
     expect(suppressionRows).toMatchObject([{

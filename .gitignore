@@ -3,6 +3,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+!.env.self-host.example
 
 app/dist/
 app/out/
@@ -10,3 +11,4 @@ app/storybook-static/
 app/coverage/
 .ksef-spike-ref/
 .claude/
+.tmp/

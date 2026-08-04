@@ -68,6 +68,7 @@ const lesson = (id: string): CourseLesson => ({
   id,
   tenantId: 't1',
   name: `Lesson ${id}`,
+  isPreview: false,
   contents: [],
   legacyId: null,
   createdAt: PAST,
@@ -103,8 +104,11 @@ const course = (id: string): Course => ({
 const product = (id: string, accessItems: Product['accessItems']): Product => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: `Product ${id}`,
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,
@@ -248,6 +252,7 @@ const deps = (input: {
 
   const lessonsRepo: CourseLessonRepository = {
     list: async () => allLessons,
+    listPreviews: async () => [],
     findById: async (_t, id) => allLessons.find((l) => l.id === id) ?? null,
     findByIds: async (_t, ids) => allLessons.filter((l) => ids.includes(l.id)),
     create: async () => undefined,

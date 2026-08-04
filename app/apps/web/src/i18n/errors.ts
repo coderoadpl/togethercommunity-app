@@ -5,7 +5,7 @@ import type { Messages } from './messages.js';
 const isErrorCode = (value: string): value is ErrorCode =>
   ERROR_CODES.some((candidate) => candidate === value);
 
-const errorCodeOf = (error: unknown): ErrorCode | null => {
+export const errorCodeOf = (error: unknown): ErrorCode | null => {
   if (typeof error !== 'object' || error === null || !('appError' in error)) return null;
   const { appError } = error;
   if (typeof appError !== 'object' || appError === null || !('code' in appError)) return null;

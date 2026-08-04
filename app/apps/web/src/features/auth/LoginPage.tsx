@@ -14,8 +14,10 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
+import { lessonPath } from '#core/contract/index.js';
+
 import { actions } from '../../api.js';
-import { BrandMark } from '../../branding.js';
+import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -86,10 +88,27 @@ export const LoginPage = () => {
       <FinePrint variant="caption" component="p">
         {t.auth.registerPrompt} <Link href="/register">{t.auth.registerLink}</Link>
       </FinePrint>
+      {publicOffer.data !== undefined && publicOffer.data.previewLessons.length > 0 ? (
+        <Box sx={{ mt: '1em' }}>
+          <FinePrint variant="caption" component="p" sx={{ mb: '0.35em' }}>
+            {t.auth.previewLessons}
+          </FinePrint>
+          <Stack useFlexGap spacing="0.25em">
+            {publicOffer.data.previewLessons.map((lesson) => (
+              <Link key={`${lesson.courseId}:${lesson.id}`} href={lessonPath(lesson.courseId, lesson.id)}>
+                {lesson.name}
+              </Link>
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
       {publicOffer.data?.tenant.support.url ? (
         <FinePrint variant="caption" component="p">
           <Link href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</Link>
         </FinePrint>
+      ) : null}
+      {publicOffer.data?.tenant.socialLinks.length ? (
+        <TenantSocialLinks links={publicOffer.data.tenant.socialLinks} />
       ) : null}
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: '1.2rem' }}>
         <BuildStamp />

@@ -2,7 +2,7 @@ import {
   DELETED_MEMBER_DISPLAY,
   err,
   memberTombstone,
-  memberEventSchema,
+  memberBanEventSchema,
   appError,
   notFound,
   ok,
@@ -247,13 +247,14 @@ export const setMemberBanned = async (
   if ((member.bannedAt !== null) === parsed.data.banned) return ok(member);
   const now = deps.clock.nowIso();
   const reason = parsed.data.banned ? parsed.data.reason?.trim() || null : null;
-  const event = memberEventSchema.parse({
+  const event = memberBanEventSchema.parse({
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     memberId: member.id,
     type: parsed.data.banned ? 'banned' : 'unbanned',
-    reason,
-    actorUserId: ctx.identity.userId,
+    payload: parsed.data.banned
+      ? { reason, actorUserId: ctx.identity.userId }
+      : { actorUserId: ctx.identity.userId },
     occurredAt: now,
   });
   const updated = await deps.members.setBanned(tenant.value, {

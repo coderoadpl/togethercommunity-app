@@ -39,15 +39,11 @@ describe('Vercel platform entry boundary', () => {
         { source: '/legal/(.*)', destination: '/api/index' },
       ]),
     );
-    expect(
-      vercel.headers
-        .flatMap(({ headers }) => headers)
-        .find(({ key }) => key === 'Content-Security-Policy')?.value,
-    ).toContain("default-src 'self'");
-    expect(
-      vercel.headers
-        .flatMap(({ headers }) => headers)
-        .find(({ key }) => key === 'Content-Security-Policy')?.value,
-    ).toContain('https://*.sentry.io');
+    const cspFor = (source: string) => vercel.headers
+      .find((entry) => entry.source === source)
+      ?.headers.find(({ key }) => key === 'Content-Security-Policy')?.value;
+    const spaCsp = cspFor('/((?!api/|u/|marketing/|legal/).*)');
+    expect(spaCsp).toContain("default-src 'self'");
+    expect(spaCsp).toContain("connect-src 'self' https:;");
   });
 });

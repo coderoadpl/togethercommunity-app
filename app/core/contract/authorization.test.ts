@@ -55,6 +55,7 @@ describe('authorization contract', () => {
     expect(capabilitiesForPrincipal('member')).not.toContain('member:read');
     expect(capabilitiesForPrincipal('api-key')).toContain('marketing:message:send');
     expect(capabilitiesForPrincipal('public')).toContain('offer:read');
+    expect(capabilitiesForPrincipal('public')).toContain('lesson:play');
     expect(capabilitiesForPrincipal('public')).not.toContain('tenant:settings:read');
   });
 

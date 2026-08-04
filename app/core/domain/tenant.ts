@@ -2,10 +2,15 @@ import { z } from 'zod';
 
 import { staffRoleSchema } from './identity.js';
 
+const tenantStatusSchema = z.enum(['active', 'suspended']);
+const tenantPlanSchema = z.enum(['self_hosted', 'hosted', 'hosted_pro']);
+
 export const tenantSchema = z.object({
   id: z.string(),
   slug: z.string(),
   name: z.string(),
+  status: tenantStatusSchema,
+  plan: tenantPlanSchema,
   contentVersion: z.number().int().positive(),
 });
 

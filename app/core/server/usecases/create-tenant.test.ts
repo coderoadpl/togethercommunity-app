@@ -31,6 +31,8 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
   const repo: TenantRepository = {
     findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
     findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
+    findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
+    hasAny: async () => tenants.length > 0,
     findSettings: async () => ({
       billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
       accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
@@ -38,11 +40,14 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
       privacyUrl: null,
     }),
     updateSettings: async (_tenantId, settings) => settings,
-    createTenantWithOwnerGrant: async (input) => {
-      const tenant = {
+    createTenantWithOwnerGrant: async (input, options) => {
+      if (options?.requireEmpty === true && tenants.length > 0) return null;
+      const tenant: Tenant = {
         id: input.tenant.id,
         slug: input.tenant.slug,
         name: input.tenant.name,
+        status: 'active',
+        plan: 'self_hosted',
         contentVersion: 1,
       };
       tenants.push(tenant);
@@ -86,7 +91,9 @@ describe('createTenant', () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { id: 't-new', slug: 'new-co', name: 'New Co', contentVersion: 1 },
+      value: {
+        id: 't-new', slug: 'new-co', name: 'New Co', status: 'active', plan: 'self_hosted', contentVersion: 1,
+      },
     });
     expect(store.ownerGrants).toEqual([
       {
@@ -115,8 +122,35 @@ describe('createTenant', () => {
     expect(store.ownerGrants).toEqual([]);
   });
 
+  it('allows production bootstrap only while the tenant store is empty', async () => {
+    const store = fakeTenants();
+    const bootstrapDeps = { ...deps(store.repo), tenantCreationMode: 'bootstrap' as const };
+
+    const first = await createTenant(
+      { identity },
+      { slug: 'first-workspace', name: 'First Workspace' },
+      bootstrapDeps,
+    );
+    const second = await createTenant(
+      { identity },
+      { slug: 'second-workspace', name: 'Second Workspace' },
+      bootstrapDeps,
+    );
+
+    expect(first).toMatchObject({ ok: true, value: { slug: 'first-workspace' } });
+    expect(second).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden', message: 'Tenant creation is closed after the first workspace' },
+    });
+    expect(store.tenants).toHaveLength(1);
+    expect(store.ownerGrants).toHaveLength(1);
+  });
+
   it('rejects slug conflicts before creating records', async () => {
-    const store = fakeTenants([{ id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 1 }]);
+    const existing: Tenant = {
+      id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1,
+    };
+    const store = fakeTenants([existing]);
 
     const result = await createTenant(
       { identity },
@@ -128,7 +162,7 @@ describe('createTenant', () => {
       ok: false,
       error: { code: 'conflict', message: 'Tenant "acme" already exists' },
     });
-    expect(store.tenants).toEqual([{ id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 1 }]);
+    expect(store.tenants).toEqual([existing]);
     expect(store.ownerGrants).toEqual([]);
   });
 

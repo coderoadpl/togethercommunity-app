@@ -5,10 +5,13 @@ import {
   renderHostedMarkdown,
   renderLegalDocumentPage,
   renderPreferencesPage,
+  type PublicBrand,
 } from './public-marketing-pages.js';
 
-const brand = {
-  tenant: { id: 'tenant-1', slug: 'studio', name: 'Studio Demo', contentVersion: 1 },
+const brand: PublicBrand = {
+  tenant: {
+    id: 'tenant-1', slug: 'studio', name: 'Studio Demo', status: 'active', plan: 'hosted', contentVersion: 1,
+  },
   settings: {
     billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: '/brand.svg',
     accentColor: '#0E7490', faviconUrl: '/favicon.svg',

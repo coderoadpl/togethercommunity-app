@@ -10,7 +10,7 @@ import { useTranslations } from '../../i18n/index.js';
 import { hostHasTenantSubdomain } from '../../lib/tenant.js';
 import { CardTitle } from '../../theme.js';
 
-export const TenantNotFoundPage = () => {
+const TenantNotFoundPage = () => {
   const t = useTranslations();
   return (
     <FocusCard eyebrow="404" data-testid="tenant-not-found">

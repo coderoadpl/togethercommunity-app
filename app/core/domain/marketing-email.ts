@@ -17,7 +17,7 @@ export const consentDocumentRefSchema = z.discriminatedUnion('mode', [
 
 export type ConsentDocumentRef = z.infer<typeof consentDocumentRefSchema>;
 
-export const consentDocumentVersionRefSchema = z.discriminatedUnion('mode', [
+const consentDocumentVersionRefSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('url'), url: z.string().url() }),
   z.object({ mode: z.literal('hosted'), documentVersionId: z.string().min(1) }),
 ]);
@@ -77,7 +77,7 @@ export const tenantDocumentVersionSchema = z.object({
 
 export type TenantDocumentVersion = z.infer<typeof tenantDocumentVersionSchema>;
 
-export const marketingConsentStatusSchema = z.enum(['granted', 'confirmed', 'withdrawn']);
+const marketingConsentStatusSchema = z.enum(['granted', 'confirmed', 'withdrawn']);
 export const marketingConsentSourceSchema = z.enum([
   'checkout',
   'panel',
@@ -86,7 +86,7 @@ export const marketingConsentSourceSchema = z.enum([
   'preference_page',
 ]);
 
-export const consentEvidenceSchema = z.object({
+const consentEvidenceSchema = z.object({
   collectedAt: isoDateTimeSchema,
   ip: z.string().min(1).optional(),
   userAgent: z.string().min(1).optional(),
@@ -120,7 +120,7 @@ export const marketingConsentCreatorSchema = z.object({
   preTicked: z.literal(false),
 });
 
-export type ConsentState = 'none' | 'pending_confirmation' | 'active' | 'withdrawn';
+type ConsentState = 'none' | 'pending_confirmation' | 'active' | 'withdrawn';
 
 export interface DerivedConsentState {
   state: ConsentState;
@@ -150,7 +150,7 @@ export const requiresConsentVersionBump = (
 ): boolean => current.label !== next.label
   || JSON.stringify(current.documentVersionRef) !== JSON.stringify(next.documentVersionRef);
 
-export const suppressionReasonSchema = z.enum([
+const suppressionReasonSchema = z.enum([
   'hard_bounce',
   'complaint',
   'manual',
@@ -207,7 +207,7 @@ export const liftSuppression = (
   return ok({ ...suppression, liftedBy: input.actorId, liftedAt: input.liftedAt });
 };
 
-export const unsubscribeScopeSchema = z.union([
+const unsubscribeScopeSchema = z.union([
   z.literal('all_marketing'),
   z.string().regex(/^consent:.+$/),
 ]);
@@ -242,7 +242,7 @@ export type ResolvedUnsubscribeScope =
   | { kind: 'all_marketing' }
   | { kind: 'consent'; definitionId: string };
 
-export const resolveUnsubscribeScope = (scope: UnsubscribeToken['scope']): ResolvedUnsubscribeScope =>
+const resolveUnsubscribeScope = (scope: UnsubscribeToken['scope']): ResolvedUnsubscribeScope =>
   scope === 'all_marketing'
     ? { kind: 'all_marketing' }
     : { kind: 'consent', definitionId: scope.slice('consent:'.length) };
@@ -373,7 +373,7 @@ export const buildEmailHeaders = (input: {
   return ok(headers);
 };
 
-export const campaignStatusSchema = z.enum([
+const campaignStatusSchema = z.enum([
   'draft',
   'scheduled',
   'running',
@@ -459,7 +459,7 @@ export const campaignSendSchema = z.object({
   memberId: z.string().nullable(),
   email: z.string().email().transform(normalizeEmail),
   subject: z.string().min(1),
-  consentRowId: z.string().min(1),
+  consentRowId: z.string().min(1).nullable(),
   unsubscribeTokenId: z.string().nullable(),
   status: z.enum(['pending', 'sending', 'sent', 'failed', 'skipped']),
   skipReason: z.enum(['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation']).nullable(),

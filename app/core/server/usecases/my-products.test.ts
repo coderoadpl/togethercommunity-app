@@ -21,8 +21,11 @@ const identity = (tenantId: string | null, memberId: string | null): Identity =>
 const granted: Product = {
   id: 'p1',
   tenantId: 't-acme',
+  type: 'course',
+  slug: 'granted-course',
   title: 'Granted Course',
   description: 'A course you own',
+  coverUrl: null,
   priceCents: 9900,
   currency: 'PLN',
   published: true,

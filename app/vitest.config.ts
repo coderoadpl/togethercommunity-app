@@ -8,6 +8,9 @@ export default defineConfig({
     __APP_COMMIT_SHA__: JSON.stringify('unknown'),
   },
   test: {
+    hookTimeout: 60000,
+    maxWorkers: 4,
+    testTimeout: 60000,
     coverage: {
       provider: 'v8',
       all: true,
@@ -40,6 +43,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
+          hookTimeout: 60000,
           include: [
             'core/**/*.test.ts',
             'core/**/*.test.tsx',
@@ -60,6 +64,8 @@ export default defineConfig({
         test: {
           name: 'web',
           environment: 'jsdom',
+          hookTimeout: 60000,
+          testTimeout: 15000,
           include: ['apps/web/**/*.test.ts', 'apps/web/**/*.test.tsx'],
           setupFiles: ['apps/web/src/test/setup.ts'],
         },

@@ -44,7 +44,8 @@ Marking member subscriptions canceled locally remains true only until a late
 `invoice.paid` flips a surviving provider subscription back to `active`.
 
 The transaction does not rewrite free text retained for moderation and audit:
-`member_events.reason` and `post_reports.note` keep their original values.
+the `reason` inside a `member_events.payload` and `post_reports.note` keep
+their original values.
 Pseudonymization changes the member projection and reporter display, but it
 does not minimize these event and report fields.
 
@@ -68,9 +69,23 @@ for **six years from consent withdrawal or member erasure, counted to the end
 of the calendar year** in which that six-year period elapses. This mirrors the
 general limitation period for property claims under art. 118 of the Polish
 Civil Code, so the proof of consent exists exactly as long as a claim about
-the underlying communication could be raised. A purge mechanism enforcing
-this horizon is follow-up work; until it ships, this section is the committed
-policy and the purge is tracked in the backlog.
+the underlying communication could be raised. The scheduled
+`consent_evidence_purge` job in
+`core/server/usecases/purge-consent-evidence.ts` enforces this horizon against
+the `retention_started_at` stamp written by member erasure and consent
+withdrawal. Deletion is disabled by default and requires the operator to set
+`CONSENT_EVIDENCE_PURGE_ENABLED=true`.
+
+Migration `0066_consent_evidence_retention.sql` cannot reconstruct the terms
+consent stamps for members erased before its deployment. Their surviving
+identity link is an e-mail HMAC, so those rows retain a null stamp and remain
+outside the scheduled purge until a secret-aware application backfill is run.
+The migration does backfill marketing evidence where a withdrawal or retained
+member tombstone supplies the start date.
+
+Campaign send rows survive evidence expiry for delivery auditing. Purging the
+referenced marketing-consent row sets `campaign_sends.consent_row_id` to null;
+the stale-pending cleanup does the same when removing never-confirmed evidence.
 
 The marketing suppression path degrades the address to an HMAC, as pinned in
 `adapters/db/repositories.test.ts`; retained plaintext is confined to the

@@ -1,6 +1,6 @@
 # ADR-0008: Tenant creation policy
 
-Status: accepted, 2026-07-28.
+Status: superseded by [ADR-0012](0012-production-tenant-bootstrap.md), 2026-08-03.
 
 ## Context
 

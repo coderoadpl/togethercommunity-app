@@ -144,6 +144,8 @@ describe('member erasure requests', () => {
       tenants: {
         findById: async () => null,
         findBySlug: async () => null,
+        findSole: async () => null,
+        hasAny: async () => false,
         findSettings: async () => null,
         updateSettings: async (_tenantId, settings) => settings,
         createTenantWithOwnerGrant: async () => {
@@ -210,6 +212,8 @@ describe('member erasure requests', () => {
       tenants: {
         findById: async () => null,
         findBySlug: async () => null,
+        findSole: async () => null,
+        hasAny: async () => false,
         findSettings: async () => null,
         updateSettings: async (_tenantId, settings) => settings,
         createTenantWithOwnerGrant: async () => {

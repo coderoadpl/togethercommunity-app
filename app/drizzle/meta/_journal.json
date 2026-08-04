@@ -519,6 +519,13 @@
       "when": 1785813418520,
       "tag": "0073_lesson_free_preview",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1785830693893,
+      "tag": "0074_durable_auth_rate_limits",
+      "breakpoints": true
     }
   ]
 }

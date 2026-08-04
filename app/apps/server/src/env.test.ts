@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createMultipleTenantsReporter, selectBaseTrustedOrigins, selectDevSinkPurge, selectTenantCreationMode, selectTenantRouting } from './composition.js';
+import {
+  createMultipleTenantsReporter,
+  selectAuthTrustedProxyHeader,
+  selectDevSinkPurge,
+  selectTenantCreationMode,
+  selectTenantRouting,
+  selectTrustedAuthOrigins,
+} from './composition.js';
 import { envSchema } from './env.js';
 
 describe('tenant creation policy', () => {
@@ -18,6 +25,7 @@ describe('tenant creation policy', () => {
       APP_ENV: 'self-host',
       TENANT_CREATION: 'open',
       BETTER_AUTH_SECRET: 'self-host-secret-with-at-least-16-chars',
+      AUTH_TRUSTED_PROXY_HEADER: 'x-forwarded-for',
       SECRETS_MASTER_KEY: 'self-host-master-key',
       KSEF_ENVIRONMENT: 'production',
       EMAIL_DISPATCH_SECRET: 'self-host-email-dispatch-secret',
@@ -63,6 +71,7 @@ describe('tenant routing mode', () => {
       APP_BASE_URL: 'https://learn.example.com',
       TENANT_CREATION: 'open',
       BETTER_AUTH_SECRET: 'self-host-secret-with-at-least-16-chars',
+      AUTH_TRUSTED_PROXY_HEADER: 'x-forwarded-for',
       SECRETS_MASTER_KEY: 'self-host-master-key',
       KSEF_ENVIRONMENT: 'production',
       EMAIL_DISPATCH_SECRET: 'self-host-email-dispatch-secret',
@@ -78,21 +87,26 @@ describe('tenant routing mode', () => {
     }))).toEqual({ baseDomain: 'together.example', singleTenantMode: false, tenantCreationMode: 'open' });
   });
 
-  it('does not trust sibling subdomains in single-tenant mode', () => {
-    expect(selectBaseTrustedOrigins({
+  it('trusts no sibling subdomains or HTTP custom domains in single-tenant mode', () => {
+    expect(selectTrustedAuthOrigins({
       appBaseUrl: 'https://learn.example.com',
       baseDomain: 'learn.example.com',
       port: 48730,
       singleTenantMode: true,
-    })).toEqual(['https://learn.example.com']);
+      customDomains: ['courses.example'],
+    })).toEqual([
+      'https://learn.example.com',
+      'https://courses.example',
+    ]);
   });
 
   it('trusts tenant subdomains when subdomain routing is configured', () => {
-    expect(selectBaseTrustedOrigins({
+    expect(selectTrustedAuthOrigins({
       appBaseUrl: 'https://example.com',
       baseDomain: 'example.com',
       port: 48730,
       singleTenantMode: false,
+      customDomains: [],
     })).toContain('https://*.example.com');
   });
 
@@ -104,6 +118,92 @@ describe('tenant routing mode', () => {
     report();
 
     expect(write).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('deployed auth origin policy', () => {
+  it('rejects an HTTP base URL outside localhost', () => {
+    const parsed = envSchema.safeParse({ APP_BASE_URL: 'http://together.example' });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.APP_BASE_URL).toContain(
+        'APP_BASE_URL must use https outside local development',
+      );
+    }
+  });
+
+  it('accepts local HTTP and deployed HTTPS base URLs', () => {
+    expect(envSchema.safeParse({ APP_BASE_URL: 'http://localhost:48730' }).success).toBe(true);
+    expect(envSchema.safeParse({ APP_BASE_URL: 'http://tenant.localhost:48730' }).success).toBe(true);
+    expect(envSchema.safeParse({ APP_BASE_URL: 'http://127.0.0.1:48730' }).success).toBe(true);
+    expect(envSchema.safeParse({ APP_BASE_URL: 'http://[::1]:48730' }).success).toBe(true);
+    expect(envSchema.safeParse({ APP_BASE_URL: 'https://together.example' }).success).toBe(true);
+  });
+
+  it('allows HTTP tenant origins only on localhost and keeps custom domains HTTPS-only', () => {
+    const localOrigins = selectTrustedAuthOrigins({
+      appBaseUrl: 'http://localhost:48730',
+      baseDomain: 'localhost',
+      port: 48730,
+      singleTenantMode: false,
+      customDomains: ['courses.example'],
+    });
+    const deployedOrigins = selectTrustedAuthOrigins({
+      appBaseUrl: 'https://together.example',
+      baseDomain: 'together.example',
+      port: 48730,
+      singleTenantMode: false,
+      customDomains: ['courses.example'],
+    });
+
+    expect(localOrigins).toContain('http://*.localhost');
+    expect(localOrigins).toContain('https://*.localhost');
+    expect(localOrigins).toContain('https://courses.example');
+    expect(localOrigins).not.toContain('http://courses.example');
+    expect(deployedOrigins.some((origin) => origin.startsWith('http://'))).toBe(false);
+  });
+});
+
+describe('auth client address policy', () => {
+  it('is disabled by default and uses only the explicitly configured header', () => {
+    expect(selectAuthTrustedProxyHeader(envSchema.parse({}))).toBeNull();
+    expect(selectAuthTrustedProxyHeader(envSchema.parse({
+      AUTH_TRUSTED_PROXY_HEADER: 'direct',
+    }))).toBeNull();
+    expect(selectAuthTrustedProxyHeader(envSchema.parse({
+      AUTH_TRUSTED_PROXY_HEADER: 'x-edge-client-ip',
+    }))).toBe('x-edge-client-ip');
+  });
+
+  it('rejects malformed configured header names', () => {
+    expect(envSchema.safeParse({
+      AUTH_TRUSTED_PROXY_HEADER: 'x-edge-client-ip, x-forwarded-for',
+    }).success).toBe(false);
+  });
+
+  it('requires an explicit direct or protected proxy mode in production', () => {
+    const parsed = envSchema.safeParse({
+      NODE_ENV: 'production',
+      BETTER_AUTH_SECRET: 'production-secret-with-at-least-16-chars',
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.AUTH_TRUSTED_PROXY_HEADER).toContain(
+        'AUTH_TRUSTED_PROXY_HEADER must be set to direct or a protected header in production',
+      );
+    }
+
+    const direct = envSchema.safeParse({
+      NODE_ENV: 'production',
+      AUTH_TRUSTED_PROXY_HEADER: 'direct',
+      BETTER_AUTH_SECRET: 'production-secret-with-at-least-16-chars',
+    });
+    expect(direct.success).toBe(false);
+    if (!direct.success) {
+      expect(direct.error.flatten().fieldErrors.AUTH_TRUSTED_PROXY_HEADER).toBeUndefined();
+    }
   });
 });
 

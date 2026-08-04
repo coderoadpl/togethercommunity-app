@@ -156,6 +156,21 @@ describe('createTenant', () => {
     expect(store.tenants).toEqual([existing]);
   });
 
+  it('denies a principal without the tenant:create capability', async () => {
+    const store = fakeTenants();
+    const result = await createTenant(
+      { identity, capabilities: ['tenant:list-own'] },
+      { slug: 'new-co', name: 'New Co' },
+      { ...deps(store.repo), tenantCreationMode: 'bootstrap' },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden', message: 'tenant:create is not permitted' },
+    });
+    expect(store.tenants).toEqual([]);
+  });
+
   it('allows production bootstrap only while the tenant store is empty', async () => {
     const store = fakeTenants();
     const bootstrapDeps = { ...deps(store.repo), tenantCreationMode: 'bootstrap' as const };

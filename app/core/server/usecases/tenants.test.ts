@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, Membership } from '#core/domain/index.js';
+import type { Identity, Membership, TenantCreationMode } from '#core/domain/index.js';
 
 import { listMyTenants } from './tenants.js';
 
@@ -29,7 +29,7 @@ const membership: Membership = {
   staffRole: 'owner',
 };
 
-const deps = (hasAny: boolean, tenantCreationMode: 'open' | 'bootstrap' | 'closed') => ({
+const deps = (hasAny: boolean, tenantCreationMode: TenantCreationMode) => ({
   tenantAccess: {
     listTenantsForStaff: async () => [membership],
     listStaffForTenant: async () => [],
@@ -43,6 +43,7 @@ const deps = (hasAny: boolean, tenantCreationMode: 'open' | 'bootstrap' | 'close
 describe('listMyTenants', () => {
   it.each([
     ['open', false, true],
+    ['open', true, true],
     ['bootstrap', false, true],
     ['bootstrap', true, false],
     ['closed', false, false],
@@ -74,5 +75,18 @@ describe('listMyTenants', () => {
       ok: true,
       value: { tenants: [membership], canCreateTenant: false },
     });
+  });
+
+  it('reports the same principal denial used by creation', async () => {
+    const result = await listMyTenants(
+      { identity, capabilities: ['tenant:list-own'] },
+      {
+        tenantAccess: { listTenantsForStaff: async () => [] },
+        tenants: { hasAny: async () => false },
+        tenantCreationMode: 'open',
+      },
+    );
+
+    expect(result).toEqual({ ok: true, value: { tenants: [], canCreateTenant: false } });
   });
 });

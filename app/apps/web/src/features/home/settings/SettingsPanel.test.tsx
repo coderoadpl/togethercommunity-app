@@ -3,12 +3,16 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
+import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider } from '../panel-context.js';
 import { SettingsPanel } from './SettingsPanel.js';
+
+const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
 interface StoredSettings {
   name: string;
@@ -154,8 +158,8 @@ describe('SettingsPanel security', () => {
     renderPanel();
 
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
-    await userEvent.type(screen.getByTestId('change-new-password'), 'new-password');
-    await userEvent.type(screen.getByTestId('change-confirm-password'), 'new-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('change-revoke-sessions'));
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
@@ -164,7 +168,7 @@ describe('SettingsPanel security', () => {
     );
     expect(body).toEqual({
       currentPassword: 'current-password',
-      newPassword: 'new-password',
+      newPassword: VALID_PASSWORD,
       revokeOtherSessions: true,
     });
     expect(screen.getByText(pl.security.setOrResetPasswordHeading)).toBeInTheDocument();

@@ -1300,7 +1300,10 @@ export const pl: Messages = {
   },
   changePassword: {
     heading: 'Zmień hasło',
-    intro: 'Wpisz obecne hasło i wybierz nowe.',
+    intro: ({ min }) => format(
+      'Wpisz obecne hasło i wybierz nowe, które ma co najmniej {min} znaków. Nie wymagamy określonych typów znaków.',
+      { min },
+    ),
     currentPasswordLabel: 'obecne hasło',
     newPasswordLabel: 'nowe hasło',
     confirmPasswordLabel: 'powtórz nowe hasło',

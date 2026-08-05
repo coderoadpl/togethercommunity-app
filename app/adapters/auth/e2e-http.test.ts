@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+
 import { createAuthE2eClient, type AuthE2eTransport } from './e2e-http.js';
+
+const PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
 const transport: AuthE2eTransport = {
   connectUrl: 'http://127.0.0.1:48999',
@@ -46,7 +50,7 @@ describe('createAuthE2eClient', () => {
     const calls = stubFetch({ status: 201, token: 'sess-token', json: { user: { id: 'u1' } } });
     const client = createAuthE2eClient(transport);
 
-    const result = await client.signUpEmail({ name: 'Ada', email: 'ada@together.dev', password: 'secret12' });
+    const result = await client.signUpEmail({ name: 'Ada', email: 'ada@together.dev', password: PASSWORD });
 
     expect(result).toEqual({ status: 201, token: 'sess-token', json: { user: { id: 'u1' } } });
     expect(calls[0]?.url).toBe('http://127.0.0.1:48999/api/auth/sign-up/email');
@@ -60,7 +64,7 @@ describe('createAuthE2eClient', () => {
     const calls = stubFetch({ token: null, json: { ok: true } });
     const client = createAuthE2eClient(transport);
 
-    await client.enableTwoFactor('tok-1', 'secret12');
+    await client.enableTwoFactor('tok-1', PASSWORD);
     await client.verifyTotp('tok-1', '123456');
     await client.getSession('tok-1');
 

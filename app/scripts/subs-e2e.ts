@@ -38,6 +38,7 @@ import {
   type RunResult,
   tsxBin,
 } from './server-harness.js';
+import { passwordFixture } from './password-fixture.js';
 
 type Run = RunResult;
 
@@ -202,7 +203,15 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
   try {
     const registered = expectOk(
       await cli(
-        ['register', '--name', 'Subs Creator', '--email', 'creator@subs.dev', '--password', 'Demo1234!'],
+        [
+          'register',
+          '--name',
+          'Subs Creator',
+          '--email',
+          'creator@subs.dev',
+          '--password',
+          passwordFixture('Demo1234!'),
+        ],
         staffHome,
       ),
       'creator register',

@@ -196,7 +196,7 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
   };
 
   await cliData(
-    await cli(['login', '--email', 'creator@together.dev', '--password', 'demo1234'], creatorHome),
+    await cli(['login', '--email', 'creator@together.dev', '--password', 'demo-password-15'], creatorHome),
     'creator login',
   );
 
@@ -526,7 +526,7 @@ const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> =
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo1234');
+  await page.getByTestId('login-password').fill('demo-password-15');
   await page.getByTestId('signin-submit').click();
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 };

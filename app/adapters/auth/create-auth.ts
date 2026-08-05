@@ -60,6 +60,14 @@ export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
 export const RESET_PASSWORD_CONTEXT_MAX_ENTRIES = 512;
 
+export const AUTH_POLICY = {
+  sessionExpiresInSeconds: 60 * 60 * 24 * 7,
+  sessionUpdateAgeSeconds: 60 * 60 * 24,
+  twoFactorBackupCodeCount: 10,
+  totpDigits: 6,
+  totpPeriodSeconds: 30,
+} as const;
+
 export const PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS = 5 * 60;
 
 const PASSKEY_SENSITIVE_COOKIE = 'passkey_sensitive';
@@ -174,7 +182,14 @@ export const isAdditionalTwoFactorPath = (path: string | undefined): boolean =>
   path !== undefined && (additionalTwoFactorPaths.has(path) || path.startsWith('/callback/'));
 
 const twoFactorForEverySignIn = () => {
-  const plugin = twoFactor({ trustDeviceMaxAge: 0 });
+  const plugin = twoFactor({
+    trustDeviceMaxAge: 0,
+    totpOptions: {
+      digits: AUTH_POLICY.totpDigits,
+      period: AUTH_POLICY.totpPeriodSeconds,
+    },
+    backupCodeOptions: { amount: AUTH_POLICY.twoFactorBackupCodeCount },
+  });
   return {
     ...plugin,
     hooks: {
@@ -271,6 +286,10 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
+    session: {
+      expiresIn: AUTH_POLICY.sessionExpiresInSeconds,
+      updateAge: AUTH_POLICY.sessionUpdateAgeSeconds,
+    },
     rateLimit: {
       enabled: true,
       // The e-mail-sending endpoints carry the anti-bombing throttle (S3). The other

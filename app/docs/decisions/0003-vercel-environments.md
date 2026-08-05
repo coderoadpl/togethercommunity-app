@@ -51,6 +51,14 @@ environment setting through the dashboard or CLI; its per-function
 maps `VERCEL_GIT_COMMIT_SHA` to the neutral `APP_COMMIT_SHA` used by health
 attestation.
 
+A serverless function does not survive between requests, so the platform entry
+carries none of the in-process tickers that `entry.node.ts` runs. Every queue
+that a long-running Node deployment drains on an interval therefore needs a
+`vercel.json` cron entry: marketing scheduling, KSeF submission, and the
+transactional e-mail outbox (`GET /api/internal/dispatch-email`). The scheduler
+GET variants authenticate with `Authorization: Bearer $CRON_SECRET`, the header
+Vercel attaches to its own cron invocations.
+
 The build runs append-only migrations against the environment database before
 building the web bundle. Preview databases are disposable. Staging and
 production migrations are forward-only and use expand then contract across
@@ -68,6 +76,13 @@ and the applicable payment, e-mail, and KSeF configuration. Production
 additionally sets `APP_ENV=production`, `NODE_ENV=production`, secure cookies,
 real payments, production KSeF, and cron secrets. Preview and staging values
 must never reuse production credentials.
+
+Vercel sets `NODE_ENV=production` on Preview deployments as well, so `NODE_ENV`
+cannot decide the boot posture on its own. `APP_ENV` names the environment:
+`preview` and `staging` are the only values that relax the production
+validations, and any other value — including an absent one — keeps the strict
+posture. Preview and staging must therefore set `APP_ENV` explicitly, or they
+boot as production and are held to production KSeF and production secrets.
 
 ## Verification and promotion
 

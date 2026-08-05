@@ -375,6 +375,7 @@ const deps = (input: {
     dispatchEmails: input.dispatchEmails ?? (async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 })),
     dispatchEmail: () => undefined,
     emailDispatchSecret: 'test-email-dispatch-secret',
+    emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
     devEmails: {
       findByRecipient: async () => null,
     },
@@ -1379,6 +1380,25 @@ describe('email dispatch route', () => {
       ok: true,
       data: { attemptsMade: 0, sentCount: 0, failedCount: 0 },
     });
+  });
+
+  it('drains the outbox for a scheduler GET carrying the cron bearer token', async () => {
+    const dispatchEmails = vi.fn(async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }));
+    const app = buildApp(deps({ dispatchEmails }));
+
+    expect((await app.request(API_PATHS.emailDispatch)).status).toBe(401);
+    expect((await app.request(API_PATHS.emailDispatch, {
+      headers: { authorization: 'Bearer test-email-dispatch-secret' },
+    })).status).toBe(401);
+    expect(dispatchEmails).not.toHaveBeenCalled();
+
+    const response = await app.request(API_PATHS.emailDispatch, {
+      headers: { authorization: 'Bearer test-email-dispatch-cron-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(dispatchEmails).toHaveBeenCalledOnce();
+    expect(dispatchEmails).toHaveBeenCalledWith('cron');
   });
 
   it('surfaces a dispatch failure as an error envelope', async () => {

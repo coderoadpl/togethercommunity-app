@@ -13,7 +13,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(214);
+    expect(inventory.routes).toHaveLength(216);
     expect(inventory.useCases).toHaveLength(188);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);

@@ -18,7 +18,7 @@ import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/in
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 
@@ -29,6 +29,7 @@ const baseDomainUrl = (): string => {
 
 export const RegisterPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -66,6 +67,8 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       name,
       email,
       password,
+      callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),
+      language,
       ...(consentRequired ? { termsAccepted } : {}),
     });
   };

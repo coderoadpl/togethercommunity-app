@@ -25,10 +25,12 @@ and the repository enforces the empty-store precondition atomically with the
 tenant and owner-grant write. Concurrent requests therefore cannot create more
 than the first workspace.
 
-The public auth configuration exposes tenant creation as available only while
-bootstrap remains possible, so the web application hides the creation form
-after the first workspace exists. Operators set `TENANT_CREATION=closed` after
-bootstrap to make the steady-state policy explicit.
+The authenticated tenant-list response derives `canCreateTenant` from that same
+decision, so the web application hides the creation form after the first
+workspace exists. Email verification is waived only for the empty-store write;
+later workspace creation in non-production `open` mode requires a verified
+address. Operators set `TENANT_CREATION=closed` after bootstrap to make the
+steady-state policy explicit.
 
 ## Consequences
 

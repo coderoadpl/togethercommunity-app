@@ -11,6 +11,7 @@ export interface PanelTenant {
 export interface PanelContextValue {
   tenant: PanelTenant;
   email: string;
+  emailVerified: boolean;
 }
 
 const PanelContext = createContext<PanelContextValue | null>(null);

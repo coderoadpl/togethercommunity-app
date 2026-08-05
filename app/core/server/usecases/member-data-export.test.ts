@@ -57,6 +57,7 @@ const context = (role: 'member' | 'staff' | 'none'): Ctx => ({
     userId: 'user-1',
     email: 'member@example.com',
     name: 'Member',
+    emailVerified: true,
     tenantId: role === 'none' ? null : 'tenant-1',
     tenantSlug: role === 'none' ? null : 'acme',
     tenantName: role === 'none' ? null : 'Acme',

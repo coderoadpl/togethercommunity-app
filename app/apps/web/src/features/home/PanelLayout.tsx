@@ -409,7 +409,7 @@ export const PanelLayout = () => {
 
   return (
     <ThemeProvider theme={theme}>
-      <PanelContextProvider value={{ tenant, email: me.data.email }}>
+      <PanelContextProvider value={{ tenant, email: me.data.email, emailVerified: me.data.emailVerified }}>
         <PanelShell tenant={tenant} email={me.data.email} />
       </PanelContextProvider>
     </ThemeProvider>

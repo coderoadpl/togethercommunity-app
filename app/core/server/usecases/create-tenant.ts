@@ -27,19 +27,63 @@ export interface CreateTenantDeps {
 
 export type TenantCreationMode = 'open' | 'bootstrap' | 'closed';
 
+export type TenantCreationPolicy = {
+  available: true;
+  allowUnverifiedEmail: boolean;
+  requireEmpty: boolean;
+  unavailableMessage: null;
+} | {
+  available: false;
+  allowUnverifiedEmail: true;
+  requireEmpty: false;
+  unavailableMessage: string;
+};
+
+export const tenantCreationPolicy = (
+  mode: TenantCreationMode,
+  hasAnyTenant: boolean,
+  emailVerified: boolean,
+): TenantCreationPolicy => {
+  if (mode === 'closed') {
+    return {
+      available: false,
+      allowUnverifiedEmail: true,
+      requireEmpty: false,
+      unavailableMessage: 'Tenant creation is closed on this instance',
+    };
+  }
+  if (mode === 'bootstrap' && hasAnyTenant) {
+    return {
+      available: false,
+      allowUnverifiedEmail: true,
+      requireEmpty: false,
+      unavailableMessage: 'Tenant creation is closed after the first workspace',
+    };
+  }
+  return {
+    available: true,
+    allowUnverifiedEmail: !hasAnyTenant,
+    requireEmpty: mode === 'bootstrap' || (!emailVerified && !hasAnyTenant),
+    unavailableMessage: null,
+  };
+};
+
 export const createTenant = async (
   ctx: Ctx,
   input: { slug: string; name: string },
   deps: CreateTenantDeps,
 ): Promise<Result<Tenant, AppError>> => {
-  const denial = authorize(ctx, 'tenant:create');
+  const hasAnyTenant = deps.tenantCreationMode === 'closed' ? false : await deps.tenants.hasAny();
+  const policy = tenantCreationPolicy(
+    deps.tenantCreationMode,
+    hasAnyTenant,
+    ctx.identity.emailVerified,
+  );
+  const denial = authorize(ctx, 'tenant:create', {
+    allowUnverifiedEmail: policy.allowUnverifiedEmail,
+  });
   if (denial !== null) return err(denial);
-  if (deps.tenantCreationMode === 'closed') {
-    return err(forbidden('Tenant creation is closed on this instance'));
-  }
-  if (deps.tenantCreationMode === 'bootstrap' && await deps.tenants.hasAny()) {
-    return err(forbidden('Tenant creation is closed after the first workspace'));
-  }
+  if (!policy.available) return err(forbidden(policy.unavailableMessage));
 
   const slug = input.slug.trim().toLowerCase();
   const parsedName = tenantSchema.shape.name.safeParse(input.name);
@@ -68,11 +112,15 @@ export const createTenant = async (
         staffRole: 'owner',
       },
     },
-    { requireEmpty: deps.tenantCreationMode === 'bootstrap' },
+    { requireEmpty: policy.requireEmpty },
   );
 
   if (tenant === null) {
-    return err(forbidden('Tenant creation is closed after the first workspace'));
+    return err(forbidden(
+      ctx.identity.emailVerified
+        ? 'Tenant creation is closed after the first workspace'
+        : 'tenant:create requires a verified email address',
+    ));
   }
 
   return ok(tenant);

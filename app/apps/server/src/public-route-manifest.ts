@@ -2,8 +2,10 @@ import type { RouterRoute } from 'hono/types';
 
 import {
   BETTER_AUTH_API_PATH_PATTERN,
+  BETTER_AUTH_EMAIL_VERIFICATION_PATH,
   BETTER_AUTH_MAGIC_LINK_PATH,
   BETTER_AUTH_PASSWORD_RESET_PATH,
+  BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import { API_PATHS } from '#core/contract/index.js';
 
@@ -28,6 +30,8 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/api/public/auth-config', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Login capability discovery' },
   { path: BETTER_AUTH_MAGIC_LINK_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
   { path: BETTER_AUTH_PASSWORD_RESET_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
+  { path: BETTER_AUTH_SIGN_UP_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
+  { path: BETTER_AUTH_EMAIL_VERIFICATION_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
   { path: BETTER_AUTH_API_PATH_PATTERN, methods: ['GET'], mutating: false, why: 'Authentication callbacks and session reads' },
   { path: BETTER_AUTH_API_PATH_PATTERN, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
   { path: '/api/webhooks/stripe/:tenantId', methods: ['POST'], mutating: true, why: 'Stripe payment webhook' },

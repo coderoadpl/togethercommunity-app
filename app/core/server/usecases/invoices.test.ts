@@ -263,6 +263,7 @@ const ctx = {
     userId: 'user-1',
     email: 'owner@example.com',
     name: 'Owner',
+    emailVerified: true,
     tenantId: 'tenant-1',
     tenantSlug: 'acme',
     tenantName: 'Acme',

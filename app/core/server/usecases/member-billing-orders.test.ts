@@ -8,6 +8,7 @@ const ctx = {
     userId: 'user-1',
     email: 'member@example.com',
     name: 'Member',
+    emailVerified: true,
     tenantId: 'tenant-1',
     tenantSlug: 'studio',
     tenantName: 'Studio',

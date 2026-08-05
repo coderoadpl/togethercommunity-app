@@ -377,6 +377,18 @@ export const en: Messages = {
         ? format('{author} posted in the “{space}” space', { author, space })
         : format('{author} posted in a space', { author }),
   },
+  emailVerification: {
+    heading: 'Email verification',
+    verifiedStatus: 'Your email address is verified.',
+    pending: ({ email }) => format('{email} is not verified yet. You can use your account and existing workspaces normally. Verification is required only to create a new workspace.', { email }),
+    resend: 'Resend verification link',
+    sending: 'Sending…',
+    sent: 'We sent a new verification link. Check your inbox.',
+    verified: 'Your email address has been verified.',
+    expired: 'This verification link has expired. Send a new link from your account settings.',
+    invalid: 'This verification link is invalid. Send a new link from your account settings.',
+    providerError: 'Email verification could not be completed. Try again.',
+  },
   security: {
     heading: 'Security',
     setOrResetPasswordHeading: 'Set or reset password',

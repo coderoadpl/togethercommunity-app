@@ -118,6 +118,7 @@ const magicLoginOptionsSchema = emailOptionSchema.extend({
 const registerOptionsSchema = authPasswordOptionsSchema.extend({
   name: z.string().min(1),
   password: z.string().min(PASSWORD_MIN_LENGTH),
+  language: z.string().min(1).optional(),
 });
 const passwordResetRequestOptionsSchema = emailOptionSchema.extend({ language: z.string().min(1).optional() });
 const resetPasswordOptionsSchema = z.object({
@@ -603,9 +604,16 @@ program
   .requiredOption('--name <name>')
   .requiredOption('--email <email>')
   .requiredOption('--password <password>')
+  .option('--language <language>', 'verification email language (pl or en)')
   .action(
     withInput(z.tuple([registerOptionsSchema]), async (ctx, [options]) => {
-      const result = await ctx.auth.signUp(options);
+      const result = await ctx.auth.signUp({
+        name: options.name,
+        email: options.email,
+        password: options.password,
+        callbackURL: new URL('/login?verification=verified', ctx.apiUrl).toString(),
+        ...(options.language === undefined ? {} : { language: options.language }),
+      });
       if (result.ok && result.value.token) {
         saveActiveProfile(ctx, { token: result.value.token });
       }
@@ -2307,6 +2315,25 @@ program
         () => revokedOtherSessions
           ? 'password changed and other sessions signed out'
           : 'password changed',
+      );
+    }),
+  );
+
+program
+  .command('resend-verification-email')
+  .description('Resend the account verification email')
+  .requiredOption('--email <email>')
+  .option('--language <language>', 'email language (pl or en)')
+  .action(
+    withInput(z.tuple([passwordResetRequestOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.auth.sendVerificationEmail({
+          email: options.email,
+          callbackURL: new URL('/login?verification=verified', ctx.apiUrl).toString(),
+          ...(options.language === undefined ? {} : { language: options.language }),
+        }),
+        ctx.json,
+        () => `verification email requested for ${options.email}`,
       );
     }),
   );

@@ -22,6 +22,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/public/auth-config` | public | read | Login capability discovery |
 | `POST /api/auth/sign-in/magic-link` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `POST /api/auth/request-password-reset` | public | mutating | Login, recovery, and magic-link authentication surface |
+| `POST /api/auth/sign-up/email` | public | mutating | Login, recovery, and magic-link authentication surface |
+| `POST /api/auth/send-verification-email` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `GET /api/auth/*` | public | read | Authentication callbacks and session reads |
 | `POST /api/auth/*` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `POST /api/webhooks/ses/:webhookToken` | public | mutating | Amazon SNS delivery webhook |

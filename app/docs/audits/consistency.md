@@ -47,3 +47,25 @@ do not copy their rows into the audit. Record transport-only, CLI-only, or
 deliberately role-limited features as explained divergences. Anything not
 examined is a blind spot, not implicit parity.
 
+## Email-verification evidence — 2026-08-04
+
+**Reviewed commit:** `bcac038897c8819af4a539ef96f8a424b791e8df` on
+`run-v140-email-verify`, with the findings below resolved by the review commit.
+**Auditor/owner:** feature owner; repository owner accepts intentional
+divergences before merge. **Next review:** the next release audit or 2026-09-04.
+
+| Contract | Server | Client | CLI | Creator account | Member account | PL | EN | Docs |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `emailVerified` identity state and `tenant:create` verdict | Soft verification mail and enumeration-safe resend; tenant-host links preserve the cookie world | Identity parsing and resend descriptor covered | Identity output includes verification state | Status and resend in tenantless home and settings | Status and resend at `/account` | Mail, status, success, error, and recovery copy | Mail, status, success, error, and recovery copy | ADR 0012, route table, permission table, self-host guide, and this audit |
+
+- **Tool evidence:** focused auth, server, and login-page tests cover subdomain,
+  custom-domain, base-domain tenant-header, bounded-context, and known provider
+  outcomes. `pnpm run check` and `pnpm run smoke` remain the merge gates.
+- **Intentional divergence:** `createTenant` reads `tenants.hasAny()` before
+  authorization to select the documented first-workspace waiver. The read is
+  non-mutating, `requireEmpty` preserves write atomicity, and denial tests prove
+  the tenant store is unchanged.
+- **Findings:** no open cross-surface mismatch remains in the reviewed scope.
+- **Blind spots:** a live production mail provider, real custom-domain DNS/TLS,
+  and inbox placement were not sampled; production owners must supply that
+  evidence before go-live.

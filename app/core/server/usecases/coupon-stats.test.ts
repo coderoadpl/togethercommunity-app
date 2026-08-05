@@ -8,6 +8,7 @@ const identity: Identity = {
   userId: 'owner-1',
   email: 'owner@example.test',
   name: 'Owner',
+  emailVerified: true,
   tenantId: 'tenant-1',
   tenantSlug: 'alpha',
   tenantName: 'Alpha',

@@ -185,6 +185,40 @@ describe('CLI password reset request', () => {
   });
 });
 
+describe('CLI verification email request', () => {
+  it('preserves the callback host and language', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const auth = createCliAuthAdapter('https://studio.example/path', () => undefined);
+
+    expect(await auth.sendVerificationEmail({
+      email: 'member@example.com',
+      callbackURL: 'https://studio.example/login?verification=verified',
+      language: 'en',
+    })).toEqual({ ok: true, value: undefined });
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      new URL('https://studio.example/api/auth/send-verification-email'),
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'https://studio.example',
+          'x-together-language': 'en',
+        },
+        body: JSON.stringify({
+          email: 'member@example.com',
+          callbackURL: 'https://studio.example/login?verification=verified',
+        }),
+      },
+    );
+  });
+});
+
 describe('CLI password change', () => {
   it('omits authorization when no session token exists', async () => {
     const fetch = vi.fn().mockResolvedValue(

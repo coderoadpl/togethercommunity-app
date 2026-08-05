@@ -119,6 +119,7 @@ describe('RegisterPage', () => {
 
   it('requires accepting configured documents and submits consent with signup', async () => {
     const signupBodies: unknown[] = [];
+    const signupLanguages: Array<string | null> = [];
     server.use(
       http.get('/api/public/offer', () =>
         HttpResponse.json({
@@ -131,6 +132,7 @@ describe('RegisterPage', () => {
       ),
       http.post('*', async ({ request }) => {
         signupBodies.push(await request.json());
+        signupLanguages.push(request.headers.get('x-together-language'));
         return HttpResponse.json({ user: { id: 'u1' } });
       }),
     );
@@ -160,9 +162,11 @@ describe('RegisterPage', () => {
         name: 'New Member',
         email: 'member@together.dev',
         password: VALID_PASSWORD,
+        callbackURL: 'http://localhost:3000/login?verification=verified',
         termsAccepted: true,
       },
     ]);
+    expect(signupLanguages).toEqual(['pl']);
   });
 
   it('shows no consent checkbox on a tenant without configured documents', async () => {

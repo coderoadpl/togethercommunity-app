@@ -8,6 +8,7 @@ const identity: Identity = {
   userId: 'user-1',
   email: 'member@together.dev',
   name: 'Member',
+  emailVerified: true,
   tenantId: 'tenant-1',
   tenantSlug: 'alpha',
   tenantName: 'Alpha',

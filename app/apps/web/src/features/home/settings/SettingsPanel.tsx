@@ -30,6 +30,7 @@ import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
+import { EmailVerificationStatus } from '../../../components/ui/EmailVerificationStatus.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import {
   BUILD_SHA,
@@ -934,6 +935,29 @@ const BuildInfoPanel = () => {
   );
 };
 
+const EmailVerificationPanel = () => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const { email, emailVerified } = usePanelContext();
+  const resendVerification = useMutation(actions.sendVerificationEmail);
+  return (
+    <SectionCard title={t.emailVerification.heading}>
+      <EmailVerificationStatus
+        email={email}
+        emailVerified={emailVerified}
+        resendPending={resendVerification.isPending}
+        resendSent={resendVerification.isSuccess}
+        resendError={resendVerification.isError}
+        onResend={() => resendVerification.mutate({
+          email,
+          callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),
+          language,
+        })}
+      />
+    </SectionCard>
+  );
+};
+
 export const SettingsPanel = () => {
   const { tenant } = usePanelContext();
   const t = useTranslations();
@@ -944,6 +968,7 @@ export const SettingsPanel = () => {
       <InvoiceSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <LegalSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <BrandingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
+      <EmailVerificationPanel />
       <SecurityPanel />
       <BuildInfoPanel />
     </PanelPage>

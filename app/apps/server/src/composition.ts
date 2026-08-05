@@ -424,6 +424,30 @@ export const selectAuthTrustedProxyHeader = (
   ? null
   : env.AUTH_TRUSTED_PROXY_HEADER ?? null;
 
+const httpsOrigin = (host: string | undefined): string | null => {
+  if (host === undefined) return null;
+  try {
+    return new URL(`https://${host}`).origin;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Preview and staging deployments answer on their own generated URL, which no
+ * project-level APP_BASE_URL can name. Production trusts only its configured
+ * origins.
+ */
+export const selectDeploymentAuthOrigins = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'VERCEL_URL' | 'VERCEL_BRANCH_URL'>,
+): string[] => {
+  if (isProductionEnvironment(env)) return [];
+  const origins = [env.VERCEL_URL, env.VERCEL_BRANCH_URL]
+    .map(httpsOrigin)
+    .filter((origin): origin is string => origin !== null);
+  return [...new Set(origins)];
+};
+
 export const selectTrustedAuthOrigins = (input: {
   appBaseUrl: string;
   baseDomain: string;
@@ -772,13 +796,14 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     },
     trustedOrigins: async () => {
       const domains = await tenantDomains.listVerifiedDomains();
-      return selectTrustedAuthOrigins({
+      const configured = selectTrustedAuthOrigins({
         appBaseUrl: env.APP_BASE_URL,
         baseDomain,
         port: env.PORT,
         singleTenantMode,
         customDomains: domains.map((domain) => domain.domain),
       });
+      return [...new Set([...configured, ...selectDeploymentAuthOrigins(env)])];
     },
   });
 

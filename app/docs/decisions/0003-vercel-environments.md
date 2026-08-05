@@ -84,6 +84,12 @@ validations, and any other value — including an absent one — keeps the stric
 posture. Preview and staging must therefore set `APP_ENV` explicitly, or they
 boot as production and are held to production KSeF and production secrets.
 
+A preview deployment answers on a generated URL that no project-level
+`APP_BASE_URL` can name, so browser requests to it carry an origin the auth
+provider would reject. Outside production the platform-provided `VERCEL_URL`
+and `VERCEL_BRANCH_URL` therefore join the trusted auth origins as HTTPS
+origins. Production keeps the configured origins only.
+
 ## Verification and promotion
 
 Run the remote attestation manually against an existing deployment. Supplying

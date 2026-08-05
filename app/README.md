@@ -282,11 +282,14 @@ renew access, handle payment failures, and end grants when subscriptions are can
 ## License
 
 Together is Fair Source software available under
-[FSL-1.1-ALv2](../LICENSE.md). Self-hosting for your own organization or
-community is allowed. Offering Together, or substantially similar
-functionality based on it, as a competing commercial hosted service is not.
-Each release automatically becomes available under Apache-2.0 two years after
-that release is made available.
+[FSL-1.1-ALv2](../LICENSE.md). The license grants use, modification, and
+redistribution for any purpose other than a Competing Use, and names internal
+use and access as a Permitted Purpose, so self-hosting Together for your own
+organization or community is allowed. A Competing Use — making Together, or
+substantially similar functionality based on it, available to others in a
+commercial product or service — is not. Each release automatically becomes
+available under Apache-2.0 two years after that release is made available.
+Read [LICENSE.md](../LICENSE.md) for the terms that govern.
 
 Learn more at [fsl.software](https://fsl.software/) and
 [fair.io](https://fair.io/).

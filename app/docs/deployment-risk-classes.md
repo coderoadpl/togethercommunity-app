@@ -11,9 +11,8 @@ functional-safety compliance or certification.
 
 Together's commercial hosted production is the **SIL-3-shaped** case. Paying
 creators, their members, and the operating business can lose access, revenue,
-trust, or contractual performance during an outage. The repository remains
-private and the product remains pre-release, but those facts do not reduce the
-target production risk class.
+trust, or contractual performance during an outage. The product remains
+pre-release, but that fact does not reduce the target production risk class.
 
 The [source matrix](https://github.com/coderoadpl/agentproofarch/blob/v1.4.0/website/docs/operations/risk-classes.md#sil-3)
 reserves SIL-3 for commercial hosted production with approval-walled promotion,

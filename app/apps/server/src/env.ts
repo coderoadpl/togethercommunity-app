@@ -51,6 +51,8 @@ export const envSchema = z
     APP_BASE_DOMAIN: optionalNonEmptyString,
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     APP_COMMIT_SHA: optionalNonEmptyString,
+    VERCEL_URL: optionalNonEmptyString,
+    VERCEL_BRANCH_URL: optionalNonEmptyString,
     AUTH_TRUSTED_PROXY_HEADER: optionalHeaderName,
     TENANT_CREATION: z.enum(['open', 'closed']).default('open'),
     BETTER_AUTH_SECRET: z.string().min(16).default('dev-only-secret-do-not-use-in-prod'),

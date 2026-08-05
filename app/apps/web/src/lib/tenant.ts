@@ -6,7 +6,7 @@ export const tenantUrl = (slug: string): string => {
   return `${protocol}//${slug}.${base}${port ? `:${port}` : ''}`;
 };
 
-/** Base domain the SPA is served under (e.g. `localhost`, `together.com`). */
+/** Base domain the SPA is served under (e.g. `localhost`, `together.example`). */
 export const appBaseDomain = (): string => import.meta.env.VITE_APP_BASE_DOMAIN ?? 'localhost';
 
 /**

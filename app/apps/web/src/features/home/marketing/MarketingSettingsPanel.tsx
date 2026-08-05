@@ -146,7 +146,7 @@ const SesOnboardingWizard = ({
       {simulator.data?.waitingForWebhook === true ? <Alert severity="info">{t.marketing.wizardWaitingWebhook}</Alert> : null}
       {error === null || error === undefined ? null : <Alert severity="error">{localizeError(error, t)}</Alert>}
       <Link
-        href="https://github.com/coderoadpl/together/blob/main/docs/ses-onboarding.md"
+        href="https://github.com/coderoadpl/togethercommunity-app/blob/main/docs/ses-onboarding.md"
         target="_blank"
         rel="noreferrer"
       >
@@ -443,7 +443,7 @@ export const MarketingSettingsPanel = () => {
         <Alert severity="info">
           {t.marketing.trackingPrivacyNote}{' '}
           <Link
-            href="https://github.com/coderoadpl/together/blob/main/docs/marketing-automation-api.md#open-and-click-events"
+            href="https://github.com/coderoadpl/togethercommunity-app/blob/main/docs/marketing-automation-api.md#open-and-click-events"
             target="_blank"
             rel="noreferrer"
           >

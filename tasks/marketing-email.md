@@ -26,7 +26,7 @@
 >    derived from those tools (trademarks).
 
 > Owner decisions after reading the e-mail research DECISION note
-> (prywatne artefakty audytowe właściciela).
+> (the owner's private audit artifacts).
 > Supersedes the "on hold" state; implementation proceeds in phases below.
 
 ## Architectural decisions (binding)

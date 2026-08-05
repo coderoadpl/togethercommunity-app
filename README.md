@@ -14,10 +14,10 @@ i reguły architektury; dokumenty nadal opisują kierunek dalszego rozwoju.
 
 | Plik | Zawartość |
 |---|---|
-| `tasks/prd-together.md` | **Aktualny PRD** — założenia, zasady, fazy, user stories, wymagania |
+| [`tasks/prd-together.md`](tasks/prd-together.md) | **Aktualny PRD** — założenia, zasady, fazy, user stories, wymagania |
 | [`app/README.md`](app/README.md) | **Quickstart** — uruchomienie lokalnego demo, konta testowe, CLI |
 | [`architecture.md`](architecture.md) | Architektura Together — granice systemu, warstwy, słownik i reguły |
-| `docs/ses-onboarding.md` | Konfiguracja SES, gotowe odpowiedzi do wniosku AWS i awaryjne opcje SMTP |
+| [`docs/ses-onboarding.md`](docs/ses-onboarding.md) | Konfiguracja SES, gotowe odpowiedzi do wniosku AWS i awaryjne opcje SMTP |
 | [`SECURITY.md`](SECURITY.md) | Prywatne zgłaszanie podatności, zakres i aktualna polityka wsparcia |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Jak zgłaszać zmiany — przebieg kontrybucji, wymagane bramki i przegląd |
 | [`CLA.md`](CLA.md) | Umowa licencyjna kontrybutora (CLA) podpisywana przy pierwszym PR |
@@ -27,7 +27,7 @@ i reguły architektury; dokumenty nadal opisują kierunek dalszego rozwoju.
 
 ## Nazwa i domena
 
-Nazwa: **Together** (zdecydowana). Domena: otwarta kwestia — `together.*` zajęte, warianty domen do sprawdzenia (lista w prywatnych materiałach).
+Nazwa: **Together** (zdecydowana). Domena zostanie ogłoszona przy starcie wersji hostowanej.
 
 ## Licencja
 

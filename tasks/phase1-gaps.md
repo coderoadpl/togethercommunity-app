@@ -1,5 +1,7 @@
 # Phase 0-1 gap list — execution queue
 
+> Snapshot of the 2026-08-03 reality audit. Packages listed as open may have shipped since — the git log is authoritative.
+
 > **Source:** reality audit of `tasks/prd-together.md` against the code on branch `run-planning` (2026-08-03). 41 of 78 acceptance criteria verified shipped; the 37 unticked ones are packaged below.
 > **Purpose:** ordered, implementable queue. One work package = one PR-sized unit with a machine-checkable done-when.
 > **Sizes:** S ≤ 1 day, M ≤ 3 days, L > 3 days (split on entry).

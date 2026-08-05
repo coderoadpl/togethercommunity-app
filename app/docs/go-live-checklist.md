@@ -212,29 +212,28 @@ is valid only for unsubscribe suppressions. Erasure suppressions store
 
 ### 10. Rate limiting
 
-**STATUS:** owner-action
+**STATUS:** done; edge control remains owner-action
 
 The only request limiter is Better Auth's built-in limiter. Custom rules allow
 20 requests per 60 seconds for `/sign-in/magic-link`,
 `/request-password-reset`, `/magic-link/verify`, and `/sign-in/email`
-(`adapters/auth/create-auth.ts:114-127`). No storage is configured, so counters
-are in-memory per process and keyed by client IP.
-
-Counters reset on every deploy and cold start. Separate Vercel instances do not
-share a bucket (`vercel.json`, `apps/server/src/entry.vercel.ts`), so effective
-throughput is 20 times the number of active instances. A NAT, corporate network,
-or mobile-carrier cohort also shares one bucket on the paying-member magic-link
-login path.
+(`adapters/auth/create-auth.ts`). Its windows use database storage, backed by
+`rate_limit`, so restarts and concurrent serverless instances share buckets.
+The auth edge discards client-supplied forwarding input. Set
+`AUTH_TRUSTED_PROXY_HEADER=direct` when Node receives traffic directly; the
+socket peer is then authoritative. The shipped Caddy configuration overwrites
+`X-Forwarded-For`, so its sanctioned value is `x-forwarded-for`. Other
+production reverse proxies must overwrite the selected header. Vercel
+deployments use the platform-written `x-vercel-forwarded-for` header.
 
 Nothing else rate-limits requests. `rateLimited` exists but is unused
 (`core/domain/errors.ts:65`), while `marketing_throttle_buckets` is a per-tenant
 SES sending budget rather than a request limiter
 (`adapters/db/app-schema.ts:1387`).
 
-Before launch, add an edge or WAF rule in front of `/api/auth/*`. Treat the
-current rule as a bot speed bump, not an account-security control. Record a
-follow-up to give Better Auth a database-backed store shared across instances
-and cold starts.
+Before launch, add an edge or WAF rule in front of `/api/auth/*`. The durable
+application limiter is defense in depth and does not replace the launch edge
+control.
 
 ### 11. Real Stripe verification runbook
 

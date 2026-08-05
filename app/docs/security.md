@@ -8,6 +8,18 @@ not expose CORS headers. Better Auth validates `Origin` on its authentication
 POST routes, and its session cookies remain `HttpOnly` and `SameSite=Lax`;
 production enables the `Secure` flag. Sessions span tenant subdomains on a real
 base domain, while each custom domain remains a separate cookie world.
+Non-local authentication origins are HTTPS-only. HTTP origins are composed only
+for `localhost`, and boot rejects an HTTP `APP_BASE_URL` outside local
+development.
+
+Better Auth stores rate-limit windows in PostgreSQL so deployments, process
+restarts, and serverless isolates share one bucket. Production boot requires an
+explicit client-address mode. Set `AUTH_TRUSTED_PROXY_HEADER=direct` when Node
+receives traffic directly and the socket peer is authoritative. The shipped
+Caddy proxy overwrites `X-Forwarded-For` and uses `x-forwarded-for`; other
+proxies must overwrite the selected header. Vercel uses the platform-written
+`x-vercel-forwarded-for` header. Missing, malformed, and multi-hop configured
+values are not treated as client addresses and emit one diagnostic per process.
 
 New passwords require at least 15 characters, with no character-class rules.
 The 15-character floor is required because MFA remains optional; it applies to

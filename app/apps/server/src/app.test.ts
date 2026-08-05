@@ -582,6 +582,7 @@ const deps = (input: {
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
+    authTrustedProxyHeader: null,
   };
   return appDeps;
 };
@@ -2322,6 +2323,24 @@ describe('public auth-config route', () => {
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
   });
 
+});
+
+describe('tenant creation verdict route', () => {
+  it.each([
+    { tenantCreationMode: 'open' as const, canCreateTenant: true },
+    { tenantCreationMode: 'closed' as const, canCreateTenant: false },
+  ])('exposes $canCreateTenant in $tenantCreationMode mode', async (input) => {
+    const response = await scopedApp('none', {
+      overrides: { tenantCreationMode: input.tenantCreationMode },
+    }).request(API_PATHS.tenants);
+    const body: unknown = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      data: { canCreateTenant: input.canCreateTenant },
+    });
+  });
 });
 
 type RequestMagicLinkInput = Parameters<AppDeps['authPort']['requestMagicLink']>[0];

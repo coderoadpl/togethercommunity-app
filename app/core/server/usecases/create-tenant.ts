@@ -1,5 +1,6 @@
 import {
   appError,
+  decideTenantCreation,
   err,
   forbidden,
   isReservedTenantSlug,
@@ -10,6 +11,7 @@ import {
   type AppError,
   type Result,
   type Tenant,
+  type TenantCreationMode,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -24,8 +26,6 @@ export interface CreateTenantDeps {
   clock: Clock;
   tenantCreationMode: TenantCreationMode;
 }
-
-export type TenantCreationMode = 'open' | 'bootstrap' | 'closed';
 
 export type TenantCreationPolicy = {
   available: true;
@@ -44,20 +44,15 @@ export const tenantCreationPolicy = (
   hasAnyTenant: boolean,
   emailVerified: boolean,
 ): TenantCreationPolicy => {
-  if (mode === 'closed') {
+  const decision = decideTenantCreation({ principalAllowed: true, mode, hasAnyTenant });
+  if (!decision.allowed) {
     return {
       available: false,
       allowUnverifiedEmail: true,
       requireEmpty: false,
-      unavailableMessage: 'Tenant creation is closed on this instance',
-    };
-  }
-  if (mode === 'bootstrap' && hasAnyTenant) {
-    return {
-      available: false,
-      allowUnverifiedEmail: true,
-      requireEmpty: false,
-      unavailableMessage: 'Tenant creation is closed after the first workspace',
+      unavailableMessage: decision.reason === 'closed'
+        ? 'Tenant creation is closed on this instance'
+        : 'Tenant creation is closed after the first workspace',
     };
   }
   return {

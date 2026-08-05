@@ -13,8 +13,10 @@ cp .env.self-host.example .env
 Fill every empty value in `.env`. Generate URL-safe secrets with
 `openssl rand -hex 32`; use `openssl rand -base64 32` for
 `SECRETS_MASTER_KEY`. `POSTGRES_PASSWORD` must remain URL-safe. Keep
-`APP_BASE_DOMAIN` empty for single-tenant mode, then start Postgres, Together,
-and Caddy:
+`APP_BASE_DOMAIN` empty for single-tenant mode. The included Caddy proxy
+overwrites `X-Forwarded-For`, matching the template's sanctioned
+`AUTH_TRUSTED_PROXY_HEADER=x-forwarded-for`. Then start Postgres, Together, and
+Caddy:
 
 ```bash
 docker compose up -d --build

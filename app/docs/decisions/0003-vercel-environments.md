@@ -62,11 +62,12 @@ The function runs in Vercel `fra1`; the Neon project must remain in
 resolution uses `X-Tenant` until a wildcard base domain is attached.
 
 Every environment sets `DATABASE_URL`, `DB_DRIVER=node-postgres`,
-`APP_BASE_URL`, `APP_BASE_DOMAIN`, production-grade secrets, and the applicable
-payment, e-mail, and KSeF configuration. Production additionally sets
-`APP_ENV=production`, `NODE_ENV=production`, secure cookies, real payments,
-production KSeF, and cron secrets. Preview and staging values must never reuse
-production credentials.
+`APP_BASE_URL`, `APP_BASE_DOMAIN`,
+`AUTH_TRUSTED_PROXY_HEADER=x-vercel-forwarded-for`, production-grade secrets,
+and the applicable payment, e-mail, and KSeF configuration. Production
+additionally sets `APP_ENV=production`, `NODE_ENV=production`, secure cookies,
+real payments, production KSeF, and cron secrets. Preview and staging values
+must never reuse production credentials.
 
 ## Verification and promotion
 

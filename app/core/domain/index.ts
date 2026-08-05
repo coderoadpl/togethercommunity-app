@@ -25,6 +25,7 @@ export * from './moderation.js';
 export * from './member-event.js';
 export * from './space.js';
 export * from './tenant.js';
+export * from './tenant-creation.js';
 export * from './support.js';
 export * from './consent.js';
 export * from './tenant-secret.js';

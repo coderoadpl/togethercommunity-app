@@ -213,10 +213,15 @@ import type {
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
-  TenantCreationMode,
 } from '#core/server/index.js';
 import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
-import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
+import {
+  ok,
+  type AppError,
+  type KsefEnvironment,
+  type Result,
+  type TenantCreationMode,
+} from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import type { Env } from './env.js';
@@ -332,6 +337,7 @@ export interface AppDeps {
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
   authConfig: AuthConfig;
+  authTrustedProxyHeader: string | null;
   marketing?: MarketingAppDeps;
 }
 
@@ -411,21 +417,33 @@ export const createMultipleTenantsReporter = (
   };
 };
 
-export const selectBaseTrustedOrigins = (input: {
+export const selectAuthTrustedProxyHeader = (
+  env: Pick<Env, 'AUTH_TRUSTED_PROXY_HEADER'>,
+): string | null => env.AUTH_TRUSTED_PROXY_HEADER === 'direct'
+  ? null
+  : env.AUTH_TRUSTED_PROXY_HEADER ?? null;
+
+export const selectTrustedAuthOrigins = (input: {
   appBaseUrl: string;
   baseDomain: string;
   port: number;
   singleTenantMode: boolean;
-}): string[] => input.singleTenantMode
-  ? [input.appBaseUrl]
-  : [
-      input.appBaseUrl,
-      `http://*.${input.baseDomain}`,
-      `https://*.${input.baseDomain}`,
-      // Wildcard entries above don't match origins carrying an explicit port.
-      `http://*.${input.baseDomain}:${input.port}`,
-      `https://*.${input.baseDomain}:${input.port}`,
-    ];
+  customDomains: readonly string[];
+}): string[] => {
+  const subdomainSchemes = input.baseDomain === 'localhost'
+    ? ['http', 'https'] as const
+    : ['https'] as const;
+  return [
+    input.appBaseUrl,
+    ...(input.singleTenantMode
+      ? []
+      : subdomainSchemes.flatMap((scheme) => [
+          `${scheme}://*.${input.baseDomain}`,
+          `${scheme}://*.${input.baseDomain}:${input.port}`,
+        ])),
+    ...input.customDomains.map((domain) => `https://${domain}`),
+  ];
+};
 
 /**
  * Composition root — the ONLY place where env decides which adapters run.
@@ -714,13 +732,6 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
       : null;
 
-  const baseTrustedOrigins = selectBaseTrustedOrigins({
-    appBaseUrl: env.APP_BASE_URL,
-    baseDomain,
-    port: env.PORT,
-    singleTenantMode,
-  });
-
   const auth = createAuth(db, {
     secret: env.BETTER_AUTH_SECRET,
     baseUrl: env.APP_BASE_URL,
@@ -760,11 +771,13 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     },
     trustedOrigins: async () => {
       const domains = await tenantDomains.listVerifiedDomains();
-      return [
-        ...baseTrustedOrigins,
-        ...domains.map((domain) => `https://${domain.domain}`),
-        ...domains.map((domain) => `http://${domain.domain}`),
-      ];
+      return selectTrustedAuthOrigins({
+        appBaseUrl: env.APP_BASE_URL,
+        baseDomain,
+        port: env.PORT,
+        singleTenantMode,
+        customDomains: domains.map((domain) => domain.domain),
+      });
     },
   });
 
@@ -876,6 +889,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     },
     authConfig: { googleEnabled: google !== null },
+    authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketing: {
       runs: schedulerRuns,
       definitions,

@@ -205,6 +205,24 @@ for (const key of envKeys) {
   }
 }
 
+const productionProbe = envSchema.safeParse({ NODE_ENV: 'production' });
+if (productionProbe.success) {
+  problems.push('[env-production] production schema probe unexpectedly passed');
+} else {
+  const productionRequiredKeys = Object.keys(productionProbe.error.flatten().fieldErrors);
+  const productionTemplates = readdirSync(appRoot)
+    .filter((name) => name.startsWith('.env') && name.endsWith('.example'))
+    .map((name) => [name, readFileSync(join(appRoot, name), 'utf8')] as const)
+    .filter(([, contents]) => /^(?:NODE_ENV|APP_ENV)=production$/m.test(contents));
+  for (const [name, contents] of productionTemplates) {
+    for (const key of productionRequiredKeys) {
+      if (!new RegExp(`^${key}=`, 'm').test(contents)) {
+        problems.push(`[env-production] "${key}" is absent from ${name}`);
+      }
+    }
+  }
+}
+
 const linkPattern = /\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 for (const [rel, raw] of markdownFiles) {
   for (const delimiter of leakedDelimiters) {

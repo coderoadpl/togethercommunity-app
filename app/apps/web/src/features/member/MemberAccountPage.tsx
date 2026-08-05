@@ -8,13 +8,14 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
@@ -28,6 +29,7 @@ const isUnauthorized = (error: Error | null) =>
 export const MemberAccountPage = () => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const me = useQuery(actions.me);
   const billingOrders = useQuery(actions.memberBillingOrders);
@@ -50,6 +52,23 @@ export const MemberAccountPage = () => {
   const [supportSubject, setSupportSubject] = useState('');
   const [supportBody, setSupportBody] = useState('');
   const support = useMutation(actions.sendSupportMessage);
+  const passkeys = useQuery(actions.passkeys);
+  const registerPasskey = useMutation({
+    ...actions.registerPasskey,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.passkeysInvalidates());
+    },
+  });
+  const removePasskey = useMutation({
+    ...actions.removePasskey,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.passkeysInvalidates());
+    },
+  });
+  const enableTwoFactor = useMutation(actions.enableTwoFactor);
+  const verifyTotp = useMutation(actions.verifyTotp);
+  const disableTwoFactor = useMutation(actions.disableTwoFactor);
+  const regenerateBackupCodes = useMutation(actions.regenerateBackupCodes);
 
   const unauthorized = isUnauthorized(me.error);
 
@@ -58,6 +77,7 @@ export const MemberAccountPage = () => {
   }, [navigate, unauthorized]);
 
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
+  const requestPasskeyPasswordSetup = useMutation(actions.requestPasswordReset);
   const changePassword = useMutation(actions.changePassword);
 
   if (me.isPending) {
@@ -83,6 +103,11 @@ export const MemberAccountPage = () => {
   }
 
   const email = me.data.email;
+  const passwordSetupInput = {
+    email,
+    redirectTo: new URL('/reset-password', window.location.origin).toString(),
+    language,
+  };
   const billingPortalUrl = tenantSettings.data?.settings.billingPortalUrl ?? null;
   const billedOrders = billingOrders.data?.orders ?? [];
   const downloadDataExport = async () => {
@@ -215,11 +240,7 @@ export const MemberAccountPage = () => {
                 variant="outlined"
                 data-testid="account-reset-password"
                 disabled={requestPasswordReset.isPending}
-                onClick={() => requestPasswordReset.mutate({
-                  email,
-                  redirectTo: new URL('/reset-password', window.location.origin).toString(),
-                  language,
-                })}
+                onClick={() => requestPasswordReset.mutate(passwordSetupInput)}
               >
                 {requestPasswordReset.isPending
                   ? t.account.resetSending
@@ -234,6 +255,59 @@ export const MemberAccountPage = () => {
             {requestPasswordReset.isError ? (
               <StatusView state={{ kind: 'error', message: localizeError(requestPasswordReset.error, t) }} />
             ) : null}
+        </SectionCard>
+
+        <SectionCard title={t.security.heading} data-testid="account-security-methods">
+          <AuthenticationMethods
+            passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error }}
+            registerPasskey={{
+              pending: registerPasskey.isPending,
+              success: registerPasskey.isSuccess,
+              error: registerPasskey.error,
+              run: registerPasskey.mutate,
+            }}
+            removePasskey={{
+              pending: removePasskey.isPending,
+              success: removePasskey.isSuccess,
+              error: removePasskey.error,
+              run: removePasskey.mutate,
+            }}
+            requestPasswordSetup={{
+              pending: requestPasskeyPasswordSetup.isPending,
+              success: requestPasskeyPasswordSetup.isSuccess,
+              error: requestPasskeyPasswordSetup.error,
+              run: () => requestPasskeyPasswordSetup.mutate(passwordSetupInput),
+            }}
+            enableTwoFactor={{
+              data: enableTwoFactor.data,
+              submittedAt: enableTwoFactor.submittedAt,
+              pending: enableTwoFactor.isPending,
+              success: enableTwoFactor.isSuccess,
+              error: enableTwoFactor.error,
+              run: enableTwoFactor.mutate,
+            }}
+            verifyTotp={{
+              pending: verifyTotp.isPending,
+              success: verifyTotp.isSuccess,
+              error: verifyTotp.error,
+              run: verifyTotp.mutate,
+            }}
+            disableTwoFactor={{
+              submittedAt: disableTwoFactor.submittedAt,
+              pending: disableTwoFactor.isPending,
+              success: disableTwoFactor.isSuccess,
+              error: disableTwoFactor.error,
+              run: disableTwoFactor.mutate,
+            }}
+            regenerateBackupCodes={{
+              data: regenerateBackupCodes.data,
+              submittedAt: regenerateBackupCodes.submittedAt,
+              pending: regenerateBackupCodes.isPending,
+              success: regenerateBackupCodes.isSuccess,
+              error: regenerateBackupCodes.error,
+              run: regenerateBackupCodes.mutate,
+            }}
+          />
         </SectionCard>
 
         {billingPortalUrl ? (

@@ -1,12 +1,19 @@
-import type { WriteResult } from './http.js';
+import type { ReadResult, WriteResult } from './http.js';
 
 export interface AuthSessionResult {
   token: string | null;
+  twoFactorRedirect: boolean;
 }
 
 export interface TwoFactorEnrollment {
   totpURI: string;
   backupCodes: string[];
+}
+
+export interface PasskeyInfo {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 /** @public */
@@ -41,9 +48,14 @@ export interface AuthClientPort {
     revokeOtherSessions: boolean;
   }): Promise<WriteResult<void>>;
   signOut(): Promise<WriteResult<void>>;
-  registerPasskey(name: string): Promise<WriteResult<void>>;
+  registerPasskey(input: { name: string; password: string }): Promise<WriteResult<void>>;
+  listPasskeys(): Promise<ReadResult<PasskeyInfo[]>>;
+  removePasskey(input: { id: string; password: string }): Promise<WriteResult<void>>;
   signInWithPasskey(): Promise<WriteResult<AuthSessionResult>>;
   enableTwoFactor(password: string): Promise<WriteResult<TwoFactorEnrollment>>;
   verifyTotp(code: string): Promise<WriteResult<AuthSessionResult>>;
+  verifyBackupCode(code: string): Promise<WriteResult<AuthSessionResult>>;
+  disableTwoFactor(password: string): Promise<WriteResult<void>>;
+  regenerateBackupCodes(password: string): Promise<WriteResult<string[]>>;
   signInWithGoogle(): Promise<WriteResult<void>>;
 }

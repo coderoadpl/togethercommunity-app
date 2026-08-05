@@ -28,6 +28,7 @@ import type { ExemptionBasisKind, TenantSecretKey, TenantSocialLink } from '#cor
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import {
@@ -790,29 +791,31 @@ const SecurityPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const { email } = usePanelContext();
-  const [passkeyName, setPasskeyName] = useState('');
-  const [password, setPassword] = useState('');
-  const [totpCode, setTotpCode] = useState('');
-
-  const registerPasskey = useMutation(actions.registerPasskey);
+  const queryClient = useQueryClient();
+  const passkeys = useQuery(actions.passkeys);
+  const registerPasskey = useMutation({
+    ...actions.registerPasskey,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.passkeysInvalidates());
+    },
+  });
+  const removePasskey = useMutation({
+    ...actions.removePasskey,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.passkeysInvalidates());
+    },
+  });
   const enableTwoFactor = useMutation(actions.enableTwoFactor);
   const verifyTotp = useMutation(actions.verifyTotp);
+  const disableTwoFactor = useMutation(actions.disableTwoFactor);
+  const regenerateBackupCodes = useMutation(actions.regenerateBackupCodes);
   const changePassword = useMutation(actions.changePassword);
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
-
-  const addPasskey = (event: FormEvent) => {
-    event.preventDefault();
-    registerPasskey.mutate({ name: passkeyName.trim() || t.security.defaultPasskeyName });
-  };
-
-  const enrollTwoFactor = (event: FormEvent) => {
-    event.preventDefault();
-    enableTwoFactor.mutate({ password });
-  };
-
-  const submitTotp = (event: FormEvent) => {
-    event.preventDefault();
-    verifyTotp.mutate({ code: totpCode.trim() });
+  const requestPasskeyPasswordSetup = useMutation(actions.requestPasswordReset);
+  const passwordSetupInput = {
+    email,
+    redirectTo: new URL('/reset-password', window.location.origin).toString(),
+    language,
   };
 
   return (
@@ -833,11 +836,7 @@ const SecurityPanel = () => {
               variant="outlined"
               data-testid="security-reset-password"
               disabled={requestPasswordReset.isPending}
-              onClick={() => requestPasswordReset.mutate({
-                email,
-                redirectTo: new URL('/reset-password', window.location.origin).toString(),
-                language,
-              })}
+              onClick={() => requestPasswordReset.mutate(passwordSetupInput)}
             >
               {requestPasswordReset.isPending
                 ? t.security.resetSending
@@ -854,96 +853,56 @@ const SecurityPanel = () => {
           </Box>
         </Box>
 
-        <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
-          <Eyebrow variant="overline" component="h3">
-            {t.security.passkeys}
-          </Eyebrow>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="passkey-name">{t.security.passkeyNameLabel}</FormLabel>
-            <OutlinedInput
-              id="passkey-name"
-              value={passkeyName}
-              onChange={(event) => setPasskeyName(event.target.value)}
-              inputProps={{ 'data-testid': 'passkey-name' }}
-              placeholder={t.security.defaultPasskeyName}
-            />
-          </FormControl>
-          <Button type="submit" variant="outlined" data-testid="add-passkey" disabled={registerPasskey.isPending}>
-            {registerPasskey.isPending ? t.security.addingPasskey : t.security.addPasskey}
-          </Button>
-          {registerPasskey.isSuccess ? (
-            <Typography variant="caption" component="p" data-testid="passkey-added">
-              {t.security.passkeyAdded}
-            </Typography>
-          ) : null}
-          {registerPasskey.isError ? <Alert>{localizeError(registerPasskey.error, t)}</Alert> : null}
-        </Box>
-
-        <Box component="form" onSubmit={enrollTwoFactor} sx={{ display: 'grid', gap: '0.8rem' }}>
-          <Eyebrow variant="overline" component="h3">
-            {t.security.twoFactor}
-          </Eyebrow>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="enable-2fa-password">{t.security.accountPasswordLabel}</FormLabel>
-            <OutlinedInput
-              id="enable-2fa-password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              inputProps={{ 'data-testid': 'enable-2fa-password' }}
-              autoComplete="current-password"
-            />
-          </FormControl>
-          <Button type="submit" variant="outlined" data-testid="enable-2fa" disabled={enableTwoFactor.isPending}>
-            {enableTwoFactor.isPending ? t.security.enabling : t.security.enableTwoFactor}
-          </Button>
-          {enableTwoFactor.isError ? <Alert>{localizeError(enableTwoFactor.error, t)}</Alert> : null}
-        </Box>
-
-        {enableTwoFactor.data ? (
-          <Box sx={{ display: 'grid', gap: '0.8rem' }}>
-            <Eyebrow variant="overline" component="h3">
-              {t.security.scanOrCopyKey}
-            </Eyebrow>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="totp-uri">{t.security.otpauthUriLabel}</FormLabel>
-              <OutlinedInput
-                id="totp-uri"
-                readOnly
-                value={enableTwoFactor.data.totpURI}
-                inputProps={{ 'data-testid': 'totp-uri' }}
-              />
-            </FormControl>
-            <Box component="ul" sx={{ display: 'grid', gap: '0.2rem', pl: '1.2rem', m: 0 }}>
-              {enableTwoFactor.data.backupCodes.map((code) => (
-                <Typography key={code} component="li" variant="caption">
-                  {code}
-                </Typography>
-              ))}
-            </Box>
-            <Box component="form" onSubmit={submitTotp} sx={{ display: 'grid', gap: '0.8rem' }}>
-              <FormControl fullWidth>
-                <FormLabel htmlFor="verify-totp-code">{t.security.authenticatorCodeLabel}</FormLabel>
-                <OutlinedInput
-                  id="verify-totp-code"
-                  value={totpCode}
-                  onChange={(event) => setTotpCode(event.target.value)}
-                  inputProps={{ 'data-testid': 'verify-totp-code' }}
-                  autoComplete="one-time-code"
-                />
-              </FormControl>
-              <Button type="submit" variant="contained" data-testid="verify-totp" disabled={verifyTotp.isPending}>
-                {verifyTotp.isPending ? t.security.verifying : t.security.verifyCode}
-              </Button>
-              {verifyTotp.isSuccess ? (
-                <Typography variant="caption" component="p" data-testid="totp-verified">
-                  {t.security.twoFactorOn}
-                </Typography>
-              ) : null}
-              {verifyTotp.isError ? <Alert>{localizeError(verifyTotp.error, t)}</Alert> : null}
-            </Box>
-          </Box>
-        ) : null}
+        <AuthenticationMethods
+          passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error }}
+          registerPasskey={{
+            pending: registerPasskey.isPending,
+            success: registerPasskey.isSuccess,
+            error: registerPasskey.error,
+            run: registerPasskey.mutate,
+          }}
+          removePasskey={{
+            pending: removePasskey.isPending,
+            success: removePasskey.isSuccess,
+            error: removePasskey.error,
+            run: removePasskey.mutate,
+          }}
+          requestPasswordSetup={{
+            pending: requestPasskeyPasswordSetup.isPending,
+            success: requestPasskeyPasswordSetup.isSuccess,
+            error: requestPasskeyPasswordSetup.error,
+            run: () => requestPasskeyPasswordSetup.mutate(passwordSetupInput),
+          }}
+          enableTwoFactor={{
+            data: enableTwoFactor.data,
+            submittedAt: enableTwoFactor.submittedAt,
+            pending: enableTwoFactor.isPending,
+            success: enableTwoFactor.isSuccess,
+            error: enableTwoFactor.error,
+            run: enableTwoFactor.mutate,
+          }}
+          verifyTotp={{
+            pending: verifyTotp.isPending,
+            success: verifyTotp.isSuccess,
+            error: verifyTotp.error,
+            run: verifyTotp.mutate,
+          }}
+          disableTwoFactor={{
+            submittedAt: disableTwoFactor.submittedAt,
+            pending: disableTwoFactor.isPending,
+            success: disableTwoFactor.isSuccess,
+            error: disableTwoFactor.error,
+            run: disableTwoFactor.mutate,
+          }}
+          regenerateBackupCodes={{
+            data: regenerateBackupCodes.data,
+            submittedAt: regenerateBackupCodes.submittedAt,
+            pending: regenerateBackupCodes.isPending,
+            success: regenerateBackupCodes.isSuccess,
+            error: regenerateBackupCodes.error,
+            run: regenerateBackupCodes.mutate,
+          }}
+        />
       </Stack>
     </SectionCard>
   );

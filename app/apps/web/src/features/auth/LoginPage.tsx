@@ -30,6 +30,10 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [magicEmail, setMagicEmail] = useState('');
   const [requestedMagicEmail, setRequestedMagicEmail] = useState('');
+  const [twoFactorRequired, setTwoFactorRequired] = useState(
+    () => new URLSearchParams(window.location.search).get('twoFactor') === 'required',
+  );
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -38,7 +42,11 @@ export const LoginPage = () => {
 
   const signIn = useMutation({
     ...actions.signIn,
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      if (result.twoFactorRedirect) {
+        setTwoFactorRequired(true);
+        return;
+      }
       await queryClient.invalidateQueries();
       await navigate({ to: '/' });
     },
@@ -46,13 +54,31 @@ export const LoginPage = () => {
 
   const signInWithPasskey = useMutation({
     ...actions.signInWithPasskey,
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      if (result.twoFactorRedirect) {
+        setTwoFactorRequired(true);
+        return;
+      }
       queryClient.clear();
       await navigate({ to: '/' });
     },
   });
 
   const signInWithGoogle = useMutation(actions.signInWithGoogle);
+
+  const completeTwoFactor = async () => {
+    setTwoFactorRequired(false);
+    queryClient.clear();
+    await navigate({ to: '/' });
+  };
+  const verifyTotp = useMutation({
+    ...actions.verifyTotp,
+    onSuccess: completeTwoFactor,
+  });
+  const verifyBackupCode = useMutation({
+    ...actions.verifyBackupCode,
+    onSuccess: completeTwoFactor,
+  });
 
   const requestMagicLink = useMutation({
     ...actions.requestMagicLink,
@@ -75,6 +101,11 @@ export const LoginPage = () => {
     event.preventDefault();
     setRequestedMagicEmail('');
     requestMagicLink.mutate({ email: magicEmail, callbackURL: `${window.location.origin}/my`, language });
+  };
+
+  const submitTwoFactor = (event: FormEvent) => {
+    event.preventDefault();
+    verifyTotp.mutate({ code: twoFactorCode.trim() });
   };
 
   const footer = (
@@ -135,6 +166,49 @@ export const LoginPage = () => {
             </Button>
           ) : null}
           {devMagicLink.isError ? <Alert>{localizeError(devMagicLink.error, t)}</Alert> : null}
+        </Stack>
+      </FocusCard>
+    );
+  }
+
+  if (twoFactorRequired) {
+    return (
+      <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+        <Stack component="form" onSubmit={submitTwoFactor} useFlexGap spacing="1rem" data-testid="two-factor-challenge">
+          <CardTitle variant="h1">{t.auth.twoFactorTitle}</CardTitle>
+          <Typography variant="body1">{t.auth.twoFactorIntro}</Typography>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="two-factor-code">{t.auth.twoFactorCodeLabel}</FormLabel>
+            <OutlinedInput
+              id="two-factor-code"
+              value={twoFactorCode}
+              onChange={(event) => setTwoFactorCode(event.target.value)}
+              autoComplete="one-time-code"
+              inputProps={{ 'data-testid': 'two-factor-code' }}
+              required
+            />
+          </FormControl>
+          <Button
+            type="submit"
+            variant="contained"
+            fullWidth
+            disabled={verifyTotp.isPending || verifyBackupCode.isPending || twoFactorCode.trim().length === 0}
+            data-testid="verify-login-totp"
+          >
+            {verifyTotp.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorVerifyTotp}
+          </Button>
+          <Button
+            type="button"
+            variant="outlined"
+            fullWidth
+            disabled={verifyTotp.isPending || verifyBackupCode.isPending || twoFactorCode.trim().length === 0}
+            data-testid="verify-login-backup-code"
+            onClick={() => verifyBackupCode.mutate({ code: twoFactorCode.trim() })}
+          >
+            {verifyBackupCode.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorUseBackupCode}
+          </Button>
+          {verifyTotp.isError ? <Alert>{localizeError(verifyTotp.error, t)}</Alert> : null}
+          {verifyBackupCode.isError ? <Alert>{localizeError(verifyBackupCode.error, t)}</Alert> : null}
         </Stack>
       </FocusCard>
     );

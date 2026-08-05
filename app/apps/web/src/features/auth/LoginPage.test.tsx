@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -175,5 +175,60 @@ describe('LoginPage', () => {
     await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
 
     expect(await screen.findByRole('button', { name: pl.auth.signInPending })).toBeDisabled();
+  });
+
+  it('keeps a pending sign-in provisional until TOTP succeeds', async () => {
+    const calls: string[] = [];
+    server.use(
+      http.post('*', ({ request }) => {
+        const path = new URL(request.url).pathname;
+        if (path.endsWith('/sign-in/email')) {
+          calls.push('password');
+          return HttpResponse.json({ twoFactorRedirect: true });
+        }
+        if (path.endsWith('/two-factor/verify-totp')) {
+          calls.push('totp');
+          return HttpResponse.json({ token: 'session-token' });
+        }
+        return undefined;
+      }),
+    );
+
+    await renderLoginPage();
+    await fillCredentials();
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
+
+    expect(await screen.findByTestId('two-factor-challenge')).toBeInTheDocument();
+    expect(calls).toEqual(['password']);
+    await userEvent.type(screen.getByLabelText(pl.auth.twoFactorCodeLabel), '123456');
+    await userEvent.click(screen.getByTestId('verify-login-totp'));
+
+    await waitFor(() => expect(calls).toEqual(['password', 'totp']));
+    expect(screen.queryByTestId('two-factor-challenge')).not.toBeInTheDocument();
+  });
+
+  it('offers backup-code redemption as a first-class challenge action', async () => {
+    let submitted: unknown;
+    server.use(
+      http.post('*', async ({ request }) => {
+        const path = new URL(request.url).pathname;
+        if (path.endsWith('/sign-in/email')) {
+          return HttpResponse.json({ twoFactorRedirect: true });
+        }
+        if (path.endsWith('/two-factor/verify-backup-code')) {
+          submitted = await request.json();
+          return HttpResponse.json({ token: 'session-token' });
+        }
+        return undefined;
+      }),
+    );
+
+    await renderLoginPage();
+    await fillCredentials();
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
+    await userEvent.type(await screen.findByLabelText(pl.auth.twoFactorCodeLabel), 'backup-once');
+    await userEvent.click(screen.getByTestId('verify-login-backup-code'));
+
+    await waitFor(() => expect(submitted).toEqual({ code: 'backup-once' }));
   });
 });

@@ -36,10 +36,11 @@ at `http://localhost:48980`.
 
 Open **http://studio.localhost:48730** and **http://acme.localhost:48730** —
 sign in as `creator@together.dev` / `demo1234` on studio, or
-`creator2@together.dev` / `demo1234` on acme. Each tenant domain shows its own
-isolated todos (and its own accent color). Note: on `localhost` browsers reject
-cross-subdomain cookies, so you sign in per tenant domain; on a real base domain
-one session spans all tenant subdomains.
+`creator2@together.dev` / `demo1234` on acme. Each tenant domain opens the panel
+with its own isolated courses, products and members; branding (logo, accent
+color) is per tenant too — in the seed only `akademia` is branded. Note: on
+`localhost` browsers reject cross-subdomain cookies, so you sign in per tenant
+domain; on a real base domain one session spans all tenant subdomains.
 
 ## Demo data
 

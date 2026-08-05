@@ -16,6 +16,20 @@ const isLocalHostname = (hostname: string): boolean =>
   || /^127(?:\.\d{1,3}){3}$/.test(hostname)
   || hostname === '[::1]';
 
+const NON_PRODUCTION_APP_ENVS: readonly string[] = ['preview', 'staging'];
+
+/**
+ * Vercel sets `NODE_ENV=production` on Preview deployments as well, so
+ * `NODE_ENV` alone cannot separate a preview from production. Only an
+ * explicitly named non-production `APP_ENV` opts out; anything unrecognised
+ * keeps the strict production posture.
+ */
+export const isProductionEnvironment = (
+  env: { NODE_ENV?: string | undefined; APP_ENV?: string | undefined },
+): boolean =>
+  env.APP_ENV === 'production'
+  || (env.NODE_ENV === 'production' && !NON_PRODUCTION_APP_ENVS.includes(env.APP_ENV ?? ''));
+
 /** Parse, don't cast: the process refuses to boot on invalid configuration. */
 export const envSchema = z
   .object({
@@ -118,8 +132,7 @@ export const envSchema = z
         message: 'APP_BASE_URL must use https outside local development',
       });
     }
-    const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
-    if (!production) return;
+    if (!isProductionEnvironment(env)) return;
     if (env.BETTER_AUTH_SECRET === 'dev-only-secret-do-not-use-in-prod') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

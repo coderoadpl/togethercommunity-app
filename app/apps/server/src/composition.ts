@@ -224,7 +224,7 @@ import {
 } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
-import type { Env } from './env.js';
+import { type Env, isProductionEnvironment } from './env.js';
 import { APP_VERSION } from './version.js';
 
 interface DevEndpoints {
@@ -316,6 +316,7 @@ export interface AppDeps {
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   dispatchEmail(): void;
   emailDispatchSecret: string;
+  emailDispatchCronSecret: string;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
   devSinkPurge?: DevSinkPurge;
@@ -385,7 +386,7 @@ export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
   create: () => DevSinkPurge,
 ): DevSinkPurge | undefined =>
-  env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? undefined : create();
+  isProductionEnvironment(env) ? undefined : create();
 
 export const selectTenantRouting = (
   env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL' | 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
@@ -403,7 +404,7 @@ export const selectTenantCreationMode = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
 ): TenantCreationMode => {
   if (env.TENANT_CREATION === 'closed') return 'closed';
-  return env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? 'bootstrap' : 'open';
+  return isProductionEnvironment(env) ? 'bootstrap' : 'open';
 };
 
 export const createMultipleTenantsReporter = (
@@ -534,7 +535,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const marketingJobs = createMarketingJobRepository(db);
   const sesOnboardingControlPlane = createSesOnboardingControlPlane();
   const marketingThrottle = createMarketingThrottleRepository(db);
-  const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
+  const production = isProductionEnvironment(env);
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
   const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
   const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
@@ -861,6 +862,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dispatchEmails,
     dispatchEmail,
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
+    emailDispatchCronSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
     ...(devSinkPurge === undefined ? {} : { devSinkPurge }),

@@ -28,7 +28,7 @@ Create a Make Data store named `together_welcome_series` with:
 | `stage` | text | `1`, `done`, or `done-skipped` |
 | `dueAt` | date | time at which message 2 becomes due |
 
-After import, reconnect the webhook and Data store modules because Make assigns connection-specific IDs during import. Replace every `https://acme.together.app`, `replace-with-api-key`, definition ID, and template ID. Store the API key in a Make secure connection or secret variable before enabling the scenarios; the literal placeholder exists only so the blueprint imports without exporting a credential.
+After import, reconnect the webhook and Data store modules because Make assigns connection-specific IDs during import. Replace every `https://acme.example.com`, `replace-with-api-key`, definition ID, and template ID. Store the API key in a Make secure connection or secret variable before enabling the scenarios; the literal placeholder exists only so the blueprint imports without exporting a credential.
 
 ## Scenario 1: enroll and send message 1
 

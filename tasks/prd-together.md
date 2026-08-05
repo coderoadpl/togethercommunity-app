@@ -396,7 +396,7 @@ Stories fazy 0 i 1 są rozpisane do poziomu implementowalnego. Fazy 2-4 — pozi
 
 ## 10. Założenia techniczne
 
-**Architektura normatywna żyje w osobnym repo: [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** — „agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS" autorstwa założyciela (aktywnie rozwijana; stan 2026-07-03: działający walking skeleton — auth, organizacje/tenanty, rozwiązywanie tenanta po domenie, custom domeny, zasób demo przez wszystkie warstwy, CLI i SPA). Ten dokument **nie duplikuje architektury** — pełna specyfikacja to `tasks/prd-agentproofarch-foundation.md` w tamtym repo. Poniżej tylko: decyzje, konsekwencje dla Together i punkty tarcia.
+**Architektura normatywna żyje w osobnym repo: [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** — „agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS" autorstwa założyciela (aktywnie rozwijana; stan 2026-07-03: działający walking skeleton — auth, organizacje/tenanty, rozwiązywanie tenanta po domenie, custom domeny, zasób demo przez wszystkie warstwy, CLI i SPA). Ten dokument **nie duplikuje architektury** — pełna specyfikacja żyje w dokumentacji tamtego repo (katalog `docs/`: opisy architektury i ADR-y). Poniżej tylko: decyzje, konsekwencje dla Together i punkty tarcia.
 
 **Decyzje przejęte z agentproofarch (zastępują wcześniejsze założenia tego PRD, w tym rekomendację Next.js z 2026-07-02):**
 - **Vite + React SPA (bez SSR, bez Next.js) + Hono** jako warstwa HTTP — ten sam kod działa na Node i Vercel Functions (entrypointy ~5 linii); TanStack Router/Query; jeden typowany klient (`core/client`) współdzielony przez web i CLI.

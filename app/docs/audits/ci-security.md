@@ -28,13 +28,18 @@
 
 ## Pinned action releases
 
-The Scorecard workflow pins immutable commits. At this roster revision, those
-commits map to these release tags:
+Every workflow pins immutable commits. At this roster revision, those commits
+map to these release tags:
 
-- [`actions/checkout` v4.3.0](https://github.com/actions/checkout/releases/tag/v4.3.0)
-- [`ossf/scorecard-action` v2.4.4](https://github.com/ossf/scorecard-action/releases/tag/v2.4.4)
-- [`actions/upload-artifact` v4.6.2](https://github.com/actions/upload-artifact/releases/tag/v4.6.2)
-- [`github/codeql-action` v3.37.4](https://github.com/github/codeql-action/releases/tag/v3.37.4)
+- [`actions/checkout` v4.3.0](https://github.com/actions/checkout/releases/tag/v4.3.0) — `08eba0b27e820071cde6df949e0beb9ba4906955`
+- [`ossf/scorecard-action` v2.4.4](https://github.com/ossf/scorecard-action/releases/tag/v2.4.4) — `2d1146689b8cda280b9bc96326124645441f03bc`
+- [`actions/upload-artifact` v4.6.2](https://github.com/actions/upload-artifact/releases/tag/v4.6.2) — `ea165f8d65b6e75b540449e92b4886f43607fa02`
+- [`github/codeql-action` v3.37.4](https://github.com/github/codeql-action/releases/tag/v3.37.4) — `a2983b8bed1923f44751c5c43237f479442827b3`
+- [`pnpm/action-setup` v6.0.9](https://github.com/pnpm/action-setup/releases/tag/v6.0.9) — `0ebf47130e4866e96fce0953f49152a61190b271`
+- [`actions/setup-node` v4.4.0](https://github.com/actions/setup-node/releases/tag/v4.4.0) — `49933ea5288caeca8642d1e84afbd3f7d6820020`
+- [`browser-actions/setup-chrome` v2.1.2](https://github.com/browser-actions/setup-chrome/releases/tag/v2.1.2) — `2e1d749697dd1612b833dba4a722266286fbefcd`
+- [`contributor-assistant/github-action` v2.6.1](https://github.com/contributor-assistant/github-action/releases/tag/v2.6.1) — `ca4a40a7d1004f18d9960b404b97e5f30a505a08`
+- [`actions/github-script` v8.0.0](https://github.com/actions/github-script/releases/tag/v8.0.0) — `ed597411d8f924073f98dfc5c65a23a2325f34cd`
 
 ## Manual checks
 

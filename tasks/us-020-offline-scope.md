@@ -202,8 +202,9 @@ Gate: `pnpm run check` (typecheck, lint, depcruise, knip, doc-lint, test) plus
 - `app/docs/route-table.md`, `app/docs/permission-table.md` — regenerated.
 - `app/README.md` — `DOMAIN_PROVISIONER` and `SELF_HOST_TARGET_CNAME`.
 - `app/.env.example` — the four new vars, empty values.
-- `docs/custom-domains.md` — creator-facing DNS instructions (both topologies),
-  PL user-visible copy sourced from `tasks/terminology-glossary.md`.
+- A creator-facing custom-domain guide under the repository-root `docs/` —
+  DNS instructions for both topologies, PL user-visible copy sourced from
+  `tasks/terminology-glossary.md`.
 
 ## Owner-gated
 

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "FSL-1.1-ALv2",
-  "description": "Agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS",
+  "description": "Together — source-available platform for creators: digital product sales, marketing, course delivery and community in one self-hostable app",
   "imports": {
     "#core/*": "./core/*",
     "#adapters/*": "./adapters/*"

@@ -27,7 +27,7 @@ these specifications.
 | [Consistency](consistency.md) | Before a release and after a cross-surface change | Feature owner | OWASP ASVS 5.0.0 V8; OWASP API Security Top 10:2023 |
 | [External links](external-links.md) | Quarterly and before a release | Documentation owner | Together [`doc-lint`](../../scripts/doc-lint.ts) relative-target contract at the audited commit |
 | [Completeness](completeness.md) | Monthly and before go-live | Product owner | OWASP ASVS 5.0.0 V6/V7 L2-derived profile; NIST SP 800-63B-4 |
-| [Accessibility](accessibility.md) | Before a release and after material UI changes | Web owner | WCAG 2.2 AA; axe-core 4.12.x |
+| [Accessibility](accessibility.md) | Before a release and after material UI changes | Web owner | WCAG 2.2 AA; Together in-house [a11y checks](../../scripts/a11y-checks.ts) |
 | [Performance](performance.md) | Quarterly instrument review; then before a release | Web owner | Core Web Vitals |
 
 ## Operating doctrine

@@ -11,23 +11,32 @@
   readable report when the scan runs. Manual findings name route, role, locale,
   viewport, input method, WCAG criterion, impact, owner, and due date.
 - **Standard anchor:** [WCAG 2.2](https://www.w3.org/TR/WCAG22/) Level AA is the
-  review target. Together's installed axe-core 4.12.x supplies automated rule
-  evidence for its machine-checkable subset. Neither the scan nor this audit is
-  a WCAG conformance claim.
+  review target. Automated rule evidence comes from Together's in-house checks
+  in [`scripts/a11y-checks.ts`](../../scripts/a11y-checks.ts), not from an
+  external rule engine. Neither the scan nor this audit is a WCAG conformance
+  claim.
 
 ## Automation caveat
 
-Deque's published coverage study found that axe-powered automation detected
-[57.38% of issues in its sampled audits](https://www.deque.com/automated-accessibility-coverage-report/).
-That figure is a dataset result, not a guaranteed detection rate for Together,
-and it leaves essential human-verifiable behavior outside automation.
+axe-core was removed in favor of the in-house rule set; the
+[accessibility checks doc](../accessibility.md) records what that swap costs.
+The in-house checks reproduce every finding category the previous scan raised
+on this app, but roughly ninety axe rules are gone — ARIA attribute validity,
+nested interactive controls, table structure, and list semantics are no longer
+machine-checked, and neither is the removed `eslint-plugin-jsx-a11y` syntax
+layer. Automated coverage was already partial before the swap: Deque's
+published study found axe-powered automation detected
+[57.38% of issues in its sampled audits](https://www.deque.com/automated-accessibility-coverage-report/),
+a dataset result rather than a detection rate for Together. Treat the narrowed
+rule set as an argument for the manual checklist below, and record an unrun
+category as not run rather than inferring a pass from it.
 
 ## Tool-performed checks
 
 | Check | Evidence and limit |
 | --- | --- |
-| [`pnpm run a11y`](../../scripts/a11y-scan.ts) | Runs axe-core against Together's real public, member, and creator application surfaces at defined viewports and themes. Serious and critical findings fail; moderate and minor findings remain visible. The command is not part of `pnpm run check` or CI. |
-| `pnpm run lint` | Applies JSX accessibility rules to represented syntax. It cannot evaluate rendered interaction, computed names, focus behavior, or route coverage. |
+| [`pnpm run a11y`](../../scripts/a11y-scan.ts) | Runs the in-house [rule set](../../scripts/a11y-checks.ts) against Together's real public, member, and creator application surfaces at defined viewports and themes. Serious and critical findings fail; moderate and minor findings remain visible. Rules outside that set are not evaluated. The command is not part of `pnpm run check` or CI. |
+| `pnpm run lint` | Carries no accessibility rules since `eslint-plugin-jsx-a11y` was removed with axe-core. Record the JSX syntax layer as not run. |
 | `pnpm run visual` | Supplies deterministic macOS visual evidence under the [visual-regression policy](../visual-regression.md). Pixel equality does not establish accessibility. The Argos track remains advisory. |
 
 ## Manual checks

@@ -9,12 +9,12 @@ describe('renderEmailOutboxPayload', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'welcome-set-password',
       language: 'pl',
-      tenantName: 'Kamperowo',
-      actionUrl: 'https://kamperowo.test/set-password?token=abc',
+      tenantName: 'Caravan',
+      actionUrl: 'https://caravan.test/set-password?token=abc',
       branding,
     });
     expect(rendered.success).toBe(true);
-    if (rendered.success) expect(rendered.data.html).toContain('kamperowo.test/set-password');
+    if (rendered.success) expect(rendered.data.html).toContain('caravan.test/set-password');
   });
 
   it('renders a reset-password payload', () => {
@@ -53,23 +53,23 @@ describe('renderEmailOutboxPayload', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'magic-link',
       language: 'pl',
-      tenantName: 'Kamperowo',
-      url: 'https://kamperowo.test/verify?token=abc',
+      tenantName: 'Caravan',
+      url: 'https://caravan.test/verify?token=abc',
       branding,
     });
     expect(rendered.success).toBe(true);
-    if (rendered.success) expect(rendered.data.html).toContain('kamperowo.test/verify');
+    if (rendered.success) expect(rendered.data.html).toContain('caravan.test/verify');
   });
 
   it('renders a thread-reply payload', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'thread-reply',
       language: 'pl',
-      tenantName: 'Kamperowo',
+      tenantName: 'Caravan',
       lessonName: 'Lekcja o hamakach',
       authorDisplay: 'Ola',
       snippet: 'Świetne pytanie!',
-      url: 'https://kamperowo.test/my/courses/c1/lessons/l1',
+      url: 'https://caravan.test/my/courses/c1/lessons/l1',
     });
     expect(rendered.success).toBe(true);
     if (rendered.success) expect(rendered.data.text).toContain('Ola');
@@ -79,11 +79,11 @@ describe('renderEmailOutboxPayload', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'lesson-question',
       language: 'en',
-      tenantName: 'Kamperowo',
+      tenantName: 'Caravan',
       lessonName: 'Lekcja o hamakach',
       authorDisplay: 'Ola',
       snippet: 'Where do I start?',
-      url: 'https://kamperowo.test/my/courses/c1/lessons/l1',
+      url: 'https://caravan.test/my/courses/c1/lessons/l1',
     });
     expect(rendered.success).toBe(true);
     if (rendered.success) expect(rendered.data.subject).toContain('Lekcja o hamakach');
@@ -93,11 +93,11 @@ describe('renderEmailOutboxPayload', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'space-post',
       language: 'pl',
-      tenantName: 'Kamperowo',
+      tenantName: 'Caravan',
       spaceName: 'Społeczność',
       authorDisplay: 'Ola',
       snippet: 'Cześć wszystkim',
-      url: 'https://kamperowo.test/community/s1/posts/p1',
+      url: 'https://caravan.test/community/s1/posts/p1',
     });
     expect(rendered.success).toBe(true);
     if (rendered.success) expect(rendered.data.html).toContain('Społeczność');
@@ -107,7 +107,7 @@ describe('renderEmailOutboxPayload', () => {
     const failed = renderEmailOutboxPayload({
       kind: 'subscription-payment-failed',
       language: 'pl',
-      tenantName: 'Kamperowo',
+      tenantName: 'Caravan',
       productTitle: 'Kurs',
       accessEndsAt: '2026-08-17T10:00:00.000Z',
       billingPortalUrl: null,
@@ -117,10 +117,10 @@ describe('renderEmailOutboxPayload', () => {
     const ended = renderEmailOutboxPayload({
       kind: 'subscription-ended',
       language: 'en',
-      tenantName: 'Kamperowo',
+      tenantName: 'Caravan',
       productTitle: 'Course',
       accessEndsAt: '2026-08-14T10:00:00.000Z',
-      offerUrl: 'https://kamperowo.test/',
+      offerUrl: 'https://caravan.test/',
     });
     expect(ended.success).toBe(true);
   });

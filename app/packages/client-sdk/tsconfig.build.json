@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "types": [],
+    "rootDir": "../..",
+    "outDir": "./dist"
+  },
+  "include": [
+    "../../core/client/**/*.ts",
+    "../../core/contract/**/*.ts",
+    "../../core/domain/**/*.ts",
+    "../../adapters/auth/client-adapter.ts"
+  ],
+  "exclude": ["../../core/**/*.test.ts"]
+}

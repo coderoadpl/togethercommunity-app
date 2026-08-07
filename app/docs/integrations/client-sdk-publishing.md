@@ -41,11 +41,14 @@ in the repository or its secrets.
    allowed actions select "npm publish", which is mandatory for configurations
    created after 2026-05-20.
 
-4. Optionally harden publishing. In npm package Settings → Publishing access,
-   require the trusted publisher only to disable token publishes. In GitHub
-   repository Settings → Rules, add a tag ruleset for `sdk-v*` that restricts
-   creation to the owner. This preserves the SIL-3 requirement that the owner
-   approve production-facing promotion.
+4. Harden publishing. This step is required and must be completed before or
+   together with step 3, not optionally afterwards. In npm package
+   Settings → Publishing access, require the trusted publisher only to
+   disable token publishes. In GitHub repository Settings → Rules, add a tag
+   ruleset for `sdk-v*` that restricts creation to the owner. Without both,
+   any identity with push access can create an `sdk-v*` tag and publish a
+   public release without owner approval, which violates the SIL-3
+   requirement that the owner approve production-facing promotion.
 
 Sources: [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/)
 and the [GitHub trusted publishing announcement](https://github.blog/changelog/2025-07-31-npm-trusted-publishing-with-oidc-is-generally-available/).

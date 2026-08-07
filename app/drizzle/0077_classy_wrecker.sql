@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "bunny_stream_cdn_hostname" text;

@@ -497,6 +497,9 @@ export const pl: Messages = {
       'Bez klucza bezpieczeństwa osadzone wideo nie jest objęte kontrolą dostępu i każda osoba z linkiem może je oglądać także po cofnięciu dostępu. Dodaj klucz i włącz uwierzytelnianie tokenem osadzania w Bunny, aby chronić odtwarzanie.',
     bunnyLibraryIdLabel: 'identyfikator biblioteki (library id)',
     bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
+    bunnyCdnHostnameLabel: 'Nazwa hosta CDN Stream',
+    bunnyCdnHostnameHelper:
+      'Znajdziesz ją w bibliotece Bunny Stream → Delivery. Jest potrzebna do odtwarzania w aplikacji mobilnej.',
     bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',
     s3Heading: 'Storage zgodny z S3',
     s3Description:

@@ -274,9 +274,12 @@ const deps = (input: {
     videoLibrary: {
       listVideos: async () => ok({ videos: [], totalItems: 0 }),
     },
-    bunnyEmbedTokenSigner: {
-      sign: ({ videoId, expires }) => `${videoId}-${expires}`,
+    bunnyTokenSigner: {
+      signEmbedToken: ({ videoId, expires }) => `${videoId}-${expires}`,
+      signHlsPlaylistUrl: ({ cdnHostname, videoId, expires }) =>
+        `https://${cdnHostname}/${videoId}/playlist.m3u8?expires=${expires}`,
     },
+    playbackTokenTtlSeconds: 21_600,
     storage: {
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
@@ -556,7 +559,7 @@ const deps = (input: {
         tenants.some((tenant) => tenant.id === tenantId) ? {
           name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
           socialLinks: [],
-          billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
+          billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
           privacyUrl: null,
@@ -1705,6 +1708,76 @@ describe('lesson attachment download route', () => {
   });
 });
 
+describe('student lesson playback route', () => {
+  it('returns contract-checked signed playback URLs without caching', async () => {
+    const playbackLesson: CourseLesson = {
+      id: 'lesson-playback',
+      tenantId: acme.id,
+      name: 'Playback lesson',
+      isPreview: false,
+      contents: [{
+        type: 'video',
+        storageKey: 'videos/playback',
+        streamLibraryId: 'library-1',
+        streamVideoId: 'video-1',
+      }],
+      legacyId: null,
+      createdAt: '2026-08-07T00:00:00.000Z',
+    };
+    const base = deps();
+    const app = scopedApp('owner', {
+      overrides: {
+        lessons: {
+          ...base.lessons,
+          findById: async () => playbackLesson,
+        },
+        tenants: {
+          ...base.tenants,
+          findSettings: async () => ({
+            name: acme.name,
+            socialLinks: [],
+            billingPortalUrl: null,
+            bunnyStreamLibraryId: 'library-1',
+            bunnyStreamCdnHostname: 'vz-demo.b-cdn.net',
+            logoUrl: null,
+            accentColor: null,
+            faviconUrl: null,
+            ogTitle: null,
+            ogDescription: null,
+            ogImageUrl: null,
+            supportEmail: null,
+            supportUrl: null,
+            termsUrl: null,
+            privacyUrl: null,
+          }),
+        },
+        secretResolver: { resolve: async () => ok('security-key') },
+      },
+    });
+    const response = await app.request(
+      API_PATHS.studentLessonPlayback.replace(':lessonId', playbackLesson.id),
+      { headers: { host: 'acme.localhost:48730' } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        lessonId: playbackLesson.id,
+        videos: [{
+          kind: 'bunny',
+          storageKey: 'videos/playback',
+          videoId: 'video-1',
+          libraryId: 'library-1',
+          hlsUrl: expect.stringContaining('https://vz-demo.b-cdn.net/video-1/playlist.m3u8'),
+          signed: true,
+        }],
+      },
+    });
+  });
+});
+
 describe('purchased product download route', () => {
   const downloadProduct: Product = {
     ...product({ id: 'digital-download', tenantId: acme.id, title: 'Creator workbook', published: true }),
@@ -2478,6 +2551,7 @@ const consentApp = (simulatedPayments: boolean) => {
               socialLinks: [],
               billingPortalUrl: null,
               bunnyStreamLibraryId: null,
+              bunnyStreamCdnHostname: null,
               logoUrl: null,
               accentColor: null,
               faviconUrl: null,
@@ -2736,6 +2810,7 @@ describe('checkout consent ordering', () => {
                 socialLinks: [],
                 billingPortalUrl: null,
                 bunnyStreamLibraryId: null,
+                bunnyStreamCdnHostname: null,
                 logoUrl: null,
                 accentColor: null,
                 faviconUrl: null,

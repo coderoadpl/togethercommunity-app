@@ -491,6 +491,9 @@ export const en: Messages = {
       'Without a security key, video embeds are not access-controlled and anyone with the link can keep watching after access is revoked. Add the key and enable embed token authentication in Bunny to protect playback.',
     bunnyLibraryIdLabel: 'library id',
     bunnyLibraryIdHelper: 'Find it in the Bunny dashboard → Stream → your library → API.',
+    bunnyCdnHostnameLabel: 'Stream CDN hostname',
+    bunnyCdnHostnameHelper:
+      'Found in your Bunny Stream library → Delivery. Needed for native app playback.',
     bunnySaveFirst: 'Save the API key and library id first to test the connection.',
     s3Heading: 'S3-compatible storage',
     s3Description:

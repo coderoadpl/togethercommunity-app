@@ -19,6 +19,7 @@ interface StoredSettings {
   socialLinks: Array<{ label: string; url: string }>;
   billingPortalUrl: string | null;
   bunnyStreamLibraryId: string | null;
+  bunnyStreamCdnHostname: string | null;
   logoUrl: string | null;
   accentColor: string | null;
   faviconUrl: string | null;
@@ -39,6 +40,7 @@ const EMPTY_SETTINGS: StoredSettings = {
   socialLinks: [],
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
+  bunnyStreamCdnHostname: null,
   logoUrl: null,
   accentColor: null,
   faviconUrl: null,

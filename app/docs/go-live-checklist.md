@@ -317,7 +317,7 @@ Signing activates only when the tenant stores `bunny.securityKey`.
 `core/server/usecases/lesson-media.ts:76-86` resolves the key, and
 `core/server/usecases/lesson-media.ts:42-53` appends `token` and `expires` with a
 one-hour lifetime (`core/server/usecases/lesson-media.ts:22`). The HMAC
-implementation is in `adapters/crypto/bunny-embed-token-signer.ts`.
+implementation is in `adapters/crypto/bunny-token-signer.ts`.
 
 For every production tenant with `bunny.securityKey`, open Bunny dashboard,
 then Stream, the library, Security, and Token Authentication. Enable Token

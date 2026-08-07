@@ -35,6 +35,7 @@ export const tenants = pgTable(
     contentVersion: integer('content_version').notNull().default(1),
     billingPortalUrl: text('billing_portal_url'),
     bunnyStreamLibraryId: text('bunny_stream_library_id'),
+    bunnyStreamCdnHostname: text('bunny_stream_cdn_hostname'),
     onboardingDismissedAt: text('onboarding_dismissed_at'),
     logoUrl: text('logo_url'),
     accentColor: text('accent_color'),

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AppError, Result } from '#core/domain/index.js';
+import {
+  lessonPlaybackVideoSchema,
+  type LessonPlaybackVideo,
+  type StudentLessonPlaybackOutput,
+} from '#core/contract/index.js';
+import { ok, type AppError, type Result } from '#core/domain/index.js';
 
 import { ApiError, createApiClient, unwrap } from './http.js';
 
@@ -27,6 +32,31 @@ describe('createApiClient', () => {
       ok: true,
       value: { status: 'ok', version: '0.1.0', sha: 'cafe1234', database: 'up' },
     });
+  });
+
+  it('requests and parses signed student lesson playback', async () => {
+    const video: LessonPlaybackVideo = {
+      kind: 'bunny',
+      storageKey: 'videos/one',
+      videoId: 'video-1',
+      libraryId: 'library-1',
+      embedUrl: 'https://iframe.mediadelivery.net/embed/library-1/video-1',
+      hlsUrl: 'https://vz-demo.b-cdn.net/video-1/playlist.m3u8',
+      signed: true,
+    };
+    const output: StudentLessonPlaybackOutput = {
+      lessonId: 'lesson/one',
+      expiresAt: '2026-08-07T18:00:00.000Z',
+      videos: [lessonPlaybackVideoSchema.parse(video)],
+    };
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/student/lessons/lesson%2Fone/playback');
+      expect(init).toMatchObject({ method: 'GET', credentials: 'include' });
+      return jsonResponse({ ok: true, data: output });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.studentLessonPlayback('lesson/one')).resolves.toEqual(ok(output));
   });
 
   it('sends the shared secret header and parses the dispatch envelope', async () => {

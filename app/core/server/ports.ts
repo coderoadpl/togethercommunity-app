@@ -918,8 +918,14 @@ export interface VideoLibraryPort {
   }): Promise<Result<{ videos: StreamVideo[]; totalItems: number }, AppError>>;
 }
 
-export interface BunnyEmbedTokenSigner {
-  sign(input: { securityKey: string; videoId: string; expires: number }): string;
+export interface BunnyTokenSigner {
+  signEmbedToken(input: { securityKey: string; videoId: string; expires: number }): string;
+  signHlsPlaylistUrl(input: {
+    securityKey: string;
+    cdnHostname: string;
+    videoId: string;
+    expires: number;
+  }): string;
 }
 
 export interface StorageProvider {

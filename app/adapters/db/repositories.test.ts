@@ -1024,6 +1024,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
+      bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,
@@ -1044,11 +1045,13 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
+      bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
     });
     expect(await repo.findSettings(ACME)).toMatchObject({
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       bunnyStreamLibraryId: 'lib-1',
+      bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',

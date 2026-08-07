@@ -257,6 +257,17 @@ const parseSpace = (space: typeof spaces.$inferSelect): Space => spaceSchema.par
 const parseNotification = (notification: typeof notifications.$inferSelect): Notification =>
   notificationSchema.parse(notification);
 
+const notificationCursor = (notification: { createdAt: string; id: string }): string =>
+  `${notification.createdAt}|${notification.id}`;
+
+const parseNotificationCursor = (cursor: string): { createdAt: string; id: string } => {
+  const separator = cursor.indexOf('|');
+  return {
+    createdAt: cursor.slice(0, separator),
+    id: cursor.slice(separator + 1),
+  };
+};
+
 const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.parse(apiKey);
 
 const parseSecret = (row: typeof tenantSecrets.$inferSelect): TenantSecret =>
@@ -1516,6 +1527,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
     return parseNotification(row);
   },
   listForRecipient: async (tenantId, query) => {
+    const cursor = query.cursor === undefined ? null : parseNotificationCursor(query.cursor);
     const rows = await db
       .select()
       .from(notifications)
@@ -1523,16 +1535,19 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
         and(
           eq(notifications.tenantId, tenantId),
           eq(notifications.recipientUserId, query.recipientUserId),
-          ...(query.cursor === undefined ? [] : [sql`${notifications.createdAt} < ${query.cursor}`]),
+          ...(cursor === null
+            ? []
+            : [sql`(${notifications.createdAt}, ${notifications.id}) < (${cursor.createdAt}, ${cursor.id})`]),
         ),
       )
       .orderBy(desc(notifications.createdAt), desc(notifications.id))
       .limit(query.limit + 1);
     const page = rows.slice(0, query.limit);
     const overflow = rows[query.limit];
+    const last = page.at(-1);
     return {
       notifications: page.map(parseNotification),
-      nextCursor: overflow ? overflow.createdAt : null,
+      nextCursor: overflow && last ? notificationCursor(last) : null,
     };
   },
   markRead: async (tenantId, input) => {

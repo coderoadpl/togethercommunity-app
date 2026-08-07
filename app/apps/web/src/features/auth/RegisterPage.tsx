@@ -151,11 +151,11 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
           </Button>
         </Stack>
         {signUp.isError ? (
-          <Alert sx={{ mt: '0.6rem' }}>
+          <Alert severity="error" sx={{ mt: '0.6rem' }}>
             {localizeError(signUp.error, t)}
           </Alert>
         ) : null}
-        {localError ? <Alert sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
+        {localError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
     </FocusCard>
   );
 };

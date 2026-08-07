@@ -485,7 +485,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 </Paper>
               )}
               {couponValidation.isError ? (
-                <Alert data-testid="checkout-coupon-error">
+                <Alert severity="error" data-testid="checkout-coupon-error">
                   {couponError(couponValidation.error, t)}
                 </Alert>
               ) : null}
@@ -580,15 +580,15 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             </Button>
           ) : null}
           {!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
-            <Alert>{t.checkout.paymentUnavailable}</Alert>
+            <Alert severity="error">{t.checkout.paymentUnavailable}</Alert>
           ) : null}
           {checkoutSession.isError ? (
-            <Alert>
+            <Alert severity="error">
               {localizeError(checkoutSession.error, t)}
             </Alert>
           ) : null}
           {simulatePurchase.isError ? (
-            <Alert>
+            <Alert severity="error">
               {localizeError(simulatePurchase.error, t)}
             </Alert>
           ) : null}

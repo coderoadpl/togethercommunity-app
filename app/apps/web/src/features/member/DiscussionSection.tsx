@@ -39,7 +39,7 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
           {search.isPending ? (
             <Typography variant="body2">{t.discussion.searching}</Typography>
           ) : search.isError ? (
-            <Alert>{localizeError(search.error, t)}</Alert>
+            <Alert severity="error">{localizeError(search.error, t)}</Alert>
           ) : search.data.hits.length === 0 ? (
             <Typography variant="body2" data-testid="discussion-search-empty">
               {t.discussion.searchEmpty}

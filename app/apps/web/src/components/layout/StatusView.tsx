@@ -29,7 +29,7 @@ export const StatusView = ({ state, surface = true, 'data-testid': testId }: Sta
     case 'error':
       return (
         <Box data-testid={testId}>
-          <Alert>{state.message}</Alert>
+          <Alert severity="error">{state.message}</Alert>
           {state.retry !== undefined && (
             <Box sx={{ mt: '0.75rem' }}>
               <Button variant="outlined" onClick={state.retry.onRetry}>

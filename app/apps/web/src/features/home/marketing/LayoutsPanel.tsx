@@ -38,7 +38,7 @@ const LayoutForm = ({ layout }: { layout?: EmailLayout | undefined }) => {
         <FormLabel htmlFor="marketing-layout-html">{t.marketing.layoutHtmlLabel}</FormLabel>
         <OutlinedInput id="marketing-layout-html" value={bodyHtml} onChange={(event) => setBodyHtml(event.target.value)} multiline minRows={12} required />
       </FormControl>
-      {save.isError ? <Alert>{localizeError(save.error, t)}</Alert> : null}
+      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
     </SectionCard>
   );
 };

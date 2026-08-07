@@ -92,9 +92,9 @@ export const ForgotPasswordPage = () => {
                 : t.forgotPassword.submitIdle}
             </Button>
           </Stack>
-          {localError ? <Alert sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
+          {localError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
           {requestPasswordReset.isError ? (
-            <Alert sx={{ mt: '0.6rem' }}>{localizeError(requestPasswordReset.error, t)}</Alert>
+            <Alert severity="error" sx={{ mt: '0.6rem' }}>{localizeError(requestPasswordReset.error, t)}</Alert>
           ) : null}
         </>
       )}

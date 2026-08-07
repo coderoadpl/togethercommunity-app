@@ -152,7 +152,7 @@ const ProductRow = ({
         </Button>
       </Box>
       {publishProduct.isError ? (
-        <Alert>{localizeError(publishProduct.error, t)}</Alert>
+        <Alert severity="error">{localizeError(publishProduct.error, t)}</Alert>
       ) : null}
     </Paper>
   );

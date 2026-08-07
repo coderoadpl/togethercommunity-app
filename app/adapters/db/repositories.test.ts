@@ -15,6 +15,7 @@ import type {
   Course,
   Member,
   MemberSubscription,
+  Notification,
   Order,
   Post,
   PostReport,
@@ -38,6 +39,7 @@ import {
   createMemberErasureRepository,
   createMemberRepository,
   createMemberSubscriptionRepository,
+  createNotificationRepository,
   createOrderRepository,
   createPostRepository,
   createPostReportRepository,
@@ -1741,6 +1743,64 @@ describe('post repository', () => {
       contextKind: post.contextKind,
       contextId: post.contextId,
     })).resolves.toBe(0);
+  });
+});
+
+describe('notification repository', () => {
+  it('paginates equal timestamps without duplicates or omissions', async () => {
+    const repository = createNotificationRepository(db);
+    const recipientUserId = 'user-acme-member';
+    const notification = (id: string, createdAt: string): Notification => ({
+      id,
+      tenantId: ACME,
+      recipientUserId,
+      kind: 'thread-reply',
+      payload: {
+        rootPostId: `root-${id}`,
+        postId: `post-${id}`,
+        contextKind: 'lesson',
+        contextId: 'lesson-notification-pagination',
+        courseId: 'course-notification-pagination',
+        lessonName: 'Pagination',
+        authorDisplay: 'Author',
+        snippet: id,
+      },
+      readAt: null,
+      createdAt,
+    });
+    await Promise.all([
+      repository.insert(ACME, notification('notification-page-1', '2026-07-14T09:00:00.000Z')),
+      repository.insert(ACME, notification('notification-page-2', '2026-07-14T10:00:00.000Z')),
+      repository.insert(ACME, notification('notification-page-3', '2026-07-14T11:00:00.000Z')),
+      repository.insert(ACME, notification('notification-page-4', '2026-07-14T11:00:00.000Z')),
+      repository.insert(ACME, notification('notification-page-5', '2026-07-14T12:00:00.000Z')),
+    ]);
+
+    const first = await repository.listForRecipient(ACME, { recipientUserId, limit: 2 });
+    if (first.nextCursor === null) throw new Error('Expected a second notification page');
+    const second = await repository.listForRecipient(ACME, {
+      recipientUserId,
+      cursor: first.nextCursor,
+      limit: 2,
+    });
+    if (second.nextCursor === null) throw new Error('Expected a third notification page');
+    const third = await repository.listForRecipient(ACME, {
+      recipientUserId,
+      cursor: second.nextCursor,
+      limit: 2,
+    });
+    const ids = [...first.notifications, ...second.notifications, ...third.notifications]
+      .map((item) => item.id);
+
+    expect(ids).toEqual([
+      'notification-page-5',
+      'notification-page-4',
+      'notification-page-3',
+      'notification-page-2',
+      'notification-page-1',
+    ]);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(third.nextCursor).toBeNull();
   });
 });
 

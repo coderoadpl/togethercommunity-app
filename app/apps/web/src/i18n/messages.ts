@@ -113,6 +113,7 @@ export interface Messages {
     magicLinkEmailLabel: string;
     magicLinkIdle: string;
     magicLinkPending: string;
+    magicLinkExpired: string;
     magicLinkRequested: string;
     magicLinkRequestedBody: (params: { email: string }) => string;
     magicLinkFetching: string;

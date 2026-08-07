@@ -598,10 +598,10 @@ describe('marketing database repositories', () => {
       sentAt: '2026-07-22T02:00:30.000Z',
     });
     await db.insert(emailOutbox).values({
-      id: 'transactional-send-view', tenantId, kind: 'welcome-set-password', to: ' Member@Example.Test ',
+      id: 'transactional-send-view', tenantId, kind: 'welcome-sign-in', to: ' Member@Example.Test ',
       payload: {
-        kind: 'welcome-set-password', language: 'en', tenantName: 'Send view',
-        actionUrl: 'https://example.test/set-password',
+        kind: 'welcome-sign-in', language: 'en', tenantName: 'Send view',
+        actionUrl: 'https://example.test/sign-in',
       },
       status: 'sent', attempts: 1, nextAttemptAt: '2026-07-22T03:00:00.000Z', lastError: null,
       createdAt: '2026-07-22T03:00:00.000Z', sentAt: '2026-07-22T03:00:30.000Z',

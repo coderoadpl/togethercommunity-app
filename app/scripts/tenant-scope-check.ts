@@ -27,6 +27,7 @@ export interface TenantScopeSource {
 }
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'AutoInvoiceJobRepository.claimDue': 'A platform worker leases the next due job across all tenants.',
   'AutomationIdempotencyRepository.sweepExpired': 'A platform worker removes expired keys across all tenants.',
   'ConsentEvidenceRetentionRepository.listExpiredTenantIds': 'A platform retention worker discovers tenants with expired consent evidence.',
   'EmailOutboxRepository.claimBatch': 'A platform dispatcher leases deliverable messages across all tenants.',

@@ -39,6 +39,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/webhooks/stripe/:tenantId` | public | mutating | Stripe payment webhook |
 | `POST /api/internal/dispatch-email` | self-authenticating | mutating | email dispatch |
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
+| `POST /api/internal/dispatch-auto-invoices` | self-authenticating | mutating | auto invoice dispatch |
+| `GET /api/internal/dispatch-auto-invoices` | self-authenticating | read | api internal dispatch-auto-invoices |
 | `POST /api/internal/dispatch-ksef` | self-authenticating | mutating | ksef dispatch |
 | `GET /api/internal/dispatch-ksef` | self-authenticating | read | api internal dispatch-ksef |
 | `GET /api/internal/scheduler-runs` | self-authenticating | read | global scheduler runs |

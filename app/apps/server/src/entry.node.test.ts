@@ -20,6 +20,7 @@ const harness = vi.hoisted(() => {
   const app = { fetch: vi.fn(), get: vi.fn(), use: vi.fn() };
   const deps = {
     dispatchEmails: vi.fn(),
+    dispatchAutoInvoices: vi.fn(),
     ksef: { marker: 'ksef' },
     logger: { marker: 'logger' },
   };
@@ -122,12 +123,16 @@ describe('entry.node composition', () => {
       ok: false,
       error: new Error('outbox unavailable'),
     });
+    harness.deps.dispatchAutoInvoices.mockResolvedValue({
+      ok: true,
+      value: { processed: false, processedCount: 0, orderId: null },
+    });
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
 
     await importEntry();
 
-    expect(setIntervalSpy).toHaveBeenCalledTimes(2);
+    expect(setIntervalSpy).toHaveBeenCalledTimes(3);
     expect(setIntervalSpy).toHaveBeenNthCalledWith(
       1,
       expect.any(Function),
@@ -138,8 +143,14 @@ describe('entry.node composition', () => {
       expect.any(Function),
       harness.env.KSEF_DISPATCH_INTERVAL_MS,
     );
+    expect(setIntervalSpy).toHaveBeenNthCalledWith(
+      3,
+      expect.any(Function),
+      harness.env.KSEF_DISPATCH_INTERVAL_MS,
+    );
     expect(setIntervalSpy.mock.results[0]?.value.hasRef()).toBe(false);
     expect(setIntervalSpy.mock.results[1]?.value.hasRef()).toBe(false);
+    expect(setIntervalSpy.mock.results[2]?.value.hasRef()).toBe(false);
 
     await vi.advanceTimersByTimeAsync(harness.env.EMAIL_DISPATCH_INTERVAL_MS);
 
@@ -149,6 +160,7 @@ describe('entry.node composition', () => {
       harness.deps.logger,
       'node ticker',
     );
+    expect(harness.deps.dispatchAutoInvoices).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith(
       '[email-outbox] ticker dispatch failed: outbox unavailable\n',
     );

@@ -270,7 +270,7 @@ export const en: Messages = {
     ksefPdfDownload: 'Download PDF visualization',
     ksefUpoDownload: 'Download UPO',
     ksefConflictHelp:
-      'KSeF found an invoice with the same seller NIP, type, and P_2 number, but it could not be proven to match this frozen document. Do not renumber or resend it. Manual reconciliation is required.',
+      'KSeF found an invoice with the same seller NIP, type, and invoice number (P_2), but it could not be proven to match this frozen document. Do not renumber or resend it. Manual reconciliation is required.',
     ksefStates: {
       queued: 'queued',
       session_opened: 'KSeF session opened',
@@ -459,8 +459,8 @@ export const en: Messages = {
     testing: 'Testing…',
     testFailed: 'The connection test failed.',
     paymentAvailable: 'The payment provider accepted the credentials.',
-    emailAvailable: 'The email provider passed its diagnostic and sent a test e-mail to your creator address.',
-    storageAvailable: 'The storage credentials are available.',
+    emailAvailable: "The email provider passed its diagnostic and sent a test e-mail to your account's e-mail address.",
+    storageAvailable: 'Storage passed the write, read and delete probe.',
     saveKeysFirst: 'Save your Stripe key to create the webhook before testing the connection.',
     webhookUrlLabel: 'Webhook URL',
     webhookUrlHint: 'Together registers this URL in Stripe automatically when you save the key.',
@@ -476,7 +476,7 @@ export const en: Messages = {
     ifirmaSaveFirst: 'Save the iFirma username and faktura API key first to test the connection.',
     ksefHeading: 'KSeF 2.0',
     ksefDescription:
-      'Bring a tenant-generated KSeF token with InvoiceWrite permission and the matching context NIP. Access tokens remain transient.',
+      'Provide a KSeF token generated with the InvoiceWrite permission and the NIP of the context it was issued for. Temporary KSeF session tokens are not stored persistently.',
     ksefTokenHelp:
       'In KSeF, open Tokens, generate a new token with InvoiceWrite permission, and paste it here. KSeF displays the token only once.',
     ksefSaveFirst: 'Save the context NIP and KSeF token before testing the connection.',
@@ -546,7 +546,7 @@ export const en: Messages = {
     typeDigitalDownload: 'Digital download',
     typeMembership: 'Membership',
     slugLabel: 'slug',
-    slugHint: 'Lowercase letters, numbers and hyphens. Unique within this community.',
+    slugHint: 'Lowercase letters, digits and hyphens. Unique within this space.',
     coverUrlLabel: 'cover image URL',
     coverUrlHint: 'Optional HTTPS URL for the product cover.',
     priceLabel: 'price',
@@ -1599,7 +1599,7 @@ export const en: Messages = {
     resendHint: 'Connect Resend with the same sender identity used by SES and SMTP.',
     resendApiKeyLabel: 'Resend API key',
     resendDomainHint: 'Verify the sender domain in Resend before sending production mail.',
-    testEmailSent: 'The transport passed its diagnostic and sent a test e-mail to your creator address.',
+    testEmailSent: "The transport passed its diagnostic and sent a test e-mail to your account's e-mail address.",
     platformPool: ({ used, limit }) => `Starter pool: ${used}/${limit}`,
     platformPoolChecklist: 'Transactional starter pool',
     platformPoolNudge: 'Your starter pool is running low. Configure tenant SES, SMTP, or Resend.',

@@ -549,7 +549,7 @@ export const ThreadDiscussion = ({
               {backLabel}
             </Button>
           </Box>
-          {mutationErrorMessage !== null && <Alert>{mutationErrorMessage}</Alert>}
+          {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
           <DiscussionThread
             sx={{ p: '1rem 1.25rem' }}
             data-testid={`discussion-subthread-${subthreadRoot.id}`}
@@ -588,7 +588,7 @@ export const ThreadDiscussion = ({
             </Paper>
           )}
 
-          {mutationErrorMessage !== null && <Alert>{mutationErrorMessage}</Alert>}
+          {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
 
           {threads.length === 0 && pendingThread === null ? (
             <Typography variant="body1" data-testid="discussion-empty">

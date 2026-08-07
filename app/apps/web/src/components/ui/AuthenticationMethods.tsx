@@ -131,7 +131,7 @@ export const AuthenticationMethods = ({
           </Typography>
         ) : null}
         {requestPasswordSetup.error ? (
-          <Alert>{localizeError(requestPasswordSetup.error, t)}</Alert>
+          <Alert severity="error">{localizeError(requestPasswordSetup.error, t)}</Alert>
         ) : null}
         <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
           <FormControl fullWidth>
@@ -173,7 +173,7 @@ export const AuthenticationMethods = ({
             {t.security.passkeyAdded}
           </Typography>
         ) : null}
-        {registerPasskey.error ? <Alert>{localizeError(registerPasskey.error, t)}</Alert> : null}
+        {registerPasskey.error ? <Alert severity="error">{localizeError(registerPasskey.error, t)}</Alert> : null}
         {passkeys.pending ? <Typography variant="body2">{t.security.loadingPasskeys}</Typography> : null}
         {passkeys.data !== undefined && passkeys.data.length === 0 ? (
           <Typography variant="body2" data-testid="passkeys-empty">
@@ -235,8 +235,8 @@ export const AuthenticationMethods = ({
             {t.security.passkeyRemoved}
           </Typography>
         ) : null}
-        {removePasskey.error ? <Alert>{localizeError(removePasskey.error, t)}</Alert> : null}
-        {passkeys.error ? <Alert>{localizeError(passkeys.error, t)}</Alert> : null}
+        {removePasskey.error ? <Alert severity="error">{localizeError(removePasskey.error, t)}</Alert> : null}
+        {passkeys.error ? <Alert severity="error">{localizeError(passkeys.error, t)}</Alert> : null}
       </Box>
 
       <Box component="section" sx={{ display: 'grid', gap: '0.8rem' }}>
@@ -289,11 +289,11 @@ export const AuthenticationMethods = ({
             </Button>
           </Stack>
         </Box>
-        {enableTwoFactor.error ? <Alert>{localizeError(enableTwoFactor.error, t)}</Alert> : null}
+        {enableTwoFactor.error ? <Alert severity="error">{localizeError(enableTwoFactor.error, t)}</Alert> : null}
         {regenerateBackupCodes.error ? (
-          <Alert>{localizeError(regenerateBackupCodes.error, t)}</Alert>
+          <Alert severity="error">{localizeError(regenerateBackupCodes.error, t)}</Alert>
         ) : null}
-        {disableTwoFactor.error ? <Alert>{localizeError(disableTwoFactor.error, t)}</Alert> : null}
+        {disableTwoFactor.error ? <Alert severity="error">{localizeError(disableTwoFactor.error, t)}</Alert> : null}
         {disableTwoFactor.success ? (
           <Typography variant="caption" data-testid="two-factor-disabled">
             {t.security.twoFactorOff}
@@ -341,7 +341,7 @@ export const AuthenticationMethods = ({
                 {t.security.twoFactorOn}
               </Typography>
             ) : null}
-            {verifyTotp.error ? <Alert>{localizeError(verifyTotp.error, t)}</Alert> : null}
+            {verifyTotp.error ? <Alert severity="error">{localizeError(verifyTotp.error, t)}</Alert> : null}
           </Box>
         ) : null}
 

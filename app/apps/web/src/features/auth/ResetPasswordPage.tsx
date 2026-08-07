@@ -122,12 +122,12 @@ export const ResetPasswordPage = () => {
               </Button>
             </Stack>
             {localError ? (
-              <Alert sx={{ mt: '0.6rem' }} data-testid="reset-local-error">
+              <Alert severity="error" sx={{ mt: '0.6rem' }} data-testid="reset-local-error">
                 {localError}
               </Alert>
             ) : null}
             {resetPassword.isError ? (
-              <Alert sx={{ mt: '0.6rem' }}>
+              <Alert severity="error" sx={{ mt: '0.6rem' }}>
                 {localizeError(resetPassword.error, t)}
               </Alert>
             ) : null}

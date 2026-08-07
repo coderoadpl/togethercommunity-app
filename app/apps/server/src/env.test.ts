@@ -11,6 +11,24 @@ import {
 } from './composition.js';
 import { envSchema, isProductionEnvironment } from './env.js';
 
+const productionEnvironment = (overrides: Record<string, string | undefined> = {}) => ({
+  NODE_ENV: 'production',
+  APP_ENV: 'production',
+  APP_BASE_URL: 'https://together.example',
+  AUTH_TRUSTED_PROXY_HEADER: 'direct',
+  BETTER_AUTH_SECRET: 'production-secret-with-at-least-16-chars',
+  SECRETS_MASTER_KEY: 'production-master-key',
+  PAYMENT_PROVIDER: 'stripe',
+  KSEF_ENVIRONMENT: 'production',
+  SECURE_COOKIES: 'true',
+  EMAIL_PROVIDER: 'ses',
+  EMAIL_FROM: 'Together <hello@together.example>',
+  EMAIL_DISPATCH_SECRET: 'production-email-dispatch-secret',
+  MARKETING_TICK_SECRET: 'production-marketing-tick-secret',
+  CRON_SECRET: 'production-cron-secret',
+  ...overrides,
+});
+
 describe('production posture detection', () => {
   it('treats an unlabelled NODE_ENV=production deployment as production', () => {
     expect(isProductionEnvironment({ NODE_ENV: 'production' })).toBe(true);
@@ -39,6 +57,44 @@ describe('production posture detection', () => {
   });
 });
 
+describe('production adapter and cookie policy', () => {
+  it('rejects the default email provider and accepts SES', () => {
+    const defaultProvider = envSchema.safeParse(productionEnvironment({ EMAIL_PROVIDER: undefined }));
+
+    expect(defaultProvider.success).toBe(false);
+    if (!defaultProvider.success) {
+      expect(defaultProvider.error.flatten().fieldErrors.EMAIL_PROVIDER).toContain(
+        "EMAIL_PROVIDER must be 'ses' or 'smtp' in production",
+      );
+    }
+    expect(envSchema.safeParse(productionEnvironment()).success).toBe(true);
+  });
+
+  it('rejects the default payment provider and accepts Stripe', () => {
+    const defaultProvider = envSchema.safeParse(productionEnvironment({ PAYMENT_PROVIDER: undefined }));
+
+    expect(defaultProvider.success).toBe(false);
+    if (!defaultProvider.success) {
+      expect(defaultProvider.error.flatten().fieldErrors.PAYMENT_PROVIDER).toContain(
+        "PAYMENT_PROVIDER must be 'stripe' in production",
+      );
+    }
+    expect(envSchema.safeParse(productionEnvironment()).success).toBe(true);
+  });
+
+  it('rejects the default cookie security and accepts secure cookies', () => {
+    const defaultSecurity = envSchema.safeParse(productionEnvironment({ SECURE_COOKIES: undefined }));
+
+    expect(defaultSecurity.success).toBe(false);
+    if (!defaultSecurity.success) {
+      expect(defaultSecurity.error.flatten().fieldErrors.SECURE_COOKIES).toContain(
+        'SECURE_COOKIES must be true in production',
+      );
+    }
+    expect(envSchema.safeParse(productionEnvironment()).success).toBe(true);
+  });
+});
+
 describe('tenant creation policy', () => {
   it('defaults open outside production and accepts only declared modes', () => {
     const defaults = envSchema.parse({});
@@ -49,18 +105,11 @@ describe('tenant creation policy', () => {
   });
 
   it('turns open production configuration into first-tenant bootstrap mode', () => {
-    const env = envSchema.parse({
-      NODE_ENV: 'production',
+    const env = envSchema.parse(productionEnvironment({
       APP_ENV: 'self-host',
       TENANT_CREATION: 'open',
-      BETTER_AUTH_SECRET: 'self-host-secret-with-at-least-16-chars',
       AUTH_TRUSTED_PROXY_HEADER: 'x-forwarded-for',
-      SECRETS_MASTER_KEY: 'self-host-master-key',
-      KSEF_ENVIRONMENT: 'production',
-      EMAIL_DISPATCH_SECRET: 'self-host-email-dispatch-secret',
-      MARKETING_TICK_SECRET: 'self-host-marketing-tick-secret',
-      CRON_SECRET: 'self-host-cron-secret',
-    });
+    }));
 
     expect(selectTenantCreationMode(env)).toBe('bootstrap');
   });
@@ -94,19 +143,12 @@ describe('tenant routing mode', () => {
   });
 
   it('uses bootstrap creation in production single-tenant mode', () => {
-    expect(selectTenantRouting(envSchema.parse({
-      NODE_ENV: 'production',
+    expect(selectTenantRouting(envSchema.parse(productionEnvironment({
       APP_ENV: 'self-host',
       APP_BASE_URL: 'https://learn.example.com',
       TENANT_CREATION: 'open',
-      BETTER_AUTH_SECRET: 'self-host-secret-with-at-least-16-chars',
       AUTH_TRUSTED_PROXY_HEADER: 'x-forwarded-for',
-      SECRETS_MASTER_KEY: 'self-host-master-key',
-      KSEF_ENVIRONMENT: 'production',
-      EMAIL_DISPATCH_SECRET: 'self-host-email-dispatch-secret',
-      MARKETING_TICK_SECRET: 'self-host-marketing-tick-secret',
-      CRON_SECRET: 'self-host-cron-secret',
-    })).tenantCreationMode).toBe('bootstrap');
+    }))).tenantCreationMode).toBe('bootstrap');
   });
 
   it('keeps subdomain routing when a base domain is configured', () => {
@@ -195,25 +237,12 @@ describe('deployed auth origin policy', () => {
 });
 
 describe('platform deployment auth origins', () => {
-  const productionEnv = (overrides: Record<string, string>) => envSchema.parse({
-    NODE_ENV: 'production',
-    APP_ENV: 'production',
-    APP_BASE_URL: 'https://together.example',
-    AUTH_TRUSTED_PROXY_HEADER: 'x-vercel-forwarded-for',
-    BETTER_AUTH_SECRET: 'production-secret-with-at-least-16-chars',
-    SECRETS_MASTER_KEY: 'production-master-key',
-    KSEF_ENVIRONMENT: 'production',
-    EMAIL_DISPATCH_SECRET: 'production-email-dispatch-secret',
-    MARKETING_TICK_SECRET: 'production-marketing-tick-secret',
-    CRON_SECRET: 'production-cron-secret',
-    ...overrides,
-  });
-
   it('ignores the platform deployment URLs in production', () => {
-    expect(selectDeploymentAuthOrigins(productionEnv({
+    expect(selectDeploymentAuthOrigins(envSchema.parse(productionEnvironment({
+      AUTH_TRUSTED_PROXY_HEADER: 'x-vercel-forwarded-for',
       VERCEL_URL: 'together-app-9f3a1c.vercel.app',
       VERCEL_BRANCH_URL: 'together-app-git-production.vercel.app',
-    }))).toEqual([]);
+    })))).toEqual([]);
   });
 
   it('trusts the deployment and branch URLs outside production', () => {

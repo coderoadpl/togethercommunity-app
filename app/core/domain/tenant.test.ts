@@ -30,11 +30,15 @@ describe('updateTenantSettingsInputSchema', () => {
     const parsed = updateTenantSettingsInputSchema.parse({});
     expect('billingPortalUrl' in parsed).toBe(false);
     expect('bunnyStreamLibraryId' in parsed).toBe(false);
+    expect('bunnyStreamCdnHostname' in parsed).toBe(false);
   });
 
   it('treats an empty string as an explicit clear (null)', () => {
     expect(updateTenantSettingsInputSchema.parse({ billingPortalUrl: '' })).toEqual({ billingPortalUrl: null });
     expect(updateTenantSettingsInputSchema.parse({ bunnyStreamLibraryId: '' })).toEqual({ bunnyStreamLibraryId: null });
+    expect(updateTenantSettingsInputSchema.parse({ bunnyStreamCdnHostname: '' })).toEqual({
+      bunnyStreamCdnHostname: null,
+    });
   });
 
   it('passes null through as a clear', () => {
@@ -48,10 +52,19 @@ describe('updateTenantSettingsInputSchema', () => {
     expect(updateTenantSettingsInputSchema.parse({ bunnyStreamLibraryId: '  lib-1  ' })).toEqual({
       bunnyStreamLibraryId: 'lib-1',
     });
+    expect(updateTenantSettingsInputSchema.parse({ bunnyStreamCdnHostname: '  vz-demo.b-cdn.net  ' })).toEqual({
+      bunnyStreamCdnHostname: 'vz-demo.b-cdn.net',
+    });
   });
 
   it('rejects a malformed billing-portal URL rather than storing garbage', () => {
     expect(updateTenantSettingsInputSchema.safeParse({ billingPortalUrl: 'not-a-url' }).success).toBe(false);
+  });
+
+  it('accepts only a bare CDN hostname', () => {
+    expect(updateTenantSettingsInputSchema.safeParse({ bunnyStreamCdnHostname: 'vz-demo.b-cdn.net' }).success).toBe(true);
+    expect(updateTenantSettingsInputSchema.safeParse({ bunnyStreamCdnHostname: 'https://vz-demo.b-cdn.net' }).success).toBe(false);
+    expect(updateTenantSettingsInputSchema.safeParse({ bunnyStreamCdnHostname: 'vz-demo.b-cdn.net/path' }).success).toBe(false);
   });
 
   it('accepts supported domestic VAT rates and rejects arbitrary rates', () => {
@@ -108,6 +121,7 @@ describe('resolveInvoiceVat', () => {
     name: 'Acme',
     billingPortalUrl: null,
     bunnyStreamLibraryId: null,
+    bunnyStreamCdnHostname: null,
   });
 
   it('distinguishes configured, unset, and incomplete treatments', () => {
@@ -151,6 +165,7 @@ describe('resolveTenantSocial', () => {
       socialLinks: [],
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
+      bunnyStreamCdnHostname: null,
       logoUrl: '/logo.svg',
       accentColor: null,
       faviconUrl: null,
@@ -174,6 +189,7 @@ describe('resolveTenantSocial', () => {
       socialLinks: [],
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
+      bunnyStreamCdnHostname: null,
       logoUrl: '/logo.svg',
       accentColor: null,
       faviconUrl: null,
@@ -198,11 +214,13 @@ describe('tenantSettingsSchema', () => {
       name: 'Acme',
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
+      bunnyStreamCdnHostname: null,
     })).toEqual({
       name: 'Acme',
       socialLinks: [],
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
+      bunnyStreamCdnHostname: null,
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,

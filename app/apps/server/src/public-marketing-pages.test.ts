@@ -15,7 +15,7 @@ const brand: PublicBrand = {
   settings: {
     name: 'Studio Demo',
     socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@studio' }],
-    billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: '/brand.svg',
+    billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: '/brand.svg',
     accentColor: '#0E7490', faviconUrl: '/favicon.svg',
     ogTitle: null, ogDescription: null, ogImageUrl: null,
     supportEmail: null, supportUrl: null, termsUrl: null, privacyUrl: null,

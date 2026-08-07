@@ -191,6 +191,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/student/courses/:courseId/structure` | authenticated | read | student course structure |
 | `GET /api/student/lessons/:lessonId/attachments` | authenticated | read | student lesson attachments |
 | `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | authenticated | read | student lesson attachment download |
+| `GET /api/student/lessons/:lessonId/playback` | authenticated | read | student lesson playback |
 | `POST /api/student/lessons/complete` | authenticated | mutating | student lesson complete |
 | `POST /api/student/lessons/uncomplete` | authenticated | mutating | student lesson uncomplete |
 | `POST /api/student/progress/last-viewed` | authenticated | mutating | student last viewed |

@@ -138,6 +138,7 @@ import {
   stripeWebhookOutputSchema,
   studentCoursesOutputSchema,
   studentLessonOutputSchema,
+  studentLessonPlaybackOutputSchema,
   supportMessageOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
@@ -1223,6 +1224,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.studentLesson.method,
       API_ROUTES.studentLesson.path.replace(':lessonId', encodeURIComponent(lessonId)),
       studentLessonOutputSchema,
+      undefined,
+      signal,
+    ),
+  studentLessonPlayback: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentLessonPlayback.method,
+      API_ROUTES.studentLessonPlayback.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      studentLessonPlaybackOutputSchema,
       undefined,
       signal,
     ),

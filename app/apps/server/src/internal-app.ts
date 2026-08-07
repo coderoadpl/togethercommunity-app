@@ -85,6 +85,7 @@ import {
   stripeConfigureInputSchema,
   subscriptionSimulateInputSchema,
   supportMessageInputSchema,
+  studentLessonPlaybackOutputSchema,
   TENANT_HEADER,
   tenantCreateInputSchema,
   tenantSecretDeleteInputSchema,
@@ -185,6 +186,7 @@ import {
   getNextLesson,
   getOrder,
   getLessonAttachmentDownload,
+  getLessonPlayback,
   getProductDownload,
   getProgress,
   getSalesSummary,
@@ -2275,6 +2277,17 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!result.ok) return respond(result);
     c.header('Cache-Control', 'no-store');
     return c.redirect(result.value, 302);
+  });
+
+  app.get(API_PATHS.studentLessonPlayback, async (c) => {
+    const result = await getLessonPlayback(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    c.header('Cache-Control', 'no-store');
+    return respond(ok(studentLessonPlaybackOutputSchema.parse(result.value)));
   });
 
   app.post(API_PATHS.studentLessonComplete, async (c) => {

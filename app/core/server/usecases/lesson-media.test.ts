@@ -230,8 +230,10 @@ const deps = (over: Partial<PlayableLessonDeps> = {}): PlayableLessonDeps => ({
   progress: progressRepo,
   products: productsRepo,
   clock,
-  bunnyEmbedTokenSigner: {
-    sign: ({ securityKey, videoId, expires }) => `${securityKey}-${videoId}-${expires}`,
+  bunnyTokenSigner: {
+    signEmbedToken: ({ securityKey, videoId, expires }) => `${securityKey}-${videoId}-${expires}`,
+    signHlsPlaylistUrl: ({ cdnHostname, videoId, expires }) =>
+      `https://${cdnHostname}/${videoId}/playlist.m3u8?expires=${expires}`,
   },
   secretResolver: secretsOf({
     's3.accessKeyId': 'AKIA-TEST',

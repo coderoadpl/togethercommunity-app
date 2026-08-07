@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(220);
-    expect(inventory.useCases).toHaveLength(188);
+    expect(inventory.routes).toHaveLength(221);
+    expect(inventory.useCases).toHaveLength(189);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
@@ -39,6 +39,7 @@ describe('permission inventory', () => {
       'marketing:campaign:write',
     );
     expect(useCases.get('coupon-stats.ts#getCouponStats')?.capability).toBe('coupon:report');
+    expect(useCases.get('lesson-playback.ts#getLessonPlayback')?.capability).toBe('lesson:play');
   });
 
   it('records the pre-migration marketing and route permissions', () => {

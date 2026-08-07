@@ -1,0 +1,55 @@
+name: release-sdk
+
+on:
+  push:
+    tags: ['sdk-v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - name: verify tag matches package version
+        run: |
+          version="$(node -p "require('./packages/client-sdk/package.json').version")"
+          test "$GITHUB_REF_NAME" = "sdk-v$version"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run sdk:build
+      - name: consumer smoke from packed tarball
+        run: |
+          tarball="$(npm pack ./packages/client-sdk | tail -n1)"
+          mkdir -p "$RUNNER_TEMP/sdk-smoke"
+          mv "$tarball" "$RUNNER_TEMP/sdk-smoke/"
+          cd "$RUNNER_TEMP/sdk-smoke"
+          npm init -y
+          npm install "./$tarball"
+          node --input-type=module -e "
+            import { createApiClient, studentCoursesQuery, unwrap } from '@together-community/client-sdk';
+            import { API_ROUTES } from '@together-community/client-sdk/contract';
+            import { ERROR_CODES } from '@together-community/client-sdk/domain';
+            import { createCliAuthAdapter } from '@together-community/client-sdk/auth-client';
+            const checks = [createApiClient, studentCoursesQuery, unwrap, createCliAuthAdapter];
+            if (checks.some((value) => typeof value !== 'function')) process.exit(1);
+            if (typeof API_ROUTES.health.path !== 'string') process.exit(1);
+            if (!Array.isArray(ERROR_CODES) && typeof ERROR_CODES !== 'object') process.exit(1);
+          "
+      - run: npm publish --access public
+        working-directory: app/packages/client-sdk

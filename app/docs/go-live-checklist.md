@@ -71,20 +71,19 @@ repository has no rotation tool.
 
 ### 5. Stripe payment provider
 
-**STATUS:** owner-action
+**STATUS:** enforced-by-env-schema
 
-`PAYMENT_PROVIDER` defaults to `fake` (`apps/server/src/env.ts:32`), and the
-production validation branch does not check it
-(`apps/server/src/env.ts:91-168`). The fake adapter returns
-`https://fake.checkout.local/...` checkout URLs
-(`adapters/payment/fake.ts:41`).
+Production boot rejects every `PAYMENT_PROVIDER` value except `stripe`. The
+fake adapter remains available outside production for local and staging use.
 
-Set `PAYMENT_PROVIDER=stripe`. As the tenant owner, open **Integrations →
-Stripe** and save an `rk_test_…` or `rk_live_…` restricted key with write access
-to Checkout Sessions, Coupons, Promotion Codes, Subscriptions, and Webhook
-Endpoints. Alternatively, configure a headless deployment with the CLI.
-Together registers the webhook, stores its signing secret, and derives the mode
-from the stored key prefix. Then run:
+**OWNER ACTION:** Set `PAYMENT_PROVIDER=stripe` for the Production environment
+in the Vercel project settings.
+
+Open **Integrations → Stripe** and save an `rk_test_…` or `rk_live_…` restricted
+key with write access to Checkout Sessions, Coupons, Promotion Codes,
+Subscriptions, and Webhook Endpoints. Alternatively, configure a headless
+deployment with the CLI. Together registers the webhook, stores its signing
+secret, and derives the mode from the stored key prefix. Then run:
 
 ```sh
 pnpm --silent run cli --tenant <slug> stripe configure rk_test_…
@@ -95,17 +94,15 @@ Complete item 11 before accepting payments.
 
 ### 6. Production e-mail provider
 
-**STATUS:** owner-action
+**STATUS:** enforced-by-env-schema
 
-`EMAIL_PROVIDER` defaults to `dev` (`apps/server/src/env.ts:48`). The dev
-provider writes every message to `dev_emails`
-(`adapters/email/dev.ts:14-25`) and is selected in
-`apps/server/src/composition.ts:402-414`. Production validation does not reject
-it. `EMAIL_FROM` becomes required only for `ses` or `smtp`
-(`apps/server/src/env.ts:84-90`, `apps/server/src/env.ts:135-140`).
+Production boot rejects the default `EMAIL_PROVIDER=dev` and requires `ses` or
+`smtp`. The selected real provider also requires `EMAIL_FROM`.
 
-Set `EMAIL_PROVIDER=ses` or `EMAIL_PROVIDER=smtp`, set `EMAIL_FROM`, and send a
-transactional test message from the production deployment.
+**OWNER ACTION:** Set `EMAIL_PROVIDER=ses` or `EMAIL_PROVIDER=smtp` and set
+`EMAIL_FROM` for the Production environment in the Vercel project settings.
+
+Send a transactional test message from the production deployment.
 
 Queued messages leave the outbox only when something drains it. A Node
 deployment drains it in-process every `EMAIL_DISPATCH_INTERVAL_MS`
@@ -116,15 +113,15 @@ Jobs and that a test message reaches the inbox rather than staying queued.
 
 ### 7. Secure cookies
 
-**STATUS:** owner-action
+**STATUS:** enforced-by-env-schema
 
-`SECURE_COOKIES` defaults to `false` (`apps/server/src/env.ts:36-39`) and has no
-production guard. The production security contract requires the `Secure` cookie
-flag (`docs/security.md:1-7`).
+Production boot rejects the default `SECURE_COOKIES=false` and requires `true`.
 
-Set `SECURE_COOKIES=true`. Sign in on the production origin, open the browser
-developer tools, and confirm the session cookie has `Secure`, `HttpOnly`, and
-`SameSite=Lax`.
+**OWNER ACTION:** Set `SECURE_COOKIES=true` for the Production environment in
+the Vercel project settings.
+
+Sign in on the production origin, open the browser developer tools, and confirm
+the session cookie has `Secure`, `HttpOnly`, and `SameSite=Lax`.
 
 ### 8. Secrets rotation, including the legacy AWS key
 

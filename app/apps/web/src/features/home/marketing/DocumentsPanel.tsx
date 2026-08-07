@@ -72,7 +72,7 @@ const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument |
           <FormLabel htmlFor="marketing-document-markdown">{t.marketing.markdownLabel}</FormLabel>
           <OutlinedInput id="marketing-document-markdown" value={content} onChange={(event) => setContent(event.target.value)} multiline minRows={12} required />
         </FormControl>
-        {create.isError || update.isError || publish.isError ? <Alert>{localizeError(create.error ?? update.error ?? publish.error, t)}</Alert> : null}
+        {create.isError || update.isError || publish.isError ? <Alert severity="error">{localizeError(create.error ?? update.error ?? publish.error, t)}</Alert> : null}
       </SectionCard>
       {document === undefined || published.length === 0 ? null : (
         <SectionCard title={t.marketing.publicUrls}>

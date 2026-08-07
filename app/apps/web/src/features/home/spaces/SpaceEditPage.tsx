@@ -47,7 +47,7 @@ export const SpaceEditPage = ({ space }: { space: StaffSpace }) => {
         </Button>
       }
     >
-      {space.archivedAt !== null ? <Alert data-testid="space-archived-note">{t.spacesPanel.archivedNote}</Alert> : null}
+      {space.archivedAt !== null ? <Alert severity="info" data-testid="space-archived-note">{t.spacesPanel.archivedNote}</Alert> : null}
       <SpaceForm
         mode="edit"
         initial={{

@@ -97,6 +97,12 @@ const createPlainTheme = (accentHue?: number): Theme =>
       button: { textTransform: 'none' },
     },
     components: {
+      MuiAlert: {
+        defaultProps: {
+          severity: 'error',
+          variant: 'outlined',
+        },
+      },
       // The tenant switchers sit inline inside the primary-filled AppBar; their
       // stock dark control text is illegible on the accent, so force solid white
       // (semi-transparent whites do not reach AA on a mid-tone fill).

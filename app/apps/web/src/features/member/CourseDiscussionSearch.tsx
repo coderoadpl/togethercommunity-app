@@ -76,7 +76,7 @@ export const CourseDiscussionSearch = ({
           (search.isPending ? (
             <Typography variant="body2">{t.discussion.searching}</Typography>
           ) : search.isError ? (
-            <Alert>{localizeError(search.error, t)}</Alert>
+            <Alert severity="error">{localizeError(search.error, t)}</Alert>
           ) : groups.length === 0 ? (
             <Typography variant="body2" data-testid="course-search-empty">
               {t.discussion.searchCourseEmpty}

@@ -115,8 +115,8 @@ const StripeConfiguration = ({
           {t.integrations.stripeConfigured}
         </Typography>
       ) : null}
-      {configure.isError ? <Alert>{localizeError(configure.error, t)}</Alert> : null}
-      {remove.isError ? <Alert>{localizeError(remove.error, t)}</Alert> : null}
+      {configure.isError ? <Alert severity="error">{localizeError(configure.error, t)}</Alert> : null}
+      {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
     </Box>
   );
 };
@@ -172,8 +172,8 @@ const BunnyLibraryIdField = () => {
           {t.integrations.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
-      {settings.isError ? <Alert>{localizeError(settings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {settings.isError ? <Alert severity="error">{localizeError(settings.error, t)}</Alert> : null}
     </Box>
   );
 };
@@ -204,7 +204,7 @@ const BunnyTestConnection = ({ ready }: { ready: boolean }) => {
         </Typography>
       ) : null}
       {testConnection.isError ? (
-        <Alert data-testid="bunny-test-error">{localizeError(testConnection.error, t)}</Alert>
+        <Alert severity="error" data-testid="bunny-test-error">{localizeError(testConnection.error, t)}</Alert>
       ) : null}
     </Box>
   );
@@ -236,7 +236,7 @@ const IfirmaTestConnection = ({ ready }: { ready: boolean }) => {
         </Typography>
       ) : null}
       {testConnection.isError ? (
-        <Alert data-testid="ifirma-test-error">{localizeError(testConnection.error, t)}</Alert>
+        <Alert severity="error" data-testid="ifirma-test-error">{localizeError(testConnection.error, t)}</Alert>
       ) : null}
     </Box>
   );
@@ -283,7 +283,7 @@ const ProviderTest = ({
         </Typography>
       ) : null}
       {test.isError ? (
-        <Alert data-testid={`${provider}-test-error`}>{localizeError(test.error, t)}</Alert>
+        <Alert severity="error" data-testid={`${provider}-test-error`}>{localizeError(test.error, t)}</Alert>
       ) : null}
     </Box>
   );

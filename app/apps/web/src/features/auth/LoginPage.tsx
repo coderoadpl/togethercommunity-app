@@ -170,7 +170,7 @@ export const LoginPage = () => {
               {t.auth.openMagicLink}
             </Button>
           ) : null}
-          {devMagicLink.isError ? <Alert>{localizeError(devMagicLink.error, t)}</Alert> : null}
+          {devMagicLink.isError ? <Alert severity="error">{localizeError(devMagicLink.error, t)}</Alert> : null}
         </Stack>
       </FocusCard>
     );
@@ -212,8 +212,8 @@ export const LoginPage = () => {
           >
             {verifyBackupCode.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorUseBackupCode}
           </Button>
-          {verifyTotp.isError ? <Alert>{localizeError(verifyTotp.error, t)}</Alert> : null}
-          {verifyBackupCode.isError ? <Alert>{localizeError(verifyBackupCode.error, t)}</Alert> : null}
+          {verifyTotp.isError ? <Alert severity="error">{localizeError(verifyTotp.error, t)}</Alert> : null}
+          {verifyBackupCode.isError ? <Alert severity="error">{localizeError(verifyBackupCode.error, t)}</Alert> : null}
         </Stack>
       </FocusCard>
     );
@@ -265,7 +265,7 @@ export const LoginPage = () => {
           </Button>
         </Stack>
         {signIn.isError ? (
-          <Alert sx={{ mt: '0.6rem' }}>
+          <Alert severity="error" sx={{ mt: '0.6rem' }}>
             {localizeError(signIn.error, t)}
           </Alert>
         ) : null}
@@ -292,7 +292,7 @@ export const LoginPage = () => {
           ) : null}
         </Stack>
         {signInWithPasskey.isError ? (
-          <Alert sx={{ mt: '0.6rem' }}>
+          <Alert severity="error" sx={{ mt: '0.6rem' }}>
             {localizeError(signInWithPasskey.error, t)}
           </Alert>
         ) : null}
@@ -318,7 +318,7 @@ export const LoginPage = () => {
           </Button>
         </Stack>
         {requestMagicLink.isError ? (
-          <Alert sx={{ mt: '0.6rem' }}>
+          <Alert severity="error" sx={{ mt: '0.6rem' }}>
             {localizeError(requestMagicLink.error, t)}
           </Alert>
         ) : null}

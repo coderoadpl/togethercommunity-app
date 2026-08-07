@@ -62,6 +62,8 @@ export const BETTER_AUTH_EMAIL_VERIFICATION_PATH = '/api/auth/send-verification-
 
 export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
+export const MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
+
 export const RESET_PASSWORD_CONTEXT_MAX_ENTRIES = 512;
 
 export const EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES = 512;
@@ -400,6 +402,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       resetRedirectConfinement(),
       // Magic-link auto-signup intentionally defers consent until first checkout because enrollment and login share this path.
       magicLink({
+        expiresIn: MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS,
         sendMagicLink: async ({ email, url, token }) => {
           const normalizedEmail = normalizeEmail(email);
           const context = deliveryContexts.get(normalizedEmail) ?? {
@@ -555,7 +558,11 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
       baseUrl,
     });
     await auth.api.signInMagicLink({
-      body: { email: normalizedEmail, callbackURL },
+      body: {
+        email: normalizedEmail,
+        callbackURL,
+        errorCallbackURL: new URL('/login?error=INVALID_TOKEN', baseUrl).toString(),
+      },
       headers: new Headers(),
     });
     const captured = auth.consumeCapturedMagicLink(normalizedEmail);

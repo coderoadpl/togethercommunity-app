@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
-import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, verifyEmail, welcomeSetPassword, threadReply, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
+import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, verifyEmail, welcomeSignIn, threadReply, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({
   logoUrl: z.string().url().nullable(),
@@ -11,7 +11,7 @@ const brandingSchema = z.object({
 });
 
 export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('welcome-set-password'), language: z.string(), tenantName: z.string(), actionUrl: z.string().url(), branding: brandingSchema.optional() }),
+  z.object({ kind: z.literal('welcome-sign-in'), language: z.string(), tenantName: z.string(), actionUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('reset-password'), language: z.string(), actionUrl: z.string().url() }),
   z.object({ kind: z.literal('verify-email'), language: z.string(), actionUrl: z.string().url() }),
   z.object({ kind: z.literal('magic-link'), language: z.string(), tenantName: z.string(), url: z.string().url(), branding: brandingSchema.optional() }),
@@ -32,8 +32,8 @@ export const renderEmailOutboxPayload = (raw: unknown) => {
   const payload = emailOutboxPayloadSchema.safeParse(raw);
   if (!payload.success) return payload;
   const value = payload.data;
-  const message = value.kind === 'welcome-set-password'
-    ? welcomeSetPassword(value.language, { tenantName: value.tenantName, actionUrl: value.actionUrl, ...(value.branding === undefined ? {} : { branding: value.branding }) })
+  const message = value.kind === 'welcome-sign-in'
+    ? welcomeSignIn(value.language, { tenantName: value.tenantName, actionUrl: value.actionUrl, ...(value.branding === undefined ? {} : { branding: value.branding }) })
     : value.kind === 'reset-password'
       ? resetPassword(value.language, { actionUrl: value.actionUrl })
       : value.kind === 'verify-email'

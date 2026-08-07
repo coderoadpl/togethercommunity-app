@@ -1358,11 +1358,11 @@ await db
 await db
   .insert(emailOutbox)
   .values({
-    id: 'send-studio-transactional', tenantId: 'tenant-studio', kind: 'welcome-set-password',
+    id: 'send-studio-transactional', tenantId: 'tenant-studio', kind: 'welcome-sign-in',
     to: 'kursant.aktywny@together.dev',
     payload: {
-      kind: 'welcome-set-password', language: 'pl', tenantName: 'Studio Demo',
-      actionUrl: 'https://studio.example.test/set-password',
+      kind: 'welcome-sign-in', language: 'pl', tenantName: 'Studio Demo',
+      actionUrl: 'https://studio.example.test/sign-in',
     },
     status: 'sent', attempts: 1, nextAttemptAt: relativeIso(-3), lastError: null,
     createdAt: relativeIso(-3), sentAt: relativeIso(-3), sesMessageId: 'ses-studio-transactional',

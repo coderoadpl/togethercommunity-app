@@ -491,7 +491,16 @@ secret. Preview and staging must not reuse the production hosting, database, or
 credential boundary.
 
 After item 16 creates the branch, set Vercel Production Branch Tracking to
-`production` and verify that a `main` merge creates staging only. Review the
+`production` and verify that a `main` merge creates staging only. Staging is
+the `main`-branch Preview deployment: it must carry `APP_ENV=staging` scoped
+to Preview with branch `main`, and its database URL must come exclusively
+from the database integration, which creates and manages a dedicated branch
+per git branch. Two verified traps: the integration only participates in
+push-triggered deployments, so a manual redeploy silently falls back to
+whatever static database variable is in scope, and a static Preview-scoped
+database URL therefore must not exist at all — remove the Preview scope from
+the integration's static entry so a missing injection fails loudly instead of
+writing to the production database. Review the
 live hosting-team membership, Git integration, environment scopes, and
 production branch setting; repository files cannot prove any of them. Record
 the owner who performed the review and the target project and team in the

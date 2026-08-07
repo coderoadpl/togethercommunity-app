@@ -26,6 +26,7 @@ export default defineConfig({
       // changeOrigin stays false so the API sees the original Host header —
       // tenant resolution depends on it.
       '/api': { target: 'http://localhost:48730', changeOrigin: false },
+      '/manifest.webmanifest': { target: 'http://localhost:48730', changeOrigin: false },
     },
   },
 });

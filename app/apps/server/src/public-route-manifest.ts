@@ -18,6 +18,7 @@ export type PublicRouteManifestEntry = {
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '*', methods: ['GET'], mutating: false, why: 'Tenant social preview for link crawlers' },
+  { path: '/manifest.webmanifest', methods: ['GET'], mutating: false, why: 'PWA web app manifest with tenant name' },
   { path: '/api/health', methods: ['GET'], mutating: false, why: 'Runtime health check' },
   { path: '/api/health/live', methods: ['GET'], mutating: false, why: 'Process liveness check' },
   { path: '/api/health/ready', methods: ['GET'], mutating: false, why: 'Database readiness check' },

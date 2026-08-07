@@ -23,6 +23,7 @@
     "build": "pnpm run build:web && pnpm run typecheck",
     "vercel-build": "pnpm run db:migrate && pnpm run build",
     "build:web": "vite build --config apps/web/vite.config.ts",
+    "icons:generate": "tsx scripts/generate-pwa-icons.ts",
     "test": "vitest run config-regression/gates.test.ts --maxWorkers=1 && vitest run adapters/db/seed.integration.test.ts --maxWorkers=1 && vitest run --exclude config-regression/gates.test.ts --exclude adapters/db/seed.integration.test.ts",
     "coverage": "vitest run --coverage --maxWorkers=1 --test-timeout=60000 && tsx scripts/coverage-report.ts && tsx scripts/coverage-check.ts",
     "coverage:check": "tsx scripts/coverage-check.ts",

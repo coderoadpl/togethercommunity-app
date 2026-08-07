@@ -36,7 +36,12 @@ import {
   type TenantDomain,
   type TermsConsent,
 } from '#core/domain/index.js';
-import { authorize, type PaymentWebhookEvent } from '#core/server/index.js';
+import {
+  authorize,
+  dispatchAutoInvoiceJobs,
+  type AutoInvoiceJob,
+  type PaymentWebhookEvent,
+} from '#core/server/index.js';
 import { authenticateMarketingApiKey } from './marketing-routes.js';
 import {
   FakeEmailHmac,
@@ -96,6 +101,9 @@ const deps = (input: {
   authenticated?: boolean;
   databaseUp?: boolean;
   dispatchEmails?: AppDeps['dispatchEmails'];
+  dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
+  autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
+  paymentRefunds?: AppDeps['paymentRefunds'];
   logger?: AppDeps['logger'];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
@@ -189,7 +197,7 @@ const deps = (input: {
       countSince: async () => 0,
       listPaidWithoutGrant: async () => [],
     },
-    paymentRefunds: {
+    paymentRefunds: input.paymentRefunds ?? {
       findOrderByProviderObjectIds: async () => null,
       findLatestSubscriptionOrder: async () => null,
       listPaidOrdersForMemberProduct: async () => [],
@@ -368,14 +376,26 @@ const deps = (input: {
             createOrderAndClaim: async () => false,
           },
           emailOutbox: appDeps.emailOutbox,
+          autoInvoiceJobs: input.autoInvoiceJobs ?? {
+            enqueue: async () => true,
+            claimDue: async () => null,
+            reschedule: async () => undefined,
+            complete: async () => undefined,
+          },
           processedPaymentEvents: appDeps.processedPaymentEvents,
           enrollmentTransaction: appDeps.enrollmentTransaction,
         }),
     },
     dispatchEmails: input.dispatchEmails ?? (async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 })),
+    dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
+      processed: false,
+      processedCount: 0,
+      orderId: null,
+    })),
     dispatchEmail: () => undefined,
     emailDispatchSecret: 'test-email-dispatch-secret',
     emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
+    autoInvoiceDispatchSecret: 'test-auto-invoice-dispatch-secret',
     devEmails: {
       findByRecipient: async () => null,
     },
@@ -573,11 +593,6 @@ const deps = (input: {
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined },
-    deferredEffects: {
-      schedule: (effect) => {
-        queueMicrotask(() => { void effect(); });
-      },
-    },
     baseDomain: 'localhost',
     singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
@@ -1409,6 +1424,29 @@ describe('email dispatch route', () => {
     });
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+});
+
+describe('automatic invoice dispatch route', () => {
+  it('runs the durable dispatcher only for the configured cron bearer', async () => {
+    const dispatchAutoInvoices = vi.fn(async () => ok({
+      processed: true,
+      processedCount: 1,
+      orderId: 'order-1',
+    }));
+    const app = buildApp(deps({ dispatchAutoInvoices }));
+
+    expect((await app.request(API_PATHS.autoInvoiceDispatch)).status).toBe(401);
+    const response = await app.request(API_PATHS.autoInvoiceDispatch, {
+      headers: { authorization: 'Bearer test-auto-invoice-dispatch-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(dispatchAutoInvoices).toHaveBeenCalledOnce();
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { processed: true, processedCount: 1, orderId: 'order-1' },
+    });
   });
 });
 
@@ -2592,7 +2630,49 @@ describe('checkout consent ordering', () => {
         createdBy: null,
       },
     );
-    const base = deps({ products: [attached] });
+    const durableJobs: AutoInvoiceJob[] = [];
+    const autoInvoiceJobs = {
+      enqueue: async (_tenantId: string, job: AutoInvoiceJob) => {
+        if (durableJobs.some((candidate) => candidate.webhookEventId === job.webhookEventId)) {
+          return false;
+        }
+        durableJobs.push(job);
+        return true;
+      },
+      claimDue: async () => {
+        const index = durableJobs.findIndex((job) => job.status === 'queued');
+        const job = durableJobs[index];
+        if (job === undefined) return null;
+        const claimed: AutoInvoiceJob = {
+          ...job,
+          status: 'running',
+          attempts: job.attempts + 1,
+          lockedAt: '2026-07-12T00:00:00.000Z',
+        };
+        durableJobs[index] = claimed;
+        return claimed;
+      },
+      reschedule: async (_tenantId: string, jobId: string, input: { nextAttemptAt: string; error: string }) => {
+        const index = durableJobs.findIndex((job) => job.id === jobId);
+        const job = durableJobs[index];
+        if (job !== undefined) {
+          durableJobs[index] = {
+            ...job,
+            status: 'queued',
+            nextAttemptAt: input.nextAttemptAt,
+            lockedAt: null,
+            lastError: input.error,
+          };
+        }
+      },
+      complete: async (_tenantId: string, jobId: string) => {
+        const index = durableJobs.findIndex((job) => job.id === jobId);
+        const job = durableJobs[index];
+        if (job !== undefined) {
+          durableJobs[index] = { ...job, status: 'completed', lockedAt: null, lastError: null };
+        }
+      },
+    };
     const recorded: TermsConsent[] = [];
     const order: Order = {
       id: 'order-webhook',
@@ -2632,10 +2712,18 @@ describe('checkout consent ordering', () => {
     let orderResult: Order | null = order;
     const orderLookups: Record<string, string>[] = [];
     const logger = { error: vi.fn() };
-    const deferredEffects: Array<() => Promise<void>> = [];
+    const base = deps({
+      products: [attached],
+      autoInvoiceJobs,
+      paymentRefunds: {
+        findOrderByProviderObjectIds: async () => orderResult,
+        findLatestSubscriptionOrder: async () => null,
+        listPaidOrdersForMemberProduct: async () => [],
+        markOrderRefunded: async () => null,
+      },
+    });
     let invoiceRequests = 0;
-    let deferredLookupFails = false;
-    const app = buildApp({
+    const webhookDeps = {
       ...base,
       marketing,
       logger,
@@ -2684,11 +2772,6 @@ describe('checkout consent ordering', () => {
           return true;
         },
       },
-      deferredEffects: {
-        schedule: (effect) => {
-          deferredEffects.push(effect);
-        },
-      },
       consents: {
         ...base.consents,
         record: async (_tenantId, consent) => {
@@ -2726,7 +2809,6 @@ describe('checkout consent ordering', () => {
       paymentRefunds: {
         ...base.paymentRefunds,
         findOrderByProviderObjectIds: async (_tenantId, providerObjectIds) => {
-          if (deferredLookupFails) throw new Error('invoice lookup failed');
           orderLookups.push(providerObjectIds);
           return orderResult;
         },
@@ -2749,7 +2831,8 @@ describe('checkout consent ordering', () => {
             : null,
       },
       devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
-    });
+    } satisfies AppDeps;
+    const app = buildApp(webhookDeps);
     const deliver = () =>
       app.request('/api/webhooks/stripe/t-acme', {
         method: 'POST',
@@ -2760,13 +2843,25 @@ describe('checkout consent ordering', () => {
     expect((await deliver()).status).toBe(200);
     expect(invoiceRequests).toBe(0);
     expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook' }]);
-    orderLookups.length = 0;
-    expect(deferredEffects).toHaveLength(1);
-    await deferredEffects.shift()?.();
-    expect(invoiceRequests).toBe(1);
-    expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook' }]);
+    expect(durableJobs).toMatchObject([{ webhookEventId: 'evt_webhook', status: 'queued' }]);
     orderLookups.length = 0;
     expect((await deliver()).status).toBe(200);
+    expect(invoiceRequests).toBe(0);
+    expect(durableJobs).toHaveLength(1);
+    expect(await dispatchAutoInvoiceJobs({
+      jobs: autoInvoiceJobs,
+      invoices: webhookDeps.invoices,
+      invoicing: webhookDeps.invoicing,
+      orderDetails: webhookDeps.orderDetails,
+      tenants: webhookDeps.tenants,
+      tenantSecrets: webhookDeps.tenantSecrets,
+      secretCrypto: webhookDeps.secretCrypto,
+      ids: webhookDeps.ids,
+      clock: webhookDeps.clock,
+      ...(webhookDeps.ksef === undefined ? {} : { ksef: webhookDeps.ksef }),
+    })).toMatchObject({ ok: true, value: { processedCount: 1 } });
+    expect(invoiceRequests).toBe(1);
+    expect(durableJobs).toMatchObject([{ webhookEventId: 'evt_webhook', status: 'completed' }]);
     expect(recorded).toEqual([
       expect.objectContaining({
         email: 'webhook-buyer@together.dev',
@@ -2838,13 +2933,6 @@ describe('checkout consent ordering', () => {
     expect(
       await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
     ).toEqual(grantedBefore);
-    deferredLookupFails = true;
-    const failingEffect = deferredEffects.at(-1);
-    if (failingEffect === undefined) throw new Error('Deferred invoice effect is missing');
-    await expect(failingEffect()).resolves.toBeUndefined();
-    expect(logger.error).toHaveBeenCalledWith(
-      '[invoice-auto] tenant=t-acme unexpected=Error: invoice lookup failed',
-    );
   });
 
   it('captures checkout consent evidence, suppresses repeated DOI mail, and logs non-blocking failures', async () => {

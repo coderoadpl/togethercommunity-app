@@ -53,6 +53,11 @@ if (env.NODE_ENV !== 'test') {
   setInterval(() => {
     dispatchKsefInBackground(deps.ksef, deps.logger, 'node ticker');
   }, env.KSEF_DISPATCH_INTERVAL_MS).unref();
+  setInterval(() => {
+    void deps.dispatchAutoInvoices().then((result) => {
+      if (!result.ok) process.stderr.write(`[auto-invoice] ticker dispatch failed: ${result.error.message}\n`);
+    });
+  }, env.KSEF_DISPATCH_INTERVAL_MS).unref();
 }
 
 // Same process serves the SPA build — one origin per tenant domain, no CORS.

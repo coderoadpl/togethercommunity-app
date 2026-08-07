@@ -704,6 +704,30 @@ export interface KsefSubmissionJobRepository {
   complete(tenantId: string, jobId: string): Promise<void>;
 }
 
+export interface AutoInvoiceJob {
+  id: string;
+  tenantId: string;
+  webhookEventId: string;
+  orderId: string;
+  status: 'queued' | 'running' | 'completed';
+  attempts: number;
+  nextAttemptAt: string;
+  lockedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export interface AutoInvoiceJobRepository {
+  enqueue(tenantId: string, job: AutoInvoiceJob): Promise<boolean>;
+  claimDue(now: string): Promise<AutoInvoiceJob | null>;
+  reschedule(
+    tenantId: string,
+    jobId: string,
+    input: { nextAttemptAt: string; error: string },
+  ): Promise<void>;
+  complete(tenantId: string, jobId: string): Promise<void>;
+}
+
 export interface KsefCredentials {
   tenantId: string;
   token: string;
@@ -1140,6 +1164,7 @@ export interface PaymentTransactionPort {
       paymentRefunds: PaymentRefundRepository;
       couponRedemptions: CouponRedemptionRepository;
       emailOutbox: EmailOutboxRepository;
+      autoInvoiceJobs: AutoInvoiceJobRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;
       enrollmentTransaction: EnrollmentTransactionPort;
     }) => Promise<Result<T, AppError>>,

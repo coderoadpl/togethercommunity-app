@@ -24,7 +24,6 @@ const publicServerImports = publicApp
   .sort();
 
 const APPROVED_PUBLIC_SERVER_IMPORTS = [
-  'autoIssueOnPayment',
   'enforceTermsConsent',
   'fulfillStripeWebhook',
   'getPaymentConfig',

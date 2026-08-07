@@ -19,6 +19,7 @@ import {
   testIfirmaConnection,
   testKsefConnection,
 } from './invoices.js';
+import { dispatchAutoInvoiceJobs } from './dispatch-auto-invoice-jobs.js';
 
 const now = '2026-07-27T10:00:00.000Z';
 const billing = {
@@ -612,6 +613,89 @@ describe('autoIssueOnPayment', () => {
     await expect(autoIssueOnPayment('tenant-1', order(), h.deps)).resolves.toBeUndefined();
     expect(h.invoices).toMatchObject([{ status: 'failed', error: 'integration_unavailable' }]);
     expect(h.events.some((event) => event.type === 'failed')).toBe(true);
+  });
+});
+
+describe('dispatchAutoInvoiceJobs', () => {
+  it('issues a persisted webhook job on a later scheduler tick', async () => {
+    const h = harness({ auto: true, scope: 'all' });
+    let claimed = false;
+    const completed: string[] = [];
+    const result = await dispatchAutoInvoiceJobs({
+      ...h.deps,
+      jobs: {
+        enqueue: async () => true,
+        claimDue: async () => {
+          if (claimed) return null;
+          claimed = true;
+          return {
+            id: 'job-1',
+            tenantId: 'tenant-1',
+            webhookEventId: 'event-1',
+            orderId: 'order-1',
+            status: 'running',
+            attempts: 1,
+            nextAttemptAt: now,
+            lockedAt: now,
+            lastError: null,
+            createdAt: now,
+          };
+        },
+        reschedule: async () => undefined,
+        complete: async (_tenantId, jobId) => {
+          completed.push(jobId);
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: { processed: true, processedCount: 1, orderId: 'order-1' },
+    });
+    expect(h.calls()).toBe(1);
+    expect(h.invoices).toHaveLength(1);
+    expect(completed).toEqual(['job-1']);
+  });
+
+  it('reschedules a job after an unexpected infrastructure rejection', async () => {
+    const h = harness({ auto: true, scope: 'all' });
+    h.deps.orderDetails.findById = async () => {
+      throw new Error('database unavailable');
+    };
+    let claimed = false;
+    const rescheduled: Array<{ nextAttemptAt: string; error: string }> = [];
+    const result = await dispatchAutoInvoiceJobs({
+      ...h.deps,
+      jobs: {
+        enqueue: async () => true,
+        claimDue: async () => {
+          if (claimed) return null;
+          claimed = true;
+          return {
+            id: 'job-1',
+            tenantId: 'tenant-1',
+            webhookEventId: 'event-1',
+            orderId: 'order-1',
+            status: 'running',
+            attempts: 1,
+            nextAttemptAt: now,
+            lockedAt: now,
+            lastError: null,
+            createdAt: now,
+          };
+        },
+        reschedule: async (_tenantId, _jobId, input) => {
+          rescheduled.push(input);
+        },
+        complete: async () => undefined,
+      },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(rescheduled).toEqual([{
+      nextAttemptAt: '2026-07-27T10:01:00.000Z',
+      error: 'Error: database unavailable',
+    }]);
   });
 });
 

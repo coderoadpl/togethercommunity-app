@@ -5,16 +5,16 @@ import { renderEmailOutboxPayload } from './email-outbox.js';
 const branding = { logoUrl: 'https://cdn.test/logo.png', accentColor: '#123456' };
 
 describe('renderEmailOutboxPayload', () => {
-  it('renders a welcome-set-password payload with branding', () => {
+  it('renders a welcome-sign-in payload with branding', () => {
     const rendered = renderEmailOutboxPayload({
-      kind: 'welcome-set-password',
+      kind: 'welcome-sign-in',
       language: 'pl',
       tenantName: 'Caravan',
-      actionUrl: 'https://caravan.test/set-password?token=abc',
+      actionUrl: 'https://caravan.test/sign-in?token=abc',
       branding,
     });
     expect(rendered.success).toBe(true);
-    if (rendered.success) expect(rendered.data.html).toContain('caravan.test/set-password');
+    if (rendered.success) expect(rendered.data.html).toContain('caravan.test/sign-in');
   });
 
   it('renders a reset-password payload', () => {
@@ -43,15 +43,15 @@ describe('renderEmailOutboxPayload', () => {
     }
   });
 
-  it('renders a welcome-set-password payload without branding', () => {
+  it('renders a welcome-sign-in payload without branding', () => {
     const rendered = renderEmailOutboxPayload({
-      kind: 'welcome-set-password',
+      kind: 'welcome-sign-in',
       language: 'en',
       tenantName: 'Studio',
-      actionUrl: 'https://studio.test/set-password?token=abc',
+      actionUrl: 'https://studio.test/sign-in?token=abc',
     });
     expect(rendered.success).toBe(true);
-    if (rendered.success) expect(rendered.data.html).toContain('studio.test/set-password');
+    if (rendered.success) expect(rendered.data.html).toContain('studio.test/sign-in');
   });
 
   it('renders a magic-link payload without branding', () => {

@@ -624,6 +624,33 @@ export const ksefSubmissionJobs = pgTable(
   ],
 );
 
+export const autoInvoiceJobs = pgTable(
+  'auto_invoice_jobs',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    webhookEventId: text('webhook_event_id').notNull(),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: ['queued', 'running', 'completed'] })
+      .notNull()
+      .default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'string' }).notNull(),
+    lockedAt: timestamp('locked_at', { withTimezone: true, mode: 'string' }),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('auto_invoice_jobs_webhook_event_uidx').on(table.webhookEventId),
+    index('auto_invoice_jobs_dispatch_idx').on(table.status, table.nextAttemptAt),
+    check('auto_invoice_jobs_status_check', sql`${table.status} IN ('queued', 'running', 'completed')`),
+  ],
+);
+
 export const couponRedemptions = pgTable(
   'coupon_redemptions',
   {

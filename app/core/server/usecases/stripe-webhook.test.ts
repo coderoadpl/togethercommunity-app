@@ -17,7 +17,7 @@ import {
   type EmailOutboxPayload,
 } from '#core/domain/index.js';
 
-import type { PaymentProvider, PaymentWebhookEvent } from '../ports.js';
+import type { AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
@@ -171,6 +171,7 @@ const harness = (
   const prices = options.prices ?? [];
   const sent: string[] = [];
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
+  const autoInvoiceJobs: AutoInvoiceJob[] = [];
   let sequence = 0;
   let clockNow = now;
   let refundTransitions = 0;
@@ -383,6 +384,7 @@ const harness = (
         const subscriptionSnapshot = new Map(subscriptions);
         const sentSnapshot = [...sent];
         const queuedSnapshot = [...queued];
+        const autoInvoiceJobsSnapshot = [...autoInvoiceJobs];
         const refundSnapshot = refundTransitions;
         const result = await operation({
           members: deps.members,
@@ -395,6 +397,18 @@ const harness = (
             createOrderAndClaim: async () => false,
           },
           emailOutbox: deps.emailOutbox,
+          autoInvoiceJobs: {
+            enqueue: async (_tenantId, job) => {
+              if (autoInvoiceJobs.some((candidate) => candidate.webhookEventId === job.webhookEventId)) {
+                return false;
+              }
+              autoInvoiceJobs.push(job);
+              return true;
+            },
+            claimDue: async () => null,
+            reschedule: async () => undefined,
+            complete: async () => undefined,
+          },
           processedPaymentEvents: deps.processedPaymentEvents,
           enrollmentTransaction: deps.enrollmentTransaction,
         });
@@ -412,6 +426,7 @@ const harness = (
         subscriptionSnapshot.forEach((value, key) => subscriptions.set(key, value));
         sent.splice(0, sent.length, ...sentSnapshot);
         queued.splice(0, queued.length, ...queuedSnapshot);
+        autoInvoiceJobs.splice(0, autoInvoiceJobs.length, ...autoInvoiceJobsSnapshot);
         refundTransitions = refundSnapshot;
         return err(internal('commit rejected'));
       },
@@ -459,6 +474,7 @@ const harness = (
     subscriptions,
     sent,
     queued,
+    autoInvoiceJobs,
     providerCancellations,
     refundTransitions: () => refundTransitions,
     setNow: (iso: string) => {
@@ -789,6 +805,15 @@ describe('fulfillStripeWebhook', () => {
     expect(h.grants.size).toBe(1);
     expect(h.events.size).toBe(1);
     expect(h.orders).toHaveLength(1);
+    expect(h.autoInvoiceJobs).toMatchObject([
+      {
+        tenantId: tenantA.id,
+        webhookEventId: 'evt-1',
+        orderId: h.orders[0]?.id,
+        status: 'queued',
+        attempts: 0,
+      },
+    ]);
     expect(h.sent).toEqual(['buyer@example.com']);
     expect(Array.from(h.grants.values())[0]?.source).toBe('stripe');
     expect(h.orders[0]).toMatchObject({
@@ -818,6 +843,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.members.size).toBe(0);
     expect(h.events.size).toBe(0);
     expect(h.sent).toEqual([]);
+    expect(h.autoInvoiceJobs).toEqual([]);
     expect(h.queued).toEqual([]);
   });
 

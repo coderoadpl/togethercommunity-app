@@ -59,9 +59,11 @@ import {
   createProductPriceHistoryRepository,
 } from './coupon-repositories.js';
 import { createInvoiceRepository } from './invoice-repositories.js';
+import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
 import { createMemberErasureRequestRepository } from './member-erasure-requests.js';
 import {
+  autoInvoiceJobs,
   consents,
   couponRedemptions,
   couponCheckoutSessions,
@@ -1276,6 +1278,18 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
         }),
       );
       await transactionDeps.orders.create(ACME, transactionOrder);
+      await transactionDeps.autoInvoiceJobs.enqueue(ACME, {
+        id: 'auto-invoice-bundle-rollback',
+        tenantId: ACME,
+        webhookEventId: 'event-auto-invoice-bundle-rollback',
+        orderId: transactionOrder.id,
+        status: 'queued',
+        attempts: 0,
+        nextAttemptAt: NOW,
+        lockedAt: null,
+        lastError: null,
+        createdAt: NOW,
+      });
       await transactionDeps.subscriptions.create(
         ACME,
         subscription({
@@ -1383,6 +1397,12 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     ).toEqual([]);
     expect(
       await db
+        .select({ id: autoInvoiceJobs.id })
+        .from(autoInvoiceJobs)
+        .where(eq(autoInvoiceJobs.id, 'auto-invoice-bundle-rollback')),
+    ).toEqual([]);
+    expect(
+      await db
         .select({ id: memberSubscriptions.id })
         .from(memberSubscriptions)
         .where(eq(memberSubscriptions.id, 'sub-bundle-rollback')),
@@ -1417,6 +1437,58 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
         .from(processedPaymentEvents)
         .where(eq(processedPaymentEvents.id, claimedEvent.id)),
     ).toEqual([{ status: 'processing', workerId: claimLease.workerId }]);
+  });
+
+  it('reclaims and completes durable automatic invoice jobs', async () => {
+    const repository = createAutoInvoiceJobRepository(db);
+    const jobOrder = order({
+      id: 'order-auto-invoice-job',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+    });
+    await createOrderRepository(db).create(ACME, jobOrder);
+    expect(await repository.enqueue(ACME, {
+      id: 'auto-invoice-job',
+      tenantId: ACME,
+      webhookEventId: 'event-auto-invoice-job',
+      orderId: jobOrder.id,
+      status: 'queued',
+      attempts: 0,
+      nextAttemptAt: NOW,
+      lockedAt: null,
+      lastError: null,
+      createdAt: NOW,
+    })).toBe(true);
+    expect(await repository.enqueue(ACME, {
+      id: 'auto-invoice-job-duplicate',
+      tenantId: ACME,
+      webhookEventId: 'event-auto-invoice-job',
+      orderId: jobOrder.id,
+      status: 'queued',
+      attempts: 0,
+      nextAttemptAt: NOW,
+      lockedAt: null,
+      lastError: null,
+      createdAt: NOW,
+    })).toBe(false);
+
+    const claimed = await repository.claimDue(NOW);
+    expect(claimed).toMatchObject({
+      id: 'auto-invoice-job',
+      status: 'running',
+      attempts: 1,
+      lockedAt: expect.any(String),
+    });
+    if (claimed === null) throw new Error('Automatic invoice job was not claimed');
+    await repository.complete(ACME, claimed.id);
+    expect(await repository.claimDue(NOW)).toBeNull();
+    expect(
+      await db
+        .select({ status: autoInvoiceJobs.status })
+        .from(autoInvoiceJobs)
+        .where(eq(autoInvoiceJobs.id, claimed.id)),
+    ).toEqual([{ status: 'completed' }]);
   });
 
   it('keeps the outer payment transaction usable after a coupon savepoint fails', async () => {

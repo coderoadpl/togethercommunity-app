@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
+import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
@@ -214,7 +215,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult } from '#core/server/index.js';
 import {
   ok,
   type AppError,
@@ -314,9 +315,11 @@ export interface AppDeps {
   enrollmentTransaction: EnrollmentTransactionPort;
   paymentTransaction: PaymentTransactionPort;
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
+  dispatchAutoInvoices(): Promise<Result<DispatchAutoInvoiceJobsResult, AppError>>;
   dispatchEmail(): void;
   emailDispatchSecret: string;
   emailDispatchCronSecret: string;
+  autoInvoiceDispatchSecret: string;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
   devSinkPurge?: DevSinkPurge;
@@ -332,7 +335,6 @@ export interface AppDeps {
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void };
-  deferredEffects: { schedule(effect: () => Promise<void>): void };
   baseDomain: string;
   singleTenantMode: boolean;
   appBaseUrl: string;
@@ -492,6 +494,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const emailHmac = createEmailHmac(env.SECRETS_MASTER_KEY);
   const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
   const invoiceRepository = createInvoiceRepository(db);
+  const orderRepository = createOrderRepository(db);
+  const autoInvoiceJobs = createAutoInvoiceJobRepository(db);
   const ksefCredentials = createKsefCredentialResolver(secretResolver);
   const ksefNumbers = createKsefNumberRepository(db);
   const fiscalArtifacts = createFiscalArtifactRepository(db);
@@ -562,6 +566,27 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const production = isProductionEnvironment(env);
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
   const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
+  const dispatchAutoInvoices = () => dispatchAutoInvoiceJobs({
+    jobs: autoInvoiceJobs,
+    invoices: invoiceRepository,
+    invoicing,
+    orderDetails: orderRepository,
+    tenants,
+    tenantSecrets,
+    secretCrypto,
+    ids,
+    clock,
+    ksef: {
+      environment: env.KSEF_ENVIRONMENT,
+      credentials: ksefCredentials,
+      numbers: ksefNumbers,
+      artifacts: fiscalArtifacts,
+      hash: contentHash,
+      validator: fa3Validator,
+      pdf: ksefPdf,
+      client: ksefClient,
+    },
+  });
   const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
   const platformTransactionalPool = createPlatformTransactionalPool(db);
   const tenantSesTransactional = createTenantSesTransactionalResolver(
@@ -839,8 +864,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),
     prices: createProductPriceRepository(db),
-    orders: createOrderRepository(db),
-    orderDetails: createOrderRepository(db),
+    orders: orderRepository,
+    orderDetails: orderRepository,
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
@@ -885,9 +910,11 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     enrollmentTransaction: createEnrollmentTransactionPort(db),
     paymentTransaction: createPaymentTransactionPort(db),
     dispatchEmails,
+    dispatchAutoInvoices,
     dispatchEmail,
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
     emailDispatchCronSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
+    autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
     ...(devSinkPurge === undefined ? {} : { devSinkPurge }),
@@ -903,11 +930,6 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     ids,
     clock,
     logger,
-    deferredEffects: {
-      schedule: (effect) => {
-        queueMicrotask(() => { void effect(); });
-      },
-    },
     baseDomain,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,

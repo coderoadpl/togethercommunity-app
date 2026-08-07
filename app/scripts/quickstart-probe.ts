@@ -134,7 +134,7 @@ const createEnvironment = (httpPort: number, httpsPort: number, project: string)
   const hex = (): string => randomBytes(32).toString('hex');
   return [
     'NODE_ENV=production',
-    'APP_ENV=self-host',
+    'APP_ENV=staging',
     `APP_BASE_URL=http://localhost:${String(httpPort)}`,
     'APP_BASE_DOMAIN=',
     'TENANT_CREATION=open',

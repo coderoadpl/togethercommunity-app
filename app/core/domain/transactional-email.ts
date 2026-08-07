@@ -90,27 +90,32 @@ const brandSocialLinks = (
   };
 };
 
-export const welcomeSetPassword = (
+export const welcomeSignIn = (
   language: string,
   input: { tenantName: string; actionUrl: string; branding?: EmailBranding },
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
-  const actionLink = link(input.actionUrl, languageOrDefault(language) === 'en' ? 'Set password' : 'Ustaw hasło');
+  const actionLink = link(
+    input.actionUrl,
+    languageOrDefault(language) === 'en'
+      ? 'Sign in and open your course'
+      : 'Zaloguj się i otwórz kurs',
+  );
 
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `Hello, your ${input.tenantName} account is ready`,
-      html: `${header}<p>Hello!</p><p>Your account on ${tenantName} has been created.</p><p>Before you start, set your password: ${actionLink}</p><p>The password setup link expires in one hour. If it stops working, request a new password reset from the login page.</p>${socialLinks.html}`,
-      text: `Hello!\n\nYour account on ${input.tenantName} has been created.\n\nBefore you start, set your password: ${input.actionUrl}\n\nThe password setup link expires in one hour. If it stops working, request a new password reset from the login page.${socialLinks.text}`,
+      html: `${header}<p>Hello!</p><p>Your account on ${tenantName} is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.</p><p>${actionLink}</p>${socialLinks.html}`,
+      text: `Hello!\n\nYour account on ${input.tenantName} is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.\n\nSign in and open your course: ${input.actionUrl}${socialLinks.text}`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Cześć, Twoje konto ${input.tenantName} jest gotowe`,
-    html: `${header}<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: ${actionLink}</p><p>Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.</p>${socialLinks.html}`,
-    text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} zostało utworzone.\n\nZanim zaczniesz, ustaw swoje hasło: ${input.actionUrl}\n\nLink do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.${socialLinks.text}`,
+    html: `${header}<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.</p><p>${actionLink}</p>${socialLinks.html}`,
+    text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.\n\nZaloguj się i otwórz kurs: ${input.actionUrl}${socialLinks.text}`,
   });
 };
 

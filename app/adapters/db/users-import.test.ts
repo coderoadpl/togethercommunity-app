@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { deriveLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
 import type { ImportUsersMutation } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -11,7 +10,6 @@ import {
   importAuditEvents,
   members,
   tenantApiKeys,
-  tenantSesSettings,
   tenants,
   user,
 } from './schema.js';
@@ -21,8 +19,6 @@ const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const NOW = '1998-08-14T10:00:00.000Z';
 const TENANT_ID = 'tenant-users-import';
-const MARKER = deriveLegacyPasswordHash('legacy-password', 'ab'.repeat(32));
-const OTHER_MARKER = deriveLegacyPasswordHash('other-password', 'cd'.repeat(32));
 
 let db: Db;
 let closeTestDatabase: () => Promise<void>;
@@ -46,23 +42,13 @@ beforeAll(async () => {
     createdAt: NOW,
     expiresAt: '1998-08-20T10:00:00.000Z',
   });
-  await db.insert(tenantSesSettings).values({
-    tenantId: TENANT_ID,
-    fromAddress: 'migration@example.test',
-    fromName: 'Migration',
-    identity: 'example.test',
-    identityVerifiedAt: NOW,
-    webhookToken: 'users-import-webhook-token',
-  });
 }, 60_000);
 
 afterAll(async () => {
   await closeTestDatabase();
 });
 
-const memberMutation = (
-  legacyPasswordHash: string,
-): Extract<ImportUsersMutation, { kind: 'member' }> => ({
+const memberMutation = (): Extract<ImportUsersMutation, { kind: 'member' }> => ({
   kind: 'member',
   action: 'created',
   resource: {
@@ -78,8 +64,6 @@ const memberMutation = (
     action: 'create',
     name: 'Imported User',
     emailVerified: false,
-    credentialAccountId: 'credential-source',
-    legacyPasswordHash,
   },
   event: {
     id: 'audit-member-created',
@@ -92,63 +76,12 @@ const memberMutation = (
     payloadHash: 'a'.repeat(64),
     at: NOW,
   },
-  credentialEvent: {
-    id: 'audit-credential-created',
-    tenantId: TENANT_ID,
-    apiKeyId: 'import-key',
-    kind: 'member',
-    importKey: 'member-source',
-    resourceId: 'member-source',
-    action: 'credential_created',
-    payloadHash: 'a'.repeat(64),
-    at: NOW,
-  },
 });
 
 describe('users import repository', () => {
-  it('allows legacy credentials only for the tenant verified sending identity', async () => {
+  it('commits an unverified auth identity, member, and audit without a credential', async () => {
     const repository = createImportUsersRepository(db);
-
-    expect(await repository.isLegacyCredentialEmailAllowed(
-      TENANT_ID,
-      'USER@example.test',
-    )).toBe(true);
-    expect(await repository.isLegacyCredentialEmailAllowed(
-      TENANT_ID,
-      'user@outside.test',
-    )).toBe(false);
-    expect(await repository.isLegacyCredentialEmailAllowed(
-      'tenant-users-import-other',
-      'user@example.test',
-    )).toBe(false);
-    await db.update(tenantSesSettings).set({
-      identity: 'specific@example.test',
-    }).where(eq(tenantSesSettings.tenantId, TENANT_ID));
-    expect(await repository.isLegacyCredentialEmailAllowed(
-      TENANT_ID,
-      'specific@example.test',
-    )).toBe(true);
-    expect(await repository.isLegacyCredentialEmailAllowed(
-      TENANT_ID,
-      'other@example.test',
-    )).toBe(false);
-    await db.update(tenantSesSettings).set({
-      identity: 'example.test',
-      identityVerifiedAt: null,
-    }).where(eq(tenantSesSettings.tenantId, TENANT_ID));
-    expect(await repository.isLegacyCredentialEmailAllowed(
-      TENANT_ID,
-      'user@example.test',
-    )).toBe(false);
-    expect(await repository.commit(TENANT_ID, memberMutation(MARKER))).toBe('conflict');
-    expect(await db.select().from(user).where(eq(user.id, 'user-source'))).toEqual([]);
-    await db.update(tenantSesSettings).set({ identityVerifiedAt: NOW })
-      .where(eq(tenantSesSettings.tenantId, TENANT_ID));
-  });
-
-  it('commits auth identity, credential, member, and audit atomically', async () => {
-    const repository = createImportUsersRepository(db);
-    const result = await repository.commit(TENANT_ID, memberMutation(MARKER));
+    const result = await repository.commit(TENANT_ID, memberMutation());
     const [authUser] = await db.select().from(user).where(eq(user.id, 'user-source'));
     const [credential] = await db.select().from(account).where(eq(account.userId, 'user-source'));
     const [member] = await db.select().from(members).where(eq(members.id, 'member-source'));
@@ -159,44 +92,18 @@ describe('users import repository', () => {
 
     expect(result).toBe('saved');
     expect(authUser).toMatchObject({ email: 'user@example.test', emailVerified: false });
-    expect(credential?.password).toBe(MARKER);
+    expect(credential).toBeUndefined();
     expect(member).toMatchObject({
       userId: 'user-source',
       displayName: 'Imported User',
       legacyId: 'legacy-user',
     });
     expect(audit).toMatchObject({ kind: 'member', resourceId: 'member-source' });
-    expect(audit?.payloadHash).not.toContain(MARKER);
     expect(await repository.findAuthUserByEmail(TENANT_ID, 'USER@example.test')).toMatchObject({
       id: 'user-source',
-      credentialPassword: MARKER,
+      hasCredentialAccount: false,
+      credentialPassword: null,
     });
-  });
-
-  it('rejects credential replacement and rolls back the audit entry', async () => {
-    const repository = createImportUsersRepository(db);
-    const base = memberMutation(OTHER_MARKER);
-    const replacement: ImportUsersMutation = {
-      ...base,
-      action: 'unchanged',
-      authUser: { ...base.authUser, action: 'keep' },
-      event: {
-        ...base.event,
-        id: 'audit-member-replacement',
-        action: 'unchanged',
-        at: '1998-08-14T10:01:00.000Z',
-      },
-    };
-    const result = await repository.commit(TENANT_ID, replacement);
-    const [credential] = await db.select().from(account).where(eq(account.userId, 'user-source'));
-    const audits = await db
-      .select()
-      .from(importAuditEvents)
-      .where(eq(importAuditEvents.resourceId, 'member-source'));
-
-    expect(result).toBe('conflict');
-    expect(credential?.password).toBe(MARKER);
-    expect(audits).toHaveLength(2);
   });
 
   it('does not resolve or adopt an auth user that belongs only to another tenant', async () => {
@@ -228,8 +135,7 @@ describe('users import repository', () => {
       'foreign@example.test',
     )).toMatchObject({ id: 'foreign-user' });
 
-    const attempted = memberMutation(MARKER);
-    if (attempted.credentialEvent === null) throw new Error('Expected credential audit event');
+    const attempted = memberMutation();
     const conflict = await repository.commit(TENANT_ID, {
       ...attempted,
       resource: {
@@ -241,12 +147,6 @@ describe('users import repository', () => {
       event: {
         ...attempted.event,
         id: 'audit-foreign-attempt',
-        importKey: 'member-foreign-attempt',
-        resourceId: 'member-foreign-attempt',
-      },
-      credentialEvent: {
-        ...attempted.credentialEvent,
-        id: 'audit-foreign-credential-attempt',
         importKey: 'member-foreign-attempt',
         resourceId: 'member-foreign-attempt',
       },

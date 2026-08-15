@@ -556,7 +556,6 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const importUsers = createImportUsersRepository(db);
   const importUsersReader: ImportUsersReader = {
     findAuthUserByEmail: importUsers.findAuthUserByEmail,
-    isLegacyCredentialEmailAllowed: importUsers.isLegacyCredentialEmailAllowed,
     findMemberById: importUsers.findMemberById,
     findMemberByEmail: importUsers.findMemberByEmail,
     findGrantById: importUsers.findGrantById,

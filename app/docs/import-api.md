@@ -1,6 +1,6 @@
 # Migration import API
 
-The import API moves an existing catalog and audience from another platform into Together. You push courses, modules, lessons, products, members, product grants, and course progress. Products always arrive unpublished and the import sends no e-mail; a legacy credential preserves password login, while passwordless members can use an enabled passwordless or password-reset flow.
+The import API moves an existing catalog and audience from another platform into Together. You push courses, modules, lessons, products, members, product grants, and course progress. Products always arrive unpublished and the import sends no e-mail; the import never carries passwords — every imported member is created passwordless and reclaims access via the magic-link or password-reset flow.
 
 Use it when you are switching platforms or restoring a bulk export. Do not use it for day-to-day writes — it creates and updates only records it created, never publishes, and never deletes.
 
@@ -11,13 +11,13 @@ An owner creates import keys in the panel at `/panel/integrations`, under **Inte
 | Scope | Grants | Does not grant |
 |---|---|---|
 | `import:content` | Draft upsert of courses, modules, lessons, and products | Publishing, deleting, editing anything not created by import, any read, any other API |
-| `import:users` | Upsert of members (with an optional legacy credential), product grants, and course progress | Sending e-mail, the enrollment API, the marketing API, reading member lists, editing members not created by import |
+| `import:users` | Upsert of members (always passwordless), product grants, and course progress | Sending e-mail, the enrollment API, the marketing API, reading member lists, editing members not created by import |
 
 - The two scopes are independent but may be combined on one key. Separate keys reduce the effect of a leaked key and keep their rate-limit counters independent.
 - Import scopes cannot be combined with `enrollment`, `marketing`, or `transactional` on the same key. Existing unscoped keys never gain import access.
 - **Expiry is mandatory.** The panel defaults to 7 days and caps the lifetime at 30 days. There is no renewal — create a new key.
 - An expired key behaves exactly like a revoked one: `401` on every import endpoint. Revocation takes effect immediately.
-- Every successful record write, including an `unchanged` result, is recorded in an append-only audit journal per key: kind, `importKey`, resource id, action, payload hash, and timestamp. Credential creation is a separate action whose payload hash excludes the credential. `GET /api/api-keys/:id/import-audit?cursor=&limit=` (owner session auth, newest first) enumerates the journal so a leaked token can be investigated and cleaned up.
+- Every successful record write, including an `unchanged` result, is recorded in an append-only audit journal per key: kind, `importKey`, resource id, action, payload hash, and timestamp. `GET /api/api-keys/:id/import-audit?cursor=&limit=` (owner session auth, newest first) enumerates the journal so a leaked token can be investigated and cleaned up.
 
 Send the key in `x-api-key`. Resolve the tenant through its normal tenant hostname, or send the tenant slug in `x-tenant` on a shared host — the same as the [transactional e-mail API](transactional-m2m-email.md).
 
@@ -97,7 +97,7 @@ Nothing is fetched, copied, or re-hosted. Video blocks require `storageKey` and 
 {"kind":"member","importKey":"member-u789","legacyId":"u789","email":"user@example.com","displayName":"Jan Kowalski","createdAt":"2021-05-06T00:00:00Z"}
 ```
 
-`email` is normalized to lowercase and `displayName` is a non-empty string of at most 200 characters. `legacyPasswordHash` is an optional string; its exact grammar is documented under [Importing members and their passwords](#importing-members-and-their-passwords).
+`email` is normalized to lowercase and `displayName` is a non-empty string of at most 200 characters. Members are always imported passwordless; no password field is accepted.
 
 ### Grant
 
@@ -162,7 +162,7 @@ Mixed kinds are allowed when the key holds the scope required by every included 
 }
 ```
 
-Validate checks schemas, per-record scope, duplicate kind-and-`importKey` pairs inside the call, import-lineage reference resolution, duplicate member e-mails, product slug collisions, credential-marker format, tenant evidence for credentials, and whether existing imported records would be updated or left unchanged. A key already used by an imported record is not an error; a key colliding with a native resource is. Validation does not inspect foreign platform identities. The loop is: fix your export, validate, repeat until `valid: true`, then apply.
+Validate checks schemas, per-record scope, duplicate kind-and-`importKey` pairs inside the call, import-lineage reference resolution, duplicate member e-mails, product slug collisions, and whether existing imported records would be updated or left unchanged. A key already used by an imported record is not an error; a key colliding with a native resource is. Validation does not inspect foreign platform identities. The loop is: fix your export, validate, repeat until `valid: true`, then apply.
 
 ## Applying a batch
 
@@ -204,7 +204,7 @@ Every write is an upsert keyed by `importKey`, so submitting the same dataset tw
 
 - First submission → `created`.
 - Same payload again → no write, `unchanged`.
-- Different payload → `updated`, but only if the target was created by import for this tenant under the same kind and key and remains updatable. Products must still be unpublished; a member's e-mail, a grant's member/product pair, and a progress record's member/course pair cannot change. Credentials are immutable after member creation.
+- Different payload → `updated`, but only if the target was created by import for this tenant under the same kind and key and remains updatable. Products must still be unpublished; a member's e-mail, a grant's member/product pair, and a progress record's member/course pair cannot change.
 - Anything else → `action: "error"` with `error.code: "conflict"` for that record. In particular, two different payloads sharing one `importKey` in a write batch surface as a conflict rather than silently overwriting each other.
 
 The validate plan uses the outcome names `create`, `update`, and `unchanged`. Write results use `created`, `updated`, and `unchanged`; failures use `action: "error"`, with `conflict` appearing as an error code rather than an action.
@@ -246,29 +246,13 @@ The import surface cannot make anything public:
 - Nothing is deleted, no tenant settings are touched, no roles or admin rights exist in any payload, and no media is uploaded.
 - Records that were not created by import are never modified.
 
-After the data lands: review the drafts in the panel, attach pricing and delivery, publish the products you want live, and tell passwordless members to use the magic-link or forgot-password flow. Revoke the import key when you are done — do not wait for it to expire.
+After the data lands: review the drafts in the panel, attach pricing and delivery, publish the products you want live, and tell members to use the magic-link or forgot-password flow. Revoke the import key when you are done — do not wait for it to expire.
 
-## Importing members and their passwords
+## Importing members (passwordless)
 
-Members can be imported in two ways.
+Every imported member is created without a password and with an unverified e-mail. The import sends no e-mail. Once e-mail delivery is configured, members reclaim access through a magic link or the forgot-password flow.
 
-**Passwordless.** Omit `legacyPasswordHash`. The member exists, appears in your member list, and has no password. They can request a magic link or use the forgot-password flow when the corresponding e-mail delivery is configured; the import itself sends neither message.
-
-**With the legacy credential.** Supply `legacyPasswordHash` in the exact supported format and the member keeps their existing password:
-
-```text
-pbkdf2$25000$<64-hex-character salt>$<1024-hex-character hash>
-```
-
-The literal marker is `pbkdf2`, the literal iteration field is `25000`, the salt is exactly 64 hexadecimal characters, and the hash is exactly 1024 hexadecimal characters. Hex digits may be upper- or lowercase; no other iteration count or field length is accepted. Verification uses PBKDF2-HMAC-SHA-256 with 25,000 iterations and a 512-byte derived key, passing the 64-character salt string directly as the salt. If your platform stores credentials with those exact semantics, your transform joins the existing fields with `$` — no derivation, password knowledge, or user interaction. The first successful password login transparently upgrades the stored credential.
-
-- **Plaintext passwords are never accepted.** There is no `password` field, and nothing else derives a hash for you.
-- The value is validated for format only. It is never verified, logged, echoed back, or included in an audit payload hash. The audit records only that a credential was created.
-- A credential can be inserted only in the same transaction that creates a brand-new auth user. It can never be added later or written onto a pre-existing platform identity, and it can never be replaced.
-- A legacy credential is accepted only when the member address is covered by this tenant's already-verified SES sending identity: either the exact verified address or an address on the exact verified domain. Import other addresses passwordless.
-- An imported auth identity starts with an unverified e-mail. The imported credential enables migration login but does not satisfy platform-wide verified-email capabilities.
 - An e-mail already belonging to a pre-existing platform identity cannot be adopted by an import. Deduplicate in your transform and resolve the identity through the normal account flow.
-- If your hashes use bcrypt, argon2, or any other scheme, import those members passwordless and have them use the magic-link or forgot-password flow.
 
 Imported members carry no consent evidence. You are the data controller: import only members you have a legal basis to hold, and notify them on your own terms — the import will not do it for you.
 
@@ -291,7 +275,7 @@ Give the assistant two things: the record schemas from this document, and a smal
 > - write every source field that has no Together equivalent into a separate `unmapped-report.json` instead of dropping it silently;
 > - never invent data — if a required Together field has no source value, list the record in `problems.json` instead of guessing;
 > - write a manifest line with the real per-kind counts;
-> - never put a plaintext password in the output; only join an existing 64-character hex salt and 1024-character hex PBKDF2-SHA-256 hash as `pbkdf2$25000$<salt>$<hash>` when the source used the documented 25,000-iteration, 512-byte derivation with the salt string passed directly, and otherwise omit the field.
+> - never put a password or password hash in the output.
 >
 > Then tell me which of my source fields you could not map and what decisions I need to make.
 
@@ -307,5 +291,5 @@ Run through this before you call the migration done.
 4. **Nothing silently vanished.** `problems.json` is empty or every entry has a decision, and `unmapped-report.json` has been reviewed — keep both files.
 5. **Re-run is clean.** Submitting the same dataset again returns an all-`unchanged` summary with zero failures.
 6. **Spot-check the drafts.** Open a course in the panel and confirm module order, chapter structure, and lesson blocks of every type you use render correctly; check one product's access items against your source access rules.
-7. **Spot-check the people.** Verify one member per access tier has the grant they should have, log in once with a migrated legacy password, and request one magic link or password reset for a passwordless member.
+7. **Spot-check the people.** Verify one member per access tier has the grant they should have, and request one magic link or password reset for an imported member.
 8. **Close the door.** Revoke the import keys, and use the key's import audit to confirm the journal contains exactly what you expected.

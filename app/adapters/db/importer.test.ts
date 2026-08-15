@@ -7,7 +7,6 @@ import {
   createImportAuthGateway,
   type ImportAuthGateway,
 } from '#adapters/auth/import-credential.js';
-import { deriveLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
 
 import type { Db } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
@@ -43,10 +42,6 @@ const TENANT_ID = 'tenant-import-spec';
 const TENANT_SLUG = 'import-spec';
 const emailHmac = { compute: (tenantId: string, email: string) => `${tenantId}:${email.trim().toLowerCase()}` };
 
-const PASSWORD = 'legacy-pass-1234';
-const SALT = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
-const MARKER = deriveLegacyPasswordHash(PASSWORD, SALT);
-
 const ids = {
   u1: '64b7dd851bb3ae9014e30001',
   u2: '64b7dd851bb3ae9014e30002',
@@ -71,10 +66,9 @@ const buildBundle = (): TenantBundle => ({
       legacyId: ids.u1,
       email: EMAIL_1,
       name: 'Jan Import',
-      legacyPasswordMarker: MARKER,
       role: 'student',
     },
-    { legacyId: ids.u2, email: EMAIL_2, name: null, legacyPasswordMarker: null, role: 'student' },
+    { legacyId: ids.u2, email: EMAIL_2, name: null, role: 'student' },
   ],
   courses: [
     {
@@ -358,7 +352,7 @@ describe('importer', () => {
       .select()
       .from(account)
       .where(and(eq(account.userId, authUsers[0]?.id ?? ''), eq(account.providerId, 'credential')));
-    expect(credentialRows[0]?.password).toBe(MARKER);
+    expect(credentialRows).toHaveLength(0);
 
     const grantRowsAll = await db
       .select()
@@ -404,19 +398,18 @@ describe('importer', () => {
     expect(result.verification?.pass).toBe(true);
     const spotChecks = result.verification?.tenants[0]?.spotChecks ?? [];
     expect(spotChecks.length).toBeGreaterThan(0);
-    expect(result.verification?.tenants[0]?.markersVerified).toBe(1);
-    expect(result.verification?.tenants[0]?.markersTotal).toBe(1);
   }, 60000);
 
-  it('lets the imported user sign in with the legacy password', async () => {
-    const signedIn = await auth.api.signInEmail({
-      body: { email: EMAIL_1, password: PASSWORD },
-      headers: new Headers({ origin: 'http://localhost:48730' }),
-    });
-    expect(signedIn.user.email).toBe(EMAIL_1);
+  it('keeps the imported user passwordless', async () => {
+    const authUsers = await db.select().from(user).where(eq(user.email, EMAIL_1));
+    const credentialRows = await db
+      .select()
+      .from(account)
+      .where(and(eq(account.userId, authUsers[0]?.id ?? ''), eq(account.providerId, 'credential')));
+    expect(credentialRows).toHaveLength(0);
     await expect(
       auth.api.signInEmail({
-        body: { email: EMAIL_1, password: 'wrong-password' },
+        body: { email: EMAIL_1, password: 'any-password-1234' },
         headers: new Headers({ origin: 'http://localhost:48730' }),
       }),
     ).rejects.toThrowError();
@@ -473,24 +466,25 @@ describe('importer', () => {
   it('never clobbers a native password set after import', async () => {
     const authUsers = await db.select().from(user).where(eq(user.email, EMAIL_1));
     const userId = authUsers[0]?.id ?? '';
-    await db
-      .update(account)
-      .set({ password: 'native-hash-set-by-the-user' })
-      .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')));
+    const context = await auth.$context;
+    const nativeHash = await context.password.hash('native-password-set-by-the-user');
+    await context.internalAdapter.linkAccount({
+      userId,
+      providerId: 'credential',
+      accountId: userId,
+      password: nativeHash,
+    });
 
-    const result = await runImport(db, gateway, targets(buildBundle()), {
+    await runImport(db, gateway, targets(buildBundle()), {
       apply: true,
       nowIso, emailHmac,
     });
-    expect(
-      result.users.anomalies.some((anomaly) => anomaly.kind === 'credential-kept-native'),
-    ).toBe(true);
 
     const credentialRows = await db
       .select()
       .from(account)
       .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')));
-    expect(credentialRows[0]?.password).toBe('native-hash-set-by-the-user');
+    expect(credentialRows[0]?.password).toBe(nativeHash);
   }, 60000);
 
   it('derives member createdAt from the legacy ObjectId timestamp', async () => {
@@ -501,16 +495,7 @@ describe('importer', () => {
     expect(memberRows[0]?.createdAt).toBe('2023-07-19T12:56:37.000Z');
   }, 30000);
 
-  const restoreImportedCredential = async (): Promise<void> => {
-    const authUsers = await db.select().from(user).where(eq(user.email, EMAIL_1));
-    await db
-      .update(account)
-      .set({ password: MARKER })
-      .where(and(eq(account.userId, authUsers[0]?.id ?? ''), eq(account.providerId, 'credential')));
-  };
-
   it('drops module→course links the course does not list in its module order', async () => {
-    await restoreImportedCredential();
     const bundle = buildBundle();
     const detachedId = '65a524f8b5bd26b9d2ab0d99';
     bundle.modules.push({
@@ -536,7 +521,6 @@ describe('importer', () => {
   }, 60000);
 
   it('re-apply repairs rows imported before the detached-link and join-date fixes', async () => {
-    await restoreImportedCredential();
     const staleModuleId = '65a524f8b5bd26b9d2ab0d98';
     await db.insert(courseModules).values({
       id: staleModuleId,
@@ -582,7 +566,6 @@ describe('importer', () => {
   }, 60000);
 
   it('re-apply reports and skips a pseudonymized member without restoring identity or history', async () => {
-    await restoreImportedCredential();
     const erasedAuthUserId = (
       await db.select({ id: user.id }).from(user).where(eq(user.email, EMAIL_1))
     )[0]?.id;
@@ -713,7 +696,6 @@ describe('importer', () => {
         legacyId: nativeLegacyId,
         email: nativeEmail,
         name: 'Native Buyer',
-        legacyPasswordMarker: MARKER,
         role: 'student',
       },
     ];

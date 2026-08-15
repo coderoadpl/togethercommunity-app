@@ -9,7 +9,6 @@ import type {
   ImportedUserOutcome,
   ImportedUserState,
 } from '#adapters/auth/import-credential.js';
-import { isLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
 
 import type { Db } from './client.js';
 import { appendMemberEvent } from './member-events.js';
@@ -22,7 +21,6 @@ import {
   createProductRepository,
 } from './repositories.js';
 import {
-  account,
   courseLessons,
   courseModules,
   courses,
@@ -34,7 +32,6 @@ import {
   tenantAdmins,
   tenantDomains,
   tenants,
-  user,
 } from './schema.js';
 
 const EPOCH_ISO = '1970-01-01T00:00:00.000Z';
@@ -74,7 +71,6 @@ interface BundleUser {
   legacyId: string;
   email: string;
   name: string | null;
-  legacyPasswordMarker: string | null;
   role: 'admin' | 'student';
 }
 
@@ -188,8 +184,6 @@ interface TenantVerification {
   bundleSlug: string;
   tenantId: string;
   counts: VerificationCount[];
-  markersTotal: number;
-  markersVerified: number;
   spotChecks: SpotCheck[];
   pass: boolean;
 }
@@ -399,7 +393,6 @@ export const resolveImportTenants = async (
           ? await gateway.ensureImportedUser({
               email: opts.ownerEmail,
               name: null,
-              passwordMarker: null,
             })
           : null;
         await db.transaction(async (tx) => {
@@ -453,7 +446,6 @@ export const resolveImportTenants = async (
       const owner = await gateway.ensureImportedUser({
         email: opts.ownerEmail,
         name: null,
-        passwordMarker: null,
       });
       const now = opts.nowIso();
       await db.transaction(async (tx) => {
@@ -492,7 +484,6 @@ export const resolveImportTenants = async (
 interface UsersOutcome {
   report: KindReport;
   userIdByEmail: Map<string, string | null>;
-  markerByEmail: Map<string, string>;
 }
 
 const mergeBundleUsers = (
@@ -513,12 +504,6 @@ const mergeBundleUsers = (
           kind: 'user-email-conflict',
           subject: `users/${bundleUser.legacyId}`,
           detail: `email ${email} is already imported as user ${previous.legacyId}; keeping the first occurrence`,
-        });
-      } else if (previous.legacyPasswordMarker !== bundleUser.legacyPasswordMarker) {
-        report.anomalies.push({
-          kind: 'user-marker-conflict',
-          subject: `users/${bundleUser.legacyId}`,
-          detail: `email ${email} appears with two different password markers; keeping the first occurrence`,
         });
       }
     }
@@ -604,7 +589,6 @@ const importUsers = async (
   const report = emptyReport('users');
   const merged = mergeBundleUsers(targets, report);
   const userIdByEmail = new Map<string, string | null>();
-  const markerByEmail = new Map<string, string>();
   const emails = [...merged.keys()].sort();
   for (const email of emails) {
     const bundleUser = merged.get(email);
@@ -634,54 +618,21 @@ const importUsers = async (
       });
       continue;
     }
-    if (bundleUser.legacyPasswordMarker !== null) {
-      markerByEmail.set(email, bundleUser.legacyPasswordMarker);
-    } else {
-      report.anomalies.push({
-        kind: 'user-without-credential',
-        subject: `users/${bundleUser.legacyId}`,
-        detail: `${email} has no password marker; account stays passwordless (magic link only)`,
-      });
-    }
     const input = {
       email,
       name: bundleUser.name,
-      passwordMarker: bundleUser.legacyPasswordMarker,
     };
     const state: ImportedUserOutcome | ImportedUserState = apply
       ? await gateway.ensureImportedUser(input)
       : await gateway.inspectImportedUser(input);
     userIdByEmail.set(email, state.userId);
-    if (state.credentialAction === 'keep-native') {
-      report.anomalies.push({
-        kind: 'credential-kept-native',
-        subject: `users/${bundleUser.legacyId}`,
-        detail: `${email} already has a native (non-imported) password; the legacy marker was not applied`,
-      });
-    }
     if (state.userAction === 'create') {
       report.create += 1;
       continue;
     }
-    if (state.credentialAction === 'create' || state.credentialAction === 'update') {
-      report.update += 1;
-      if (report.samples.length < SAMPLE_LIMIT) {
-        report.samples.push({
-          key: email,
-          changes: [
-            {
-              field: 'credential',
-              before: state.credentialAction === 'create' ? '(no credential account)' : '(stale legacy marker)',
-              after: '(imported legacy marker)',
-            },
-          ],
-        });
-      }
-      continue;
-    }
     report.skip += 1;
   }
-  return { report, userIdByEmail, markerByEmail };
+  return { report, userIdByEmail };
 };
 
 interface SimplePlan<TInsert, TPatch> {
@@ -1470,7 +1421,6 @@ const verifyTenant = async (
   db: Db,
   target: ImportTarget,
   result: TenantImportResult,
-  markerByEmail: ReadonlyMap<string, string>,
   options: ImportRunOptions,
 ): Promise<TenantVerification> => {
   const { tenantId } = target.tenant;
@@ -1589,40 +1539,16 @@ const verifyTenant = async (
     pass: progressMatched === progressExpected,
   });
 
-  const tenantEmails = [...new Set(bundle.users.map((row) => normalizeEmail(row.email)))];
-  let markersTotal = 0;
-  let markersVerified = 0;
-  if (tenantEmails.length > 0) {
-    const credentialRows = await db
-      .select({ email: user.email, password: account.password })
-      .from(user)
-      .innerJoin(account, eq(account.userId, user.id))
-      .where(and(inArray(user.email, tenantEmails), eq(account.providerId, 'credential')));
-    const passwordByEmail = new Map(credentialRows.map((row) => [row.email, row.password]));
-    for (const email of tenantEmails) {
-      const marker = markerByEmail.get(email);
-      if (marker === undefined) continue;
-      markersTotal += 1;
-      const stored = passwordByEmail.get(email) ?? null;
-      if (stored === marker || (stored !== null && !isLegacyPasswordHash(stored))) {
-        markersVerified += 1;
-      }
-    }
-  }
-
   const spotChecks = await runSpotChecks(db, target, options);
 
   const pass =
     counts.every((count) => count.pass) &&
-    markersVerified === markersTotal &&
     spotChecks.every((check) => check.pass);
 
   return {
     bundleSlug: target.tenant.bundleSlug,
     tenantId,
     counts,
-    markersTotal,
-    markersVerified,
     spotChecks,
     pass,
   };
@@ -1822,7 +1748,7 @@ export const runImport = async (
       const result = tenantResults[index];
       if (result === undefined) continue;
       tenantVerifications.push(
-        await verifyTenant(db, target, result, usersOutcome.markerByEmail, options),
+        await verifyTenant(db, target, result, options),
       );
     }
     verification = {

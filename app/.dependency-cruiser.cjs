@@ -5,7 +5,8 @@ const coreClientExternal = 'node_modules/(@tanstack/query-core|zod)(/|$)';
 const coreClientTestExternal = 'node_modules/(@tanstack/query-core|zod|vitest)(/|$)';
 const coreServerTestExternal = 'node_modules/vitest(/|$)';
 const adapterDbExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg)(/|$)';
-const adapterDbTestExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg|vitest)(/|$)';
+const adapterDbTestExternal =
+  'node_modules/(@neondatabase/serverless|better-auth|drizzle-orm|pg|vitest)(/|$)';
 const adapterAuthExternal = 'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|zod)(/|$)';
 const adapterAuthTestExternal =
   'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|vitest|zod)(/|$)';
@@ -124,7 +125,7 @@ module.exports = {
     {
       name: 'auth-provider-sdk-only-in-adapters-auth',
       severity: 'error',
-      from: { pathNot: '^adapters/auth' },
+      from: { pathNot: '^(adapters/auth|adapters/db/seed\\.integration\\.test\\.ts$)' },
       to: { path: 'node_modules/(better-auth|@better-auth)(/|$)' },
     },
     {

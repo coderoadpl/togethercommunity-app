@@ -110,12 +110,11 @@ const product: Product = {
   createdAt: NOW,
 };
 
-const memberRecord = (legacyPasswordHash: string | null = MARKER) => ({
+const memberRecord = () => ({
   importKey: 'member-source',
   legacyId: 'source',
   email: 'USER@Example.test',
   displayName: 'Jan Kowalski',
-  ...(legacyPasswordHash === null ? {} : { legacyPasswordHash }),
 });
 
 const harness = () => {
@@ -128,7 +127,6 @@ const harness = () => {
   const commits: ImportUsersMutation[] = [];
   const importUsers: M2mImportUsersDeps['importUsers'] = {
     findAuthUserByEmail: async (_tenantId, email) => authUsers.get(email) ?? null,
-    isLegacyCredentialEmailAllowed: async () => true,
     findMemberById: async (_tenantId, id) => members.get(id) ?? null,
     findMemberByEmail: async (_tenantId, email) =>
       [...members.values()].find((member) => member.email === email) ?? null,
@@ -147,11 +145,8 @@ const harness = () => {
         authUsers.set(mutation.resource.email, {
           id: mutation.resource.userId,
           email: mutation.resource.email,
-          hasCredentialAccount:
-            previous?.hasCredentialAccount === true
-            || mutation.authUser.legacyPasswordHash !== null,
-          credentialPassword:
-            mutation.authUser.legacyPasswordHash ?? previous?.credentialPassword ?? null,
+          hasCredentialAccount: previous?.hasCredentialAccount ?? false,
+          credentialPassword: previous?.credentialPassword ?? null,
         });
         members.set(mutation.resource.id, mutation.resource);
       }
@@ -202,41 +197,34 @@ describe('m2m users import', () => {
     expect(h.commits[0]).toMatchObject({
       kind: 'member',
       authUser: { action: 'create', emailVerified: false },
-      credentialEvent: { action: 'credential_created' },
     });
-    expect(h.audits.get('member:member-source')?.payloadHash).not.toContain(MARKER);
+    expect(h.commits[0]).not.toHaveProperty('authUser.legacyPasswordHash');
+    expect(h.commits[0]).not.toHaveProperty('authUser.credentialAccountId');
+    expect(h.commits[0]).not.toHaveProperty('credentialEvent');
   });
 
-  it('rejects both calls in the credential-planting PoC for a pre-existing identity', async () => {
+  it('rejects credential fields in the credential-planting PoC', async () => {
     const h = harness();
-    h.authUsers.set('user@example.test', {
-      id: 'owner-user',
-      email: 'user@example.test',
-      hasCredentialAccount: false,
-      credentialPassword: null,
-    });
     const first = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
-      records: [memberRecord(null)],
+      records: [{ ...memberRecord(), legacyPasswordHash: MARKER }],
     }, h.deps);
     const second = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
-      records: [memberRecord()],
+      records: [{ ...memberRecord(), password: 'secret' }],
     }, h.deps);
 
     expect(first).toMatchObject({
-      ok: true,
-      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+      ok: true, value: { results: [{ action: 'error', error: { code: 'validation' } }] },
     });
     expect(second).toMatchObject({
-      ok: true,
-      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+      ok: true, value: { results: [{ action: 'error', error: { code: 'validation' } }] },
     });
     expect(h.commits).toEqual([]);
-    expect(h.authUsers.get('user@example.test')?.credentialPassword).toBeNull();
+    expect(h.authUsers).toEqual(new Map());
   });
 
-  it('returns one validation conflict for every credential state of a tenant identity', async () => {
+  it('returns one validation conflict regardless of a tenant identity credential state', async () => {
     const h = harness();
     const validationDeps: M2mImportValidationDeps = {
       ...h.deps,
@@ -282,78 +270,67 @@ describe('m2m users import', () => {
     expect(h.commits).toEqual([]);
   });
 
-  it('does not add a credential on a later call, even for an import-created member', async () => {
+  it('rejects a pre-existing tenant identity without changing its credential state', async () => {
     const h = harness();
-    await importM2mUsers(ctx, apiKey, 'member', {
-      datasetVersion: 'together-import/v1',
-      records: [memberRecord(null)],
-    }, h.deps);
-    const updated = await importM2mUsers(ctx, apiKey, 'member', {
+    h.authUsers.set('user@example.test', {
+      id: 'existing-user',
+      email: 'user@example.test',
+      hasCredentialAccount: true,
+      credentialPassword: OTHER_MARKER,
+    });
+    const result = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
       records: [memberRecord()],
     }, h.deps);
 
-    expect(updated).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
     });
-    expect(h.authUsers.get('user@example.test')?.credentialPassword).toBeNull();
+    expect(h.commits).toEqual([]);
+    expect(h.authUsers.get('user@example.test')?.credentialPassword).toBe(OTHER_MARKER);
   });
 
-  it('requires tenant evidence for a legacy credential but allows a passwordless import', async () => {
+  it('always creates imported members passwordless', async () => {
     const h = harness();
-    const depsWithoutEvidence: M2mImportUsersDeps = {
-      ...h.deps,
-      importUsers: {
-        ...h.deps.importUsers,
-        isLegacyCredentialEmailAllowed: async () => false,
-      },
-    };
-    const credential = await importM2mUsers(ctx, apiKey, 'member', {
-      datasetVersion: 'together-import/v1',
-      records: [memberRecord()],
-    }, depsWithoutEvidence);
     const passwordless = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
-      records: [memberRecord(null)],
-    }, depsWithoutEvidence);
+      records: [memberRecord()],
+    }, h.deps);
 
-    expect(credential).toMatchObject({
-      ok: true,
-      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
-    });
     expect(passwordless).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
     expect(h.commits).toHaveLength(1);
     expect(h.commits[0]).toMatchObject({
       kind: 'member',
-      authUser: { legacyPasswordHash: null, emailVerified: false },
-      credentialEvent: null,
+      authUser: { emailVerified: false },
+    });
+    expect(h.commits[0]).not.toHaveProperty('authUser.legacyPasswordHash');
+    expect(h.commits[0]).not.toHaveProperty('authUser.credentialAccountId');
+    expect(h.commits[0]).not.toHaveProperty('credentialEvent');
+    expect(h.authUsers.get('user@example.test')).toMatchObject({
+      hasCredentialAccount: false,
+      credentialPassword: null,
     });
   });
 
-  it('rejects malformed, plaintext-looking, and replacement credential inputs per record', async () => {
+  it('rejects every legacy hash shape and password field per record', async () => {
     const h = harness();
     const invalid = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
       records: [
-        memberRecord('plaintext-password'),
-        memberRecord(MARKER.replace('pbkdf2', 'PBKDF2')),
-        { ...memberRecord(null), password: 'secret' },
+        { ...memberRecord(), legacyPasswordHash: 'plaintext-password' },
+        { ...memberRecord(), legacyPasswordHash: MARKER.replace('pbkdf2', 'PBKDF2') },
+        { ...memberRecord(), legacyPasswordHash: OTHER_MARKER },
+        { ...memberRecord(), password: 'secret' },
       ],
     }, h.deps);
-    await importM2mUsers(ctx, apiKey, 'member', {
-      datasetVersion: 'together-import/v1', records: [memberRecord()],
-    }, h.deps);
-    const replacement = await importM2mUsers(ctx, apiKey, 'member', {
-      datasetVersion: 'together-import/v1', records: [memberRecord(OTHER_MARKER)],
-    }, h.deps);
 
-    expect(invalid).toMatchObject({ ok: true, value: { summary: { failed: 3 } } });
-    expect(replacement).toMatchObject({
-      ok: true,
-      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
-    });
-    expect(h.authUsers.get('user@example.test')?.credentialPassword).toBe(MARKER);
+    expect(invalid).toMatchObject({ ok: true, value: { summary: { failed: 4 } } });
+    expect(invalid.ok && invalid.value.results).toHaveLength(4);
+    expect(invalid.ok && invalid.value.results.every((result) =>
+      result.action === 'error' && result.error.code === 'validation')).toBe(true);
+    expect(h.commits).toEqual([]);
+    expect(h.authUsers).toEqual(new Map());
   });
 
   it('restricts grants to imported members and products', async () => {
@@ -505,7 +482,7 @@ describe('m2m users import', () => {
             contents: [{ id: 'content-source', name: 'Lesson', lessonKey: 'lesson-source' }],
           }],
         },
-        { kind: 'member', ...memberRecord(null) },
+        { kind: 'member', ...memberRecord() },
       ],
     }, validationDeps);
 

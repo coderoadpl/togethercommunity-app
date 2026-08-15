@@ -160,17 +160,11 @@ export const importProductRecordSchema = z
 
 export type ImportProductRecord = z.output<typeof importProductRecordSchema>;
 
-const legacyPasswordHashSchema = z.string().regex(
-  /^pbkdf2\$25000\$[0-9a-fA-F]{64}\$[0-9a-fA-F]{1024}$/u,
-  'Legacy password hash must use the supported PBKDF2 marker format',
-);
-
 export const importMemberRecordSchema = z
   .object({
     ...importedRecordFields,
     email: z.string().email().transform(normalizeEmail),
     displayName: z.string().trim().min(1).max(200),
-    legacyPasswordHash: legacyPasswordHashSchema.optional(),
   })
   .strict();
 

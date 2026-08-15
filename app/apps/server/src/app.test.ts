@@ -98,7 +98,6 @@ const product = (input: {
 
 const readOnlyImportUsers = (repository: AppDeps['importUsers']): AppDeps['importUsersReader'] => ({
   findAuthUserByEmail: repository.findAuthUserByEmail,
-  isLegacyCredentialEmailAllowed: repository.isLegacyCredentialEmailAllowed,
   findMemberById: repository.findMemberById,
   findMemberByEmail: repository.findMemberByEmail,
   findGrantById: repository.findGrantById,
@@ -242,7 +241,6 @@ const deps = (input: {
     },
     importUsersReader: {
       findAuthUserByEmail: async () => null,
-      isLegacyCredentialEmailAllowed: async () => true,
       findMemberById: async () => null,
       findMemberByEmail: async () => null,
       findGrantById: async () => null,
@@ -252,7 +250,6 @@ const deps = (input: {
     },
     importUsers: {
       findAuthUserByEmail: async () => null,
-      isLegacyCredentialEmailAllowed: async () => true,
       findMemberById: async () => null,
       findMemberByEmail: async () => null,
       findGrantById: async () => null,
@@ -1174,7 +1171,7 @@ describe('migration import HTTP surfaces', () => {
     expect(await limitedResponse.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
   });
 
-  it('imports members through the users-scoped envelope without echoing credentials', async () => {
+  it('imports members passwordless and rejects credential fields', async () => {
     const marker = `pbkdf2$25000$${'ab'.repeat(32)}$${'cd'.repeat(512)}`;
     const { app, userMutations } = importM2mApp({ scopes: ['import:users'] });
     const response = await app.request(API_PATHS.m2mImportMembers, {
@@ -1186,6 +1183,10 @@ describe('migration import HTTP surfaces', () => {
           importKey: 'member-source',
           email: 'USER@example.test',
           displayName: 'Jan Kowalski',
+        }, {
+          importKey: 'member-with-credential',
+          email: 'other@example.test',
+          displayName: 'Other User',
           legacyPasswordHash: marker,
         }],
       }),
@@ -1196,16 +1197,27 @@ describe('migration import HTTP surfaces', () => {
     expect(body).toEqual({
       ok: true,
       data: {
-        results: [{ importKey: 'member-source', action: 'created', id: 'member-source' }],
-        summary: { created: 1, updated: 0, unchanged: 0, failed: 0 },
+        results: [
+          { importKey: 'member-source', action: 'created', id: 'member-source' },
+          {
+            importKey: 'member-with-credential',
+            action: 'error',
+            error: expect.objectContaining({ code: 'validation' }),
+          },
+        ],
+        summary: { created: 1, updated: 0, unchanged: 0, failed: 1 },
       },
     });
     expect(JSON.stringify(body)).not.toContain(marker);
     expect(userMutations[0]).toMatchObject({
       kind: 'member',
       resource: { email: 'user@example.test' },
-      authUser: { emailVerified: false, legacyPasswordHash: marker },
+      authUser: { emailVerified: false },
     });
+    expect(userMutations).toHaveLength(1);
+    expect(userMutations[0]).not.toHaveProperty('authUser.legacyPasswordHash');
+    expect(userMutations[0]).not.toHaveProperty('authUser.credentialAccountId');
+    expect(userMutations[0]).not.toHaveProperty('credentialEvent');
   });
 
   it('keeps user import writes isolated from content-scoped keys', async () => {

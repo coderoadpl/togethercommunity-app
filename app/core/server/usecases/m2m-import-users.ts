@@ -86,8 +86,6 @@ type PreparedUsersRecord =
         action: 'create' | 'keep';
         name: string;
         emailVerified: false;
-        credentialAccountId: string;
-        legacyPasswordHash: string | null;
       };
     }
   | {
@@ -137,16 +135,10 @@ const resolveReference = async (
   return err(appError('conflict', `Referenced ${kind} "${key}" was not created by import`));
 };
 
-const memberAuditPayload = (record: ImportMemberRecord): unknown =>
-  Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'legacyPasswordHash'));
-
 const importPayloadHash = (
-  kind: ImportKind,
   record: unknown,
   hash: ContentHash,
-): string => hash.sha256(canonicalImportPayload(
-  kind === 'member' ? memberAuditPayload(importMemberRecordSchema.parse(record)) : record,
-));
+): string => hash.sha256(canonicalImportPayload(record));
 
 const prepareMember = async (
   tenantId: string,
@@ -155,14 +147,12 @@ const prepareMember = async (
   deps: M2mImportUsersReaders,
   now: string,
   newUserId: string,
-  credentialAccountId: string,
 ): Promise<Result<PreparedUsersRecord, AppError>> => {
   const audit = await deps.importAuditEvents.findLatestByImportKey(
     tenantId,
     'member',
     record.importKey,
   );
-  const passwordHash = record.legacyPasswordHash ?? null;
   if (audit === null) {
     if (await deps.importUsers.findMemberById(tenantId, record.importKey) !== null) {
       return err(appError(
@@ -176,15 +166,6 @@ const prepareMember = async (
     const authUser = await deps.importUsers.findAuthUserByEmail(tenantId, record.email);
     if (authUser !== null) {
       return err(appError('conflict', 'This member identity cannot be imported'));
-    }
-    if (
-      passwordHash !== null
-      && !await deps.importUsers.isLegacyCredentialEmailAllowed(tenantId, record.email)
-    ) {
-      return err(appError(
-        'conflict',
-        'Legacy credentials require an e-mail covered by this tenant\'s verified sending identity',
-      ));
     }
     return ok({
       kind: 'member',
@@ -204,8 +185,6 @@ const prepareMember = async (
         action: 'create',
         name: record.displayName,
         emailVerified: false,
-        credentialAccountId,
-        legacyPasswordHash: passwordHash,
       },
     });
   }
@@ -219,13 +198,6 @@ const prepareMember = async (
   const authUser = await deps.importUsers.findAuthUserByEmail(tenantId, target.email);
   if (authUser === null || authUser.id !== target.userId) {
     return err(appError('conflict', `Imported member "${record.importKey}" has no matching user`));
-  }
-  if (passwordHash !== null) {
-    if (!authUser.hasCredentialAccount || authUser.credentialPassword === null) {
-      return err(appError('conflict', 'An imported member credential cannot be modified'));
-    } else if (authUser.credentialPassword !== passwordHash) {
-      return err(appError('conflict', 'An imported member credential cannot be modified'));
-    }
   }
   const action = audit.payloadHash === payloadHash ? 'unchanged' : 'updated';
   return ok({
@@ -243,8 +215,6 @@ const prepareMember = async (
       action: 'keep',
       name: record.displayName,
       emailVerified: false,
-      credentialAccountId,
-      legacyPasswordHash: null,
     },
   });
 };
@@ -461,7 +431,6 @@ const prepareUsersRecord = async (
   deps: M2mImportUsersReaders,
   now: string,
   newUserId: string,
-  credentialAccountId: string,
   validationRecords?: ReadonlyMap<string, ImportRecord>,
 ): Promise<Result<PreparedUsersRecord, AppError>> => {
   if (kind === 'member') {
@@ -472,7 +441,6 @@ const prepareUsersRecord = async (
       deps,
       now,
       newUserId,
-      credentialAccountId,
     );
   }
   if (kind === 'grant') {
@@ -525,21 +493,12 @@ const mutationFor = (
     at: deps.clock.nowIso(),
   };
   if (prepared.kind === 'member') {
-    const credentialEvent = prepared.authUser.action === 'create'
-      && prepared.authUser.legacyPasswordHash !== null
-      ? {
-          ...event,
-          id: deps.ids.nextId(),
-          action: 'credential_created' as const,
-        }
-      : null;
     return {
       kind: prepared.kind,
       action: prepared.action,
       resource: prepared.resource,
       authUser: prepared.authUser,
       event,
-      credentialEvent,
     };
   }
   if (prepared.kind === 'grant') {
@@ -575,7 +534,7 @@ export const importM2mUsers = async (
       });
       continue;
     }
-    const payloadHash = importPayloadHash(kind, parsed.data, deps.hash);
+    const payloadHash = importPayloadHash(parsed.data, deps.hash);
     const previousHash = seen.get(parsed.data.importKey);
     if (previousHash !== undefined && previousHash !== payloadHash) {
       results.push({
@@ -610,7 +569,6 @@ export const importM2mUsers = async (
       references,
       deps,
       deps.clock.nowIso(),
-      deps.ids.nextId(),
       deps.ids.nextId(),
     );
     if (!prepared.ok) {
@@ -654,12 +612,11 @@ export const prepareM2mUsersValidationRecord = async (
     tenantId,
     record.kind,
     payload,
-    importPayloadHash(record.kind, payload, deps.hash),
+    importPayloadHash(payload, deps.hash),
     references,
     deps,
     now,
     `${record.importKey}:user`,
-    `${record.importKey}:credential`,
     validationRecords,
   );
   return prepared.ok

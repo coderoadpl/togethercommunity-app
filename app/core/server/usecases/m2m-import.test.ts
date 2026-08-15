@@ -132,7 +132,6 @@ const harness = () => {
     },
     importUsers: {
       findAuthUserByEmail: async () => null,
-      isLegacyCredentialEmailAllowed: async () => true,
       findMemberById: async () => null,
       findMemberByEmail: async () => null,
       findGrantById: async () => null,

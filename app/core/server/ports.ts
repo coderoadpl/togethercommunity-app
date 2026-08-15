@@ -556,11 +556,8 @@ export type ImportUsersMutation =
         action: 'create' | 'keep';
         name: string;
         emailVerified: false;
-        credentialAccountId: string;
-        legacyPasswordHash: string | null;
       };
       event: ImportAuditEvent;
-      credentialEvent: ImportAuditEvent | null;
     }
   | {
       kind: 'grant';
@@ -577,7 +574,6 @@ export type ImportUsersMutation =
 
 export interface ImportUsersReader {
   findAuthUserByEmail(tenantId: string, email: string): Promise<ImportAuthUserState | null>;
-  isLegacyCredentialEmailAllowed(tenantId: string, email: string): Promise<boolean>;
   findMemberById(tenantId: string, memberId: string): Promise<ImportMemberResource | null>;
   findMemberByEmail(tenantId: string, email: string): Promise<ImportMemberResource | null>;
   findGrantById(tenantId: string, grantId: string): Promise<ProductGrant | null>;

@@ -231,6 +231,7 @@ describe('m2m users import', () => {
       products: {
         ...h.deps.products,
         listByTenant: async () => [product],
+        listPublishedByTenant: async () => [],
       },
     };
     h.authUsers.set('user@example.test', {
@@ -459,6 +460,7 @@ describe('m2m users import', () => {
       products: {
         ...h.deps.products,
         listByTenant: async () => [product],
+        listPublishedByTenant: async () => [],
       },
     };
     const result = await validateM2mImport(ctx, {

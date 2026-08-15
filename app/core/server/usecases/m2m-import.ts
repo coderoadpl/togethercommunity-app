@@ -54,6 +54,7 @@ import type {
   ImportContentRepository,
   ProductRepository,
 } from '../ports.js';
+import { aggregateAccessItems, buildAccessLookup } from './access.js';
 import {
   emptyImportReferenceMaps,
   prepareM2mUsersValidationRecord,
@@ -62,9 +63,9 @@ import {
 
 type ImportReaders = {
   courses: Pick<CourseRepository, 'findById'>;
-  modules: Pick<CourseModuleRepository, 'findById'>;
+  modules: Pick<CourseModuleRepository, 'findById' | 'list'>;
   lessons: Pick<CourseLessonRepository, 'findById'>;
-  products: Pick<ProductRepository, 'findById' | 'listByTenant'>;
+  products: Pick<ProductRepository, 'findById' | 'listByTenant' | 'listPublishedByTenant'>;
   importAuditEvents: Pick<ImportAuditEventRepository, 'findLatestByImportKey'>;
   hash: ContentHash;
 };
@@ -102,6 +103,54 @@ const emptyReferenceMaps = (): ReferenceMaps => ({
   lesson: new Map(),
   product: new Map(),
 });
+
+type PublishedReachability = {
+  courseIds: Set<string>;
+  moduleIds: Set<string>;
+  lessonIds: Set<string>;
+};
+
+const publishedReachability = async (
+  tenantId: string,
+  deps: ImportReaders,
+): Promise<PublishedReachability> => {
+  const publishedProducts = await deps.products.listPublishedByTenant(tenantId);
+  const accessItems = aggregateAccessItems(publishedProducts);
+  const lookup = buildAccessLookup(accessItems);
+  const courseIds = new Set(accessItems.map((item) => item.courseId));
+  const allModules = await deps.modules.list(tenantId);
+  const reachableModules = allModules.filter((module) =>
+    lookup.moduleIds.has(module.id) || module.courseIds.some((courseId) => courseIds.has(courseId)),
+  );
+  const moduleIds = new Set([
+    ...lookup.moduleIds,
+    ...reachableModules.map((module) => module.id),
+  ]);
+  const lessonIds = new Set([
+    ...lookup.lessonIds,
+    ...reachableModules.flatMap((module) =>
+      module.chapters.flatMap((chapter) => chapter.contents.map((content) => content.lessonId)),
+    ),
+  ]);
+  return { courseIds, moduleIds, lessonIds };
+};
+
+const lazyPublishedReachability = (
+  tenantId: string,
+  deps: ImportReaders,
+): (() => Promise<PublishedReachability>) => {
+  let cached: Promise<PublishedReachability> | undefined;
+  return () => cached ??= publishedReachability(tenantId, deps);
+};
+
+const reachableIds = (
+  reachability: PublishedReachability,
+  kind: Exclude<ImportContentKind, 'product'>,
+): Set<string> => {
+  if (kind === 'course') return reachability.courseIds;
+  if (kind === 'module') return reachability.moduleIds;
+  return reachability.lessonIds;
+};
 
 const findTarget = async (
   tenantId: string,
@@ -154,13 +203,18 @@ const predictAction = async (
   importKey: string,
   payloadHash: string,
   deps: ImportReaders,
+  reachable: () => Promise<PublishedReachability>,
 ): Promise<Result<PredictedAction, AppError>> => {
   const audit = await deps.importAuditEvents.findLatestByImportKey(tenantId, kind, importKey);
   if (audit === null) {
     const collision = await findTarget(tenantId, kind, importKey, deps);
-    return collision === null
-      ? ok({ action: 'created', id: importKey, createdAt: null })
-      : err(appError('conflict', `The ${kind} id "${importKey}" already belongs to a non-imported resource`));
+    if (collision !== null) {
+      return err(appError('conflict', `The ${kind} id "${importKey}" already belongs to a non-imported resource`));
+    }
+    if (kind !== 'product' && reachableIds(await reachable(), kind).has(importKey)) {
+      return err(appError('conflict', `The ${kind} id "${importKey}" is reachable from a published product and cannot be created`));
+    }
+    return ok({ action: 'created', id: importKey, createdAt: null });
   }
   const target = await findTarget(tenantId, kind, audit.resourceId, deps);
   if (target === null) {
@@ -172,6 +226,9 @@ const predictAction = async (
   if (kind === 'product' && target.published === true) {
     return err(appError('conflict', `Imported product "${importKey}" is published and cannot be updated`));
   }
+  if (kind !== 'product' && reachableIds(await reachable(), kind).has(target.id)) {
+    return err(appError('conflict', `Imported ${kind} "${importKey}" is reachable from a published product and cannot be updated`));
+  }
   return ok({ action: 'updated', id: target.id, createdAt: target.createdAt });
 };
 
@@ -181,11 +238,12 @@ const prepareCourse = async (
   payloadHash: string,
   references: ReferenceMaps,
   deps: ImportReaders,
+  reachable: () => Promise<PublishedReachability>,
   now: string,
 ): Promise<Result<PreparedContent, AppError>> => {
   const moduleOrder = await resolveKeys(tenantId, 'module', record.moduleOrder, references, deps);
   if (!moduleOrder.ok) return moduleOrder;
-  const predicted = await predictAction(tenantId, 'course', record.importKey, payloadHash, deps);
+  const predicted = await predictAction(tenantId, 'course', record.importKey, payloadHash, deps, reachable);
   if (!predicted.ok) return predicted;
   return ok({
     kind: 'course',
@@ -211,10 +269,15 @@ const prepareModule = async (
   payloadHash: string,
   references: ReferenceMaps,
   deps: ImportReaders,
+  reachable: () => Promise<PublishedReachability>,
   now: string,
 ): Promise<Result<PreparedContent, AppError>> => {
   const courseIds = await resolveKeys(tenantId, 'course', record.courseKeys, references, deps);
   if (!courseIds.ok) return courseIds;
+  const reachability = await reachable();
+  if (courseIds.value.some((courseId) => reachability.courseIds.has(courseId))) {
+    return err(appError('conflict', `Imported module "${record.importKey}" would attach to a course reachable from a published product`));
+  }
   const chapters: Chapter[] = [];
   for (const chapter of record.chapters) {
     const contents: Chapter['contents'] = [];
@@ -225,7 +288,7 @@ const prepareModule = async (
     }
     chapters.push({ id: chapter.id, name: chapter.name, contents });
   }
-  const predicted = await predictAction(tenantId, 'module', record.importKey, payloadHash, deps);
+  const predicted = await predictAction(tenantId, 'module', record.importKey, payloadHash, deps, reachable);
   if (!predicted.ok) return predicted;
   return ok({
     kind: 'module',
@@ -251,9 +314,10 @@ const prepareLesson = async (
   record: ImportLessonRecord,
   payloadHash: string,
   deps: ImportReaders,
+  reachable: () => Promise<PublishedReachability>,
   now: string,
 ): Promise<Result<PreparedContent, AppError>> => {
-  const predicted = await predictAction(tenantId, 'lesson', record.importKey, payloadHash, deps);
+  const predicted = await predictAction(tenantId, 'lesson', record.importKey, payloadHash, deps, reachable);
   if (!predicted.ok) return predicted;
   return ok({
     kind: 'lesson',
@@ -314,11 +378,12 @@ const prepareProduct = async (
   payloadHash: string,
   references: ReferenceMaps,
   deps: ImportReaders,
+  reachable: () => Promise<PublishedReachability>,
   now: string,
 ): Promise<Result<PreparedContent, AppError>> => {
   const accessItems = await resolveAccessItems(tenantId, record, references, deps);
   if (!accessItems.ok) return accessItems;
-  const predicted = await predictAction(tenantId, 'product', record.importKey, payloadHash, deps);
+  const predicted = await predictAction(tenantId, 'product', record.importKey, payloadHash, deps, reachable);
   if (!predicted.ok) return predicted;
   const slugOwner = (await deps.products.listByTenant(tenantId)).find((product) => product.slug === record.slug);
   if (slugOwner !== undefined && slugOwner.id !== predicted.value.id) {
@@ -355,12 +420,13 @@ const prepareRecord = async (
   payloadHash: string,
   references: ReferenceMaps,
   deps: ImportReaders,
+  reachable: () => Promise<PublishedReachability>,
   now: string,
 ): Promise<Result<PreparedContent, AppError>> => {
-  if (kind === 'course') return prepareCourse(tenantId, importCourseRecordSchema.parse(record), payloadHash, references, deps, now);
-  if (kind === 'module') return prepareModule(tenantId, importModuleRecordSchema.parse(record), payloadHash, references, deps, now);
-  if (kind === 'lesson') return prepareLesson(tenantId, importLessonRecordSchema.parse(record), payloadHash, deps, now);
-  return prepareProduct(tenantId, importProductRecordSchema.parse(record), payloadHash, references, deps, now);
+  if (kind === 'course') return prepareCourse(tenantId, importCourseRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
+  if (kind === 'module') return prepareModule(tenantId, importModuleRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
+  if (kind === 'lesson') return prepareLesson(tenantId, importLessonRecordSchema.parse(record), payloadHash, deps, reachable, now);
+  return prepareProduct(tenantId, importProductRecordSchema.parse(record), payloadHash, references, deps, reachable, now);
 };
 
 const recordIdentity = (value: unknown, index: number): { kind?: ImportKind; importKey: string } => {
@@ -409,6 +475,7 @@ export const importM2mContent = async (
 ): Promise<Result<ImportBatchResponse, AppError>> => {
   const tenantId = authorizeRequiredTenant(ctx, 'import:content-write');
   if (!tenantId.ok) return tenantId;
+  const reachable = lazyPublishedReachability(tenantId.value, deps);
   const envelope = importWriteRequestSchema.safeParse(input);
   if (!envelope.success) return err(validation('Invalid import batch', envelope.error.flatten()));
   const results: ImportBatchResult[] = [];
@@ -444,6 +511,7 @@ export const importM2mContent = async (
       payloadHash,
       references,
       deps,
+      reachable,
       deps.clock.nowIso(),
     );
     if (!prepared.ok) {
@@ -495,6 +563,7 @@ const validateImportForTenant = async (
 ): Promise<Result<ImportValidationResponse, AppError>> => {
   const envelope = importValidateRequestSchema.safeParse(input);
   if (!envelope.success) return err(validation('Invalid import validation request', envelope.error.flatten()));
+  const reachable = lazyPublishedReachability(tenantId, deps);
   const create = emptyPlanCounts();
   const update = emptyPlanCounts();
   const unchanged = emptyPlanCounts();
@@ -567,6 +636,7 @@ const validateImportForTenant = async (
           deps.hash.sha256(canonicalImportPayload(payloadWithoutKind(record))),
           references,
           deps,
+          reachable,
           'createdAt' in record && record.createdAt !== undefined
             ? record.createdAt
             : deps.clock.nowIso(),

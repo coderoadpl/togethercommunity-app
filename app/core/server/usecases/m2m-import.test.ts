@@ -65,6 +65,34 @@ const lessonRecord = (name = 'Lesson') => ({
   contents: [{ type: 'html' as const, html: '<p>Lesson</p>' }],
 });
 
+const moduleRecord = (title = 'Module') => ({
+  importKey: 'module-source',
+  courseKeys: ['course-source'],
+  title,
+  prefix: '1',
+  chapters: [{
+    id: 'chapter-1',
+    name: 'Chapter',
+    contents: [{ id: 'content-1', name: 'Lesson', lessonKey: 'lesson-source' }],
+  }],
+});
+
+const productRecord = () => ({
+  importKey: 'product-source',
+  type: 'course' as const,
+  slug: 'full-course',
+  title: 'Full course',
+  description: '',
+  coverUrl: null,
+  priceCents: 0,
+  currency: 'PLN',
+  accessItems: [{
+    level: 'modules' as const,
+    courseKey: 'course-source',
+    moduleKeys: ['module-source'],
+  }],
+});
+
 const harness = () => {
   let sequence = 0;
   let commitCalls = 0;
@@ -90,6 +118,7 @@ const harness = () => {
     products: {
       findById: async (_tenantId, id) => products.get(id) ?? null,
       listByTenant: async () => [...products.values()],
+      listPublishedByTenant: async () => [...products.values()].filter((product) => product.published),
     },
     importAuditEvents: {
       findLatestByImportKey: async (_tenantId, kind, importKey) => audits.get(`${kind}:${importKey}`) ?? null,
@@ -122,7 +151,31 @@ const harness = () => {
     products,
     audits,
     commitCalls: () => commitCalls,
+    resetCommitCalls: () => {
+      commitCalls = 0;
+    },
   };
+};
+
+const seedImportedProduct = async (h: ReturnType<typeof harness>): Promise<void> => {
+  await importM2mContent(ctx, apiKey, 'course', {
+    datasetVersion: 'together-import/v1', records: [courseRecord()],
+  }, h.deps);
+  await importM2mContent(ctx, apiKey, 'lesson', {
+    datasetVersion: 'together-import/v1', records: [lessonRecord()],
+  }, h.deps);
+  await importM2mContent(ctx, apiKey, 'module', {
+    datasetVersion: 'together-import/v1', records: [moduleRecord()],
+  }, h.deps);
+  await importM2mContent(ctx, apiKey, 'product', {
+    datasetVersion: 'together-import/v1', records: [productRecord()],
+  }, h.deps);
+};
+
+const publishImportedProduct = (h: ReturnType<typeof harness>): void => {
+  const product = h.products.get('product-source');
+  if (product === undefined) throw new Error('Expected imported product');
+  h.products.set(product.id, { ...product, published: true });
 };
 
 describe('m2m content import', () => {
@@ -200,6 +253,106 @@ describe('m2m content import', () => {
       published: false,
       accessItems: [{ courseId: 'course-source', moduleIds: ['module-source'] }],
     });
+  });
+
+  it('rejects import updates of content reachable from a published product', async () => {
+    const h = harness();
+    await seedImportedProduct(h);
+    publishImportedProduct(h);
+
+    const lessonResult = await importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1', records: [lessonRecord('Hacked lesson')],
+    }, h.deps);
+    const moduleResult = await importM2mContent(ctx, apiKey, 'module', {
+      datasetVersion: 'together-import/v1', records: [moduleRecord('Hacked module')],
+    }, h.deps);
+    const courseResult = await importM2mContent(ctx, apiKey, 'course', {
+      datasetVersion: 'together-import/v1', records: [courseRecord('Hacked course')],
+    }, h.deps);
+    const replayResult = await importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1', records: [lessonRecord()],
+    }, h.deps);
+
+    expect(lessonResult).toMatchObject({
+      ok: true,
+      value: {
+        results: [{ importKey: 'lesson-source', action: 'error', error: { code: 'conflict' } }],
+        summary: { failed: 1 },
+      },
+    });
+    expect(moduleResult).toMatchObject({
+      ok: true,
+      value: {
+        results: [{ importKey: 'module-source', action: 'error', error: { code: 'conflict' } }],
+        summary: { failed: 1 },
+      },
+    });
+    expect(courseResult).toMatchObject({
+      ok: true,
+      value: {
+        results: [{ importKey: 'course-source', action: 'error', error: { code: 'conflict' } }],
+        summary: { failed: 1 },
+      },
+    });
+    expect(replayResult).toMatchObject({ ok: true, value: { summary: { unchanged: 1 } } });
+    expect(h.lessons.get('lesson-source')?.name).toBe('Lesson');
+    expect(h.modules.get('module-source')?.title).toBe('Module');
+    expect(h.courses.get('course-source')?.name).toBe('Course');
+  });
+
+  it('still updates imported draft content while its product is unpublished', async () => {
+    const h = harness();
+    await seedImportedProduct(h);
+
+    const result = await importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1', records: [lessonRecord('Updated lesson')],
+    }, h.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
+    expect(h.lessons.get('lesson-source')?.name).toBe('Updated lesson');
+  });
+
+  it('rejects attaching a new imported module to a published product course', async () => {
+    const h = harness();
+    await seedImportedProduct(h);
+    publishImportedProduct(h);
+
+    const result = await importM2mContent(ctx, apiKey, 'module', {
+      datasetVersion: 'together-import/v1',
+      records: [{
+        importKey: 'module-two', courseKeys: ['course-source'], title: 'Module two',
+        prefix: null, chapters: [],
+      }],
+    }, h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(h.modules.has('module-two')).toBe(false);
+  });
+
+  it('surfaces the published freeze at validate time', async () => {
+    const h = harness();
+    await seedImportedProduct(h);
+    publishImportedProduct(h);
+    h.resetCommitCalls();
+
+    const result = await validateM2mImport(ctx, {
+      datasetVersion: 'together-import/v1',
+      records: [{ kind: 'lesson', ...lessonRecord('Hacked lesson') }],
+    }, h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        valid: false,
+        errors: [{
+          kind: 'lesson', importKey: 'lesson-source', error: { code: 'conflict' },
+        }],
+      },
+    });
+    expect(h.commitCalls()).toBe(0);
   });
 
   it('returns record errors for dangling references and rejected publish fields', async () => {

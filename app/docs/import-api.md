@@ -162,7 +162,7 @@ Mixed kinds are allowed when the key holds the scope required by every included 
 }
 ```
 
-Validate checks schemas, per-record scope, duplicate kind-and-`importKey` pairs inside the call, import-lineage reference resolution, duplicate member e-mails, product slug collisions, and whether existing imported records would be updated or left unchanged. A key already used by an imported record is not an error; a key colliding with a native resource is. Validation does not inspect foreign platform identities. The loop is: fix your export, validate, repeat until `valid: true`, then apply.
+Validate checks schemas, per-record scope, duplicate kind-and-`importKey` pairs inside the call, import-lineage reference resolution, duplicate member e-mails, product slug collisions, and whether existing imported records would be updated or left unchanged. A key already used by an imported record is not an error; a key colliding with a native resource is. Validation checks member e-mails against existing in-tenant members and auth identities and reports a conflict when one already exists; it reveals nothing about accounts outside the tenant. The loop is: fix your export, validate, repeat until `valid: true`, then apply.
 
 ## Applying a batch
 

@@ -1,10 +1,6 @@
 import pg from 'pg';
+import { hashPassword, verifyPassword } from 'better-auth/crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-import {
-  deriveLegacyPasswordHash,
-  verifyPasswordWithLegacyFallback,
-} from '#adapters/auth/legacy-password.js';
 
 import { createTestDatabase } from './test-database-name.js';
 
@@ -99,10 +95,7 @@ describe('demo seed lifecycle', () => {
   it('converges existing creator credentials without adding rows when repeated', async () => {
     runDatabaseScript('seed.ts');
     const firstCounts = await rowCounts(client);
-    const previousHash = deriveLegacyPasswordHash(
-      PREVIOUS_DEMO_PASSWORD,
-      'seed-convergence-legacy-salt',
-    );
+    const previousHash = await hashPassword(PREVIOUS_DEMO_PASSWORD);
     await client.query(
       `UPDATE account
        SET password = $1
@@ -124,10 +117,10 @@ describe('demo seed lifecycle', () => {
     expect(credentials.rows).toHaveLength(3);
     for (const { password } of credentials.rows) {
       await expect(
-        verifyPasswordWithLegacyFallback({ hash: password, password: DEMO_PASSWORD }),
+        verifyPassword({ hash: password, password: DEMO_PASSWORD }),
       ).resolves.toBe(true);
       await expect(
-        verifyPasswordWithLegacyFallback({ hash: password, password: PREVIOUS_DEMO_PASSWORD }),
+        verifyPassword({ hash: password, password: PREVIOUS_DEMO_PASSWORD }),
       ).resolves.toBe(false);
     }
   }, 180_000);

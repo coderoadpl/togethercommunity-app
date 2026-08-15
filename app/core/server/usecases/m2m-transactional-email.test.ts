@@ -35,6 +35,7 @@ const apiKey = (scopes: TenantApiKey['scopes'] = ['transactional']): TenantApiKe
   keyHash: 'hash',
   scopes,
   createdAt: NOW,
+  expiresAt: null,
   revokedAt: null,
 });
 
@@ -60,7 +61,7 @@ const harness = (options: { transport?: boolean; perMinute?: number; perDay?: nu
   const outbox = new InMemoryEmailOutboxRepository(events);
   const suppressions = new InMemorySuppressionRepository(events);
   const counts = new Map<string, number>();
-  const rateLimitClaims: Array<'minute' | 'day'> = [];
+  const rateLimitClaims: Array<'minute' | 'hour' | 'day'> = [];
   const rateLimits: ApiKeyRateLimitRepository = {
     claim: async (_tenantId, claim) => {
       rateLimitClaims.push(claim.period);
@@ -70,6 +71,7 @@ const harness = (options: { transport?: boolean; perMinute?: number; perDay?: nu
       counts.set(key, count + 1);
       return true;
     },
+    release: async () => undefined,
   };
   const deps: M2mTransactionalEmailDeps = {
     idempotency: new InMemoryAutomationIdempotencyRepository(),

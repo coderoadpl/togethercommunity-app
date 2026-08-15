@@ -190,6 +190,23 @@ describe('authorization fail-closed probes', () => {
     ]);
   });
 
+  it('rejects adapter implementations that ignore their tenant parameter', () => {
+    const audit = auditTenantRepositoryScopes(
+      [{
+        file: 'adapters/db/synthetic.ts',
+        source: `
+          const repository = {
+            scoped: async (tenantId: string, id: string) => ({ tenantId, id }),
+            ignored: async (_tenantId: string, id: string) => id,
+          };
+        `,
+      }],
+      {},
+      {},
+    );
+    expect(audit.ignoredTenantParameters.map((method) => method.method)).toEqual(['ignored']);
+  });
+
   it('resolves named tenant inputs and audits intersection type aliases', () => {
     const audit = auditTenantRepositoryScopes(
       [{

@@ -2603,6 +2603,7 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
       keyHash: apiKey.keyHash,
       scopes: apiKey.scopes,
       createdAt: apiKey.createdAt,
+      expiresAt: apiKey.expiresAt,
       revokedAt: apiKey.revokedAt,
     });
   },
@@ -2640,6 +2641,8 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
 
 export const createApiKeyRateLimitRepository = (db: Db): ApiKeyRateLimitRepository => ({
   claim: async (tenantId, input) => {
+    const cost = input.cost ?? 1;
+    if (cost > input.limit) return false;
     const [owned] = await db.select({ id: tenantApiKeys.id }).from(tenantApiKeys).where(and(
       eq(tenantApiKeys.tenantId, tenantId),
       eq(tenantApiKeys.id, input.apiKeyId),
@@ -2649,19 +2652,35 @@ export const createApiKeyRateLimitRepository = (db: Db): ApiKeyRateLimitReposito
       apiKeyId: input.apiKeyId,
       period: input.period,
       windowStartedAt: input.windowStartedAt,
-      count: 1,
+      count: cost,
     }).onConflictDoUpdate({
       target: [apiKeyRateLimitBuckets.apiKeyId, apiKeyRateLimitBuckets.period],
       set: {
         windowStartedAt: input.windowStartedAt,
-        count: sql`case when ${apiKeyRateLimitBuckets.windowStartedAt} = ${input.windowStartedAt}::timestamptz then ${apiKeyRateLimitBuckets.count} + 1 else 1 end`,
+        count: sql`case when ${apiKeyRateLimitBuckets.windowStartedAt} = ${input.windowStartedAt}::timestamptz then ${apiKeyRateLimitBuckets.count} + ${cost} else ${cost} end`,
       },
       setWhere: or(
         ne(apiKeyRateLimitBuckets.windowStartedAt, input.windowStartedAt),
-        sql`${apiKeyRateLimitBuckets.count} < ${input.limit}`,
+        sql`${apiKeyRateLimitBuckets.count} + ${cost} <= ${input.limit}`,
       ) ?? sql`false`,
     }).returning({ count: apiKeyRateLimitBuckets.count });
     return row !== undefined;
+  },
+  release: async (tenantId, input) => {
+    const cost = input.cost ?? 1;
+    const [owned] = await db.select({ id: tenantApiKeys.id }).from(tenantApiKeys).where(and(
+      eq(tenantApiKeys.tenantId, tenantId),
+      eq(tenantApiKeys.id, input.apiKeyId),
+    )).limit(1);
+    if (owned === undefined) return;
+    await db
+      .update(apiKeyRateLimitBuckets)
+      .set({ count: sql`greatest(0, ${apiKeyRateLimitBuckets.count} - ${cost})` })
+      .where(and(
+        eq(apiKeyRateLimitBuckets.apiKeyId, input.apiKeyId),
+        eq(apiKeyRateLimitBuckets.period, input.period),
+        eq(apiKeyRateLimitBuckets.windowStartedAt, input.windowStartedAt),
+      ));
   },
 });
 

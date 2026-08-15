@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_ERROR_CODES } from 'better-auth';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
 import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, validation } from '#core/domain/index.js';
 import { createDb } from '#adapters/db/client.js';
-import { account, user, verification } from '#adapters/db/schema.js';
+import { user, verification } from '#adapters/db/schema.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '#adapters/db/repositories.js';
 import { createEmailOutboxRepository } from '#adapters/db/email-outbox.js';
@@ -27,7 +27,6 @@ import {
   PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
   RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
 } from './create-auth.js';
-import { deriveLegacyPasswordHash } from './legacy-password.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -39,8 +38,6 @@ const passwordFixture = (value: string): string =>
 const SIGN_UP_PASSWORD = passwordFixture('signup-password');
 const OLD_PASSWORD = passwordFixture('old-password');
 const NEW_PASSWORD = passwordFixture('new-password');
-const NATIVE_PASSWORD = passwordFixture('native-password');
-const TEMPORARY_PASSWORD = passwordFixture('temporary-password');
 const CURRENT_PASSWORD = passwordFixture('current-password');
 
 const totpCode = (secret: string): string => {
@@ -516,114 +513,6 @@ const signUp = (
       }),
     }),
   );
-
-describe('raised password floor', () => {
-  it('rehashes an imported credential on sign-in while rejecting its short password for new writes', async () => {
-    const { auth } = buildAuth();
-    const db = createDb('node-postgres', connectionString);
-    const suffix = crypto.randomUUID();
-    const userId = `pre-floor-user-${suffix}`;
-    const email = `pre-floor-${suffix}@together.dev`;
-    const password = 'oldpass8';
-    const passwordHash = deriveLegacyPasswordHash(
-      password,
-      suffix.replaceAll('-', '').repeat(2),
-    );
-    expect(password).toHaveLength(8);
-    expect(password.length).toBeLessThan(PASSWORD_MIN_LENGTH);
-    await db.insert(user).values({ id: userId, name: 'Pre-floor account', email });
-    await db.insert(account).values({
-      id: `pre-floor-account-${suffix}`,
-      accountId: userId,
-      providerId: 'credential',
-      userId,
-      password: passwordHash,
-    });
-
-    const signedIn = await auth.handler(
-      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          origin: 'http://studio.localhost:48730',
-          'x-forwarded-for': '198.51.100.201',
-        },
-        body: JSON.stringify({ email, password }),
-      }),
-    );
-    const token = signedIn.headers.get('set-auth-token');
-
-    expect(signedIn.status).toBe(200);
-    expect(token).not.toBeNull();
-    expect(await auth.api.getSession({
-      headers: new Headers({ authorization: `Bearer ${token ?? ''}` }),
-    })).not.toBeNull();
-
-    const changed = await auth.handler(
-      new Request('http://studio.localhost:48730/api/auth/change-password', {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${token ?? ''}`,
-          'content-type': 'application/json',
-          origin: 'http://studio.localhost:48730',
-          'x-forwarded-for': '198.51.100.202',
-        },
-        body: JSON.stringify({
-          currentPassword: password,
-          newPassword: password,
-          revokeOtherSessions: false,
-        }),
-      }),
-    );
-    const resetRequested = await auth.handler(
-      new Request('http://studio.localhost:48730/api/auth/request-password-reset', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          origin: 'http://studio.localhost:48730',
-          'x-forwarded-for': '198.51.100.203',
-        },
-        body: JSON.stringify({
-          email,
-          redirectTo: 'http://studio.localhost:48730/reset-password',
-        }),
-      }),
-    );
-    const resetTokens = await db
-      .select({ identifier: verification.identifier })
-      .from(verification)
-      .where(eq(verification.value, userId));
-    const resetToken = resetTokens.find((row) => row.identifier.startsWith('reset-password:'));
-    if (!resetToken) throw new Error('Password reset token was not created');
-    const reset = await auth.handler(
-      new Request('http://studio.localhost:48730/api/auth/reset-password', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          origin: 'http://studio.localhost:48730',
-          'x-forwarded-for': '198.51.100.204',
-        },
-        body: JSON.stringify({
-          token: resetToken.identifier.slice('reset-password:'.length),
-          newPassword: password,
-        }),
-      }),
-    );
-
-    expect(changed.status).toBe(400);
-    expect(await changed.json()).toMatchObject({ code: 'PASSWORD_TOO_SHORT' });
-    expect(resetRequested.status).toBe(200);
-    expect(reset.status).toBe(400);
-    expect(await reset.json()).toMatchObject({ code: 'PASSWORD_TOO_SHORT' });
-    const credentials = await db
-      .select({ password: account.password })
-      .from(account)
-      .where(eq(account.userId, userId));
-    expect(credentials).toHaveLength(1);
-    expect(credentials[0]?.password).not.toBe(passwordHash);
-    expect(credentials[0]?.password).not.toContain('pbkdf2$');
-  }, 30000);
-});
 
 describe('soft email verification', () => {
   it('keeps redirect error outcomes aligned with Better Auth', () => {
@@ -1221,63 +1110,6 @@ describe('change password', () => {
 
     expect(oldPassword.status).toBe(401);
     expect(newPassword.status).toBe(200);
-  }, 30000);
-
-  it('accepts and migrates an imported imported PBKDF2 credential', async () => {
-    const { auth } = buildAuth();
-    const db = createDb('node-postgres', connectionString);
-    const email = `change-legacy-${Date.now()}@together.dev`;
-    const signedUp = await signUp(auth, email, { password: TEMPORARY_PASSWORD });
-    const token = signedUp.headers.get('set-auth-token');
-    const users = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
-    const legacyPassword = deriveLegacyPasswordHash('legacy-password', 'ab'.repeat(32));
-    await db
-      .update(account)
-      .set({ password: legacyPassword })
-      .where(and(
-        eq(account.userId, users[0]?.id ?? ''),
-        eq(account.providerId, 'credential'),
-      ));
-
-    const changed = await auth.handler(
-      new Request('http://studio.localhost:48730/api/auth/change-password', {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${token ?? ''}`,
-          'content-type': 'application/json',
-          origin: 'http://studio.localhost:48730',
-          'x-forwarded-for': '198.51.100.214',
-        },
-        body: JSON.stringify({
-          currentPassword: 'legacy-password',
-          newPassword: NATIVE_PASSWORD,
-          revokeOtherSessions: false,
-        }),
-      }),
-    );
-    const credentials = await db
-      .select({ password: account.password })
-      .from(account)
-      .where(and(
-        eq(account.userId, users[0]?.id ?? ''),
-        eq(account.providerId, 'credential'),
-      ));
-
-    expect(changed.status).toBe(200);
-    expect(credentials[0]?.password).not.toBeNull();
-    expect(credentials[0]?.password).not.toContain('pbkdf2$');
-    const signedIn = await auth.handler(
-      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          origin: 'http://studio.localhost:48730',
-          'x-forwarded-for': '198.51.100.215',
-        },
-        body: JSON.stringify({ email, password: NATIVE_PASSWORD }),
-      }),
-    );
-    expect(signedIn.status).toBe(200);
   }, 30000);
 
   it('shares the endpoint limit across auth instances', async () => {

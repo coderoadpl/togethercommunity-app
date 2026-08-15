@@ -4,6 +4,7 @@ import {
   API_ROUTES,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
+  apiKeyImportAuditOutputSchema,
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
   authConfigOutputSchema,
@@ -51,6 +52,8 @@ import {
   m2mEnrollOutputSchema,
   m2mTransactionalMessageOutputSchema,
   m2mTransactionalMessageStatusOutputSchema,
+  m2mImportBatchOutputSchema,
+  m2mImportValidationOutputSchema,
   marketingConsentDefinitionOutputSchema,
   marketingConsentDefinitionDetailOutputSchema,
   marketingConsentDefinitionsOutputSchema,
@@ -154,6 +157,7 @@ import {
   onboardingOutputSchema,
   threadSubscriptionOutputSchema,
   type ApiKeyCreateInput,
+  type ApiKeyImportAuditQuery,
   type ApiKeyRevokeInput,
   type CourseCreateInput,
   type CheckoutSessionRequest,
@@ -252,6 +256,8 @@ import {
   type MemberExportFormat,
   type NewProductInput,
   type Result,
+  type ImportValidateRequest,
+  type ImportWriteRequest,
 } from '#core/domain/index.js';
 
 import { uploadPresignedStorageAsset } from './storage-assets.js';
@@ -1518,6 +1524,21 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.devGrant.method, API_ROUTES.devGrant.path, devGrantOutputSchema, input, signal),
   listApiKeys: (signal?: AbortSignal) =>
     request(options, API_ROUTES.apiKeys.method, API_ROUTES.apiKeys.path, apiKeysListOutputSchema, undefined, signal),
+  listApiKeyImportAudit: (input: ApiKeyImportAuditQuery, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    const path = API_ROUTES.apiKeyImportAudit.path.replace(':id', encodeURIComponent(input.id));
+    return request(
+      options,
+      API_ROUTES.apiKeyImportAudit.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      apiKeyImportAuditOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   createApiKey: (input: ApiKeyCreateInput, signal?: AbortSignal) =>
     request(
       options,
@@ -1658,6 +1679,78 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.m2mTransactionalMessage.path.replace(':id', encodeURIComponent(id)),
       m2mTransactionalMessageStatusOutputSchema,
       undefined,
+      signal,
+    ),
+  validateM2mImport: (input: ImportValidateRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportValidate.method,
+      API_ROUTES.m2mImportValidate.path,
+      m2mImportValidationOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mCourses: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportCourses.method,
+      API_ROUTES.m2mImportCourses.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mModules: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportModules.method,
+      API_ROUTES.m2mImportModules.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mLessons: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportLessons.method,
+      API_ROUTES.m2mImportLessons.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mProducts: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportProducts.method,
+      API_ROUTES.m2mImportProducts.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mMembers: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportMembers.method,
+      API_ROUTES.m2mImportMembers.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mGrants: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportGrants.method,
+      API_ROUTES.m2mImportGrants.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mProgress: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportProgress.method,
+      API_ROUTES.m2mImportProgress.path,
+      m2mImportBatchOutputSchema,
+      input,
       signal,
     ),
   getTenantSettings: (signal?: AbortSignal) =>

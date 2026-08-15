@@ -120,7 +120,6 @@ const bundleUserSchema = z.object({
   legacyId,
   email: z.string().min(3),
   name: z.string().nullable(),
-  legacyPasswordMarker: z.string().min(1).nullable(),
   role: z.enum(['admin', 'student']),
 });
 
@@ -262,12 +261,7 @@ const verificationLines = (verification: VerificationReport): string[] => {
         `| ${count.kind} | ${String(count.bundle)} | ${String(count.expectedInDb)} | ${String(count.matchedInDb)} | ${String(count.extraLegacyInDb)} | ${count.pass ? 'yes' : 'NO'} |`,
       );
     }
-    lines.push(
-      '',
-      `Password markers verified: ${String(tenant.markersVerified)}/${String(tenant.markersTotal)}`,
-      '',
-      'Entitlement spot checks:',
-    );
+    lines.push('', 'Entitlement spot checks:');
     if (tenant.spotChecks.length === 0) lines.push('- (no members with grants to sample)');
     for (const check of tenant.spotChecks) {
       lines.push(

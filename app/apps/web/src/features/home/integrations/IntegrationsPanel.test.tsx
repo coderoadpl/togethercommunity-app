@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { StripeMode, TenantSecretMasked } from '#core/domain/index.js';
+import { apiKeyCreateInputSchema } from '#core/contract/index.js';
+import type { StripeMode, TenantApiKeyPublic, TenantSecretMasked } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -31,6 +32,7 @@ const renderPanel = (
   initialSettings: TestSettings = defaultSettings,
   initialStripeMode: StripeMode | null = null,
   secretsState: 'success' | 'pending' | 'error' = 'success',
+  initialApiKeys: TenantApiKeyPublic[] = [],
 ) => {
   let secrets = [...initial];
   let settings = { ...initialSettings };
@@ -38,8 +40,50 @@ const renderPanel = (
   const testedProviders: string[] = [];
   const storageSubmissions: unknown[] = [];
   const stripeConfigurations: string[] = [];
+  const apiKeySubmissions: unknown[] = [];
+  let apiKeys = [...initialApiKeys];
 
   server.use(
+    http.get('/api/api-keys', () => HttpResponse.json({ ok: true, data: { apiKeys } })),
+    http.get('/api/api-keys/:id/import-audit', ({ params }) => HttpResponse.json({
+      ok: true,
+      data: {
+        events: [{
+          id: 'audit-1', tenantId: 'tenant-123', apiKeyId: String(params.id), kind: 'member',
+          importKey: 'member-source', resourceId: 'member-source', action: 'created',
+          payloadHash: 'a'.repeat(64), at: '1998-08-14T10:00:00.000Z',
+        }],
+        nextCursor: null,
+      },
+    })),
+    http.post('/api/api-keys', async ({ request }) => {
+      const body = await request.json();
+      apiKeySubmissions.push(body);
+      const parsed = apiKeyCreateInputSchema.parse(body);
+      const apiKey: TenantApiKeyPublic = {
+        id: `import-key-${apiKeys.length + 1}`,
+        tenantId: 'tenant-123',
+        name: parsed.name,
+        scopes: parsed.scopes ?? null,
+        createdAt: '1998-08-14T10:00:00.000Z',
+        expiresAt: parsed.expiresAt ?? null,
+        revokedAt: null,
+      };
+      apiKeys = [...apiKeys, apiKey];
+      return HttpResponse.json({ ok: true, data: { apiKey, secret: 'together_import_secret' } });
+    }),
+    http.delete('/api/api-keys/:id', ({ params }) => {
+      const apiKey = apiKeys.find((key) => key.id === params.id);
+      if (apiKey === undefined) {
+        return HttpResponse.json(
+          { ok: false, error: { code: 'not_found', message: 'missing' } },
+          { status: 404 },
+        );
+      }
+      const revoked = { ...apiKey, revokedAt: '1998-08-14T10:05:00.000Z' };
+      apiKeys = apiKeys.map((key) => key.id === revoked.id ? revoked : key);
+      return HttpResponse.json({ ok: true, data: { apiKey: revoked } });
+    }),
     http.get('/api/tenant-secrets', async () => {
       if (secretsState === 'pending') return new Promise<never>(() => undefined);
       if (secretsState === 'error') {
@@ -73,7 +117,7 @@ const renderPanel = (
             ? key
             : 'stripe.restrictedKey',
         maskedPreview: '••••2345',
-        updatedAt: '2026-07-12T10:00:00.000Z',
+        updatedAt: '1998-07-12T10:00:00.000Z',
       };
       secrets = [...secrets.filter((s) => s.key !== secret.key), secret];
       return HttpResponse.json({ ok: true, data: { secret } });
@@ -87,8 +131,8 @@ const renderPanel = (
       stripeMode = restrictedKey.startsWith('rk_live_') ? 'live' : 'test';
       secrets = [
         ...secrets.filter((secret) => !secret.key.startsWith('stripe.')),
-        { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
-        { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
+        { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+        { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
       ];
       return HttpResponse.json({
         ok: true,
@@ -139,7 +183,7 @@ const renderPanel = (
       const secret: TenantSecretMasked = {
         key: 's3.configuration',
         maskedPreview: '••••',
-        updatedAt: '2026-08-03T12:00:00.000Z',
+        updatedAt: '1998-08-03T12:00:00.000Z',
       };
       secrets = [...secrets.filter((item) => item.key !== secret.key), secret];
       return HttpResponse.json({
@@ -169,6 +213,7 @@ const renderPanel = (
     storageSubmissions,
     stripeConfigurations,
     testedProviders,
+    apiKeySubmissions,
   };
 };
 
@@ -183,6 +228,91 @@ const fillMinioConfiguration = async () => {
 };
 
 describe('IntegrationsPanel', () => {
+  it('creates a short-lived import key with independently selectable scopes', async () => {
+    const { apiKeySubmissions } = renderPanel();
+
+    await userEvent.type(await screen.findByTestId('import-api-key-name'), 'CodeRoad migration');
+    await userEvent.click(screen.getByTestId('import-api-key-content-scope'));
+    await userEvent.click(screen.getByTestId('import-api-key-users-scope'));
+    const expiry = screen.getByTestId('import-api-key-expiry');
+    expect(expiry).toHaveAttribute('type', 'date');
+    expect(expiry).toHaveAttribute('max');
+    await userEvent.click(screen.getByTestId('import-api-key-create'));
+
+    expect(await screen.findByLabelText(pl.integrations.importKeysSecretHeading)).toHaveValue(
+      'together_import_secret',
+    );
+    expect(apiKeySubmissions).toHaveLength(1);
+    expect(apiKeySubmissions[0]).toMatchObject({
+      name: 'CodeRoad migration',
+      scopes: ['import:content', 'import:users'],
+    });
+    const submission = apiKeyCreateInputSchema.parse(apiKeySubmissions[0]);
+    expect(submission.expiresAt).toBeDefined();
+    expect(Date.parse(submission.expiresAt ?? '')).toBeGreaterThan(Date.now());
+  });
+
+  it('lists active, expired, and revoked import keys and revokes an active key', async () => {
+    const base: Pick<TenantApiKeyPublic, 'tenantId' | 'scopes' | 'createdAt'> = {
+      tenantId: 'tenant-123',
+      scopes: ['import:content'],
+      createdAt: '1998-08-01T10:00:00.000Z',
+    };
+    renderPanel([], defaultSettings, null, 'success', [
+      {
+        ...base,
+        id: 'active-key',
+        name: 'Active migration',
+        expiresAt: null,
+        revokedAt: null,
+      },
+      {
+        ...base,
+        id: 'expired-key',
+        name: 'Expired migration',
+        expiresAt: '1992-08-10T10:00:00.000Z',
+        revokedAt: null,
+      },
+      {
+        ...base,
+        id: 'revoked-key',
+        name: 'Revoked migration',
+        expiresAt: null,
+        revokedAt: '1998-08-05T10:00:00.000Z',
+      },
+    ]);
+
+    expect(await screen.findByTestId('import-api-key-active-key')).toHaveTextContent(
+      pl.integrations.importKeysActive,
+    );
+    expect(screen.getByTestId('import-api-key-expired-key')).toHaveTextContent(
+      pl.integrations.importKeysExpired,
+    );
+    expect(screen.getByTestId('import-api-key-revoked-key')).toHaveTextContent(
+      pl.integrations.importKeysRevoked,
+    );
+
+    await userEvent.click(screen.getByTestId('import-api-key-revoke-active-key'));
+    await userEvent.click(await screen.findByTestId('import-api-key-revoke-confirm'));
+    await waitFor(() => {
+      expect(screen.getByTestId('import-api-key-active-key')).toHaveTextContent(
+        pl.integrations.importKeysRevoked,
+      );
+    });
+  });
+
+  it('opens the import audit from an import key', async () => {
+    renderPanel([], defaultSettings, null, 'success', [{
+      id: 'audited-key', tenantId: 'tenant-123', name: 'Audited migration',
+      scopes: ['import:users'], createdAt: '1998-08-01T10:00:00.000Z',
+      expiresAt: null, revokedAt: null,
+    }]);
+
+    await userEvent.click(await screen.findByTestId('import-api-key-audit-audited-key'));
+
+    expect(await screen.findByText(/member member-source/)).toBeInTheDocument();
+  });
+
   it.each(['pending', 'error'] as const)('does not claim credentials are missing while secrets are %s', async (state) => {
     renderPanel([], defaultSettings, null, state);
 
@@ -221,8 +351,8 @@ describe('IntegrationsPanel', () => {
 
   it('reports a readable diagnostic after testing the connection', async () => {
     renderPanel([
-      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
     await userEvent.click(await screen.findByTestId('payment-test-connection'));
     expect(await screen.findByTestId('payment-test-result')).toHaveTextContent(
@@ -232,8 +362,8 @@ describe('IntegrationsPanel', () => {
 
   it('badges the mode a previously configured tenant stored', async () => {
     renderPanel([
-      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
     ], defaultSettings, 'test');
 
     expect(await screen.findByTestId('stripe-mode-badge')).toHaveTextContent(
@@ -250,8 +380,8 @@ describe('IntegrationsPanel', () => {
 
   it('requires the storage wizard when only legacy credentials are stored', async () => {
     renderPanel([
-      { key: 's3.accessKeyId', maskedPreview: '••••KEY1', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 's3.secretAccessKey', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 's3.accessKeyId', maskedPreview: '••••KEY1', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 's3.secretAccessKey', maskedPreview: '••••KEY2', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
     expect(await screen.findByTestId('storage-provider-minio')).toBeInTheDocument();
@@ -261,9 +391,9 @@ describe('IntegrationsPanel', () => {
 
   it('runs storage, email and payment through one diagnostic contract', async () => {
     const { testedProviders } = renderPanel([
-      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 's3.configuration', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 's3.configuration', maskedPreview: '••••KEY2', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
     await userEvent.click(await screen.findByTestId('payment-test-connection'));
@@ -370,8 +500,8 @@ describe('IntegrationsPanel', () => {
 
   it('keeps iFirma credentials write-only and tests the stored authentication pair', async () => {
     renderPanel([
-      { key: 'ifirma.invoiceApiKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 'ifirma.username', maskedPreview: '••••.com', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'ifirma.invoiceApiKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 'ifirma.username', maskedPreview: '••••.com', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
     expect(await screen.findByTestId('secret-input-ifirma.invoiceApiKey')).toHaveAttribute('type', 'password');
@@ -390,7 +520,7 @@ describe('IntegrationsPanel', () => {
 
   it('saves the Bunny library id and reports the connection diagnostic', async () => {
     renderPanel([
-      { key: 'bunny.apiKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'bunny.apiKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
     await userEvent.type(await screen.findByTestId('bunny-library-id'), 'lib-1');
@@ -424,7 +554,7 @@ describe('IntegrationsPanel', () => {
 
   it('removes a configured iFirma invoice API key', async () => {
     renderPanel([
-      { key: 'ifirma.invoiceApiKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'ifirma.invoiceApiKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
     const field = (await screen.findByTestId('secret-input-ifirma.invoiceApiKey')).closest('form');
@@ -443,7 +573,7 @@ describe('IntegrationsPanel', () => {
 
   it('removes a configured iFirma username', async () => {
     renderPanel([
-      { key: 'ifirma.username', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'ifirma.username', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
     const field = (await screen.findByTestId('secret-input-ifirma.username')).closest('form');
@@ -462,8 +592,8 @@ describe('IntegrationsPanel', () => {
 
   it('removes both Stripe credentials from the configuration card', async () => {
     renderPanel([
-      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
     ], defaultSettings, 'live');
 
     await userEvent.click(await screen.findByTestId('stripe-remove'));

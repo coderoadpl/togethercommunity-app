@@ -11,6 +11,9 @@ import type {
 
 import type {
   CourseCreateInput,
+  ApiKeyCreateInput,
+  ApiKeyImportAuditQuery,
+  ApiKeyRevokeInput,
   CheckoutSessionRequest,
   CouponCheckoutValidationRequest,
   CouponArchiveRequest,
@@ -235,6 +238,12 @@ const authScopes = {
 const tenantSecretsScopes = {
   all: () => ['tenant-secrets'] as const,
   lists: () => ['tenant-secrets', 'list'] as const,
+};
+
+const apiKeyScopes = {
+  all: () => ['api-keys'] as const,
+  lists: () => ['api-keys', 'list'] as const,
+  audit: (input: ApiKeyImportAuditQuery) => ['api-keys', 'audit', input] as const,
 };
 
 const bunnyScopes = {
@@ -1123,6 +1132,32 @@ export const tenantSecretsQuery = (api: ApiClient) =>
     queryKey: tenantSecretsScopes.lists(),
     call: ({ signal }) => api.listTenantSecrets(signal),
   });
+
+export const apiKeysQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: apiKeyScopes.lists(),
+    call: ({ signal }) => api.listApiKeys(signal),
+  });
+
+export const apiKeyImportAuditQuery = (api: ApiClient, input: ApiKeyImportAuditQuery) =>
+  defineQuery({
+    queryKey: apiKeyScopes.audit(input),
+    call: ({ signal }) => api.listApiKeyImportAudit(input, signal),
+  });
+
+export const createApiKeyMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...apiKeyScopes.all(), 'create'],
+    call: (input: ApiKeyCreateInput) => api.createApiKey(input),
+  });
+
+export const revokeApiKeyMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...apiKeyScopes.all(), 'revoke'],
+    call: (input: ApiKeyRevokeInput) => api.revokeApiKey(input),
+  });
+
+export const apiKeysInvalidates = () => ({ queryKey: apiKeyScopes.all() });
 
 export const setTenantSecretMutation = (api: ApiClient) =>
   defineMutation({

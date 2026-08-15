@@ -13,6 +13,7 @@ export interface ResolveTenantDeps {
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
   baseDomain: string;
+  platformHost: string | null;
   singleTenantMode: boolean;
 }
 
@@ -42,6 +43,7 @@ export const resolveTenant = async (
   deps: ResolveTenantDeps,
 ): Promise<Result<ResolvedTenant | null, AppError>> => {
   const host = stripPort(hostHeader).toLowerCase();
+  if (deps.platformHost !== null && host === deps.platformHost.toLowerCase()) return ok(null);
 
   const customDomain = await deps.tenantDomains.findByDomain(host);
   if (customDomain) {

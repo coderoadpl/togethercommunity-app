@@ -68,6 +68,14 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/m2m/marketing/templates` | self-authenticating | read | marketing templates |
 | `POST /api/internal/marketing/tick` | self-authenticating | mutating | marketing tick |
 | `GET /api/internal/marketing/tick` | self-authenticating | read | api internal marketing tick |
+| `POST /api/m2m/import/validate` | self-authenticating | mutating | m2m import validate |
+| `POST /api/m2m/import/courses` | self-authenticating | mutating | m2m import courses |
+| `POST /api/m2m/import/modules` | self-authenticating | mutating | m2m import modules |
+| `POST /api/m2m/import/lessons` | self-authenticating | mutating | m2m import lessons |
+| `POST /api/m2m/import/products` | self-authenticating | mutating | m2m import products |
+| `POST /api/m2m/import/members` | self-authenticating | mutating | m2m import members |
+| `POST /api/m2m/import/grants` | self-authenticating | mutating | m2m import grants |
+| `POST /api/m2m/import/progress` | self-authenticating | mutating | m2m import progress |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |
@@ -132,6 +140,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/api-keys` | authenticated | read | api keys |
 | `POST /api/api-keys` | authenticated | mutating | api keys create |
 | `DELETE /api/api-keys/:id` | authenticated | mutating | api key revoke |
+| `GET /api/api-keys/:id/import-audit` | authenticated | read | api key import audit |
 | `GET /api/tenant-secrets` | authenticated | read | tenant secrets |
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |

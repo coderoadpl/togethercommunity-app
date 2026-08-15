@@ -7,6 +7,9 @@ import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
+import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
+import { createImportContentRepository } from '#adapters/db/content-import.js';
+import { createImportUsersRepository } from '#adapters/db/users-import.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -156,6 +159,10 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
+  ImportAuditEventRepository,
+  ImportContentRepository,
+  ImportUsersReader,
+  ImportUsersRepository,
   InvoiceRepository,
   InvoicingPort,
   ContentHash,
@@ -301,6 +308,11 @@ export interface AppDeps {
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
+  importAuditEvents: ImportAuditEventRepository;
+  importContent: ImportContentRepository;
+  importUsersReader: ImportUsersReader;
+  importUsers: ImportUsersRepository;
+  contentHash: ContentHash;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
   m2mTransactionalRateLimits: { perMinute: number; perDay: number };
   apiKeyCrypto: ApiKeyCrypto;
@@ -350,6 +362,7 @@ export interface AppDeps {
   clock: Clock;
   logger: { error(message: string): void };
   baseDomain: string;
+  platformHost: string | null;
   singleTenantMode: boolean;
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
@@ -406,11 +419,17 @@ export const selectDevSinkPurge = (
 
 export const selectTenantRouting = (
   env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL' | 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
-): { baseDomain: string; singleTenantMode: boolean; tenantCreationMode: TenantCreationMode } => {
+): {
+  baseDomain: string;
+  platformHost: string | null;
+  singleTenantMode: boolean;
+  tenantCreationMode: TenantCreationMode;
+} => {
   const singleTenantMode = env.APP_BASE_DOMAIN === undefined;
   const creationMode = selectTenantCreationMode(env);
   return {
     baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
+    platformHost: env.APP_BASE_DOMAIN === undefined ? null : `start.${env.APP_BASE_DOMAIN}`,
     singleTenantMode,
     tenantCreationMode: singleTenantMode && creationMode === 'open' ? 'closed' : creationMode,
   };
@@ -510,7 +529,7 @@ export const selectDeploymentIdentity = (
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
  */
 export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps => {
-  const { baseDomain, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
+  const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const tenants = createTenantRepository(db, singleTenantMode
@@ -534,6 +553,16 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const fiscalArtifacts = createFiscalArtifactRepository(db);
   const ksefJobs = createKsefSubmissionJobRepository(db);
   const contentHash = createContentHash();
+  const importUsers = createImportUsersRepository(db);
+  const importUsersReader: ImportUsersReader = {
+    findAuthUserByEmail: importUsers.findAuthUserByEmail,
+    findMemberById: importUsers.findMemberById,
+    findMemberByEmail: importUsers.findMemberByEmail,
+    findGrantById: importUsers.findGrantById,
+    findGrantByPair: importUsers.findGrantByPair,
+    findProgressById: importUsers.findProgressById,
+    findProgressByPair: importUsers.findProgressByPair,
+  };
   const ksefPdf = createKsefInvoicePdf();
   const fa3Validator = createFa3XsdValidator();
   const ksefClient = createKsefClient({
@@ -832,7 +861,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
         request.headers.get(TENANT_HEADER),
-        { tenantDomains, tenants, baseDomain, singleTenantMode },
+        { tenantDomains, tenants, baseDomain, platformHost, singleTenantMode },
       );
       if (!resolved.ok) return resolved;
       if (resolved.value === null) return ok({ required: false });
@@ -842,7 +871,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
         request.headers.get(TENANT_HEADER),
-        { tenantDomains, tenants, baseDomain, singleTenantMode },
+        { tenantDomains, tenants, baseDomain, platformHost, singleTenantMode },
       );
       if (!resolved.ok) return resolved;
       if (resolved.value === null) return ok({ recorded: false });
@@ -904,6 +933,11 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
+    importAuditEvents: createImportAuditEventRepository(db),
+    importContent: createImportContentRepository(db),
+    importUsersReader,
+    importUsers,
+    contentHash,
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
     m2mTransactionalRateLimits: {
       perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,
@@ -971,6 +1005,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     clock,
     logger,
     baseDomain,
+    platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
     devEndpoints: {

@@ -93,6 +93,8 @@ import type {
   Invoice,
   InvoiceEvent,
   InvoiceVatTreatment,
+  ImportAuditEvent,
+  ImportAuditResourceType,
   FiscalArtifact,
   KsefEnvironment,
   KsefStatus,
@@ -501,13 +503,109 @@ export interface TenantApiKeyRepository {
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
 }
 
+export interface ImportAuditEventRepository {
+  append(tenantId: string, event: ImportAuditEvent): Promise<void>;
+  findLatestByImportKey(
+    tenantId: string,
+    kind: ImportAuditResourceType,
+    importKey: string,
+  ): Promise<ImportAuditEvent | null>;
+  listByApiKey(
+    tenantId: string,
+    apiKeyId: string,
+    query: { cursor?: string; limit: number },
+  ): Promise<{ events: ImportAuditEvent[]; nextCursor: string | null }>;
+}
+
+export type ImportContentMutation =
+  | { kind: 'course'; action: 'created' | 'updated' | 'unchanged'; resource: Course; event: ImportAuditEvent }
+  | { kind: 'module'; action: 'created' | 'updated' | 'unchanged'; resource: CourseModule; event: ImportAuditEvent }
+  | { kind: 'lesson'; action: 'created' | 'updated' | 'unchanged'; resource: CourseLesson; event: ImportAuditEvent }
+  | { kind: 'product'; action: 'created' | 'updated' | 'unchanged'; resource: Product; event: ImportAuditEvent };
+
+export interface ImportContentRepository {
+  commit(
+    tenantId: string,
+    mutation: ImportContentMutation,
+  ): Promise<'saved' | 'conflict' | 'slug_taken'>;
+}
+
+export interface ImportAuthUserState {
+  id: string;
+  email: string;
+  credentialPassword: string | null;
+  hasCredentialAccount: boolean;
+}
+
+export interface ImportMemberResource {
+  id: string;
+  tenantId: string;
+  userId: string;
+  email: string;
+  displayName: string;
+  legacyId: string | null;
+  createdAt: string;
+}
+
+export type ImportUsersMutation =
+  | {
+      kind: 'member';
+      action: 'created' | 'updated' | 'unchanged';
+      resource: ImportMemberResource;
+      authUser: {
+        action: 'create' | 'keep';
+        name: string;
+        emailVerified: false;
+      };
+      event: ImportAuditEvent;
+    }
+  | {
+      kind: 'grant';
+      action: 'created' | 'updated' | 'unchanged';
+      resource: ProductGrant;
+      event: ImportAuditEvent;
+    }
+  | {
+      kind: 'progress';
+      action: 'created' | 'updated' | 'unchanged';
+      resource: MemberCourseProgress;
+      event: ImportAuditEvent;
+    };
+
+export interface ImportUsersReader {
+  findAuthUserByEmail(tenantId: string, email: string): Promise<ImportAuthUserState | null>;
+  findMemberById(tenantId: string, memberId: string): Promise<ImportMemberResource | null>;
+  findMemberByEmail(tenantId: string, email: string): Promise<ImportMemberResource | null>;
+  findGrantById(tenantId: string, grantId: string): Promise<ProductGrant | null>;
+  findGrantByPair(
+    tenantId: string,
+    input: { memberId: string; productId: string },
+  ): Promise<ProductGrant | null>;
+  findProgressById(tenantId: string, progressId: string): Promise<MemberCourseProgress | null>;
+  findProgressByPair(
+    tenantId: string,
+    input: { memberId: string; courseId: string },
+  ): Promise<MemberCourseProgress | null>;
+}
+
+export interface ImportUsersRepository extends ImportUsersReader {
+  commit(tenantId: string, mutation: ImportUsersMutation): Promise<'saved' | 'conflict'>;
+}
+
 export interface ApiKeyRateLimitRepository {
   claim(tenantId: string, input: {
     apiKeyId: string;
-    period: 'minute' | 'day';
+    period: 'minute' | 'hour' | 'day';
     windowStartedAt: string;
     limit: number;
+    cost?: number;
   }): Promise<boolean>;
+  release(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'hour' | 'day';
+    windowStartedAt: string;
+    cost?: number;
+  }): Promise<void>;
 }
 
 export interface TenantSecretRepository {

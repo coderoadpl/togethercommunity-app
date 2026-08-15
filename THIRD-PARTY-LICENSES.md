@@ -920,7 +920,7 @@ invoices can be checked locally.
 - [ms@2.1.3](https://github.com/vercel/ms#readme) - MIT
 - [msw@2.15.0](https://mswjs.io) - MIT
 - [mute-stream@3.0.0](https://github.com/npm/mute-stream#readme) - ISC
-- [nanoid@3.3.17](https://github.com/ai/nanoid#readme) - MIT
+- [nanoid@3.3.18](https://github.com/ai/nanoid#readme) - MIT
 - [nanostores@1.4.0](https://github.com/nanostores/nanostores#readme) - MIT
 - [napi-postinstall@0.3.4](https://github.com/un-ts/napi-postinstall#readme) - MIT
 - [natural-compare@1.4.0](https://github.com/litejs/natural-compare-lite#readme) - MIT

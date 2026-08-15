@@ -6,6 +6,7 @@ import {
   API_PATHS,
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
+  apiKeyImportAuditQuerySchema,
   bunnyVideosInputSchema,
   couponArchiveRequestSchema,
   couponCreateRequestSchema,
@@ -236,6 +237,7 @@ import {
   listSpacesForMember,
   listSpacesForStaff,
   listTenantApiKeys,
+  listImportAuditForApiKey,
   listTenantDocuments,
   m2mEnroll,
   markAllNotificationsRead,
@@ -309,6 +311,7 @@ import {
 import type { AppDeps } from './composition.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
+import { registerM2mImportRoutes } from './import-routes.js';
 import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { respond } from './respond.js';
 import {
@@ -869,6 +872,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   });
 
   registerAuthenticatedMarketingRoutes(app, deps);
+  registerM2mImportRoutes(app, deps);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -1627,6 +1631,24 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!parsed.success) return respond(err(validation('Invalid API key id', parsed.error.flatten())));
     const result = await revokeTenantApiKey({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ apiKey: result.value }) : result);
+  });
+
+  app.get(API_PATHS.apiKeyImportAudit, async (c) => {
+    const parsed = apiKeyImportAuditQuerySchema.safeParse({
+      id: c.req.param('id'),
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid import audit query', parsed.error.flatten())));
+    return respond(await listImportAuditForApiKey(
+      { identity: c.get('identity') },
+      {
+        id: parsed.data.id,
+        limit: parsed.data.limit,
+        ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
+      },
+      deps,
+    ));
   });
 
   app.get(API_PATHS.tenantSecrets, async (c) =>

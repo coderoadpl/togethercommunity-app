@@ -6,6 +6,8 @@ import {
   CONTENT_BODY_LIMIT,
   DEFAULT_API_BODY_LIMIT,
   M2M_TRANSACTIONAL_BODY_LIMIT,
+  M2M_IMPORT_BODY_LIMIT,
+  M2M_IMPORT_VALIDATE_BODY_LIMIT,
   PUBLIC_FORM_BODY_LIMIT,
   WEBHOOK_BODY_LIMIT,
   requestBodyLimit,
@@ -32,6 +34,17 @@ describe('request body limits', () => {
   it('allows transactional M2M messages up to their explicit request limit', () => {
     expect(requestBodyLimit('POST', API_PATHS.m2mTransactionalMessagesCreate))
       .toBe(M2M_TRANSACTIONAL_BODY_LIMIT);
+  });
+
+  it('applies the import write and validation request limits', () => {
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportCourses)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportModules)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportLessons)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportProducts)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportMembers)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportGrants)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportProgress)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportValidate)).toBe(M2M_IMPORT_VALIDATE_BODY_LIMIT);
   });
 
   it('caps public HTML mutations outside the API prefix', () => {

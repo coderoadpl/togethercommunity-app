@@ -36,6 +36,7 @@ const RESERVED_TENANT_SLUGS = [
   'panel',
   'prod',
   'smtp',
+  'start',
   'staging',
   'static',
   'status',

@@ -57,6 +57,11 @@ import {
   orderReconciliationQuerySchema,
   paidWithoutGrantRowSchema,
   invoiceSchema,
+  importBatchResponseSchema,
+  importAuditEventSchema,
+  importValidationResponseSchema,
+  importValidateRequestSchema,
+  importWriteRequestSchema,
   priceIntervalSchema,
   priceKindSchema,
   productPriceSchema,
@@ -1029,6 +1034,19 @@ export const apiKeyRevokeOutputSchema = z.object({
   apiKey: tenantApiKeyPublicSchema,
 });
 
+export const apiKeyImportAuditQuerySchema = z.object({
+  id: z.string().min(1),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export type ApiKeyImportAuditQuery = z.input<typeof apiKeyImportAuditQuerySchema>;
+
+export const apiKeyImportAuditOutputSchema = z.object({
+  events: z.array(importAuditEventSchema),
+  nextCursor: z.string().nullable(),
+});
+
 export const tenantSecretsListOutputSchema = z.object({
   secrets: z.array(tenantSecretMaskedSchema),
   stripeMode: stripeModeSchema.nullable(),
@@ -1161,6 +1179,14 @@ export const m2mTransactionalMessageStatusOutputSchema = z.object({
   send: emailSendProjectionSchema,
   events: z.array(emailEventSchema),
 });
+
+export const m2mImportWriteRequestSchema = importWriteRequestSchema;
+
+export const m2mImportValidateRequestSchema = importValidateRequestSchema;
+
+export const m2mImportBatchOutputSchema = importBatchResponseSchema;
+
+export const m2mImportValidationOutputSchema = importValidationResponseSchema;
 
 export const marketingConsentDefinitionCreateInputSchema = z.object({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
@@ -1477,6 +1503,7 @@ export const API_ROUTES = {
   apiKeys: { method: 'GET', path: '/api/api-keys' },
   apiKeysCreate: { method: 'POST', path: '/api/api-keys' },
   apiKeyRevoke: { method: 'DELETE', path: '/api/api-keys/:id' },
+  apiKeyImportAudit: { method: 'GET', path: '/api/api-keys/:id/import-audit' },
   tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
@@ -1492,6 +1519,14 @@ export const API_ROUTES = {
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
   m2mTransactionalMessagesCreate: { method: 'POST', path: '/api/m2m/transactional/messages' },
   m2mTransactionalMessage: { method: 'GET', path: '/api/m2m/transactional/messages/:id' },
+  m2mImportValidate: { method: 'POST', path: '/api/m2m/import/validate' },
+  m2mImportCourses: { method: 'POST', path: '/api/m2m/import/courses' },
+  m2mImportModules: { method: 'POST', path: '/api/m2m/import/modules' },
+  m2mImportLessons: { method: 'POST', path: '/api/m2m/import/lessons' },
+  m2mImportProducts: { method: 'POST', path: '/api/m2m/import/products' },
+  m2mImportMembers: { method: 'POST', path: '/api/m2m/import/members' },
+  m2mImportGrants: { method: 'POST', path: '/api/m2m/import/grants' },
+  m2mImportProgress: { method: 'POST', path: '/api/m2m/import/progress' },
   marketingMessagesCreate: { method: 'POST', path: '/api/m2m/marketing/messages' },
   marketingMessages: { method: 'GET', path: '/api/m2m/marketing/messages' },
   marketingMessage: { method: 'GET', path: '/api/m2m/marketing/messages/:id' },
@@ -1674,6 +1709,7 @@ export const API_PATHS = {
   devEmail: API_ROUTES.devEmail.path,
   apiKeys: API_ROUTES.apiKeys.path,
   apiKeyRevoke: API_ROUTES.apiKeyRevoke.path,
+  apiKeyImportAudit: API_ROUTES.apiKeyImportAudit.path,
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   integrationTest: API_ROUTES.integrationTest.path,
@@ -1688,6 +1724,14 @@ export const API_PATHS = {
   m2mEnroll: API_ROUTES.m2mEnroll.path,
   m2mTransactionalMessagesCreate: API_ROUTES.m2mTransactionalMessagesCreate.path,
   m2mTransactionalMessage: API_ROUTES.m2mTransactionalMessage.path,
+  m2mImportValidate: API_ROUTES.m2mImportValidate.path,
+  m2mImportCourses: API_ROUTES.m2mImportCourses.path,
+  m2mImportModules: API_ROUTES.m2mImportModules.path,
+  m2mImportLessons: API_ROUTES.m2mImportLessons.path,
+  m2mImportProducts: API_ROUTES.m2mImportProducts.path,
+  m2mImportMembers: API_ROUTES.m2mImportMembers.path,
+  m2mImportGrants: API_ROUTES.m2mImportGrants.path,
+  m2mImportProgress: API_ROUTES.m2mImportProgress.path,
   marketingMessagesCreate: API_ROUTES.marketingMessagesCreate.path,
   marketingMessages: API_ROUTES.marketingMessages.path,
   marketingMessage: API_ROUTES.marketingMessage.path,

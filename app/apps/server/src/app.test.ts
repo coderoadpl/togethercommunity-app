@@ -114,6 +114,7 @@ const deps = (input: {
   getAuthenticatedUser?: AppDeps['authPort']['getAuthenticatedUser'];
   authenticated?: boolean;
   databaseUp?: boolean;
+  schemaStatus?: Awaited<ReturnType<AppDeps['health']['schemaStatus']>>;
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
@@ -639,7 +640,14 @@ const deps = (input: {
       findMember: async (tenantId) =>
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
-    health: { pingDatabase: async () => input.databaseUp ?? true },
+    health: {
+      pingDatabase: async () => input.databaseUp ?? true,
+      schemaStatus: async () => input.schemaStatus ?? {
+        expectedMigrations: 82,
+        appliedMigrations: 82,
+        schemaCurrent: true,
+      },
+    },
     appVersion: '0.1.0-test',
     commitSha: 'test-sha',
     deploymentIdentity: {
@@ -2057,11 +2065,32 @@ describe('health route', () => {
         production: false,
         commit: 'test-sha',
         databaseFingerprint: 'b1bfbb98b4f7',
+        expectedMigrations: 82,
+        appliedMigrations: 82,
+        schemaCurrent: true,
       },
     });
 
     const down = await buildApp(deps({ databaseUp: false })).request(API_PATHS.health);
     expect(await down.json()).toMatchObject({ ok: true, data: { database: 'down' } });
+  });
+
+  it('surfaces schema drift without flipping health status', async () => {
+    const response = await buildApp(deps({
+      schemaStatus: { expectedMigrations: 82, appliedMigrations: 80, schemaCurrent: false },
+    })).request(API_PATHS.health);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        status: 'ok',
+        database: 'up',
+        schemaCurrent: false,
+        expectedMigrations: 82,
+        appliedMigrations: 80,
+      },
+    });
   });
 
   it('serves liveness without touching the database', async () => {
@@ -2072,6 +2101,11 @@ describe('health route', () => {
         databasePings += 1;
         return false;
       },
+      schemaStatus: async () => ({
+        expectedMigrations: 82,
+        appliedMigrations: 82,
+        schemaCurrent: true,
+      }),
     };
 
     const response = await buildApp(configured).request(API_PATHS.healthLive);

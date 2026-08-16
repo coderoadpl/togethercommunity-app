@@ -292,6 +292,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         ...attestation,
         database: (await deps.health.pingDatabase()) ? ('up' as const) : ('down' as const),
         ...deps.deploymentIdentity,
+        ...(await deps.health.schemaStatus()),
       }),
     ),
   );

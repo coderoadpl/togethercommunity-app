@@ -1731,6 +1731,11 @@ export interface AuthPort {
 
 export interface HealthPort {
   pingDatabase(): Promise<boolean>;
+  schemaStatus(): Promise<{
+    expectedMigrations: number;
+    appliedMigrations: number | null;
+    schemaCurrent: boolean;
+  }>;
 }
 
 export interface IdGenerator {

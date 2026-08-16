@@ -134,6 +134,9 @@ beforeEach(() => {
     production: false,
     commit: 'cafe1234',
     databaseFingerprint: null,
+    expectedMigrations: 82,
+    appliedMigrations: 82,
+    schemaCurrent: true,
   }));
   h.configureStorage.mockReset();
   h.configureStorage.mockResolvedValue(ok({

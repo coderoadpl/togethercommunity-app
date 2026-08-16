@@ -487,6 +487,7 @@ export interface Messages {
     testFailed: string;
     paymentAvailable: string;
     emailAvailable: string;
+    emailTestedVia: (params: { transport: string }) => string;
     storageAvailable: string;
     saveKeysFirst: string;
     webhookUrlLabel: string;
@@ -585,6 +586,7 @@ export interface Messages {
     storageProbeCredentials: string;
     storageProbeBucket: string;
     storageProbeCors: string;
+    storageProbeCorsOrigin: (params: { origin: string }) => string;
     storageProbeUnavailable: string;
   };
   products: {

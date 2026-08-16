@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageSchema, type Language } from './language.js';
 
@@ -400,7 +401,7 @@ export const memberErasureRequestEmail = (
 
 export const emailTransportTest = (
   language: string,
-  input: { transport: EmailIntegrationTransport | 'platform' },
+  input: { transport: EmailIntegrationTransport | TransactionalEmailTransport },
 ): EmailMessage => {
   const transport = escapeHtml(input.transport);
   if (languageOrDefault(language) === 'en') {

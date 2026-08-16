@@ -17,6 +17,7 @@ import type { TenantSecretDeps } from './tenant-secrets.js';
 
 export interface StorageConfigurationDeps extends TenantSecretDeps {
   storage: StorageProvider;
+  corsOrigins?: string[] | undefined;
 }
 
 const parseConfiguration = (input: StorageConfiguration) => {
@@ -29,13 +30,13 @@ const parseConfiguration = (input: StorageConfiguration) => {
 export const probeStorageConnection = async (
   ctx: Ctx,
   input: StorageConfiguration,
-  deps: Pick<StorageConfigurationDeps, 'storage'>,
+  deps: Pick<StorageConfigurationDeps, 'corsOrigins' | 'storage'>,
 ): Promise<Result<{ diagnostic: ProviderDiagnostic }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'integration:test');
   if (!tenant.ok) return tenant;
   const parsed = parseConfiguration(input);
   if (!parsed.ok) return parsed;
-  const probed = await deps.storage.probe(parsed.value);
+  const probed = await deps.storage.probe(parsed.value, deps.corsOrigins);
   return probed.ok ? ok({ diagnostic: probed.value }) : probed;
 };
 
@@ -48,7 +49,7 @@ export const configureStorageConnection = async (
   if (!tenant.ok) return tenant;
   const parsed = parseConfiguration(input);
   if (!parsed.ok) return parsed;
-  const probed = await deps.storage.probe(parsed.value);
+  const probed = await deps.storage.probe(parsed.value, deps.corsOrigins);
   if (!probed.ok) return probed;
 
   const encrypted = deps.secretCrypto.encrypt(JSON.stringify(parsed.value));

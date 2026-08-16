@@ -672,9 +672,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     resend: resendTransactional,
   });
   const transactionalEmail = createLayeredTransactionalEmailSender({
-    tenantSes: tenantSesTransactional,
-    smtp: smtpTransactional,
-    resend: resendTransactional,
+    transports: emailTransports,
     platform: email,
     pool: platformTransactionalPool,
     platformLimit: 1000,

@@ -1,4 +1,4 @@
-import { type Hono } from 'hono';
+import { type Hono, type HonoRequest } from 'hono';
 import { z } from 'zod';
 
 import {
@@ -312,8 +312,7 @@ import {
   validateTermsConsent,
   type AuthenticatedUser,
   type PaymentWebhookEvent,
-  type SimulatePurchaseResult,
-  type TenantSource
+  type SimulatePurchaseResult
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
@@ -332,13 +331,24 @@ type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; }
 const magicLinkBaseUrl = (
   hostHeader: string,
   forwardedProto: string | null,
-  source: TenantSource,
+  fromTenantHeader: boolean,
   appBaseUrl: string,
 ): string => {
-  if (source === 'tenant-header' || hostHeader === '') return appBaseUrl;
+  if (fromTenantHeader || hostHeader === '') return appBaseUrl;
   const proto = forwardedProto ?? new URL(appBaseUrl).protocol.replace(':', '');
   return `${proto}://${hostHeader}`;
 };
+
+const requestOrigin = (req: HonoRequest, appBaseUrl: string): string =>
+  new URL(magicLinkBaseUrl(
+    req.header('host') ?? '',
+    req.header('x-forwarded-proto') ?? null,
+    req.header(TENANT_HEADER) !== undefined,
+    appBaseUrl,
+  )).origin;
+
+const probeCorsOrigins = (req: HonoRequest, appBaseUrl: string): string[] =>
+  [...new Set([requestOrigin(req, appBaseUrl), new URL(appBaseUrl).origin])];
 
 const emailBranding = async (deps: AppDeps, tenantId: string): Promise<EmailBranding | undefined> => {
   const settings = await deps.tenants.findSettings(tenantId);
@@ -799,7 +809,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
           confirmationBaseUrl: `${magicLinkBaseUrl(
             c.req.header('host') ?? '',
             c.req.header('x-forwarded-proto') ?? null,
-            tenant.value.source,
+            tenant.value.source === 'tenant-header',
             deps.appBaseUrl,
           )}/marketing/confirm`,
           ...checkoutConsentEvidence(c.req.raw.headers),
@@ -825,7 +835,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       const baseUrl = magicLinkBaseUrl(
         c.req.header('host') ?? '',
         c.req.header('x-forwarded-proto') ?? null,
-        tenant.value.source,
+        tenant.value.source === 'tenant-header',
         deps.appBaseUrl,
       );
       const issuedMagicLink = await issueMagicLink(deps, {
@@ -1773,6 +1783,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
+        corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl),
         email: deps.email,
         emailSender: deps.emailSender,
         emailTransports: deps.emailTransports,
@@ -1789,7 +1800,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await probeStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { storage: deps.storage },
+      { storage: deps.storage, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
     ));
   });
 
@@ -1800,7 +1811,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await configureStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      deps,
+      { ...deps, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
     ));
   });
 

@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { err, integrationUnavailable, ok, type AppError, type EmailMessage, type Result } from '#core/domain/index.js';
+import {
+  err,
+  integrationUnavailable,
+  ok,
+  type AppError,
+  type EmailIntegrationTransport,
+  type EmailMessage,
+  type Result,
+} from '#core/domain/index.js';
 import type {
+  EmailIntegrationTransportResolver,
   EmailPort,
   PlatformTransactionalPool,
-  TransactionalEmailTransportResolver,
 } from '../ports.js';
 import { createLayeredTransactionalEmailSender } from './layered-transactional-email.js';
 
@@ -51,8 +59,10 @@ const port = (
   },
 });
 
-const resolver = (value: EmailPort | null): TransactionalEmailTransportResolver => ({
-  resolve: async () => value,
+const transports = (
+  ports: Record<EmailIntegrationTransport, EmailPort | null>,
+): EmailIntegrationTransportResolver => ({
+  resolve: async (_tenantId, transport) => ports[transport],
 });
 
 describe('layered transactional e-mail sender', () => {
@@ -87,9 +97,11 @@ describe('layered transactional e-mail sender', () => {
     const calls: string[] = [];
     const pool = new MemoryPool();
     const sender = createLayeredTransactionalEmailSender({
-      tenantSes: resolver(tenantSes ? port('tenant-ses', calls) : null),
-      smtp: resolver(smtp ? port('smtp', calls) : null),
-      resend: resolver(resend ? port('resend', calls) : null),
+      transports: transports({
+        ses: tenantSes ? port('tenant-ses', calls) : null,
+        smtp: smtp ? port('smtp', calls) : null,
+        resend: resend ? port('resend', calls) : null,
+      }),
       platform: port('platform', calls),
       pool,
       platformLimit: 1000,
@@ -105,9 +117,11 @@ describe('layered transactional e-mail sender', () => {
   it('does not fall through after a selected tenant transport fails', async () => {
     const calls: string[] = [];
     const sender = createLayeredTransactionalEmailSender({
-      tenantSes: resolver(port('tenant-ses', calls, err(integrationUnavailable('SES rejected the send')))),
-      smtp: resolver(port('smtp', calls)),
-      resend: resolver(port('resend', calls)),
+      transports: transports({
+        ses: port('tenant-ses', calls, err(integrationUnavailable('SES rejected the send'))),
+        smtp: port('smtp', calls),
+        resend: port('resend', calls),
+      }),
       platform: port('platform', calls),
       pool: new MemoryPool(),
       platformLimit: 1000,
@@ -126,9 +140,7 @@ describe('layered transactional e-mail sender', () => {
     const calls: string[] = [];
     const pool = new MemoryPool(1000);
     const sender = createLayeredTransactionalEmailSender({
-      tenantSes: resolver(null),
-      smtp: resolver(null),
-      resend: resolver(null),
+      transports: transports({ ses: null, smtp: null, resend: null }),
       platform: port('platform', calls),
       pool,
       platformLimit: 1000,
@@ -146,9 +158,7 @@ describe('layered transactional e-mail sender', () => {
     const calls: string[] = [];
     const pool = new MemoryPool();
     const sender = createLayeredTransactionalEmailSender({
-      tenantSes: resolver(null),
-      smtp: resolver(null),
-      resend: resolver(null),
+      transports: transports({ ses: null, smtp: null, resend: null }),
       platform: port('platform', calls),
       pool,
       platformLimit: 1000,
@@ -168,9 +178,7 @@ describe('layered transactional e-mail sender', () => {
     const pool = new MemoryPool(998);
     const calls: string[] = [];
     const sender = createLayeredTransactionalEmailSender({
-      tenantSes: resolver(null),
-      smtp: resolver(null),
-      resend: resolver(null),
+      transports: transports({ ses: null, smtp: null, resend: null }),
       platform: port('platform', calls),
       pool,
       platformLimit: 1000,
@@ -189,9 +197,7 @@ describe('layered transactional e-mail sender', () => {
     const pool = new MemoryPool(999);
     const calls: string[] = [];
     const sender = createLayeredTransactionalEmailSender({
-      tenantSes: resolver(null),
-      smtp: resolver(null),
-      resend: resolver(null),
+      transports: transports({ ses: null, smtp: null, resend: null }),
       platform: port('platform', calls, err(integrationUnavailable('Platform SES unavailable'))),
       pool,
       platformLimit: 1000,

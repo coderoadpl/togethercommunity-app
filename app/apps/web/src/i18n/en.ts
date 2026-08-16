@@ -513,6 +513,7 @@ export const en: Messages = {
     testFailed: 'The connection test failed.',
     paymentAvailable: 'The payment provider accepted the credentials.',
     emailAvailable: "The email provider passed its diagnostic and sent a test e-mail to your account's e-mail address.",
+    emailTestedVia: ({ transport }) => format('Tested path: {transport}.', { transport }),
     storageAvailable: 'Storage passed the write, read and delete probe.',
     saveKeysFirst: 'Save your Stripe key to create the webhook before testing the connection.',
     webhookUrlLabel: 'Webhook URL',
@@ -622,6 +623,7 @@ export const en: Messages = {
     storageProbeBucket: 'Check that the bucket name is exact and that this key can access it.',
     storageProbeCors:
       'Allow this Together origin and PUT, GET and DELETE methods in bucket CORS, with Content-Type in AllowedHeaders.',
+    storageProbeCorsOrigin: ({ origin }) => format('The bucket CORS policy rejected the origin {origin}. Add your community domain to the allowed origins.', { origin }),
     storageProbeUnavailable: 'Check the endpoint URL and network access, then run the probe again.',
   },
   products: {

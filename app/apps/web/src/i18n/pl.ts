@@ -519,6 +519,7 @@ export const pl: Messages = {
     testFailed: 'Test połączenia nie powiódł się.',
     paymentAvailable: 'Dostawca płatności przyjął dane dostępowe.',
     emailAvailable: 'Dostawca e-mail przeszedł diagnostykę i wysłał wiadomość testową na adres e-mail Twojego konta.',
+    emailTestedVia: ({ transport }) => format('Przetestowano ścieżkę: {transport}.', { transport }),
     storageAvailable: 'Storage przeszedł próbę zapisu, odczytu i usunięcia.',
     saveKeysFirst: 'Zapisz klucz Stripe, aby utworzyć webhook przed testem połączenia.',
     webhookUrlLabel: 'URL webhooka',
@@ -628,6 +629,7 @@ export const pl: Messages = {
     storageProbeBucket: 'Sprawdź dokładną nazwę bucketu i czy ten klucz ma do niego dostęp.',
     storageProbeCors:
       'W CORS bucketu zezwól na ten origin Together i metody PUT, GET i DELETE oraz dodaj Content-Type do AllowedHeaders.',
+    storageProbeCorsOrigin: ({ origin }) => format('Polityka CORS bucketu odrzuciła domenę {origin}. Dodaj domenę Twojej przestrzeni do dozwolonych originów.', { origin }),
     storageProbeUnavailable: 'Sprawdź URL endpointu i dostęp sieciowy, a następnie ponów test.',
   },
   products: {

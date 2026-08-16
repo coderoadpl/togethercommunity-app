@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, StaffRole } from '#core/domain/index.js';
-import { err, notFound, ok } from '#core/domain/index.js';
+import type { EmailIntegrationTransport, Identity, StaffRole } from '#core/domain/index.js';
+import { err, integrationAuth, notFound, ok } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { PaymentProvider } from '../ports.js';
@@ -44,7 +44,13 @@ const fakePayment = (
 
 const fakeDeps = (
   tested: string[],
-  options: { emailMissing?: boolean; sendFails?: boolean; testFails?: boolean } = {},
+  options: {
+    emailMissing?: boolean;
+    sendFails?: boolean;
+    testFails?: boolean;
+    tenantTransports?: EmailIntegrationTransport[];
+    transportTestFails?: boolean;
+  } = {},
 ): TestIntegrationDeps => ({
   appBaseUrl: 'https://acme.example.com',
   payment: fakePayment(tested, options),
@@ -66,19 +72,25 @@ const fakeDeps = (
     },
   },
   emailTransports: {
-    resolve: async (_tenantId, transport) => options.emailMissing ? null : ({
-        send: async (message) => {
-          tested.push(`${transport}-send:${message.to}`);
-          return options.sendFails
-            ? err(notFound(`${transport} send failed`))
-            : ok({ messageId: `${transport}-message-1` });
-        },
-        healthcheck: async () => ok({ healthy: true }),
-        test: async () => {
-          tested.push(transport);
-          return ok({ code: 'email.available', message: `${transport} accepted the settings.` });
-        },
-      }),
+    resolve: async (_tenantId, transport) =>
+      options.emailMissing === true
+      || !(options.tenantTransports ?? ['ses', 'smtp', 'resend']).includes(transport)
+        ? null
+        : ({
+          send: async (message) => {
+            tested.push(`${transport}-send:${message.to}`);
+            return options.sendFails
+              ? err(notFound(`${transport} send failed`))
+              : ok({ messageId: `${transport}-message-1` });
+          },
+          healthcheck: async () => ok({ healthy: true }),
+          test: async () => {
+            tested.push(transport);
+            return options.transportTestFails === true
+              ? err(integrationAuth(`${transport} rejected the stored key`))
+              : ok({ code: 'email.available', message: `${transport} accepted the settings.` });
+          },
+        }),
   },
   storage: {
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
@@ -99,7 +111,7 @@ const fakeDeps = (
 describe('testIntegration', () => {
   it('dispatches storage, email and payment through the same diagnostic result', async () => {
     const tested: string[] = [];
-    const deps = fakeDeps(tested);
+    const deps = fakeDeps(tested, { tenantTransports: [] });
 
     await expect(
       testIntegration(ctx('owner'), { provider: 'storage' }, deps),
@@ -136,6 +148,49 @@ describe('testIntegration', () => {
       'resend',
       'resend-send:owner@together.dev',
     ]);
+  });
+
+  it('tests the tenant transport the layered sender would use instead of the platform port', async () => {
+    const tested: string[] = [];
+
+    await expect(
+      testIntegration(ctx('owner'), { provider: 'email' }, fakeDeps(tested, { tenantTransports: ['ses'] })),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { diagnostic: { code: 'email.available', details: { transport: 'tenant-ses' } } },
+    });
+
+    expect(tested).toEqual(['ses', 'email-send:t1:owner@together.dev']);
+  });
+
+  it('falls back to the platform port when the tenant has no transport configured', async () => {
+    const tested: string[] = [];
+
+    await expect(
+      testIntegration(ctx('owner'), { provider: 'email' }, fakeDeps(tested, { tenantTransports: [] })),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { diagnostic: { code: 'email.available', details: { transport: 'platform' } } },
+    });
+
+    expect(tested).toEqual(['email', 'email-send:t1:owner@together.dev']);
+  });
+
+  it('attributes a broken tenant transport to that transport instead of the platform', async () => {
+    const tested: string[] = [];
+
+    await expect(
+      testIntegration(
+        ctx('owner'),
+        { provider: 'email' },
+        fakeDeps(tested, { tenantTransports: ['ses'], transportTestFails: true }),
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'integration_auth', message: 'ses rejected the stored key' },
+    });
+
+    expect(tested).toEqual(['ses']);
   });
 
   it('reports an unconfigured selected email transport without attempting a test or send', async () => {
@@ -181,7 +236,7 @@ describe('testIntegration', () => {
   });
 
   it('surfaces the adapter failure for every provider', async () => {
-    const deps = fakeDeps([], { testFails: true });
+    const deps = fakeDeps([], { testFails: true, tenantTransports: [] });
     for (const provider of ['storage', 'email', 'payment'] as const) {
       await expect(testIntegration(ctx('owner'), { provider }, deps)).resolves.toMatchObject({
         ok: false,

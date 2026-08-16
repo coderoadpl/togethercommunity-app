@@ -127,8 +127,10 @@ import {
   addManualSuppression,
   archiveCoupon,
   attachModuleToCourse,
+  beginBrandingAssetUpload,
+  beginCourseCoverUpload,
   beginLessonAttachmentUpload,
-  beginImageAssetUpload,
+  beginProductCoverUpload,
   beginProductDownloadUpload,
   authenticateApiKey,
   autoIssueOnPayment,
@@ -150,8 +152,10 @@ import {
   createTenantApiKey,
   createTenantDocument,
   configureStorageConnection,
+  completeBrandingAssetUpload,
+  completeCourseCoverUpload,
   completeLessonAttachmentUpload,
-  completeImageAssetUpload,
+  completeProductCoverUpload,
   completeProductDownloadUpload,
   deactivateProductPrice,
   deleteLesson,
@@ -402,6 +406,39 @@ const productDownloadView = (asset: ProductDownloadAsset): ProductDownloadAssetV
     .replace(':productId', encodeURIComponent(asset.productId))
     .replace(':assetId', encodeURIComponent(asset.id)),
 });
+
+const respondImageAssetUpload = async (
+  begin: typeof beginCourseCoverUpload,
+  identity: Identity,
+  body: unknown,
+  deps: AppDeps,
+): Promise<Response> => {
+  const parsed = imageAssetUploadRequestSchema.safeParse(body);
+  if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
+  const result = await begin({ identity }, parsed.data, deps);
+  return respond(result.ok
+    ? ok({
+        key: result.value.key,
+        servePath: result.value.servePath,
+        upload: {
+          url: result.value.uploadUrl,
+          headers: { 'content-type': parsed.data.contentType },
+          expiresAt: result.value.expiresAt,
+        },
+      })
+    : result);
+};
+
+const respondImageAssetCompletion = async (
+  complete: typeof completeCourseCoverUpload,
+  identity: Identity,
+  body: unknown,
+  deps: AppDeps,
+): Promise<Response> => {
+  const parsed = imageAssetCompleteRequestSchema.safeParse(body);
+  if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));
+  return respond(await complete({ identity }, parsed.data, deps));
+};
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   userId: user.userId,
@@ -1497,37 +1534,34 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     ));
   });
 
-  app.post(API_PATHS.imageAssetUpload, async (c) => {
+  app.post(API_PATHS.courseCoverUpload, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
-    const parsed = imageAssetUploadRequestSchema.safeParse(body);
-    if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
-    const result = await beginImageAssetUpload(
-      { identity: c.get('identity') },
-      parsed.data,
-      deps,
-    );
-    return respond(result.ok
-      ? ok({
-          key: result.value.key,
-          servePath: result.value.servePath,
-          upload: {
-            url: result.value.uploadUrl,
-            headers: { 'content-type': parsed.data.contentType },
-            expiresAt: result.value.expiresAt,
-          },
-        })
-      : result);
+    return respondImageAssetUpload(beginCourseCoverUpload, c.get('identity'), body, deps);
   });
 
-  app.post(API_PATHS.imageAssetComplete, async (c) => {
+  app.post(API_PATHS.courseCoverComplete, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
-    const parsed = imageAssetCompleteRequestSchema.safeParse(body);
-    if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));
-    return respond(await completeImageAssetUpload(
-      { identity: c.get('identity') },
-      parsed.data,
-      deps,
-    ));
+    return respondImageAssetCompletion(completeCourseCoverUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.productCoverUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetUpload(beginProductCoverUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.productCoverComplete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetCompletion(completeProductCoverUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.brandingAssetUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetUpload(beginBrandingAssetUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.brandingAssetComplete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetCompletion(completeBrandingAssetUpload, c.get('identity'), body, deps);
   });
 
   app.get(API_PATHS.myProducts, async (c) => {

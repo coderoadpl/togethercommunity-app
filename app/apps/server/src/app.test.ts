@@ -2650,8 +2650,8 @@ describe('new route authorization', () => {
         sizeBytes: 1024,
       }),
     };
-    const owner = await scopedApp('owner', { overrides }).request(API_PATHS.imageAssetUpload, request);
-    const staff = await scopedApp('staff', { overrides }).request(API_PATHS.imageAssetUpload, request);
+    const owner = await scopedApp('owner', { overrides }).request(API_PATHS.brandingAssetUpload, request);
+    const staff = await scopedApp('staff', { overrides }).request(API_PATHS.brandingAssetUpload, request);
 
     expect(owner.status).toBe(200);
     expect(await owner.json()).toMatchObject({
@@ -2661,6 +2661,53 @@ describe('new route authorization', () => {
       },
     });
     expect(staff.status).toBe(403);
+  });
+
+  it('keeps cover uploads open to staff and closed to members', async () => {
+    const base = deps();
+    const overrides: Partial<AppDeps> = {
+      ids: { nextId: () => '00000000-0000-4000-8000-000000000001' },
+      secretResolver: {
+        resolve: async () => ok(JSON.stringify({
+          provider: 'minio',
+          endpoint: 'https://storage.example.test',
+          region: 'eu-central-1',
+          bucket: 'private-assets',
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        })),
+      },
+      storage: {
+        ...base.storage,
+        presignPut: () => ok('https://storage.example.test/signed-upload'),
+      },
+    };
+    const request = (kind: string) => ({
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        kind,
+        fileName: 'cover.png',
+        contentType: 'image/png',
+        sizeBytes: 1024,
+      }),
+    });
+    const staffCover = await scopedApp('staff', { overrides })
+      .request(API_PATHS.courseCoverUpload, request('course-cover'));
+    const memberCover = await scopedApp('member', { overrides })
+      .request(API_PATHS.productCoverUpload, request('product-cover'));
+    const mismatchedKind = await scopedApp('staff', { overrides })
+      .request(API_PATHS.courseCoverUpload, request('logo'));
+
+    expect(staffCover.status).toBe(200);
+    expect(await staffCover.json()).toMatchObject({
+      ok: true,
+      data: {
+        servePath: '/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.png',
+      },
+    });
+    expect(memberCover.status).toBe(403);
+    expect(mismatchedKind.status).toBe(400);
   });
 
   it('denies members and permits staff on post pinning', async () => {

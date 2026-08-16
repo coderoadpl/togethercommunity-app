@@ -590,10 +590,22 @@ export const uploadProductDownloadMutation = (api: ApiClient) =>
     call: (input: ProductDownloadFileUpload) => api.uploadProductDownload(input),
   });
 
-export const uploadImageAssetMutation = (api: ApiClient) =>
+export const uploadCourseCoverMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: [...imageAssetsScopes.all(), 'upload'],
-    call: (input: ImageAssetFileUpload) => api.uploadImageAsset(input),
+    mutationKey: [...imageAssetsScopes.all(), 'course-cover', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadCourseCover(input),
+  });
+
+export const uploadProductCoverMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'product-cover', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadProductCover(input),
+  });
+
+export const uploadBrandingAssetMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'branding', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadBrandingAsset(input),
   });
 
 export const deleteProductDownloadMutation = (api: ApiClient) =>

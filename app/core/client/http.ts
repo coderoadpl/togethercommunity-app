@@ -358,6 +358,41 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   return ok(data.data);
 };
 
+const uploadImageAsset = (
+  options: ApiClientOptions,
+  begin: { method: 'POST'; path: string },
+  complete: { method: 'POST'; path: string },
+  input: ImageAssetFileUpload,
+  signal?: AbortSignal,
+) =>
+  uploadPresignedStorageAsset(
+    input,
+    options.fetchImpl ?? fetch,
+    () => request(
+      options,
+      begin.method,
+      begin.path,
+      imageAssetUploadOutputSchema,
+      {
+        kind: input.kind,
+        fileName: input.fileName,
+        contentType: input.contentType,
+        sizeBytes: input.sizeBytes,
+      },
+      signal,
+    ),
+    (started) => started.upload,
+    (started) => request(
+      options,
+      complete.method,
+      complete.path,
+      imageAssetCompleteOutputSchema,
+      { key: started.key },
+      signal,
+    ),
+    signal,
+  );
+
 /** The single typed gateway to the API. No client ever hand-writes HTTP. */
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
@@ -1230,35 +1265,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
-  uploadImageAsset: async (input: ImageAssetFileUpload, signal?: AbortSignal) => {
-    return uploadPresignedStorageAsset(
-      input,
-      options.fetchImpl ?? fetch,
-      () => request(
-        options,
-        API_ROUTES.imageAssetUpload.method,
-        API_ROUTES.imageAssetUpload.path,
-        imageAssetUploadOutputSchema,
-        {
-          kind: input.kind,
-          fileName: input.fileName,
-          contentType: input.contentType,
-          sizeBytes: input.sizeBytes,
-        },
-        signal,
-      ),
-      (started) => started.upload,
-      (started) => request(
-        options,
-        API_ROUTES.imageAssetComplete.method,
-        API_ROUTES.imageAssetComplete.path,
-        imageAssetCompleteOutputSchema,
-        { key: started.key },
-        signal,
-      ),
-      signal,
-    );
-  },
+  uploadCourseCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.courseCoverUpload, API_ROUTES.courseCoverComplete, input, signal),
+  uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.productCoverUpload, API_ROUTES.productCoverComplete, input, signal),
+  uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.brandingAssetUpload, API_ROUTES.brandingAssetComplete, input, signal),
   deleteProductDownload: (input: { productId: string; assetId: string }, signal?: AbortSignal) =>
     request(
       options,

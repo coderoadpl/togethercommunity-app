@@ -156,7 +156,7 @@ describe('createApiClient', () => {
     const fetchImpl: typeof fetch = async (input, init) => {
       const url = String(input);
       requests.push({ url, method: init?.method ?? 'GET', body: init?.body });
-      if (url.endsWith('/api/image-assets/upload')) {
+      if (url.endsWith('/api/image-assets/branding/upload')) {
         return jsonResponse({
           ok: true,
           data: {
@@ -181,7 +181,7 @@ describe('createApiClient', () => {
     };
     const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
 
-    const result = await client.uploadImageAsset({
+    const result = await client.uploadBrandingAsset({
       kind: 'logo',
       fileName: 'logo.png',
       contentType: 'image/png',
@@ -193,9 +193,9 @@ describe('createApiClient', () => {
       url: '/api/public/assets/logo/00000000-0000-4000-8000-000000000001.png',
     }));
     expect(requests.map(({ url, method }) => ({ url, method }))).toEqual([
-      { url: 'https://api.example.test/api/image-assets/upload', method: 'POST' },
+      { url: 'https://api.example.test/api/image-assets/branding/upload', method: 'POST' },
       { url: 'https://storage.example.test/signed-put', method: 'PUT' },
-      { url: 'https://api.example.test/api/image-assets/complete', method: 'POST' },
+      { url: 'https://api.example.test/api/image-assets/branding/complete', method: 'POST' },
     ]);
     expect(JSON.parse(String(requests[2]?.body))).toEqual({
       key: 'image-assets/tenant-1/logo/00000000-0000-4000-8000-000000000001.png',

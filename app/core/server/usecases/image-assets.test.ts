@@ -13,8 +13,12 @@ import type { Ctx } from '../context.js';
 import type { StorageProvider } from '../ports.js';
 import {
   IMAGE_ASSET_GET_TTL_SECONDS,
-  beginImageAssetUpload,
-  completeImageAssetUpload,
+  beginBrandingAssetUpload,
+  beginCourseCoverUpload,
+  beginProductCoverUpload,
+  completeBrandingAssetUpload,
+  completeCourseCoverUpload,
+  completeProductCoverUpload,
   getPublicImageAssetUrl,
   type ImageAssetDeps,
 } from './image-assets.js';
@@ -83,13 +87,13 @@ const testDeps = (sizeBytes = 1024) => {
 
 describe('image assets', () => {
   it.each([
-    ['course-cover', adminCtx],
-    ['product-cover', adminCtx],
-    ['logo', ownerCtx],
-    ['favicon', ownerCtx],
-  ] as const)('begins an authorized %s upload with a tenant-scoped key', async (kind, ctx) => {
+    ['course-cover', adminCtx, beginCourseCoverUpload],
+    ['product-cover', adminCtx, beginProductCoverUpload],
+    ['logo', ownerCtx, beginBrandingAssetUpload],
+    ['favicon', ownerCtx, beginBrandingAssetUpload],
+  ] as const)('begins an authorized %s upload with a tenant-scoped key', async (kind, ctx, begin) => {
     const { deps, signed } = testDeps();
-    const result = await beginImageAssetUpload(ctx, {
+    const result = await begin(ctx, {
       kind,
       fileName: 'cover.jpg',
       contentType: 'image/jpeg',
@@ -108,7 +112,7 @@ describe('image assets', () => {
 
   it.each([memberCtx, authenticatedCtx])('rejects non-staff upload callers', async (ctx) => {
     const { deps, signed } = testDeps();
-    const result = await beginImageAssetUpload(ctx, {
+    const result = await beginCourseCoverUpload(ctx, {
       kind: 'course-cover',
       fileName: 'cover.png',
       contentType: 'image/png',
@@ -121,7 +125,7 @@ describe('image assets', () => {
 
   it('keeps branding uploads owner-only', async () => {
     const { deps } = testDeps();
-    const result = await beginImageAssetUpload(adminCtx, {
+    const result = await beginBrandingAssetUpload(adminCtx, {
       kind: 'logo',
       fileName: 'logo.svg',
       contentType: 'image/svg+xml',
@@ -132,11 +136,43 @@ describe('image assets', () => {
   });
 
   it.each([
+    ['logo', beginCourseCoverUpload],
+    ['course-cover', beginBrandingAssetUpload],
+    ['favicon', beginProductCoverUpload],
+  ] as const)('rejects a %s upload on a use-case that does not accept it', async (kind, begin) => {
+    const { deps, signed } = testDeps();
+    const result = await begin(ownerCtx, {
+      kind,
+      fileName: 'asset.png',
+      contentType: 'image/png',
+      sizeBytes: 1024,
+    }, deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(signed).toEqual([]);
+  });
+
+  it.each([
+    ['logo', completeCourseCoverUpload],
+    ['course-cover', completeBrandingAssetUpload],
+    ['favicon', completeProductCoverUpload],
+  ] as const)('rejects a stored %s key on a use-case that does not accept it', async (kind, complete) => {
+    const { deps } = testDeps();
+    const result = await complete(
+      ownerCtx,
+      { key: `image-assets/${TENANT_ID}/${kind}/${ASSET_ID}.png` },
+      deps,
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it.each([
     [{ kind: 'course-cover', fileName: 'cover.ico', contentType: 'image/x-icon', sizeBytes: 1024 }],
     [{ kind: 'course-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: IMAGE_ASSET_MAX_BYTES + 1 }],
   ] as const)('rejects an invalid content type or size', async (input) => {
     const { deps, signed } = testDeps();
-    const result = await beginImageAssetUpload(ownerCtx, input, deps);
+    const result = await beginCourseCoverUpload(ownerCtx, input, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(signed).toEqual([]);
@@ -145,7 +181,7 @@ describe('image assets', () => {
   it('reports missing storage configuration before signing', async () => {
     const { deps, signed } = testDeps();
     deps.secretResolver = { resolve: async () => err(notFound('missing')) };
-    const result = await beginImageAssetUpload(ownerCtx, {
+    const result = await beginBrandingAssetUpload(ownerCtx, {
       kind: 'favicon',
       fileName: 'favicon.ico',
       contentType: 'image/x-icon',
@@ -161,7 +197,7 @@ describe('image assets', () => {
     `product-downloads/${TENANT_ID}/course-cover/${ASSET_ID}.png`,
   ])('rejects a foreign completion key', async (key) => {
     const { deps } = testDeps();
-    const result = await completeImageAssetUpload(ownerCtx, { key }, deps);
+    const result = await completeCourseCoverUpload(ownerCtx, { key }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
@@ -169,7 +205,7 @@ describe('image assets', () => {
   it('deletes an oversized object during completion', async () => {
     const { deps, removed } = testDeps(IMAGE_ASSET_MAX_BYTES + 1);
     const key = `image-assets/${TENANT_ID}/product-cover/${ASSET_ID}.webp`;
-    const result = await completeImageAssetUpload(ownerCtx, { key }, deps);
+    const result = await completeProductCoverUpload(ownerCtx, { key }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(removed).toHaveLength(1);

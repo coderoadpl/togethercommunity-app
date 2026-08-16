@@ -25,10 +25,17 @@ interface ImageAssetFieldProps {
   testId: string;
 }
 
+const uploadActionByKind = {
+  'course-cover': 'uploadCourseCover',
+  'product-cover': 'uploadProductCover',
+  logo: 'uploadBrandingAsset',
+  favicon: 'uploadBrandingAsset',
+} as const;
+
 export const ImageAssetField = ({ onChange, kind, ...props }: ImageAssetFieldProps) => {
   const t = useTranslations();
   const upload = useMutation({
-    ...actions.uploadImageAsset,
+    ...actions[uploadActionByKind[kind]],
     onSuccess: ({ url }) => onChange(url),
   });
   const storageMissing = upload.isError && errorCodeOf(upload.error) === 'integration_not_configured';

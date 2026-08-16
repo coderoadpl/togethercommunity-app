@@ -86,7 +86,7 @@ const MediaIframe = ({
 const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
   const t = useTranslations();
   if (block.type === 'video') {
-    if (block.streamLibraryId === undefined) {
+    if (block.embedUrl === undefined) {
       return (
         <LessonPlaceholder data-testid="lesson-video-placeholder">
           {t.lesson.videoPlaceholder}
@@ -97,7 +97,7 @@ const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
       <MediaIframe
         frameSx={{ aspectRatio: '16 / 9' }}
         data-testid="lesson-video"
-        src={block.embedUrl ?? `https://iframe.mediadelivery.net/embed/${block.streamLibraryId}/${block.streamVideoId}`}
+        src={block.embedUrl}
         title={t.lesson.videoTitle}
         allow={VIDEO_ALLOW}
         allowFullScreen

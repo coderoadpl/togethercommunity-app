@@ -13,6 +13,7 @@ import {
   type Identity,
   type Product,
   type ProductGrant,
+  type TenantSettings,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -25,6 +26,7 @@ import type {
   MemberCourseProgressRepository,
   ProductGrantRepository,
   ProductRepository,
+  TenantRepository,
   TenantSecretResolver,
 } from '../ports.js';
 import {
@@ -195,6 +197,36 @@ const productsRepo: ProductRepository = {
   bumpContentVersion: async () => undefined,
 };
 
+const tenantSettings: TenantSettings = {
+  name: 'Acme',
+  socialLinks: [],
+  billingPortalUrl: null,
+  bunnyStreamLibraryId: 'lib-77',
+  bunnyStreamCdnHostname: null,
+  logoUrl: null,
+  accentColor: null,
+  faviconUrl: null,
+  ogTitle: null,
+  ogDescription: null,
+  ogImageUrl: null,
+  supportEmail: null,
+  supportUrl: null,
+  termsUrl: null,
+  privacyUrl: null,
+};
+
+const tenantsRepo = (settings: TenantSettings | null = tenantSettings): TenantRepository => ({
+  findById: async () => null,
+  findBySlug: async () => null,
+  findSole: async () => null,
+  hasAny: async () => false,
+  findSettings: async () => settings,
+  updateSettings: async (_tenantId, next) => next,
+  createTenantWithOwnerGrant: async () => {
+    throw new Error('not used');
+  },
+});
+
 const secretsOf = (values: Record<string, string>): TenantSecretResolver => ({
   resolve: async (_tenantId, key) => {
     const value = values[key];
@@ -229,6 +261,7 @@ const deps = (over: Partial<PlayableLessonDeps> = {}): PlayableLessonDeps => ({
   lessons: lessonsRepo,
   progress: progressRepo,
   products: productsRepo,
+  tenants: tenantsRepo(),
   clock,
   bunnyTokenSigner: {
     signEmbedToken: ({ securityKey, videoId, expires }) => `${securityKey}-${videoId}-${expires}`,
@@ -268,12 +301,13 @@ describe('getPlayableLesson', () => {
       return new URL(block.embedUrl);
     });
     expect(urls[0]?.origin).toBe('https://iframe.mediadelivery.net');
+    expect(urls[0]?.pathname).toBe('/embed/lib-77/video-1');
     expect(urls[0]?.searchParams.get('expires')).toBe(String(expires));
     expect(urls[0]?.searchParams.get('token')).toBe(`security-key-video-1-${expires}`);
     expect(urls[1]?.searchParams.get('token')).not.toBe(urls[0]?.searchParams.get('token'));
   });
 
-  it('keeps Bunny video blocks unchanged when the security key is not configured', async () => {
+  it('adds a raw Bunny embed url when the security key is not configured', async () => {
     const video = {
       type: 'video' as const,
       storageKey: 'videos/one',
@@ -285,6 +319,52 @@ describe('getPlayableLesson', () => {
       ctx(),
       'l1',
       deps({ lessons: lessonsRepoWith(videoLesson), secretResolver: secretsOf({}) }),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.contents).toEqual([
+      { ...video, embedUrl: 'https://iframe.mediadelivery.net/embed/lib-77/video-1' },
+    ]);
+  });
+
+  it('builds a signed Bunny embed url for an imported video without a block library id', async () => {
+    const video = {
+      type: 'video' as const,
+      storageKey: 'videos/imported',
+      streamVideoId: 'imported-video',
+    };
+    const videoLesson: CourseLesson = { ...pdfLesson, contents: [video] };
+    const result = await getPlayableLesson(
+      ctx(),
+      'l1',
+      deps({
+        lessons: lessonsRepoWith(videoLesson),
+        secretResolver: secretsOf({ 'bunny.securityKey': 'security-key' }),
+      }),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+
+    const expires = Math.floor(Date.parse(NOW) / 1000) + BUNNY_EMBED_URL_TTL_SECONDS;
+    expect(result.value.contents).toEqual([{
+      ...video,
+      embedUrl: `https://iframe.mediadelivery.net/embed/lib-77/imported-video?token=security-key-imported-video-${expires}&expires=${expires}`,
+    }]);
+  });
+
+  it.each([
+    ['missing tenant settings', null],
+    ['missing tenant library id', { ...tenantSettings, bunnyStreamLibraryId: null }],
+  ])('keeps the video unchanged with %s', async (_case, settings) => {
+    const video = {
+      type: 'video' as const,
+      storageKey: 'videos/one',
+      streamLibraryId: 'block-library',
+      streamVideoId: 'video-1',
+    };
+    const videoLesson: CourseLesson = { ...pdfLesson, contents: [video] };
+    const result = await getPlayableLesson(
+      ctx(),
+      'l1',
+      deps({ lessons: lessonsRepoWith(videoLesson), tenants: tenantsRepo(settings) }),
     );
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.contents).toEqual([video]);

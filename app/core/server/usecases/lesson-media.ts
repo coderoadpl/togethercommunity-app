@@ -9,13 +9,19 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { BunnyTokenSigner, StorageProvider, TenantSecretResolver } from '../ports.js';
+import type {
+  BunnyTokenSigner,
+  StorageProvider,
+  TenantRepository,
+  TenantSecretResolver,
+} from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
 export interface PlayableLessonDeps extends CourseAccessDeps {
   secretResolver: TenantSecretResolver;
   storage: StorageProvider;
   bunnyTokenSigner: BunnyTokenSigner;
+  tenants: TenantRepository;
 }
 
 export const PDF_URL_TTL_SECONDS = 3600;
@@ -34,21 +40,20 @@ const isS3Url = (raw: string): boolean => {
 const needsPdfSigning = (block: LessonBlock): boolean =>
   block.type === 'pdf' && isS3Url(block.pdfUrl);
 
-const bunnyEmbedUrl = (block: Extract<LessonBlock, { type: 'video' }>): string | null =>
-  block.streamLibraryId === undefined
-    ? null
-    : `https://iframe.mediadelivery.net/embed/${block.streamLibraryId}/${block.streamVideoId}`;
+const bunnyEmbedUrl = (
+  libraryId: string,
+  block: Extract<LessonBlock, { type: 'video' }>,
+): string => `https://iframe.mediadelivery.net/embed/${libraryId}/${block.streamVideoId}`;
 
 const signBunnyEmbedUrl = (
+  libraryId: string,
   block: Extract<LessonBlock, { type: 'video' }>,
   securityKey: string,
   expires: number,
   signer: BunnyTokenSigner,
-): string | null => {
-  const rawUrl = bunnyEmbedUrl(block);
-  if (rawUrl === null) return null;
+): string => {
   const token = signer.signEmbedToken({ securityKey, videoId: block.streamVideoId, expires });
-  const url = new URL(rawUrl);
+  const url = new URL(bunnyEmbedUrl(libraryId, block));
   url.searchParams.set('token', token);
   url.searchParams.set('expires', String(expires));
   return url.toString();
@@ -73,15 +78,19 @@ export const getPlayableLesson = async (
   if (tenantId === null) return lesson;
 
   let contents: PlayableLessonBlock[] = lesson.value.contents;
-  if (contents.some((block) => block.type === 'video' && bunnyEmbedUrl(block) !== null)) {
-    const securityKey = await deps.secretResolver.resolve(tenantId, 'bunny.securityKey');
-    if (!securityKey.ok && securityKey.error.code !== 'not_found') return securityKey;
-    if (securityKey.ok) {
+  if (contents.some((block) => block.type === 'video')) {
+    const settings = await deps.tenants.findSettings(tenantId);
+    const libraryId = settings?.bunnyStreamLibraryId ?? null;
+    if (libraryId !== null) {
+      const securityKey = await deps.secretResolver.resolve(tenantId, 'bunny.securityKey');
+      if (!securityKey.ok && securityKey.error.code !== 'not_found') return securityKey;
       const expires = Math.floor(Date.parse(deps.clock.nowIso()) / 1000) + BUNNY_EMBED_URL_TTL_SECONDS;
       contents = contents.map((block): PlayableLessonBlock => {
         if (block.type !== 'video') return block;
-        const embedUrl = signBunnyEmbedUrl(block, securityKey.value, expires, deps.bunnyTokenSigner);
-        return embedUrl === null ? block : { ...block, embedUrl };
+        const embedUrl = securityKey.ok
+          ? signBunnyEmbedUrl(libraryId, block, securityKey.value, expires, deps.bunnyTokenSigner)
+          : bunnyEmbedUrl(libraryId, block);
+        return { ...block, embedUrl };
       });
     }
   }

@@ -205,7 +205,7 @@ describe('LoginPage', () => {
       ),
     );
 
-    await renderLoginPage();
+    await renderLoginPage(true);
 
     const form = screen.getByLabelText(pl.auth.emailLabel).closest('form');
     const socialLink = await screen.findByRole('link', { name: 'YouTube' });
@@ -259,7 +259,7 @@ describe('LoginPage', () => {
       ),
     );
 
-    await renderLoginPage();
+    await renderLoginPage(true);
     await userEvent.type(screen.getByLabelText(pl.auth.magicLinkEmailLabel), 'member@example.com');
     await userEvent.click(screen.getByRole('button', { name: pl.auth.magicLinkIdle }));
 
@@ -271,6 +271,40 @@ describe('LoginPage', () => {
       'href',
       'https://studio.test/magic',
     );
+  });
+
+  it('does not request or surface the dev magic link when exposure is disabled', async () => {
+    let devCalls = 0;
+    server.use(
+      http.post('*', () => HttpResponse.json({ status: true })),
+      http.get('*/api/public/offer', () => HttpResponse.json({
+        ok: true,
+        data: {
+          tenant: { slug: 'acme', name: 'Acme' },
+          contentVersion: 1,
+          previewLessons: [],
+          products: [],
+        },
+      })),
+      http.get('*/api/dev/magic-link', () => {
+        devCalls += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'not_found', message: 'Not found' } },
+          { status: 404 },
+        );
+      }),
+    );
+
+    await renderLoginPage(false);
+    await userEvent.type(screen.getByLabelText(pl.auth.magicLinkEmailLabel), 'member@example.com');
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.magicLinkIdle }));
+
+    expect(await screen.findByTestId('magic-link-sent')).toHaveTextContent(
+      pl.auth.magicLinkRequestedBody({ email: 'member@example.com' }),
+    );
+    await waitFor(() => expect(devCalls).toBe(0));
+    expect(screen.queryByText(pl.auth.magicLinkFetching)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: pl.common.retry })).not.toBeInTheDocument();
   });
 
   it('renders the AppError from a failed sign-in mutation', async () => {

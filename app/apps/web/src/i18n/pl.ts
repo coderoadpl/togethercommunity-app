@@ -1219,7 +1219,7 @@ export const pl: Messages = {
     eyebrow: 'Lekcja',
     noContentTitle: 'Tu jeszcze pusto',
     noContent: 'Ta lekcja nie ma jeszcze treści.',
-    videoPlaceholder: 'Wideo jest podpięte, ale strumieniowanie nie jest jeszcze skonfigurowane.',
+    videoPlaceholder: 'Wideo będzie tu wkrótce dostępne.',
     openPdf: 'Otwórz PDF w nowej karcie',
     contentLocked: 'Treść zablokowana',
     noAccessYet: 'Nie masz jeszcze dostępu do tej lekcji.',

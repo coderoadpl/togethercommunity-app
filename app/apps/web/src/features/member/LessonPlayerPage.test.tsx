@@ -56,8 +56,14 @@ const structure: CourseStructureWithAccess = {
   ],
 };
 
-const allBlocks: LessonBlock[] = [
-  { type: 'video', storageKey: 'k1', streamVideoId: 'vid-1', streamLibraryId: '424242' },
+const allBlocks: PlayableLessonBlock[] = [
+  {
+    type: 'video',
+    storageKey: 'k1',
+    streamVideoId: 'vid-1',
+    streamLibraryId: '424242',
+    embedUrl: 'https://iframe.mediadelivery.net/embed/424242/vid-1',
+  },
   { type: 'pdf', pdfUrl: 'https://cdn.example.com/slides.pdf', name: 'Slides' },
   { type: 'embed', embedUrl: 'https://example.com/embed' },
   { type: 'html', html: '<p>Safe body</p><script>window.__xss = 1;</script>' },
@@ -271,7 +277,7 @@ describe('LessonPlayerPage', () => {
     expect(screen.getByTestId('lesson-html')).toHaveTextContent('Hello');
   });
 
-  it('shows a placeholder when the video has no stream library id', async () => {
+  it('shows a placeholder when the video has no embed url', async () => {
     server.use(
       okNext(null),
       okStructure(),

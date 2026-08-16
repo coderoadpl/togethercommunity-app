@@ -4,12 +4,12 @@ import { courseLessonSchema, courseModuleSchema, courseSchema } from './course.j
 import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
 import { productSchema, productSlugFromTitle } from './product.js';
-import { courseSnapshotV2Schema } from './snapshots/course/v2.js';
+import { courseSnapshotV3Schema } from './snapshots/course/v3.js';
 import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
 import { upcastLegacyVideoEmbedUrlV4 } from './snapshots/course_lesson/v4.js';
 import { courseLessonSnapshotV5Schema } from './snapshots/course_lesson/v5.js';
 import { courseModuleSnapshotV1Schema } from './snapshots/course_module/v1.js';
-import { productSnapshotV3Schema } from './snapshots/product/v3.js';
+import { productSnapshotV4Schema } from './snapshots/product/v4.js';
 
 /**
  * Content versioning: every mutable content entity is snapshotted under a
@@ -26,10 +26,10 @@ export type EntityKind = z.infer<typeof entityKindSchema>;
 
 /** Frozen schema for the CURRENT version of each kind (bump adds a new file). */
 const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
-  course: courseSnapshotV2Schema,
+  course: courseSnapshotV3Schema,
   course_module: courseModuleSnapshotV1Schema,
   course_lesson: courseLessonSnapshotV5Schema,
-  product: productSnapshotV3Schema,
+  product: productSnapshotV4Schema,
 };
 
 /** Live entity schemas the write-through path snapshots and the guard tracks. */
@@ -41,10 +41,10 @@ const liveEntitySchemas: Record<EntityKind, z.ZodTypeAny> = {
 };
 
 export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
-  course: 2,
+  course: 3,
   course_module: 1,
   course_lesson: 5,
-  product: 3,
+  product: 4,
 };
 
 type Upcaster = (payload: unknown) => unknown;
@@ -66,7 +66,10 @@ const upcastCourseLessonV3 = (payload: unknown): unknown => {
 const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
   // v1 payloads predate the explicit module ordering; default it to empty so the
   // module set falls back to creation order until staff reorder it.
-  course: { 1: (payload) => ({ ...z.object({}).passthrough().parse(payload), moduleOrder: [] }) },
+  course: {
+    1: (payload) => ({ ...z.object({}).passthrough().parse(payload), moduleOrder: [] }),
+    2: (payload) => payload,
+  },
   course_module: {},
   // v1 payloads (pdfUrl restricted to absolute URLs) are a strict subset of v2,
   // and v2 of v3 (durationMinutes is optional). v3 embed URLs are normalized or
@@ -91,6 +94,7 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
         coverUrl: null,
       };
     },
+    3: (payload) => payload,
   },
 };
 
@@ -240,10 +244,10 @@ export const SNAPSHOT_CURRENT_SCHEMAS: Record<EntityKind, z.ZodTypeAny> = curren
  * in `shapeGuardInstructions`. Updating this map is the LAST step of a bump.
  */
 export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
-  course: '94a7899a',
+  course: 'f4e0436d',
   course_module: 'db069353',
   course_lesson: '458d6e37',
-  product: '4552d88a',
+  product: 'ff78c86b',
 };
 
 // --- read-surface DTOs -----------------------------------------------------

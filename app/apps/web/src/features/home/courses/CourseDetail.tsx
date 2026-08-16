@@ -23,9 +23,9 @@ import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/i
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { ImageAssetField } from '../ImageAssetField.js';
 import {
   Eyebrow,
   ReorderCard,
@@ -743,27 +743,17 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
           }}
         />
       </FormControl>
-      <FormControl fullWidth>
-        <FormLabel htmlFor="course-image">{t.courses.imageUrl}</FormLabel>
-        <OutlinedInput
-          id="course-image"
-          type="url"
-          value={imageUrl}
-          aria-describedby={save.isError ? errorId : undefined}
-          onChange={(event) => {
-            resetFeedback();
-            setImageUrl(event.target.value);
-          }}
-        />
-        {imageUrl.trim() === '' ? null : (
-          <CoverPreview
-            key={imageUrl.trim()}
-            src={imageUrl.trim()}
-            label={t.courses.imagePreview}
-            testId="course-image-preview"
-          />
-        )}
-      </FormControl>
+      <ImageAssetField
+        id="course-image"
+        label={t.courses.imageUrl}
+        value={imageUrl}
+        onChange={(value) => {
+          resetFeedback();
+          setImageUrl(value);
+        }}
+        kind="course-cover"
+        testId="course-image"
+      />
       {save.isSuccess ? <Alert severity="success">{t.courses.detailsSaved}</Alert> : null}
       {save.isError ? (
         <MutationError

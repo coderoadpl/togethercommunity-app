@@ -38,6 +38,14 @@ export const pl: Messages = {
     unsavedChanges: 'Niezapisane zmiany',
     unsavedChangesConfirm: 'Masz niezapisane zmiany. Opuścić stronę i je odrzucić?',
   },
+  imageAssets: {
+    upload: 'Wgraj plik',
+    uploading: 'Wgrywanie…',
+    storageMissing: 'Wgrywanie plików wymaga pamięci plików przestrzeni. Skonfiguruj ją w',
+    storageLink: 'Integracje → S3',
+    invalidType: 'Wybierz obraz PNG, JPEG, WebP lub SVG. Favicon może być również plikiem ICO.',
+    tooLarge: 'Obraz nie może być większy niż 5 MB.',
+  },
   bootSplash: {
     opening: 'Otwieranie panelu twórcy',
     tenant: ({ host }) => format('Przestrzeń {host}', { host }),

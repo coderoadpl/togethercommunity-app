@@ -20,6 +20,7 @@ import {
   emailEventSchema,
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
+  notFound,
   ok,
   type Course,
   type CourseLesson,
@@ -2481,6 +2482,85 @@ describe('purchased product download route', () => {
   });
 });
 
+describe('public tenant image asset route', () => {
+  const file = '00000000-0000-4000-8000-000000000001.png';
+  const path = API_PATHS.publicImageAsset
+    .replace(':kind', 'logo')
+    .replace(':file', file);
+  const storageSecret = JSON.stringify({
+    provider: 'minio',
+    endpoint: 'https://storage.example.test',
+    region: 'eu-central-1',
+    bucket: 'private-assets',
+    accessKeyId: 'access-key',
+    secretAccessKey: 'secret-key',
+  });
+
+  it('redirects to a signed private object with short public caching', async () => {
+    const base = deps();
+    const app = scopedApp('none', {
+      overrides: {
+        secretResolver: { resolve: async () => ok(storageSecret) },
+        storage: {
+          ...base.storage,
+          presignGet: () => ok('https://storage.example.test/signed-private-image'),
+        },
+      },
+    });
+    const response = await app.request(path, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://storage.example.test/signed-private-image');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+  });
+
+  it('returns only a not-found envelope when storage is unconfigured', async () => {
+    const app = scopedApp('none', {
+      overrides: {
+        secretResolver: { resolve: async () => err(notFound('private bucket configuration missing')) },
+      },
+    });
+    const response = await app.request(path, { headers: { host: 'acme.localhost:48730' } });
+    const body = await response.text();
+
+    expect(response.status).toBe(404);
+    expect(JSON.parse(body)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(body).not.toContain('bucket');
+    expect(body).not.toContain('configuration');
+  });
+
+  it.each([
+    API_PATHS.publicImageAsset.replace(':kind', 'downloads').replace(':file', file),
+    API_PATHS.publicImageAsset.replace(':kind', 'logo').replace(':file', 'invalid.gif'),
+  ])('returns not found for malformed public asset parameters', async (invalidPath) => {
+    const response = await scopedApp('none').request(invalidPath, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('does not leak a private bucket signing failure', async () => {
+    const base = deps();
+    const app = scopedApp('none', {
+      overrides: {
+        secretResolver: { resolve: async () => ok(storageSecret) },
+        storage: {
+          ...base.storage,
+          presignGet: () => err(internal('private bucket returned HTTP 403')),
+        },
+      },
+    });
+    const response = await app.request(path, { headers: { host: 'acme.localhost:48730' } });
+    const body = await response.text();
+
+    expect(response.status).toBe(404);
+    expect(body).not.toContain('403');
+    expect(body).not.toContain('bucket');
+  });
+});
+
 describe('new route authorization', () => {
   const headers = {
     host: 'acme.localhost:48730',
@@ -2539,6 +2619,48 @@ describe('new route authorization', () => {
 
     expect(upload.status).toBe(403);
     expect(remove.status).toBe(403);
+  });
+
+  it('keeps branding image uploads owner-only', async () => {
+    const base = deps();
+    const overrides: Partial<AppDeps> = {
+      ids: { nextId: () => '00000000-0000-4000-8000-000000000001' },
+      secretResolver: {
+        resolve: async () => ok(JSON.stringify({
+          provider: 'minio',
+          endpoint: 'https://storage.example.test',
+          region: 'eu-central-1',
+          bucket: 'private-assets',
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        })),
+      },
+      storage: {
+        ...base.storage,
+        presignPut: () => ok('https://storage.example.test/signed-upload'),
+      },
+    };
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        kind: 'logo',
+        fileName: 'logo.png',
+        contentType: 'image/png',
+        sizeBytes: 1024,
+      }),
+    };
+    const owner = await scopedApp('owner', { overrides }).request(API_PATHS.imageAssetUpload, request);
+    const staff = await scopedApp('staff', { overrides }).request(API_PATHS.imageAssetUpload, request);
+
+    expect(owner.status).toBe(200);
+    expect(await owner.json()).toMatchObject({
+      ok: true,
+      data: {
+        servePath: '/api/public/assets/logo/00000000-0000-4000-8000-000000000001.png',
+      },
+    });
+    expect(staff.status).toBe(403);
   });
 
   it('denies members and permits staff on post pinning', async () => {

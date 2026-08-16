@@ -37,6 +37,14 @@ export interface Messages {
     unsavedChanges: string;
     unsavedChangesConfirm: string;
   };
+  imageAssets: {
+    upload: string;
+    uploading: string;
+    storageMissing: string;
+    storageLink: string;
+    invalidType: string;
+    tooLarge: string;
+  };
   bootSplash: {
     opening: string;
     tenant: (params: { host: string }) => string;

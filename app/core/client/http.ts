@@ -30,6 +30,8 @@ import {
   healthOutputSchema,
   healthLiveOutputSchema,
   healthReadyOutputSchema,
+  imageAssetCompleteOutputSchema,
+  imageAssetUploadOutputSchema,
   ifirmaTestConnectionOutputSchema,
   integrationTestOutputSchema,
   storageConfigureOutputSchema,
@@ -181,6 +183,7 @@ import {
   type LessonCreateInput,
   type LessonUpdateInput,
   type LessonAttachmentUploadRequest,
+  type ImageAssetUploadRequest,
   type ProductDownloadUploadRequest,
   type M2mEnrollRequest,
   type M2mTransactionalMessageRequest,
@@ -299,6 +302,10 @@ export interface LessonAttachmentFileUpload extends LessonAttachmentUploadReques
 
 export interface ProductDownloadFileUpload extends ProductDownloadUploadRequest {
   productId: string;
+  body: BodyInit;
+}
+
+export interface ImageAssetFileUpload extends ImageAssetUploadRequest {
   body: BodyInit;
 }
 
@@ -1218,6 +1225,35 @@ export const createApiClient = (options: ApiClientOptions) => ({
           .replace(':assetId', encodeURIComponent(started.asset.id)),
         productDownloadCompleteOutputSchema,
         {},
+        signal,
+      ),
+      signal,
+    );
+  },
+  uploadImageAsset: async (input: ImageAssetFileUpload, signal?: AbortSignal) => {
+    return uploadPresignedStorageAsset(
+      input,
+      options.fetchImpl ?? fetch,
+      () => request(
+        options,
+        API_ROUTES.imageAssetUpload.method,
+        API_ROUTES.imageAssetUpload.path,
+        imageAssetUploadOutputSchema,
+        {
+          kind: input.kind,
+          fileName: input.fileName,
+          contentType: input.contentType,
+          sizeBytes: input.sizeBytes,
+        },
+        signal,
+      ),
+      (started) => started.upload,
+      (started) => request(
+        options,
+        API_ROUTES.imageAssetComplete.method,
+        API_ROUTES.imageAssetComplete.path,
+        imageAssetCompleteOutputSchema,
+        { key: started.key },
         signal,
       ),
       signal,

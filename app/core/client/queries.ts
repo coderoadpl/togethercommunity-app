@@ -97,6 +97,7 @@ import {
   unwrap,
   type ApiClient,
   type ProductDownloadFileUpload,
+  type ImageAssetFileUpload,
   type ReadResult,
   type WriteResult,
 } from './http.js';
@@ -197,6 +198,10 @@ const productPricesScopes = {
 const productDownloadsScopes = {
   all: () => ['product-downloads'] as const,
   list: (productId: string) => ['product-downloads', 'list', productId] as const,
+};
+
+const imageAssetsScopes = {
+  all: () => ['image-assets'] as const,
 };
 
 const salesScopes = {
@@ -583,6 +588,12 @@ export const uploadProductDownloadMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...productDownloadsScopes.all(), 'upload'],
     call: (input: ProductDownloadFileUpload) => api.uploadProductDownload(input),
+  });
+
+export const uploadImageAssetMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadImageAsset(input),
   });
 
 export const deleteProductDownloadMutation = (api: ApiClient) =>

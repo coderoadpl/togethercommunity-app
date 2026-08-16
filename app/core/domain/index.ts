@@ -22,6 +22,7 @@ export * from './import.js';
 export * from './course.js';
 export * from './lesson-attachment.js';
 export * from './product-download.js';
+export * from './image-asset.js';
 export * from './community.js';
 export * from './moderation.js';
 export * from './member-event.js';

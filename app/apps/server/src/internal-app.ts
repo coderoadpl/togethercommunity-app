@@ -20,6 +20,8 @@ import {
   emailSendsQuerySchema,
   grantCreateInputSchema,
   grantRevokeInputSchema,
+  imageAssetCompleteRequestSchema,
+  imageAssetUploadRequestSchema,
   integrationTestInputSchema,
   storageConfigureInputSchema,
   storageProbeInputSchema,
@@ -126,6 +128,7 @@ import {
   archiveCoupon,
   attachModuleToCourse,
   beginLessonAttachmentUpload,
+  beginImageAssetUpload,
   beginProductDownloadUpload,
   authenticateApiKey,
   autoIssueOnPayment,
@@ -148,6 +151,7 @@ import {
   createTenantDocument,
   configureStorageConnection,
   completeLessonAttachmentUpload,
+  completeImageAssetUpload,
   completeProductDownloadUpload,
   deactivateProductPrice,
   deleteLesson,
@@ -1489,6 +1493,39 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       { identity: c.get('identity') },
       c.req.param('productId'),
       c.req.param('assetId'),
+      deps,
+    ));
+  });
+
+  app.post(API_PATHS.imageAssetUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = imageAssetUploadRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
+    const result = await beginImageAssetUpload(
+      { identity: c.get('identity') },
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok
+      ? ok({
+          key: result.value.key,
+          servePath: result.value.servePath,
+          upload: {
+            url: result.value.uploadUrl,
+            headers: { 'content-type': parsed.data.contentType },
+            expiresAt: result.value.expiresAt,
+          },
+        })
+      : result);
+  });
+
+  app.post(API_PATHS.imageAssetComplete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = imageAssetCompleteRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));
+    return respond(await completeImageAssetUpload(
+      { identity: c.get('identity') },
+      parsed.data,
       deps,
     ));
   });

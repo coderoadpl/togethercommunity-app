@@ -436,6 +436,9 @@ export const MarketingSettingsPanel = () => {
         </Alert>
       )}
       <SectionCard title={t.marketing.platformPool({ used: pool.used, limit: pool.limit })}>
+        <Typography variant="caption" component="p" color="text.secondary">
+          {t.marketing.platformPoolHint}
+        </Typography>
         {pool.used >= 800 ? <Alert severity="warning">{t.marketing.platformPoolNudge}</Alert> : null}
       </SectionCard>
       <CredentialsForm configured={credentialsConfigured} />

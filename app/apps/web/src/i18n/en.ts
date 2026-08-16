@@ -479,6 +479,13 @@ export const en: Messages = {
   integrations: {
     heading: 'Integrations',
     intro: 'Connect your own service accounts. Keys are encrypted and kept server-side.',
+    tabsAria: 'Integration sections',
+    tabStripe: 'Stripe / Payments',
+    tabEmail: 'E-mail',
+    tabStorage: 'File storage (S3)',
+    tabVideo: 'Video (Bunny Stream)',
+    tabInvoicing: 'Invoicing (iFirma / KSeF)',
+    tabApiKeys: 'Migration API keys',
     stripeHeading: 'Stripe',
     stripeDescription:
       'Enter a restricted key. Together creates the webhook automatically and stores its signing secret.',

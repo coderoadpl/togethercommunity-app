@@ -455,6 +455,13 @@ export interface Messages {
   integrations: {
     heading: string;
     intro: string;
+    tabsAria: string;
+    tabStripe: string;
+    tabEmail: string;
+    tabStorage: string;
+    tabVideo: string;
+    tabInvoicing: string;
+    tabApiKeys: string;
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;

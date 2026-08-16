@@ -485,6 +485,13 @@ export const pl: Messages = {
   integrations: {
     heading: 'Integracje',
     intro: 'Podłącz własne konta usług. Klucze są szyfrowane i przechowywane po stronie serwera.',
+    tabsAria: 'Sekcje integracji',
+    tabStripe: 'Stripe / Płatności',
+    tabEmail: 'E-mail',
+    tabStorage: 'Pamięć plików (S3)',
+    tabVideo: 'Wideo (Bunny Stream)',
+    tabInvoicing: 'Fakturowanie (iFirma / KSeF)',
+    tabApiKeys: 'Klucze API migracji',
     stripeHeading: 'Stripe',
     stripeDescription:
       'Podaj klucz ograniczony (restricted key). Together automatycznie utworzy webhook i zapisze jego sekret podpisu.',

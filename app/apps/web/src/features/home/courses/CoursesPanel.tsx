@@ -180,7 +180,7 @@ export const CoursesListPanel = () => {
         ) : courses.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />
         ) : (
-          <List disablePadding dense>
+          <List disablePadding>
             {paged.pageItems.map((course) => (
               <ListItem
                 key={course.id}

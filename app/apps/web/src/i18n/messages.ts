@@ -1730,6 +1730,7 @@ export interface Messages {
     testEmailSent: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
+    platformPoolHint: string;
     platformPoolNudge: string;
     accessKeyLabel: string;
     secretKeyLabel: string;

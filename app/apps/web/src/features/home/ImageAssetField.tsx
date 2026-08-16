@@ -1,6 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
 
-import { imageAssetUploadInputSchema, type ImageAssetKind } from '#core/domain/index.js';
+import {
+  IMAGE_ASSET_CONTENT_TYPES,
+  IMAGE_ASSET_FAVICON_CONTENT_TYPES,
+  IMAGE_ASSET_MAX_BYTES,
+  imageAssetUploadInputSchema,
+  type ImageAssetKind,
+} from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import {
@@ -26,11 +32,19 @@ export const ImageAssetField = ({ onChange, kind, ...props }: ImageAssetFieldPro
     onSuccess: ({ url }) => onChange(url),
   });
   const storageMissing = upload.isError && errorCodeOf(upload.error) === 'integration_not_configured';
+  const allowedContentTypes = kind === 'favicon'
+    ? IMAGE_ASSET_FAVICON_CONTENT_TYPES
+    : IMAGE_ASSET_CONTENT_TYPES;
+  const accept = kind === 'favicon'
+    ? `${IMAGE_ASSET_FAVICON_CONTENT_TYPES.join(',')},.ico`
+    : IMAGE_ASSET_CONTENT_TYPES.join(',');
 
   return (
     <ImageAssetFieldView
       {...props}
-      kind={kind}
+      accept={accept}
+      allowedContentTypes={allowedContentTypes}
+      maxBytes={IMAGE_ASSET_MAX_BYTES}
       onChange={onChange}
       uploading={upload.isPending}
       storageMissing={storageMissing}

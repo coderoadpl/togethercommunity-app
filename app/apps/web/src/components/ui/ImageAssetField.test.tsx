@@ -2,10 +2,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { IMAGE_ASSET_MAX_BYTES } from '#core/domain/index.js';
-
 import { pl } from '../../i18n/pl.js';
 import { ImageAssetField } from './ImageAssetField.js';
+
+const viewProps = {
+  accept: 'image/png,image/jpeg,image/webp',
+  allowedContentTypes: ['image/png', 'image/jpeg', 'image/webp'],
+  maxBytes: 1024,
+};
 
 describe('ImageAssetField', () => {
   it('keeps the URL input as an alternative', async () => {
@@ -16,7 +20,7 @@ describe('ImageAssetField', () => {
         label="Okładka"
         value=""
         onChange={onChange}
-        kind="course-cover"
+        {...viewProps}
         testId="cover"
         onUpload={() => undefined}
       />,
@@ -36,7 +40,7 @@ describe('ImageAssetField', () => {
         label="Okładka"
         value="/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.jpg"
         onChange={() => undefined}
-        kind="course-cover"
+        {...viewProps}
         testId="cover"
         onUpload={() => undefined}
       />,
@@ -53,7 +57,7 @@ describe('ImageAssetField', () => {
         label="Okładka"
         value=""
         onChange={() => undefined}
-        kind="course-cover"
+        {...viewProps}
         testId="cover"
         onUpload={onUpload}
       />,
@@ -72,7 +76,7 @@ describe('ImageAssetField', () => {
         label="Okładka"
         value=""
         onChange={() => undefined}
-        kind="course-cover"
+        {...viewProps}
         testId="cover"
         onUpload={() => undefined}
       />,
@@ -87,7 +91,7 @@ describe('ImageAssetField', () => {
 
     await userEvent.upload(
       screen.getByTestId('cover-file-input'),
-      new File([new Uint8Array(IMAGE_ASSET_MAX_BYTES + 1)], 'cover.png', { type: 'image/png' }),
+      new File([new Uint8Array(viewProps.maxBytes + 1)], 'cover.png', { type: 'image/png' }),
     );
     expect(await screen.findByText(pl.imageAssets.tooLarge)).toBeInTheDocument();
   });
@@ -99,7 +103,7 @@ describe('ImageAssetField', () => {
         label="Logo"
         value=""
         onChange={() => undefined}
-        kind="logo"
+        {...viewProps}
         testId="logo"
         storageMissing
         onUpload={() => undefined}

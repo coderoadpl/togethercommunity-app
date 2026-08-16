@@ -10,13 +10,6 @@ import {
   Stack,
 } from '@mui/material';
 
-import {
-  IMAGE_ASSET_CONTENT_TYPES,
-  IMAGE_ASSET_FAVICON_CONTENT_TYPES,
-  IMAGE_ASSET_MAX_BYTES,
-  type ImageAssetKind,
-} from '#core/domain/index.js';
-
 import { useTranslations } from '../../i18n/index.js';
 import { CoverPreview } from './CoverPreview.js';
 
@@ -26,7 +19,9 @@ export interface ImageAssetFieldProps {
   hint?: string;
   value: string;
   onChange: (value: string) => void;
-  kind: ImageAssetKind;
+  accept: string;
+  allowedContentTypes: readonly string[];
+  maxBytes: number;
   disabled?: boolean;
   testId: string;
   uploading?: boolean;
@@ -41,7 +36,9 @@ export const ImageAssetField = ({
   hint,
   value,
   onChange,
-  kind,
+  accept,
+  allowedContentTypes,
+  maxBytes,
   disabled = false,
   testId,
   uploading = false,
@@ -51,18 +48,12 @@ export const ImageAssetField = ({
 }: ImageAssetFieldProps) => {
   const t = useTranslations();
   const [localError, setLocalError] = useState<string | null>(null);
-  const allowedContentTypes = kind === 'favicon'
-    ? IMAGE_ASSET_FAVICON_CONTENT_TYPES
-    : IMAGE_ASSET_CONTENT_TYPES;
-  const acceptedTypes = kind === 'favicon'
-    ? `${IMAGE_ASSET_FAVICON_CONTENT_TYPES.join(',')},.ico`
-    : IMAGE_ASSET_CONTENT_TYPES.join(',');
 
   const selectFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (file === undefined) return;
-    if (file.size > IMAGE_ASSET_MAX_BYTES) {
+    if (file.size > maxBytes) {
       setLocalError(t.imageAssets.tooLarge);
       return;
     }
@@ -100,7 +91,7 @@ export const ImageAssetField = ({
           {uploading ? t.imageAssets.uploading : t.imageAssets.upload}
           <input
             type="file"
-            accept={acceptedTypes}
+            accept={accept}
             disabled={disabled || uploading}
             hidden
             onChange={selectFile}

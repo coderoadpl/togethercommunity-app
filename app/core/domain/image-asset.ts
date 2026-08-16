@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const IMAGE_ASSET_MAX_BYTES = 5 * 1024 * 1024;
 
-export const IMAGE_ASSET_KINDS = [
+const IMAGE_ASSET_KINDS = [
   'course-cover',
   'product-cover',
   'logo',

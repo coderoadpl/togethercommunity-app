@@ -4,6 +4,7 @@ import {
   createRoute,
   createRouter,
   RouterProvider,
+  useParams,
 } from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -247,7 +248,7 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Preview body');
-    expect(screen.getByRole('link', { name: pl.auth.signInLink })).toHaveAttribute('href', '/login');
+    expect(screen.queryByTestId('member-bottom-nav')).not.toBeInTheDocument();
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-section')).not.toBeInTheDocument();
     expect(memberOnlyRequests).toBe(0);
@@ -554,13 +555,14 @@ describe('LessonPlayerPage', () => {
     );
 
     const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+    };
     const lessonRoute = createRoute({
       getParentRoute: () => rootRoute,
       path: '/my/courses/$courseId/lessons/$lessonId',
-      component: () => {
-        const params = lessonRoute.useParams();
-        return <LessonPlayerPage courseId={params.courseId} lessonId={params.lessonId} />;
-      },
+      component: LessonRouteComponent,
     });
     const router = createRouter({
       routeTree: rootRoute.addChildren([lessonRoute]),
@@ -579,7 +581,6 @@ describe('LessonPlayerPage', () => {
     expect(screen.getByTestId('curriculum-card')).toBe(card);
     expect(screen.getByTestId('lesson-transition-loading')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: pl.auth.signInLink })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.student.myCourses })).toBeInTheDocument();
 
     releaseLesson();
 

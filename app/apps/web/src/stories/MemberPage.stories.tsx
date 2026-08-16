@@ -56,24 +56,12 @@ const progressRail: ReactNode = (
   </SectionCard>
 );
 
-const memberNav: ReactNode = (
-  <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'center' }}>
-    <Link href="#" variant="body2">
-      Moje kursy
-    </Link>
-    <Badge badgeContent={2} color="secondary">
-      <Glyph d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z" />
-    </Badge>
-  </Stack>
-);
-
 export const LessonWithRail: Story = {
   args: {
     eyebrow: 'JavaScript od zera · Moduł 1',
     title: 'Zmienne i typy',
     breadcrumbLabel: 'Okruszki',
     width: 'prose',
-    nav: memberNav,
     breadcrumbs: [
       { label: 'Moje kursy', link: <Link href="#">Moje kursy</Link> },
       { label: 'JavaScript od zera', link: <Link href="#">JavaScript od zera</Link> },

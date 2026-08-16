@@ -74,10 +74,7 @@ describe('MyCoursesPage', () => {
     expect(card).toHaveAttribute('href', '/my/courses/course-1');
     expect(screen.getByText('Start from zero.')).toBeInTheDocument();
     expect(await screen.findByTestId('completion-course-1')).toHaveTextContent(pl.student.completionInProgress);
-    expect(within(screen.getByRole('banner')).getByRole('link', { name: pl.student.myProducts })).toHaveAttribute(
-      'href',
-      '/my/products',
-    );
+    expect(within(screen.getByRole('banner')).queryAllByRole('link')).toHaveLength(0);
   });
 
   it('shows an empty state when no courses are accessible', async () => {

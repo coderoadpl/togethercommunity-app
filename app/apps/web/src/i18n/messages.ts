@@ -997,6 +997,13 @@ export interface Messages {
     bannedSince: (params: { date: string }) => string;
     banVsRemoval: string;
   };
+  shell: {
+    navigationAria: string;
+    start: string;
+    spacesSection: string;
+    lockedSpaceHint: string;
+    courseProgressLabel: (params: { name: string; percent: number }) => string;
+  };
   student: {
     myCourses: string;
     myProducts: string;

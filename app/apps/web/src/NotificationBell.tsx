@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, Menu, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
+import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, ListItemIcon, ListItemText, Menu, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -16,6 +16,7 @@ import {
   NotificationMenuItem,
   NotificationSnippet,
   NotificationTitle,
+  PanelNavItem,
   UnreadDot,
 } from './theme.js';
 
@@ -37,7 +38,15 @@ const TabBellIcon = () => (
   </SvgIcon>
 );
 
-export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string; live?: boolean }) => {
+export const NotificationBell = ({
+  tabLabel,
+  navLabel,
+  live = true,
+}: {
+  tabLabel?: string;
+  navLabel?: string;
+  live?: boolean;
+}) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const navigate = useNavigate();
@@ -106,7 +115,22 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
   const unreadCount = unread.data?.unread ?? 0;
   const notifications = list.data?.notifications ?? [];
 
-  const trigger = tabLabel === undefined ? (
+  const trigger = navLabel !== undefined ? (
+    <PanelNavItem
+      data-testid="notification-nav"
+      aria-label={t.notifications.bell}
+      aria-haspopup="true"
+      aria-expanded={open ? true : undefined}
+      onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+    >
+      <ListItemIcon>
+        <Badge badgeContent={unreadCount} color="error" data-testid="notification-nav-badge">
+          <TabBellIcon />
+        </Badge>
+      </ListItemIcon>
+      <ListItemText primary={navLabel} slotProps={{ primary: { noWrap: true } }} />
+    </PanelNavItem>
+  ) : tabLabel === undefined ? (
     <Tooltip title={t.notifications.bell}>
         <IconButton
           color="inherit"

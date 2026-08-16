@@ -4,13 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { MemberPage } from './MemberPage.js';
 
 describe('MemberPage', () => {
-  it('renders the ledger header with title, eyebrow, nav and children', () => {
+  it('renders the ledger header with title, eyebrow and children', () => {
     render(
       <MemberPage
         title="Moje kursy"
         eyebrow="biblioteka kursów"
         breadcrumbLabel="Okruszki"
-        nav={<a href="/my/products">Moje produkty</a>}
         data-testid="page"
       >
         <p>Siatka kursów</p>
@@ -19,7 +18,6 @@ describe('MemberPage', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Moje kursy' })).toBeInTheDocument();
     expect(screen.getByText('biblioteka kursów')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Moje produkty' })).toBeInTheDocument();
     expect(screen.getByText('Siatka kursów')).toBeInTheDocument();
   });
 

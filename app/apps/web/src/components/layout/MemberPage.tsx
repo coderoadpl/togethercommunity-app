@@ -15,10 +15,6 @@ export interface MemberPageProps {
   title: ReactNode;
   eyebrow: ReactNode;
   width?: 'prose' | 'wide';
-  /** Tenant logo slot at the top of the ledger header; callers render nothing when unbranded. */
-  logo?: ReactNode;
-  /** Utility nav in the header row: links + NotificationBell + MemberAccountMenu. */
-  nav?: ReactNode;
   breadcrumbs?: BreadcrumbItem[];
   breadcrumbLabel: string;
   /** Sticky right column (24rem) on md+. */
@@ -30,7 +26,7 @@ export interface MemberPageProps {
    * 'split' (leading rail content, main content, trailing rail content).
    */
   mobileRail?: 'before' | 'after' | 'split';
-  /** Persistent bottom tab bar, xs only (decision D4); caller supplies the tabs. */
+  /** Persistent bottom tab bar below md; caller supplies the tabs. */
   bottomNav?: ReactNode;
   state?: PageState;
   children?: ReactNode;
@@ -50,8 +46,6 @@ export const MemberPage = ({
   title,
   eyebrow,
   width = 'prose',
-  logo,
-  nav,
   breadcrumbs,
   breadcrumbLabel,
   rail,
@@ -76,16 +70,14 @@ export const MemberPage = ({
       disableGutters
       sx={{
         maxWidth: `${PAGE_WIDTH[width]} !important`,
-        px: '1.25rem',
         pb:
           bottomNav === undefined
-            ? '6rem'
-            : { xs: 'calc(7.5rem + env(safe-area-inset-bottom))', sm: '6rem' },
+            ? '3rem'
+            : { xs: 'calc(7.5rem + env(safe-area-inset-bottom))', md: '3rem' },
       }}
       data-testid={testId}
     >
-      <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
-        {logo}
+      <LedgerHeader component="header" sx={{ pb: '21px' }}>
         {breadcrumbs !== undefined && breadcrumbs.length > 0 && (
           <Breadcrumbs aria-label={breadcrumbLabel} data-testid="member-breadcrumbs" sx={{ mb: '0.75rem' }}>
             {breadcrumbs.map((item, index) => (
@@ -93,11 +85,7 @@ export const MemberPage = ({
             ))}
           </Breadcrumbs>
         )}
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
-          <Typography variant="h1">{title}</Typography>
-          <Box sx={{ flex: 1 }} />
-          {nav}
-        </Stack>
+        <Typography variant="h1">{title}</Typography>
         <Eyebrow variant="overline" component="p">
           {eyebrow}
         </Eyebrow>
@@ -169,7 +157,7 @@ export const MemberPage = ({
         <Box
           component="nav"
           sx={{
-            display: { xs: 'block', sm: 'none' },
+            display: { xs: 'block', md: 'none' },
             position: 'fixed',
             bottom: 0,
             left: 0,

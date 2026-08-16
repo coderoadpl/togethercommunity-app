@@ -1128,6 +1128,13 @@ export const pl: Messages = {
     bannedSince: ({ date }) => `Zbanowany ${date}`,
     banVsRemoval: 'Ban jest odwracalny i zachowuje konto. Usunięcie uczestnika trwale usuwa jego dane osobowe.',
   },
+  shell: {
+    navigationAria: 'Nawigacja uczestnika',
+    start: 'Start',
+    spacesSection: 'Przestrzenie',
+    lockedSpaceHint: 'Ta przestrzeń wymaga dostępu — kliknij, aby go kupić.',
+    courseProgressLabel: ({ name, percent }) => `${name} — ukończono ${percent}%`,
+  },
   student: {
     myCourses: 'Moje kursy',
     myProducts: 'Moje produkty',

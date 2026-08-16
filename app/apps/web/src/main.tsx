@@ -106,6 +106,7 @@ import {
   CourseStructureRoute,
   LessonPlayerRoute,
   MemberAccountRoute,
+  MemberShellRoute,
   MyCoursesRoute,
   MyProductsRoute,
   SpaceFeedRoute,
@@ -147,28 +148,33 @@ const checkoutRoute = createRoute({
   path: '/checkout/$productId',
   component: CheckoutRoute,
 });
-const myCoursesRoute = createRoute({
+const memberShellRoute = createRoute({
   getParentRoute: () => rootRoute,
+  id: 'member-shell',
+  component: MemberShellRoute,
+});
+const myCoursesRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
   path: '/my',
   component: MyCoursesRoute,
 });
 const myProductsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/my/products',
   component: MyProductsRoute,
 });
 const courseRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/my/course/$productId',
   component: CourseRoute,
 });
 const courseStructureRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/my/courses/$courseId',
   component: CourseStructureRoute,
 });
 const lessonPlayerRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.lesson,
   component: LessonPlayerRoute,
 });
@@ -188,22 +194,22 @@ const resetPasswordRoute = createRoute({
   component: ResetPasswordRoute,
 });
 const accountRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/account',
   component: MemberAccountRoute,
 });
 const communityRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/community',
   component: CommunityRoute,
 });
 const spaceFeedRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.communitySpace,
   component: SpaceFeedRoute,
 });
 const spaceThreadRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.communityPost,
   component: SpaceThreadRoute,
 });
@@ -425,18 +431,20 @@ const router = createRouter({
     indexRoute,
     loginRoute,
     checkoutRoute,
-    myCoursesRoute,
-    myProductsRoute,
-    courseRoute,
-    courseStructureRoute,
-    lessonPlayerRoute,
     registerRoute,
     forgotPasswordRoute,
     resetPasswordRoute,
-    accountRoute,
-    communityRoute,
-    spaceFeedRoute,
-    spaceThreadRoute,
+    memberShellRoute.addChildren([
+      myCoursesRoute,
+      myProductsRoute,
+      courseRoute,
+      courseStructureRoute,
+      lessonPlayerRoute,
+      accountRoute,
+      communityRoute,
+      spaceFeedRoute,
+      spaceThreadRoute,
+    ]),
     panelLayoutRoute.addChildren([
       panelIndexRoute,
       panelProductsRoute,

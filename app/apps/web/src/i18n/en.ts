@@ -1111,6 +1111,13 @@ export const en: Messages = {
     bannedSince: ({ date }) => `Banned on ${date}`,
     banVsRemoval: 'A ban is reversible and keeps the account. Removing a member erases their personal data permanently.',
   },
+  shell: {
+    navigationAria: 'Member navigation',
+    start: 'Start',
+    spacesSection: 'Spaces',
+    lockedSpaceHint: 'This space needs access — click to unlock it.',
+    courseProgressLabel: ({ name, percent }) => `${name} — ${percent}% complete`,
+  },
   student: {
     myCourses: 'My courses',
     myProducts: 'My products',

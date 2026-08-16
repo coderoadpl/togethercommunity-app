@@ -253,8 +253,16 @@ export const LessonPlayerPage = ({
   lessonId: string;
 }) => {
   const t = useTranslations();
-  const lesson = useQuery(actions.studentLesson(lessonId));
-  const authenticated = lesson.data?.authenticated === true || isForbidden(lesson.error);
+  const lesson = useQuery({
+    ...actions.studentLesson(lessonId),
+    placeholderData: (previous) => previous,
+  });
+  const queryClient = useQueryClient();
+  const cachedMe = queryClient.getQueryData(actions.me.queryKey);
+  const authenticated =
+    lesson.data?.authenticated === true ||
+    isForbidden(lesson.error) ||
+    (lesson.isPending && cachedMe !== undefined);
   const structure = useQuery({ ...actions.courseStructure(courseId), enabled: authenticated });
   const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated });
   const next = useQuery({ ...actions.nextLesson(lessonId), enabled: authenticated });
@@ -263,7 +271,6 @@ export const LessonPlayerPage = ({
     enabled: authenticated && lesson.isSuccess,
   });
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const unauthorized = isUnauthorized(lesson.error);
 
@@ -272,35 +279,49 @@ export const LessonPlayerPage = ({
     if (tree === undefined) return null;
     for (const module of tree.modules) {
       for (const chapter of module.chapters) {
-        if (chapter.lessons.some((entry) => entry.lessonId === lessonId)) {
-          return { courseName: tree.name, module, chapter };
+        const row = chapter.lessons.find((entry) => entry.lessonId === lessonId);
+        if (row !== undefined) {
+          return { courseName: tree.name, module, chapter, row };
         }
       }
     }
-    return { courseName: tree.name, module: null, chapter: null };
+    return { courseName: tree.name, module: null, chapter: null, row: null };
   }, [structure.data, lessonId]);
+  const transitioning = lesson.isPlaceholderData;
 
   const lastViewed = useMutation(actions.updateLastViewed);
-  const lastViewedRef = useRef(false);
+  const lastViewedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!authenticated || lastViewedRef.current || !lesson.isSuccess || structure.isPending) return;
-    lastViewedRef.current = true;
+    if (
+      !authenticated ||
+      lastViewedRef.current === lessonId ||
+      !lesson.isSuccess ||
+      lesson.isPlaceholderData ||
+      structure.isPending
+    ) return;
+    lastViewedRef.current = lessonId;
     lastViewed.mutate({
       courseId,
       lessonId,
       moduleId: location?.module?.id,
       chapterId: location?.chapter?.id,
     });
-  }, [authenticated, lesson.isSuccess, structure.isPending, location, courseId, lessonId, lastViewed]);
+  }, [authenticated, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 
-  const [optimisticDone, setOptimisticDone] = useState<boolean | null>(null);
+  const [optimisticDone, setOptimisticDone] = useState<{
+    lessonId: string;
+    done: boolean;
+  } | null>(null);
   const completedFromServer =
     progress.data?.progress.completedLessonIds.includes(lessonId) ?? false;
-  const completed = optimisticDone ?? completedFromServer;
+  const completed = optimisticDone?.lessonId === lessonId
+    ? optimisticDone.done
+    : completedFromServer;
 
   const complete = useMutation({
     ...actions.completeLesson,
-    onMutate: () => setOptimisticDone(true),
+    onMutate: ({ lessonId: completedLessonId }) =>
+      setOptimisticDone({ lessonId: completedLessonId, done: true }),
     onError: () => setOptimisticDone(null),
     onSettled: async () => {
       await queryClient.invalidateQueries(actions.studentCourseInvalidates());
@@ -310,7 +331,8 @@ export const LessonPlayerPage = ({
 
   const uncomplete = useMutation({
     ...actions.uncompleteLesson,
-    onMutate: () => setOptimisticDone(false),
+    onMutate: ({ lessonId: uncompletedLessonId }) =>
+      setOptimisticDone({ lessonId: uncompletedLessonId, done: false }),
     onError: () => setOptimisticDone(null),
     onSettled: async () => {
       await queryClient.invalidateQueries(actions.studentCourseInvalidates());
@@ -322,10 +344,17 @@ export const LessonPlayerPage = ({
     if (unauthorized) void navigate({ to: '/login' });
   }, [navigate, unauthorized]);
 
+  const nextLesson = next.data?.next ?? null;
+  useEffect(() => {
+    if (nextLesson !== null) {
+      void queryClient.prefetchQuery(actions.studentLesson(nextLesson.id));
+    }
+  }, [queryClient, nextLesson]);
+
   if (lesson.isPending) {
     return (
       <MemberSurface
-        authenticated={false}
+        authenticated={authenticated}
         title={t.lesson.loading}
         eyebrow={t.lesson.eyebrow}
         width="wide"
@@ -380,8 +409,10 @@ export const LessonPlayerPage = ({
   }
 
   const blocks = lesson.data.lesson.contents;
-  const nextLesson = next.data?.next ?? null;
   const nextHref = nextLesson === null ? null : `/my/courses/${courseId}/lessons/${nextLesson.id}`;
+  const lessonName = transitioning
+    ? location?.row?.name ?? lesson.data.lesson.name
+    : lesson.data.lesson.name;
 
   const continueToNext = () => {
     complete.mutate(
@@ -397,7 +428,7 @@ export const LessonPlayerPage = ({
   return (
     <MemberSurface
       authenticated={authenticated}
-      title={lesson.data.lesson.name}
+      title={lessonName}
       eyebrow={t.lesson.eyebrow}
       width="wide"
       {...(location === null
@@ -410,7 +441,7 @@ export const LessonPlayerPage = ({
               },
               ...(location.module === null ? [] : [{ label: location.module.name }]),
               ...(location.chapter === null ? [] : [{ label: location.chapter.name }]),
-              { label: lesson.data.lesson.name },
+              { label: lessonName },
             ],
           })}
       {...(structure.data === undefined
@@ -427,6 +458,13 @@ export const LessonPlayerPage = ({
       mobileRail="after"
     >
       <Box sx={{ minWidth: 0 }}>
+        {transitioning ? (
+          <StatusView
+            state={{ kind: 'loading', label: t.lesson.loading }}
+            data-testid="lesson-transition-loading"
+          />
+        ) : (
+          <>
         <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
           {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
           {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
@@ -539,6 +577,8 @@ export const LessonPlayerPage = ({
         </LessonFooterBar>}
 
         {authenticated && <DiscussionSection lessonId={lessonId} />}
+          </>
+        )}
       </Box>
     </MemberSurface>
   );

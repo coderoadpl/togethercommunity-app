@@ -11,6 +11,7 @@ import {
   Stack,
   Tooltip,
 } from '@mui/material';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type {
@@ -22,6 +23,7 @@ import type {
   CourseStructureWithAccess,
 } from '#core/domain/index.js';
 
+import { actions } from '../../api.js';
 import { useTranslations } from '../../i18n/index.js';
 import {
   LessonDurationText,
@@ -108,6 +110,10 @@ const LessonRow = ({
   currentLessonId?: string | undefined;
 }) => {
   const t = useTranslations();
+  const queryClient = useQueryClient();
+  const prefetch = () => {
+    void queryClient.prefetchQuery(actions.studentLesson(lesson.lessonId));
+  };
   const label = <Highlighted text={lesson.name} query={search} />;
   const marks = (
     <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.35rem', ml: '0.5rem' }}>
@@ -158,6 +164,8 @@ const LessonRow = ({
       to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lesson.lessonId)}`}
       selected={lesson.lessonId === currentLessonId}
       data-testid={`lesson-button-${lesson.lessonId}`}
+      onMouseEnter={prefetch}
+      onFocus={prefetch}
       sx={{ pl: '3.4rem', pr: '0.75rem' }}
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>{label}</Box>

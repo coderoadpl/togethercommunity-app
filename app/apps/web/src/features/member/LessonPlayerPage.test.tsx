@@ -1,6 +1,7 @@
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
@@ -46,6 +47,13 @@ const structure: CourseStructureWithAccess = {
               contentId: 'ct1',
               lessonId: 'l1',
               name: 'Intro to Variables',
+              accessStatus: 'fully-accessible',
+              completionStatus: 'not-completed',
+            },
+            {
+              contentId: 'ct2',
+              lessonId: 'l2',
+              name: 'Advanced Variables',
               accessStatus: 'fully-accessible',
               completionStatus: 'not-completed',
             },
@@ -517,6 +525,66 @@ describe('LessonPlayerPage', () => {
     expect(rail).toHaveTextContent(pl.courseOverview.curriculum);
     const current = within(rail).getByTestId('lesson-button-l1');
     expect(current).toHaveClass('Mui-selected');
+  });
+
+  it('keeps the program sidebar and member nav mounted across a lesson switch', async () => {
+    let releaseLesson: () => void = () => undefined;
+    const lessonGate = new Promise<void>((resolve) => {
+      releaseLesson = resolve;
+    });
+    server.use(
+      okNext(null),
+      okStructure(),
+      okProgress(),
+      http.get('/api/student/lessons/:lessonId', async ({ params }) => {
+        const lessonId = String(params.lessonId);
+        if (lessonId === 'l2') await lessonGate;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            lesson: {
+              ...lesson([{ type: 'html', html: `<p>${lessonId === 'l2' ? 'L2 body' : 'L1 body'}</p>` }]),
+              id: lessonId,
+              name: lessonId === 'l2' ? 'Advanced Variables' : 'Intro to Variables',
+            },
+            authenticated: true,
+          },
+        });
+      }),
+    );
+
+    const rootRoute = createRootRoute();
+    const lessonRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/my/courses/$courseId/lessons/$lessonId',
+      component: () => {
+        const params = lessonRoute.useParams();
+        return <LessonPlayerPage courseId={params.courseId} lessonId={params.lessonId} />;
+      },
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([lessonRoute]),
+      history: createMemoryHistory({
+        initialEntries: ['/my/courses/course-1/lessons/l1'],
+      }),
+    });
+    await router.load();
+    const user = userEvent.setup();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('L1 body');
+    const card = await screen.findByTestId('curriculum-card');
+    await user.click(screen.getByTestId('lesson-button-l2'));
+
+    expect(screen.getByTestId('curriculum-card')).toBe(card);
+    expect(screen.getByTestId('lesson-transition-loading')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: pl.auth.signInLink })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.student.myCourses })).toBeInTheDocument();
+
+    releaseLesson();
+
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('L2 body');
+    expect(screen.getByTestId('curriculum-card')).toBe(card);
   });
 
   it('shows a friendly empty state for a lesson without blocks', async () => {

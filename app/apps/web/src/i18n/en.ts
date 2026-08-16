@@ -1494,6 +1494,9 @@ export const en: Messages = {
     clear: 'Remove',
     configured: 'Configured',
     notConfigured: 'Not set',
+    ksefConfiguredInIntegrations:
+      'Configure the KSeF token and context NIP in Integrations → Invoicing.',
+    ksefOpenIntegrations: 'Open Integrations → Invoicing',
     invoiceHeading: 'Automatic invoices',
     invoiceIntro: 'Choose iFirma or direct KSeF issuance after payment fulfillment.',
     autoIssue: 'Issue automatically after payment',

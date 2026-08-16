@@ -121,6 +121,7 @@ export const InvoicingTab = () => {
           <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1.25rem">
+            <Typography variant="body2">{t.integrations.ksefTokenHelp}</Typography>
             <SecretField
               secretKey="ksef.token"
               label={t.integrations.ksefTokenLabel}

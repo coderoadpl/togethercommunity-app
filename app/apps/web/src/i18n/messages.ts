@@ -1361,6 +1361,8 @@ export interface Messages {
     clear: string;
     configured: string;
     notConfigured: string;
+    ksefConfiguredInIntegrations: string;
+    ksefOpenIntegrations: string;
     invoiceHeading: string;
     invoiceIntro: string;
     autoIssue: string;

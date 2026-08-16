@@ -1512,6 +1512,9 @@ export const pl: Messages = {
     clear: 'Usuń',
     configured: 'Skonfigurowano',
     notConfigured: 'Nie ustawiono',
+    ksefConfiguredInIntegrations:
+      'Token KSeF i NIP kontekstu skonfigurujesz w Integracje → Fakturowanie.',
+    ksefOpenIntegrations: 'Otwórz Integracje → Fakturowanie',
     invoiceHeading: 'Automatyczne faktury',
     invoiceIntro: 'Wybierz iFirmę lub bezpośrednie wystawianie w KSeF po zakończeniu płatności.',
     autoIssue: 'Wystawiaj automatycznie po płatności',

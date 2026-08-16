@@ -9,6 +9,7 @@ import type { StripeMode, TenantApiKeyPublic, TenantSecretMasked } from '#core/d
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { PanelContextProvider } from '../panel-context.js';
 import { IntegrationsPanel } from './IntegrationsPanel.js';
 
 interface TestSettings {
@@ -33,6 +34,7 @@ const renderPanel = (
   initialStripeMode: StripeMode | null = null,
   secretsState: 'success' | 'pending' | 'error' = 'success',
   initialApiKeys: TenantApiKeyPublic[] = [],
+  staffRole: 'owner' | 'admin' = 'owner',
 ) => {
   let secrets = [...initial];
   let settings = { ...initialSettings };
@@ -41,6 +43,7 @@ const renderPanel = (
   const storageSubmissions: unknown[] = [];
   const stripeConfigurations: string[] = [];
   const apiKeySubmissions: unknown[] = [];
+  const settingsSubmissions: unknown[] = [];
   let apiKeys = [...initialApiKeys];
 
   server.use(
@@ -156,6 +159,10 @@ const renderPanel = (
       if (typeof body === 'object' && body !== null && 'bunnyStreamCdnHostname' in body) {
         settings = { ...settings, bunnyStreamCdnHostname: body.bunnyStreamCdnHostname === null ? null : String(body.bunnyStreamCdnHostname) };
       }
+      if (typeof body === 'object' && body !== null && 'billingPortalUrl' in body) {
+        settings = { ...settings, billingPortalUrl: body.billingPortalUrl === null ? null : String(body.billingPortalUrl) };
+        settingsSubmissions.push(body);
+      }
       return HttpResponse.json({ ok: true, data: { settings } });
     }),
     http.post('/api/integrations/test', async ({ request }) => {
@@ -236,11 +243,22 @@ const renderPanel = (
   );
 
   return {
-    ...renderWithProviders(<IntegrationsPanel />),
+    ...renderWithProviders(
+      <PanelContextProvider
+        value={{
+          tenant: { id: 'tenant-123', slug: 'akademia', name: 'Akademia', staffRole, memberId: null },
+          email: 'creator@together.dev',
+          emailVerified: true,
+        }}
+      >
+        <IntegrationsPanel />
+      </PanelContextProvider>,
+    ),
     storageSubmissions,
     stripeConfigurations,
     testedProviders,
     apiKeySubmissions,
+    settingsSubmissions,
   };
 };
 
@@ -751,5 +769,27 @@ describe('IntegrationsPanel', () => {
     });
     expect(screen.queryByTestId('stripe-mode-badge')).not.toBeInTheDocument();
     expect(screen.getByTestId('payment-test-connection')).toBeDisabled();
+  });
+
+  it('saves the member billing portal URL alongside the Stripe credentials', async () => {
+    const { settingsSubmissions } = renderPanel();
+
+    await userEvent.type(
+      await screen.findByTestId('billing-portal-url'),
+      'https://billing.stripe.com/p/login/test',
+    );
+    await userEvent.click(screen.getByTestId('billing-portal-save'));
+
+    expect(await screen.findByTestId('billing-portal-saved')).toBeInTheDocument();
+    expect(settingsSubmissions).toEqual([
+      { billingPortalUrl: 'https://billing.stripe.com/p/login/test' },
+    ]);
+  });
+
+  it('keeps the billing portal URL read-only for staff without the owner role', async () => {
+    renderPanel([], defaultSettings, null, 'success', [], 'admin');
+
+    expect(await screen.findByTestId('billing-portal-url')).toBeDisabled();
+    expect(screen.queryByTestId('billing-portal-save')).not.toBeInTheDocument();
   });
 });

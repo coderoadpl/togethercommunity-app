@@ -10,8 +10,11 @@ import { SpaceFeedPage } from '../features/member/SpaceFeedPage.js';
 import { SpaceThreadPage } from '../features/member/SpaceThreadPage.js';
 import { MemberShell } from '../features/member/shell/MemberShell.js';
 import { SpacesListPage } from '../features/member/SpacesListPage.js';
+import { StartPage } from '../features/member/StartPage.js';
 
 export const MemberShellRoute = () => <MemberShell />;
+
+export const StartRoute = () => <StartPage />;
 
 export const MyCoursesRoute = () => <MyCoursesPage />;
 

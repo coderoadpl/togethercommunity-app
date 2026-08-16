@@ -18,6 +18,7 @@ describe('activeNavEntry', () => {
 
   it.each([
     ['/community'],
+    ['/my'],
     ['/my/course/product-1'],
     ['/my/courses'],
     ['/checkout/product-1'],

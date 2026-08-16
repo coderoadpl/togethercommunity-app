@@ -1118,6 +1118,18 @@ export const en: Messages = {
     lockedSpaceHint: 'This space needs access — click to unlock it.',
     courseProgressLabel: ({ name, percent }) => `${name} — ${percent}% complete`,
   },
+  start: {
+    title: 'Start',
+    eyebrow: 'Learning and community',
+    continueLabel: ({ lesson, course }) =>
+      format('Continue: {lesson} · {course}', { lesson, course }),
+    reviewLabel: ({ lesson, course }) => format('Review: {lesson} · {course}', { lesson, course }),
+    coursesSection: 'Your courses',
+    spacesSection: 'Spaces',
+    lockedSection: 'Unlock more',
+    emptyTitle: 'Nothing here yet',
+    emptyBody: 'Courses and spaces you join will show up here.',
+  },
   student: {
     myCourses: 'My courses',
     myProducts: 'My products',
@@ -1133,9 +1145,6 @@ export const en: Messages = {
     noProducts: 'No products yet',
     productsWillAppear: 'Products you buy will appear here.',
     staffNoMember: 'This account has staff access here, but no member profile yet.',
-    completionNotStarted: 'Not started',
-    completionInProgress: 'In progress',
-    completionCompleted: 'Completed',
     courseEyebrow: 'Course',
     courseContentComingSoon: 'Course content coming soon',
     courseContentArrivesLater: 'Course content arrives later.',

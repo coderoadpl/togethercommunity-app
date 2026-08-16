@@ -190,7 +190,7 @@ const SCREENS: ScreenSpec[] = [
     ready: async (page) => {
       const seededCourseCard = page.locator('a[href="/my/courses/course-js"]');
       await seededCourseCard.waitFor(visible);
-      await seededCourseCard.getByTestId('completion-course-js').waitFor(visible);
+      await seededCourseCard.getByTestId('course-progress-course-js').waitFor(visible);
       await waitForUnreadBadge(page);
     },
   },

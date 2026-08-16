@@ -14,6 +14,7 @@ import type { MemberNavigation } from '#core/domain/index.js';
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { memberHomePath } from './member-nav.js';
 import { MemberShell } from './MemberShell.js';
 
 const stubViewport = (isDesktop: boolean) => {
@@ -113,6 +114,7 @@ const renderShell = async (path: string) => {
   const page = (label: string) => () => <p>{label}</p>;
   const routeTree = rootRoute.addChildren([
     shellRoute.addChildren([
+      createRoute({ getParentRoute: () => shellRoute, path: '/start', component: page('Start') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my', component: page('Biblioteka') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my/products', component: page('Produkty') }),
       createRoute({
@@ -191,9 +193,18 @@ describe('MemberShell', () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
 
-    await renderShell('/my');
+    await renderShell(memberHomePath());
 
     expect(await screen.findByTestId('sidebar-start')).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('leaves the course library unhighlighted, since it is reached from Start', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/my');
+
+    expect(await screen.findByTestId('sidebar-start')).not.toHaveAttribute('aria-current');
   });
 
   it('shows the member identity block linking to the account page', async () => {

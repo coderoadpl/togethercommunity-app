@@ -111,6 +111,7 @@ import {
   MyProductsRoute,
   SpaceFeedRoute,
   SpaceThreadRoute,
+  StartRoute,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
@@ -152,6 +153,11 @@ const memberShellRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'member-shell',
   component: MemberShellRoute,
+});
+const startRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/start',
+  component: StartRoute,
 });
 const myCoursesRoute = createRoute({
   getParentRoute: () => memberShellRoute,
@@ -435,6 +441,7 @@ const router = createRouter({
     forgotPasswordRoute,
     resetPasswordRoute,
     memberShellRoute.addChildren([
+      startRoute,
       myCoursesRoute,
       myProductsRoute,
       courseRoute,

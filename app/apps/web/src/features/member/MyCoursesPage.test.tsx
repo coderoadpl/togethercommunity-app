@@ -9,7 +9,7 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
-import type { Course } from '#core/domain/index.js';
+import type { Course, MemberNavigation } from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -29,6 +29,14 @@ const courses: Course[] = [
   },
 ];
 
+const navigation = (courseCounts: MemberNavigation['courses'] = []) =>
+  http.get('/api/member/navigation', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { navigation: { spaces: [], courses: courseCounts, lockedSpaces: [] } },
+    }),
+  );
+
 const renderPage = async (node: ReactNode) => {
   const rootRoute = createRootRoute({ component: () => node });
   const router = createRouter({
@@ -40,7 +48,7 @@ const renderPage = async (node: ReactNode) => {
 };
 
 describe('MyCoursesPage', () => {
-  it('lists accessible courses with a completion state and a link to the course', async () => {
+  it('lists accessible courses with navigation-fed progress and a link to the course', async () => {
     server.use(
       http.get('/api/me', () =>
         HttpResponse.json({
@@ -51,20 +59,15 @@ describe('MyCoursesPage', () => {
       http.get('/api/student/courses', () =>
         HttpResponse.json({ ok: true, data: { courses } }),
       ),
-      http.get('/api/student/courses/:courseId/structure', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            structure: {
-              courseId: 'course-1',
-              name: 'JavaScript Foundations',
-              accessStatus: 'partially-accessible',
-              completionStatus: 'partially-completed',
-              modules: [],
-            },
-          },
-        }),
-      ),
+      navigation([
+        {
+          courseId: 'course-1',
+          courseName: 'JavaScript Foundations',
+          completedLessonCount: 1,
+          accessibleLessonCount: 3,
+          lastActivityAt: '2026-08-10T10:00:00.000Z',
+        },
+      ]),
     );
 
     await renderPage(<MyCoursesPage />);
@@ -73,7 +76,7 @@ describe('MyCoursesPage', () => {
     const card = await screen.findByTestId('course-card-course-1');
     expect(card).toHaveAttribute('href', '/my/courses/course-1');
     expect(screen.getByText('Start from zero.')).toBeInTheDocument();
-    expect(await screen.findByTestId('completion-course-1')).toHaveTextContent(pl.student.completionInProgress);
+    expect(await screen.findByTestId('course-progress-course-1')).toHaveTextContent('33%');
     expect(within(screen.getByRole('banner')).queryAllByRole('link')).toHaveLength(0);
   });
 
@@ -88,6 +91,7 @@ describe('MyCoursesPage', () => {
       http.get('/api/student/courses', () =>
         HttpResponse.json({ ok: true, data: { courses: [] } }),
       ),
+      navigation(),
     );
 
     await renderPage(<MyCoursesPage />);
@@ -117,20 +121,7 @@ describe('MyCoursesPage', () => {
       http.get('/api/student/courses', () =>
         HttpResponse.json({ ok: true, data: { courses: [...courses, withCover] } }),
       ),
-      http.get('/api/student/courses/:courseId/structure', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            structure: {
-              courseId: 'course-1',
-              name: 'JavaScript Foundations',
-              accessStatus: 'partially-accessible',
-              completionStatus: 'partially-completed',
-              modules: [],
-            },
-          },
-        }),
-      ),
+      navigation(),
     );
 
     await renderPage(<MyCoursesPage />);

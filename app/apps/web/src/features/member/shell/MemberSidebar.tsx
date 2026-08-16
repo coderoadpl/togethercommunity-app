@@ -3,8 +3,6 @@ import { Box, Divider, List, ListItemIcon, ListItemText, Tooltip, Typography } f
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 
-import type { MemberNavigationCourse } from '#core/domain/index.js';
-
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
 import { StatusView } from '../../../components/layout/index.js';
@@ -12,6 +10,7 @@ import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { AccountIcon } from '../account-icons.js';
+import { coursePercent, isCourseDone } from '../course-progress.js';
 import { LockClosed } from '../tree-icons.js';
 import { activeNavEntry, memberHomePath, type MemberNavEntry } from './member-nav.js';
 import {
@@ -30,15 +29,6 @@ const memberInitials = (name: string): string =>
     .slice(0, 2)
     .map((word) => (word[0] ?? '').toLocaleUpperCase())
     .join('');
-
-const coursePercent = (course: MemberNavigationCourse): number =>
-  course.accessibleLessonCount === 0
-    ? 0
-    : Math.round((100 * course.completedLessonCount) / course.accessibleLessonCount);
-
-const isCourseDone = (course: MemberNavigationCourse): boolean =>
-  course.completedLessonCount > 0
-  && course.completedLessonCount === course.accessibleLessonCount;
 
 const LinkRow = ({
   to,

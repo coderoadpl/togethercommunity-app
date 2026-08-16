@@ -1004,6 +1004,17 @@ export interface Messages {
     lockedSpaceHint: string;
     courseProgressLabel: (params: { name: string; percent: number }) => string;
   };
+  start: {
+    title: string;
+    eyebrow: string;
+    continueLabel: (params: { lesson: string; course: string }) => string;
+    reviewLabel: (params: { lesson: string; course: string }) => string;
+    coursesSection: string;
+    spacesSection: string;
+    lockedSection: string;
+    emptyTitle: string;
+    emptyBody: string;
+  };
   student: {
     myCourses: string;
     myProducts: string;
@@ -1019,9 +1030,6 @@ export interface Messages {
     noProducts: string;
     productsWillAppear: string;
     staffNoMember: string;
-    completionNotStarted: string;
-    completionInProgress: string;
-    completionCompleted: string;
     courseEyebrow: string;
     courseContentComingSoon: string;
     courseContentArrivesLater: string;

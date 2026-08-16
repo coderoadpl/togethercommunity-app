@@ -5,8 +5,7 @@ export type MemberNavEntry =
   | { kind: 'products' }
   | { kind: 'account' };
 
-/** Wave 3 flips this to '/start'; every "home" link routes through it. */
-export const memberHomePath = (): '/my' => '/my';
+export const memberHomePath = (): '/start' => '/start';
 
 const segmentsOf = (pathname: string): string[] =>
   pathname.split('/').filter((segment) => segment.length > 0).map(decodeURIComponent);

@@ -1135,6 +1135,18 @@ export const pl: Messages = {
     lockedSpaceHint: 'Ta przestrzeń wymaga dostępu — kliknij, aby go kupić.',
     courseProgressLabel: ({ name, percent }) => `${name} — ukończono ${percent}%`,
   },
+  start: {
+    title: 'Start',
+    eyebrow: 'Nauka i społeczność',
+    continueLabel: ({ lesson, course }) =>
+      format('Kontynuuj: {lesson} · {course}', { lesson, course }),
+    reviewLabel: ({ lesson, course }) => format('Powtórz: {lesson} · {course}', { lesson, course }),
+    coursesSection: 'Twoje kursy',
+    spacesSection: 'Przestrzenie',
+    lockedSection: 'Do odblokowania',
+    emptyTitle: 'Nic tu jeszcze nie ma',
+    emptyBody: 'Kursy i przestrzenie, do których dołączysz, pojawią się w tym miejscu.',
+  },
   student: {
     myCourses: 'Moje kursy',
     myProducts: 'Moje produkty',
@@ -1150,9 +1162,6 @@ export const pl: Messages = {
     noProducts: 'Brak produktów',
     productsWillAppear: 'Produkty, które kupisz, pojawią się tutaj.',
     staffNoMember: 'To konto ma tu uprawnienia zespołu, ale nie ma jeszcze profilu uczestnika.',
-    completionNotStarted: 'Nierozpoczęty',
-    completionInProgress: 'W trakcie',
-    completionCompleted: 'Ukończony',
     courseEyebrow: 'Kurs',
     courseContentComingSoon: 'Treść kursu już wkrótce',
     courseContentArrivesLater: 'Treść kursu pojawi się później.',

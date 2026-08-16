@@ -7,7 +7,7 @@ import { useTranslations, type Messages } from '../../i18n/index.js';
 import { CourseCompletedNote, Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
 import { CourseTree } from './CourseTree.js';
 
-const flattenLessons = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
+export const flattenLessons = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
   structure.modules.flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons));
 
 export interface CourseTotals {
@@ -33,7 +33,7 @@ const firstAccessibleLessonId = (structure: CourseStructureWithAccess): string |
   flattenLessons(structure).find((lesson) => lesson.accessStatus === 'fully-accessible')?.lessonId ??
   null;
 
-const continueLessonId = (
+export const continueLessonId = (
   structure: CourseStructureWithAccess,
   lastViewedLessonId: string | undefined,
 ): string | null => {

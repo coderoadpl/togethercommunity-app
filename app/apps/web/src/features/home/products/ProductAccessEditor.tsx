@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -10,11 +10,14 @@ import {
   FormLabel,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
+  ListSubheader,
   MenuItem,
   Select,
   Stack,
   Switch,
+  Tooltip,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
@@ -33,16 +36,52 @@ type AccessLevel = 'course' | 'modules' | 'lessons';
 const courseName = (courses: Course[], courseId: string, t: Messages): string =>
   courses.find((course) => course.id === courseId)?.name ?? t.access.unknownCourse;
 
-const accessItemSummary = (item: AccessItem, courses: Course[], t: Messages): string => {
+const joinNames = (names: string[], t: Messages): { label: string; full?: string } => {
+  if (names.length <= 3) return { label: names.join(', ') };
+  return {
+    label: `${names.slice(0, 3).join(', ')}, ${t.access.andMore({ count: names.length - 3 })}`,
+    full: names.join(', '),
+  };
+};
+
+const accessItemSummary = (
+  item: AccessItem,
+  courses: Course[],
+  moduleNames: Map<string, string>,
+  lessonNames: Map<string, string>,
+  t: Messages,
+): { label: string; full?: string } => {
   const course = courseName(courses, item.courseId, t);
   if (item.level === 'course') {
     const excluded = item.excludedModuleIds ?? [];
-    return excluded.length > 0
-      ? t.access.wholeCourseExceptSummary({ course, count: excluded.length })
-      : t.access.wholeCourseSummary({ course });
+    if (excluded.length === 0) return { label: t.access.wholeCourseSummary({ course }) };
+    const modules = joinNames(
+      excluded.map((id) => moduleNames.get(id) ?? t.access.unknownModule),
+      t,
+    );
+    return {
+      label: t.access.wholeCourseExceptSummary({ course, modules: modules.label }),
+      ...(modules.full ? { full: modules.full } : {}),
+    };
   }
-  if (item.level === 'lessons') return t.access.lessonsSummary({ count: item.lessonIds.length, course });
-  return t.access.modulesSummary({ count: item.moduleIds.length, course });
+  if (item.level === 'lessons') {
+    const lessons = joinNames(
+      item.lessonIds.map((id) => lessonNames.get(id) ?? t.access.unknownLesson),
+      t,
+    );
+    return {
+      label: t.access.lessonsSummary({ lessons: lessons.label }),
+      ...(lessons.full ? { full: lessons.full } : {}),
+    };
+  }
+  const modules = joinNames(
+    item.moduleIds.map((id) => moduleNames.get(id) ?? t.access.unknownModule),
+    t,
+  );
+  return {
+    label: t.access.modulesSummary({ modules: modules.label }),
+    ...(modules.full ? { full: modules.full } : {}),
+  };
 };
 
 const courseModules = (modules: CourseModule[], courseId: string): CourseModule[] =>
@@ -75,6 +114,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
   const [moduleIds, setModuleIds] = useState<string[]>([]);
   const [lessonIds, setLessonIds] = useState<string[]>([]);
   const [excludedModuleIds, setExcludedModuleIds] = useState<string[]>([]);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const save = useMutation({
     ...actions.updateProductAccessItems,
@@ -89,6 +129,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
     setModuleIds([]);
     setLessonIds([]);
     setExcludedModuleIds([]);
+    setEditingIndex(null);
   };
 
   const pickCourse = (nextCourseId: string) => {
@@ -109,6 +150,26 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
     return lessons.data.lessons.filter((lesson) => ids.has(lesson.id));
   }, [lessons.data, modules.data, courseId]);
 
+  const moduleNames = useMemo(
+    () => new Map((modules.data?.modules ?? []).map((module) => [module.id, module.name])),
+    [modules.data],
+  );
+
+  const lessonNames = useMemo(
+    () => new Map((lessons.data?.lessons ?? []).map((lesson) => [lesson.id, lesson.name])),
+    [lessons.data],
+  );
+
+  const itemGroups = useMemo(() => {
+    const groups = new Map<string, { item: AccessItem; index: number }[]>();
+    items.forEach((item, index) => {
+      const group = groups.get(item.courseId) ?? [];
+      group.push({ item, index });
+      groups.set(item.courseId, group);
+    });
+    return [...groups.entries()];
+  }, [items]);
+
   const appendItem = (item: AccessItem) => {
     setItems([...items, item]);
     resetDraft();
@@ -127,20 +188,38 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
 
   const addProItem = () => {
     if (!proDraftValid) return;
+    let item: AccessItem;
     if (level === 'modules') {
-      appendItem({ level: 'modules', courseId, moduleIds });
+      item = { level: 'modules', courseId, moduleIds };
     } else if (level === 'lessons') {
-      appendItem({ level: 'lessons', courseId, lessonIds });
+      item = { level: 'lessons', courseId, lessonIds };
     } else {
-      appendItem({
+      item = {
         level: 'course',
         courseId,
         ...(excludedModuleIds.length > 0 ? { excludedModuleIds } : {}),
-      });
+      };
     }
+    setItems(editingIndex === null ? [...items, item] : items.map((current, index) => (index === editingIndex ? item : current)));
+    resetDraft();
   };
 
-  const removeItem = (index: number) => setItems(items.filter((_item, position) => position !== index));
+  const removeItem = (index: number) => {
+    setItems(items.filter((_item, position) => position !== index));
+    if (editingIndex !== null) resetDraft();
+  };
+
+  const startEdit = (index: number) => {
+    const item = items[index];
+    if (!item) return;
+    setPro(true);
+    setEditingIndex(index);
+    setCourseId(item.courseId);
+    setLevel(item.level);
+    setModuleIds(item.level === 'modules' ? item.moduleIds : []);
+    setLessonIds(item.level === 'lessons' ? item.lessonIds : []);
+    setExcludedModuleIds(item.level === 'course' ? (item.excludedModuleIds ?? []) : []);
+  };
 
   if (courses.isPending || modules.isPending || lessons.isPending) {
     return <Typography variant="body2">{t.access.loading}</Typography>;
@@ -183,19 +262,40 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
           <Typography variant="body2">{t.access.empty}</Typography>
         ) : (
           <List disablePadding dense>
-            {items.map((item, index) => (
-              <ListItem
-                key={`${item.courseId}-${index}`}
-                disableGutters
-                data-testid="access-item"
-                secondaryAction={
-                  <Button size="small" variant="text" color="error" onClick={() => removeItem(index)}>
-                    {t.common.remove}
-                  </Button>
-                }
-              >
-                <ListItemText primary={accessItemSummary(item, courses.data.courses, t)} />
-              </ListItem>
+            {itemGroups.map(([groupCourseId, entries]) => (
+              <Fragment key={groupCourseId}>
+                <ListSubheader disableSticky disableGutters>
+                  {courseName(courses.data.courses, groupCourseId, t)}
+                </ListSubheader>
+                {entries.map(({ item, index }) => {
+                  const summary = accessItemSummary(item, courses.data.courses, moduleNames, lessonNames, t);
+                  const primary = <Typography variant="body2">{summary.label}</Typography>;
+                  return (
+                    <ListItem
+                      key={`${item.courseId}-${index}`}
+                      disableGutters
+                      disablePadding
+                      data-testid="access-item"
+                      secondaryAction={
+                        <Stack direction="row">
+                          <Button size="small" variant="text" onClick={() => startEdit(index)}>
+                            {t.access.editItem}
+                          </Button>
+                          <Button size="small" variant="text" color="error" onClick={() => removeItem(index)}>
+                            {t.common.remove}
+                          </Button>
+                        </Stack>
+                      }
+                    >
+                      <ListItemButton selected={index === editingIndex} disableGutters onClick={() => startEdit(index)}>
+                        <ListItemText
+                          primary={summary.full ? <Tooltip title={summary.full}>{primary}</Tooltip> : primary}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  );
+                })}
+              </Fragment>
             ))}
           </List>
         )}
@@ -315,8 +415,13 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
 
           <Box>
             <Button size="small" variant="outlined" disabled={!proDraftValid} onClick={addProItem}>
-              {t.access.addItem}
+              {editingIndex === null ? t.access.addItem : t.access.updateItem}
             </Button>
+            {editingIndex !== null ? (
+              <Button size="small" variant="text" onClick={resetDraft}>
+                {t.common.cancel}
+              </Button>
+            ) : null}
           </Box>
         </Box>
       ) : (

@@ -703,9 +703,14 @@ export interface Messages {
     exclusionsLabel: string;
     noModulesToExclude: string;
     wholeCourseSummary: (params: { course: string }) => string;
-    wholeCourseExceptSummary: (params: { course: string; count: number }) => string;
-    modulesSummary: (params: { count: number; course: string }) => string;
-    lessonsSummary: (params: { count: number; course: string }) => string;
+    wholeCourseExceptSummary: (params: { course: string; modules: string }) => string;
+    modulesSummary: (params: { modules: string }) => string;
+    lessonsSummary: (params: { lessons: string }) => string;
+    andMore: (params: { count: number }) => string;
+    unknownModule: string;
+    unknownLesson: string;
+    editItem: string;
+    updateItem: string;
   };
   courses: {
     treeTab: string;

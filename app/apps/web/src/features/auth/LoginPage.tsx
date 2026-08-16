@@ -98,7 +98,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const devMagicLink = useQuery({
     ...actions.devMagicLink(requestedMagicEmail),
-    enabled: requestedMagicEmail.length > 0,
+    enabled: authConfig.data?.exposeMagicLinks === true && requestedMagicEmail.length > 0,
   });
 
   const submit = (event: FormEvent) => {
@@ -170,7 +170,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           <Typography variant="body1">
             {t.auth.magicLinkRequestedBody({ email: requestedMagicEmail })}
           </Typography>
-          {devMagicLink.isPending ? (
+          {devMagicLink.isLoading ? (
             <FinePrint variant="caption" component="p">
               {t.auth.magicLinkFetching}
             </FinePrint>
@@ -180,7 +180,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               {t.auth.openMagicLink}
             </Button>
           ) : null}
-          {devMagicLink.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(devMagicLink.error, t), retry: { label: t.common.retry, onRetry: () => void devMagicLink.refetch() } }} /> : null}
         </Stack>
       </FocusCard>
     );

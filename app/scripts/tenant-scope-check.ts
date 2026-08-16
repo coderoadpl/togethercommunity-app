@@ -41,6 +41,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'DevMagicLinkReader.findByEmail': 'The development magic-link sink is platform scratch data without tenant ownership.',
   'DevSinkPurge.purge': 'Development startup clears all platform scratch sinks.',
   'HealthPort.pingDatabase': 'The platform health probe checks connectivity without reading tenant data.',
+  'HealthPort.schemaStatus': 'The platform health probe reads migration bookkeeping without touching tenant data.',
   'KsefSubmissionJobRepository.claimDue': 'A platform worker leases the next due job across all tenants.',
   'MarketingJobRepository.listRetentionTenantIds': 'A platform worker discovers tenants due for retention work.',
   'MarketingJobRepository.listRunnableCampaigns': 'A platform worker discovers runnable campaigns with their tenant IDs.',

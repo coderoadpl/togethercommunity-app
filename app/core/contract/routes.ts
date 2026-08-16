@@ -181,6 +181,9 @@ export const healthOutputSchema = attestationSchema.extend({
   production: z.boolean(),
   commit: z.string().nullable(),
   databaseFingerprint: z.string().regex(/^[0-9a-f]{12}$/).nullable(),
+  expectedMigrations: z.number().int().nonnegative(),
+  appliedMigrations: z.number().int().nonnegative().nullable(),
+  schemaCurrent: z.boolean(),
 });
 
 export const emailDispatchOutputSchema = z.object({

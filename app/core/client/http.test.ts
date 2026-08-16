@@ -32,6 +32,9 @@ describe('createApiClient', () => {
           production: true,
           commit: 'cafe1234',
           databaseFingerprint: 'b1bfbb98b4f7',
+          expectedMigrations: 82,
+          appliedMigrations: 82,
+          schemaCurrent: true,
         },
       });
     };
@@ -48,6 +51,9 @@ describe('createApiClient', () => {
         production: true,
         commit: 'cafe1234',
         databaseFingerprint: 'b1bfbb98b4f7',
+        expectedMigrations: 82,
+        appliedMigrations: 82,
+        schemaCurrent: true,
       },
     });
   });
@@ -182,6 +188,9 @@ describe('createApiClient', () => {
           production: false,
           commit: null,
           databaseFingerprint: null,
+          expectedMigrations: 82,
+          appliedMigrations: 82,
+          schemaCurrent: true,
         },
       });
     };
@@ -207,6 +216,9 @@ describe('createApiClient', () => {
           production: false,
           commit: null,
           databaseFingerprint: null,
+          expectedMigrations: 82,
+          appliedMigrations: 82,
+          schemaCurrent: true,
         },
       });
     };

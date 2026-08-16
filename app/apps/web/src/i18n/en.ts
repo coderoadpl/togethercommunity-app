@@ -1197,7 +1197,7 @@ export const en: Messages = {
     eyebrow: 'Lesson',
     noContentTitle: 'Nothing here yet',
     noContent: 'This lesson has no content yet.',
-    videoPlaceholder: 'Video attached — streaming is not configured yet.',
+    videoPlaceholder: 'The video will be available here soon.',
     openPdf: 'Open the PDF in a new tab',
     contentLocked: 'Content locked',
     noAccessYet: "You don't have access to this lesson yet.",

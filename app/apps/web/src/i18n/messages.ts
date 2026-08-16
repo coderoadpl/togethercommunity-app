@@ -197,7 +197,6 @@ export interface Messages {
     marketingConsents: string;
     marketingDocuments: string;
     marketingLayouts: string;
-    marketingSettings: string;
     aria: string;
     comingSoon: string;
   };
@@ -1716,8 +1715,6 @@ export interface Messages {
     allLayouts: string;
     layoutHtmlLabel: string;
     layoutSlotHint: string;
-    settingsTitle: string;
-    settingsDescription: string;
     settingsLoading: string;
     saveSettingsAction: string;
     credentials: string;

@@ -59,7 +59,6 @@ import {
   MarketingDocumentsIcon,
   MarketingLayoutsIcon,
   MarketingSendsIcon,
-  MarketingSettingsIcon,
   MembersIcon,
   MenuIcon,
   ProductsIcon,
@@ -88,7 +87,6 @@ type PanelSection =
   | 'marketingConsents'
   | 'marketingDocuments'
   | 'marketingLayouts'
-  | 'marketingSettings'
   | 'settings';
 
 interface SectionDescriptor {
@@ -137,6 +135,7 @@ const navigationGroupPreference = persistedJsonPreference(
 );
 
 const overviewDescriptor: SectionDescriptor = { id: 'dashboard', to: '/panel', exact: true };
+const integrationsDescriptor: SectionDescriptor = { id: 'integrations', to: '/panel/integrations' };
 const settingsDescriptor: SectionDescriptor = { id: 'settings', to: '/panel/settings' };
 
 const sectionDescriptors: NavigationGroupDescriptor[] = [
@@ -166,7 +165,6 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
     id: 'sales',
     sections: [
       { id: 'sales', to: '/panel/sales' },
-      { id: 'integrations', to: '/panel/integrations' },
     ],
   },
   {
@@ -178,7 +176,6 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
       { id: 'marketingLayouts', to: '/panel/marketing/layouts' },
       { id: 'marketingConsents', to: '/panel/marketing/consents' },
       { id: 'marketingDocuments', to: '/panel/marketing/documents' },
-      { id: 'marketingSettings', to: '/panel/marketing/settings' },
     ],
   },
 ];
@@ -227,8 +224,6 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <MarketingDocumentsIcon />;
     case 'marketingLayouts':
       return <MarketingLayoutsIcon />;
-    case 'marketingSettings':
-      return <MarketingSettingsIcon />;
     case 'settings':
       return <SettingsIcon />;
   }
@@ -352,6 +347,12 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
           </Box>
         );
       })}
+      <NavigationItem
+        descriptor={integrationsDescriptor}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        openReportCount={undefined}
+      />
       <NavigationItem
         descriptor={settingsDescriptor}
         pathname={pathname}

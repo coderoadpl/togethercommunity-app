@@ -421,9 +421,9 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByRole('heading', { name: 'Układy e-mail' }).waitFor(visible),
   },
   {
-    name: 'panel-marketing-settings',
+    name: 'panel-integrations-email',
     auth: 'creator',
-    path: '/panel/marketing/settings',
+    path: '/panel/integrations#email',
     ready: (page) => page.getByTestId('marketing-readiness').waitFor(visible),
   },
   {

@@ -212,6 +212,27 @@ const renderPanel = (
         data: { ok: true, diagnostic: 'KSeF accepted the token for this NIP context.' },
       }),
     ),
+    http.get('/api/marketing/ses-settings', () => HttpResponse.json({
+      ok: true,
+      data: {
+        credentialsConfigured: false,
+        smtpConfigured: false,
+        resendConfigured: false,
+        platformPool: { used: 12, limit: 1000 },
+        webhookUrl: 'https://app.example.test/api/webhooks/ses/webhook-token',
+        settings: null,
+      },
+    })),
+    http.get('/api/marketing/reputation', () => HttpResponse.json({
+      ok: true,
+      data: {
+        windowStart: '1998-08-14T10:00:00.000Z',
+        windowEnd: '1998-08-14T10:00:00.000Z',
+        hardBounce: { count: 0, sends: 0, rate: null, status: 'insufficient_data' },
+        complaint: { count: 0, sends: 0, rate: null, status: 'insufficient_data' },
+        overallStatus: 'insufficient_data',
+      },
+    })),
   );
 
   return {
@@ -285,6 +306,25 @@ describe('IntegrationsPanel', () => {
     window.location.hash = '#storage';
 
     expect(await screen.findByTestId('storage-test-connection')).toBeInTheDocument();
+  });
+
+  it('gathers the whole sending configuration under the e-mail tab', async () => {
+    window.history.replaceState(null, '', '/panel/integrations#email');
+    renderPanel();
+
+    expect(await screen.findByTestId('email-test-connection')).toBeInTheDocument();
+    expect(await screen.findByTestId('marketing-readiness')).toBeInTheDocument();
+    expect(screen.getByTestId('marketing-webhook-url')).toHaveTextContent(
+      'https://app.example.test/api/webhooks/ses/webhook-token',
+    );
+    expect(screen.getByLabelText(pl.marketing.accessKeyLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.marketing.fromAddressLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.marketing.smtpHostLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.marketing.resendApiKeyLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.marketing.footerLegalNameLabel)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.marketing.wizardTitle })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.marketing.reputationTitle })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.marketing.quota })).toBeInTheDocument();
   });
 
   it('creates a short-lived import key with independently selectable scopes', async () => {

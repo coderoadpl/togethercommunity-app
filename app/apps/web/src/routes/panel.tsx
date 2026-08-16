@@ -11,6 +11,7 @@ export {
   PanelLessonsRoute,
   PanelLessonCreateRoute,
   PanelLessonEditRoute,
+  PanelMarketingSettingsRedirectRoute,
   PanelMemberDetailRoute,
   PanelMembersRoute,
   PanelReportsRoute,
@@ -47,7 +48,6 @@ export {
   LayoutDetailPage,
   LayoutsPanel,
 } from '../features/home/marketing/LayoutsPanel.js';
-export { MarketingSettingsPanel } from '../features/home/marketing/MarketingSettingsPanel.js';
 export {
   SchedulerActivityDetailPage,
   SchedulerActivityPanel,

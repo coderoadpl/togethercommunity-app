@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Box, Button, Chip, Stack } from '@mui/material';
 
-import { MarketingReadiness } from '../features/home/marketing/MarketingReadiness.js';
+import { MarketingReadiness } from '../features/home/integrations/MarketingReadiness.js';
 import { CampaignStatusChip, MarketingSummaryRow } from '../features/home/marketing/MarketingSummaryRow.js';
 
 const meta = {

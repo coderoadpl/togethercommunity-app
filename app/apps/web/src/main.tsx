@@ -68,7 +68,6 @@ import {
   LayoutCreatePage,
   LayoutDetailPage,
   LayoutsPanel,
-  MarketingSettingsPanel,
   SchedulerActivityDetailPage,
   SchedulerActivityPanel,
   SendDetailPage,
@@ -84,6 +83,7 @@ import {
   PanelLessonsRoute,
   PanelLessonCreateRoute,
   PanelLessonEditRoute,
+  PanelMarketingSettingsRedirectRoute,
   PanelMemberDetailRoute,
   PanelMembersRoute,
   PanelReportsRoute,
@@ -414,10 +414,10 @@ const panelMarketingLayoutDetailRoute = createRoute({
   path: 'marketing/layouts/$layoutId',
   component: LayoutDetailPage,
 });
-const panelMarketingSettingsRoute = createRoute({
+const panelMarketingSettingsRedirectRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'marketing/settings',
-  component: MarketingSettingsPanel,
+  component: PanelMarketingSettingsRedirectRoute,
 });
 
 const router = createRouter({
@@ -478,7 +478,7 @@ const router = createRouter({
       panelMarketingLayoutsRoute,
       panelMarketingLayoutCreateRoute,
       panelMarketingLayoutDetailRoute,
-      panelMarketingSettingsRoute,
+      panelMarketingSettingsRedirectRoute,
     ]),
   ]),
 });

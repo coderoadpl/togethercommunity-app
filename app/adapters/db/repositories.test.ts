@@ -1874,6 +1874,13 @@ describe('health port', () => {
   it('pings the database successfully', async () => {
     expect(await createHealthPort(db).pingDatabase()).toBe(true);
   });
+
+  it('reports the fully migrated schema as current', async () => {
+    const status = await createHealthPort(db).schemaStatus();
+
+    expect(status.schemaCurrent).toBe(true);
+    expect(status.appliedMigrations).toBe(status.expectedMigrations);
+  });
 });
 
 describe('member erasure repository', () => {

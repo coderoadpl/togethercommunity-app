@@ -18,6 +18,9 @@ describe('remote smoke', () => {
             production: true,
             commit: 'abc123',
             databaseFingerprint: 'b1bfbb98b4f7',
+            expectedMigrations: 82,
+            appliedMigrations: 82,
+            schemaCurrent: true,
           },
         });
       }
@@ -70,6 +73,9 @@ describe('remote smoke', () => {
           production: true,
           commit: 'old-sha',
           databaseFingerprint: 'b1bfbb98b4f7',
+          expectedMigrations: 82,
+          appliedMigrations: 82,
+          schemaCurrent: true,
         },
       }),
     );

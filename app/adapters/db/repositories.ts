@@ -1,5 +1,7 @@
 import { and, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
+import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
+
 import {
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
@@ -3214,6 +3216,29 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
   };
 };
 
+const firstRow = (result: unknown): unknown => {
+  if (typeof result !== 'object' || result === null || !('rows' in result) || !Array.isArray(result.rows)) {
+    throw new Error('Schema status query did not return rows');
+  }
+  const row = result.rows[0];
+  if (row === undefined) throw new Error('Schema status query returned no rows');
+  return row;
+};
+
+const numberField = (row: unknown, field: string): number => {
+  if (typeof row !== 'object' || row === null || !(field in row)) {
+    throw new Error(`Schema status query did not return ${field}`);
+  }
+  const value = Object.entries(row).find(([key]) => key === field)?.[1];
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim() !== ''
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isFinite(parsed)) throw new Error(`Schema status query returned invalid ${field}`);
+  return parsed;
+};
+
 export const createHealthPort = (db: Db): HealthPort => ({
   pingDatabase: async () => {
     try {
@@ -3221,6 +3246,23 @@ export const createHealthPort = (db: Db): HealthPort => ({
       return true;
     } catch {
       return false;
+    }
+  },
+  schemaStatus: async () => {
+    const expectedMigrations = migrationJournal.entries.length;
+    const lastJournalWhen = migrationJournal.entries.at(-1)?.when ?? 0;
+    try {
+      const result = await db.execute(
+        sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from drizzle.__drizzle_migrations`,
+      );
+      const row = firstRow(result);
+      return {
+        expectedMigrations,
+        appliedMigrations: numberField(row, 'applied'),
+        schemaCurrent: numberField(row, 'latest') >= lastJournalWhen,
+      };
+    } catch {
+      return { expectedMigrations, appliedMigrations: null, schemaCurrent: false };
     }
   },
 });

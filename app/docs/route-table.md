@@ -124,6 +124,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/products/:productId/downloads/upload` | authenticated | mutating | product download upload |
 | `POST /api/products/:productId/downloads/:assetId/complete` | authenticated | mutating | product download complete |
 | `DELETE /api/products/:productId/downloads/:assetId` | authenticated | mutating | product download delete |
+| `GET /api/member/navigation` | authenticated | read | member navigation |
 | `GET /api/my/products` | authenticated | read | my products |
 | `GET /api/my/products/:productId/downloads/:assetId` | authenticated | read | member product download |
 | `GET /api/members` | authenticated | read | members |

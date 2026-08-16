@@ -318,15 +318,20 @@ export const LessonPlayerPage = ({
     ? optimisticDone.done
     : completedFromServer;
 
+  const settleCompletion = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.studentCourseInvalidates()),
+      queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+    ]);
+    setOptimisticDone(null);
+  };
+
   const complete = useMutation({
     ...actions.completeLesson,
     onMutate: ({ lessonId: completedLessonId }) =>
       setOptimisticDone({ lessonId: completedLessonId, done: true }),
     onError: () => setOptimisticDone(null),
-    onSettled: async () => {
-      await queryClient.invalidateQueries(actions.studentCourseInvalidates());
-      setOptimisticDone(null);
-    },
+    onSettled: settleCompletion,
   });
 
   const uncomplete = useMutation({
@@ -334,10 +339,7 @@ export const LessonPlayerPage = ({
     onMutate: ({ lessonId: uncompletedLessonId }) =>
       setOptimisticDone({ lessonId: uncompletedLessonId, done: false }),
     onError: () => setOptimisticDone(null),
-    onSettled: async () => {
-      await queryClient.invalidateQueries(actions.studentCourseInvalidates());
-      setOptimisticDone(null);
-    },
+    onSettled: settleCompletion,
   });
 
   useEffect(() => {

@@ -161,9 +161,15 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionSummary[]>>({});
 
   const invalidateSpaces = () => queryClient.invalidateQueries(actions.spacesInvalidates());
+  const settleFollow = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.spacesInvalidates()),
+      queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+    ]);
+  };
   const create = useMutation({ ...actions.createPost, onSettled: invalidateSpaces });
-  const follow = useMutation({ ...actions.followSpace, onSettled: invalidateSpaces });
-  const unfollow = useMutation({ ...actions.unfollowSpace, onSettled: invalidateSpaces });
+  const follow = useMutation({ ...actions.followSpace, onSettled: settleFollow });
+  const unfollow = useMutation({ ...actions.unfollowSpace, onSettled: settleFollow });
   const react = useMutation(actions.reactToPost);
   const unreact = useMutation(actions.unreactToPost);
   const pin = useMutation({

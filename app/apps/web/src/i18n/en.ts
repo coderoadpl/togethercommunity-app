@@ -740,17 +740,16 @@ export const en: Messages = {
     addFullCourse: 'Add full course access',
     exclusionsLabel: 'Excluded modules',
     noModulesToExclude: 'No modules attached to this course to exclude.',
-    wholeCourseSummary: ({ course }) => format('{course} — whole course', { course }),
-    wholeCourseExceptSummary: ({ course, count }) =>
-      format('{course} — whole course except {count} {noun}', {
-        course,
-        count,
-        noun: plural(count, 'module', 'modules'),
-      }),
-    modulesSummary: ({ count, course }) =>
-      format('{count} {noun} of {course}', { count, noun: plural(count, 'module', 'modules'), course }),
-    lessonsSummary: ({ count, course }) =>
-      format('{count} {noun} of {course}', { count, noun: plural(count, 'lesson', 'lessons'), course }),
+    wholeCourseSummary: ({ course }) => format('Whole course: {course}', { course }),
+    wholeCourseExceptSummary: ({ course, modules }) =>
+      format('Whole course: {course} — excluding modules: {modules}', { course, modules }),
+    modulesSummary: ({ modules }) => format('Modules: {modules}', { modules }),
+    lessonsSummary: ({ lessons }) => format('Lessons: {lessons}', { lessons }),
+    andMore: ({ count }) => format('and {count} more', { count }),
+    unknownModule: 'Unknown module',
+    unknownLesson: 'Unknown lesson',
+    editItem: 'Edit',
+    updateItem: 'Save item',
   },
   courses: {
     treeTab: 'Course tree',

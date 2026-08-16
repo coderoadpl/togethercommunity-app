@@ -1750,6 +1750,7 @@ export const pl: Messages = {
     testEmailSent: 'Transport przeszedł diagnostykę i wysłał wiadomość testową na adres e-mail Twojego konta.',
     platformPool: ({ used, limit }) => `Pula startowa: ${used}/${limit}`,
     platformPoolChecklist: 'Pula startowa wiadomości transakcyjnych',
+    platformPoolHint: 'Pula liczy wyłącznie e-maile transakcyjne tej przestrzeni (np. potwierdzenia zamówień) wysłane przez wspólną pulę platformy, gdy własny SES lub SMTP nie jest skonfigurowany. E-maile logowania — magiczne linki, resety hasła, weryfikacje — wysyła platforma poza pulą.',
     platformPoolNudge: 'Pula startowa zbliża się do końca. Skonfiguruj własny SES, SMTP lub Resend.',
     accessKeyLabel: 'Identyfikator klucza dostępu (access key ID)', secretKeyLabel: 'Tajny klucz dostępu (secret access key)',
     regionLabel: 'Region AWS', writeOnlyHint: 'Pola są tylko do zapisu. Zapisane wartości pozostają ukryte.', sender: 'Nadawca i tożsamość', fromAddressLabel: 'Adres nadawcy',

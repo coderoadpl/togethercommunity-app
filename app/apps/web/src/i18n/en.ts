@@ -1726,6 +1726,7 @@ export const en: Messages = {
     testEmailSent: "The transport passed its diagnostic and sent a test e-mail to your account's e-mail address.",
     platformPool: ({ used, limit }) => `Starter pool: ${used}/${limit}`,
     platformPoolChecklist: 'Transactional starter pool',
+    platformPoolHint: "The pool counts only this space's transactional e-mails (such as order confirmations) sent through the platform's shared pool when no own SES or SMTP is configured. Sign-in e-mails — magic links, password resets, verifications — are sent by the platform outside the pool.",
     platformPoolNudge: 'Your starter pool is running low. Configure tenant SES, SMTP, or Resend.',
     accessKeyLabel: 'Access key ID',
     secretKeyLabel: 'Secret access key', regionLabel: 'AWS region', writeOnlyHint: 'These fields are write-only. Stored values remain hidden.', sender: 'Sender and identity',

@@ -746,25 +746,20 @@ export const pl: Messages = {
     addFullCourse: 'Dodaj pełny dostęp do kursu',
     exclusionsLabel: 'Wyłączone moduły',
     noModulesToExclude: 'Do tego kursu nie podpięto żadnych modułów do wyłączenia.',
-    wholeCourseSummary: ({ course }) => format('{course} — cały kurs', { course }),
-    wholeCourseExceptSummary: ({ course, count }) =>
-      format('{course} — cały kurs bez {count} {noun}', {
-        course,
+    wholeCourseSummary: ({ course }) => format('Cały kurs: {course}', { course }),
+    wholeCourseExceptSummary: ({ course, modules }) =>
+      format('Cały kurs: {course} — bez modułów: {modules}', { course, modules }),
+    modulesSummary: ({ modules }) => format('Moduły: {modules}', { modules }),
+    lessonsSummary: ({ lessons }) => format('Lekcje: {lessons}', { lessons }),
+    andMore: ({ count }) =>
+      format('i {count} {noun}', {
         count,
-        noun: plural(count, 'modułu', 'modułów', 'modułów'),
+        noun: plural(count, 'kolejna', 'kolejne', 'kolejnych'),
       }),
-    modulesSummary: ({ count, course }) =>
-      format('{count} {noun} kursu {course}', {
-        count,
-        noun: plural(count, 'moduł', 'moduły', 'modułów'),
-        course,
-      }),
-    lessonsSummary: ({ count, course }) =>
-      format('{count} {noun} kursu {course}', {
-        count,
-        noun: plural(count, 'lekcja', 'lekcje', 'lekcji'),
-        course,
-      }),
+    unknownModule: 'Nieznany moduł',
+    unknownLesson: 'Nieznana lekcja',
+    editItem: 'Edytuj',
+    updateItem: 'Zapisz pozycję',
   },
   courses: {
     treeTab: 'Struktura kursu',

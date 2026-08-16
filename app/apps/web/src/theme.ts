@@ -2729,6 +2729,7 @@ export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
 
 export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
   whiteSpace: 'nowrap',
+  fontSize: 'inherit',
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
 }));

@@ -76,6 +76,10 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/health')) return 'health:read';
   if (publicRouteManifestEntry({ method, path })?.why.toLowerCase().includes('authentication') === true) return 'auth:use';
   if (path === '/api/public/offer') return 'offer:read';
+  if (path === '/api/public/assets/:kind/:file') return 'offer:read';
+  if (path === '/api/image-assets/course-cover/upload' || path === '/api/image-assets/course-cover/complete') return 'course:write';
+  if (path === '/api/image-assets/product-cover/upload' || path === '/api/image-assets/product-cover/complete') return 'product:write';
+  if (path === '/api/image-assets/branding/upload' || path === '/api/image-assets/branding/complete') return 'tenant:settings:write';
   if (path === '/api/public/payment-config' || path === '/api/public/checkout/coupon') return 'checkout:read';
   if (path === '/api/public/checkout/session') return 'checkout:start';
   if (path === '/api/public/auth-config') return 'auth:use';
@@ -242,6 +246,7 @@ const beforeForRoute = (
     || (path.startsWith('/api/api-keys') && method !== 'GET')
     || (path.startsWith('/api/integrations/') && path !== '/api/integrations/bunny/videos')
     || path === '/api/bunny/test'
+    || path.startsWith('/api/image-assets/branding/')
   ) return owner;
   return staff;
 };
@@ -459,6 +464,7 @@ const beforeForUseCase = (
   }
   if (file === 'lesson-media.ts') return tenantActors;
   if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
+  if (file === 'image-assets.ts') return capability === 'tenant:settings:write' ? owner : staff;
   if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'lesson-playback.ts') return tenantActors;

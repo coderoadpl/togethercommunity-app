@@ -19,11 +19,14 @@ export const productSlugSchema = z
 
 const newProductDescriptionSchema = z.string().max(50_000, 'Description too long');
 
-export const productCoverUrlSchema = z
-  .string()
-  .trim()
-  .url('Cover must be a valid URL')
-  .regex(/^https?:\/\//iu, 'Cover URL must use HTTP or HTTPS');
+export const productCoverUrlSchema = z.union([
+  z
+    .string()
+    .trim()
+    .url('Cover must be a valid URL')
+    .regex(/^https?:\/\//iu, 'Cover URL must use HTTP or HTTPS'),
+  z.string().trim().regex(/^\/\S+$/),
+]);
 
 export const productSlugFromTitle = (title: string): string =>
   title

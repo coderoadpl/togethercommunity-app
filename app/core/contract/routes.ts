@@ -45,6 +45,7 @@ import {
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
   grantWindowStatusSchema,
+  imageAssetUploadInputSchema,
   languageSchema,
   type listOrdersQuerySchema,
   listStreamVideosInputSchema,
@@ -787,6 +788,28 @@ export const productDownloadDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
+export const imageAssetUploadRequestSchema = imageAssetUploadInputSchema;
+
+export type ImageAssetUploadRequest = z.input<typeof imageAssetUploadRequestSchema>;
+
+export const imageAssetUploadOutputSchema = z.object({
+  key: z.string().min(1),
+  servePath: z.string().startsWith('/'),
+  upload: z.object({
+    url: z.string().url(),
+    headers: z.record(z.string()),
+    expiresAt: z.string().datetime(),
+  }),
+});
+
+export const imageAssetCompleteRequestSchema = z.object({
+  key: z.string().min(1),
+});
+
+export const imageAssetCompleteOutputSchema = z.object({
+  url: z.string().startsWith('/'),
+});
+
 export const contentHistoryOutputSchema = z.object({
   versions: z.array(courseHistoryEntrySchema),
 });
@@ -1379,6 +1402,7 @@ export const API_ROUTES = {
   autoInvoiceDispatch: { method: 'POST', path: '/api/internal/dispatch-auto-invoices' },
   ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
+  publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
   couponCheckoutValidation: { method: 'POST', path: '/api/public/checkout/coupon' },
@@ -1441,6 +1465,12 @@ export const API_ROUTES = {
   productDownloadUpload: { method: 'POST', path: '/api/products/:productId/downloads/upload' },
   productDownloadComplete: { method: 'POST', path: '/api/products/:productId/downloads/:assetId/complete' },
   productDownloadDelete: { method: 'DELETE', path: '/api/products/:productId/downloads/:assetId' },
+  courseCoverUpload: { method: 'POST', path: '/api/image-assets/course-cover/upload' },
+  courseCoverComplete: { method: 'POST', path: '/api/image-assets/course-cover/complete' },
+  productCoverUpload: { method: 'POST', path: '/api/image-assets/product-cover/upload' },
+  productCoverComplete: { method: 'POST', path: '/api/image-assets/product-cover/complete' },
+  brandingAssetUpload: { method: 'POST', path: '/api/image-assets/branding/upload' },
+  brandingAssetComplete: { method: 'POST', path: '/api/image-assets/branding/complete' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
@@ -1594,6 +1624,7 @@ export const API_PATHS = {
   autoInvoiceDispatch: API_ROUTES.autoInvoiceDispatch.path,
   ksefDispatch: API_ROUTES.ksefDispatch.path,
   publicOffer: API_ROUTES.publicOffer.path,
+  publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
   couponCheckoutValidation: API_ROUTES.couponCheckoutValidation.path,
@@ -1651,6 +1682,12 @@ export const API_PATHS = {
   productDownloadUpload: API_ROUTES.productDownloadUpload.path,
   productDownloadComplete: API_ROUTES.productDownloadComplete.path,
   productDownloadDelete: API_ROUTES.productDownloadDelete.path,
+  courseCoverUpload: API_ROUTES.courseCoverUpload.path,
+  courseCoverComplete: API_ROUTES.courseCoverComplete.path,
+  productCoverUpload: API_ROUTES.productCoverUpload.path,
+  productCoverComplete: API_ROUTES.productCoverComplete.path,
+  brandingAssetUpload: API_ROUTES.brandingAssetUpload.path,
+  brandingAssetComplete: API_ROUTES.brandingAssetComplete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
   studentLesson: API_ROUTES.studentLesson.path,

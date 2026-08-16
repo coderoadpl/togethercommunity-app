@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import { lessonBlockSchema, VIDEO_EMBED_URL_MESSAGE } from './course.js';
+import {
+  courseSchema,
+  lessonBlockSchema,
+  newCourseSchema,
+  updateCourseInputSchema,
+  VIDEO_EMBED_URL_MESSAGE,
+} from './course.js';
+
+describe('course image URLs', () => {
+  it('accepts root-relative image paths on stored, create, and update schemas', () => {
+    const imageUrl = '/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.jpg';
+
+    expect(courseSchema.safeParse({
+      id: 'course-1',
+      tenantId: 'tenant-1',
+      name: 'Course',
+      description: '',
+      imageUrl,
+      moduleOrder: [],
+      legacyId: null,
+      createdAt: '2026-08-16T12:00:00.000Z',
+    }).success).toBe(true);
+    expect(newCourseSchema.safeParse({ name: 'Course', imageUrl }).success).toBe(true);
+    expect(updateCourseInputSchema.safeParse({ id: 'course-1', imageUrl }).success).toBe(true);
+  });
+});
 
 describe('lesson video embed URLs', () => {
   it.each([

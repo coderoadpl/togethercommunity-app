@@ -19,12 +19,12 @@ import type { Course } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
-import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { ImageAssetField } from '../ImageAssetField.js';
 import { MutationError } from './feedback.js';
 
 const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void }) => {
@@ -69,25 +69,14 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
           aria-describedby={createCourse.isError ? errorId : undefined}
         />
       </FormControl>
-      <FormControl fullWidth>
-        <FormLabel htmlFor="course-image">{t.courses.imageUrl}</FormLabel>
-        <OutlinedInput
-          id="course-image"
-          type="url"
-          value={imageUrl}
-          onChange={(event) => setImageUrl(event.target.value)}
-          placeholder="https://…"
-          aria-describedby={createCourse.isError ? errorId : undefined}
-        />
-        {imageUrl.trim() === '' ? null : (
-          <CoverPreview
-            key={imageUrl.trim()}
-            src={imageUrl.trim()}
-            label={t.courses.imagePreview}
-            testId="course-image-preview"
-          />
-        )}
-      </FormControl>
+      <ImageAssetField
+        id="course-image"
+        label={t.courses.imageUrl}
+        value={imageUrl}
+        onChange={setImageUrl}
+        kind="course-cover"
+        testId="course-image"
+      />
       <Button type="submit" variant="contained" disabled={createCourse.isPending || name.trim().length === 0}>
         {createCourse.isPending ? t.courses.creating : t.courses.create}
       </Button>

@@ -379,6 +379,7 @@ describe('SettingsPanel branding', () => {
     const { updates } = renderPanel();
     await openSettingsSection(pl.settingsNavigation.brand);
 
+    expect(await screen.findAllByRole('button', { name: pl.imageAssets.upload })).toHaveLength(2);
     await userEvent.type(await screen.findByTestId('branding-logo-url'), 'https://cdn.example.com/logo.svg');
     await userEvent.type(screen.getByTestId('branding-accent-color'), '#0E7490');
     await userEvent.type(screen.getByTestId('branding-favicon-url'), 'https://cdn.example.com/favicon.svg');

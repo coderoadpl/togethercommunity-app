@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 99. Route rows: 234. Exported `Ctx` use-case rows: 197.
+Closed capability count: 99. Route rows: 241. Exported `Ctx` use-case rows: 203.
 
 ## Human-readable diff
 
@@ -36,6 +36,7 @@ no changes
 | `OPTIONS /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/checkout/session` | checkout:start | public | public | yes | public route manifest |
 | `OPTIONS /api/public/auth-config` | auth:use | public | public | yes | public route manifest |
+| `GET /api/public/assets/:kind/:file` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/offer` | offer:read | public | public | yes | public route manifest |
 | `GET /api/student/lessons/:lessonId` | lesson:play | public | public | yes | public route manifest |
 | `GET /api/public/payment-config` | checkout:read | public | public | yes | public route manifest |
@@ -145,6 +146,12 @@ no changes
 | `POST /api/products/:productId/downloads/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/products/:productId/downloads/:assetId/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/products/:productId/downloads/:assetId` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/image-assets/course-cover/upload` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/image-assets/course-cover/complete` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/image-assets/product-cover/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/image-assets/product-cover/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/image-assets/branding/upload` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/image-assets/branding/complete` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/my/products` | member:product:read | member | member | yes | identity middleware + use-case guard |
 | `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | member | member | yes | identity middleware + use-case guard |
 | `GET /api/members` | member:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -325,6 +332,12 @@ no changes
 | `grants.ts#listMemberGrants` | member:grant:read | owner, admin | owner, admin | yes | core/server/usecases/grants.ts authorization call |
 | `grants.ts#grantProductToMember` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts authorization call |
 | `grants.ts#revokeGrant` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts authorization call |
+| `image-assets.ts#beginCourseCoverUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#completeCourseCoverUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#beginProductCoverUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#completeProductCoverUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#beginBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#completeBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
 | `invoices.ts#downloadInvoice` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#downloadMemberInvoice` | invoice:member-read | member | member | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#downloadInvoiceUpo` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
@@ -470,11 +483,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:130` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:855` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:857` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1300` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1300` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:135` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:896` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:898` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1341` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1341` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:79` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

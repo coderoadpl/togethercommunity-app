@@ -44,6 +44,7 @@ import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
 import { SecretField } from '../integrations/SecretField.js';
 import { usePanelContext } from '../panel-context.js';
+import { ImageAssetField } from '../ImageAssetField.js';
 
 const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
   value === 'art_113_1' ||
@@ -621,17 +622,16 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             />
             <Typography variant="caption" component="p">{t.branding.nameHint}</Typography>
           </FormControl>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="branding-logo-url">{t.branding.logoLabel}</FormLabel>
-            <OutlinedInput
-              id="branding-logo-url"
-              value={logoValue}
-              disabled={disabled}
-              onChange={(event) => setLogoUrl(event.target.value)}
-              placeholder={t.branding.logoPlaceholder}
-              inputProps={{ 'data-testid': 'branding-logo-url' }}
-            />
-          </FormControl>
+          <ImageAssetField
+            id="branding-logo-url"
+            label={t.branding.logoLabel}
+            hint={t.branding.logoPlaceholder}
+            value={logoValue}
+            onChange={setLogoUrl}
+            kind="logo"
+            disabled={disabled}
+            testId="branding-logo-url"
+          />
           <FormControl fullWidth error={accentError}>
             <FormLabel htmlFor="branding-accent-color">{t.branding.accentLabel}</FormLabel>
             <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.75rem' }}>
@@ -657,17 +657,16 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {accentError ? t.branding.accentInvalid : t.branding.previewHint}
             </Typography>
           </FormControl>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="branding-favicon-url">{t.branding.faviconLabel}</FormLabel>
-            <OutlinedInput
-              id="branding-favicon-url"
-              value={faviconValue}
-              disabled={disabled}
-              onChange={(event) => setFaviconUrl(event.target.value)}
-              placeholder={t.branding.faviconPlaceholder}
-              inputProps={{ 'data-testid': 'branding-favicon-url' }}
-            />
-          </FormControl>
+          <ImageAssetField
+            id="branding-favicon-url"
+            label={t.branding.faviconLabel}
+            hint={t.branding.faviconPlaceholder}
+            value={faviconValue}
+            onChange={setFaviconUrl}
+            kind="favicon"
+            disabled={disabled}
+            testId="branding-favicon-url"
+          />
           <Typography variant="h6" component="h3">{t.branding.profileLinksHeading}</Typography>
           <Typography variant="body2">
             {t.branding.profileLinksIntro({ count: SOCIAL_LINKS_MAX_COUNT })}

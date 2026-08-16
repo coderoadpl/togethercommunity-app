@@ -32,6 +32,14 @@ export const en: Messages = {
     unsavedChanges: 'Unsaved changes',
     unsavedChangesConfirm: 'You have unsaved changes. Leave this page and discard them?',
   },
+  imageAssets: {
+    upload: 'Upload file',
+    uploading: 'Uploading…',
+    storageMissing: 'File upload requires tenant storage. Configure it under',
+    storageLink: 'Integrations → S3',
+    invalidType: 'Choose a PNG, JPEG, WebP, or SVG image. Favicons can also use ICO.',
+    tooLarge: 'The image must be no larger than 5 MB.',
+  },
   bootSplash: {
     opening: 'Opening the creator panel',
     tenant: ({ host }) => format('Workspace {host}', { host }),

@@ -39,6 +39,7 @@ import {
   fulfillStripeWebhook,
   getPaymentConfig,
   getPlayableLesson,
+  getPublicImageAssetUrl,
   getPublicOffer,
   recordCheckoutMarketingConsents,
   resolveIdentity,
@@ -303,6 +304,25 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
   registerOpenCors(app, API_PATHS.authConfig, 'GET');
+
+  app.get(API_PATHS.publicImageAsset, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const result = await getPublicImageAssetUrl(
+      tenant.value.tenant.id,
+      { kind: c.req.param('kind'), file: c.req.param('file') },
+      deps,
+    );
+    if (!result.ok) return respondPublic(result);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: result.value,
+        'cache-control': 'public, max-age=300',
+      },
+    });
+  });
 
   app.get(API_PATHS.publicOffer, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);

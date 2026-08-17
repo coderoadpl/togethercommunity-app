@@ -18,6 +18,7 @@ const notification = (overrides: Partial<Notification>): Notification => ({
     courseId: 'c1',
     lessonName: 'Lesson 1',
     authorDisplay: 'Author',
+    authorAvatarUrl: null,
     snippet: 'hello',
   },
   readAt: null,

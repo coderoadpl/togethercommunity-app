@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -24,6 +24,7 @@ const notification = (input: {
   contextId?: string;
   courseId?: string | null;
   read?: boolean;
+  authorAvatarUrl?: string | null;
 }): Notification => ({
   id: input.id,
   tenantId: 't1',
@@ -37,6 +38,7 @@ const notification = (input: {
     courseId: input.courseId === undefined ? 'c1' : input.courseId,
     lessonName: 'Hamaki w kamperze',
     authorDisplay: 'Ola',
+    authorAvatarUrl: input.authorAvatarUrl ?? null,
     snippet: `Treść ${input.id}`,
   },
   readAt: input.read === true ? '2026-08-15T09:00:00.000Z' : null,
@@ -242,6 +244,27 @@ describe('NotificationsPage', () => {
 
     expect(await screen.findByTestId('notification-row-n1')).toBeInTheDocument();
     expect(screen.queryByTestId('notification-open-n1')).not.toBeInTheDocument();
+  });
+
+  it('shows the author picture when the payload carries one and initials otherwise', async () => {
+    server.use(
+      okUnread(0),
+      okList([
+        notification({ id: 'n1', read: true, authorAvatarUrl: 'https://cdn.test/ola.png' }),
+        notification({ id: 'n2', read: true }),
+      ]),
+    );
+
+    await renderPage();
+
+    const withPicture = within(await screen.findByTestId('notification-row-n1'));
+    expect(withPicture.getByTestId('member-avatar-image')).toHaveAttribute(
+      'src',
+      'https://cdn.test/ola.png',
+    );
+    const withInitials = within(screen.getByTestId('notification-row-n2'));
+    expect(withInitials.queryByTestId('member-avatar-image')).toBeNull();
+    expect(withInitials.getByTestId('member-avatar')).toHaveTextContent('O');
   });
 
   it('sends an unauthenticated visitor to the login page', async () => {

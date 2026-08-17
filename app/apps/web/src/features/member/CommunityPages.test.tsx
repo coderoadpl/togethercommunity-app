@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
@@ -100,6 +100,7 @@ const feedItem = (input: Partial<SpaceFeedItem> & { id: string }): SpaceFeedItem
   isOwn: false,
   authorDisplay: 'Ola Autorka',
   authorIsStaff: false,
+  authorAvatarUrl: null,
   body: 'Pierwszy wpis w strefie',
   createdAt: '2026-07-20T08:00:00.000Z',
   editedAt: null,
@@ -175,6 +176,7 @@ describe('community pages', () => {
           body: 'Cześć wszystkim',
           replyCount: 3,
           reactions: [{ emoji: '👍', count: 2, viewerReacted: false }],
+          authorAvatarUrl: 'https://cdn.test/ola.png',
         }),
         feedItem({ id: 'p2', body: 'Drugi wpis' }),
       ]),
@@ -189,6 +191,13 @@ describe('community pages', () => {
     expect(screen.getByTestId('reaction-p1-👍')).toHaveTextContent('2');
     expect(screen.getByTestId('open-thread-p1')).toHaveAttribute('href', '/community/s1/posts/p1');
     expect(screen.getByTestId('feed-post-p2')).toBeInTheDocument();
+    expect(within(screen.getByTestId('feed-post-p1')).getByTestId('member-avatar-image')).toHaveAttribute(
+      'src',
+      'https://cdn.test/ola.png',
+    );
+    const plainPost = within(screen.getByTestId('feed-post-p2'));
+    expect(plainPost.queryByTestId('member-avatar-image')).toBeNull();
+    expect(plainPost.getByTestId('member-avatar')).toHaveTextContent('OA');
   });
 
   it('publishes a root post through the composer', async () => {

@@ -425,3 +425,22 @@ describe('getPublicSpaceThread', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });
+
+describe('anonymous avatar boundary', () => {
+  const open = space({ id: 'open', publicReadOnly: true });
+  const root = post({ id: 'root', contextId: open.id });
+  const reply = post({ id: 'reply', contextId: open.id, rootPostId: 'root', parentPostId: 'root' });
+
+  it('never emits an avatar url on the public feed or thread', async () => {
+    const deps = spaceDeps({ spaces: [open], posts: [root], replies: [reply] });
+    const feed = await getPublicSpaceFeed(tenant, { spaceId: open.id }, deps);
+    const thread = await getPublicSpaceThread(tenant, { spaceId: open.id, postId: root.id }, deps);
+
+    expect(feed).toMatchObject({ ok: true, value: { items: [{ authorAvatarUrl: null }] } });
+    expect(thread).toMatchObject({
+      ok: true,
+      value: { threads: [{ authorAvatarUrl: null, replies: [{ authorAvatarUrl: null }] }] },
+    });
+    expect(JSON.stringify([feed, thread])).not.toContain('gravatar.com');
+  });
+});

@@ -24,6 +24,7 @@ const notification = (input: {
     courseId: input.courseId,
     lessonName: input.lessonName ?? 'Hamaki w kamperze',
     authorDisplay: 'Ola',
+    authorAvatarUrl: null,
     snippet: 'Już odpowiadam',
   },
   readAt: null,

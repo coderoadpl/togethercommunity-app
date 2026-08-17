@@ -2055,6 +2055,7 @@ describe('notification repository', () => {
         courseId: 'course-notification-pagination',
         lessonName: 'Pagination',
         authorDisplay: 'Author',
+        authorAvatarUrl: null,
         snippet: id,
       },
       readAt: null,

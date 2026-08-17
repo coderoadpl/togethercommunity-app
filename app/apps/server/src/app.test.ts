@@ -517,6 +517,9 @@ const deps = (input: {
     userDisplays: {
       findDisplayNames: async () => new Map(),
     },
+    avatarSources: {
+      listAvatarSources: async () => [],
+    },
     progress: {
       findByMemberAndCourse: async () => null,
       listByMember: async () => [],

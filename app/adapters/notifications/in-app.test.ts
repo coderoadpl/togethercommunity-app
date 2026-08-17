@@ -18,6 +18,7 @@ const notification: Notification = {
     courseId: 'c1',
     lessonName: 'Lesson 1',
     authorDisplay: 'Author',
+    authorAvatarUrl: null,
     snippet: 'Hi there',
   },
   readAt: null,

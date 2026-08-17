@@ -21,6 +21,7 @@ import {
   PostMetaText,
   ReplyIndent,
 } from '../../theme.js';
+import { MemberAvatar } from './MemberAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 
 export const PAGE_SIZE = 20;
@@ -183,7 +184,8 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
 
   return (
     <Box data-testid={`discussion-post-${post.id}`}>
-      <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.6rem', flexWrap: 'wrap' }}>
+      <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}>
+        <MemberAvatar name={post.authorDisplay} avatarUrl={post.authorAvatarUrl} size="sm" />
         <PostAuthorName component="span">{post.authorDisplay}</PostAuthorName>
         {post.authorIsStaff && (
           <AuthorChip data-testid={`author-chip-${post.id}`}>{t.discussion.authorChip}</AuthorChip>

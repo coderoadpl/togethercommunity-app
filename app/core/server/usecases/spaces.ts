@@ -33,7 +33,9 @@ import {
 
 import type { Ctx } from '../context.js';
 import type {
+  AvatarSourceReader,
   Clock,
+  ContentHash,
   CourseModuleRepository,
   CourseRepository,
   DiscussionLinkPort,
@@ -50,6 +52,7 @@ import type {
   TenantAccessReader,
   TenantRepository,
 } from '../ports.js';
+import { avatarUrlForAuthor, avatarUrlsFor } from './avatar.js';
 import {
   lessonContextAccess,
   listAccessibleSpaces,
@@ -77,6 +80,8 @@ export interface SpacesDeps {
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
+  avatarSources: AvatarSourceReader;
+  contentHash: ContentHash;
 }
 
 const requireStaff = (
@@ -270,17 +275,32 @@ export const getSpaceFeed = async (
     userId: actor.value.userId,
     spaceIds: [space.value.id],
   });
+  const avatarUrls = await avatarUrlsFor(
+    actor.value.tenantId,
+    [...pinnedPosts, ...listed.threads.map((thread) => thread.post)].map(
+      (post) => post.authorUserId,
+    ),
+    deps,
+  );
   return ok({
     spaceId: space.value.id,
     pinned: pinnedPosts.map((post, index) => ({
-      ...toPublicPost(renderPost(post), actor.value.userId),
+      ...toPublicPost(
+        renderPost(post),
+        actor.value.userId,
+        avatarUrls.get(post.authorUserId) ?? null,
+      ),
       replyCount: pinnedReplies[index]?.length ?? 0,
       reactions: reactions.get(post.id) ?? [],
     })),
     items: listed.threads
       .filter((thread) => !pinnedIds.has(thread.post.id))
       .map((thread) => ({
-        ...toPublicPost(renderPost(thread.post), actor.value.userId),
+        ...toPublicPost(
+          renderPost(thread.post),
+          actor.value.userId,
+          avatarUrls.get(thread.post.authorUserId) ?? null,
+        ),
         replyCount: thread.replyCount,
         reactions: reactions.get(thread.post.id) ?? [],
       })),
@@ -440,6 +460,8 @@ export interface SpaceNotifyDeps {
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
+  avatarSources: AvatarSourceReader;
+  contentHash: ContentHash;
 }
 
 /** Fan-out for a new root post in a space: every follower except the author, entitlement-gated. */
@@ -452,6 +474,7 @@ export const notifySpaceFollowers = async (
 ): Promise<Result<void, AppError>> => {
   const followers = await deps.spaceSubscriptions.listFollowersForSpace(tenantId, space.id);
   if (followers.length === 0) return ok(undefined);
+  const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
   const spaceUrl = deps.links.spaceUrl({
     tenantSlug: tenant.tenantSlug,
     spaceId: space.id,
@@ -480,6 +503,7 @@ export const notifySpaceFollowers = async (
         courseId: null,
         lessonName: space.name,
         authorDisplay: post.authorDisplay,
+        authorAvatarUrl,
         snippet: postSnippet(post.body),
       },
       readAt: null,

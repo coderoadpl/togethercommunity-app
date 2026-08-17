@@ -23,6 +23,7 @@ import {
   UnreadDot,
   VisuallyHidden,
 } from '../../theme.js';
+import { MemberAvatar } from './MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 
 const PAGE_SIZE = 20;
@@ -43,6 +44,11 @@ const NotificationBody = ({ notification }: { notification: Notification }) => {
           <VisuallyHidden>{t.notifications.unreadLabel}</VisuallyHidden>
         </>
       ) : null}
+      <MemberAvatar
+        name={notification.payload.authorDisplay}
+        avatarUrl={notification.payload.authorAvatarUrl}
+        size="sm"
+      />
       <Box sx={{ minWidth: 0 }}>
         <NotificationTitle component="p" unread={unread}>
           {notificationTitle(t, notification)}

@@ -31,6 +31,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'member-1',
+  memberDisplayName: null,
   memberBannedAt: null,
   ...overrides,
 });
@@ -259,6 +260,7 @@ const makeDeps = (
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
       setBanned: async () => null,
     },
     threadSubscriptions: {

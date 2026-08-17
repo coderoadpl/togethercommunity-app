@@ -31,6 +31,7 @@ import type {
   LessonUncompleteInput,
   LessonCreateInput,
   LessonUpdateInput,
+  MeProfileUpdateInput,
   MemberHomeFeedGetInput,
   MemberProgressResetInput,
   MemberBanInput,
@@ -477,6 +478,12 @@ export const meQuery = (api: ApiClient) =>
   });
 
 export const meInvalidates = () => ({ queryKey: meScopes.all() });
+
+export const updateMyProfileMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['me', 'profile'],
+    call: (input: MeProfileUpdateInput) => api.updateMyProfile(input),
+  });
 
 export const healthQuery = (api: ApiClient) =>
   defineQuery({

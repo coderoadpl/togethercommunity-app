@@ -92,6 +92,7 @@ const deps = (
       memberRows[index] = refreshed;
       return refreshed;
     },
+    updateDisplayName: async () => null,
     setBanned: async () => null,
     delete: async () => false,
   },

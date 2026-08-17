@@ -1784,6 +1784,18 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .returning();
     return rows[0] ?? null;
   },
+  updateDisplayName: async (tenantId, memberId, displayName) => {
+    const rows = await db
+      .update(members)
+      .set({ displayName })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.id, memberId),
+        isNull(members.deletedAt),
+      ))
+      .returning();
+    return rows[0] ?? null;
+  },
   setBanned: async (tenantId, input, event) =>
     db.transaction(async (tx) => {
       const rows = await tx

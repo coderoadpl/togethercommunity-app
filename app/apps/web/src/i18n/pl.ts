@@ -1498,6 +1498,11 @@ export const pl: Messages = {
     heading: 'Twoje konto',
     signedInAs: 'Zalogowano jako',
     back: '← Wróć do moich kursów',
+    profileHeading: 'Profil',
+    displayNameLabel: 'Wyświetlana nazwa',
+    displayNameHint: 'Widoczna przy Twoich postach i komentarzach w tej społeczności.',
+    displayNameSave: 'Zapisz',
+    displayNameSaved: 'Wyświetlana nazwa została zapisana.',
     passwordHeading: 'Hasło',
     passwordIntro:
       'Zmień hasło tutaj, podając obecne hasło. Jeśli nie masz jeszcze hasła, użyj linku e-mail poniżej, aby je ustawić. Logowanie magicznym linkiem będzie działać dalej.',

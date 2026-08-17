@@ -21,6 +21,7 @@ const identity = (staffRole: Identity['staffRole'] = 'owner'): Ctx => ({ identit
   tenantName: 'Alpha',
   staffRole,
   memberId: null,
+memberDisplayName: null,
 memberBannedAt: null,
 } });
 
@@ -140,6 +141,7 @@ describe('email send observability use-cases', () => {
         listWithProductIds: async () => [],
         create: async () => undefined,
         updateEmail: async () => null,
+        updateDisplayName: async () => null,
       setBanned: async () => null,
       },
     });

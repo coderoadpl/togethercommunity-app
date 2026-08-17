@@ -220,9 +220,19 @@ export const meOutputSchema = z.object({
       name: z.string(),
       staffRole: staffRoleSchema.nullable(),
       memberId: z.string().nullable(),
+      displayName: z.string().nullable().default(null),
       banned: z.boolean(),
     })
     .nullable(),
+});
+
+export const meProfileUpdateInputSchema = z.object({
+  displayName: z.string().trim().min(1).max(200).nullable(),
+});
+export type MeProfileUpdateInput = z.infer<typeof meProfileUpdateInputSchema>;
+
+export const meProfileUpdateOutputSchema = z.object({
+  displayName: z.string().nullable(),
 });
 
 export const memberBillingOrdersQuerySchema = z.object({
@@ -1447,6 +1457,7 @@ export const API_ROUTES = {
   termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
+  meProfile: { method: 'POST', path: '/api/me/profile' },
   memberBillingOrders: { method: 'GET', path: '/api/me/billing-orders' },
   memberDataExport: { method: 'GET', path: '/api/me/data-export' },
   memberErasureRequest: { method: 'GET', path: '/api/me/erasure-request' },
@@ -1676,6 +1687,7 @@ export const API_PATHS = {
   termsConsent: API_ROUTES.termsConsent.path,
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
+  meProfile: API_ROUTES.meProfile.path,
   memberBillingOrders: API_ROUTES.memberBillingOrders.path,
   memberDataExport: API_ROUTES.memberDataExport.path,
   memberErasureRequest: API_ROUTES.memberErasureRequest.path,

@@ -50,6 +50,7 @@ const context = (kind: 'member' | 'staff'): Ctx => ({
     tenantName: 'Acme',
     staffRole: kind === 'staff' ? 'admin' : null,
     memberId: kind === 'member' ? member.id : null,
+    memberDisplayName: null,
     memberBannedAt: null,
   },
 });
@@ -89,6 +90,7 @@ const harness = (selectedMember: Member | null = member) => {
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateDisplayName: async () => null,
     setBanned: async () => null,
   };
   let sequence = 0;

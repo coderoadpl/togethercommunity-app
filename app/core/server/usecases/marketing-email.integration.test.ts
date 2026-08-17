@@ -71,11 +71,13 @@ const NOW = '1998-07-22T10:00:00.000Z';
 const ctx: Ctx = { identity: {
   userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
+memberDisplayName: null,
 memberBannedAt: null,
 } };
 const anonymousCtx: Ctx = { identity: {
   userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: null, memberId: null,
+memberDisplayName: null,
 memberBannedAt: null,
 } };
 const clock = { nowIso: () => NOW };
@@ -132,6 +134,7 @@ const setup = async (emails = ['member@example.test']) => {
     layouts: new InMemoryEmailLayoutRepository(),
     audience: new InMemoryMarketingAudienceRepository(emails.map((email, index) => ({
       memberId: `member-${String(index + 1)}`, email, displayName: null, productIds: [],
+    memberDisplayName: null,
     memberBannedAt: null,
     }))),
     sesSettings: new InMemoryTenantSesSettingsRepository([settings]), ses: new FakeSesMarketingSender(),
@@ -823,7 +826,7 @@ describe('marketing e-mail use-case integration', () => {
     const member = { id: 'member-1', tenantId: 'tenant-1', userId: 'user-1', email: 'member@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null };
     const members = {
       findById: async () => member, findByEmail: async () => member, listWithProductIds: async () => [],
-      create: async () => undefined, updateEmail: async () => member, setBanned: async () => null,
+      create: async () => undefined, updateEmail: async () => member, updateDisplayName: async () => member, setBanned: async () => null,
     };
     const erased = await removeMember(ctx, { memberId: 'member-1' }, {
       members,

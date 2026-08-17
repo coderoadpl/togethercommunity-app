@@ -28,6 +28,7 @@ const ctx = (staffRole: StaffRole | null = 'owner', tenantId: string | null = 't
     tenantName: tenantId ? 'Acme' : null,
     staffRole,
     memberId: null,
+  memberDisplayName: null,
   memberBannedAt: null,
   } satisfies Identity,
 });

@@ -416,6 +416,11 @@ export interface MemberRepository {
   listWithProductIds(tenantId: string, now: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
   updateEmail(tenantId: string, memberId: string, email: string): Promise<Member | null>;
+  updateDisplayName(
+    tenantId: string,
+    memberId: string,
+    displayName: string | null,
+  ): Promise<Member | null>;
   setBanned(
     tenantId: string,
     input: {

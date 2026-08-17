@@ -61,6 +61,7 @@ const identity = (staffRole: 'admin' | null): Identity => ({
   tenantName: 'Alpha',
   staffRole,
   memberId: staffRole === null ? 'member-1' : null,
+memberDisplayName: null,
 memberBannedAt: null,
 });
 

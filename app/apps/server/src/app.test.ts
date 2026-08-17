@@ -158,6 +158,7 @@ const deps = (input: {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
       setBanned: async () => null,
     },
     memberEvents: {
@@ -400,6 +401,7 @@ const deps = (input: {
           listWithProductIds: async () => [],
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
+          updateDisplayName: async () => null,
         setBanned: async () => null,
         },
         grants: {

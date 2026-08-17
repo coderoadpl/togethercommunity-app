@@ -739,7 +739,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       identity: {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
         emailVerified: true,
-        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
+        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
@@ -756,7 +756,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
     emailVerified: true,
-    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
+    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
     return tenantUrl(tenantSlug, '/panel/marketing', {

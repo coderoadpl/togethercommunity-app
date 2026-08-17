@@ -448,6 +448,7 @@ const executeAdapterE2e = async (
         tenantName: 'Acme',
         staffRole: 'owner',
         memberId: null,
+        memberDisplayName: null,
         memberBannedAt: null,
       },
     },

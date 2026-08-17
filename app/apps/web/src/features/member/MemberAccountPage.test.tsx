@@ -14,7 +14,7 @@ import { MemberAccountPage } from './MemberAccountPage.js';
 
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
-const stubMe = (emailVerified = true) =>
+const stubMe = (emailVerified = true, tenant: Record<string, unknown> = {}) =>
   http.get('*/api/me', () =>
     HttpResponse.json({
       ok: true,
@@ -23,7 +23,10 @@ const stubMe = (emailVerified = true) =>
         email: 'member@together.dev',
         name: 'Member',
         emailVerified,
-        tenant: { id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1', banned: false },
+        tenant: {
+          id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1', banned: false,
+          ...tenant,
+        },
       },
     }),
   );
@@ -99,6 +102,46 @@ describe('MemberAccountPage', () => {
       email: 'member@together.dev',
       callbackURL: 'http://localhost:3000/login?verification=verified',
     });
+  });
+
+  it('saves the community display name and confirms the write', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ ok: true, data: { displayName: 'Ada Lovelace' } });
+      }),
+    );
+    await renderAccount();
+
+    const input = await screen.findByLabelText(pl.account.displayNameLabel);
+    expect(input).toHaveValue('Ada');
+    const save = screen.getByTestId('account-display-name-save');
+    expect(save).toBeDisabled();
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Ada Lovelace');
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+
+    expect(await screen.findByTestId('account-display-name-saved')).toHaveTextContent(
+      pl.account.displayNameSaved,
+    );
+    expect(body).toEqual({ displayName: 'Ada Lovelace' });
+  });
+
+  it('hides the profile card for a staff identity without a member row', async () => {
+    server.use(
+      stubMe(true, { staffRole: 'owner', memberId: null }),
+      stubSettings(null),
+      stubBillingOrders(),
+    );
+    await renderAccount();
+
+    expect(await screen.findByTestId('account-email')).toBeInTheDocument();
+    expect(screen.queryByLabelText(pl.account.displayNameLabel)).not.toBeInTheDocument();
   });
 
   it('hides the manage-payments link when no billing portal URL is set', async () => {

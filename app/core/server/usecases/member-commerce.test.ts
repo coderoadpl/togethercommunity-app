@@ -29,6 +29,7 @@ const identity: Identity = {
   tenantName: 'Acme',
   staffRole: 'owner',
   memberId: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 };
 
@@ -109,6 +110,7 @@ const members: MemberRepository = {
   listWithProductIds: async () => [],
   create: async () => undefined,
   updateEmail: async () => null,
+  updateDisplayName: async () => null,
   setBanned: async () => null,
 };
 

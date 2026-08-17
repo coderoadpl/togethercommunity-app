@@ -308,6 +308,21 @@ describe('member repository', () => {
     expect(acmeMember?.activeProductIds).toContain('prod-acme');
   });
 
+  it('sets and clears the display name inside the owning tenant only', async () => {
+    const repo = createMemberRepository(db);
+
+    expect(await repo.updateDisplayName(ACME, 'mem-acme', 'Ada L.')).toMatchObject({
+      id: 'mem-acme',
+      displayName: 'Ada L.',
+    });
+    expect(await repo.findById(ACME, 'mem-acme')).toMatchObject({ displayName: 'Ada L.' });
+    expect(await repo.updateDisplayName(GLOBEX, 'mem-acme', 'Stolen')).toBeNull();
+    expect(await repo.findById(ACME, 'mem-acme')).toMatchObject({ displayName: 'Ada L.' });
+    expect(await repo.updateDisplayName(ACME, 'mem-acme', null)).toMatchObject({
+      displayName: null,
+    });
+  });
+
   it('updates ban state and appends its event atomically', async () => {
     const repo = createMemberRepository(db);
     const event = {

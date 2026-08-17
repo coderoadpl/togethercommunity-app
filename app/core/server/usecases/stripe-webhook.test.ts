@@ -207,6 +207,7 @@ const harness = (
         members.set(`${tenantId}:${member.id}`, member);
       },
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
     setBanned: async () => null,
     },
     products: {

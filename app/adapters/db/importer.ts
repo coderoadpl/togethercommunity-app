@@ -1695,6 +1695,7 @@ const runSpotChecks = async (
           tenantName,
           staffRole: null,
           memberId: memberRow.id,
+          memberDisplayName: memberRow.displayName ?? null,
           memberBannedAt: null,
         },
       };

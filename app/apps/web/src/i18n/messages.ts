@@ -1331,6 +1331,11 @@ export interface Messages {
     heading: string;
     signedInAs: string;
     back: string;
+    profileHeading: string;
+    displayNameLabel: string;
+    displayNameHint: string;
+    displayNameSave: string;
+    displayNameSaved: string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;

@@ -63,6 +63,7 @@ const context = (role: 'member' | 'staff' | 'none'): Ctx => ({
     tenantName: role === 'none' ? null : 'Acme',
     staffRole: role === 'staff' ? 'admin' : null,
     memberId: role === 'member' ? 'member-1' : null,
+    memberDisplayName: null,
     memberBannedAt: null,
   },
 });
@@ -77,6 +78,7 @@ const deps = (
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateDisplayName: async () => null,
     setBanned: async () => null,
   },
   grants: {

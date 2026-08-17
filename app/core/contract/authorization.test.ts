@@ -28,6 +28,7 @@ const identity = (
   tenantName: staffRole === null && memberId === null ? null : 'Tenant',
   staffRole,
   memberId,
+  memberDisplayName: null,
   memberBannedAt,
 });
 

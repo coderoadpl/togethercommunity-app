@@ -55,6 +55,7 @@ export const resolveIdentity = async (
     tenantName: null,
     staffRole: null,
     memberId: null,
+    memberDisplayName: null,
     memberBannedAt: null,
   };
 
@@ -79,6 +80,7 @@ export const resolveIdentity = async (
     tenantName: tenant.value.tenant.name,
     staffRole: staffGrant?.staffRole ?? null,
     memberId: member?.id ?? null,
+    memberDisplayName: member?.displayName ?? null,
     memberBannedAt: member?.bannedAt ?? null,
   });
 };

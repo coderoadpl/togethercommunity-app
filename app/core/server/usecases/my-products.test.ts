@@ -16,6 +16,7 @@ const identity = (tenantId: string | null, memberId: string | null): Identity =>
   tenantName: tenantId ? 'Acme' : null,
   staffRole: null,
   memberId,
+  memberDisplayName: null,
   memberBannedAt: null,
 });
 

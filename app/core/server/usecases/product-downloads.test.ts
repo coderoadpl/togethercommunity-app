@@ -39,6 +39,7 @@ const identity = (staffRole: Identity['staffRole'], memberId: string | null): Id
   tenantName: 'Acme',
   staffRole,
   memberId,
+  memberDisplayName: null,
   memberBannedAt: null,
 });
 

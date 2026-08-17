@@ -21,6 +21,7 @@ const identity = (staffRole: Identity['staffRole']): Identity => ({
   tenantName: 'Acme',
   staffRole,
   memberId: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 });
 

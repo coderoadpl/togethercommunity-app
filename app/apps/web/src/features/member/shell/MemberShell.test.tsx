@@ -36,7 +36,14 @@ const stubViewport = (isDesktop: boolean) => {
   }));
 };
 
-const okMe = (overrides: { memberId?: string | null; banned?: boolean; tenant?: null } = {}) =>
+const okMe = (
+  overrides: {
+    memberId?: string | null;
+    banned?: boolean;
+    tenant?: null;
+    displayName?: string | null;
+  } = {},
+) =>
   http.get('/api/me', () =>
     HttpResponse.json({
       ok: true,
@@ -53,6 +60,7 @@ const okMe = (overrides: { memberId?: string | null; banned?: boolean; tenant?: 
               name: 'Acme',
               staffRole: null,
               memberId: overrides.memberId ?? 'm1',
+              displayName: overrides.displayName ?? null,
               banned: overrides.banned ?? false,
             },
       },
@@ -403,6 +411,22 @@ describe('MemberShell', () => {
     expect(identity).toHaveTextContent('Jan Uczestnik');
     expect(identity).toHaveTextContent('jan@example.com');
     expect(identity).toHaveTextContent('JU');
+  });
+
+  it('prefers the community display name over the account name', async () => {
+    stubViewport(true);
+    server.use(
+      okMe({ displayName: 'Janek z Acme' }),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+    );
+
+    await renderShell('/my');
+
+    const identity = await screen.findByTestId('member-identity');
+    expect(identity).toHaveTextContent('Janek z Acme');
+    expect(identity).toHaveTextContent('JZ');
   });
 
   it('renders the banned banner once, above the page outlet', async () => {

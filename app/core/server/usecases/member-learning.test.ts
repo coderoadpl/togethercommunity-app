@@ -39,6 +39,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   tenantName: 'Acme',
   staffRole: 'owner',
   memberId: null,
+  memberDisplayName: null,
   memberBannedAt: null,
   ...over,
 });
@@ -208,6 +209,7 @@ const deps = (input: {
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateDisplayName: async () => null,
   setBanned: async () => null,
   };
 

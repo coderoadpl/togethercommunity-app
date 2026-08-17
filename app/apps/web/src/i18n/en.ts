@@ -1479,6 +1479,11 @@ export const en: Messages = {
     heading: 'Your account',
     signedInAs: 'Signed in as',
     back: '← Back to my courses',
+    profileHeading: 'Profile',
+    displayNameLabel: 'Display name',
+    displayNameHint: 'Shown next to your posts and comments in this community.',
+    displayNameSave: 'Save',
+    displayNameSaved: 'Display name updated.',
     passwordHeading: 'Password',
     passwordIntro:
       'Change your password here using your current password. If you do not have a password yet, use the email link below to set one. Magic-link sign-in keeps working.',

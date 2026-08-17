@@ -43,7 +43,11 @@ export const MemberShell = () => {
   const tenant = me.data?.tenant ?? null;
   const isMember = tenant !== null && (tenant.memberId !== null || tenant.staffRole !== null);
   const identity = isMember && tenant !== null && me.data !== undefined
-    ? { name: me.data.name, email: me.data.email, tenantName: tenant.name }
+    ? {
+      name: tenant.displayName ?? me.data.name,
+      email: me.data.email,
+      tenantName: tenant.name,
+    }
     : null;
 
   const hasMobileNavigation = identity !== null && !isDesktop;

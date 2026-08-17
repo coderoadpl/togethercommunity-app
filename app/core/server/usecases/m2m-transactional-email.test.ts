@@ -50,6 +50,7 @@ const ctx = (key: TenantApiKey): Ctx => ({
     tenantName: 'Alpha',
     staffRole: null,
     memberId: null,
+    memberDisplayName: null,
     memberBannedAt: null,
   },
   capabilities: capabilitiesForApiKey(key),

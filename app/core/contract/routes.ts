@@ -19,6 +19,8 @@ import {
   deleteSpaceInputSchema,
   followSpaceInputSchema,
   listSpaceFeedInputSchema,
+  memberHomeFeedInputSchema,
+  memberHomeFeedSchema,
   memberSpaceSchema,
   reactToPostInputSchema,
   reactionSummarySchema,
@@ -424,6 +426,14 @@ export const memberLearningSummaryOutputSchema = z.object({
 
 export const memberNavigationOutputSchema = z.object({
   navigation: memberNavigationSchema,
+});
+
+export const memberHomeFeedGetInputSchema = memberHomeFeedInputSchema;
+
+export type MemberHomeFeedGetInput = z.input<typeof memberHomeFeedGetInputSchema>;
+
+export const memberHomeFeedOutputSchema = z.object({
+  feed: memberHomeFeedSchema,
 });
 
 export const memberTimelineOutputSchema = z.object({
@@ -1517,6 +1527,7 @@ export const API_ROUTES = {
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   memberNavigation: { method: 'GET', path: '/api/member/navigation' },
+  memberHomeFeed: { method: 'GET', path: '/api/member/home-feed' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
@@ -1734,6 +1745,7 @@ export const API_PATHS = {
   notificationsStream: API_ROUTES.notificationsStream.path,
   devGrant: API_ROUTES.devGrant.path,
   memberNavigation: API_ROUTES.memberNavigation.path,
+  memberHomeFeed: API_ROUTES.memberHomeFeed.path,
   myProducts: API_ROUTES.myProducts.path,
   memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,

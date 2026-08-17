@@ -134,6 +134,7 @@ const deps = (
     listByAuthor: async (_tenantId, authorUserId) =>
       authoredPosts.filter((value) => value.authorUserId === authorUserId),
     listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
+    listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
     listReplies: async () => [],
     updateBody: async () => null,
     softDelete: async () => null,

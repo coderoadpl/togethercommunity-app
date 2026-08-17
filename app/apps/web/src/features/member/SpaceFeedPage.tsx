@@ -160,7 +160,12 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionSummary[]>>({});
 
-  const invalidateSpaces = () => queryClient.invalidateQueries(actions.spacesInvalidates());
+  const invalidateSpaces = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.spacesInvalidates()),
+      queryClient.invalidateQueries(actions.memberHomeFeedInvalidates()),
+    ]);
+  };
   const settleFollow = async () => {
     await Promise.all([
       queryClient.invalidateQueries(actions.spacesInvalidates()),

@@ -283,6 +283,28 @@ class FakePosts implements PostRepository {
     };
   }
 
+  async listThreadsForSpaces(
+    tenantId: string,
+    query: { spaceIds: string[]; cursor?: string; limit: number },
+  ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }> {
+    const roots = this.rows
+      .filter(
+        (post) =>
+          post.tenantId === tenantId &&
+          post.contextKind === 'space' &&
+          query.spaceIds.includes(post.contextId) &&
+          post.parentPostId === null,
+      )
+      .slice(0, query.limit);
+    return {
+      threads: roots.map((post) => ({
+        post,
+        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id).length,
+      })),
+      nextCursor: null,
+    };
+  }
+
   async listReplies(tenantId: string, rootPostId: string): Promise<Post[]> {
     return this.rows.filter((post) => post.tenantId === tenantId && post.rootPostId === rootPostId && post.parentPostId !== null);
   }

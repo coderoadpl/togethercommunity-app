@@ -81,6 +81,10 @@ const okStructures = (lessonsByCourse: Record<string, ReturnType<typeof lesson>[
     });
   });
 
+const okHomeFeed = () =>
+  http.get('/api/member/home-feed', () =>
+    HttpResponse.json({ ok: true, data: { feed: { items: [], nextCursor: null } } }));
+
 const noNotifications = () =>
   http.get('/api/notifications/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }));
@@ -184,6 +188,7 @@ describe('StartPage', () => {
     server.use(
       okCourses([]),
       okNavigation({ spaces: [space('s1', 'Ogólna')] }),
+      okHomeFeed(),
       noNotifications(),
     );
 
@@ -249,6 +254,7 @@ describe('StartPage', () => {
     server.use(
       okCourses([]),
       okNavigation({ spaces: [space('s1', 'Ogólna')] }),
+      okHomeFeed(),
       noNotifications(),
     );
 
@@ -256,6 +262,60 @@ describe('StartPage', () => {
 
     const spaces = await screen.findByTestId('start-spaces');
     expect(within(spaces).getByTestId('start-spaces-link')).toHaveAttribute('href', '/community');
+  });
+
+  it('places the home feed between the continue bar and the tile sections', async () => {
+    server.use(
+      okCourses([course('c1', 'JavaScript od zera')]),
+      okNavigation({
+        spaces: [space('s1', 'Ogólna')],
+        courses: [
+          {
+            courseId: 'c1',
+            courseName: 'JavaScript od zera',
+            completedLessonCount: 1,
+            accessibleLessonCount: 3,
+            lastViewedLessonId: 'l2',
+            lastActivityAt: '2026-08-11T10:00:00.000Z',
+          },
+        ],
+      }),
+      okStructures({ c1: [lesson('l1', 'Wstęp', true), lesson('l2', 'Zmienne', false)] }),
+      okHomeFeed(),
+      noNotifications(),
+    );
+
+    await renderStart();
+
+    await screen.findByTestId('start-continue');
+    const feed = screen.getByTestId('start-feed');
+    expect(feed).toHaveTextContent(pl.start.feedSection);
+    expect([...(feed.parentElement?.children ?? [])].map((child) => child.getAttribute('data-testid')))
+      .toEqual(['start-continue', 'start-feed', 'start-spaces', 'start-courses']);
+  });
+
+  it('hides the home feed when no space is accessible', async () => {
+    server.use(
+      okCourses([course('c1', 'JavaScript od zera')]),
+      okNavigation({
+        courses: [
+          {
+            courseId: 'c1',
+            courseName: 'JavaScript od zera',
+            completedLessonCount: 0,
+            accessibleLessonCount: 2,
+            lastActivityAt: null,
+          },
+        ],
+      }),
+      okStructures({ c1: [lesson('l1', 'Wstęp', false)] }),
+      noNotifications(),
+    );
+
+    await renderStart();
+
+    expect(await screen.findByTestId('start-courses')).toBeInTheDocument();
+    expect(screen.queryByTestId('start-feed')).not.toBeInTheDocument();
   });
 
   it('shows the empty state with a route to purchased products', async () => {

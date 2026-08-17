@@ -96,6 +96,7 @@ import {
   memberCommerceOutputSchema,
   memberLearningSummaryOutputSchema,
   memberNavigationOutputSchema,
+  memberHomeFeedOutputSchema,
   memberTimelineOutputSchema,
   memberProgressResetOutputSchema,
   memberRemoveOutputSchema,
@@ -205,6 +206,7 @@ import {
   type EmailSendsExportQueryInput,
   type EmailSendsQueryInput,
   type SchedulerRunsQueryInput,
+  type MemberHomeFeedGetInput,
   type MemberRemoveInput,
   type MemberBanInput,
   type MemberErasureRequestCreateInput,
@@ -923,6 +925,20 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  memberHomeFeed: (input: MemberHomeFeedGetInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.memberHomeFeed.method,
+      suffix.length > 0 ? `${API_ROUTES.memberHomeFeed.path}?${suffix}` : API_ROUTES.memberHomeFeed.path,
+      memberHomeFeedOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   myProducts: (signal?: AbortSignal) =>
     request(options, API_ROUTES.myProducts.method, API_ROUTES.myProducts.path, myProductsOutputSchema, undefined, signal),
   exportMyData: (signal?: AbortSignal) =>

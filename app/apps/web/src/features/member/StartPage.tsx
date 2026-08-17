@@ -14,6 +14,7 @@ import { CourseCardRoot, RailProgressBar } from '../../theme.js';
 import { CourseCard } from './CourseCards.js';
 import { coursePercent, isCourseDone, type CourseLessonCounts } from './course-progress.js';
 import { continueLessonId, flattenLessons } from './CourseRail.js';
+import { HomeFeedSection } from './HomeFeedSection.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
 import { SectionHeadingLink } from './shell/shell-chrome.js';
@@ -202,6 +203,7 @@ export const StartPage = () => {
     <MemberSurface title={t.start.title} eyebrow={t.start.eyebrow}>
       <Stack useFlexGap sx={{ rowGap: '2rem' }}>
         {resumable === null ? null : <ContinueCard course={resumable} />}
+        {spaces.length === 0 ? null : <HomeFeedSection />}
         {spaces.length === 0 ? null : (
           <TileSection title={t.start.spacesSection} to="/community" testId="start-spaces">
             {spaces.map((space) => (

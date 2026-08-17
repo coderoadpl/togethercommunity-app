@@ -1175,6 +1175,8 @@ export const pl: Messages = {
     coursesSection: 'Twoje kursy',
     spacesSection: 'Przestrzenie',
     lockedSection: 'Do odblokowania',
+    feedSection: 'Z Twoich przestrzeni',
+    feedEmpty: 'Brak nowych wpisów w Twoich przestrzeniach.',
     emptyTitle: 'Nic tu jeszcze nie ma',
     emptyBody: 'Kursy i przestrzenie, do których dołączysz, pojawią się w tym miejscu.',
   },

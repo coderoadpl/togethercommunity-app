@@ -238,6 +238,11 @@ export interface PostRepository {
       order?: 'asc' | 'desc';
     },
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
+  /** Newest-first root threads across several space contexts, for the aggregated home feed. */
+  listThreadsForSpaces(
+    tenantId: string,
+    query: { spaceIds: string[]; cursor?: string; limit: number },
+  ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
   updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null>;
   /** Clears pinnedAt when marking a post deleted. */

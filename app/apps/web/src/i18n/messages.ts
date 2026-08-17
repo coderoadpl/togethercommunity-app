@@ -1041,6 +1041,8 @@ export interface Messages {
     coursesSection: string;
     spacesSection: string;
     lockedSection: string;
+    feedSection: string;
+    feedEmpty: string;
     emptyTitle: string;
     emptyBody: string;
   };

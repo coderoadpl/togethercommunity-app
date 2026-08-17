@@ -131,6 +131,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
   if (path === '/api/member/navigation') return 'space:read';
+  if (path === '/api/member/home-feed') return 'space:read';
   if (path === '/api/my/products') return 'member:product:read';
   if (path.startsWith('/api/my/products/')) return 'member:product:read';
   if (path === '/api/members/ban') return 'member:ban';
@@ -232,6 +233,7 @@ const beforeForRoute = (
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
   if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
   if (path === '/api/member/navigation') return tenantActors;
+  if (path === '/api/member/home-feed') return tenantActors;
   if (path.startsWith('/api/student/')) {
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
@@ -476,7 +478,12 @@ const beforeForUseCase = (
   if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts') return owner;
   if (capability === 'integration:test') return owner;
-  if (file === 'community-access.ts' || file === 'community.ts' || file === 'member-navigation.ts') return tenantActors;
+  if (
+    file === 'community-access.ts'
+    || file === 'community.ts'
+    || file === 'member-home-feed.ts'
+    || file === 'member-navigation.ts'
+  ) return tenantActors;
   if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
   if (file === 'support.ts') return tenantActors;
   if (file === 'spaces.ts') {

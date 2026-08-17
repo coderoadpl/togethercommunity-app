@@ -534,6 +534,7 @@ const deps = (input: {
       listRecentBodiesByAuthor: async () => [],
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
+      listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,

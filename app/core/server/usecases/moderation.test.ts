@@ -214,6 +214,7 @@ const makeDeps = (
       listRecentBodiesByAuthor: async () => [],
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
+      listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async (tenantId: string, input: { id: string; deletedAt: string }) => {

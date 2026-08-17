@@ -31,6 +31,7 @@ import type {
   LessonUncompleteInput,
   LessonCreateInput,
   LessonUpdateInput,
+  MemberHomeFeedGetInput,
   MemberProgressResetInput,
   MemberBanInput,
   MemberRemoveInput,
@@ -228,6 +229,11 @@ const myProductsScopes = {
 
 const memberNavigationScopes = {
   all: () => ['member-navigation'] as const,
+};
+
+const memberHomeFeedScopes = {
+  all: () => ['member-home-feed'] as const,
+  page: (limit?: number) => ['member-home-feed', 'page', limit ?? null] as const,
 };
 
 const membersScopes = {
@@ -558,6 +564,12 @@ export const memberNavigationQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: memberNavigationScopes.all(),
     call: ({ signal }) => api.memberNavigation(signal),
+  });
+
+export const memberHomeFeedQuery = (api: ApiClient, input: MemberHomeFeedGetInput) =>
+  defineQuery({
+    queryKey: memberHomeFeedScopes.page(input.limit),
+    call: ({ signal }) => api.memberHomeFeed(input, signal),
   });
 
 export const membersQuery = (api: ApiClient) =>
@@ -1317,6 +1329,9 @@ export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() }
 
 /** Every surface that changes a member's progress or follow state refreshes the shell aggregate. */
 export const memberNavigationInvalidates = () => ({ queryKey: memberNavigationScopes.all() });
+
+/** Every surface that adds or removes a space post refreshes the aggregated home feed. */
+export const memberHomeFeedInvalidates = () => ({ queryKey: memberHomeFeedScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
 

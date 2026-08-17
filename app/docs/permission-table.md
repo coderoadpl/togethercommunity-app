@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 99. Route rows: 242. Exported `Ctx` use-case rows: 204.
+Closed capability count: 99. Route rows: 243. Exported `Ctx` use-case rows: 205.
 
 ## Human-readable diff
 
@@ -147,6 +147,7 @@ no changes
 | `POST /api/products/:productId/downloads/:assetId/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/products/:productId/downloads/:assetId` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/member/navigation` | space:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/member/home-feed` | space:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/course-cover/upload` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/course-cover/complete` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/product-cover/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -415,6 +416,7 @@ no changes
 | `member-erasure-requests.ts#getMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-erasure-requests.ts#cancelMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-events.ts#listMemberTimeline` | member:timeline:read | owner, admin | owner, admin | yes | core/server/usecases/member-events.ts authorization call |
+| `member-home-feed.ts#getMemberHomeFeed` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-home-feed.ts authorization call |
 | `member-learning.ts#getMemberLearningSummary` | member:learning:read | owner, admin | owner, admin | yes | core/server/usecases/member-learning.ts authorization call |
 | `member-navigation.ts#getMemberNavigation` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-navigation.ts authorization call |
 | `members.ts#listMembers` | member:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
@@ -485,11 +487,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:135` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:907` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:909` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1352` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1352` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:136` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:909` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:911` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1354` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1354` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:79` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

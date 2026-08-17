@@ -1772,6 +1772,69 @@ describe('post repository', () => {
     ]);
   });
 
+  it('pages newest-first root threads across several spaces', async () => {
+    const repo = createPostRepository(db);
+    const feedPost = (
+      id: string,
+      contextId: string,
+      createdAt: string,
+      over: Partial<Post> = {},
+    ): Post => ({
+      id,
+      tenantId: ACME,
+      contextKind: 'space',
+      contextId,
+      parentPostId: null,
+      rootPostId: id,
+      authorUserId: 'user-acme-member',
+      authorDisplay: 'Acme Member',
+      authorIsStaff: false,
+      body: `Body ${id}`,
+      createdAt,
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+      ...over,
+    });
+    const spaceIds = ['space-feed-one', 'space-feed-two'];
+    await repo.createPost(ACME, feedPost('post-feed-a', 'space-feed-one', '1998-07-14T08:00:00.000Z'));
+    await repo.createPost(ACME, feedPost('post-feed-b', 'space-feed-two', '1998-07-14T09:00:00.000Z'));
+    await repo.createPost(ACME, feedPost('post-feed-c', 'space-feed-one', '1998-07-14T10:00:00.000Z'));
+    await repo.createPost(
+      ACME,
+      feedPost('post-feed-reply', 'space-feed-one', '1998-07-14T11:00:00.000Z', {
+        parentPostId: 'post-feed-c',
+        rootPostId: 'post-feed-c',
+      }),
+    );
+    await repo.createPost(
+      ACME,
+      feedPost('post-feed-elsewhere', 'space-feed-unlisted', '1998-07-14T12:00:00.000Z'),
+    );
+    await repo.createPost(
+      GLOBEX,
+      feedPost('post-feed-globex', 'space-feed-one', '1998-07-14T13:00:00.000Z', { tenantId: GLOBEX }),
+    );
+
+    const first = await repo.listThreadsForSpaces(ACME, { spaceIds, limit: 2 });
+    expect(first.threads.map((thread) => thread.post.id)).toEqual(['post-feed-c', 'post-feed-b']);
+    expect(first.threads[0]?.replyCount).toBe(1);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await repo.listThreadsForSpaces(ACME, {
+      spaceIds,
+      limit: 2,
+      cursor: first.nextCursor ?? '',
+    });
+    expect(second.threads.map((thread) => thread.post.id)).toEqual(['post-feed-a']);
+    expect(second.nextCursor).toBeNull();
+
+    await expect(repo.listThreadsForSpaces(ACME, { spaceIds: [], limit: 2 })).resolves.toEqual({
+      threads: [],
+      nextCursor: null,
+    });
+  });
+
   it('clears a pin when soft-deleting a post', async () => {
     const repo = createPostRepository(db);
     const post: Post = {

@@ -48,6 +48,7 @@ import {
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
   memberBanInputSchema,
+  memberHomeFeedGetInputSchema,
   memberProgressResetInputSchema,
   memberErasureRequestCreateInputSchema,
   memberErasureRejectInputSchema,
@@ -196,6 +197,7 @@ import {
   getMarketingConsentDefinition,
   getMemberCommerceOverview,
   getMemberLearningSummary,
+  getMemberHomeFeed,
   getMemberNavigation,
   getNextLesson,
   getOrder,
@@ -1548,6 +1550,16 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   app.get(API_PATHS.memberNavigation, async (c) => {
     const result = await getMemberNavigation({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ navigation: result.value }) : result);
+  });
+
+  app.get(API_PATHS.memberHomeFeed, async (c) => {
+    const parsed = memberHomeFeedGetInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid home feed query', parsed.error.flatten())));
+    const result = await getMemberHomeFeed({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ feed: result.value }) : result);
   });
 
   app.post(API_PATHS.courseCoverUpload, async (c) => {

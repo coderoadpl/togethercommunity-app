@@ -1158,6 +1158,8 @@ export const en: Messages = {
     coursesSection: 'Your courses',
     spacesSection: 'Spaces',
     lockedSection: 'Unlock more',
+    feedSection: 'From your spaces',
+    feedEmpty: 'No recent posts in your spaces.',
     emptyTitle: 'Nothing here yet',
     emptyBody: 'Courses and spaces you join will show up here.',
   },

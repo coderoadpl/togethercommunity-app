@@ -99,6 +99,9 @@ import {
   PanelSpacesRoute,
   PanelSpaceCreateRoute,
   PanelSpaceDetailRoute,
+  PanelSpaceEventsRoute,
+  PanelEventCreateRoute,
+  PanelEventEditRoute,
 } from './routes/panel.js';
 import {
   CommunityEventRoute,
@@ -345,6 +348,21 @@ const panelSpaceDetailRoute = createRoute({
   path: 'spaces/$spaceId',
   component: PanelSpaceDetailRoute,
 });
+const panelSpaceEventsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/$spaceId/events',
+  component: PanelSpaceEventsRoute,
+});
+const panelEventCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/$spaceId/events/new',
+  component: PanelEventCreateRoute,
+});
+const panelEventEditRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/$spaceId/events/$eventId',
+  component: PanelEventEditRoute,
+});
 const panelSalesRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'sales',
@@ -510,6 +528,9 @@ const router = createRouter({
       panelSpacesRoute,
       panelSpaceCreateRoute,
       panelSpaceDetailRoute,
+      panelSpaceEventsRoute,
+      panelEventCreateRoute,
+      panelEventEditRoute,
       panelSalesRoute,
       panelOrderDetailRoute,
       panelCouponsRoute,

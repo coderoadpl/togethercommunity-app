@@ -27,6 +27,9 @@ export {
   PanelSpacesRoute,
   PanelSpaceCreateRoute,
   PanelSpaceDetailRoute,
+  PanelSpaceEventsRoute,
+  PanelEventCreateRoute,
+  PanelEventEditRoute,
 } from '../features/home/panel-routes.js';
 export {
   CampaignCreatePage,

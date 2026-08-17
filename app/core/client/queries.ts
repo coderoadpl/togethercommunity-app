@@ -78,6 +78,7 @@ import type {
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
+  PublicSpaceEventInput,
   PublicSpaceThreadGetInput,
   SpaceArchiveInput,
   SpaceCreateInput,
@@ -198,6 +199,10 @@ const publicSurfaceScopes = {
     ['public-space-feed', spaceId, limit ?? null] as const,
   spaceThread: (spaceId: string, postId: string) =>
     ['public-space-thread', spaceId, postId] as const,
+  spaceEvents: (spaceId: string, scope?: string) =>
+    ['public-space-events', spaceId, scope ?? null] as const,
+  spaceEvent: (spaceId: string, eventId: string) =>
+    ['public-space-event', spaceId, eventId] as const,
 };
 
 const authConfigScopes = {
@@ -554,6 +559,18 @@ export const publicSpaceThreadQuery = (api: ApiClient, input: PublicSpaceThreadG
   defineQuery({
     queryKey: publicSurfaceScopes.spaceThread(input.spaceId, input.postId),
     call: ({ signal }) => api.publicSpaceThread(input, signal),
+  });
+
+export const publicSpaceEventsQuery = (api: ApiClient, input: EventsBySpaceInput) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.spaceEvents(input.spaceId, input.scope),
+    call: ({ signal }) => api.publicSpaceEvents(input, signal),
+  });
+
+export const publicSpaceEventQuery = (api: ApiClient, input: PublicSpaceEventInput) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.spaceEvent(input.spaceId, input.eventId),
+    call: ({ signal }) => api.publicSpaceEvent(input, signal),
   });
 
 export const publicPaymentConfigQuery = (api: ApiClient) =>

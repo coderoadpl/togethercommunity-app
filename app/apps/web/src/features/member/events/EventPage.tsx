@@ -12,7 +12,9 @@ import { localizeError, useLanguage, useTranslations } from '../../../i18n/index
 import { FinePrint, PostBody, PostMetaText } from '../../../theme.js';
 import { MemberSurface } from '../MemberSurface.js';
 import { ThreadDiscussion } from '../ThreadDiscussion.js';
+import { useViewerKind } from '../viewer.js';
 import { formatEventRange, hasEnded } from './event-time.js';
+import { PublicEventPage } from './PublicEventPage.js';
 import { RsvpButtons } from './RsvpButtons.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -22,6 +24,28 @@ const isMissing = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'not_found';
 
 export const EventPage = ({ spaceId, eventId }: { spaceId: string; eventId: string }) => {
+  const t = useTranslations();
+  const viewer = useViewerKind();
+
+  if (viewer === 'pending') {
+    return (
+      <MemberSurface
+        title={t.events.sectionTitle}
+        eyebrow={t.events.eyebrow}
+        width="wide"
+        state={{ kind: 'loading', label: t.events.loading }}
+      />
+    );
+  }
+
+  return viewer === 'anonymous' ? (
+    <PublicEventPage spaceId={spaceId} eventId={eventId} />
+  ) : (
+    <MemberEventPage spaceId={spaceId} eventId={eventId} />
+  );
+};
+
+const MemberEventPage = ({ spaceId, eventId }: { spaceId: string; eventId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const navigate = useNavigate();

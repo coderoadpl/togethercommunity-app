@@ -113,7 +113,7 @@ describe('ImageAssetField', () => {
     expect(screen.getByText(pl.imageAssets.storageMissing)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: pl.imageAssets.storageLink })).toHaveAttribute(
       'href',
-      '/panel/integrations',
+      '/panel/integrations#storage',
     );
   });
 });

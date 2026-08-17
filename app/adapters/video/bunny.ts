@@ -38,12 +38,12 @@ export const createBunnyVideoLibrary = (fetchImpl: typeof fetch = fetch): VideoL
       );
     }
     if (response.status === 401 || response.status === 403) {
-      return err(integrationAuth('Bunny Stream rejected the API key. Save a valid Stream API key in Integrations.'));
+      return err(integrationAuth('Bunny Stream rejected the API key. Save a valid Stream API key in Integrations → Video.'));
     }
     if (response.status === 404) {
       return err(
         integrationAuth(
-          `Bunny Stream has no library "${input.libraryId}" for this API key. Check the library id in Integrations.`,
+          `Bunny Stream has no library "${input.libraryId}" for this API key. Check the library id in Integrations → Video.`,
         ),
       );
     }

@@ -1118,6 +1118,7 @@ export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
 export const integrationTestInputSchema = z.object({
   provider: integrationProviderSchema,
   emailTransport: emailIntegrationTransportSchema.optional(),
+  language: languageSchema.optional(),
 }).superRefine((input, ctx) => {
   if (input.emailTransport !== undefined && input.provider !== 'email') {
     ctx.addIssue({

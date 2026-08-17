@@ -24,7 +24,18 @@ const keyShape = (value: unknown): unknown => {
   return 'leaf';
 };
 
+const plainStrings = (value: unknown): string[] => {
+  if (typeof value === 'string') return [value];
+  if (value && typeof value === 'object') return Object.values(value).flatMap(plainStrings);
+  return [];
+};
+
 describe('i18n dictionaries', () => {
+  it('never names the retired sending-settings page', () => {
+    expect(plainStrings(pl).filter((text) => text.includes('Ustawienia wysyłki'))).toEqual([]);
+    expect(plainStrings(en).filter((text) => text.includes('Sending settings'))).toEqual([]);
+  });
+
   it('share an identical key structure across every language', () => {
     expect(keyShape(dictionaries.en)).toEqual(keyShape(dictionaries.pl));
   });

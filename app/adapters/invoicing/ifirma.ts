@@ -162,7 +162,7 @@ const providerError = (
 ): AppError => {
   if (status === 401 || status === 403 || (code !== null && code >= 400 && code <= 403)) {
     return integrationAuth(
-      `iFirma rejected the username or faktura API key. Update both in Integrations.${errorDetail(information)}`,
+      `iFirma rejected the username or faktura API key. Update both in Integrations → Invoicing.${errorDetail(information)}`,
     );
   }
   if (code === 100 || status >= 500) {
@@ -219,11 +219,11 @@ const invalidConfig = (config: IfirmaConfig): AppError | null => {
   try {
     invoiceApiKeyBytes(config.invoiceApiKey);
     return config.username.trim() === ''
-      ? integrationAuth('The iFirma username is empty. Update it in Integrations.')
+      ? integrationAuth('The iFirma username is empty. Update it in Integrations → Invoicing.')
       : null;
   } catch {
     return integrationAuth(
-      'The iFirma faktura API key must be a hexadecimal key copied from iFirma. Update it in Integrations.',
+      'The iFirma faktura API key must be a hexadecimal key copied from iFirma. Update it in Integrations → Invoicing.',
     );
   }
 };

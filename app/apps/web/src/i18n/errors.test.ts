@@ -29,4 +29,23 @@ describe('localizeError', () => {
     expect(localizeErrorCode('slug_reserved', en)).toBe(en.errors.messageSlugReservedGeneric);
     expect(localizeErrorCode('slug_reserved', pl)).not.toContain('…');
   });
+
+  it('points sending failures at the e-mail sub-tab instead of the generic integrations message', () => {
+    for (const code of ['ses_not_configured', 'broadcasts_disabled'] as const) {
+      expect(localizeErrorCode(code, pl)).toBe(pl.errors.messageEmailSendingNotConfigured);
+      expect(localizeErrorCode(code, en)).toBe(en.errors.messageEmailSendingNotConfigured);
+    }
+    expect(pl.errors.messageEmailSendingNotConfigured).toContain('Integracje → E-mail');
+    expect(en.errors.messageEmailSendingNotConfigured).toContain('Integrations → E-mail');
+  });
+
+  it('tells the owner to configure an own provider when the platform pool is exhausted', () => {
+    expect(localizeErrorCode('transactional_platform_cap_reached', pl)).toBe(
+      pl.errors.messagePlatformEmailPoolExhausted,
+    );
+    expect(localizeErrorCode('transactional_platform_cap_reached', en)).toBe(
+      en.errors.messagePlatformEmailPoolExhausted,
+    );
+    expect(pl.errors.messagePlatformEmailPoolExhausted).toContain('Integracje → E-mail');
+  });
 });

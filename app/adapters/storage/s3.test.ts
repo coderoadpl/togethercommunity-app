@@ -36,12 +36,15 @@ const storageResponse = (
   text: async () => body,
 });
 
-const fakeBucket = (failure?: {
-  method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
-  status: number;
-  body: string;
-  headers?: Record<string, string>;
-}) => {
+const fakeBucket = (
+  failure?: {
+    method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
+    status: number;
+    body: string;
+    headers?: Record<string, string>;
+  },
+  allowedOrigins?: string[],
+) => {
   const requests: Array<{
     method: string;
     url: string;
@@ -71,7 +74,15 @@ const fakeBucket = (failure?: {
     if (failure !== undefined && failure.method === init.method) {
       return storageResponse(failure.status, failure.body, failure.headers);
     }
-    if (init.method === 'OPTIONS') return storageResponse(204, '');
+    if (init.method === 'OPTIONS') {
+      if (allowedOrigins === undefined) return storageResponse(204, '');
+      const origin = init.headers?.Origin ?? '';
+      return storageResponse(204, '', {
+        'access-control-allow-origin': allowedOrigins.includes(origin) ? origin : 'https://denied.example',
+        'access-control-allow-methods': 'PUT',
+        'access-control-allow-headers': 'content-type',
+      });
+    }
     if (init.method === 'PUT') {
       objects.set(path, init.body ?? '');
       return storageResponse(200, '');
@@ -518,6 +529,45 @@ describe('createS3StorageProvider', () => {
       'Access-Control-Request-Method': 'PUT',
       'Access-Control-Request-Headers': 'content-type',
     });
+  });
+
+  it('preflights every requested origin and passes when the bucket allows them all', async () => {
+    const bucket = fakeBucket(undefined, ['https://acme.together.example', 'https://app.together.example']);
+    const storage = createS3StorageProvider(resolver, {
+      fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
+      corsOrigin: 'https://app.together.example',
+    });
+
+    await expect(storage.probe(
+      MINIO_CONFIGURATION,
+      ['https://acme.together.example', 'https://app.together.example'],
+    )).resolves.toMatchObject({ ok: true, value: { code: 'storage.available' } });
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS', 'OPTIONS']);
+    expect(bucket.requests.slice(3).map((request) => request.headers?.Origin)).toEqual([
+      'https://acme.together.example',
+      'https://app.together.example',
+    ]);
+  });
+
+  it('names the rejected tenant origin when only the apex is allowed', async () => {
+    const bucket = fakeBucket(undefined, ['https://app.together.example']);
+    const storage = createS3StorageProvider(resolver, {
+      fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
+      corsOrigin: 'https://app.together.example',
+    });
+
+    await expect(storage.probe(
+      MINIO_CONFIGURATION,
+      ['https://acme.together.example', 'https://app.together.example'],
+    )).resolves.toMatchObject({
+      ok: false,
+      error: {
+        details: { providerCode: 'storage.cors', corsOrigin: 'https://acme.together.example' },
+      },
+    });
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
   });
 
   it.each([

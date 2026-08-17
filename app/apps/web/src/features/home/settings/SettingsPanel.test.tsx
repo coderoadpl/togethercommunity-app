@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -48,9 +55,16 @@ const EMPTY_SETTINGS: StoredSettings = {
   privacyUrl: null,
 };
 
-const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true) => {
+const PANEL_TENANT = {
+  id: 'tenant-akademia',
+  slug: 'akademia',
+  name: 'Akademia',
+  staffRole: 'owner' as const,
+  memberId: null,
+};
+
+const installSettingsBackend = (initial: StoredSettings) => {
   let settings = { ...initial };
-  let secrets: Array<{ key: string; maskedPreview: string; updatedAt: string }> = [];
   const updates: unknown[] = [];
 
   server.use(
@@ -67,46 +81,53 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = t
       }
       return HttpResponse.json({ ok: true, data: { settings } });
     }),
-    http.get('/api/tenant-secrets', () =>
-      HttpResponse.json({
-        ok: true,
-        data: {
-          secrets,
-          stripeMode: null,
-          stripeWebhookUrl: 'https://app.example.test/api/webhooks/stripe/tenant-1',
-        },
-      })),
-    http.post('/api/tenant-secrets', async ({ request }) => {
-      const body = await request.json();
-      const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';
-      const secret = {
-        key,
-        maskedPreview: '••••test',
-        updatedAt: '2026-07-28T10:00:00.000Z',
-      };
-      secrets = [...secrets.filter((item) => item.key !== key), secret];
-      return HttpResponse.json({ ok: true, data: { secret } });
-    }),
-    http.post('/api/integrations/ksef/test', () =>
-      HttpResponse.json({
-        ok: true,
-        data: { ok: true, diagnostic: 'KSeF accepted the token for this NIP context.' },
-      })),
   );
+
+  return { updates };
+};
+
+const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true) => {
+  const { updates } = installSettingsBackend(initial);
 
   const { queryClient } = renderWithProviders(
     <PanelContextProvider
-      value={{
-        tenant: { id: 'tenant-akademia', slug: 'akademia', name: 'Akademia', staffRole: 'owner', memberId: null },
-        email: 'creator3@together.dev',
-        emailVerified,
-      }}
+      value={{ tenant: PANEL_TENANT, email: 'creator3@together.dev', emailVerified }}
     >
       <SettingsPanel />
     </PanelContextProvider>,
   );
 
   return { queryClient, updates };
+};
+
+const renderPanelInRouter = (initial: StoredSettings = EMPTY_SETTINGS) => {
+  installSettingsBackend(initial);
+
+  const rootRoute = createRootRoute();
+  const settingsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/settings',
+    component: () => (
+      <PanelContextProvider
+        value={{ tenant: PANEL_TENANT, email: 'creator3@together.dev', emailVerified: true }}
+      >
+        <SettingsPanel />
+      </PanelContextProvider>
+    ),
+  });
+  const integrationsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/integrations',
+    component: () => <div data-testid="integrations-route" />,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([settingsRoute, integrationsRoute]),
+    history: createMemoryHistory({ initialEntries: ['/panel/settings'] }),
+  });
+
+  renderWithProviders(<RouterProvider router={router} />);
+
+  return { router };
 };
 
 const openSettingsSection = async (label: string) => {
@@ -130,8 +151,18 @@ describe('SettingsPanel information architecture', () => {
       pl.settingsNavigation.diagnostics,
     ]);
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'settings-panel-company');
-    expect(document.querySelector('#billing')).not.toBeNull();
     expect(document.querySelector('#support')).not.toBeNull();
+    expect(screen.queryByTestId('billing-portal-url')).not.toBeInTheDocument();
+  });
+
+  it('sends the retired billing deep link to the integrations stripe tab', async () => {
+    window.history.replaceState(null, '', '/panel/settings#billing');
+
+    const { router } = renderPanelInRouter();
+
+    expect(await screen.findByTestId('integrations-route')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/panel/integrations');
+    expect(router.state.location.hash).toBe('stripe');
   });
 
   it('opens the company tab for billing and support deep links', async () => {
@@ -318,21 +349,16 @@ describe('SettingsPanel legal documents', () => {
 });
 
 describe('SettingsPanel direct KSeF', () => {
-  it('keeps the token write-only, explains InvoiceWrite, and tests stored credentials', async () => {
-    renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
+  it('points the KSeF credentials at the invoicing integration instead of duplicating them', async () => {
+    renderPanelInRouter({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
 
-    expect(await screen.findAllByText(/InvoiceWrite/)).not.toHaveLength(0);
-    expect(await screen.findByTestId('secret-input-ksef.token')).toHaveAttribute('type', 'password');
-    await userEvent.type(screen.getByTestId('secret-input-ksef.contextNip'), '5555555555');
-    await userEvent.click(screen.getByTestId('secret-save-ksef.contextNip'));
-    await userEvent.type(screen.getByTestId('secret-input-ksef.token'), 'test-token');
-    await userEvent.click(screen.getByTestId('secret-save-ksef.token'));
-    const testButton = screen.getByTestId('ksef-test-connection');
-    await waitFor(() => expect(testButton).toBeEnabled());
-    await userEvent.click(testButton);
-    expect(await screen.findByTestId('ksef-test-result')).toHaveTextContent(
-      'KSeF accepted the token for this NIP context.',
+    expect(await screen.findByText(pl.billing.ksefConfiguredInIntegrations)).toBeInTheDocument();
+    expect(screen.getByTestId('ksef-integrations-link')).toHaveAttribute(
+      'href',
+      '/panel/integrations#invoicing',
     );
+    expect(screen.queryByTestId('secret-input-ksef.token')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ksef-test-connection')).not.toBeInTheDocument();
   });
 });
 

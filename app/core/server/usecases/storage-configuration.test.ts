@@ -43,9 +43,10 @@ const ctx = (role: 'owner' | 'admin'): Ctx => ({
   } satisfies Identity,
 });
 
-const harness = (probeFails = false) => {
+const harness = (probeFails = false, corsOrigins?: string[]) => {
   const rows: TenantSecret[] = [];
   const probes: StorageConfiguration[] = [];
+  const probedOrigins: (string[] | undefined)[] = [];
   const tenantSecrets: TenantSecretRepository = {
     listByTenant: async () => rows,
     findByKey: async (_tenantId, key) => rows.find((row) => row.key === key) ?? null,
@@ -57,8 +58,9 @@ const harness = (probeFails = false) => {
   };
   const storage: StorageProvider = {
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
-    probe: async (input) => {
+    probe: async (input, origins) => {
       probes.push(input);
+      probedOrigins.push(origins);
       return probeFails
         ? err(integrationAuth('rejected', { providerCode: 'storage.credentials' }))
         : ok({ code: 'storage.available', message: 'probe complete' });
@@ -72,6 +74,7 @@ const harness = (probeFails = false) => {
   };
   const deps: StorageConfigurationDeps = {
     storage,
+    ...(corsOrigins === undefined ? {} : { corsOrigins }),
     tenantSecrets,
     secretCrypto: {
       encrypt: (plaintext) => ({ ciphertext: `cipher:${plaintext}`, iv: 'iv', authTag: 'tag' }),
@@ -80,7 +83,7 @@ const harness = (probeFails = false) => {
     ids: { nextId: () => 'secret-storage' },
     clock: { nowIso: () => NOW },
   };
-  return { deps, probes, rows };
+  return { deps, probedOrigins, probes, rows };
 };
 
 describe('storage configuration', () => {
@@ -121,6 +124,16 @@ describe('storage configuration', () => {
       error: { code: 'integration_auth', details: { providerCode: 'storage.credentials' } },
     });
     expect(h.rows).toEqual([]);
+  });
+
+  it('probes every request origin passed by the caller', async () => {
+    const origins = ['https://acme.together.example', 'https://app.together.example'];
+    const h = harness(false, origins);
+
+    await expect(probeStorageConnection(ctx('owner'), configuration, h.deps)).resolves.toMatchObject({ ok: true });
+    await expect(configureStorageConnection(ctx('owner'), configuration, h.deps)).resolves.toMatchObject({ ok: true });
+
+    expect(h.probedOrigins).toEqual([origins, origins]);
   });
 
   it('rejects bucket names that could control the probe path', async () => {

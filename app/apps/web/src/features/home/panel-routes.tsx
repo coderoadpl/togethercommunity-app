@@ -151,6 +151,10 @@ export const PanelIntegrationsRoute = () => {
   return <IntegrationsPanel />;
 };
 
+export const PanelMarketingSettingsRedirectRoute = () => (
+  <Navigate to="/panel/integrations" hash="email" replace />
+);
+
 export const PanelSalesRoute = () => <SalesPanel />;
 export const PanelOrderDetailRoute = () => {
   const params = useParams({ strict: false });

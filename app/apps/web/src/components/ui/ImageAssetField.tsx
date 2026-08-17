@@ -112,7 +112,7 @@ export const ImageAssetField = ({
       {storageMissing ? (
         <Alert severity="info">
           {t.imageAssets.storageMissing}{' '}
-          <Link href="/panel/integrations">{t.imageAssets.storageLink}</Link>
+          <Link href="/panel/integrations#storage">{t.imageAssets.storageLink}</Link>
         </Alert>
       ) : null}
       {uploadError === null ? null : <Alert severity="error">{uploadError}</Alert>}

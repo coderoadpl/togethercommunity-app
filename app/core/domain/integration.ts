@@ -35,6 +35,7 @@ export type ProviderDiagnosticCode = z.infer<typeof providerDiagnosticCodeSchema
 export const providerDiagnosticSchema = z.object({
   code: providerDiagnosticCodeSchema,
   message: z.string().min(1),
+  details: z.object({ transport: z.string().min(1) }).optional(),
 });
 
 export type ProviderDiagnostic = z.infer<typeof providerDiagnosticSchema>;

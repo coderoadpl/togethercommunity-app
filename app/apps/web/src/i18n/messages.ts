@@ -1032,8 +1032,11 @@ export interface Messages {
   start: {
     title: string;
     eyebrow: string;
-    continueLabel: (params: { lesson: string; course: string }) => string;
-    reviewLabel: (params: { lesson: string; course: string }) => string;
+    continueHeading: string;
+    continueLabel: (params: { lesson: string }) => string;
+    reviewLabel: (params: { lesson: string }) => string;
+    continueCta: string;
+    reviewCta: string;
     coursesSection: string;
     spacesSection: string;
     lockedSection: string;

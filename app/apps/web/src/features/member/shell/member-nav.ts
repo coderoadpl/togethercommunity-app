@@ -28,6 +28,7 @@ export const activeNavEntry = (pathname: string): MemberNavEntry | null => {
   if (pathname === memberHomePath()) return { kind: 'start' };
   const [first, second] = segmentsOf(pathname);
   if (first === 'community' && second !== undefined) return { kind: 'space', spaceId: second };
+  if ((first === 'community' || first === 'my') && second === undefined) return { kind: 'start' };
   const course = courseContextFromPath(pathname);
   if (course !== null) return { kind: 'course', courseId: course.courseId };
   if (first === 'my' && second === 'products') return { kind: 'products' };

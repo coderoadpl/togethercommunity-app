@@ -8,8 +8,9 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
-import { AppShell, StatusView } from '../../../components/layout/index.js';
+import { StatusView } from '../../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
+import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { CourseSidebar } from './CourseSidebar.js';
@@ -17,7 +18,7 @@ import { MemberBottomBar } from './MemberBottomBar.js';
 import { courseContextFromPath, memberHomePath } from './member-nav.js';
 import { CourseProgramSheet, MemberMenuSheet } from './MemberMenuSheet.js';
 import { MemberSidebar } from './MemberSidebar.js';
-import { BrandLink } from './shell-chrome.js';
+import { BrandLink, SidebarColumn } from './shell-chrome.js';
 import { ProgramIcon } from './shell-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -125,40 +126,49 @@ export const MemberShell = () => {
 
   return (
     <>
-      <AppShell
-        isDesktop={isDesktop}
-        mobileNavigationOpen={false}
-        onMobileNavigationClose={() => undefined}
-        mobileNavigationCloseLabel={t.panel.closeNavigation}
-        header={(
-          <>
-            <Box sx={{ display: { xs: 'flex', md: 'none' }, minWidth: 0 }}>{brand}</Box>
-            <Box sx={{ flex: 1 }} />
-            {hasMobileNavigation && courseContext !== null ? (
-              <Button
-                color="inherit"
-                size="small"
-                startIcon={<ProgramIcon />}
-                aria-haspopup="dialog"
-                aria-expanded={openSheet === 'program' ? true : undefined}
-                onClick={() => setOpenSheet('program')}
-                data-testid="program-button"
-              >
-                {t.shell.programButton}
-              </Button>
-            ) : null}
-            <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
-              <MemberAccountMenu />
-            </Box>
-          </>
-        )}
-        navigation={sidebar}
-      >
-        <Box sx={{ pb: hasMobileNavigation ? 'calc(4.5rem + env(safe-area-inset-bottom))' : 0 }}>
-          {notices}
-          <Outlet />
+      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+        {sidebar === null ? null : <SidebarColumn component="aside">{sidebar}</SidebarColumn>}
+        <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
+          <AppBar position="sticky">
+            <Toolbar variant="dense" sx={{ minHeight: '52px', px: '1.25rem', gap: '0.75rem' }}>
+              <Box sx={{ display: { xs: 'flex', md: 'none' }, minWidth: 0 }}>{brand}</Box>
+              <Box sx={{ flex: 1 }} />
+              {hasMobileNavigation && courseContext !== null ? (
+                <Button
+                  color="inherit"
+                  size="small"
+                  startIcon={<ProgramIcon />}
+                  aria-haspopup="dialog"
+                  aria-expanded={openSheet === 'program' ? true : undefined}
+                  onClick={() => setOpenSheet('program')}
+                  data-testid="program-button"
+                >
+                  {t.shell.programButton}
+                </Button>
+              ) : null}
+              <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
+                <ColorSchemeSwitcher compact />
+              </Box>
+              <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
+                <MemberAccountMenu />
+              </Box>
+            </Toolbar>
+          </AppBar>
+          <Box
+            component="main"
+            sx={{
+              flexGrow: 1,
+              minWidth: 0,
+              px: { xs: '1.25rem', md: '1.5rem' },
+              pt: '2rem',
+              pb: hasMobileNavigation ? 'calc(4.5rem + env(safe-area-inset-bottom))' : '2rem',
+            }}
+          >
+            {notices}
+            <Outlet />
+          </Box>
         </Box>
-      </AppShell>
+      </Box>
       {mobileNavigation}
     </>
   );

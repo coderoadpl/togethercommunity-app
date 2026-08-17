@@ -5,7 +5,6 @@ import type { Course } from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
 import {
-  CardTitle,
   CourseCardCover,
   CourseCardCoverFallback,
   CourseCardInitials,
@@ -69,9 +68,9 @@ export const CourseCard = ({ course, counts }: { course: Course; counts?: Course
   <CourseCardRoot component={Link} to={`/my/courses/${encodeURIComponent(course.id)}`} data-testid={`course-card-${course.id}`}>
     <CourseCardMedia course={course} />
     <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-      <CardTitle variant="h2" sx={{ minWidth: 0 }}>
+      <Typography variant="h2" component="h3" sx={{ minWidth: 0 }}>
         {course.name}
-      </CardTitle>
+      </Typography>
       {course.description ? <Typography variant="body2">{course.description}</Typography> : null}
       {counts === undefined ? null : <CourseCardProgress courseId={course.id} counts={counts} />}
     </Box>

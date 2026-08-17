@@ -140,12 +140,15 @@ describe('StartPage', () => {
 
     await renderStart();
 
-    const bar = await screen.findByTestId('start-continue');
-    expect(bar).toHaveAttribute('href', '/my/courses/c1/lessons/l2');
-    expect(bar).toHaveTextContent(
-      pl.start.continueLabel({ lesson: 'Zmienne', course: 'JavaScript od zera' }),
+    const card = await screen.findByTestId('start-continue');
+    expect(within(card).getByTestId('start-continue-cta')).toHaveAttribute(
+      'href',
+      '/my/courses/c1/lessons/l2',
     );
-    expect(bar).toHaveTextContent('33%');
+    expect(within(card).getByTestId('start-continue-cta')).toHaveTextContent(pl.start.continueCta);
+    expect(card).toHaveTextContent('JavaScript od zera');
+    expect(card).toHaveTextContent(pl.start.continueLabel({ lesson: 'Zmienne' }));
+    expect(card).toHaveTextContent('33%');
   });
 
   it('offers a review when the last active course is already finished', async () => {
@@ -168,11 +171,13 @@ describe('StartPage', () => {
 
     await renderStart();
 
-    const bar = await screen.findByTestId('start-continue');
-    expect(bar).toHaveAttribute('href', '/my/courses/c2/lessons/l9');
-    expect(bar).toHaveTextContent(
-      pl.start.reviewLabel({ lesson: 'Selektory', course: 'CSS w praktyce' }),
+    const card = await screen.findByTestId('start-continue');
+    expect(within(card).getByTestId('start-continue-cta')).toHaveAttribute(
+      'href',
+      '/my/courses/c2/lessons/l9',
     );
+    expect(within(card).getByTestId('start-continue-cta')).toHaveTextContent(pl.start.reviewCta);
+    expect(card).toHaveTextContent(pl.start.reviewLabel({ lesson: 'Selektory' }));
   });
 
   it('hides the continue bar when no course is entitled', async () => {
@@ -236,7 +241,21 @@ describe('StartPage', () => {
     const courses = await screen.findByTestId('start-courses');
     expect(within(courses).getByTestId('course-card-c1')).toHaveAttribute('href', '/my/courses/c1');
     expect(within(courses).getByTestId('course-progress-c1')).toHaveTextContent('25%');
+    expect(within(courses).getByTestId('start-courses-link')).toHaveAttribute('href', '/my');
     expect(screen.queryByTestId('start-spaces')).not.toBeInTheDocument();
+  });
+
+  it('sends the space section header to the community list', async () => {
+    server.use(
+      okCourses([]),
+      okNavigation({ spaces: [space('s1', 'Ogólna')] }),
+      noNotifications(),
+    );
+
+    await renderStart();
+
+    const spaces = await screen.findByTestId('start-spaces');
+    expect(within(spaces).getByTestId('start-spaces-link')).toHaveAttribute('href', '/community');
   });
 
   it('shows the empty state with a route to purchased products', async () => {

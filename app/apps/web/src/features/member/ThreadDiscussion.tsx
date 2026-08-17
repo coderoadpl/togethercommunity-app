@@ -11,7 +11,6 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
-  CardTitle,
   DeletedPostText,
   DiscussionThread,
   Eyebrow,
@@ -24,7 +23,7 @@ import {
 } from '../../theme.js';
 import { ReportPostButton } from './ReportPostButton.js';
 
-const PAGE_SIZE = 20;
+export const PAGE_SIZE = 20;
 const MAX_INDENT = 5;
 
 const isForbidden = (error: Error | null) =>
@@ -492,9 +491,9 @@ export const ThreadDiscussion = ({
     <Box component="section" aria-labelledby={heading === undefined ? undefined : headingId} data-testid={testId} sx={{ mt: '2.5rem' }}>
       {heading !== undefined && (
         <Stack useFlexGap sx={{ rowGap: '0.25rem', mb: '1rem' }}>
-          <CardTitle variant="h2" id={headingId}>
+          <Typography variant="h2" component="h2" id={headingId}>
             {heading}
-          </CardTitle>
+          </Typography>
           {eyebrow !== undefined && (
             <Eyebrow variant="overline" component="p">
               {eyebrow}

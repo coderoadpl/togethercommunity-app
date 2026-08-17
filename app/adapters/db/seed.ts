@@ -2024,7 +2024,8 @@ const spaceDefs: SeedSpaceDef[] = [
     id: 'space-studio-spolecznosc',
     slug: 'spolecznosc',
     name: 'Społeczność',
-    description: 'Otwarta strefa dla wszystkich uczestników — przedstaw się i pogadaj z innymi.',
+    description:
+      'Otwarta przestrzeń dla wszystkich uczestników — przedstaw się i pogadaj z innymi.',
     visibility: 'members',
     productIds: [],
     position: 0,
@@ -2033,10 +2034,21 @@ const spaceDefs: SeedSpaceDef[] = [
     id: 'space-studio-klub-js',
     slug: 'klub-js',
     name: 'Klub JavaScriptu',
-    description: 'Strefa dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.',
+    description:
+      'Przestrzeń dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.',
     visibility: 'product',
     productIds: ['product-js-full'],
     position: 1,
+  },
+  {
+    id: 'space-studio-klub-react',
+    slug: 'klub-react',
+    name: 'Klub Reacta',
+    description:
+      'Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.',
+    visibility: 'product',
+    productIds: ['product-react-full'],
+    position: 2,
   },
 ];
 
@@ -2075,7 +2087,7 @@ const spacePosts: SeedPostDef[] = [
     authorUserId: studioCreatorUserId,
     authorDisplay: 'Studio Creator',
     authorIsStaff: true,
-    body: 'Witajcie w Społeczności! To otwarta strefa dla wszystkich uczestników — przedstawcie się w komentarzach i napiszcie, czego się teraz uczycie.',
+    body: 'Witajcie w Społeczności! To otwarta przestrzeń dla wszystkich uczestników — przedstawcie się w komentarzach i napiszcie, czego się teraz uczycie.',
     createdAt: relativeIso(-14),
     deletedAt: null,
   },
@@ -2261,7 +2273,7 @@ for (const member of memberSpecs) {
   console.log(`  member   ${member.email}  ->  ${member.tenantId}`);
 }
 console.log('  community  discussions under course-js lessons; unread notification for kursant.aktywny@together.dev');
-console.log('  spaces   Społeczność (members) + Klub JavaScriptu (product-js-full) on studio, with posts/reactions/follows');
+console.log('  spaces   Społeczność (members) + Klub JavaScriptu (product-js-full) + Klub Reacta (product-react-full, locked for kursant.aktywny) on studio, with posts/reactions/follows');
 console.log('  sales    product-club subscription (monthly+yearly), active simulated subscription for kursant.abonent@together.dev, demo orders on studio');
 console.log('  tenants  http://studio.localhost:48730  http://acme.localhost:48730  http://akademia.localhost:48730');
 process.exit(0);

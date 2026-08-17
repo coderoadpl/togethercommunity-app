@@ -260,11 +260,13 @@ const NavigationItem = ({
   pathname,
   onNavigate,
   openReportCount,
+  grouped = true,
 }: {
   descriptor: SectionDescriptor;
   pathname: string;
   onNavigate: (to: string) => void;
   openReportCount: number | undefined;
+  grouped?: boolean;
 }) => {
   const t = useTranslations();
   const { id, to, exact } = descriptor;
@@ -276,7 +278,7 @@ const NavigationItem = ({
       selected={active}
       aria-current={active ? 'page' : undefined}
       onClick={() => onNavigate(to)}
-      sx={{ pl: id === 'dashboard' ? undefined : '1rem' }}
+      sx={{ pl: grouped ? '1rem' : undefined }}
     >
       <ListItemIcon>
         <SectionIcon id={id} />
@@ -308,6 +310,7 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
         pathname={pathname}
         onNavigate={onNavigate}
         openReportCount={undefined}
+        grouped={false}
       />
       {sectionDescriptors.map((group) => {
         const active = group.sections.some((descriptor) =>
@@ -347,17 +350,20 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
           </Box>
         );
       })}
+      <Divider component="li" sx={{ mt: '0.75rem', mb: '0.5rem' }} />
       <NavigationItem
         descriptor={integrationsDescriptor}
         pathname={pathname}
         onNavigate={onNavigate}
         openReportCount={undefined}
+        grouped={false}
       />
       <NavigationItem
         descriptor={settingsDescriptor}
         pathname={pathname}
         onNavigate={onNavigate}
         openReportCount={undefined}
+        grouped={false}
       />
       {openReports.isError ? (
         <StatusView surface={false} state={{ kind: 'error', message: localizeError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />

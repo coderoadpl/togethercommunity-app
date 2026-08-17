@@ -15,6 +15,7 @@ import type { CourseStructureWithAccess, MemberNavigation } from '#core/domain/i
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { ThemeModeProvider } from '../../../theme-mode.js';
 import { memberHomePath } from './member-nav.js';
 import { MemberShell } from './MemberShell.js';
 
@@ -173,7 +174,11 @@ const renderShell = async (path: string) => {
   ]);
   const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return renderWithProviders(
+    <ThemeModeProvider>
+      <RouterProvider router={router} />
+    </ThemeModeProvider>,
+  );
 };
 
 describe('MemberShell', () => {
@@ -240,13 +245,22 @@ describe('MemberShell', () => {
     expect(await screen.findByTestId('sidebar-start')).toHaveAttribute('aria-current', 'page');
   });
 
-  it('leaves the course library unhighlighted, since it is reached from Start', async () => {
+  it('keeps Start highlighted on the course library it links to', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
 
     await renderShell('/my');
 
-    expect(await screen.findByTestId('sidebar-start')).not.toHaveAttribute('aria-current');
+    expect(await screen.findByTestId('sidebar-start')).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('offers the colour scheme toggle in the member topbar', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell(memberHomePath());
+
+    expect(await screen.findByTestId('color-scheme-switcher')).toBeInTheDocument();
   });
 
   it('shows the member identity block linking to the account page', async () => {
@@ -333,6 +347,7 @@ describe('MemberShell', () => {
     expect(await within(sheet).findByTestId('sidebar-space-s1')).toHaveTextContent('Ogólna');
     expect(within(sheet).getByTestId('sidebar-products')).toHaveAttribute('href', '/my/products');
     expect(within(sheet).getByTestId('member-identity')).toHaveTextContent('Jan Uczestnik');
+    expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
   });
 

@@ -1,9 +1,7 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Collapse,
-  FormControl,
-  FormLabel,
   Link as MuiLink,
   List,
   ListItemButton,
@@ -293,7 +291,6 @@ export const CourseTree = ({
   const [rawSearch, setRawSearch] = useState('');
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const searchId = useId();
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(rawSearch.trim().toLowerCase()), 300);
@@ -314,17 +311,15 @@ export const CourseTree = ({
 
   return (
     <Box>
-      <FormControl fullWidth sx={{ mb: '1rem' }}>
-        <FormLabel htmlFor={searchId}>{t.courseTree.searchLessons}</FormLabel>
-        <OutlinedInput
-          id={searchId}
-          size="small"
-          value={rawSearch}
-          onChange={(event) => setRawSearch(event.target.value)}
-          placeholder={t.courseTree.filterPlaceholder}
-          inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
-        />
-      </FormControl>
+      <OutlinedInput
+        fullWidth
+        size="small"
+        sx={{ mb: '1rem' }}
+        value={rawSearch}
+        onChange={(event) => setRawSearch(event.target.value)}
+        placeholder={t.courseTree.filterPlaceholder}
+        inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
+      />
 
       {modules.length === 0 ? (
         <Box sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-no-results">

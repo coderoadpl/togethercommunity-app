@@ -23,6 +23,15 @@ export const BrandLink = styled(Box)<ShellLinkProps>(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
 }));
 
+export const SectionHeadingLink = styled(Box)<ShellLinkProps>(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  color: 'inherit',
+  textDecoration: 'none',
+  borderRadius: theme.shape.borderRadius,
+  '&:hover': { textDecoration: 'underline' },
+}));
+
 export const IdentityRow = styled(Box)<ShellLinkProps>(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
@@ -60,6 +69,19 @@ export const TabButton = styled(ButtonBase)<ShellLinkProps>(({ theme }) => ({
   color: theme.palette.text.secondary,
   '&:hover': { backgroundColor: theme.palette.action.hover },
   '&[aria-current="page"]': { color: theme.palette.text.primary },
+}));
+
+export const SidebarColumn = styled(Box)<{ component?: ElementType }>(({ theme }) => ({
+  width: '248px',
+  flexShrink: 0,
+  alignSelf: 'flex-start',
+  position: 'sticky',
+  top: 0,
+  height: '100vh',
+  display: 'flex',
+  flexDirection: 'column',
+  backgroundColor: theme.palette.background.default,
+  borderRight: `1px solid ${theme.palette.divider}`,
 }));
 
 export const SheetDrawer = styled(Drawer)(({ theme }) => ({

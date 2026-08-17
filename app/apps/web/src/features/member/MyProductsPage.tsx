@@ -100,13 +100,15 @@ const ProductRow = ({
         <MemberProductLink component={Link} to={`/my/course/${encodeURIComponent(product.id)}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
           {product.title}
         </MemberProductLink>
-        <Chip
-          size="small"
-          variant={product.grantStatus === 'active' ? 'filled' : 'outlined'}
-          color={chipColor(product.grantStatus)}
-          label={statusLabel(t, product, language)}
-          data-testid={`grant-status-${product.id}`}
-        />
+        {subscription !== null && product.grantStatus === 'active' ? null : (
+          <Chip
+            size="small"
+            variant={product.grantStatus === 'active' ? 'filled' : 'outlined'}
+            color={chipColor(product.grantStatus)}
+            label={statusLabel(t, product, language)}
+            data-testid={`grant-status-${product.id}`}
+          />
+        )}
         {subscription ? (
           <Chip
             size="small"

@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, ListItemIcon, ListItemText, Menu, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
+import { styled } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -21,6 +22,19 @@ import {
 } from './theme.js';
 
 const POLL_INTERVAL_MS = 30_000;
+
+const MemberBadge = styled(Badge)(({ theme }) => ({
+  '& .MuiBadge-badge': {
+    backgroundColor: theme.palette.text.primary,
+    color: theme.palette.background.default,
+    borderRadius: '999px',
+    minWidth: '18px',
+    height: '18px',
+    padding: '0 5px',
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+  },
+}));
 
 const BELL_PATH =
   'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z';
@@ -124,9 +138,9 @@ export const NotificationBell = ({
       onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
     >
       <ListItemIcon>
-        <Badge badgeContent={unreadCount} color="error" data-testid="notification-nav-badge">
+        <MemberBadge badgeContent={unreadCount} data-testid="notification-nav-badge">
           <TabBellIcon />
-        </Badge>
+        </MemberBadge>
       </ListItemIcon>
       <ListItemText primary={navLabel} slotProps={{ primary: { noWrap: true } }} />
     </PanelNavItem>
@@ -156,9 +170,9 @@ export const NotificationBell = ({
       onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
       sx={{ minHeight: '44px', minWidth: '44px', py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
     >
-      <Badge badgeContent={unreadCount} color="error" data-testid="notification-tab-badge">
+      <MemberBadge badgeContent={unreadCount} data-testid="notification-tab-badge">
         <TabBellIcon />
-      </Badge>
+      </MemberBadge>
       <Typography variant="caption" component="span" noWrap title={tabLabel} sx={{ maxWidth: '100%' }}>{tabLabel}</Typography>
     </ButtonBase>
   );

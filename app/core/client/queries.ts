@@ -66,6 +66,7 @@ import type {
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
+  PublicSpaceThreadGetInput,
   SpaceArchiveInput,
   SpaceCreateInput,
   SpaceFeedGetInput,
@@ -176,6 +177,15 @@ const tenantsScopes = {
 
 const publicOfferScopes = {
   all: () => ['public-offer'] as const,
+};
+
+const publicSurfaceScopes = {
+  navigation: () => ['public-navigation'] as const,
+  courseStructure: (courseId: string) => ['public-course-structure', courseId] as const,
+  spaceFeed: (spaceId: string, limit?: number) =>
+    ['public-space-feed', spaceId, limit ?? null] as const,
+  spaceThread: (spaceId: string, postId: string) =>
+    ['public-space-thread', spaceId, postId] as const,
 };
 
 const authConfigScopes = {
@@ -486,6 +496,30 @@ export const publicOfferQuery = (api: ApiClient) =>
   });
 
 export const publicOfferInvalidates = () => ({ queryKey: publicOfferScopes.all() });
+
+export const publicNavigationQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.navigation(),
+    call: ({ signal }) => api.publicNavigation(signal),
+  });
+
+export const publicCourseStructureQuery = (api: ApiClient, courseId: string) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.courseStructure(courseId),
+    call: ({ signal }) => api.publicCourseStructure(courseId, signal),
+  });
+
+export const publicSpaceFeedQuery = (api: ApiClient, input: SpaceFeedGetInput) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.spaceFeed(input.spaceId, input.limit),
+    call: ({ signal }) => api.publicSpaceFeed(input, signal),
+  });
+
+export const publicSpaceThreadQuery = (api: ApiClient, input: PublicSpaceThreadGetInput) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.spaceThread(input.spaceId, input.postId),
+    call: ({ signal }) => api.publicSpaceThread(input, signal),
+  });
 
 export const publicPaymentConfigQuery = (api: ApiClient) =>
   defineQuery({

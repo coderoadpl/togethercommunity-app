@@ -47,6 +47,7 @@ import type {
   StorageProvider,
   TenantSecretResolver,
 } from '../ports.js';
+import { coursesContainingLesson } from './access.js';
 import { deleteLessonAttachmentObjects } from './lesson-attachments.js';
 
 export interface CourseManagementDeps {
@@ -116,16 +117,7 @@ const coursesReferencingLesson = async (
   deps: Pick<CourseManagementDeps, 'courses' | 'modules'>,
 ): Promise<Course[]> => {
   const [courses, modules] = await Promise.all([deps.courses.list(tenantId), deps.modules.list(tenantId)]);
-  const referencingCourseIds = new Set(
-    modules
-      .filter((module) =>
-        module.chapters.some((chapter) =>
-          chapter.contents.some((content) => content.lessonId === lessonId),
-        ),
-      )
-      .flatMap((module) => module.courseIds),
-  );
-  return courses.filter((course) => referencingCourseIds.has(course.id));
+  return coursesContainingLesson(lessonId, courses, modules);
 };
 
 /**

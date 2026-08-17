@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  capabilitiesForPrincipal,
   computeCourseModuleName,
   type Course,
   type CourseLesson,
@@ -703,6 +704,54 @@ describe('getAccessibleLesson', () => {
   it('lets staff read any lesson without a grant', async () => {
     const result = await getAccessibleLesson(ctx({ staffRole: 'owner', memberId: null }), 'l6', deps([], []));
     expect(result).toMatchObject({ ok: true, value: { id: 'l6' } });
+  });
+
+  const previewLessons = lessons.map((row) => (row.id === 'l4' ? { ...row, isPreview: true } : row));
+  const anonymous: Ctx = {
+    identity: identity({ memberId: null, staffRole: null }),
+    capabilities: capabilitiesForPrincipal('public'),
+  };
+
+  it('serves a preview to an anonymous visitor through a publicly visible course', async () => {
+    const withPublicCourse = deps(
+      [],
+      [],
+      [{ ...c1, publiclyVisible: true }],
+      [m1, m2],
+      [],
+      previewLessons,
+    );
+
+    expect(await getAccessibleLesson(anonymous, 'l4', withPublicCourse)).toMatchObject({
+      ok: true,
+      value: { id: 'l4', isPreview: true },
+    });
+  });
+
+  it('is forbidden for an anonymous visitor when no containing course is publicly visible', async () => {
+    const withPrivateCourse = deps([], [], [c1], [m1, m2], [], previewLessons);
+
+    expect(await getAccessibleLesson(anonymous, 'l4', withPrivateCourse)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('accepts a preview when any of the containing courses is publicly visible', async () => {
+    const sharedModules = [{ ...m2, courseIds: ['c1', 'c2'] }];
+    const withMixedCourses = deps(
+      [],
+      [],
+      [c1, { ...c2, publiclyVisible: true }],
+      sharedModules,
+      [],
+      previewLessons,
+    );
+
+    expect(await getAccessibleLesson(anonymous, 'l4', withMixedCourses)).toMatchObject({
+      ok: true,
+      value: { id: 'l4', isPreview: true },
+    });
   });
 });
 

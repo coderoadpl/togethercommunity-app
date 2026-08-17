@@ -10,6 +10,10 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
+| `OPTIONS /api/public/navigation` | public | read | Anonymous tenant-home navigation |
+| `OPTIONS /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
+| `OPTIONS /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |
+| `OPTIONS /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
 | `OPTIONS /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -17,6 +21,10 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
 | `GET /api/public/assets/:kind/:file` | public | read | Tenant image assets (covers, branding) redirected from private BYO storage |
 | `GET /api/public/offer` | public | read | Public offer discovery |
+| `GET /api/public/navigation` | public | read | Anonymous tenant-home navigation |
+| `GET /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
+| `GET /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |
+| `GET /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |

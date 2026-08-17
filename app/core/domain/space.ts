@@ -124,6 +124,14 @@ export const listSpaceFeedInputSchema = z.object({
 });
 
 
+export const publicSpaceThreadInputSchema = z.object({
+  spaceId: z.string().min(1),
+  postId: z.string().min(1),
+});
+
+export type PublicSpaceThreadInput = z.output<typeof publicSpaceThreadInputSchema>;
+
+
 const memberHomeFeedItemSchema = spaceFeedItemSchema.extend({
   spaceId: z.string().min(1),
   spaceName: z.string(),

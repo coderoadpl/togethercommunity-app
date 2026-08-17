@@ -102,6 +102,7 @@ const course: Course = {
   description: '',
   imageUrl: null,
   moduleOrder: ['m1'],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };
@@ -233,7 +234,7 @@ describe('content history use-cases', () => {
     const result = await getContentVersion({ identity: identity('t-acme', 'owner') }, 'v9', deps(repo));
     expect(result).toMatchObject({
       ok: true,
-      value: { id: 'v9', entityKind: 'course', schemaVersion: 1, currentSchemaVersion: 3 },
+      value: { id: 'v9', entityKind: 'course', schemaVersion: 1, currentSchemaVersion: 4 },
     });
     expect(result.ok && result.value.payload).toMatchObject({ id: 'c1', name: 'Old name', moduleOrder: [] });
   });

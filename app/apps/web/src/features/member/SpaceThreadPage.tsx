@@ -9,7 +9,9 @@ import { actions } from '../../api.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { ThreadHeadline } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
+import { PublicSpaceThreadPage } from './PublicSpaceThreadPage.js';
 import { PAGE_SIZE, ThreadDiscussion } from './ThreadDiscussion.js';
+import { useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -20,6 +22,28 @@ const threadHeadline = (body: string): string | null => {
 };
 
 export const SpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: string }) => {
+  const t = useTranslations();
+  const viewer = useViewerKind();
+
+  if (viewer === 'pending') {
+    return (
+      <MemberSurface
+        title={t.community.threadTitle}
+        eyebrow={t.community.threadEyebrow}
+        width="wide"
+        state={{ kind: 'loading', label: t.community.loadingFeed }}
+      />
+    );
+  }
+
+  return viewer === 'anonymous' ? (
+    <PublicSpaceThreadPage spaceId={spaceId} postId={postId} />
+  ) : (
+    <MemberSpaceThreadPage spaceId={spaceId} postId={postId} />
+  );
+};
+
+const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: string }) => {
   const t = useTranslations();
   const navigate = useNavigate();
   const spaces = useQuery(actions.spaces);

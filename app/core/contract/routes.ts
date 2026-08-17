@@ -104,6 +104,7 @@ import {
   resolveReportInputSchema,
   newProductSchema,
   nextLessonSchema,
+  publicNavigationSchema,
   publicPostSchema,
   postSearchHitSchema,
   productAccessIssuesSchema,
@@ -157,6 +158,7 @@ import {
   updateProductAccessItemsInputSchema,
   billingDataSchema,
 } from '#core/domain/index.js';
+import type { PublicSpaceThreadInput } from '#core/domain/index.js';
 
 /**
  * Single source of truth for the HTTP API shared by server and all clients.
@@ -295,6 +297,10 @@ export const publicOfferOutputSchema = z.object({
       })).default([]),
     }),
   ),
+});
+
+export const publicNavigationOutputSchema = z.object({
+  navigation: publicNavigationSchema,
 });
 
 export const publicPaymentConfigOutputSchema = z.object({
@@ -975,6 +981,8 @@ export const spaceFeedOutputSchema = z.object({
   feed: spaceFeedSchema,
 });
 
+export type PublicSpaceThreadGetInput = PublicSpaceThreadInput;
+
 export const spaceFollowInputSchema = followSpaceInputSchema;
 
 export type SpaceFollowInput = z.input<typeof spaceFollowInputSchema>;
@@ -1428,6 +1436,10 @@ export const API_ROUTES = {
   autoInvoiceDispatch: { method: 'POST', path: '/api/internal/dispatch-auto-invoices' },
   ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
+  publicNavigation: { method: 'GET', path: '/api/public/navigation' },
+  publicCourseStructure: { method: 'GET', path: '/api/public/courses/:courseId/structure' },
+  publicSpaceFeed: { method: 'GET', path: '/api/public/spaces/:spaceId/feed' },
+  publicSpaceThread: { method: 'GET', path: '/api/public/spaces/:spaceId/posts/:postId' },
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
@@ -1653,6 +1665,10 @@ export const API_PATHS = {
   autoInvoiceDispatch: API_ROUTES.autoInvoiceDispatch.path,
   ksefDispatch: API_ROUTES.ksefDispatch.path,
   publicOffer: API_ROUTES.publicOffer.path,
+  publicNavigation: API_ROUTES.publicNavigation.path,
+  publicCourseStructure: API_ROUTES.publicCourseStructure.path,
+  publicSpaceFeed: API_ROUTES.publicSpaceFeed.path,
+  publicSpaceThread: API_ROUTES.publicSpaceThread.path,
   publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,

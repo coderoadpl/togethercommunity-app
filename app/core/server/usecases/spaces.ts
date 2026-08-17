@@ -43,10 +43,12 @@ import type {
   PostReactionRepository,
   PostRepository,
   ProductGrantRepository,
+  ProductRepository,
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
+  TenantRepository,
 } from '../ports.js';
 import {
   lessonContextAccess,
@@ -69,6 +71,8 @@ export interface SpacesDeps {
   courses: CourseRepository;
   modules: CourseModuleRepository;
   grants: ProductGrantRepository;
+  products: ProductRepository;
+  tenants: TenantRepository;
   tenantAccess: TenantAccessReader;
   links: DiscussionLinkPort;
   ids: IdGenerator;
@@ -81,6 +85,15 @@ const requireStaff = (
 ): Result<ActorScope, AppError> => {
   return requireActor(ctx, capability);
 };
+
+const HOME_SPACE_STAYS_PUBLIC =
+  'Point the tenant home space at another space before making this one non-public or archiving it';
+
+const isDefaultHomeSpace = async (
+  tenantId: string,
+  spaceId: string,
+  deps: Pick<SpacesDeps, 'tenants'>,
+): Promise<boolean> => (await deps.tenants.findSettings(tenantId))?.defaultHomeSpaceId === spaceId;
 
 export const createSpace = async (
   ctx: Ctx,
@@ -101,6 +114,7 @@ export const createSpace = async (
     description: parsed.data.description ?? null,
     visibility: parsed.data.visibility,
     productIds: parsed.data.productIds ?? [],
+    publicReadOnly: parsed.data.publicReadOnly ?? false,
     position:
       parsed.data.position ??
       (await deps.spaces.list(staff.value.tenantId, { includeArchived: true })).length,
@@ -111,6 +125,7 @@ export const createSpace = async (
     return err(validation('A product-gated space needs at least one product'));
   }
   await deps.spaces.create(staff.value.tenantId, record.data);
+  if (record.data.publicReadOnly) await deps.products.bumpContentVersion(staff.value.tenantId);
   return ok(record.data);
 };
 
@@ -131,13 +146,21 @@ export const updateSpace = async (
     description: parsed.data.description === undefined ? space.description : parsed.data.description,
     visibility: parsed.data.visibility ?? space.visibility,
     productIds: parsed.data.productIds ?? space.productIds,
+    publicReadOnly: parsed.data.publicReadOnly ?? space.publicReadOnly,
     position: parsed.data.position ?? space.position,
   };
   if (next.visibility === 'product' && next.productIds.length === 0) {
     return err(validation('A product-gated space needs at least one product'));
   }
+  if (!next.publicReadOnly && (await isDefaultHomeSpace(staff.value.tenantId, space.id, deps))) {
+    return err(validation(HOME_SPACE_STAYS_PUBLIC));
+  }
   const updated = await deps.spaces.update(staff.value.tenantId, next);
-  return updated ? ok(updated) : err(notFound('Space not found'));
+  if (!updated) return err(notFound('Space not found'));
+  if (updated.publicReadOnly !== space.publicReadOnly) {
+    await deps.products.bumpContentVersion(staff.value.tenantId);
+  }
+  return ok(updated);
 };
 
 export const deleteSpace = async (
@@ -163,11 +186,16 @@ export const setSpaceArchived = async (
   if (!staff.ok) return staff;
   const parsed = setSpaceArchivedInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space archive payload', parsed.error.flatten()));
+  if (parsed.data.archived && (await isDefaultHomeSpace(staff.value.tenantId, parsed.data.id, deps))) {
+    return err(validation(HOME_SPACE_STAYS_PUBLIC));
+  }
   const updated = await deps.spaces.setArchived(staff.value.tenantId, {
     id: parsed.data.id,
     archivedAt: parsed.data.archived ? deps.clock.nowIso() : null,
   });
-  return updated ? ok(updated) : err(notFound('Space not found'));
+  if (!updated) return err(notFound('Space not found'));
+  if (updated.publicReadOnly) await deps.products.bumpContentVersion(staff.value.tenantId);
+  return ok(updated);
 };
 
 /** Panel listing: every space including archived, each with its post and follower counts. */

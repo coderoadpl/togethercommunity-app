@@ -76,6 +76,10 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/health')) return 'health:read';
   if (publicRouteManifestEntry({ method, path })?.why.toLowerCase().includes('authentication') === true) return 'auth:use';
   if (path === '/api/public/offer') return 'offer:read';
+  if (path === '/api/public/navigation') return 'offer:read';
+  if (path === '/api/public/courses/:courseId/structure') return 'offer:read';
+  if (path === '/api/public/spaces/:spaceId/feed') return 'offer:read';
+  if (path === '/api/public/spaces/:spaceId/posts/:postId') return 'offer:read';
   if (path === '/api/public/assets/:kind/:file') return 'offer:read';
   if (path === '/api/image-assets/course-cover/upload' || path === '/api/image-assets/course-cover/complete') return 'course:write';
   if (path === '/api/image-assets/product-cover/upload' || path === '/api/image-assets/product-cover/complete') return 'product:write';

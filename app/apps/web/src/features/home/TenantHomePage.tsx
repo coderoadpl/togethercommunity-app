@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -24,10 +24,17 @@ import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { tenantUrl } from '../../lib/tenant.js';
+import { hostHasTenantSubdomain, tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
 
-export const TenantHomePage = () => {
+/**
+ * `anonymousHome` is injected by the route: the anonymous surface lives in the
+ * member feature, which this feature may not import directly.
+ */
+export const TenantHomePage = ({
+  anonymousHome,
+  hostname = window.location.hostname,
+}: { anonymousHome?: ReactNode; hostname?: string } = {}) => {
   const navigate = useNavigate();
   const t = useTranslations();
   const me = useQuery(actions.me);
@@ -36,16 +43,19 @@ export const TenantHomePage = () => {
   const tenant = me.data?.tenant ?? null;
   const staff = tenant !== null && tenant.staffRole !== null;
   const memberOnly = tenant !== null && tenant.staffRole === null;
+  const anonymousTenantHome =
+    unauthorized && anonymousHome !== undefined && hostHasTenantSubdomain(hostname);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
+    if (unauthorized && !anonymousTenantHome) void navigate({ to: '/login' });
     else if (staff) void navigate({ to: '/panel' });
     else if (memberOnly) void navigate({ to: '/start' });
-  }, [unauthorized, staff, memberOnly, navigate]);
+  }, [unauthorized, anonymousTenantHome, staff, memberOnly, navigate]);
 
   if (me.isPending) {
     return <BrandLoader caption={t.tenant.openingWorkspace} />;
   }
+  if (anonymousTenantHome) return <>{anonymousHome}</>;
   if (unauthorized || staff || memberOnly) return null;
   if (me.isError) {
     return (

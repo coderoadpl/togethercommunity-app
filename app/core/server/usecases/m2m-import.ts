@@ -257,6 +257,7 @@ const prepareCourse = async (
       description: record.description,
       imageUrl: record.imageUrl,
       moduleOrder: moduleOrder.value,
+      publiclyVisible: false,
       legacyId: record.legacyId ?? null,
       createdAt: record.createdAt ?? predicted.value.createdAt ?? now,
     },

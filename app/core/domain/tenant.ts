@@ -125,6 +125,7 @@ export const tenantSettingsSchema = z.object({
   supportUrl: z.string().url().nullable().default(null),
   termsUrl: z.string().url().nullable().default(null),
   privacyUrl: z.string().url().nullable().default(null),
+  defaultHomeSpaceId: z.string().min(1).nullable().default(null),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
@@ -198,6 +199,11 @@ export const updateTenantSettingsInputSchema = z.object({
   supportUrl: clearableUrl,
   termsUrl: clearableUrl,
   privacyUrl: clearableUrl,
+  defaultHomeSpaceId: z
+    .union([z.string().trim().min(1), z.literal('')])
+    .nullable()
+    .transform((value) => (value === '' || value === null ? null : value))
+    .optional(),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),

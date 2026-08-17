@@ -63,6 +63,7 @@ const course: Course = {
   description: '',
   imageUrl: null,
   moduleOrder: ['module-native'],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: NOW,
 };

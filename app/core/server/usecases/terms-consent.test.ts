@@ -21,6 +21,7 @@ const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
   supportUrl: null,
   termsUrl: null,
   privacyUrl: null,
+  defaultHomeSpaceId: null,
   ...overrides,
 });
 

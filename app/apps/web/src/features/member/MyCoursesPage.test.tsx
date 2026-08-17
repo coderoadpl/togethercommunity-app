@@ -24,6 +24,7 @@ const courses: Course[] = [
     description: 'Start from zero.',
     imageUrl: null,
     moduleOrder: [],
+    publiclyVisible: false,
     legacyId: null,
     createdAt: '2026-07-12T10:00:00.000Z',
   },

@@ -126,6 +126,7 @@ const gatedSpace = (productId: string): Space => ({
   description: null,
   visibility: 'product',
   productIds: [productId],
+  publicReadOnly: false,
   position: 0,
   archivedAt: null,
   createdAt: '2026-07-01T00:00:00.000Z',

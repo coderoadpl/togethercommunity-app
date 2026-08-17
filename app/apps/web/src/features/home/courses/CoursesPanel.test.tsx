@@ -63,6 +63,7 @@ const course = (over: Partial<Course> = {}): Course => ({
   description: 'A course',
   imageUrl: null,
   moduleOrder: [],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: '2026-07-12T10:00:00.000Z',
   ...over,
@@ -203,6 +204,31 @@ describe('CoursesPanel courses tab', () => {
       description: 'Updated description',
       imageUrl: 'https://cdn.test/course.jpg',
     });
+  });
+
+  it('opens a course to anonymous visitors from the details card', async () => {
+    const existing = course();
+    let updatedInput: ReturnType<typeof updateCourseInputSchema.parse> | null = null;
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [existing] } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules: [] } })),
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/courses/update', async ({ request }) => {
+        updatedInput = updateCourseInputSchema.parse(await request.json());
+        return HttpResponse.json({ ok: true, data: { course: { ...existing, publiclyVisible: true } } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+
+    const toggle = await screen.findByRole('switch', { name: pl.courses.publicVisibilityLabel });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByText(pl.courses.publicVisibilityHelper)).toBeInTheDocument();
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByRole('button', { name: pl.courses.saveDetails }));
+
+    await waitFor(() => expect(updatedInput).toMatchObject({ id: 'course-1', publiclyVisible: true }));
   });
 
   it('adds a chapter and a content entry through the module editor', async () => {

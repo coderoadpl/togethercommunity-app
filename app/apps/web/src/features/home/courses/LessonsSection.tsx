@@ -427,6 +427,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const t = useTranslations();
   const queryClient = useQueryClient();
   const tenantSecrets = useQuery(actions.tenantSecrets);
+  const references = useQuery({ ...actions.lessonReferences(lesson?.id ?? ''), enabled: lesson !== null });
   const [name, setName] = useState(lesson?.name ?? '');
   const [duration, setDuration] = useState(
     lesson?.durationMinutes === undefined ? '' : String(lesson.durationMinutes),
@@ -448,6 +449,9 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const showBunnyPrivacyNote =
     tenantSecrets.isSuccess && !tenantSecrets.data.secrets.some((secret) => secret.key === 'bunny.securityKey');
+  const inPublicCourse =
+    references.data?.references.courses.some((course) => course.publiclyVisible) ?? false;
+  const previewBlocked = !isPreview && !inPublicCourse;
 
   const invalidate = async () => {
     await queryClient.invalidateQueries(actions.lessonsInvalidates());
@@ -538,10 +542,18 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
       </FormControl>
       <FormControl>
         <FormControlLabel
-          control={<Switch checked={isPreview} onChange={(event) => setIsPreview(event.target.checked)} />}
+          control={(
+            <Switch
+              checked={isPreview}
+              disabled={previewBlocked}
+              onChange={(event) => setIsPreview(event.target.checked)}
+            />
+          )}
           label={t.lessons.previewLabel}
         />
-        <FormHelperText>{t.lessons.previewHelper}</FormHelperText>
+        <FormHelperText>
+          {previewBlocked ? t.lessons.previewNeedsPublicCourseHint : t.lessons.previewHelper}
+        </FormHelperText>
       </FormControl>
 
       <Divider />

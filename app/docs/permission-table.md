@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 99. Route rows: 244. Exported `Ctx` use-case rows: 206.
+Closed capability count: 99. Route rows: 252. Exported `Ctx` use-case rows: 206.
 
 ## Human-readable diff
 
@@ -31,6 +31,10 @@ no changes
 | `GET /api/health/ready` | health:read | public | public | yes | public route manifest |
 | `GET /api/health` | health:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/offer` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/navigation` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/courses/:courseId/structure` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/spaces/:spaceId/feed` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/spaces/:spaceId/posts/:postId` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/student/lessons/:lessonId` | lesson:play | public | public | yes | public route manifest |
 | `OPTIONS /api/public/payment-config` | checkout:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
@@ -38,6 +42,10 @@ no changes
 | `OPTIONS /api/public/auth-config` | auth:use | public | public | yes | public route manifest |
 | `GET /api/public/assets/:kind/:file` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/offer` | offer:read | public | public | yes | public route manifest |
+| `GET /api/public/navigation` | offer:read | public | public | yes | public route manifest |
+| `GET /api/public/courses/:courseId/structure` | offer:read | public | public | yes | public route manifest |
+| `GET /api/public/spaces/:spaceId/feed` | offer:read | public | public | yes | public route manifest |
+| `GET /api/public/spaces/:spaceId/posts/:postId` | offer:read | public | public | yes | public route manifest |
 | `GET /api/student/lessons/:lessonId` | lesson:play | public | public | yes | public route manifest |
 | `GET /api/public/payment-config` | checkout:read | public | public | yes | public route manifest |
 | `POST /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
@@ -514,13 +522,15 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/community.ts:323` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:354` | `if (ctx.identity.staffRole === null) {` |
 | staff-role | `core/server/usecases/community.ts:489` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
-| member-scope | `core/server/usecases/entitlements.ts:60` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
-| member-scope | `core/server/usecases/entitlements.ts:61` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| member-scope | `core/server/usecases/entitlements.ts:115` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
-| member-scope | `core/server/usecases/entitlements.ts:159` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/entitlements.ts:176` | `} else if (ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/entitlements.ts:210` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
-| member-scope | `core/server/usecases/entitlements.ts:236` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
+| member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
+| staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
+| member-scope | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
+| member-scope | `core/server/usecases/entitlements.ts:132` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
+| member-scope | `core/server/usecases/entitlements.ts:181` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:198` | `} else if (ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:232` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
+| member-scope | `core/server/usecases/entitlements.ts:258` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/invoices.ts:456` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |

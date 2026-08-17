@@ -138,6 +138,7 @@ import {
   productsAccessItemsOutputSchema,
   productsAccessIssuesOutputSchema,
   progressOutputSchema,
+  publicNavigationOutputSchema,
   publicOfferOutputSchema,
   publicPaymentConfigOutputSchema,
   productsCreateOutputSchema,
@@ -237,6 +238,7 @@ import {
   type SpaceArchiveInput,
   type SpaceCreateInput,
   type SpaceDeleteInput,
+  type PublicSpaceThreadGetInput,
   type SpaceFeedGetInput,
   type SpaceFollowInput,
   type SpaceSeenInput,
@@ -593,6 +595,50 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.publicOffer.method,
       API_ROUTES.publicOffer.path,
       publicOfferOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicNavigation: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicNavigation.method,
+      API_ROUTES.publicNavigation.path,
+      publicNavigationOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicCourseStructure: (courseId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicCourseStructure.method,
+      API_ROUTES.publicCourseStructure.path.replace(':courseId', encodeURIComponent(courseId)),
+      courseStructureOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicSpaceFeed: (input: SpaceFeedGetInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const path = API_ROUTES.publicSpaceFeed.path.replace(':spaceId', encodeURIComponent(input.spaceId));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.publicSpaceFeed.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      spaceFeedOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  publicSpaceThread: (input: PublicSpaceThreadGetInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicSpaceThread.method,
+      API_ROUTES.publicSpaceThread.path
+        .replace(':spaceId', encodeURIComponent(input.spaceId))
+        .replace(':postId', encodeURIComponent(input.postId)),
+      discussionOutputSchema,
       undefined,
       signal,
     ),

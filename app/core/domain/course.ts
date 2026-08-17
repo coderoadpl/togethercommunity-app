@@ -193,6 +193,7 @@ export const courseSchema = z.object({
   description: z.string(),
   imageUrl: z.union([z.string().url(), z.string().regex(/^\/\S+$/)]).nullable(),
   moduleOrder: z.array(z.string()),
+  publiclyVisible: z.boolean().default(false),
   legacyId: z.string().nullable(),
   createdAt: z.string().datetime(),
 });
@@ -378,6 +379,7 @@ export const newCourseSchema = z.object({
   name: requiredNameSchema,
   description: z.string().default(''),
   imageUrl: z.union([z.string().url(), z.string().regex(/^\/\S+$/)]).nullable().default(null),
+  publiclyVisible: z.boolean().default(false),
   legacyId: z.string().nullable().default(null),
 });
 
@@ -387,6 +389,7 @@ export const updateCourseInputSchema = z.object({
   description: z.string().optional(),
   imageUrl: z.union([z.string().url(), z.string().regex(/^\/\S+$/)]).nullable().optional(),
   moduleOrder: z.array(z.string().min(1)).optional(),
+  publiclyVisible: z.boolean().optional(),
 });
 
 export const newCourseModuleSchema = z.object({
@@ -452,10 +455,19 @@ const lessonReferenceProductSchema = z.object({
 
 export type LessonReferenceProduct = z.infer<typeof lessonReferenceProductSchema>;
 
+const lessonReferenceCourseSchema = z.object({
+  courseId: z.string(),
+  courseName: z.string(),
+  publiclyVisible: z.boolean(),
+});
+
+export type LessonReferenceCourse = z.infer<typeof lessonReferenceCourseSchema>;
+
 export const lessonReferencesSchema = z.object({
   lessonId: z.string(),
   lessonName: z.string(),
   chapters: z.array(lessonReferenceChapterSchema),
+  courses: z.array(lessonReferenceCourseSchema),
   products: z.array(lessonReferenceProductSchema),
   progressCount: z.number().int().nonnegative(),
 });

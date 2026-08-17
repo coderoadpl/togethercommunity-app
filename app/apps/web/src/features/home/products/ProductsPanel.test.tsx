@@ -423,6 +423,7 @@ describe('ProductsPanel', () => {
       description: null,
       visibility: 'product',
       productIds: [product.id],
+      publicReadOnly: false,
       position: 0,
       archivedAt: null,
       createdAt: '2026-07-12T12:00:00.000Z',

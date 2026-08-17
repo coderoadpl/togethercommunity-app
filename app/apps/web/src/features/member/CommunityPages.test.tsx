@@ -10,6 +10,7 @@ import {
   reactToPostInputSchema,
   type DiscussionPost,
   type MemberSpace,
+  type PublicNavigation,
   type SpaceFeedItem,
 } from '#core/domain/index.js';
 
@@ -34,6 +35,44 @@ const okMe = () =>
     }),
   );
 
+const anonMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } },
+      { status: 401 },
+    ),
+  );
+
+const publicNavigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
+  defaultHomeSpaceId: 's1',
+  spaces: [{ id: 's1', slug: 's1', name: 'Ogólna', description: 'Rozmowy o kamperze.', position: 0 }],
+  courses: [],
+  lockedSpaces: [
+    { id: 'gated', slug: 'premium', name: 'Premium', description: null, productIds: ['p1'] },
+  ],
+  ...overrides,
+});
+
+const okPublicNavigation = (value: PublicNavigation = publicNavigation()) =>
+  http.get('/api/public/navigation', () =>
+    HttpResponse.json({ ok: true, data: { navigation: value } }));
+
+const okPublicFeed = (spaceId: string, items: SpaceFeedItem[]) =>
+  http.get('/api/public/spaces/:spaceId/feed', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { feed: { spaceId, items, pinned: [], nextCursor: null, isFollowing: false } },
+    }),
+  );
+
+const okPublicThread = (threads: DiscussionPost[]) =>
+  http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { discussion: { threads, nextCursor: null, viewerSubscriptions: {} } },
+    }),
+  );
+
 const noNotifications = () =>
   http.get('/api/notifications/unread-count', () => HttpResponse.json({ ok: true, data: { unread: 0 } }));
 
@@ -44,6 +83,7 @@ const space = (input: Partial<MemberSpace> & { id: string }): MemberSpace => ({
   description: 'Rozmowy o kamperze.',
   visibility: 'members',
   productIds: [],
+  publicReadOnly: false,
   position: 0,
   archivedAt: null,
   createdAt: '2026-07-20T08:00:00.000Z',
@@ -279,5 +319,59 @@ describe('community pages', () => {
     expect(screen.getByText(pl.community.spaceNotFoundBody)).toBeInTheDocument();
     expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
     expect(screen.queryByTestId('feed-post-p1')).not.toBeInTheDocument();
+  });
+
+  it('serves an anonymous visitor a read-only feed with a sign-in CTA and no composer', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Publiczny wpis', replyCount: 2 })]),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Publiczny wpis');
+    expect(screen.getByTestId('public-open-thread-p1')).toHaveAttribute(
+      'href',
+      '/community/s1/posts/p1',
+    );
+    expect(screen.getByTestId('anon-read-only')).toHaveTextContent(pl.anon.readOnlyBanner);
+    expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/login');
+    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('reaction-p1-👍')).not.toBeInTheDocument();
+  });
+
+  it('points an anonymous visitor at checkout for a product-gated space', async () => {
+    server.use(anonMe(), okPublicNavigation());
+
+    await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
+
+    expect(await screen.findByTestId('anon-space-unlock')).toHaveAttribute('href', '/checkout/p1');
+    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+  });
+
+  it('renders an anonymous thread read-only with its replies', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicThread([
+        {
+          ...feedItem({ id: 'p1', body: 'Wątek publiczny' }),
+          replies: [{ ...feedItem({ id: 'r1', body: 'Odpowiedź' }), replies: [], replyCount: 0 }],
+          replyCount: 1,
+        },
+      ]),
+    );
+
+    await renderPage(
+      () => <SpaceThreadPage spaceId="s1" postId="p1" />,
+      '/community/s1/posts/p1',
+    );
+
+    expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Wątek publiczny');
+    expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Odpowiedź');
+    expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/login');
+    expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
   });
 });

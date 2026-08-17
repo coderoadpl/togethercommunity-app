@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, TenantSettings } from '#core/domain/index.js';
+import type { Identity, Space, TenantSettings } from '#core/domain/index.js';
+
+import type { SpaceRepository } from '../ports.js';
 
 import { getTenantSettings, updateTenantSettings, type TenantSettingsDeps } from './tenant-settings.js';
 
@@ -20,7 +22,34 @@ const settings: TenantSettings = {
   supportUrl: null,
   termsUrl: null,
   privacyUrl: null,
+  defaultHomeSpaceId: null,
 };
+
+const space = (overrides: Partial<Space> = {}): Space => ({
+  id: 'space-1',
+  tenantId: 'tenant-1',
+  slug: 'community',
+  name: 'Community',
+  description: null,
+  visibility: 'members',
+  productIds: [],
+  publicReadOnly: true,
+  position: 0,
+  archivedAt: null,
+  createdAt: '2026-07-15T10:00:00.000Z',
+  ...overrides,
+});
+
+const spaceRepo = (stored: Space | null): SpaceRepository => ({
+  list: async () => (stored === null ? [] : [stored]),
+  findById: async (_tenantId, id) => (stored !== null && stored.id === id ? stored : null),
+  findBySlug: async () => null,
+  create: async () => undefined,
+  update: async () => null,
+  setArchived: async () => null,
+  delete: async () => false,
+  stats: async () => new Map(),
+});
 
 const identity = (staffRole: 'admin' | null): Identity => ({
   userId: 'user-1',
@@ -47,6 +76,7 @@ const deps: TenantSettingsDeps = {
       throw new Error('not used');
     },
   },
+  spaces: spaceRepo(space()),
 };
 
 describe('getTenantSettings', () => {
@@ -123,6 +153,7 @@ describe('updateTenantSettings', () => {
 
   it('rejects clearing the basis through a partial update while exempt', async () => {
     const exemptDeps: TenantSettingsDeps = {
+      ...deps,
       tenants: {
         ...deps.tenants,
         findSettings: async () => ({
@@ -143,8 +174,33 @@ describe('updateTenantSettings', () => {
     });
   });
 
+  it('accepts a publicly readable active space as the tenant home space', async () => {
+    expect(await updateTenantSettings(adminCtx, { defaultHomeSpaceId: 'space-1' }, deps)).toMatchObject({
+      ok: true,
+      value: { defaultHomeSpaceId: 'space-1' },
+    });
+  });
+
+  it('clears the tenant home space with an empty value', async () => {
+    expect(await updateTenantSettings(adminCtx, { defaultHomeSpaceId: '' }, deps)).toMatchObject({
+      ok: true,
+      value: { defaultHomeSpaceId: null },
+    });
+  });
+
+  it.each([
+    ['unknown', null],
+    ['non-public', space({ publicReadOnly: false })],
+    ['archived', space({ archivedAt: '2026-07-16T10:00:00.000Z' })],
+  ])('rejects a %s space as the tenant home space', async (_label, stored) => {
+    expect(
+      await updateTenantSettings(adminCtx, { defaultHomeSpaceId: 'space-1' }, { ...deps, spaces: spaceRepo(stored) }),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
   it('clears exemption fields when switching back to a VAT rate', async () => {
     const exemptDeps: TenantSettingsDeps = {
+      ...deps,
       tenants: {
         ...deps.tenants,
         findSettings: async () => ({

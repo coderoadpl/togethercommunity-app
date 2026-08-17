@@ -112,10 +112,40 @@ const catalog: Course[] = [
     description: 'Start from zero.',
     imageUrl: 'https://picsum.photos/seed/js/960/540',
     moduleOrder: [],
+    publiclyVisible: false,
     legacyId: null,
     createdAt: '2026-07-12T10:00:00.000Z',
   },
 ];
+
+const okMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'jan@example.com',
+        emailVerified: true,
+        name: 'Jan Uczestnik',
+        tenant: {
+          id: 't1',
+          slug: 'acme',
+          name: 'Acme',
+          staffRole: null,
+          memberId: 'm1',
+          banned: false,
+        },
+      },
+    }),
+  );
+
+const anonMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } },
+      { status: 401 },
+    ),
+  );
 
 const progressView = (lastViewedLessonId?: string): ProgressView => ({
   courseId: 'course-1',
@@ -131,6 +161,7 @@ const mockPage = ({
   lastViewedLessonId?: string;
 } = {}) => {
   server.use(
+    okMe(),
     http.get('/api/student/courses/:courseId/structure', () =>
       HttpResponse.json({ ok: true, data: { structure: body } }),
     ),
@@ -305,6 +336,7 @@ describe('CourseStructurePage', () => {
 
   it('shows a not-found state for a course outside the library', async () => {
     server.use(
+      okMe(),
       http.get('/api/student/courses/:courseId/structure', () =>
         HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
       ),
@@ -318,5 +350,45 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-9" />);
 
     expect(await screen.findByRole('heading', { level: 1, name: pl.courseTree.courseNotFound })).toBeInTheDocument();
+  });
+
+  it('serves an anonymous visitor the public program without progress or discussion', async () => {
+    server.use(
+      anonMe(),
+      http.get('/api/public/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: true, data: { structure } }),
+      ),
+      http.get('/api/public/navigation', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            navigation: {
+              defaultHomeSpaceId: null,
+              spaces: [],
+              courses: [
+                {
+                  id: 'course-1',
+                  name: 'JavaScript Foundations',
+                  description: 'Start from zero.',
+                  imageUrl: null,
+                },
+              ],
+              lockedSpaces: [],
+            },
+          },
+        }),
+      ),
+    );
+
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByTestId('anon-course-program')).toHaveTextContent(
+      pl.anon.lockedCourseHint,
+    );
+    expect(screen.getByTestId('course-tree')).toBeInTheDocument();
+    expect(screen.getByTestId('stat-tile-lessons')).toHaveTextContent('5');
+    expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
   });
 });

@@ -92,6 +92,7 @@ const c1: Course = {
   description: '',
   imageUrl: null,
   moduleOrder: ['m1'],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };
@@ -213,6 +214,7 @@ const tenantSettings: TenantSettings = {
   supportUrl: null,
   termsUrl: null,
   privacyUrl: null,
+  defaultHomeSpaceId: null,
 };
 
 const tenantsRepo = (settings: TenantSettings | null = tenantSettings): TenantRepository => ({
@@ -437,6 +439,10 @@ describe('getPlayableLesson', () => {
       identity: identity({ memberId: null }),
       capabilities: ['lesson:play'],
     };
+    const publicCourses: CourseRepository = {
+      ...coursesRepo,
+      list: async () => [{ ...c1, publiclyVisible: true }],
+    };
     const repository: CourseLessonRepository = {
       ...lessonsRepo,
       list: async () => [preview, paid],
@@ -450,9 +456,48 @@ describe('getPlayableLesson', () => {
       findByIds: async () => [courseModule],
     };
 
-    await expect(getPlayableLesson(anonymous, preview.id, deps({ lessons: repository, modules: moduleRepository })))
+    const playableDeps = deps({
+      lessons: repository,
+      modules: moduleRepository,
+      courses: publicCourses,
+    });
+
+    await expect(getPlayableLesson(anonymous, preview.id, playableDeps))
       .resolves.toMatchObject({ ok: true, value: { id: preview.id, isPreview: true } });
-    await expect(getPlayableLesson(anonymous, paid.id, deps({ lessons: repository, modules: moduleRepository })))
+    await expect(getPlayableLesson(anonymous, paid.id, playableDeps))
       .resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('denies an anonymous preview whose courses are not publicly visible', async () => {
+    const preview = { ...pdfLesson, id: 'preview', isPreview: true };
+    const courseModule: CourseModule = {
+      ...m1,
+      chapters: [{
+        id: 'ch1',
+        name: 'Chapter 1',
+        contents: [{ id: 'content-preview', name: preview.name, lessonId: preview.id }],
+      }],
+    };
+    const anonymous: Ctx = {
+      identity: identity({ memberId: null }),
+      capabilities: ['lesson:play'],
+    };
+
+    const result = await getPlayableLesson(anonymous, preview.id, deps({
+      lessons: {
+        ...lessonsRepo,
+        list: async () => [preview],
+        findById: async (_tenantId, id) => (id === preview.id ? preview : null),
+        findByIds: async () => [preview],
+      },
+      modules: {
+        ...modulesRepo,
+        list: async () => [courseModule],
+        findById: async (_tenantId, id) => (id === courseModule.id ? courseModule : null),
+        findByIds: async () => [courseModule],
+      },
+    }));
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

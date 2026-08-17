@@ -15,8 +15,9 @@ export interface SpaceCardSpace {
   id: string;
   name: string;
   description?: string | null;
-  visibility: SpaceVisibility;
-  isFollowing: boolean;
+  /** Absent for anonymous visitors, whose navigation carries no entitlement dimension. */
+  visibility?: SpaceVisibility;
+  isFollowing?: boolean;
   unread?: boolean;
 }
 
@@ -43,7 +44,7 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
               data-testid={`space-unread-${space.id}`}
             />
           )}
-          {space.isFollowing && (
+          {space.isFollowing === true && (
             <Chip
               size="small"
               variant="outlined"
@@ -59,13 +60,15 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
             <Box sx={{ flex: 1 }} />
           </>
         ) : null}
-        <Chip
-          size="small"
-          variant="outlined"
-          label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
-          data-testid={`space-visibility-${space.id}`}
-          sx={{ alignSelf: 'flex-start' }}
-        />
+        {space.visibility === undefined ? null : (
+          <Chip
+            size="small"
+            variant="outlined"
+            label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
+            data-testid={`space-visibility-${space.id}`}
+            sx={{ alignSelf: 'flex-start' }}
+          />
+        )}
       </Box>
     </CourseCardRoot>
   );

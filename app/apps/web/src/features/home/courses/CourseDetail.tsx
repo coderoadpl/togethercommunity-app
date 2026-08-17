@@ -5,6 +5,8 @@ import {
   Button,
   Divider,
   FormControl,
+  FormControlLabel,
+  FormHelperText,
   FormLabel,
   List,
   ListItemText,
@@ -13,6 +15,7 @@ import {
   Paper,
   Select,
   Stack,
+  Switch,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -685,6 +688,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
   const [name, setName] = useState(course.name);
   const [description, setDescription] = useState(course.description);
   const [imageUrl, setImageUrl] = useState(course.imageUrl ?? '');
+  const [publiclyVisible, setPubliclyVisible] = useState(course.publiclyVisible);
   const errorId = 'course-details-error';
   const save = useMutation({
     ...actions.updateCourse,
@@ -702,6 +706,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
       name: name.trim(),
       description,
       imageUrl: imageUrl.trim() === '' ? null : imageUrl.trim(),
+      publiclyVisible,
     });
   };
 
@@ -754,6 +759,21 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
         kind="course-cover"
         testId="course-image"
       />
+      <FormControl>
+        <FormControlLabel
+          control={(
+            <Switch
+              checked={publiclyVisible}
+              onChange={(event) => {
+                resetFeedback();
+                setPubliclyVisible(event.target.checked);
+              }}
+            />
+          )}
+          label={t.courses.publicVisibilityLabel}
+        />
+        <FormHelperText>{t.courses.publicVisibilityHelper}</FormHelperText>
+      </FormControl>
       {save.isSuccess ? <Alert severity="success">{t.courses.detailsSaved}</Alert> : null}
       {save.isError ? (
         <MutationError

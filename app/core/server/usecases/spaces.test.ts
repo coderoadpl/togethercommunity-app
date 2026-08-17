@@ -12,6 +12,7 @@ import {
   type ReactionEmoji,
   type ReactionSummary,
   type Space,
+  type TenantSettings,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -26,11 +27,13 @@ import type {
   PostReactionRepository,
   PostRepository,
   ProductGrantRepository,
+  ProductRepository,
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscription,
   SpaceSubscriptionRepository,
   TenantAccessReader,
+  TenantRepository,
   ThreadSubscription,
   ThreadSubscriptionRepository,
 } from '../ports.js';
@@ -78,6 +81,7 @@ const space = (overrides: Partial<Space>): Space => ({
   description: null,
   visibility: 'members',
   productIds: [],
+  publicReadOnly: false,
   position: 0,
   archivedAt: null,
   createdAt: NOW,
@@ -579,8 +583,50 @@ const grantRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRep
   },
 });
 
+const productRepo = (contentVersionBumps: string[]): ProductRepository => ({
+  listByTenant: async () => [],
+  listPublishedByTenant: async () => [],
+  findById: async () => null,
+  create: async () => 'created',
+  updateAccessItems: async () => null,
+  setPublished: async () => undefined,
+  bumpContentVersion: async (tenantId) => {
+    contentVersionBumps.push(tenantId);
+  },
+});
+
+const tenantSettings = (defaultHomeSpaceId: string | null): TenantSettings => ({
+  name: 'Tenant',
+  socialLinks: [],
+  billingPortalUrl: null,
+  bunnyStreamLibraryId: null,
+  bunnyStreamCdnHostname: null,
+  logoUrl: null,
+  accentColor: null,
+  faviconUrl: null,
+  ogTitle: null,
+  ogDescription: null,
+  ogImageUrl: null,
+  supportEmail: null,
+  supportUrl: null,
+  termsUrl: null,
+  privacyUrl: null,
+  defaultHomeSpaceId,
+});
+
+const tenantRepo = (defaultHomeSpaceId: string | null): TenantRepository => ({
+  findById: async () => null,
+  findBySlug: async () => null,
+  findSole: async () => null,
+  hasAny: async () => false,
+  findSettings: async () => tenantSettings(defaultHomeSpaceId),
+  updateSettings: async (_tenantId, next) => next,
+  createTenantWithOwnerGrant: async () => null,
+});
+
 interface Fixture {
   deps: SpacesDeps & CommunityDeps;
+  contentVersionBumps: string[];
   posts: FakePosts;
   reactions: FakeReactions;
   spaceSubscriptions: FakeSpaceSubscriptions;
@@ -600,7 +646,9 @@ const fixture = (input: {
   grants?: ProductGrant[];
   products?: Product[];
   staffUserIds?: string[];
+  defaultHomeSpaceId?: string;
 }): Fixture => {
+  const contentVersionBumps: string[] = [];
   const posts = new FakePosts();
   const reactions = new FakeReactions();
   const spaceSubscriptions = new FakeSpaceSubscriptions();
@@ -650,6 +698,8 @@ const fixture = (input: {
     modules: emptyModules,
     lessons: emptyLessons,
     grants: grantRepo(input.grants ?? [], input.products ?? []),
+    products: productRepo(contentVersionBumps),
+    tenants: tenantRepo(input.defaultHomeSpaceId ?? null),
     tenantAccess,
     links: {
       lessonDiscussionUrl: ({ lessonId }) => `http://tenant.localhost/my/courses/c1/lessons/${lessonId}`,
@@ -659,7 +709,7 @@ const fixture = (input: {
     ids: new SequenceIds(),
     clock: new MutableClock(),
   };
-  return { deps, posts, reactions, spaceSubscriptions, spaceSeen, notifications, delivered };
+  return { deps, contentVersionBumps, posts, reactions, spaceSubscriptions, spaceSeen, notifications, delivered };
 };
 
 const membersSpace = space({ id: 's-open', slug: 'open', name: 'Otwarta', visibility: 'members' });
@@ -774,6 +824,67 @@ describe('space CRUD', () => {
       ok: false,
       error: { code: 'not_found' },
     });
+  });
+});
+
+describe('public read-only spaces', () => {
+  const staff = ctx({ staffRole: 'owner', memberId: null });
+
+  it('invalidates the public offer whenever the flag is toggled, and only then', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+
+    expect(await updateSpace(staff, { id: 's-open', name: 'Otwarta 2.0' }, f.deps)).toMatchObject({ ok: true });
+    expect(f.contentVersionBumps).toEqual([]);
+
+    expect(await updateSpace(staff, { id: 's-open', publicReadOnly: true }, f.deps)).toMatchObject({
+      ok: true,
+      value: { publicReadOnly: true },
+    });
+    expect(f.contentVersionBumps).toEqual(['t1']);
+
+    expect(await updateSpace(staff, { id: 's-open', publicReadOnly: true }, f.deps)).toMatchObject({ ok: true });
+    expect(f.contentVersionBumps).toEqual(['t1']);
+  });
+
+  it('creates a publicly readable space and invalidates the public offer', async () => {
+    const f = fixture({ spaces: [] });
+    const created = await createSpace(
+      staff,
+      { slug: 'open', name: 'Otwarta', visibility: 'members', publicReadOnly: true },
+      f.deps,
+    );
+    expect(created).toMatchObject({ ok: true, value: { publicReadOnly: true } });
+    expect(f.contentVersionBumps).toEqual(['t1']);
+  });
+
+  it('refuses to unpublish or archive the space the tenant home points at', async () => {
+    const f = fixture({
+      spaces: [space({ ...membersSpace, publicReadOnly: true })],
+      defaultHomeSpaceId: 's-open',
+    });
+
+    expect(await updateSpace(staff, { id: 's-open', publicReadOnly: false }, f.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(await setSpaceArchived(staff, { id: 's-open', archived: true }, f.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(await updateSpace(staff, { id: 's-open', name: 'Otwarta 2.0' }, f.deps)).toMatchObject({ ok: true });
+  });
+
+  it('leaves another space free to be unpublished and archived', async () => {
+    const f = fixture({
+      spaces: [space({ ...membersSpace, publicReadOnly: true }), space({ ...gatedSpace, publicReadOnly: true })],
+      defaultHomeSpaceId: 's-open',
+    });
+
+    expect(await updateSpace(staff, { id: 's-club', publicReadOnly: false }, f.deps)).toMatchObject({
+      ok: true,
+      value: { publicReadOnly: false },
+    });
+    expect(await setSpaceArchived(staff, { id: 's-club', archived: true }, f.deps)).toMatchObject({ ok: true });
   });
 });
 

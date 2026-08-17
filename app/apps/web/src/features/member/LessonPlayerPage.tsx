@@ -21,7 +21,7 @@ import type { LessonBlock, PlayableLessonBlock } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
-import { formatPrice } from '../../lib/format.js';
+import { formatOfferPrice } from '../../lib/format.js';
 import {
   DataValue,
   Eyebrow,
@@ -228,7 +228,7 @@ const LockedView = ({
           <LockedState />
           {product !== undefined && (
             <Typography variant="h3" component="p" data-testid="locked-product-price">
-              <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
+              <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
             </Typography>
           )}
           <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>

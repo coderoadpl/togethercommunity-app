@@ -238,7 +238,7 @@ describe('ProductsPanel', () => {
     await userEvent.click(publish);
     expect(await screen.findByText(pl.products.publishConfirmIntro)).toBeInTheDocument();
     expect(screen.getByLabelText(pl.products.publishPublicUrl)).toHaveValue(
-      `${window.location.origin}/checkout/draft-1`,
+      `${window.location.origin}/checkout/draft-course`,
     );
     expect(screen.getByText(/25,00/u)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: pl.products.publishConfirm }));
@@ -445,7 +445,7 @@ describe('ProductsPanel', () => {
 
     expect(await screen.findByText(pl.products.checkoutLinkCopyFailed)).toBeInTheDocument();
     expect(screen.getByLabelText(pl.products.publishPublicUrl)).toHaveValue(
-      `${window.location.origin}/checkout/draft-1`,
+      `${window.location.origin}/checkout/draft-course`,
     );
     expect(screen.queryByText(pl.products.checkoutLinkCopied)).not.toBeInTheDocument();
   });

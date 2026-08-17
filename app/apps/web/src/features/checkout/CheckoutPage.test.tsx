@@ -27,8 +27,8 @@ const offerBody = {
   ],
 };
 
-const renderCheckout = (productId: string) => {
-  const root = createRootRoute({ component: () => <CheckoutPage productId={productId} /> });
+const renderCheckout = (productRef: string) => {
+  const root = createRootRoute({ component: () => <CheckoutPage productRef={productRef} /> });
   const router = createRouter({
     routeTree: root,
     history: createMemoryHistory({
@@ -146,6 +146,45 @@ describe('CheckoutPage', () => {
 
     expect(await screen.findByRole('button', { name: /^Odbierz za darmo/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Zapłać/ })).not.toBeInTheDocument();
+    expect(screen.getByText(pl.common.free)).toBeInTheDocument();
+  });
+
+  it('resolves the checkout product from its slug and purchases by product id', async () => {
+    window.history.replaceState(null, '', '/checkout/intro-course');
+    const requests: unknown[] = [];
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
+      ),
+      http.post('/api/dev/simulate-purchase', async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            memberId: 'm1',
+            productId: 'course-1',
+            alreadyOwned: false,
+            subscriptionId: null,
+            orderId: 'order-1',
+            magicLink: null,
+          },
+        });
+      }),
+    );
+
+    renderCheckout('intro-course');
+
+    expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
+
+    expect(await screen.findByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
+    expect(requests).toEqual([{
+      email: 'buyer@together.dev',
+      productId: 'course-1',
+      language: 'pl',
+    }]);
   });
 
   it('prefills an affiliate code and renders the required Omnibus breakdown before purchase', async () => {

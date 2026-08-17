@@ -391,6 +391,7 @@ export default tseslint.config(
               allow: [
                 'web-notifications',
                 'web-api',
+                'web-ui',
                 'web-lib',
                 'web-theme',
                 'web-i18n',

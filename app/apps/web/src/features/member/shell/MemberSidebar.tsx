@@ -12,7 +12,7 @@ import { useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
-import { MemberAvatar } from '../MemberAvatar.js';
+import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
 import { LockClosed } from '../tree-icons.js';
 import { nestSpacesUnderCourses } from './course-spaces.js';
 import {

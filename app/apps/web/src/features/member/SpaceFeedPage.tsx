@@ -19,7 +19,7 @@ import {
   PostMetaText,
 } from '../../theme.js';
 import { EmptyFeedIcon } from './community-icons.js';
-import { MemberAvatar } from './MemberAvatar.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { PostComposer } from './ThreadDiscussion.js';

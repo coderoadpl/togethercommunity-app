@@ -25,19 +25,18 @@ describe('MemberAvatar', () => {
     expect(screen.queryByTestId('member-avatar-image')).toBeNull();
   });
 
-  it('keeps the initials visible until the image actually loads', () => {
+  it('renders the image visibly and eagerly as soon as a url is given', () => {
     render(
       <MemberAvatar name="Ada Lovelace" avatarUrl="https://www.gravatar.com/avatar/abc?d=404&s=160" />,
     );
 
     const image = screen.getByTestId('member-avatar-image');
+    expect(image).toBeVisible();
+    expect(getComputedStyle(image).display).not.toBe('none');
+    expect(image).not.toHaveAttribute('loading');
     expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
     expect(image).toHaveAttribute('alt', '');
     expect(screen.getByTestId('member-avatar')).toHaveTextContent('AL');
-
-    fireEvent.load(image);
-
-    expect(screen.getByTestId('member-avatar')).not.toHaveTextContent('AL');
   });
 
   it('drops the image and falls back to initials when the load fails', () => {

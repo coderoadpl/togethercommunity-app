@@ -20,10 +20,11 @@ import {
   FinePrint,
   NotificationSnippet,
   NotificationTitle,
+  SHELL_SNACKBAR_ANCHOR,
   UnreadDot,
   VisuallyHidden,
 } from '../../theme.js';
-import { MemberAvatar } from './MemberAvatar.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 
 const PAGE_SIZE = 20;
@@ -195,6 +196,7 @@ export const NotificationsPage = () => {
       <Snackbar
         open={markAllRead.isSuccess}
         autoHideDuration={4000}
+        anchorOrigin={SHELL_SNACKBAR_ANCHOR}
         onClose={() => markAllRead.reset()}
       >
         <Alert severity="success" onClose={() => markAllRead.reset()}>

@@ -8,7 +8,7 @@ import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { BreakAllText, Eyebrow } from '../../theme.js';
 import { AccountIcon, ManageAccountIcon, SignOutIcon } from './account-icons.js';
-import { MemberAvatar } from './MemberAvatar.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 
 export const MemberAccountMenu = () => {
   const t = useTranslations();

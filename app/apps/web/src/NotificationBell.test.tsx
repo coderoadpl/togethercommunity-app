@@ -6,7 +6,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +25,7 @@ const notification = (input: {
   contextKind?: 'lesson' | 'space';
   contextId?: string;
   courseId?: string | null;
+  authorAvatarUrl?: string | null;
 }) => ({
   id: input.id,
   tenantId: 't1',
@@ -38,6 +39,7 @@ const notification = (input: {
     courseId: input.courseId ?? null,
     lessonName: 'Hamaki w kamperze',
     authorDisplay: 'Ola',
+    authorAvatarUrl: input.authorAvatarUrl ?? null,
     snippet: 'Świetne pytanie, już odpowiadam!',
   },
   readAt: input.read ? '2026-07-15T09:00:00.000Z' : null,
@@ -175,9 +177,42 @@ describe('NotificationBell', () => {
     await renderBell();
 
     await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
-    await userEvent.click(await screen.findByTestId('notifications-mark-all-read'));
+    await userEvent.click(await screen.findByTestId('notifications-popover-mark-all-read'));
 
     await waitFor(() => expect(readAllCalls).toBe(1));
+  });
+
+  it('renders an author avatar on every popover row', async () => {
+    server.use(
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 1 } }),
+      ),
+      http.get('/api/notifications', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            notifications: [
+              notification({ id: 'n1', read: false, authorAvatarUrl: 'https://cdn.test/ola.png' }),
+              notification({ id: 'n2', read: true }),
+            ],
+            nextCursor: null,
+          },
+        }),
+      ),
+    );
+
+    await renderBell();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+
+    const withPicture = within(await screen.findByTestId('notification-n1'));
+    expect(withPicture.getByTestId('member-avatar-image')).toHaveAttribute(
+      'src',
+      'https://cdn.test/ola.png',
+    );
+    const withInitials = within(screen.getByTestId('notification-n2'));
+    expect(withInitials.queryByTestId('member-avatar-image')).toBeNull();
+    expect(withInitials.getByTestId('member-avatar')).toHaveTextContent('O');
   });
 
   it('shows the empty state when there are no notifications', async () => {

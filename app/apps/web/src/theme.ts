@@ -2854,6 +2854,9 @@ export const NotificationBellIcon = styled(SvgIcon)({
   fontSize: '1.25rem',
 });
 
+/** The member shell keeps its identity block in the bottom-left corner, where a default snackbar would land. */
+export const SHELL_SNACKBAR_ANCHOR = { vertical: 'bottom', horizontal: 'right' } as const;
+
 export const AccessLockIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.05rem',
   color: theme.palette.text.disabled,

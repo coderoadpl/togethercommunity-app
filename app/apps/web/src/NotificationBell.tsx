@@ -7,6 +7,7 @@ import { Link } from '@tanstack/react-router';
 import type { Notification } from '#core/domain/index.js';
 
 import { actions } from './api.js';
+import { MemberAvatar } from './components/ui/MemberAvatar.js';
 import { localizeError, useLanguage, useTranslations } from './i18n/index.js';
 import { formatDate } from './lib/format.js';
 import {
@@ -23,6 +24,7 @@ import {
   NotificationSnippet,
   NotificationTitle,
   PanelNavItem,
+  SHELL_SNACKBAR_ANCHOR,
   UnreadDot,
 } from './theme.js';
 
@@ -200,6 +202,11 @@ export const NotificationBell = ({
               sx={{ gap: '0.6rem', maxWidth: '22rem' }}
             >
               {notification.readAt === null ? <UnreadDot aria-hidden /> : null}
+              <MemberAvatar
+                name={notification.payload.authorDisplay}
+                avatarUrl={notification.payload.authorAvatarUrl}
+                size="sm"
+              />
               <Box sx={{ minWidth: 0 }}>
                 <NotificationTitle component="p" unread={notification.readAt === null}>
                   {notificationTitle(t, notification)}
@@ -216,7 +223,7 @@ export const NotificationBell = ({
         <Box sx={{ px: '1rem', py: '0.5rem' }}>
           <Button
             size="small"
-            data-testid="notifications-mark-all-read"
+            data-testid="notifications-popover-mark-all-read"
             disabled={markAllRead.isPending || unreadCount === 0}
             onClick={() => markAllRead.mutate()}
           >
@@ -241,10 +248,20 @@ export const NotificationBell = ({
           {t.notifications.viewAll}
         </MenuItem>
       </Menu>
-      <Snackbar open={markRead.isError} autoHideDuration={6000} onClose={() => markRead.reset()}>
+      <Snackbar
+        open={markRead.isError}
+        autoHideDuration={6000}
+        anchorOrigin={SHELL_SNACKBAR_ANCHOR}
+        onClose={() => markRead.reset()}
+      >
         <Alert severity="error" onClose={() => markRead.reset()}>{markRead.isError ? localizeError(markRead.error, t) : ''}</Alert>
       </Snackbar>
-      <Snackbar open={markAllRead.isSuccess} autoHideDuration={4000} onClose={() => markAllRead.reset()}>
+      <Snackbar
+        open={markAllRead.isSuccess}
+        autoHideDuration={4000}
+        anchorOrigin={SHELL_SNACKBAR_ANCHOR}
+        onClose={() => markAllRead.reset()}
+      >
         <Alert severity="success" onClose={() => markAllRead.reset()}>{t.notifications.markedAllRead}</Alert>
       </Snackbar>
     </>

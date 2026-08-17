@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { styled } from '@mui/material/styles';
 
 export type MemberAvatarSize = 'sm' | 'md' | 'lg';
@@ -54,26 +54,21 @@ export const MemberAvatar = ({ name, avatarUrl = null, size = 'md' }: {
   avatarUrl?: string | null;
   size?: MemberAvatarSize;
 }) => {
-  const [status, setStatus] = useState<'pending' | 'loaded' | 'failed'>('pending');
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  useEffect(() => setStatus('pending'), [avatarUrl]);
-
-  const source = avatarUrl !== null && avatarUrl !== '' && status !== 'failed' ? avatarUrl : null;
+  const source = avatarUrl === null || avatarUrl === '' || avatarUrl === failedUrl ? null : avatarUrl;
 
   return (
     <AvatarCircle aria-hidden avatarSize={size} data-testid="member-avatar">
-      {status === 'loaded' && source !== null ? null : memberInitials(name)}
+      {memberInitials(name)}
       {source === null ? null : (
         <AvatarImage
           src={source}
           alt=""
           aria-hidden
-          loading="lazy"
           referrerPolicy="no-referrer"
           data-testid="member-avatar-image"
-          sx={{ display: status === 'loaded' ? 'block' : 'none' }}
-          onLoad={() => setStatus('loaded')}
-          onError={() => setStatus('failed')}
+          onError={() => setFailedUrl(source)}
         />
       )}
     </AvatarCircle>

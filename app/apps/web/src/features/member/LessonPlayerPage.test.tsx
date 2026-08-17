@@ -151,7 +151,10 @@ const renderPage = async (node: ReactNode) => {
 };
 
 describe('LessonPlayerPage', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 
   beforeEach(() => {
     server.use(
@@ -645,6 +648,7 @@ describe('LessonPlayerPage', () => {
     );
   });
   it('focuses the thread named by the search param and clears it on exit', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
     const post = (id: string, body: string): DiscussionPost => ({
       id,
       tenantId: 't1',
@@ -711,10 +715,13 @@ describe('LessonPlayerPage', () => {
     await router.load();
     renderWithProviders(<RouterProvider router={router} />);
 
-    expect(await screen.findByTestId('discussion-subthread-t1')).toHaveTextContent(
-      'Pytanie o hamaki',
-    );
+    const subthread = await screen.findByTestId('discussion-subthread-t1');
+    expect(subthread).toHaveTextContent('Pytanie o hamaki');
     expect(screen.queryByTestId('discussion-thread-t2')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(subthread).toHaveFocus());
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+    expect(scrollIntoView.mock.instances).toEqual([subthread]);
 
     await userEvent.click(screen.getByTestId('back-to-discussion'));
 

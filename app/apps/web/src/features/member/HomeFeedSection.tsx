@@ -18,7 +18,7 @@ import {
   PostBody,
   PostMetaText,
 } from '../../theme.js';
-import { MemberAvatar } from './MemberAvatar.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 
 const PAGE_SIZE = 10;
 

@@ -24,7 +24,7 @@ import { EmailVerificationStatus } from '../../components/ui/EmailVerificationSt
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
-import { MemberAvatar } from './MemberAvatar.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 
 const isUnauthorized = (error: Error | null) =>

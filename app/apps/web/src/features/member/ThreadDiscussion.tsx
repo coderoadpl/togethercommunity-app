@@ -21,7 +21,7 @@ import {
   PostMetaText,
   ReplyIndent,
 } from '../../theme.js';
-import { MemberAvatar } from './MemberAvatar.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 
 export const PAGE_SIZE = 20;
@@ -395,6 +395,24 @@ export const ThreadDiscussion = ({
   const viewerSubscriptions = discussion.data?.discussion.viewerSubscriptions ?? {};
   const subthreadRoot = subthreadRootId === null ? null : findPost(threads, subthreadRootId);
 
+  const focusRootPostId = focus?.rootPostId ?? null;
+  const renderedSubthreadId = subthreadRoot === null ? null : subthreadRoot.id;
+  const subthreadElement = useRef<HTMLDivElement | null>(null);
+  const revealedFocus = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (focusRootPostId === null) {
+      revealedFocus.current = null;
+      return;
+    }
+    const element = subthreadElement.current;
+    if (element === null || renderedSubthreadId === null) return;
+    if (revealedFocus.current === focusRootPostId) return;
+    revealedFocus.current = focusRootPostId;
+    element.scrollIntoView({ behavior: 'auto', block: 'start' });
+    element.focus({ preventScroll: true });
+  }, [focusRootPostId, renderedSubthreadId]);
+
   const optimisticVariables =
     create.variables !== undefined &&
     !create.isIdle &&
@@ -539,6 +557,8 @@ export const ThreadDiscussion = ({
           </Box>
           {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
           <DiscussionThread
+            ref={subthreadElement}
+            tabIndex={-1}
             sx={{ p: '1rem 1.25rem' }}
             data-testid={`discussion-subthread-${subthreadRoot.id}`}
           >

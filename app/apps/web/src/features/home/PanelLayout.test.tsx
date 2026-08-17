@@ -210,8 +210,12 @@ describe('Creator panel routing', () => {
       'src',
       '/brand/together-horizontal-dark.svg',
     );
-    const banner = screen.getByTestId('panel-brand-lockup').closest('header');
-    if (banner === null) throw new Error('Panel lockup must render inside the app bar');
+    const sidebar = screen.getByTestId('panel-brand-lockup').closest('aside');
+    if (sidebar === null) throw new Error('Panel lockup must render inside the sidebar');
+    expect(within(sidebar).getByTestId('tenant-name')).toBeInTheDocument();
+    const banner = screen.getByTestId('color-scheme-switcher').closest('header');
+    if (banner === null) throw new Error('The switchers must render inside the app bar');
+    expect(banner).not.toHaveTextContent('Acme');
     expect(within(banner).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(banner).getByTestId('language-switcher')).toBeInTheDocument();
     expect(within(screen.getByRole('contentinfo')).queryByTestId('color-scheme-switcher')).toBeNull();
@@ -350,6 +354,24 @@ describe('Creator panel routing', () => {
 
     expect(screen.getByTestId('group-content')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('section-courses')).not.toBeInTheDocument();
+  });
+
+  it('names the tenant in the mobile topbar and repeats the brand block in the drawer', async () => {
+    stubViewport(false);
+    commonHandlers();
+
+    await renderPanelAt('/panel/products');
+    await screen.findByTestId('open-navigation');
+
+    const topbar = screen.getByTestId('open-navigation').closest('header');
+    if (topbar === null) throw new Error('The menu button must render inside the app bar');
+    expect(topbar).toHaveTextContent('Acme');
+    expect(screen.queryByTestId('panel-brand-lockup')).toBeNull();
+
+    await userEvent.click(screen.getByTestId('open-navigation'));
+
+    expect(screen.getByTestId('tenant-name')).toHaveTextContent('Acme');
+    expect(screen.getByTestId('panel-brand-lockup')).toBeInTheDocument();
   });
 
   it('shows the dashboard overview at /panel index', async () => {

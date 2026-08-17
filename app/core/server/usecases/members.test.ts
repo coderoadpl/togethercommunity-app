@@ -45,6 +45,7 @@ const staff = (tenantId: string | null, tenantSlug: string | null): Identity => 
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const plainMember = (tenantId: string): Identity => ({
@@ -60,6 +61,7 @@ const plainMember = (tenantId: string): Identity => ({
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): MemberWithProductIds => ({

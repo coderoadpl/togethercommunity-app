@@ -23,6 +23,7 @@ import {
 } from '../../theme.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
+import { StartMessageButton } from './messages/StartMessageButton.js';
 
 export const PAGE_SIZE = 20;
 const MAX_INDENT = 5;
@@ -263,6 +264,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               {t.discussion.delete}
             </Button>
           )}
+          {!own && !deleted ? <StartMessageButton postId={post.id} /> : null}
           {!own && !deleted ? <ReportPostButton postId={post.id} /> : null}
         </Stack>
       )}

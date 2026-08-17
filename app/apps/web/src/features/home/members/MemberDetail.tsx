@@ -39,6 +39,7 @@ import { formatDate, formatDateTime, formatPrice, formatRelativeTime } from '../
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
 import { EmailSendSummary } from '../marketing/EmailSendSummary.js';
+import { MessageMemberButton } from './MessageMemberButton.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 
 const toIsoOrNull = (localValue: string): string | null =>
@@ -138,6 +139,7 @@ const AccountSummary = ({ member }: { member: MemberWithProductIds }) => {
             {formatDate(member.createdAt, language)}
           </EntryDate>
         </Typography>
+        {member.deletedAt === null ? <MessageMemberButton memberId={member.id} /> : null}
       </Stack>
     </SectionCard>
   );

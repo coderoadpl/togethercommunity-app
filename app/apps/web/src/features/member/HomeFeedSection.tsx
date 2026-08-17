@@ -19,6 +19,7 @@ import {
   PostMetaText,
 } from '../../theme.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { StartMessageButton } from './messages/StartMessageButton.js';
 
 const PAGE_SIZE = 10;
 
@@ -94,6 +95,7 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
           >
             {t.community.openThread}
           </MuiLink>
+          {!item.isOwn && !deleted ? <StartMessageButton postId={item.id} /> : null}
         </Stack>
       </Stack>
     </DiscussionThread>

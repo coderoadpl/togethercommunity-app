@@ -38,6 +38,7 @@ const context = (overrides: Partial<Ctx['identity']> = {}): Ctx => ({
     image: null,
     memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
     ...overrides,
   },
 });

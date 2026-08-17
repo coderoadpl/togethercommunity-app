@@ -483,6 +483,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   memberId: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): Identity => ({
@@ -498,6 +499,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberId: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const checkoutConsentEvidence = (headers: Headers) => {
@@ -1382,6 +1384,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
               memberId: identity.memberId,
               displayName: identity.memberDisplayName,
               banned: identity.memberBannedAt !== null,
+              dmOptOut: identity.memberDmOptOutAt !== null,
             }
             : null,
       }),

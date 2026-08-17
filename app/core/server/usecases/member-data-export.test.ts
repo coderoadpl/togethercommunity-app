@@ -67,6 +67,7 @@ const context = (role: 'member' | 'staff' | 'none'): Ctx => ({
     image: null,
     memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
   },
 });
 

@@ -74,6 +74,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
   ...overrides,
 });
 

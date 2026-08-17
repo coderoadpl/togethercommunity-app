@@ -3183,6 +3183,36 @@ export const DiscussionThread = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
 }));
 
+export const ConversationCard = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
+  display: 'block',
+  padding: '0.9rem 1.1rem',
+  textDecoration: 'none',
+  color: 'inherit',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.paper,
+  transition: 'border-color 120ms ease, background-color 120ms ease',
+  '&:hover': {
+    borderColor: theme.palette.text.primary,
+    backgroundColor: theme.palette.action.hover,
+  },
+  '&:focus-visible': {
+    outline: 'none',
+    boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? theme.palette.primary.main, 0.5)}`,
+  },
+}));
+
+export const MessageBubble = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'own',
+})<{ own?: boolean }>(({ theme, own }) => ({
+  maxWidth: 'min(36rem, 82%)',
+  alignSelf: own === true ? 'flex-end' : 'flex-start',
+  padding: '0.6rem 0.85rem',
+  borderRadius: theme.shape.borderRadius,
+  border: `1px solid ${theme.palette.divider}`,
+  backgroundColor: own === true ? theme.palette.action.selected : theme.palette.background.paper,
+}));
+
 export const ReplyIndent = styled(Box)(({ theme }) => ({
   borderLeft: `2px solid ${alpha(theme.palette.text.primary, 0.2)}`,
   paddingLeft: '1rem',

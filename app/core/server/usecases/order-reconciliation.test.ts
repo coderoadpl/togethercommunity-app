@@ -18,6 +18,7 @@ const identity = (staffRole: 'owner' | 'admin' | null): Identity => ({
 image: null,
 memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 });
 
 const row: PaidWithoutGrantRow = {

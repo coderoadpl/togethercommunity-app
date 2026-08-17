@@ -30,6 +30,7 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
 image: null,
 memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 });
 
 const entry = (over: Partial<EntityHistoryEntry> & { tenantId: string }): EntityHistoryEntry & { tenantId: string } => ({

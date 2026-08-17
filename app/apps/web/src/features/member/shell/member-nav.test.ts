@@ -5,6 +5,7 @@ import {
   anonHomePath,
   courseContextFromPath,
   memberHomePath,
+  memberMessagesPath,
   memberSearchPath,
 } from './member-nav.js';
 
@@ -13,6 +14,8 @@ describe('activeNavEntry', () => {
     [memberHomePath(), { kind: 'start' }],
     [anonHomePath(), { kind: 'start' }],
     [memberSearchPath(), { kind: 'search' }],
+    [memberMessagesPath(), { kind: 'messages' }],
+    ['/messages/conversation-1', { kind: 'messages' }],
     ['/community/space-1', { kind: 'space', spaceId: 'space-1' }],
     ['/community/space-1/posts/post-1', { kind: 'space', spaceId: 'space-1' }],
     ['/my/courses/course-1', { kind: 'course', courseId: 'course-1' }],
@@ -59,6 +62,7 @@ describe('courseContextFromPath', () => {
     ['/my/products'],
     ['/community/space-1'],
     ['/community/space-1/posts/post-1'],
+    [memberMessagesPath()],
     ['/account'],
   ])('stays out of course context on %s', (pathname) => {
     expect(courseContextFromPath(pathname)).toBeNull();

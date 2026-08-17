@@ -230,6 +230,7 @@ export const meOutputSchema = z.object({
       memberId: z.string().nullable(),
       displayName: z.string().nullable().default(null),
       banned: z.boolean(),
+      dmOptOut: z.boolean().default(false),
     })
     .nullable(),
 });

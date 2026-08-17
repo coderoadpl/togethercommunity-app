@@ -31,6 +31,7 @@ const ctx = (staffRole: StaffRole | null = 'owner', tenantId: string | null = 't
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
   } satisfies Identity,
 });
 

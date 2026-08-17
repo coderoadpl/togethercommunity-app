@@ -32,6 +32,7 @@ const identity: Identity = {
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 };
 
 const member: Member = {

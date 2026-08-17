@@ -402,6 +402,34 @@ export interface Messages {
     threadReply: (params: { author: string; lesson: string }) => string;
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
+    dmMessage: (params: { author: string }) => string;
+  };
+  messages: {
+    navLabel: string;
+    title: string;
+    eyebrow: string;
+    loading: string;
+    emptyList: string;
+    emptyListHint: string;
+    emptyConversation: string;
+    conversationEyebrow: string;
+    backToList: string;
+    composerLabel: string;
+    composerPlaceholder: string;
+    composerHint: string;
+    send: string;
+    sending: string;
+    loadOlder: string;
+    ownPrefix: string;
+    startFromAuthor: string;
+    starting: string;
+    unreadAria: (params: { count: number }) => string;
+    privacyHeading: string;
+    optOutLabel: string;
+    optOutHint: string;
+    optOutSaved: string;
+    recipientUnavailable: string;
+    rateLimited: string;
   };
   emailVerification: {
     heading: string;

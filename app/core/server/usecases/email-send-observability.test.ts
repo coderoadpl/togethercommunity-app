@@ -24,6 +24,7 @@ const identity = (staffRole: Identity['staffRole'] = 'owner'): Ctx => ({ identit
 image: null,
 memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 } });
 
 const sends: EmailSendProjection[] = [

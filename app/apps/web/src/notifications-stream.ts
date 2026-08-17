@@ -1,7 +1,7 @@
 import { NOTIFICATIONS_STREAM_PATH } from '#core/client/index.js';
 
 export interface NotificationStreamSource {
-  addEventListener(type: 'unread' | 'notification' | 'error', listener: () => void): void;
+  addEventListener(type: 'unread' | 'notification' | 'dm' | 'error', listener: () => void): void;
   close(): void;
 }
 
@@ -17,6 +17,11 @@ export interface NotificationsStreamOptions {
 }
 
 const MAX_STREAM_ERRORS = 2;
+
+const STREAMLESS_POLL_INTERVAL_MS = 30_000;
+
+export const streamlessPollInterval = (): number | false =>
+  typeof EventSource === 'undefined' ? STREAMLESS_POLL_INTERVAL_MS : false;
 
 const defaultSource = (): NotificationStreamSource | null =>
   typeof EventSource === 'undefined' ? null : new EventSource(NOTIFICATIONS_STREAM_PATH);
@@ -38,6 +43,7 @@ export const connectNotificationsStream = (
   };
   source.addEventListener('unread', options.onEvent);
   source.addEventListener('notification', options.onEvent);
+  source.addEventListener('dm', options.onEvent);
   source.addEventListener('error', () => {
     errors += 1;
     if (errors < MAX_STREAM_ERRORS) return;

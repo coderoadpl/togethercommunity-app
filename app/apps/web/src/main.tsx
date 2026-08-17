@@ -102,12 +102,14 @@ import {
 } from './routes/panel.js';
 import {
   CommunityRoute,
+  ConversationRoute,
   CourseRoute,
   CourseStructureRoute,
   LessonPlayerRoute,
   MemberAccountRoute,
   MemberShellRoute,
   MyCoursesRoute,
+  MessagesRoute,
   MyProductsRoute,
   NotificationsRoute,
   SearchRoute,
@@ -220,6 +222,16 @@ const notificationsRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/notifications',
   component: NotificationsRoute,
+});
+const messagesRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/messages',
+  component: MessagesRoute,
+});
+const conversationRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: MEMBER_ROUTE_PATHS.conversation,
+  component: ConversationRoute,
 });
 const communityRoute = createRoute({
   getParentRoute: () => memberShellRoute,
@@ -467,6 +479,8 @@ const router = createRouter({
       lessonPlayerRoute,
       accountRoute,
       notificationsRoute,
+      messagesRoute,
+      conversationRoute,
       communityRoute,
       spaceFeedRoute,
       spaceThreadRoute,

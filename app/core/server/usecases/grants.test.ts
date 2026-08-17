@@ -38,6 +38,7 @@ const staff = (tenantId: string | null): Ctx => ({
     image: null,
     memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
   },
 });
 
@@ -55,6 +56,7 @@ const plainMember = (tenantId: string): Ctx => ({
     image: null,
     memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
   },
 });
 

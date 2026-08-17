@@ -24,6 +24,7 @@ import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { ReportPostButton } from './ReportPostButton.js';
+import { StartMessageButton } from './messages/StartMessageButton.js';
 import { useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -144,6 +145,7 @@ const FeedPost = ({
               {item.pinnedAt === null ? t.community.pin : t.community.unpin}
             </Button>
           ) : null}
+          {!item.isOwn && !deleted ? <StartMessageButton postId={item.id} /> : null}
           {!item.isOwn && !deleted ? <ReportPostButton postId={item.id} /> : null}
         </Stack>
       </Stack>

@@ -451,6 +451,7 @@ const executeAdapterE2e = async (
         image: null,
         memberDisplayName: null,
         memberBannedAt: null,
+        memberDmOptOutAt: null,
       },
     },
     orderId,

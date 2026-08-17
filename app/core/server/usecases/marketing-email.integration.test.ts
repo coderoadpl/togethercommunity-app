@@ -74,6 +74,7 @@ const ctx: Ctx = { identity: {
 image: null,
 memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 } };
 const anonymousCtx: Ctx = { identity: {
   userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantId: 'tenant-1',
@@ -81,6 +82,7 @@ const anonymousCtx: Ctx = { identity: {
 image: null,
 memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 } };
 const clock = { nowIso: () => NOW };
 const ids = (() => { let value = 0; return { nextId: () => `generated-${String(++value)}` }; })();
@@ -139,6 +141,7 @@ const setup = async (emails = ['member@example.test']) => {
     image: null,
     memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
     }))),
     sesSettings: new InMemoryTenantSesSettingsRepository([settings]), ses: new FakeSesMarketingSender(),
     hmac: new FakeEmailHmac(), events, outbox: new InMemoryEmailOutboxRepository(events), clock, ids, tokens,

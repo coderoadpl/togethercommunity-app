@@ -1698,6 +1698,7 @@ const runSpotChecks = async (
           image: null,
           memberDisplayName: memberRow.displayName ?? null,
           memberBannedAt: null,
+          memberDmOptOutAt: null,
         },
       };
       const result = await isLessonAccessible(ctx, lessonId, deps);

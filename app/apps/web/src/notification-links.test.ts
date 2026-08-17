@@ -7,7 +7,7 @@ import { notificationTarget, notificationTitle } from './notification-links.js';
 
 const notification = (input: {
   kind: Notification['kind'];
-  contextKind: 'lesson' | 'space';
+  contextKind: 'lesson' | 'space' | 'dm';
   contextId: string;
   courseId: string | null;
   lessonName?: string;
@@ -66,6 +66,14 @@ describe('notificationTarget', () => {
     ).toEqual({ kind: 'lesson-thread', courseId: 'c1', lessonId: 'l1', rootPostId: 'root-1' });
   });
 
+  it('routes a direct message to its conversation', () => {
+    expect(
+      notificationTarget(
+        notification({ kind: 'dm-message', contextKind: 'dm', contextId: 'c1', courseId: null }),
+      ),
+    ).toEqual({ kind: 'dm-conversation', conversationId: 'c1' });
+  });
+
   it('leaves a legacy lesson notification without a course unroutable', () => {
     expect(
       notificationTarget(
@@ -94,6 +102,21 @@ describe('notificationTitle', () => {
         }),
       ),
     ).toBe(pl.notifications.spacePost({ author: 'Ola', space: 'Ogólna' }));
+  });
+
+  it('names the sender for a direct message', () => {
+    expect(
+      notificationTitle(
+        pl,
+        notification({
+          kind: 'dm-message',
+          contextKind: 'dm',
+          contextId: 'c1',
+          courseId: null,
+          lessonName: 'Ola',
+        }),
+      ),
+    ).toBe(pl.notifications.dmMessage({ author: 'Ola' }));
   });
 
   it('names the lesson for a question and for a reply', () => {

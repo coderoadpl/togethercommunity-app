@@ -752,6 +752,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
         emailVerified: true, image: null,
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
+        memberDmOptOutAt: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
@@ -769,6 +770,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
     emailVerified: true, image: null,
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
+    memberDmOptOutAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
     return tenantUrl(tenantSlug, '/panel/marketing', {

@@ -411,6 +411,11 @@ export const en: Messages = {
     loading: 'Loading notifications…',
     markAllRead: 'Mark all as read',
     markedAllRead: 'All notifications marked as read.',
+    viewAll: 'View all notifications',
+    pageEyebrow: 'Your activity',
+    loadMore: 'Load more',
+    olderTruncated: 'Only the latest 100 notifications are shown.',
+    unreadLabel: 'Unread',
     threadReply: ({ author, lesson }) =>
       lesson.length > 0
         ? format('{author} replied in the "{lesson}" discussion', { author, lesson })
@@ -1337,6 +1342,7 @@ export const en: Messages = {
       count === 1 ? '1 reply' : format('{count} replies', { count }),
     continueThread: 'Continue thread',
     backToDiscussion: 'Back to the full discussion',
+    backToAll: 'Back to all threads',
     loadMore: 'Show more threads',
     searchLabel: 'Search this discussion',
     searchWholeWordsHint:
@@ -1473,6 +1479,16 @@ export const en: Messages = {
     heading: 'Your account',
     signedInAs: 'Signed in as',
     back: '← Back to my courses',
+    profileHeading: 'Profile',
+    displayNameLabel: 'Display name',
+    displayNameHint: 'Shown next to your posts and comments in this community.',
+    displayNameSave: 'Save',
+    displayNameSaved: 'Display name updated.',
+    avatarHint: ({ email }) =>
+      format(
+        'Your picture comes from your Google account or Gravatar for {email}; otherwise we show your initials. Custom uploads are planned.',
+        { email },
+      ),
     passwordHeading: 'Password',
     passwordIntro:
       'Change your password here using your current password. If you do not have a password yet, use the email link below to set one. Magic-link sign-in keeps working.',

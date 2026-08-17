@@ -14,6 +14,8 @@ const identity = (tenantId: string | null): Identity => ({
   tenantName: tenantId === null ? null : 'Tenant',
   staffRole: 'owner',
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 });
 

@@ -22,6 +22,8 @@ const identity: Identity = {
   tenantName: null,
   staffRole: null,
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 };
 

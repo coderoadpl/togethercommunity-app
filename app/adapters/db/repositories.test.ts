@@ -31,6 +31,7 @@ import type {
 
 import type { Db } from './client.js';
 import {
+  createAvatarSourceReader,
   createCourseLessonRepository,
   createCourseModuleRepository,
   createCourseRepository,
@@ -306,6 +307,21 @@ describe('member repository', () => {
     const rows = await repo.listWithProductIds(ACME, NOW);
     const acmeMember = rows.find((r) => r.id === 'mem-acme');
     expect(acmeMember?.activeProductIds).toContain('prod-acme');
+  });
+
+  it('sets and clears the display name inside the owning tenant only', async () => {
+    const repo = createMemberRepository(db);
+
+    expect(await repo.updateDisplayName(ACME, 'mem-acme', 'Ada L.')).toMatchObject({
+      id: 'mem-acme',
+      displayName: 'Ada L.',
+    });
+    expect(await repo.findById(ACME, 'mem-acme')).toMatchObject({ displayName: 'Ada L.' });
+    expect(await repo.updateDisplayName(GLOBEX, 'mem-acme', 'Stolen')).toBeNull();
+    expect(await repo.findById(ACME, 'mem-acme')).toMatchObject({ displayName: 'Ada L.' });
+    expect(await repo.updateDisplayName(ACME, 'mem-acme', null)).toMatchObject({
+      displayName: null,
+    });
   });
 
   it('updates ban state and appends its event atomically', async () => {
@@ -1106,6 +1122,35 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       ['user-acme-owner', 'Acme Owner'],
       ['user-acme-member', 'Acme Member'],
     ]));
+  });
+
+  it('reads avatar sources for tenant identities only, preferring the member e-mail', async () => {
+    await db.insert(user).values({
+      id: 'user-acme-avatar',
+      name: 'Avatar Member',
+      email: 'account-avatar@together.dev',
+      image: 'https://lh3.googleusercontent.com/a/avatar',
+    });
+    await createMemberRepository(db).create(ACME, member({
+      id: 'mem-acme-avatar',
+      tenantId: ACME,
+      userId: 'user-acme-avatar',
+      email: 'member-avatar@together.dev',
+    }));
+
+    const reader = createAvatarSourceReader(db);
+    const sources = await reader.listAvatarSources(ACME, [
+      'user-acme-avatar',
+      'user-acme-owner',
+      'user-globex-member',
+    ]);
+
+    expect([...sources].sort((a, b) => a.userId.localeCompare(b.userId))).toEqual([
+      { userId: 'user-acme-avatar', email: 'member-avatar@together.dev', image: 'https://lh3.googleusercontent.com/a/avatar' },
+      { userId: 'user-acme-owner', email: 'owner-acme@together.dev', image: null },
+    ]);
+    expect(await reader.listAvatarSources(GLOBEX, ['user-acme-avatar'])).toEqual([]);
+    expect(await reader.listAvatarSources(ACME, [])).toEqual([]);
   });
 
   it('stores and revokes API keys by hash within the tenant', async () => {
@@ -2010,6 +2055,7 @@ describe('notification repository', () => {
         courseId: 'course-notification-pagination',
         lessonName: 'Pagination',
         authorDisplay: 'Author',
+        authorAvatarUrl: null,
         snippet: id,
       },
       readAt: null,

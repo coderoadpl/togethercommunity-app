@@ -31,6 +31,7 @@ import type {
   LessonUncompleteInput,
   LessonCreateInput,
   LessonUpdateInput,
+  MeProfileUpdateInput,
   MemberHomeFeedGetInput,
   MemberProgressResetInput,
   MemberBanInput,
@@ -337,6 +338,7 @@ const reportScopes = {
 const notificationScopes = {
   all: () => ['notifications'] as const,
   list: () => ['notifications', 'list'] as const,
+  page: (limit?: number) => ['notifications', 'page', limit ?? null] as const,
   unread: () => ['notifications', 'unread'] as const,
 };
 
@@ -476,6 +478,12 @@ export const meQuery = (api: ApiClient) =>
   });
 
 export const meInvalidates = () => ({ queryKey: meScopes.all() });
+
+export const updateMyProfileMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['me', 'profile'],
+    call: (input: MeProfileUpdateInput) => api.updateMyProfile(input),
+  });
 
 export const healthQuery = (api: ApiClient) =>
   defineQuery({
@@ -1190,6 +1198,12 @@ export const spacesInvalidates = () => ({ queryKey: spacesScopes.all() });
 export const notificationsQuery = (api: ApiClient, input: NotificationsListInput = {}) =>
   defineQuery({
     queryKey: notificationScopes.list(),
+    call: ({ signal }) => api.listNotifications(input, signal),
+  });
+
+export const notificationsPageQuery = (api: ApiClient, input: NotificationsListInput = {}) =>
+  defineQuery({
+    queryKey: notificationScopes.page(input.limit),
     call: ({ signal }) => api.listNotifications(input, signal),
   });
 

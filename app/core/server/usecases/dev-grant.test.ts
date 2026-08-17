@@ -73,6 +73,7 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
       members.push(m);
     },
     updateEmail: async () => null,
+    updateDisplayName: async () => null,
   setBanned: async () => null,
   };
   const grantsRepo: ProductGrantRepository = {

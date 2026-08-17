@@ -101,6 +101,7 @@ const harness = (options: {
       members.push(m);
     },
     updateEmail: async () => null,
+    updateDisplayName: async () => null,
   setBanned: async () => null,
   };
 

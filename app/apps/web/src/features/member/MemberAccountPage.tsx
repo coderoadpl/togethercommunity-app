@@ -6,6 +6,7 @@ import {
   FormControl,
   FormLabel,
   OutlinedInput,
+  Snackbar,
   Stack,
   Typography,
 } from '@mui/material';
@@ -23,6 +24,7 @@ import { EmailVerificationStatus } from '../../components/ui/EmailVerificationSt
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -49,6 +51,14 @@ export const MemberAccountPage = () => {
     ...actions.cancelMyErasureRequest,
     onSuccess: () => {
       void erasureRequest.refetch();
+    },
+  });
+  const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
+  const updateProfile = useMutation({
+    ...actions.updateMyProfile,
+    onSuccess: async () => {
+      setDisplayNameDraft(null);
+      await queryClient.invalidateQueries(actions.meInvalidates());
     },
   });
   const [supportSubject, setSupportSubject] = useState('');
@@ -112,6 +122,8 @@ export const MemberAccountPage = () => {
   }
 
   const email = me.data.email;
+  const savedDisplayName = me.data.tenant?.displayName ?? '';
+  const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
     redirectTo: new URL('/reset-password', window.location.origin).toString(),
@@ -256,6 +268,50 @@ export const MemberAccountPage = () => {
           ) : null}
           {cancelErasureRequest.isError ? <Alert severity="error">{localizeError(cancelErasureRequest.error, t)}</Alert> : null}
         </SectionCard>
+
+        {me.data.tenant?.memberId ? (
+          <SectionCard
+            title={t.account.profileHeading}
+            description={t.account.displayNameHint}
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              updateProfile.mutate({ displayName: displayName.trim() === '' ? null : displayName.trim() });
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <MemberAvatar
+                name={displayName.trim() === '' ? me.data.name : displayName}
+                avatarUrl={me.data.avatarUrl}
+                size="lg"
+              />
+              <Typography variant="caption" color="text.secondary">
+                {t.account.avatarHint({ email })}
+              </Typography>
+            </Box>
+            <FormControl fullWidth>
+              <FormLabel htmlFor="account-display-name">{t.account.displayNameLabel}</FormLabel>
+              <OutlinedInput
+                id="account-display-name"
+                inputProps={{ maxLength: 200 }}
+                value={displayName}
+                onChange={(event) => setDisplayNameDraft(event.target.value)}
+              />
+            </FormControl>
+            <Box>
+              <Button
+                type="submit"
+                variant="contained"
+                data-testid="account-display-name-save"
+                disabled={updateProfile.isPending || displayName.trim() === savedDisplayName.trim()}
+              >
+                {t.account.displayNameSave}
+              </Button>
+            </Box>
+            {updateProfile.isError ? (
+              <Alert severity="error">{localizeError(updateProfile.error, t)}</Alert>
+            ) : null}
+          </SectionCard>
+        ) : null}
 
         <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
             <ChangePasswordForm
@@ -454,6 +510,16 @@ export const MemberAccountPage = () => {
             <ColorSchemeSwitcher />
           </Stack>
         </SectionCard>
+
+        <Snackbar
+          open={updateProfile.isSuccess}
+          autoHideDuration={4000}
+          onClose={() => updateProfile.reset()}
+        >
+          <Alert severity="success" data-testid="account-display-name-saved">
+            {t.account.displayNameSaved}
+          </Alert>
+        </Snackbar>
       </Stack>
     </MemberSurface>
   );

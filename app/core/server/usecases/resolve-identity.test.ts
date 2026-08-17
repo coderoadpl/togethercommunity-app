@@ -5,7 +5,7 @@ import type { Member, Membership, Tenant, TenantDomain } from '#core/domain/inde
 import type { TenantAccessReader, TenantDomainRepository, TenantRepository } from '../ports.js';
 import { resolveIdentity } from './resolve-identity.js';
 
-const user = { userId: 'u1', email: 'demo@example.com', name: 'Demo', emailVerified: true };
+const user = { userId: 'u1', email: 'demo@example.com', name: 'Demo', emailVerified: true, image: null };
 
 const acme: Membership = {
   tenant: {
@@ -92,6 +92,7 @@ const deps = (
       memberRows[index] = refreshed;
       return refreshed;
     },
+    updateDisplayName: async () => null,
     setBanned: async () => null,
     delete: async () => false,
   },

@@ -17,7 +17,9 @@ import {
 
 import type { Ctx } from '../context.js';
 import type {
+  AvatarSourceReader,
   Clock,
+  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -57,6 +59,8 @@ import {
 
 const NOW = '2026-07-15T10:00:00.000Z';
 
+const contentHash: ContentHash = { sha256: (content) => `digest(${String(content)})` };
+
 const identity = (overrides: Partial<Identity>): Identity => ({
   userId: 'u1',
   email: 'u1@example.com',
@@ -67,6 +71,8 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'm1',
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
   ...overrides,
 });
@@ -676,6 +682,12 @@ const fixture = (input: {
     findMember: async (tenantId, userId) =>
       MEMBERS.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
   };
+  const avatarSources: AvatarSourceReader = {
+    listAvatarSources: async (tenantId, userIds) =>
+      MEMBERS.filter(
+        (member) => member.tenantId === tenantId && userIds.includes(member.userId),
+      ).map((member) => ({ userId: member.userId, email: member.email, image: null })),
+  };
   const deps: SpacesDeps & CommunityDeps = {
     spaces: new FakeSpaces(input.spaces),
     posts,
@@ -708,6 +720,8 @@ const fixture = (input: {
     },
     ids: new SequenceIds(),
     clock: new MutableClock(),
+    avatarSources,
+    contentHash,
   };
   return { deps, contentVersionBumps, posts, reactions, spaceSubscriptions, spaceSeen, notifications, delivered };
 };
@@ -980,6 +994,26 @@ describe('space feed', () => {
     ).toMatchObject({ ok: true, value: { pinnedAt: null } });
   });
 
+  it('resolves author avatars for pinned and unpinned feed rows', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const pinned = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'przypięty' }, f.deps);
+    const plain = await createPost(
+      ctx({ userId: 'u2', memberId: 'm2' }),
+      { contextKind: 'space', contextId: 's-open', body: 'zwykły' },
+      f.deps,
+    );
+    if (!pinned.ok || !plain.ok) throw new Error('posts were not created');
+    await setPostPinned(ctx({ staffRole: 'admin', memberId: null }), { postId: pinned.value.id, pinned: true }, f.deps);
+
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
+      ok: true,
+      value: {
+        pinned: [{ authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160' }],
+        items: [{ authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u2@example.com)?d=404&s=160' }],
+      },
+    });
+  });
+
   it('frees the pin slot and removes a pinned post from the feed when its author deletes it', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const created = await createPost(
@@ -1178,6 +1212,7 @@ describe('space-post notifications', () => {
       courseId: null,
       lessonName: 'Klub',
       snippet: 'nowy wpis',
+      authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160',
     });
   });
 

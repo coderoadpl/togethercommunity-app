@@ -43,6 +43,7 @@ import {
   createProductPriceHistoryRepository,
 } from '#adapters/db/coupon-repositories.js';
 import {
+  createAvatarSourceReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
   createProductDownloadAssetRepository,
@@ -225,6 +226,7 @@ import type {
   UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
+  AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
 import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult } from '#core/server/index.js';
@@ -285,6 +287,7 @@ export interface AppDeps {
   downloadAssets: ProductDownloadAssetRepository;
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
+  avatarSources: AvatarSourceReader;
   members: MemberRepository;
   memberEvents: MemberEventRepository;
   memberErasure: MemberErasurePort;
@@ -738,8 +741,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     return campaignTick({
       identity: {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-        emailVerified: true,
-        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
+        emailVerified: true, image: null,
+        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
@@ -755,8 +758,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-    emailVerified: true,
-    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
+    emailVerified: true, image: null,
+    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
     return tenantUrl(tenantSlug, '/panel/marketing', {
@@ -906,6 +909,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     downloadAssets: createProductDownloadAssetRepository(db),
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
+    avatarSources: createAvatarSourceReader(db),
     members: createMemberRepository(db),
     memberEvents: createMemberEventRepository(db),
     memberErasure: createMemberErasureRepository(db, emailHmac),

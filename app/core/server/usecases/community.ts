@@ -36,7 +36,9 @@ import {
 
 import type { Ctx } from '../context.js';
 import type {
+  AvatarSourceReader,
   Clock,
+  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -53,6 +55,7 @@ import type {
   ThreadSubscriptionRepository,
 } from '../ports.js';
 import { isLessonAccessibleByLookup, locateLesson } from './access.js';
+import { avatarUrlForAuthor, avatarUrlsFor, type AvatarUrlMap } from './avatar.js';
 import {
   accessibleLessonIds,
   lessonContextAccess,
@@ -84,6 +87,8 @@ export interface CommunityDeps {
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
+  avatarSources: AvatarSourceReader;
+  contentHash: ContentHash;
 }
 
 const minutesBefore = (iso: string, minutes: number): string =>
@@ -141,7 +146,12 @@ const contextAccess = async (
   return space.ok ? ok(undefined) : space;
 };
 
-export const nestReplies = (rootId: string, replies: Post[], viewerUserId: string): DiscussionPost[] => {
+export const nestReplies = (
+  rootId: string,
+  replies: Post[],
+  viewerUserId: string,
+  avatarUrls: AvatarUrlMap = new Map(),
+): DiscussionPost[] => {
   const byParent = new Map<string, Post[]>();
   for (const reply of replies) {
     const parentId = reply.parentPostId ?? rootId;
@@ -150,7 +160,7 @@ export const nestReplies = (rootId: string, replies: Post[], viewerUserId: strin
   const build = (post: Post): DiscussionPost => {
     const children = byParent.get(post.id) ?? [];
     return {
-      ...toPublicPost(renderPost(post), viewerUserId),
+      ...toPublicPost(renderPost(post), viewerUserId, avatarUrls.get(post.authorUserId) ?? null),
       replyCount: children.length,
       replies: children.map(build),
     };
@@ -226,6 +236,7 @@ const notifySubscribers = async (
   const subscribers = await deps.threadSubscriptions.listSubscribersForRoot(tenantId, post.rootPostId);
   if (subscribers.length === 0) return ok(undefined);
   const context = await threadContextInfo(tenantId, post, deps, tenant.tenantSlug);
+  const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
   for (const subscriber of subscribers) {
     if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
     const [staffGrant, member] = await Promise.all([
@@ -248,6 +259,7 @@ const notifySubscribers = async (
         courseId: context.courseId,
         lessonName: context.contextName,
         authorDisplay: post.authorDisplay,
+        authorAvatarUrl,
         snippet: postSnippet(post.body),
       },
       readAt: null,
@@ -278,6 +290,7 @@ const notifyLessonQuestionStaff = async (
   const staff = await deps.tenantAccess.listStaffForTenant(tenantId);
   if (staff.length === 0) return ok(undefined);
   const context = await threadContextInfo(tenantId, post, deps, tenant.tenantSlug);
+  const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
   for (const recipient of staff) {
     if (recipient.userId === post.authorUserId) continue;
     await deps.threadSubscriptions.upsert(tenantId, {
@@ -298,6 +311,7 @@ const notifyLessonQuestionStaff = async (
         courseId: context.courseId,
         lessonName: context.contextName,
         authorDisplay: post.authorDisplay,
+        authorAvatarUrl,
         snippet: postSnippet(post.body),
       },
       readAt: null,
@@ -431,17 +445,30 @@ export const listDiscussion = async (
     limit: parsed.data.limit,
     ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
   });
-  const threads = await Promise.all(
-    listed.threads.map(async (thread) => ({
-      ...toPublicPost(renderPost(thread.post), scope.value.userId),
-      replyCount: thread.replyCount,
-      replies: nestReplies(
-        thread.post.id,
-        await deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId),
-        scope.value.userId,
-      ),
-    })),
+  const repliesByThread = await Promise.all(
+    listed.threads.map((thread) => deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
   );
+  const avatarUrls = await avatarUrlsFor(
+    scope.value.tenantId,
+    [...listed.threads.map((thread) => thread.post), ...repliesByThread.flat()].map(
+      (post) => post.authorUserId,
+    ),
+    deps,
+  );
+  const threads = listed.threads.map((thread, index) => ({
+    ...toPublicPost(
+      renderPost(thread.post),
+      scope.value.userId,
+      avatarUrls.get(thread.post.authorUserId) ?? null,
+    ),
+    replyCount: thread.replyCount,
+    replies: nestReplies(
+      thread.post.id,
+      repliesByThread[index] ?? [],
+      scope.value.userId,
+      avatarUrls,
+    ),
+  }));
   const subscriptions = await deps.threadSubscriptions.listForUser(scope.value.tenantId, {
     userId: scope.value.userId,
     rootPostIds: threads.map((thread) => thread.rootPostId),
@@ -560,10 +587,19 @@ export const searchPosts = async (
     spaceIds: onlyLessonsRequested ? [] : spaceIds,
     limit: parsed.data.limit,
   });
+  const avatarUrls = await avatarUrlsFor(
+    tenant.value.tenantId,
+    rows.map((row) => row.post.authorUserId),
+    deps,
+  );
   return ok(
     rows.map(
       (row): PostSearchHit => ({
-        post: toPublicPost(row.post, ctx.identity.userId),
+        post: toPublicPost(
+          row.post,
+          ctx.identity.userId,
+          avatarUrls.get(row.post.authorUserId) ?? null,
+        ),
         lessonId: row.lessonId,
         snippet: row.snippet,
       }),

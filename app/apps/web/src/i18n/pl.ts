@@ -417,6 +417,11 @@ export const pl: Messages = {
     loading: 'Wczytywanie powiadomień…',
     markAllRead: 'Oznacz wszystkie jako przeczytane',
     markedAllRead: 'Oznaczono wszystkie powiadomienia jako przeczytane.',
+    viewAll: 'Zobacz wszystkie',
+    pageEyebrow: 'Twoja aktywność',
+    loadMore: 'Wczytaj więcej',
+    olderTruncated: 'Wyświetlamy tylko 100 najnowszych powiadomień.',
+    unreadLabel: 'Nieprzeczytane',
     threadReply: ({ author, lesson }) =>
       lesson.length > 0
         ? format('{author} odpowiedział(a) w dyskusji „{lesson}”', { author, lesson })
@@ -1354,6 +1359,7 @@ export const pl: Messages = {
       format('{count} {word}', { count, word: plural(count, 'odpowiedź', 'odpowiedzi', 'odpowiedzi') }),
     continueThread: 'Kontynuuj wątek',
     backToDiscussion: 'Wróć do całej dyskusji',
+    backToAll: 'Wróć do wszystkich wątków',
     loadMore: 'Pokaż więcej wątków',
     searchLabel: 'Szukaj w tej dyskusji',
     searchWholeWordsHint:
@@ -1492,6 +1498,16 @@ export const pl: Messages = {
     heading: 'Twoje konto',
     signedInAs: 'Zalogowano jako',
     back: '← Wróć do moich kursów',
+    profileHeading: 'Profil',
+    displayNameLabel: 'Wyświetlana nazwa',
+    displayNameHint: 'Widoczna przy Twoich postach i komentarzach w tej społeczności.',
+    displayNameSave: 'Zapisz',
+    displayNameSaved: 'Wyświetlana nazwa została zapisana.',
+    avatarHint: ({ email }) =>
+      format(
+        'Zdjęcie pochodzi z konta Google lub Gravatara dla adresu {email}; w innym wypadku pokazujemy inicjały. Własne zdjęcia — wkrótce.',
+        { email },
+      ),
     passwordHeading: 'Hasło',
     passwordIntro:
       'Zmień hasło tutaj, podając obecne hasło. Jeśli nie masz jeszcze hasła, użyj linku e-mail poniżej, aby je ustawić. Logowanie magicznym linkiem będzie działać dalej.',

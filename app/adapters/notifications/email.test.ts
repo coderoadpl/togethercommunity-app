@@ -18,6 +18,7 @@ const notification: Notification = {
     courseId: 'c1',
     lessonName: 'Lekcja o hamakach',
     authorDisplay: 'Ola',
+    authorAvatarUrl: null,
     snippet: 'Świetne pytanie!',
   },
   readAt: null,

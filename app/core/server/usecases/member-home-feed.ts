@@ -12,12 +12,15 @@ import {
 
 import type { Ctx } from '../context.js';
 import type {
+  AvatarSourceReader,
   Clock,
+  ContentHash,
   PostReactionRepository,
   PostRepository,
   ProductGrantRepository,
   SpaceRepository,
 } from '../ports.js';
+import { avatarUrlsFor } from './avatar.js';
 import { listAccessibleSpaces, requireMemberOrStaff } from './community-access.js';
 
 export interface MemberHomeFeedDeps {
@@ -26,6 +29,8 @@ export interface MemberHomeFeedDeps {
   clock: Clock;
   posts: PostRepository;
   reactions: PostReactionRepository;
+  avatarSources: AvatarSourceReader;
+  contentHash: ContentHash;
 }
 
 export const getMemberHomeFeed = async (
@@ -52,9 +57,19 @@ export const getMemberHomeFeed = async (
     viewerUserId: actor.value.userId,
   });
 
+  const avatarUrls = await avatarUrlsFor(
+    actor.value.tenantId,
+    listed.threads.map((thread) => thread.post.authorUserId),
+    deps,
+  );
+
   return ok({
     items: listed.threads.map((thread) => ({
-      ...toPublicPost(renderPost(thread.post), actor.value.userId),
+      ...toPublicPost(
+        renderPost(thread.post),
+        actor.value.userId,
+        avatarUrls.get(thread.post.authorUserId) ?? null,
+      ),
       replyCount: thread.replyCount,
       reactions: reactions.get(thread.post.id) ?? [],
       spaceId: thread.post.contextId,

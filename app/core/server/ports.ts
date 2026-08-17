@@ -132,6 +132,18 @@ export interface UserDisplayReader {
   findDisplayNames(tenantId: string, userIds: string[]): Promise<Map<string, string>>;
 }
 
+export interface AvatarSourceReader {
+  /**
+   * Avatar sources for identities that belong to the tenant: the tenant-scoped
+   * member e-mail when a member row exists, the account e-mail otherwise, plus
+   * the provider picture from the auth user row.
+   */
+  listAvatarSources(
+    tenantId: string,
+    userIds: string[],
+  ): Promise<Array<{ userId: string; email: string; image: string | null }>>;
+}
+
 export interface ProductRepository {
   listByTenant(tenantId: string): Promise<Product[]>;
   listPublishedByTenant(tenantId: string): Promise<Product[]>;
@@ -416,6 +428,11 @@ export interface MemberRepository {
   listWithProductIds(tenantId: string, now: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
   updateEmail(tenantId: string, memberId: string, email: string): Promise<Member | null>;
+  updateDisplayName(
+    tenantId: string,
+    memberId: string,
+    displayName: string | null,
+  ): Promise<Member | null>;
   setBanned(
     tenantId: string,
     input: {
@@ -1719,6 +1736,7 @@ export interface AuthenticatedUser {
   email: string;
   name: string;
   emailVerified: boolean;
+  image: string | null;
 }
 
 export interface AuthPort {

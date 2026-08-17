@@ -1,4 +1,4 @@
-import { useParams } from '@tanstack/react-router';
+import { useParams, useSearch } from '@tanstack/react-router';
 
 import { CoursePage } from '../features/member/CoursePage.js';
 import { CourseStructurePage } from '../features/member/CourseStructurePage.js';
@@ -6,6 +6,7 @@ import { LessonPlayerPage } from '../features/member/LessonPlayerPage.js';
 import { MemberAccountPage } from '../features/member/MemberAccountPage.js';
 import { MyCoursesPage } from '../features/member/MyCoursesPage.js';
 import { MyProductsPage } from '../features/member/MyProductsPage.js';
+import { NotificationsPage } from '../features/member/NotificationsPage.js';
 import { SpaceFeedPage } from '../features/member/SpaceFeedPage.js';
 import { SpaceThreadPage } from '../features/member/SpaceThreadPage.js';
 import { SearchPage } from '../features/member/SearchPage.js';
@@ -37,8 +38,17 @@ export const CourseStructureRoute = () => {
 
 export const LessonPlayerRoute = () => {
   const params = useParams({ strict: false });
-  return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+  const { thread } = useSearch({ strict: false });
+  return (
+    <LessonPlayerPage
+      courseId={params.courseId ?? ''}
+      lessonId={params.lessonId ?? ''}
+      threadRootPostId={thread ?? null}
+    />
+  );
 };
+
+export const NotificationsRoute = () => <NotificationsPage />;
 
 export const CommunityRoute = () => <SpacesListPage />;
 

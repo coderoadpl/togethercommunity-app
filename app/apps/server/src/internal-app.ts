@@ -47,6 +47,7 @@ import {
   marketingSesSettingsUpdateInputSchema,
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
+  meProfileUpdateInputSchema,
   memberBanInputSchema,
   memberHomeFeedGetInputSchema,
   memberProgressResetInputSchema,
@@ -138,6 +139,7 @@ import {
   autoIssueOnPayment,
   authorizeRequiredTenant,
   authorizeTenant,
+  avatarUrlFor,
   cancelCampaign,
   configureStripe,
   createCampaign,
@@ -181,6 +183,7 @@ import {
   requestMyErasure,
   getMyErasureRequest,
   cancelMyErasureRequest,
+  updateMyProfile,
   listErasureRequests,
   rejectErasureRequest,
   exportOrders,
@@ -460,11 +463,13 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   email: user.email,
   name: user.name,
   emailVerified: user.emailVerified,
+  image: user.image,
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
   staffRole: null,
   memberId: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 });
 
@@ -473,11 +478,13 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   email: 'checkout@invalid.test',
   name: 'Checkout',
   emailVerified: false,
+  image: null,
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
   staffRole: null,
   memberId: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 });
 
@@ -1349,6 +1356,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         email: identity.email,
         name: identity.name,
         emailVerified: identity.emailVerified,
+        avatarUrl: avatarUrlFor(deps.contentHash, { image: identity.image, email: identity.email }),
         tenant:
           identity.tenantId &&
             identity.tenantSlug &&
@@ -1360,11 +1368,24 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
               name: identity.tenantName,
               staffRole: identity.staffRole,
               memberId: identity.memberId,
+              displayName: identity.memberDisplayName,
               banned: identity.memberBannedAt !== null,
             }
             : null,
       }),
     );
+  });
+
+  app.post(API_PATHS.meProfile, async (c) => {
+    const parsed = meProfileUpdateInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return respond(err(validation('Invalid profile payload', parsed.error.flatten())));
+    }
+    return respond(await updateMyProfile(
+      { identity: c.get('identity') },
+      parsed.data,
+      { members: deps.members },
+    ));
   });
 
   app.get(API_PATHS.memberBillingOrders, async (c) => {

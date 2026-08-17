@@ -158,6 +158,7 @@ const deps = (input: {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
       setBanned: async () => null,
     },
     memberEvents: {
@@ -400,6 +401,7 @@ const deps = (input: {
           listWithProductIds: async () => [],
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
+          updateDisplayName: async () => null,
         setBanned: async () => null,
         },
         grants: {
@@ -514,6 +516,9 @@ const deps = (input: {
     },
     userDisplays: {
       findDisplayNames: async () => new Map(),
+    },
+    avatarSources: {
+      listAvatarSources: async () => [],
     },
     progress: {
       findByMemberAndCourse: async () => null,
@@ -731,6 +736,7 @@ const scopedApp = (
         email: 'user@acme.test',
         name: 'User',
         emailVerified: true,
+        image: null,
       }),
     },
     tenantAccess: {
@@ -3038,7 +3044,7 @@ describe('single-tenant mode', () => {
       singleTenantMode: true,
       authPort: {
         ...base.authPort,
-        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true }),
+        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true, image: null }),
       },
       tenantAccess: {
         ...base.tenantAccess,
@@ -3335,6 +3341,7 @@ describe('free lesson preview route', () => {
           email: 'other@example.com',
           name: 'Other Tenant User',
           emailVerified: true,
+          image: null,
         }),
       }),
       courseFor('course-open', true),

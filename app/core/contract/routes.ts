@@ -213,6 +213,7 @@ export const meOutputSchema = z.object({
   email: z.string(),
   name: z.string(),
   emailVerified: z.boolean(),
+  avatarUrl: z.string().nullable().default(null),
   tenant: z
     .object({
       id: z.string(),

@@ -738,7 +738,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     return campaignTick({
       identity: {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-        emailVerified: true,
+        emailVerified: true, image: null,
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
@@ -755,7 +755,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-    emailVerified: true,
+    emailVerified: true, image: null,
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {

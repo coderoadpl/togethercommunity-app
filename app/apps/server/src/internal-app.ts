@@ -139,6 +139,7 @@ import {
   autoIssueOnPayment,
   authorizeRequiredTenant,
   authorizeTenant,
+  avatarUrlFor,
   cancelCampaign,
   configureStripe,
   createCampaign,
@@ -462,6 +463,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   email: user.email,
   name: user.name,
   emailVerified: user.emailVerified,
+  image: user.image,
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
@@ -476,6 +478,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   email: 'checkout@invalid.test',
   name: 'Checkout',
   emailVerified: false,
+  image: null,
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
@@ -1353,6 +1356,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         email: identity.email,
         name: identity.name,
         emailVerified: identity.emailVerified,
+        avatarUrl: avatarUrlFor(deps.contentHash, { image: identity.image, email: identity.email }),
         tenant:
           identity.tenantId &&
             identity.tenantSlug &&

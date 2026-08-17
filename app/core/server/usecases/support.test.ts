@@ -14,6 +14,7 @@ const identity: Identity = {
   tenantName: 'Alpha',
   staffRole: null,
   memberId: 'member-1',
+  image: null,
   memberDisplayName: null,
   memberBannedAt: null,
 };

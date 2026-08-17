@@ -1484,6 +1484,11 @@ export const en: Messages = {
     displayNameHint: 'Shown next to your posts and comments in this community.',
     displayNameSave: 'Save',
     displayNameSaved: 'Display name updated.',
+    avatarHint: ({ email }) =>
+      format(
+        'Your picture comes from your Google account or Gravatar for {email}; otherwise we show your initials. Custom uploads are planned.',
+        { email },
+      ),
     passwordHeading: 'Password',
     passwordIntro:
       'Change your password here using your current password. If you do not have a password yet, use the email link below to set one. Magic-link sign-in keeps working.',

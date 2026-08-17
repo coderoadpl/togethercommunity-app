@@ -1336,6 +1336,7 @@ export interface Messages {
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
+    avatarHint: (params: { email: string }) => string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;

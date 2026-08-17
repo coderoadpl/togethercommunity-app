@@ -50,6 +50,7 @@ export const resolveIdentity = async (
     email: user.email,
     name: user.name,
     emailVerified: user.emailVerified,
+    image: user.image,
     tenantId: null,
     tenantSlug: null,
     tenantName: null,

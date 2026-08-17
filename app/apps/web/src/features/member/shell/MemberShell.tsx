@@ -46,6 +46,7 @@ export const MemberShell = () => {
     ? {
       name: tenant.displayName ?? me.data.name,
       email: me.data.email,
+      avatarUrl: me.data.avatarUrl,
       tenantName: tenant.name,
     }
     : null;
@@ -54,7 +55,12 @@ export const MemberShell = () => {
   const closeSheet = () => setOpenSheet(null);
 
   const sidebar = identity === null || !isDesktop ? null : courseContext === null ? (
-    <MemberSidebar name={identity.name} email={identity.email} variant="drawer" />
+    <MemberSidebar
+      name={identity.name}
+      email={identity.email}
+      avatarUrl={identity.avatarUrl}
+      variant="drawer"
+    />
   ) : (
     <CourseSidebar
       courseId={courseContext.courseId}
@@ -72,6 +78,7 @@ export const MemberShell = () => {
         onClose={closeSheet}
         name={identity.name}
         email={identity.email}
+        avatarUrl={identity.avatarUrl}
       />
       {courseContext === null ? null : (
         <CourseProgramSheet

@@ -12,6 +12,7 @@ import { useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
+import { MemberAvatar } from '../MemberAvatar.js';
 import { LockClosed } from '../tree-icons.js';
 import { nestSpacesUnderCourses } from './course-spaces.js';
 import {
@@ -22,7 +23,6 @@ import {
 } from './member-nav.js';
 import {
   BrandLink,
-  IdentityAvatar,
   IdentityRow,
   NavRow,
   type ShellLinkProps,
@@ -30,14 +30,6 @@ import {
 } from './shell-chrome.js';
 import { ProductsIcon, SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-rows.js';
-
-const memberInitials = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter((word) => word.length > 0)
-    .slice(0, 2)
-    .map((word) => (word[0] ?? '').toLocaleUpperCase())
-    .join('');
 
 const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
   const t = useTranslations();
@@ -124,10 +116,12 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
 export const MemberSidebar = ({
   name,
   email,
+  avatarUrl,
   variant,
 }: {
   name: string;
   email: string;
+  avatarUrl: string | null;
   variant: ShellVariant;
 }) => {
   const t = useTranslations();
@@ -200,7 +194,7 @@ export const MemberSidebar = ({
         />
       </List>
       <IdentityRow component={Link} to="/account" data-testid="member-identity">
-        <IdentityAvatar aria-hidden>{memberInitials(name)}</IdentityAvatar>
+        <MemberAvatar name={name} avatarUrl={avatarUrl} />
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="body2" component="p" noWrap>
             {name}

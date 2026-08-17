@@ -34,6 +34,7 @@ const context = (overrides: Partial<Ctx['identity']> = {}): Ctx => ({
     tenantName: 'Acme',
     staffRole: null,
     memberId: member.id,
+    image: null,
     memberDisplayName: null,
     memberBannedAt: null,
     ...overrides,

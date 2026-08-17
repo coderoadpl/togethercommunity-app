@@ -50,6 +50,7 @@ const context = (kind: 'member' | 'staff'): Ctx => ({
     tenantName: 'Acme',
     staffRole: kind === 'staff' ? 'admin' : null,
     memberId: kind === 'member' ? member.id : null,
+    image: null,
     memberDisplayName: null,
     memberBannedAt: null,
   },

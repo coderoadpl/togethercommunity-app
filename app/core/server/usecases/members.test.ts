@@ -42,6 +42,7 @@ const staff = (tenantId: string | null, tenantSlug: string | null): Identity => 
   tenantName: tenantSlug ? 'Acme' : null,
   staffRole: tenantId ? 'owner' : null,
   memberId: null,
+  image: null,
   memberDisplayName: null,
   memberBannedAt: null,
 });
@@ -56,6 +57,7 @@ const plainMember = (tenantId: string): Identity => ({
   tenantName: 'Acme',
   staffRole: null,
   memberId: 'member-1',
+  image: null,
   memberDisplayName: null,
   memberBannedAt: null,
 });

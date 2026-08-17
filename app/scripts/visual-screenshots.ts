@@ -656,6 +656,9 @@ const stubNonDeterministicRequests = async (context: BrowserContext): Promise<vo
     if (url.pathname === API_PATHS.studentLastViewed) return route.abort();
     if (spaceSeenPath.test(url.pathname)) return route.abort();
     if (isLocalHost(url.hostname)) return route.continue();
+    // Gravatar answers 404 for the seeded addresses, so failing the request is
+    // what the captured member surfaces render in production: plain initials.
+    if (url.hostname === 'www.gravatar.com') return route.abort();
     if (route.request().resourceType() === 'image') {
       return route.fulfill({ contentType: 'image/png', body: placeholderPng });
     }

@@ -65,6 +65,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'm1',
+  image: null,
   memberDisplayName: null,
   memberBannedAt: null,
   ...overrides,

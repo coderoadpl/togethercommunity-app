@@ -24,6 +24,7 @@ import { EmailVerificationStatus } from '../../components/ui/EmailVerificationSt
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
+import { MemberAvatar } from './MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -277,6 +278,16 @@ export const MemberAccountPage = () => {
               updateProfile.mutate({ displayName: displayName.trim() === '' ? null : displayName.trim() });
             }}
           >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <MemberAvatar
+                name={displayName.trim() === '' ? me.data.name : displayName}
+                avatarUrl={me.data.avatarUrl}
+                size="lg"
+              />
+              <Typography variant="caption" color="text.secondary">
+                {t.account.avatarHint({ email })}
+              </Typography>
+            </Box>
             <FormControl fullWidth>
               <FormLabel htmlFor="account-display-name">{t.account.displayNameLabel}</FormLabel>
               <OutlinedInput

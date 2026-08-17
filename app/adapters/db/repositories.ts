@@ -60,6 +60,7 @@ import {
   type TenantSettings,
 } from '#core/domain/index.js';
 import type {
+  AvatarSourceReader,
   CourseLessonRepository,
   LessonAttachmentRepository,
   CourseModuleRepository,
@@ -843,6 +844,42 @@ export const createUserDisplayReader = (db: Db): UserDisplayReader => ({
     return new Map(
       rows.map((row) => [row.id, row.name.trim().length > 0 ? row.name.trim() : row.email]),
     );
+  },
+});
+
+export const createAvatarSourceReader = (db: Db): AvatarSourceReader => ({
+  listAvatarSources: async (tenantId, userIds) => {
+    if (userIds.length === 0) return [];
+    const rows = await db
+      .select({
+        userId: user.id,
+        accountEmail: user.email,
+        memberEmail: members.email,
+        image: user.image,
+      })
+      .from(user)
+      .leftJoin(members, and(eq(members.tenantId, tenantId), eq(members.userId, user.id)))
+      .where(
+        and(
+          inArray(user.id, userIds),
+          or(
+            isNotNull(members.id),
+            exists(
+              db
+                .select({ id: tenantAdmins.id })
+                .from(tenantAdmins)
+                .where(
+                  and(eq(tenantAdmins.tenantId, tenantId), eq(tenantAdmins.userId, user.id)),
+                ),
+            ),
+          ),
+        ),
+      );
+    return rows.map((row) => ({
+      userId: row.userId,
+      email: row.memberEmail ?? row.accountEmail,
+      image: row.image,
+    }));
   },
 });
 

@@ -71,12 +71,14 @@ const NOW = '1998-07-22T10:00:00.000Z';
 const ctx: Ctx = { identity: {
   userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
+image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 } };
 const anonymousCtx: Ctx = { identity: {
   userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: null, memberId: null,
+image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 } };
@@ -134,6 +136,7 @@ const setup = async (emails = ['member@example.test']) => {
     layouts: new InMemoryEmailLayoutRepository(),
     audience: new InMemoryMarketingAudienceRepository(emails.map((email, index) => ({
       memberId: `member-${String(index + 1)}`, email, displayName: null, productIds: [],
+    image: null,
     memberDisplayName: null,
     memberBannedAt: null,
     }))),

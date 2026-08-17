@@ -9,6 +9,7 @@ export interface Identity {
   email: string;
   name: string;
   emailVerified: boolean;
+  image: string | null;
   tenantId: string | null;
   tenantSlug: string | null;
   tenantName: string | null;

@@ -50,6 +50,7 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
   tenantName: tenantId ? 'Studio' : null,
   staffRole,
   memberId: null,
+image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 });

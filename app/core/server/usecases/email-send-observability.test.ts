@@ -21,6 +21,7 @@ const identity = (staffRole: Identity['staffRole'] = 'owner'): Ctx => ({ identit
   tenantName: 'Alpha',
   staffRole,
   memberId: null,
+image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 } });

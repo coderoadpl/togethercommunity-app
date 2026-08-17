@@ -60,6 +60,7 @@ const post = (id: string, lessonId: string, body: string): PublicPost => ({
   isOwn: false,
   authorDisplay: 'Ola Autorka',
   authorIsStaff: false,
+  authorAvatarUrl: null,
   body,
   createdAt: '2026-07-15T08:00:00.000Z',
   editedAt: null,

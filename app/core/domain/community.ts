@@ -30,6 +30,9 @@ export type Post = z.output<typeof postSchema>;
  */
 export const publicPostSchema = postSchema.omit({ authorUserId: true }).extend({
   isOwn: z.boolean(),
+  // Unlike authorDisplay this is never snapshotted, and it stays null on the
+  // anonymous surface so public JSON carries no e-mail hash (ADR 0016).
+  authorAvatarUrl: z.string().nullable().default(null),
 });
 
 export type PublicPost = z.output<typeof publicPostSchema>;
@@ -95,6 +98,7 @@ const notificationPayloadSchema = z.object({
   courseId: z.string().min(1).nullable().default(null),
   lessonName: z.string().default(''),
   authorDisplay: z.string().trim().min(1),
+  authorAvatarUrl: z.string().nullable().default(null),
   snippet: z.string(),
 });
 
@@ -175,7 +179,11 @@ export const renderPost = (post: Post): Post =>
   post.deletedAt === null ? post : { ...post, body: DELETED_POST_PLACEHOLDER };
 
 /** Client projection: the raw author id is dropped, ownership pre-computed into isOwn. */
-export const toPublicPost = (post: Post, viewerUserId: string): PublicPost => ({
+export const toPublicPost = (
+  post: Post,
+  viewerUserId: string,
+  authorAvatarUrl: string | null = null,
+): PublicPost => ({
   id: post.id,
   tenantId: post.tenantId,
   contextKind: post.contextKind,
@@ -190,6 +198,7 @@ export const toPublicPost = (post: Post, viewerUserId: string): PublicPost => ({
   deletedAt: post.deletedAt,
   pinnedAt: post.pinnedAt,
   isOwn: post.authorUserId === viewerUserId,
+  authorAvatarUrl,
 });
 
 export const postSnippet = (body: string): string => body.replace(/\s+/g, ' ').slice(0, 180);

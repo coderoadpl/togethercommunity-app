@@ -31,6 +31,8 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'member-1',
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
   ...overrides,
 });
@@ -259,6 +261,7 @@ const makeDeps = (
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
       setBanned: async () => null,
     },
     threadSubscriptions: {
@@ -318,6 +321,8 @@ const makeDeps = (
     },
     ids,
     clock: { nowIso: () => NOW },
+    avatarSources: { listAvatarSources: async () => [] },
+    contentHash: { sha256: (content) => `digest(${String(content)})` },
   };
 };
 

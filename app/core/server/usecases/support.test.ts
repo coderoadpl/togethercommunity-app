@@ -14,6 +14,8 @@ const identity: Identity = {
   tenantName: 'Alpha',
   staffRole: null,
   memberId: 'member-1',
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 };
 
@@ -68,6 +70,7 @@ const harness = (supportEmail: string | null) => {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
     setBanned: async () => null,
     },
     tenantAccess: {

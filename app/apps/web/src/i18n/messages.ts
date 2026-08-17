@@ -394,6 +394,11 @@ export interface Messages {
     loading: string;
     markAllRead: string;
     markedAllRead: string;
+    viewAll: string;
+    pageEyebrow: string;
+    loadMore: string;
+    olderTruncated: string;
+    unreadLabel: string;
     threadReply: (params: { author: string; lesson: string }) => string;
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
@@ -1212,6 +1217,7 @@ export interface Messages {
     replyCount: (params: { count: number }) => string;
     continueThread: string;
     backToDiscussion: string;
+    backToAll: string;
     loadMore: string;
     searchLabel: string;
     searchWholeWordsHint: string;
@@ -1325,6 +1331,12 @@ export interface Messages {
     heading: string;
     signedInAs: string;
     back: string;
+    profileHeading: string;
+    displayNameLabel: string;
+    displayNameHint: string;
+    displayNameSave: string;
+    displayNameSaved: string;
+    avatarHint: (params: { email: string }) => string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;

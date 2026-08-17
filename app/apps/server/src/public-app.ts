@@ -163,6 +163,8 @@ const anonymousIdentity = (
   tenantName: tenant.name,
   staffRole: null,
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 });
 

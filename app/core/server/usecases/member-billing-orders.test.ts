@@ -14,6 +14,8 @@ const ctx = {
     tenantName: 'Studio',
     staffRole: null,
     memberId: 'member-1',
+    image: null,
+    memberDisplayName: null,
     memberBannedAt: null,
   },
 };

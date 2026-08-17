@@ -26,6 +26,7 @@ const post = (input: {
   isOwn: false,
   authorDisplay: `Autor ${input.id}`,
   authorIsStaff: false,
+  authorAvatarUrl: null,
   body: 'Silnik i zabudowa',
   createdAt: '2026-08-15T08:00:00.000Z',
   editedAt: null,

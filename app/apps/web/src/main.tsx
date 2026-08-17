@@ -109,6 +109,7 @@ import {
   MemberShellRoute,
   MyCoursesRoute,
   MyProductsRoute,
+  NotificationsRoute,
   SearchRoute,
   SpaceFeedRoute,
   SpaceThreadRoute,
@@ -185,9 +186,14 @@ const courseStructureRoute = createRoute({
   path: '/my/courses/$courseId',
   component: CourseStructureRoute,
 });
+const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {
+  const thread = search['thread'];
+  return typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {};
+};
 const lessonPlayerRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.lesson,
+  validateSearch: validateLessonSearch,
   component: LessonPlayerRoute,
 });
 const registerRoute = createRoute({
@@ -209,6 +215,11 @@ const accountRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/account',
   component: MemberAccountRoute,
+});
+const notificationsRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/notifications',
+  component: NotificationsRoute,
 });
 const communityRoute = createRoute({
   getParentRoute: () => memberShellRoute,
@@ -455,6 +466,7 @@ const router = createRouter({
       courseStructureRoute,
       lessonPlayerRoute,
       accountRoute,
+      notificationsRoute,
       communityRoute,
       spaceFeedRoute,
       spaceThreadRoute,

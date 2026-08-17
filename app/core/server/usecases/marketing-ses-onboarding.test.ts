@@ -28,6 +28,8 @@ const ctx = {
     tenantName: 'Tenant',
     staffRole: 'owner' as const,
     memberId: null,
+    image: null,
+    memberDisplayName: null,
     memberBannedAt: null,
   },
 };

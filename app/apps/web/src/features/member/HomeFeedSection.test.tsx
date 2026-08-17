@@ -29,6 +29,7 @@ const item = (
   rootPostId: id,
   authorDisplay: 'Ada Nowak',
   authorIsStaff: false,
+  authorAvatarUrl: null,
   body: `Treść ${id}`,
   createdAt: '2026-08-12T10:00:00.000Z',
   editedAt: null,
@@ -76,6 +77,7 @@ describe('HomeFeedSection', () => {
               authorIsStaff: true,
               replyCount: 3,
               reactions: [{ emoji: '👍', count: 2, viewerReacted: false }],
+              authorAvatarUrl: 'https://cdn.test/ada.png',
             }),
             item('p2', { spaceId: 's2', spaceName: 'Klub', contextId: 's2' }),
           ],
@@ -103,7 +105,14 @@ describe('HomeFeedSection', () => {
       '/community/s1/posts/p1',
     );
 
+    expect(within(card).getByTestId('member-avatar-image')).toHaveAttribute(
+      'src',
+      'https://cdn.test/ada.png',
+    );
+
     const other = screen.getByTestId('home-feed-post-p2');
+    expect(within(other).queryByTestId('member-avatar-image')).toBeNull();
+    expect(within(other).getByTestId('member-avatar')).toHaveTextContent('AN');
     expect(within(other).getByTestId('home-feed-space-p2')).toHaveAttribute('href', '/community/s2');
     expect(within(other).getByTestId('home-feed-open-p2')).toHaveAttribute(
       'href',

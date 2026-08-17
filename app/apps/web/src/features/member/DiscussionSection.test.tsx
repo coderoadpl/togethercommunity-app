@@ -19,6 +19,7 @@ const post = (input: Partial<PublicPost> & { id: string }): PublicPost => ({
   isOwn: false,
   authorDisplay: 'Ola Autorka',
   authorIsStaff: false,
+  authorAvatarUrl: null,
   body: 'Treść wpisu',
   createdAt: '2026-07-15T08:00:00.000Z',
   editedAt: null,
@@ -143,7 +144,13 @@ describe('DiscussionSection', () => {
       }),
     );
     const root = asThread(
-      post({ id: 'r1', body: 'Pierwszy poziom', authorIsStaff: true, authorDisplay: 'Marta Twórczyni' }),
+      post({
+        id: 'r1',
+        body: 'Pierwszy poziom',
+        authorIsStaff: true,
+        authorDisplay: 'Marta Twórczyni',
+        authorAvatarUrl: 'https://cdn.test/marta.png',
+      }),
       [level2, deleted],
     );
     server.use(okMe(), okDiscussion([root]));
@@ -168,6 +175,14 @@ describe('DiscussionSection', () => {
     expect(screen.getByTestId('reply-count-r1')).toHaveTextContent(
       pl.discussion.replyCount({ count: 2 }),
     );
+
+    const rootPost = within(screen.getByTestId('discussion-post-r1'));
+    expect(rootPost.getAllByTestId('member-avatar-image')[0]).toHaveAttribute(
+      'src',
+      'https://cdn.test/marta.png',
+    );
+    expect(level2Container.queryByTestId('member-avatar-image')).toBeNull();
+    expect(level2Container.getAllByTestId('member-avatar')[0]).toHaveTextContent('OA');
   });
 
   it('collapses replies deeper than five levels behind a continue-thread link with a re-rooted subthread', async () => {

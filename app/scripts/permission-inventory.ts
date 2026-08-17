@@ -134,6 +134,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/me/billing-orders') return 'member:billing:read';
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
+  if (path === '/api/me/profile') return 'member:profile:self-write';
   if (path === '/api/member/navigation') return 'space:read';
   if (path === '/api/member/home-feed') return 'space:read';
   if (path === '/api/my/products') return 'member:product:read';
@@ -235,7 +236,7 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
-  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
   if (path === '/api/member/navigation') return tenantActors;
   if (path === '/api/member/home-feed') return tenantActors;
   if (path.startsWith('/api/student/')) {
@@ -466,7 +467,7 @@ const beforeForUseCase = (
     return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
   }
   if (file === 'create-tenant.ts') return allHumans;
-  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
+  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {
     return name === 'resolveMemberEntitlements' ? member : tenantActors;
   }

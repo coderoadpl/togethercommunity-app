@@ -39,6 +39,7 @@ const feedItem = (id: string, body: string): SpaceFeedItem => ({
   isOwn: false,
   authorDisplay: 'Ola Autorka',
   authorIsStaff: false,
+  authorAvatarUrl: null,
   body,
   createdAt: '2026-07-20T08:00:00.000Z',
   editedAt: null,

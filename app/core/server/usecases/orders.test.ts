@@ -15,6 +15,8 @@ const identity = (staffRole: 'owner' | 'admin' | null, tenantId: string | null =
   tenantName: tenantId ? 'Alpha' : null,
   staffRole,
   memberId: null,
+image: null,
+memberDisplayName: null,
 memberBannedAt: null,
 });
 

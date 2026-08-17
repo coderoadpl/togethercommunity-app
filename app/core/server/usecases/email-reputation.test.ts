@@ -39,6 +39,8 @@ const ctx: Ctx = { identity: {
   tenantName: 'Tenant',
   staffRole: 'owner',
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
 } satisfies Identity };
 

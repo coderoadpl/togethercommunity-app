@@ -411,6 +411,11 @@ export const en: Messages = {
     loading: 'Loading notifications…',
     markAllRead: 'Mark all as read',
     markedAllRead: 'All notifications marked as read.',
+    viewAll: 'View all notifications',
+    pageEyebrow: 'Your activity',
+    loadMore: 'Load more',
+    olderTruncated: 'Only the latest 100 notifications are shown.',
+    unreadLabel: 'Unread',
     threadReply: ({ author, lesson }) =>
       lesson.length > 0
         ? format('{author} replied in the "{lesson}" discussion', { author, lesson })
@@ -1337,6 +1342,7 @@ export const en: Messages = {
       count === 1 ? '1 reply' : format('{count} replies', { count }),
     continueThread: 'Continue thread',
     backToDiscussion: 'Back to the full discussion',
+    backToAll: 'Back to all threads',
     loadMore: 'Show more threads',
     searchLabel: 'Search this discussion',
     searchWholeWordsHint:

@@ -1,4 +1,11 @@
-import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -11,17 +18,24 @@ import { renderWithProviders } from './test/render.js';
 import { server } from './test/server.js';
 import { NotificationBell } from './NotificationBell.js';
 
-const notification = (input: { id: string; read: boolean }) => ({
+const notification = (input: {
+  id: string;
+  read: boolean;
+  kind?: 'thread-reply' | 'space-post';
+  contextKind?: 'lesson' | 'space';
+  contextId?: string;
+  courseId?: string | null;
+}) => ({
   id: input.id,
   tenantId: 't1',
   recipientUserId: 'u1',
-  kind: 'thread-reply',
+  kind: input.kind ?? 'thread-reply',
   payload: {
     rootPostId: 'p1',
     postId: 'p2',
-    contextKind: 'lesson',
-    contextId: 'l1',
-    courseId: null,
+    contextKind: input.contextKind ?? 'lesson',
+    contextId: input.contextId ?? 'l1',
+    courseId: input.courseId ?? null,
     lessonName: 'Hamaki w kamperze',
     authorDisplay: 'Ola',
     snippet: 'Świetne pytanie, już odpowiadam!',
@@ -40,6 +54,50 @@ const renderBell = async ({ tabLabel, live = true }: { tabLabel?: string; live?:
   });
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
+};
+
+const renderRoutedBell = async () => {
+  const rootRoute = createRootRoute({
+    component: () => (
+      <>
+        <NotificationBell />
+        <Outlet />
+      </>
+    ),
+  });
+  const indexRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    component: () => null,
+  });
+  const notificationsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/notifications',
+    component: () => <p>all notifications</p>,
+  });
+  const spaceThreadRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/community/$spaceId/posts/$postId',
+    component: () => <p>thread</p>,
+  });
+  const lessonRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/my/courses/$courseId/lessons/$lessonId',
+    validateSearch: (search: Record<string, unknown>): { thread?: string } =>
+      typeof search['thread'] === 'string' ? { thread: search['thread'] } : {},
+    component: () => <p>lesson</p>,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([
+      indexRoute,
+      notificationsRoute,
+      spaceThreadRoute,
+      lessonRoute,
+    ]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  });
+  await router.load();
+  return { router, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
 describe('NotificationBell', () => {
@@ -137,5 +195,86 @@ describe('NotificationBell', () => {
     await userEvent.click(screen.getByRole('button', { name: pl.notifications.bell }));
 
     expect(await screen.findByText(pl.notifications.empty)).toBeInTheDocument();
+  });
+
+  it('opens a space notification on the thread page of its root post', async () => {
+    server.use(
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 0 } }),
+      ),
+      http.get('/api/notifications', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            notifications: [
+              notification({
+                id: 'n1',
+                read: true,
+                kind: 'space-post',
+                contextKind: 'space',
+                contextId: 's1',
+              }),
+            ],
+            nextCursor: null,
+          },
+        }),
+      ),
+    );
+
+    const { router } = await renderRoutedBell();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-n1'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/community/s1/posts/p1'));
+  });
+
+  it('opens a lesson notification with its thread pinned in the URL', async () => {
+    server.use(
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 0 } }),
+      ),
+      http.get('/api/notifications', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            notifications: [notification({ id: 'n1', read: true, courseId: 'c1' })],
+            nextCursor: null,
+          },
+        }),
+      ),
+    );
+
+    const { router } = await renderRoutedBell();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-n1'));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/my/courses/c1/lessons/l1'),
+    );
+    expect(router.state.location.searchStr).toBe('?thread=p1');
+  });
+
+  it('links from the popover to the full notifications page', async () => {
+    server.use(
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 0 } }),
+      ),
+      http.get('/api/notifications', () =>
+        HttpResponse.json({ ok: true, data: { notifications: [], nextCursor: null } }),
+      ),
+    );
+
+    const { router } = await renderRoutedBell();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+
+    const viewAll = await screen.findByTestId('notifications-view-all');
+    expect(viewAll).toHaveTextContent(pl.notifications.viewAll);
+
+    await userEvent.click(viewAll);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notifications'));
   });
 });

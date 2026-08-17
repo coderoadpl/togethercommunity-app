@@ -417,6 +417,11 @@ export const pl: Messages = {
     loading: 'Wczytywanie powiadomień…',
     markAllRead: 'Oznacz wszystkie jako przeczytane',
     markedAllRead: 'Oznaczono wszystkie powiadomienia jako przeczytane.',
+    viewAll: 'Zobacz wszystkie',
+    pageEyebrow: 'Twoja aktywność',
+    loadMore: 'Wczytaj więcej',
+    olderTruncated: 'Wyświetlamy tylko 100 najnowszych powiadomień.',
+    unreadLabel: 'Nieprzeczytane',
     threadReply: ({ author, lesson }) =>
       lesson.length > 0
         ? format('{author} odpowiedział(a) w dyskusji „{lesson}”', { author, lesson })
@@ -1354,6 +1359,7 @@ export const pl: Messages = {
       format('{count} {word}', { count, word: plural(count, 'odpowiedź', 'odpowiedzi', 'odpowiedzi') }),
     continueThread: 'Kontynuuj wątek',
     backToDiscussion: 'Wróć do całej dyskusji',
+    backToAll: 'Wróć do wszystkich wątków',
     loadMore: 'Pokaż więcej wątków',
     searchLabel: 'Szukaj w tej dyskusji',
     searchWholeWordsHint:

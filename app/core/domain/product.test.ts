@@ -92,10 +92,10 @@ describe('newProductSchema', () => {
     }
   });
 
-  it('rejects a relative cover URL', () => {
+  it('accepts a root-relative cover URL', () => {
     expect(
       newProductSchema.safeParse({ title: 'Course', priceCents: 0, coverUrl: '/cover.jpg' }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('rejects non-HTTP cover URL schemes', () => {

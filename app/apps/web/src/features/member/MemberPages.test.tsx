@@ -128,6 +128,7 @@ describe('member pages', () => {
       pl.student.subscriptionPastDueLabel,
     );
     expect(screen.getByTestId('subscription-status-canceled')).toHaveTextContent('Anulowana — dostęp do');
+    expect(screen.queryByTestId('grant-status-active')).not.toBeInTheDocument();
     expect(screen.getByTestId('subscription-date-active')).toHaveTextContent('Odnowienie:');
     expect(screen.getByTestId('subscription-date-canceled')).toHaveTextContent('Dostęp do:');
     expect(screen.getAllByRole('link', { name: pl.student.manageSubscription })).toHaveLength(3);
@@ -226,10 +227,8 @@ describe('member pages', () => {
       '/my/courses/c1',
     );
     expect(screen.queryByRole('link', { name: 'A different product course' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: pl.student.myCourses }).some((link) =>
-      link.getAttribute('aria-current') === 'page')).toBe(true);
-    expect(screen.getAllByRole('link', { name: pl.student.myProducts }).every((link) =>
-      link.getAttribute('aria-current') === null)).toBe(true);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Intro Course');
+    expect(within(screen.getByRole('banner')).queryAllByRole('link')).toHaveLength(0);
     expect(
       screen.queryByRole('heading', { name: pl.student.courseContentComingSoon }),
     ).not.toBeInTheDocument();

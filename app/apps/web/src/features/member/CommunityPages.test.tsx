@@ -10,6 +10,7 @@ import {
   reactToPostInputSchema,
   type DiscussionPost,
   type MemberSpace,
+  type PublicNavigation,
   type SpaceFeedItem,
 } from '#core/domain/index.js';
 
@@ -34,6 +35,44 @@ const okMe = () =>
     }),
   );
 
+const anonMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } },
+      { status: 401 },
+    ),
+  );
+
+const publicNavigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
+  defaultHomeSpaceId: 's1',
+  spaces: [{ id: 's1', slug: 's1', name: 'Ogólna', description: 'Rozmowy o kamperze.', position: 0 }],
+  courses: [],
+  lockedSpaces: [
+    { id: 'gated', slug: 'premium', name: 'Premium', description: null, productIds: ['p1'] },
+  ],
+  ...overrides,
+});
+
+const okPublicNavigation = (value: PublicNavigation = publicNavigation()) =>
+  http.get('/api/public/navigation', () =>
+    HttpResponse.json({ ok: true, data: { navigation: value } }));
+
+const okPublicFeed = (spaceId: string, items: SpaceFeedItem[]) =>
+  http.get('/api/public/spaces/:spaceId/feed', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { feed: { spaceId, items, pinned: [], nextCursor: null, isFollowing: false } },
+    }),
+  );
+
+const okPublicThread = (threads: DiscussionPost[]) =>
+  http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { discussion: { threads, nextCursor: null, viewerSubscriptions: {} } },
+    }),
+  );
+
 const noNotifications = () =>
   http.get('/api/notifications/unread-count', () => HttpResponse.json({ ok: true, data: { unread: 0 } }));
 
@@ -44,6 +83,7 @@ const space = (input: Partial<MemberSpace> & { id: string }): MemberSpace => ({
   description: 'Rozmowy o kamperze.',
   visibility: 'members',
   productIds: [],
+  publicReadOnly: false,
   position: 0,
   archivedAt: null,
   createdAt: '2026-07-20T08:00:00.000Z',
@@ -81,6 +121,13 @@ const okFeed = (spaceId: string, items: SpaceFeedItem[], isFollowing = false) =>
     }),
   );
 
+const okSeen = (calls: string[] = []) =>
+  http.post('/api/spaces/:spaceId/seen', ({ params }) => {
+    const spaceId = String(params.spaceId);
+    calls.push(spaceId);
+    return HttpResponse.json({ ok: true, data: { spaceId, seenAt: '2026-07-20T09:00:00.000Z' } });
+  });
+
 const okDiscussion = (
   threads: DiscussionPost[],
   viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
@@ -103,7 +150,7 @@ const renderPage = async (component: () => ReactNode, path: string) => {
 };
 
 describe('community pages', () => {
-  it('lists visibility-filtered spaces with the community tab present', async () => {
+  it('lists visibility-filtered spaces', async () => {
     server.use(
       okMe(),
       noNotifications(),
@@ -114,7 +161,6 @@ describe('community pages', () => {
 
     expect(await screen.findByTestId('space-card-s1')).toHaveTextContent('Ogólna');
     expect(screen.getByTestId('space-following-s1')).toHaveTextContent(pl.community.followingChip);
-    expect(screen.getAllByRole('link', { name: pl.community.tab }).length).toBeGreaterThan(0);
     expect(screen.queryByTestId('space-card-gated')).not.toBeInTheDocument();
   });
 
@@ -132,6 +178,7 @@ describe('community pages', () => {
         }),
         feedItem({ id: 'p2', body: 'Drugi wpis' }),
       ]),
+      okSeen(),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
@@ -151,6 +198,7 @@ describe('community pages', () => {
       noNotifications(),
       okSpaces([space({ id: 's1' })]),
       okFeed('s1', []),
+      okSeen(),
       http.post('/api/posts', async ({ request }) => {
         const body = createPostInputSchema.parse(await request.json());
         bodies.push(body);
@@ -179,6 +227,7 @@ describe('community pages', () => {
       noNotifications(),
       okSpaces([space({ id: 's1' })]),
       okFeed('s1', [feedItem({ id: 'p1', reactions: [{ emoji: '👍', count: 1, viewerReacted: false }] })]),
+      okSeen(),
       http.post('/api/posts/react', async ({ request }) => {
         const body = reactToPostInputSchema.parse(await request.json());
         reactCalls.push(body);
@@ -229,6 +278,34 @@ describe('community pages', () => {
     expect(screen.getByTestId('follow-toggle-p1')).toHaveTextContent(pl.discussion.mutedState);
   });
 
+  it('marks the space seen once it opens and again after posting', async () => {
+    const seenCalls: string[] = [];
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', []),
+      okSeen(seenCalls),
+      http.post('/api/posts', async ({ request }) => {
+        const body = createPostInputSchema.parse(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: { post: feedItem({ id: 'new1', body: body.body, isOwn: true }) },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await waitFor(() => expect(seenCalls).toEqual(['s1']));
+
+    await user.type(await screen.findByTestId('space-composer-input'), 'Mój nowy wpis');
+    await user.click(screen.getByTestId('space-composer-submit'));
+
+    await waitFor(() => expect(seenCalls).toEqual(['s1', 's1']));
+  });
+
   it('hides a gated space the member cannot access behind a not-found state', async () => {
     server.use(
       okMe(),
@@ -242,5 +319,59 @@ describe('community pages', () => {
     expect(screen.getByText(pl.community.spaceNotFoundBody)).toBeInTheDocument();
     expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
     expect(screen.queryByTestId('feed-post-p1')).not.toBeInTheDocument();
+  });
+
+  it('serves an anonymous visitor a read-only feed with a sign-in CTA and no composer', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Publiczny wpis', replyCount: 2 })]),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Publiczny wpis');
+    expect(screen.getByTestId('public-open-thread-p1')).toHaveAttribute(
+      'href',
+      '/community/s1/posts/p1',
+    );
+    expect(screen.getByTestId('anon-read-only')).toHaveTextContent(pl.anon.readOnlyBanner);
+    expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/login');
+    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('reaction-p1-👍')).not.toBeInTheDocument();
+  });
+
+  it('points an anonymous visitor at checkout for a product-gated space', async () => {
+    server.use(anonMe(), okPublicNavigation());
+
+    await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
+
+    expect(await screen.findByTestId('anon-space-unlock')).toHaveAttribute('href', '/checkout/p1');
+    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+  });
+
+  it('renders an anonymous thread read-only with its replies', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicThread([
+        {
+          ...feedItem({ id: 'p1', body: 'Wątek publiczny' }),
+          replies: [{ ...feedItem({ id: 'r1', body: 'Odpowiedź' }), replies: [], replyCount: 0 }],
+          replyCount: 1,
+        },
+      ]),
+    );
+
+    await renderPage(
+      () => <SpaceThreadPage spaceId="s1" postId="p1" />,
+      '/community/s1/posts/p1',
+    );
+
+    expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Wątek publiczny');
+    expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Odpowiedź');
+    expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/login');
+    expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
   });
 });

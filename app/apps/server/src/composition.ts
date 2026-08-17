@@ -65,6 +65,7 @@ import {
   createPostReportRepository,
   createPostRepository,
   createSpaceRepository,
+  createSpaceSeenRepository,
   createSpaceSubscriptionRepository,
   createPurchaseRepository,
   createProductGrantRepository,
@@ -203,6 +204,7 @@ import type {
   PostReactionRepository,
   RealtimeBusPort,
   SpaceRepository,
+  SpaceSeenRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -294,6 +296,7 @@ export interface AppDeps {
   spaces: SpaceRepository;
   reactions: PostReactionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
+  spaceSeen: SpaceSeenRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   realtimeBus: RealtimeBusPort;
@@ -672,9 +675,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     resend: resendTransactional,
   });
   const transactionalEmail = createLayeredTransactionalEmailSender({
-    tenantSes: tenantSesTransactional,
-    smtp: smtpTransactional,
-    resend: resendTransactional,
+    transports: emailTransports,
     platform: email,
     pool: platformTransactionalPool,
     platformLimit: 1000,
@@ -916,6 +917,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     spaces: createSpaceRepository(db),
     reactions: createPostReactionRepository(db),
     spaceSubscriptions: createSpaceSubscriptionRepository(db),
+    spaceSeen: createSpaceSeenRepository(db),
     notifications: createNotificationRepository(db),
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),

@@ -20,10 +20,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sesIdentityFreshness } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { MarketingReadiness } from './MarketingReadiness.js';
+import { ProviderTest } from './ProviderTest.js';
 import { ReputationSummary } from './ReputationSummary.js';
 
 interface LiveSesChecklist {
@@ -324,7 +325,7 @@ const ResendForm = ({ configured }: { configured: boolean }) => {
   );
 };
 
-export const MarketingSettingsPanel = () => {
+export const EmailTab = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
@@ -381,8 +382,34 @@ export const MarketingSettingsPanel = () => {
     footerUpdate.mutate(settingsInput());
   };
 
-  if (result.isPending) return <PanelPage title={t.marketing.settingsTitle} state={{ kind: 'loading', label: t.marketing.settingsLoading }} />;
-  if (result.isError) return <PanelPage title={t.marketing.settingsTitle} state={{ kind: 'error', message: localizeError(result.error, t), retry: { label: t.common.retry, onRetry: () => void result.refetch() } }} />;
+  const activePathTest = (
+    <SectionCard title={t.integrations.emailHeading} description={t.integrations.emailDescription}>
+      <ProviderTest provider="email" ready />
+    </SectionCard>
+  );
+
+  if (result.isPending) {
+    return (
+      <>
+        {activePathTest}
+        <StatusView state={{ kind: 'loading', label: t.marketing.settingsLoading }} />
+      </>
+    );
+  }
+  if (result.isError) {
+    return (
+      <>
+        {activePathTest}
+        <StatusView
+          state={{
+            kind: 'error',
+            message: localizeError(result.error, t),
+            retry: { label: t.common.retry, onRetry: () => void result.refetch() },
+          }}
+        />
+      </>
+    );
+  }
 
   const credentialsConfigured = result.data.credentialsConfigured;
   const footerConfigured = settings !== null
@@ -408,7 +435,8 @@ export const MarketingSettingsPanel = () => {
           });
 
   return (
-    <PanelPage title={t.marketing.settingsTitle} description={t.marketing.settingsDescription}>
+    <>
+      {activePathTest}
       <MarketingReadiness
         title={t.marketing.onboarding}
         readyLabel={t.marketing.ready}
@@ -436,6 +464,9 @@ export const MarketingSettingsPanel = () => {
         </Alert>
       )}
       <SectionCard title={t.marketing.platformPool({ used: pool.used, limit: pool.limit })}>
+        <Typography variant="caption" component="p" color="text.secondary">
+          {t.marketing.platformPoolHint}
+        </Typography>
         {pool.used >= 800 ? <Alert severity="warning">{t.marketing.platformPoolNudge}</Alert> : null}
       </SectionCard>
       <CredentialsForm configured={credentialsConfigured} />
@@ -511,6 +542,6 @@ export const MarketingSettingsPanel = () => {
         {settings?.quotaRefreshedAt === null || settings?.quotaRefreshedAt === undefined ? null : <Typography variant="caption">{formatDateTime(settings.quotaRefreshedAt, language)}</Typography>}
         {settings?.inSandbox === true ? <Alert severity="warning">{t.marketing.sandboxWarning}</Alert> : null}
       </SectionCard>
-    </PanelPage>
+    </>
   );
 };

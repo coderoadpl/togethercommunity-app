@@ -53,13 +53,19 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
 memberBannedAt: null,
 });
 
-const course = (id: string, tenantId: string, moduleOrder: string[] = []): Course => ({
+const course = (
+  id: string,
+  tenantId: string,
+  moduleOrder: string[] = [],
+  publiclyVisible = false,
+): Course => ({
   id,
   tenantId,
   name: `Course ${id}`,
   description: '',
   imageUrl: null,
   moduleOrder,
+  publiclyVisible,
   legacyId: null,
   createdAt: now,
 });
@@ -340,6 +346,77 @@ describe('course management use-cases', () => {
     expect(store[0]?.name).toBe('Updated');
   });
 
+  it('invalidates the public offer only when the public visibility of a course changes', async () => {
+    const contentVersionBumps: string[] = [];
+    const d = deps({
+      courses: [course('c1', 't-acme')],
+      ids: ['snapshot-1', 'snapshot-2', 'snapshot-3'],
+      contentVersionBumps,
+    });
+    const ctx = { identity: identity('t-acme', 'owner') };
+
+    expect(await updateCourse(ctx, { id: 'c1', name: 'Renamed' }, d)).toMatchObject({ ok: true });
+    expect(contentVersionBumps).toEqual([]);
+
+    expect(await updateCourse(ctx, { id: 'c1', publiclyVisible: true }, d)).toMatchObject({
+      ok: true,
+      value: { publiclyVisible: true },
+    });
+    expect(contentVersionBumps).toEqual(['t-acme']);
+
+    expect(await updateCourse(ctx, { id: 'c1', publiclyVisible: true }, d)).toMatchObject({ ok: true });
+    expect(contentVersionBumps).toEqual(['t-acme']);
+  });
+
+  it('refuses to make a lesson a free preview outside a publicly visible course', async () => {
+    const chapters = [
+      { id: 'ch1', name: 'Chapter', contents: [{ id: 'ct1', name: 'Intro', lessonId: 'l1' }] },
+    ];
+    const d = deps({
+      courses: [course('c1', 't-acme')],
+      lessons: [lesson('l1', 't-acme')],
+      modules: [{ ...module('m1', 't-acme', ['c1']), chapters }],
+      ids: ['snapshot-1'],
+    });
+
+    expect(
+      await updateLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1', isPreview: true }, d),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('allows a free preview once a referencing course is publicly visible', async () => {
+    const chapters = [
+      { id: 'ch1', name: 'Chapter', contents: [{ id: 'ct1', name: 'Intro', lessonId: 'l1' }] },
+    ];
+    const lessons = [lesson('l1', 't-acme')];
+    const d = deps({
+      courses: [course('c1', 't-acme'), course('c2', 't-acme', [], true)],
+      lessons,
+      modules: [{ ...module('m1', 't-acme', ['c1', 'c2']), chapters }],
+      ids: ['snapshot-1', 'snapshot-2'],
+    });
+    const ctx = { identity: identity('t-acme', 'owner') };
+
+    expect(await updateLesson(ctx, { id: 'l1', isPreview: true }, d)).toMatchObject({
+      ok: true,
+      value: { isPreview: true },
+    });
+    expect(await updateLesson(ctx, { id: 'l1', isPreview: false }, d)).toMatchObject({
+      ok: true,
+      value: { isPreview: false },
+    });
+  });
+
+  it('refuses to create a lesson that is a free preview from the start', async () => {
+    const store: CourseLesson[] = [];
+    const d = deps({ lessons: store, ids: ['lesson-1'] });
+
+    expect(
+      await createLesson({ identity: identity('t-acme', 'owner') }, { name: 'Intro', isPreview: true }, d),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(store).toEqual([]);
+  });
+
   it('snapshots the previous course state before applying an update', async () => {
     const versions: EntityVersionRecord[] = [];
     const d = deps({
@@ -358,7 +435,7 @@ describe('course management use-cases', () => {
       id: 'snapshot-1',
       entityKind: 'course',
       entityId: 'c1',
-      schemaVersion: 2,
+      schemaVersion: 4,
       createdBy: 'u1',
     });
     // The snapshot captures the PREVIOUS name, not the new one.
@@ -382,7 +459,7 @@ describe('course management use-cases', () => {
     await updateProductAccessItems(ctx, { id: 'p1', accessItems: [] }, d);
 
     expect(versions.map((v) => v.entityKind)).toEqual(['course_module', 'course_lesson', 'product']);
-    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 5, 3]);
+    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 5, 4]);
     expect(versions[0]?.payload).toMatchObject({ id: 'm1', title: 'Module m1' });
     expect(versions[1]?.payload).toMatchObject({ id: 'l1', name: 'Lesson l1' });
     expect(versions[2]?.payload).toMatchObject({ id: 'p1', title: 'Product p1' });
@@ -669,6 +746,23 @@ describe('course management use-cases', () => {
       products: [{ productId: 'p1' }],
       progressCount: 1,
     });
+  });
+
+  it('reports the public visibility of every course a lesson is attached to', async () => {
+    const chapters = [
+      { id: 'ch1', name: 'Chapter', contents: [{ id: 'ct1', name: 'Intro', lessonId: 'l1' }] },
+    ];
+    const d = deps({
+      courses: [course('c1', 't-acme', [], true), course('c2', 't-acme'), course('c3', 't-acme')],
+      lessons: [lesson('l1', 't-acme')],
+      modules: [{ ...module('m1', 't-acme', ['c1', 'c2']), chapters }],
+    });
+
+    const result = await listLessonReferences({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d);
+    expect(result.ok && result.value.courses).toEqual([
+      { courseId: 'c1', courseName: 'Course c1', publiclyVisible: true },
+      { courseId: 'c2', courseName: 'Course c2', publiclyVisible: false },
+    ]);
   });
 
   it('deletes a lesson and cleans chapter and product references, leaving progress', async () => {

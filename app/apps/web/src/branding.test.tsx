@@ -29,23 +29,18 @@ const BRANDED = {
 };
 
 describe('TenantLogo', () => {
-  it('renders the tenant logo in the member header slot', async () => {
+  it('renders the tenant logo with the tenant name as its alt text', async () => {
     server.use(offerHandler(BRANDED));
-    renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki" logo={<TenantLogo />} />,
-    );
+    renderWithProviders(<TenantLogo />);
 
     const logo = await screen.findByTestId('tenant-logo');
     expect(logo).toHaveAttribute('src', '/assets/akademia-logo.svg');
     expect(logo).toHaveAttribute('alt', 'Akademia Samouka');
-    expect(logo.closest('header')).not.toBeNull();
   });
 
   it('renders the tenant name without a logo', async () => {
     server.use(offerHandler({ logoUrl: null, accentColor: null, faviconUrl: null }));
-    renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki" logo={<TenantLogo />} />,
-    );
+    renderWithProviders(<TenantLogo />);
 
     expect(await screen.findByTestId('tenant-name-mark')).toHaveTextContent('Akademia Samouka');
     expect(screen.queryByTestId('tenant-logo')).not.toBeInTheDocument();

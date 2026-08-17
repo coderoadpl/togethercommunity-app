@@ -27,6 +27,7 @@ export interface SpaceFormValues {
   description: string;
   visibility: SpaceVisibility;
   productIds: string[];
+  publicReadOnly: boolean;
   position: number;
 }
 
@@ -35,6 +36,7 @@ interface SpaceFormProps {
   initial: SpaceFormValues;
   pending: boolean;
   error: unknown;
+  isDefaultHomeSpace?: boolean;
   onSubmit: (values: SpaceFormValues) => void;
 }
 
@@ -46,7 +48,14 @@ const slugify = (value: string): string =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
 
-export const SpaceForm = ({ mode, initial, pending, error, onSubmit }: SpaceFormProps) => {
+export const SpaceForm = ({
+  mode,
+  initial,
+  pending,
+  error,
+  isDefaultHomeSpace = false,
+  onSubmit,
+}: SpaceFormProps) => {
   const t = useTranslations();
   const products = useQuery(actions.products);
   const [name, setName] = useState(initial.name);
@@ -55,6 +64,7 @@ export const SpaceForm = ({ mode, initial, pending, error, onSubmit }: SpaceForm
   const [description, setDescription] = useState(initial.description);
   const [visibility, setVisibility] = useState<SpaceVisibility>(initial.visibility);
   const [productIds, setProductIds] = useState<string[]>(initial.productIds);
+  const [publicReadOnly, setPublicReadOnly] = useState(initial.publicReadOnly);
   const [position, setPosition] = useState(String(initial.position));
 
   const productGatedMissing = visibility === 'product' && productIds.length === 0;
@@ -74,6 +84,7 @@ export const SpaceForm = ({ mode, initial, pending, error, onSubmit }: SpaceForm
       description,
       visibility,
       productIds,
+      publicReadOnly,
       position: Number.parseInt(position, 10) || 0,
     });
   };
@@ -181,6 +192,24 @@ export const SpaceForm = ({ mode, initial, pending, error, onSubmit }: SpaceForm
           </FormHelperText>
         </FormControl>
       ) : null}
+
+      <FormControl>
+        <FormControlLabel
+          control={(
+            <Checkbox
+              checked={publicReadOnly}
+              disabled={isDefaultHomeSpace && publicReadOnly}
+              onChange={(event) => setPublicReadOnly(event.target.checked)}
+            />
+          )}
+          label={t.spacesPanel.publicReadOnlyLabel}
+        />
+        <FormHelperText>
+          {isDefaultHomeSpace && publicReadOnly
+            ? t.spacesPanel.publicReadOnlyHomeSpaceBlocked
+            : t.spacesPanel.publicReadOnlyHelper}
+        </FormHelperText>
+      </FormControl>
 
       {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
 

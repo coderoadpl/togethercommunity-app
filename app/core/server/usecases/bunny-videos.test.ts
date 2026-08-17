@@ -49,7 +49,7 @@ const harness = (options: HarnessOptions = {}): Harness => {
           billingPortalUrl: null, bunnyStreamLibraryId: 'lib-77', bunnyStreamCdnHostname: null, logoUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
-          privacyUrl: null,
+          privacyUrl: null, defaultHomeSpaceId: null,
         }
       : options.settings;
   const calls: Harness['calls'] = [];
@@ -106,7 +106,7 @@ describe('listBunnyVideos', () => {
       billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null,
       accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
       ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
-      privacyUrl: null,
+      privacyUrl: null, defaultHomeSpaceId: null,
     } });
     const result = await listBunnyVideos(ctx('owner'), {}, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });

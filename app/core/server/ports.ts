@@ -238,6 +238,11 @@ export interface PostRepository {
       order?: 'asc' | 'desc';
     },
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
+  /** Newest-first root threads across several space contexts, for the aggregated home feed. */
+  listThreadsForSpaces(
+    tenantId: string,
+    query: { spaceIds: string[]; cursor?: string; limit: number },
+  ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
   updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null>;
   /** Clears pinnedAt when marking a post deleted. */
@@ -251,6 +256,8 @@ export interface PostRepository {
     tenantId: string,
     query: { contextKind: PostContextKind; contextId: string },
   ): Promise<number>;
+  /** Newest non-deleted root post per space, keyed by space id; spaces without one are absent. */
+  latestRootPostAt(tenantId: string, spaceIds: string[]): Promise<Map<string, string>>;
   search(
     tenantId: string,
     query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },
@@ -320,6 +327,14 @@ export interface SpaceSubscriptionRepository {
   unfollow(tenantId: string, input: { userId: string; spaceId: string }): Promise<boolean>;
   listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]>;
   listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]>;
+}
+
+export interface SpaceSeenRepository {
+  markSeen(tenantId: string, input: { userId: string; spaceId: string; seenAt: string }): Promise<void>;
+  listForUser(
+    tenantId: string,
+    input: { userId: string; spaceIds: string[] },
+  ): Promise<Array<{ spaceId: string; seenAt: string }>>;
 }
 
 export interface ThreadSubscription {
@@ -1041,7 +1056,10 @@ export interface BunnyTokenSigner {
 
 export interface StorageProvider {
   objectUrl(configuration: StorageConfiguration, key: string): URL;
-  probe(input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>>;
+  probe(
+    input: StorageConfiguration,
+    corsOrigins?: string[] | undefined,
+  ): Promise<Result<ProviderDiagnostic, AppError>>;
   presignPut(input: {
     url: string;
     accessKeyId: string;
@@ -1069,7 +1087,10 @@ export interface StorageProvider {
     region?: string;
   }): Promise<Result<{ sizeBytes: number }, AppError>>;
   healthcheck(input: { tenantId: string }): Promise<Result<{ healthy: true }, AppError>>;
-  test(input: { tenantId: string }): Promise<Result<ProviderDiagnostic, AppError>>;
+  test(input: {
+    tenantId: string;
+    corsOrigins?: string[] | undefined;
+  }): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 
 export interface ProductPriceRepository {

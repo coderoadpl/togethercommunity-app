@@ -5,6 +5,8 @@ import {
   Button,
   Divider,
   FormControl,
+  FormControlLabel,
+  FormHelperText,
   FormLabel,
   List,
   ListItemText,
@@ -13,6 +15,7 @@ import {
   Paper,
   Select,
   Stack,
+  Switch,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -23,9 +26,9 @@ import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/i
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { ImageAssetField } from '../ImageAssetField.js';
 import {
   Eyebrow,
   ReorderCard,
@@ -685,6 +688,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
   const [name, setName] = useState(course.name);
   const [description, setDescription] = useState(course.description);
   const [imageUrl, setImageUrl] = useState(course.imageUrl ?? '');
+  const [publiclyVisible, setPubliclyVisible] = useState(course.publiclyVisible);
   const errorId = 'course-details-error';
   const save = useMutation({
     ...actions.updateCourse,
@@ -702,6 +706,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
       name: name.trim(),
       description,
       imageUrl: imageUrl.trim() === '' ? null : imageUrl.trim(),
+      publiclyVisible,
     });
   };
 
@@ -743,26 +748,31 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
           }}
         />
       </FormControl>
-      <FormControl fullWidth>
-        <FormLabel htmlFor="course-image">{t.courses.imageUrl}</FormLabel>
-        <OutlinedInput
-          id="course-image"
-          type="url"
-          value={imageUrl}
-          aria-describedby={save.isError ? errorId : undefined}
-          onChange={(event) => {
-            resetFeedback();
-            setImageUrl(event.target.value);
-          }}
+      <ImageAssetField
+        id="course-image"
+        label={t.courses.imageUrl}
+        value={imageUrl}
+        onChange={(value) => {
+          resetFeedback();
+          setImageUrl(value);
+        }}
+        kind="course-cover"
+        testId="course-image"
+      />
+      <FormControl>
+        <FormControlLabel
+          control={(
+            <Switch
+              checked={publiclyVisible}
+              onChange={(event) => {
+                resetFeedback();
+                setPubliclyVisible(event.target.checked);
+              }}
+            />
+          )}
+          label={t.courses.publicVisibilityLabel}
         />
-        {imageUrl.trim() === '' ? null : (
-          <CoverPreview
-            key={imageUrl.trim()}
-            src={imageUrl.trim()}
-            label={t.courses.imagePreview}
-            testId="course-image-preview"
-          />
-        )}
+        <FormHelperText>{t.courses.publicVisibilityHelper}</FormHelperText>
       </FormControl>
       {save.isSuccess ? <Alert severity="success">{t.courses.detailsSaved}</Alert> : null}
       {save.isError ? (

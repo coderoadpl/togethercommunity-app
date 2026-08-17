@@ -84,10 +84,11 @@ interface StorageProviderOptions {
 const probeError = (
   providerCode: StorageProbeErrorCode,
   message: string,
+  details: { corsOrigin?: string } = {},
 ): AppError =>
   providerCode === 'storage.credentials'
-    ? integrationAuth(message, { providerCode })
-    : integrationUnavailable(message, { providerCode });
+    ? integrationAuth(message, { providerCode, ...details })
+    : integrationUnavailable(message, { providerCode, ...details });
 
 const discardStorageResponseBody = async (response: StorageResponse): Promise<void> => {
   await response.body?.cancel();
@@ -269,7 +270,11 @@ const verifyCors = async (
     (!allowedMethods.includes('*') && !allowedMethods.includes('PUT')) ||
     (!allowedHeaders.includes('*') && !allowedHeaders.includes('content-type'))
   ) {
-    return err(probeError('storage.cors', 'The bucket CORS policy rejected the probe.'));
+    return err(probeError(
+      'storage.cors',
+      `The bucket CORS policy rejected origin ${corsOrigin}.`,
+      { corsOrigin },
+    ));
   }
   return ok(undefined);
 };
@@ -294,7 +299,7 @@ const liveProbe = async (
   fetchStorage: FetchStorage,
   now: () => Date,
   keyFactory: () => string,
-  corsOrigin: string,
+  corsOrigins: string[],
   dispatcher: Dispatcher,
 ): Promise<Result<ProviderDiagnostic, AppError>> => {
   const key = `together-probe/${keyFactory()}.txt`;
@@ -323,8 +328,10 @@ const liveProbe = async (
     return err(probeError('storage.unavailable', 'The storage probe read back different content.'));
   }
   if (!removed.ok) return removed;
-  const cors = await verifyCors(fetchStorage, signed('PUT'), corsOrigin, dispatcher);
-  if (!cors.ok) return cors;
+  for (const origin of corsOrigins) {
+    const cors = await verifyCors(fetchStorage, signed('PUT'), origin, dispatcher);
+    if (!cors.ok) return cors;
+  }
   return ok({
     code: 'storage.available',
     message: 'Storage completed the write, read and delete probe.',
@@ -487,13 +494,20 @@ export const createS3StorageProvider = (
       await dispatcher.destroy();
     }
   };
-  const probe = async (input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>> => {
+  const probeOrigins = (corsOrigins: string[] | undefined): string[] =>
+    corsOrigins === undefined || corsOrigins.length === 0
+      ? [corsOrigin]
+      : [...new Set(corsOrigins.map((origin) => new URL(origin).origin))];
+  const probe = async (
+    input: StorageConfiguration,
+    corsOrigins?: string[],
+  ): Promise<Result<ProviderDiagnostic, AppError>> => {
     const target = objectUrl(input, 'together-probe');
     const safeTarget = await validateProbeEndpoint(target.origin, allowPrivateEndpoints, lookupAddresses);
     if (!safeTarget.ok) return safeTarget;
     const dispatcher = pinnedDispatcher(safeTarget.value);
     try {
-      return await liveProbe(input, fetchStorage, now, probeKey, corsOrigin, dispatcher);
+      return await liveProbe(input, fetchStorage, now, probeKey, probeOrigins(corsOrigins), dispatcher);
     } finally {
       await dispatcher.destroy();
     }
@@ -528,11 +542,11 @@ export const createS3StorageProvider = (
       return ok({ sizeBytes: Number(contentLength) });
     },
     healthcheck: ({ tenantId }) => checkCredentials(resolver, tenantId),
-    test: async ({ tenantId }) => {
+    test: async ({ tenantId, corsOrigins }) => {
       const configuration = await storedConfiguration(resolver, tenantId);
       if (!configuration.ok) return configuration;
       if (configuration.value !== null) {
-        return probe(configuration.value);
+        return probe(configuration.value, corsOrigins);
       }
       return err(integrationNotConfigured('Storage is not configured.'));
     },

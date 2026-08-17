@@ -25,7 +25,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   priceMajorSchema,
-  productCoverUrlSchema,
   SUPPORTED_CURRENCIES,
   type PriceKind,
   type Product,
@@ -35,10 +34,10 @@ import {
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
-import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatFileSize, formatPrice } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { ImageAssetField } from '../ImageAssetField.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
 
 const ProductDetailsSection = ({ product }: { product: Product }) => {
@@ -51,8 +50,6 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
     ...actions.updateProduct,
     onSuccess: async () => queryClient.invalidateQueries(actions.productsInvalidates()),
   });
-  const parsedCoverUrl = productCoverUrlSchema.safeParse(coverUrl);
-  const coverPreviewUrl = parsedCoverUrl.success ? parsedCoverUrl.data : null;
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -110,27 +107,18 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         }}
         fieldLabel={t.common.description}
       />
-      <FormControl fullWidth>
-        <FormLabel htmlFor="product-cover-url">{t.products.coverUrlLabel}</FormLabel>
-        <OutlinedInput
-          id="product-cover-url"
-          type="url"
-          value={coverUrl}
-          onChange={(event) => {
-            resetFeedback();
-            setCoverUrl(event.target.value);
-          }}
-        />
-        <FormHelperText>{t.products.coverUrlHint}</FormHelperText>
-      </FormControl>
-      {coverPreviewUrl === null ? null : (
-        <CoverPreview
-          key={coverPreviewUrl}
-          src={coverPreviewUrl}
-          label={title}
-          testId="product-cover-preview"
-        />
-      )}
+      <ImageAssetField
+        id="product-cover-url"
+        label={t.products.coverUrlLabel}
+        hint={t.products.coverUrlHint}
+        value={coverUrl}
+        onChange={(value) => {
+          resetFeedback();
+          setCoverUrl(value);
+        }}
+        kind="product-cover"
+        testId="product-cover"
+      />
       {save.isSuccess ? <Alert severity="success">{t.products.detailsSaved}</Alert> : null}
       {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
     </SectionCard>

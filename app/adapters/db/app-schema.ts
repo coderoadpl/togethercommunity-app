@@ -48,6 +48,7 @@ export const tenants = pgTable(
     supportUrl: text('support_url'),
     termsUrl: text('terms_url'),
     privacyUrl: text('privacy_url'),
+    defaultHomeSpaceId: text('default_home_space_id'),
     autoIssueInvoices: boolean('auto_issue_invoices').notNull().default(false),
     autoIssueInvoiceScope: text('auto_issue_invoice_scope', { enum: ['b2b_only', 'all'] })
       .notNull()
@@ -1026,6 +1027,7 @@ export const courses = pgTable(
     description: text('description').notNull(),
     imageUrl: text('image_url'),
     moduleOrder: jsonb('module_order').$type<string[]>().notNull().default([]),
+    publiclyVisible: boolean('publicly_visible').notNull().default(false),
     legacyId: text('legacy_id'),
     createdAt: text('created_at').notNull(),
   },
@@ -1226,6 +1228,7 @@ export const spaces = pgTable(
     description: text('description'),
     visibility: text('visibility', { enum: ['members', 'product'] }).notNull(),
     productIds: jsonb('product_ids').$type<string[]>().notNull().default([]),
+    publicReadOnly: boolean('public_read_only').notNull().default(false),
     position: integer('position').notNull().default(0),
     archivedAt: text('archived_at'),
     createdAt: text('created_at').notNull(),
@@ -1270,6 +1273,27 @@ export const spaceSubscriptions = pgTable(
   (table) => [
     index('space_subscriptions_tenant_space_idx').on(table.tenantId, table.spaceId),
     uniqueIndex('space_subscriptions_tenant_user_space_uidx').on(
+      table.tenantId,
+      table.userId,
+      table.spaceId,
+    ),
+  ],
+);
+
+export const spaceSeenMarks = pgTable(
+  'space_seen_marks',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    spaceId: text('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    seenAt: text('seen_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('space_seen_marks_tenant_user_space_uidx').on(
       table.tenantId,
       table.userId,
       table.spaceId,

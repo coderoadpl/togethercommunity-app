@@ -10,12 +10,21 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
+| `OPTIONS /api/public/navigation` | public | read | Anonymous tenant-home navigation |
+| `OPTIONS /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
+| `OPTIONS /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |
+| `OPTIONS /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
 | `OPTIONS /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
+| `GET /api/public/assets/:kind/:file` | public | read | Tenant image assets (covers, branding) redirected from private BYO storage |
 | `GET /api/public/offer` | public | read | Public offer discovery |
+| `GET /api/public/navigation` | public | read | Anonymous tenant-home navigation |
+| `GET /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
+| `GET /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |
+| `GET /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -124,6 +133,14 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/products/:productId/downloads/upload` | authenticated | mutating | product download upload |
 | `POST /api/products/:productId/downloads/:assetId/complete` | authenticated | mutating | product download complete |
 | `DELETE /api/products/:productId/downloads/:assetId` | authenticated | mutating | product download delete |
+| `GET /api/member/navigation` | authenticated | read | member navigation |
+| `GET /api/member/home-feed` | authenticated | read | member home feed |
+| `POST /api/image-assets/course-cover/upload` | authenticated | mutating | course cover upload |
+| `POST /api/image-assets/course-cover/complete` | authenticated | mutating | course cover complete |
+| `POST /api/image-assets/product-cover/upload` | authenticated | mutating | product cover upload |
+| `POST /api/image-assets/product-cover/complete` | authenticated | mutating | product cover complete |
+| `POST /api/image-assets/branding/upload` | authenticated | mutating | branding asset upload |
+| `POST /api/image-assets/branding/complete` | authenticated | mutating | branding asset complete |
 | `GET /api/my/products` | authenticated | read | my products |
 | `GET /api/my/products/:productId/downloads/:assetId` | authenticated | read | member product download |
 | `GET /api/members` | authenticated | read | members |
@@ -233,6 +250,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/spaces/:spaceId/feed` | authenticated | read | space feed |
 | `POST /api/spaces/follow` | authenticated | mutating | space follow |
 | `POST /api/spaces/unfollow` | authenticated | mutating | space unfollow |
+| `POST /api/spaces/:spaceId/seen` | authenticated | mutating | space seen |
 | `GET /api/notifications` | authenticated | read | notifications |
 | `POST /api/notifications/read` | authenticated | mutating | notification read |
 | `POST /api/notifications/read-all` | authenticated | mutating | notifications read all |

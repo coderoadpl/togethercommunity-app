@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, Menu, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
+import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, ListItemIcon, ListItemText, Menu, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
+import { styled } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -16,10 +17,24 @@ import {
   NotificationMenuItem,
   NotificationSnippet,
   NotificationTitle,
+  PanelNavItem,
   UnreadDot,
 } from './theme.js';
 
 const POLL_INTERVAL_MS = 30_000;
+
+const CountBadge = styled(Badge)(({ theme }) => ({
+  '& .MuiBadge-badge': {
+    backgroundColor: theme.palette.text.primary,
+    color: theme.palette.background.default,
+    borderRadius: '999px',
+    minWidth: '18px',
+    height: '18px',
+    padding: '0 5px',
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+  },
+}));
 
 const BELL_PATH =
   'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z';
@@ -37,7 +52,15 @@ const TabBellIcon = () => (
   </SvgIcon>
 );
 
-export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string; live?: boolean }) => {
+export const NotificationBell = ({
+  tabLabel,
+  navLabel,
+  live = true,
+}: {
+  tabLabel?: string;
+  navLabel?: string;
+  live?: boolean;
+}) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const navigate = useNavigate();
@@ -106,7 +129,22 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
   const unreadCount = unread.data?.unread ?? 0;
   const notifications = list.data?.notifications ?? [];
 
-  const trigger = tabLabel === undefined ? (
+  const trigger = navLabel !== undefined ? (
+    <PanelNavItem
+      data-testid="notification-nav"
+      aria-label={t.notifications.bell}
+      aria-haspopup="true"
+      aria-expanded={open ? true : undefined}
+      onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+    >
+      <ListItemIcon>
+        <CountBadge badgeContent={unreadCount} data-testid="notification-nav-badge">
+          <TabBellIcon />
+        </CountBadge>
+      </ListItemIcon>
+      <ListItemText primary={navLabel} slotProps={{ primary: { noWrap: true } }} />
+    </PanelNavItem>
+  ) : tabLabel === undefined ? (
     <Tooltip title={t.notifications.bell}>
         <IconButton
           color="inherit"
@@ -118,9 +156,9 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
           onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
           sx={{ minHeight: '44px', minWidth: '44px' }}
         >
-          <Badge badgeContent={unreadCount} color="error" data-testid="notification-badge">
+          <CountBadge badgeContent={unreadCount} data-testid="notification-badge">
             <BellIcon />
-          </Badge>
+          </CountBadge>
         </IconButton>
     </Tooltip>
   ) : (
@@ -132,9 +170,9 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
       onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
       sx={{ minHeight: '44px', minWidth: '44px', py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
     >
-      <Badge badgeContent={unreadCount} color="error" data-testid="notification-tab-badge">
+      <CountBadge badgeContent={unreadCount} data-testid="notification-tab-badge">
         <TabBellIcon />
-      </Badge>
+      </CountBadge>
       <Typography variant="caption" component="span" noWrap title={tabLabel} sx={{ maxWidth: '100%' }}>{tabLabel}</Typography>
     </ButtonBase>
   );

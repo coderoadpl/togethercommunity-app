@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   API_PATHS,
+  API_ROUTES,
   capabilitiesForPrincipal,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   TENANT_HEADER,
@@ -14,12 +15,14 @@ import {
 } from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
-import { PUBLIC_ROUTE_MANIFEST } from './public-route-manifest.js';
+import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
+import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
 import {
   err,
   emailEventSchema,
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
+  notFound,
   ok,
   type Course,
   type CourseLesson,
@@ -33,6 +36,7 @@ import {
   type Product,
   type ProductDownloadAsset,
   type ProductGrant,
+  type Space,
   type Tenant,
   type TenantApiKey,
   type TenantDomain,
@@ -533,12 +537,14 @@ const deps = (input: {
       listRecentBodiesByAuthor: async () => [],
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
+      listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
+      latestRootPostAt: async () => new Map(),
       search: async () => [],
     },
     spaces: {
@@ -560,6 +566,10 @@ const deps = (input: {
       follow: async () => undefined,
       unfollow: async () => false,
       listFollowersForSpace: async () => [],
+      listForUser: async () => [],
+    },
+    spaceSeen: {
+      markSeen: async () => undefined,
       listForUser: async () => [],
     },
     threadSubscriptions: {
@@ -614,6 +624,7 @@ const deps = (input: {
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
           privacyUrl: null,
+          defaultHomeSpaceId: null,
         } : null,
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async (tenant) => ({
@@ -762,6 +773,7 @@ const scopedApp = (
         description: null,
         visibility: 'members',
         productIds: [],
+        publicReadOnly: false,
         position: 0,
         archivedAt: null,
         createdAt: '1998-07-12T00:00:00.000Z',
@@ -1286,6 +1298,7 @@ describe('migration import HTTP surfaces', () => {
     const progressCourse: Course = {
       id: 'course-native', tenantId: 't-acme', name: 'Course', description: '', imageUrl: null,
       moduleOrder: ['module-native'], legacyId: null, createdAt: '1998-08-01T00:00:00.000Z',
+      publiclyVisible: false,
     };
     const progressLesson: CourseLesson = {
       id: 'lesson-native', tenantId: 't-acme', name: 'Lesson', isPreview: false, contents: [],
@@ -2377,6 +2390,7 @@ describe('student lesson playback route', () => {
             supportUrl: null,
             termsUrl: null,
             privacyUrl: null,
+            defaultHomeSpaceId: null,
           }),
         },
         secretResolver: { resolve: async () => ok('security-key') },
@@ -2481,6 +2495,85 @@ describe('purchased product download route', () => {
   });
 });
 
+describe('public tenant image asset route', () => {
+  const file = '00000000-0000-4000-8000-000000000001.png';
+  const path = API_PATHS.publicImageAsset
+    .replace(':kind', 'logo')
+    .replace(':file', file);
+  const storageSecret = JSON.stringify({
+    provider: 'minio',
+    endpoint: 'https://storage.example.test',
+    region: 'eu-central-1',
+    bucket: 'private-assets',
+    accessKeyId: 'access-key',
+    secretAccessKey: 'secret-key',
+  });
+
+  it('redirects to a signed private object with short public caching', async () => {
+    const base = deps();
+    const app = scopedApp('none', {
+      overrides: {
+        secretResolver: { resolve: async () => ok(storageSecret) },
+        storage: {
+          ...base.storage,
+          presignGet: () => ok('https://storage.example.test/signed-private-image'),
+        },
+      },
+    });
+    const response = await app.request(path, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://storage.example.test/signed-private-image');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+  });
+
+  it('returns only a not-found envelope when storage is unconfigured', async () => {
+    const app = scopedApp('none', {
+      overrides: {
+        secretResolver: { resolve: async () => err(notFound('private bucket configuration missing')) },
+      },
+    });
+    const response = await app.request(path, { headers: { host: 'acme.localhost:48730' } });
+    const body = await response.text();
+
+    expect(response.status).toBe(404);
+    expect(JSON.parse(body)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(body).not.toContain('bucket');
+    expect(body).not.toContain('configuration');
+  });
+
+  it.each([
+    API_PATHS.publicImageAsset.replace(':kind', 'downloads').replace(':file', file),
+    API_PATHS.publicImageAsset.replace(':kind', 'logo').replace(':file', 'invalid.gif'),
+  ])('returns not found for malformed public asset parameters', async (invalidPath) => {
+    const response = await scopedApp('none').request(invalidPath, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('does not leak a private bucket signing failure', async () => {
+    const base = deps();
+    const app = scopedApp('none', {
+      overrides: {
+        secretResolver: { resolve: async () => ok(storageSecret) },
+        storage: {
+          ...base.storage,
+          presignGet: () => err(internal('private bucket returned HTTP 403')),
+        },
+      },
+    });
+    const response = await app.request(path, { headers: { host: 'acme.localhost:48730' } });
+    const body = await response.text();
+
+    expect(response.status).toBe(404);
+    expect(body).not.toContain('403');
+    expect(body).not.toContain('bucket');
+  });
+});
+
 describe('new route authorization', () => {
   const headers = {
     host: 'acme.localhost:48730',
@@ -2539,6 +2632,95 @@ describe('new route authorization', () => {
 
     expect(upload.status).toBe(403);
     expect(remove.status).toBe(403);
+  });
+
+  it('keeps branding image uploads owner-only', async () => {
+    const base = deps();
+    const overrides: Partial<AppDeps> = {
+      ids: { nextId: () => '00000000-0000-4000-8000-000000000001' },
+      secretResolver: {
+        resolve: async () => ok(JSON.stringify({
+          provider: 'minio',
+          endpoint: 'https://storage.example.test',
+          region: 'eu-central-1',
+          bucket: 'private-assets',
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        })),
+      },
+      storage: {
+        ...base.storage,
+        presignPut: () => ok('https://storage.example.test/signed-upload'),
+      },
+    };
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        kind: 'logo',
+        fileName: 'logo.png',
+        contentType: 'image/png',
+        sizeBytes: 1024,
+      }),
+    };
+    const owner = await scopedApp('owner', { overrides }).request(API_PATHS.brandingAssetUpload, request);
+    const staff = await scopedApp('staff', { overrides }).request(API_PATHS.brandingAssetUpload, request);
+
+    expect(owner.status).toBe(200);
+    expect(await owner.json()).toMatchObject({
+      ok: true,
+      data: {
+        servePath: '/api/public/assets/logo/00000000-0000-4000-8000-000000000001.png',
+      },
+    });
+    expect(staff.status).toBe(403);
+  });
+
+  it('keeps cover uploads open to staff and closed to members', async () => {
+    const base = deps();
+    const overrides: Partial<AppDeps> = {
+      ids: { nextId: () => '00000000-0000-4000-8000-000000000001' },
+      secretResolver: {
+        resolve: async () => ok(JSON.stringify({
+          provider: 'minio',
+          endpoint: 'https://storage.example.test',
+          region: 'eu-central-1',
+          bucket: 'private-assets',
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        })),
+      },
+      storage: {
+        ...base.storage,
+        presignPut: () => ok('https://storage.example.test/signed-upload'),
+      },
+    };
+    const request = (kind: string) => ({
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        kind,
+        fileName: 'cover.png',
+        contentType: 'image/png',
+        sizeBytes: 1024,
+      }),
+    });
+    const staffCover = await scopedApp('staff', { overrides })
+      .request(API_PATHS.courseCoverUpload, request('course-cover'));
+    const memberCover = await scopedApp('member', { overrides })
+      .request(API_PATHS.productCoverUpload, request('product-cover'));
+    const mismatchedKind = await scopedApp('staff', { overrides })
+      .request(API_PATHS.courseCoverUpload, request('logo'));
+
+    expect(staffCover.status).toBe(200);
+    expect(await staffCover.json()).toMatchObject({
+      ok: true,
+      data: {
+        servePath: '/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.png',
+      },
+    });
+    expect(memberCover.status).toBe(403);
+    expect(mismatchedKind.status).toBe(400);
   });
 
   it('denies members and permits staff on post pinning', async () => {
@@ -2763,6 +2945,50 @@ describe('new route authorization', () => {
   });
 });
 
+describe('post search route', () => {
+  it('parses repeated lesson and space filters out of the query string', async () => {
+    const base = deps();
+    const searches: Array<{ query: string; lessonIds: string[]; spaceIds: string[]; limit: number }> = [];
+    const overrides: Partial<AppDeps> = {
+      posts: {
+        ...base.posts,
+        search: async (_tenantId, query) => {
+          searches.push(query);
+          return [];
+        },
+      },
+      spaces: {
+        ...base.spaces,
+        list: async () => [
+          {
+            id: 'space-1',
+            tenantId: acme.id,
+            slug: 'general',
+            name: 'General',
+            description: null,
+            visibility: 'members',
+            productIds: [],
+            publicReadOnly: false,
+            position: 0,
+            archivedAt: null,
+            createdAt: '1998-07-12T00:00:00.000Z',
+          },
+        ],
+      },
+    };
+    const path = `${API_PATHS.postsSearch}?query=silnik&spaceId=space-1&spaceId=space-9`;
+
+    const response = await scopedApp('staff', { overrides }).request(path, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(searches).toEqual([
+      { query: 'silnik', lessonIds: [], spaceIds: ['space-1'], limit: 20 },
+    ]);
+  });
+});
+
 describe('public route manifest', () => {
   it('records the six approved mutating surfaces', () => {
     const mutatingSurfaces = new Set(PUBLIC_ROUTE_MANIFEST
@@ -2954,11 +3180,53 @@ describe('free lesson preview route', () => {
     createdAt: '1998-07-12T00:00:00.000Z',
   });
 
+  const courseFor = (courseId: string, publiclyVisible: boolean): Course => ({
+    id: courseId,
+    tenantId: acme.id,
+    name: `Course ${courseId}`,
+    description: '',
+    imageUrl: null,
+    moduleOrder: [`module-${courseId}`],
+    publiclyVisible,
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  });
+
+  const moduleFor = (courseId: string, lessonId: string): CourseModule => ({
+    id: `module-${courseId}`,
+    tenantId: acme.id,
+    courseIds: [courseId],
+    title: `Module ${courseId}`,
+    prefix: null,
+    name: `Module ${courseId}`,
+    chapters: [{
+      id: `chapter-${courseId}`,
+      name: `Chapter ${courseId}`,
+      contents: [{ id: `content-${lessonId}`, name: `Lesson ${lessonId}`, lessonId }],
+    }],
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  });
+
+  const appWithCourse = (
+    base: AppDeps,
+    course: Course,
+    lessonId: string,
+  ) => buildApp({
+    ...base,
+    courses: { ...base.courses, list: async () => [course] },
+    modules: { ...base.modules, list: async () => [moduleFor(course.id, lessonId)] },
+  });
+
   it('serves an anonymous preview and returns 401 for a non-preview lesson', async () => {
     const preview = lesson('preview', true);
     const paid = lesson('paid', false);
     const getAuthenticatedUser = vi.fn(async () => null);
-    const app = buildApp(deps({ lessons: [preview, paid], getAuthenticatedUser }));
+    const app = appWithCourse(
+      deps({ lessons: [preview, paid], getAuthenticatedUser }),
+      courseFor('course-open', true),
+      preview.id,
+    );
     const request = (lessonId: string) => app.request(
       API_PATHS.studentLesson.replace(':lessonId', lessonId),
       { headers: { [TENANT_HEADER]: acme.slug } },
@@ -2999,6 +3267,7 @@ describe('free lesson preview route', () => {
       description: '',
       imageUrl: null,
       moduleOrder: ['module-paid'],
+      publiclyVisible: false,
       legacyId: null,
       createdAt: '1998-07-12T00:00:00.000Z',
     };
@@ -3038,10 +3307,27 @@ describe('free lesson preview route', () => {
     });
   });
 
+  it('returns 401 for a preview lesson outside a publicly visible course', async () => {
+    const preview = lesson('preview', true);
+    const app = appWithCourse(
+      deps({ lessons: [preview], getAuthenticatedUser: async () => null }),
+      courseFor('course-hidden', false),
+      preview.id,
+    );
+
+    const response = await app.request(
+      API_PATHS.studentLesson.replace(':lessonId', preview.id),
+      { headers: { [TENANT_HEADER]: acme.slug } },
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+  });
+
   it('serves a preview as public to a user authenticated in another tenant', async () => {
     const preview = lesson('preview', true);
     const paid = lesson('paid', false);
-    const app = buildApp(
+    const app = appWithCourse(
       deps({
         lessons: [preview, paid],
         getAuthenticatedUser: async () => ({
@@ -3051,6 +3337,8 @@ describe('free lesson preview route', () => {
           emailVerified: true,
         }),
       }),
+      courseFor('course-open', true),
+      preview.id,
     );
     const request = (lessonId: string) => app.request(
       API_PATHS.studentLesson.replace(':lessonId', lessonId),
@@ -3069,6 +3357,461 @@ describe('free lesson preview route', () => {
     expect(await paidResponse.json()).toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
+    });
+  });
+});
+
+describe('anonymous public surface routes', () => {
+  const space = (input: {
+    id: string;
+    publicReadOnly: boolean;
+    visibility?: Space['visibility'];
+    productIds?: string[];
+    position?: number;
+    archivedAt?: string | null;
+  }): Space => ({
+    id: input.id,
+    tenantId: acme.id,
+    slug: input.id,
+    name: `Space ${input.id}`,
+    description: `About ${input.id}`,
+    visibility: input.visibility ?? 'members',
+    productIds: input.productIds ?? [],
+    publicReadOnly: input.publicReadOnly,
+    position: input.position ?? 0,
+    archivedAt: input.archivedAt ?? null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  });
+
+  const rootPost = (id: string, contextId: string): Post => ({
+    id,
+    tenantId: acme.id,
+    contextKind: 'space',
+    contextId,
+    rootPostId: id,
+    parentPostId: null,
+    authorUserId: 'user-author',
+    authorDisplay: 'Author',
+    authorIsStaff: false,
+    body: `Body ${id}`,
+    createdAt: '1998-07-12T00:00:00.000Z',
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+  });
+
+  const publicCourse: Course = {
+    id: 'course-open',
+    tenantId: acme.id,
+    name: 'Open course',
+    description: 'Open',
+    imageUrl: null,
+    moduleOrder: ['module-open'],
+    publiclyVisible: true,
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
+
+  const hiddenCourse: Course = { ...publicCourse, id: 'course-hidden', publiclyVisible: false };
+
+  const previewLesson: CourseLesson = {
+    id: 'lesson-preview',
+    tenantId: acme.id,
+    name: 'Preview lesson',
+    isPreview: true,
+    contents: [{ type: 'html', html: '<p>free</p>' }],
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
+
+  const paidLesson: CourseLesson = { ...previewLesson, id: 'lesson-paid', name: 'Paid lesson', isPreview: false };
+
+  const openModule: CourseModule = {
+    id: 'module-open',
+    tenantId: acme.id,
+    courseIds: [publicCourse.id],
+    title: 'Open module',
+    prefix: null,
+    name: 'Open module',
+    chapters: [{
+      id: 'chapter-open',
+      name: 'Open chapter',
+      contents: [
+        { id: 'content-preview', name: previewLesson.name, lessonId: previewLesson.id },
+        { id: 'content-paid', name: paidLesson.name, lessonId: paidLesson.id },
+      ],
+    }],
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
+
+  const publicApp = (input: {
+    spaces?: Space[];
+    posts?: Post[];
+    courses?: Course[];
+    defaultHomeSpaceId?: string | null;
+  } = {}) => {
+    const spaceRows = input.spaces ?? [];
+    const postRows = input.posts ?? [];
+    const base = deps({ lessons: [previewLesson, paidLesson] });
+    return buildApp({
+      ...base,
+      spaces: {
+        ...base.spaces,
+        list: async () => spaceRows.filter((row) => row.archivedAt === null),
+        findById: async (_tenantId, id) => spaceRows.find((row) => row.id === id) ?? null,
+      },
+      posts: {
+        ...base.posts,
+        findById: async (_tenantId, id) => postRows.find((row) => row.id === id) ?? null,
+        listThreadsForContext: async (_tenantId, query) => ({
+          threads: postRows
+            .filter((row) => row.contextId === query.contextId)
+            .map((post) => ({ post, replyCount: 0 })),
+          nextCursor: null,
+        }),
+        listReplies: async () => [],
+      },
+      courses: {
+        ...base.courses,
+        list: async () => input.courses ?? [],
+        findById: async (_tenantId, id) => (input.courses ?? []).find((row) => row.id === id) ?? null,
+      },
+      modules: { ...base.modules, list: async () => [openModule] },
+      tenants: {
+        ...base.tenants,
+        findSettings: async (tenantId) => {
+          const settings = await base.tenants.findSettings(tenantId);
+          return settings === null
+            ? null
+            : { ...settings, defaultHomeSpaceId: input.defaultHomeSpaceId ?? null };
+        },
+      },
+    });
+  };
+
+  const anonymousRequest = (app: ReturnType<typeof buildApp>, path: string, headers: HeadersInit = {}) =>
+    app.request(path, { headers: { [TENANT_HEADER]: acme.slug, ...headers } });
+
+  it('lists public spaces, public courses and sellable locked spaces', async () => {
+    const app = publicApp({
+      spaces: [
+        space({ id: 'open', publicReadOnly: true, position: 1 }),
+        space({ id: 'home', publicReadOnly: true, position: 0 }),
+        space({ id: 'members-only', publicReadOnly: false }),
+        space({ id: 'sellable', publicReadOnly: false, visibility: 'product', productIds: ['acme-published'] }),
+        space({ id: 'draft-gated', publicReadOnly: false, visibility: 'product', productIds: ['acme-draft'] }),
+      ],
+      courses: [publicCourse, hiddenCourse],
+    });
+
+    const response = await anonymousRequest(app, API_PATHS.publicNavigation);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('etag')).toBe(`W/"pubnav-${acme.id}-${acme.contentVersion}"`);
+    expect(response.headers.get('cache-control')).toBe('public, no-cache');
+    expect(response.headers.get('vary')).toBe(`Host, ${TENANT_HEADER}`);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        navigation: {
+          defaultHomeSpaceId: 'home',
+          spaces: [{ id: 'home' }, { id: 'open' }],
+          courses: [{ id: publicCourse.id, name: publicCourse.name }],
+          lockedSpaces: [{ id: 'sellable', productIds: ['acme-published'] }],
+        },
+      },
+    });
+  });
+
+  it('revalidates navigation with the content-version ETag', async () => {
+    const app = publicApp({ spaces: [space({ id: 'open', publicReadOnly: true })] });
+    const etag = `W/"pubnav-${acme.id}-${acme.contentVersion}"`;
+
+    const response = await anonymousRequest(app, API_PATHS.publicNavigation, { 'if-none-match': etag });
+
+    expect(response.status).toBe(304);
+    expect(response.headers.get('etag')).toBe(etag);
+  });
+
+  it('serves a publicly visible course program with previews unlocked', async () => {
+    const app = publicApp({ courses: [publicCourse] });
+
+    const response = await anonymousRequest(
+      app,
+      API_PATHS.publicCourseStructure.replace(':courseId', publicCourse.id),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('etag')).toBe(
+      `W/"pubcourse-${acme.id}-${publicCourse.id}-${acme.contentVersion}"`,
+    );
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        structure: {
+          courseId: publicCourse.id,
+          modules: [{
+            chapters: [{
+              lessons: [
+                { lessonId: previewLesson.id, accessStatus: 'fully-accessible' },
+                { lessonId: paidLesson.id, accessStatus: 'not-accessible' },
+              ],
+            }],
+          }],
+        },
+      },
+    });
+  });
+
+  it('answers not_found for a course that is not publicly visible', async () => {
+    const app = publicApp({ courses: [hiddenCourse] });
+
+    const response = await anonymousRequest(
+      app,
+      API_PATHS.publicCourseStructure.replace(':courseId', hiddenCourse.id),
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('serves a viewerless feed and thread for a publicly readable space', async () => {
+    const post = rootPost('post-open', 'open');
+    const app = publicApp({ spaces: [space({ id: 'open', publicReadOnly: true })], posts: [post] });
+
+    const feed = await anonymousRequest(
+      app,
+      API_PATHS.publicSpaceFeed.replace(':spaceId', 'open'),
+    );
+    expect(feed.status).toBe(200);
+    expect(feed.headers.get('cache-control')).toBe('no-store');
+    expect(await feed.json()).toMatchObject({
+      ok: true,
+      data: { feed: { spaceId: 'open', isFollowing: false, items: [{ id: post.id, isOwn: false }] } },
+    });
+
+    const thread = await anonymousRequest(
+      app,
+      API_PATHS.publicSpaceThread.replace(':spaceId', 'open').replace(':postId', post.id),
+    );
+    expect(thread.status).toBe(200);
+    expect(await thread.json()).toMatchObject({
+      ok: true,
+      data: {
+        discussion: {
+          threads: [{ id: post.id, isOwn: false, replyCount: 0, replies: [] }],
+          viewerSubscriptions: {},
+        },
+      },
+    });
+  });
+
+  it('answers not_found for spaces that are not publicly readable', async () => {
+    const post = rootPost('post-private', 'private');
+    const app = publicApp({
+      spaces: [
+        space({ id: 'private', publicReadOnly: false }),
+        space({ id: 'retired', publicReadOnly: true, archivedAt: '1998-07-12T00:00:00.000Z' }),
+      ],
+      posts: [post],
+    });
+
+    for (const spaceId of ['private', 'retired', 'missing']) {
+      const feed = await anonymousRequest(app, API_PATHS.publicSpaceFeed.replace(':spaceId', spaceId));
+      expect(feed.status).toBe(404);
+      expect(await feed.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    }
+
+    const thread = await anonymousRequest(
+      app,
+      API_PATHS.publicSpaceThread.replace(':spaceId', 'private').replace(':postId', post.id),
+    );
+    expect(thread.status).toBe(404);
+  });
+
+  it('answers not_found for a post outside the requested public space', async () => {
+    const app = publicApp({
+      spaces: [space({ id: 'open', publicReadOnly: true }), space({ id: 'other', publicReadOnly: true })],
+      posts: [rootPost('post-other', 'other')],
+    });
+
+    const response = await anonymousRequest(
+      app,
+      API_PATHS.publicSpaceThread.replace(':spaceId', 'open').replace(':postId', 'post-other'),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it('answers OPTIONS preflight for every public surface route', async () => {
+    const app = publicApp();
+
+    for (const path of [
+      API_PATHS.publicNavigation,
+      API_PATHS.publicCourseStructure.replace(':courseId', publicCourse.id),
+      API_PATHS.publicSpaceFeed.replace(':spaceId', 'open'),
+      API_PATHS.publicSpaceThread.replace(':spaceId', 'open').replace(':postId', 'post-open'),
+    ]) {
+      const response = await app.request(path, { method: 'OPTIONS' });
+      expect(response.status).toBe(204);
+      expect(response.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
+    }
+  });
+
+  it('returns a tenant_not_found envelope for an unknown host', async () => {
+    const app = publicApp();
+
+    const response = await app.request(API_PATHS.publicNavigation, {
+      headers: { host: 'missing.localhost:48730' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+  });
+
+  describe('anonymous threat model', () => {
+    const errorCodeSchema = z.object({ error: z.object({ code: z.string() }) });
+    const memberRoutes = Object.values(API_ROUTES).filter((route) =>
+      route.path.startsWith('/api/')
+      && publicRouteManifestEntry(route) === undefined
+      && selfAuthenticatingRouteManifestEntry(route) === undefined);
+
+    it('answers unauthorized on every member API route without a session', async () => {
+      const app = buildApp(deps({ authenticated: true }));
+
+      const verdicts = await Promise.all(memberRoutes.map(async (route) => {
+        const response = await app.request(route.path.replace(/:[^/]+/g, 'probe'), {
+          method: route.method,
+          headers: { host: 'acme.localhost:48730' },
+        });
+        const body = errorCodeSchema.safeParse(await response.json());
+        return `${route.method} ${route.path} ${response.status} ${body.success ? body.data.error.code : 'ok'}`;
+      }));
+
+      expect(memberRoutes.length).toBeGreaterThan(150);
+      expect(verdicts.filter((verdict) => !verdict.endsWith('401 unauthorized'))).toEqual([]);
+    });
+
+    it('varies every anonymous surface on the tenant and keeps hits and misses cached honestly', async () => {
+      const openPost = rootPost('post-open', 'open');
+      const app = publicApp({
+        spaces: [space({ id: 'open', publicReadOnly: true }), space({ id: 'private', publicReadOnly: false })],
+        posts: [openPost],
+        courses: [publicCourse, hiddenCourse],
+      });
+      const thread = (spaceId: string) => API_PATHS.publicSpaceThread
+        .replace(':spaceId', spaceId)
+        .replace(':postId', openPost.id);
+
+      for (const surface of [
+        { path: API_PATHS.publicOffer, status: 200, cacheControl: 'public, no-cache' },
+        { path: API_PATHS.publicNavigation, status: 200, cacheControl: 'public, no-cache' },
+        {
+          path: API_PATHS.publicCourseStructure.replace(':courseId', publicCourse.id),
+          status: 200,
+          cacheControl: 'public, no-cache',
+        },
+        {
+          path: API_PATHS.publicCourseStructure.replace(':courseId', hiddenCourse.id),
+          status: 404,
+          cacheControl: 'no-store',
+        },
+        { path: API_PATHS.publicSpaceFeed.replace(':spaceId', 'open'), status: 200, cacheControl: 'no-store' },
+        { path: API_PATHS.publicSpaceFeed.replace(':spaceId', 'private'), status: 404, cacheControl: 'no-store' },
+        { path: thread('open'), status: 200, cacheControl: 'no-store' },
+        { path: thread('private'), status: 404, cacheControl: 'no-store' },
+      ]) {
+        const response = await anonymousRequest(app, surface.path);
+        expect([
+          surface.path,
+          response.status,
+          response.headers.get('vary'),
+          response.headers.get('cache-control'),
+        ]).toEqual([surface.path, surface.status, `Host, ${TENANT_HEADER}`, surface.cacheControl]);
+      }
+    });
+
+    it('keeps author accounts and viewer state out of public post payloads', async () => {
+      const post = {
+        ...rootPost('post-open', 'open'),
+        authorUserId: 'user-hidden-account',
+        authorDisplay: 'Pseudonym',
+      };
+      const app = publicApp({ spaces: [space({ id: 'open', publicReadOnly: true })], posts: [post] });
+
+      const feed = await anonymousRequest(app, API_PATHS.publicSpaceFeed.replace(':spaceId', 'open'));
+      const thread = await anonymousRequest(
+        app,
+        API_PATHS.publicSpaceThread.replace(':spaceId', 'open').replace(':postId', post.id),
+      );
+
+      for (const response of [feed, thread]) {
+        const body = await response.text();
+        expect(response.status).toBe(200);
+        expect(body).not.toContain(post.authorUserId);
+        expect(body).toContain(post.authorDisplay);
+      }
+    });
+
+    it('rejects a public feed page above the clamped limit', async () => {
+      const app = publicApp({ spaces: [space({ id: 'open', publicReadOnly: true })] });
+
+      const response = await anonymousRequest(
+        app,
+        `${API_PATHS.publicSpaceFeed.replace(':spaceId', 'open')}?limit=1000`,
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    });
+
+    it('reads the public surface through the resolved tenant only', async () => {
+      const openSpace = space({ id: 'open', publicReadOnly: true });
+      const post = rootPost('post-open', openSpace.id);
+      const base = deps({ lessons: [previewLesson, paidLesson] });
+      const forAcme = <T>(tenantId: string, rows: T[]): T[] => (tenantId === acme.id ? rows : []);
+      const app = buildApp({
+        ...base,
+        spaces: {
+          ...base.spaces,
+          list: async (tenantId) => forAcme(tenantId, [openSpace]),
+          findById: async (tenantId, id) => forAcme(tenantId, [openSpace]).find((row) => row.id === id) ?? null,
+        },
+        posts: {
+          ...base.posts,
+          findById: async (tenantId, id) => forAcme(tenantId, [post]).find((row) => row.id === id) ?? null,
+          listThreadsForContext: async (tenantId) => ({
+            threads: forAcme(tenantId, [{ post, replyCount: 0 }]),
+            nextCursor: null,
+          }),
+          listReplies: async () => [],
+        },
+        courses: {
+          ...base.courses,
+          list: async (tenantId) => forAcme(tenantId, [publicCourse]),
+          findById: async (tenantId, id) => forAcme(tenantId, [publicCourse]).find((row) => row.id === id) ?? null,
+        },
+        modules: { ...base.modules, list: async () => [openModule] },
+      });
+      const asGlobex = (path: string) => app.request(path, { headers: { [TENANT_HEADER]: globex.slug } });
+
+      const navigation = await asGlobex(API_PATHS.publicNavigation);
+      expect(navigation.status).toBe(200);
+      expect(await navigation.json()).toMatchObject({
+        ok: true,
+        data: { navigation: { defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] } },
+      });
+
+      for (const path of [
+        API_PATHS.publicCourseStructure.replace(':courseId', publicCourse.id),
+        API_PATHS.publicSpaceFeed.replace(':spaceId', openSpace.id),
+        API_PATHS.publicSpaceThread.replace(':spaceId', openSpace.id).replace(':postId', post.id),
+      ]) {
+        const response = await asGlobex(path);
+        expect([path, response.status]).toEqual([path, 404]);
+        expect([path, await response.json()]).toMatchObject([path, { ok: false, error: { code: 'not_found' } }]);
+      }
     });
   });
 });
@@ -3224,6 +3967,7 @@ const consentApp = (simulatedPayments: boolean) => {
               supportUrl: null,
               termsUrl: 'https://acme.example/terms-v2',
               privacyUrl: 'https://acme.example/privacy-v3',
+              defaultHomeSpaceId: null,
             }
           : null,
     },
@@ -3483,6 +4227,7 @@ describe('checkout consent ordering', () => {
                 supportUrl: null,
                 termsUrl: 'https://acme.example/terms-v2',
                 privacyUrl: 'https://acme.example/privacy-v3',
+                defaultHomeSpaceId: null,
                 autoIssueInvoices: true,
                 autoIssueInvoiceScope: 'all',
                 invoiceVatRatePercent: 23,

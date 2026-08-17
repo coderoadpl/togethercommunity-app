@@ -26,9 +26,7 @@
   "ignoreBinaries": [
     "openssl"
   ],
-  "ignoreDependencies": [
-    "@argos-ci/cli"
-  ],
+  "ignoreDependencies": [],
   "rules": {
     "files": "error",
     "dependencies": "error",

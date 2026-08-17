@@ -20,8 +20,10 @@ import {
 } from '../../theme.js';
 import { EmptyFeedIcon } from './community-icons.js';
 import { MemberSurface } from './MemberSurface.js';
+import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { ReportPostButton } from './ReportPostButton.js';
+import { useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -149,6 +151,28 @@ const FeedPost = ({
 
 export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
+  const viewer = useViewerKind();
+
+  if (viewer === 'pending') {
+    return (
+      <MemberSurface
+        title={t.community.heading}
+        eyebrow={t.community.feedEyebrow}
+        width="wide"
+        state={{ kind: 'loading', label: t.community.loadingFeed }}
+      />
+    );
+  }
+
+  return viewer === 'anonymous' ? (
+    <PublicSpaceFeedPage spaceId={spaceId} />
+  ) : (
+    <MemberSpaceFeedPage spaceId={spaceId} />
+  );
+};
+
+const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
+  const t = useTranslations();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -160,10 +184,26 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionSummary[]>>({});
 
-  const invalidateSpaces = () => queryClient.invalidateQueries(actions.spacesInvalidates());
+  const { mutate: markSeen } = useMutation({
+    ...actions.markSpaceSeen,
+    onSettled: () => queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+  });
+  const invalidateSpaces = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.spacesInvalidates()),
+      queryClient.invalidateQueries(actions.memberHomeFeedInvalidates()),
+    ]);
+    markSeen({ spaceId });
+  };
+  const settleFollow = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.spacesInvalidates()),
+      queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+    ]);
+  };
   const create = useMutation({ ...actions.createPost, onSettled: invalidateSpaces });
-  const follow = useMutation({ ...actions.followSpace, onSettled: invalidateSpaces });
-  const unfollow = useMutation({ ...actions.unfollowSpace, onSettled: invalidateSpaces });
+  const follow = useMutation({ ...actions.followSpace, onSettled: settleFollow });
+  const unfollow = useMutation({ ...actions.unfollowSpace, onSettled: settleFollow });
   const react = useMutation(actions.reactToPost);
   const unreact = useMutation(actions.unreactToPost);
   const pin = useMutation({
@@ -175,6 +215,11 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   useEffect(() => {
     if (unauthorized) void navigate({ to: '/login' });
   }, [navigate, unauthorized]);
+
+  const feedReadable = feed.isSuccess;
+  useEffect(() => {
+    if (feedReadable) markSeen({ spaceId });
+  }, [feedReadable, markSeen, spaceId]);
 
   if (spaces.isPending) {
     return (
@@ -246,6 +291,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
         size="small"
         variant="outlined"
         label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
+        sx={{ alignSelf: 'flex-start' }}
       />
       <Box>
         <Button

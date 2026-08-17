@@ -19,6 +19,9 @@ import {
   deleteSpaceInputSchema,
   followSpaceInputSchema,
   listSpaceFeedInputSchema,
+  markSpaceSeenInputSchema,
+  memberHomeFeedInputSchema,
+  memberHomeFeedSchema,
   memberSpaceSchema,
   reactToPostInputSchema,
   reactionSummarySchema,
@@ -45,6 +48,7 @@ import {
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
   grantWindowStatusSchema,
+  imageAssetUploadInputSchema,
   languageSchema,
   type listOrdersQuerySchema,
   listStreamVideosInputSchema,
@@ -75,6 +79,7 @@ import {
   memberErasureRequestStatusSchema,
   memberErasureRequestWithMemberSchema,
   memberLearningSummarySchema,
+  memberNavigationSchema,
   memberTimelineEventSchema,
   memberWithProductIdsSchema,
   memberSchema,
@@ -99,6 +104,7 @@ import {
   resolveReportInputSchema,
   newProductSchema,
   nextLessonSchema,
+  publicNavigationSchema,
   publicPostSchema,
   postSearchHitSchema,
   productAccessIssuesSchema,
@@ -152,6 +158,7 @@ import {
   updateProductAccessItemsInputSchema,
   billingDataSchema,
 } from '#core/domain/index.js';
+import type { PublicSpaceThreadInput } from '#core/domain/index.js';
 
 /**
  * Single source of truth for the HTTP API shared by server and all clients.
@@ -292,6 +299,10 @@ export const publicOfferOutputSchema = z.object({
   ),
 });
 
+export const publicNavigationOutputSchema = z.object({
+  navigation: publicNavigationSchema,
+});
+
 export const publicPaymentConfigOutputSchema = z.object({
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
@@ -418,6 +429,18 @@ export const memberGrantsOutputSchema = z.object({
 
 export const memberLearningSummaryOutputSchema = z.object({
   summary: memberLearningSummarySchema,
+});
+
+export const memberNavigationOutputSchema = z.object({
+  navigation: memberNavigationSchema,
+});
+
+export const memberHomeFeedGetInputSchema = memberHomeFeedInputSchema;
+
+export type MemberHomeFeedGetInput = z.input<typeof memberHomeFeedGetInputSchema>;
+
+export const memberHomeFeedOutputSchema = z.object({
+  feed: memberHomeFeedSchema,
 });
 
 export const memberTimelineOutputSchema = z.object({
@@ -787,6 +810,28 @@ export const productDownloadDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
+export const imageAssetUploadRequestSchema = imageAssetUploadInputSchema;
+
+export type ImageAssetUploadRequest = z.input<typeof imageAssetUploadRequestSchema>;
+
+export const imageAssetUploadOutputSchema = z.object({
+  key: z.string().min(1),
+  servePath: z.string().startsWith('/'),
+  upload: z.object({
+    url: z.string().url(),
+    headers: z.record(z.string()),
+    expiresAt: z.string().datetime(),
+  }),
+});
+
+export const imageAssetCompleteRequestSchema = z.object({
+  key: z.string().min(1),
+});
+
+export const imageAssetCompleteOutputSchema = z.object({
+  url: z.string().startsWith('/'),
+});
+
 export const contentHistoryOutputSchema = z.object({
   versions: z.array(courseHistoryEntrySchema),
 });
@@ -936,6 +981,8 @@ export const spaceFeedOutputSchema = z.object({
   feed: spaceFeedSchema,
 });
 
+export type PublicSpaceThreadGetInput = PublicSpaceThreadInput;
+
 export const spaceFollowInputSchema = followSpaceInputSchema;
 
 export type SpaceFollowInput = z.input<typeof spaceFollowInputSchema>;
@@ -943,6 +990,15 @@ export type SpaceFollowInput = z.input<typeof spaceFollowInputSchema>;
 export const spaceFollowOutputSchema = z.object({
   spaceId: z.string(),
   isFollowing: z.boolean(),
+});
+
+export const spaceSeenInputSchema = markSpaceSeenInputSchema;
+
+export type SpaceSeenInput = z.input<typeof spaceSeenInputSchema>;
+
+export const spaceSeenOutputSchema = z.object({
+  spaceId: z.string(),
+  seenAt: z.string().datetime(),
 });
 
 export const postReactInputSchema = reactToPostInputSchema;
@@ -1095,6 +1151,7 @@ export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
 export const integrationTestInputSchema = z.object({
   provider: integrationProviderSchema,
   emailTransport: emailIntegrationTransportSchema.optional(),
+  language: languageSchema.optional(),
 }).superRefine((input, ctx) => {
   if (input.emailTransport !== undefined && input.provider !== 'email') {
     ctx.addIssue({
@@ -1379,6 +1436,11 @@ export const API_ROUTES = {
   autoInvoiceDispatch: { method: 'POST', path: '/api/internal/dispatch-auto-invoices' },
   ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
+  publicNavigation: { method: 'GET', path: '/api/public/navigation' },
+  publicCourseStructure: { method: 'GET', path: '/api/public/courses/:courseId/structure' },
+  publicSpaceFeed: { method: 'GET', path: '/api/public/spaces/:spaceId/feed' },
+  publicSpaceThread: { method: 'GET', path: '/api/public/spaces/:spaceId/posts/:postId' },
+  publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
   couponCheckoutValidation: { method: 'POST', path: '/api/public/checkout/coupon' },
@@ -1441,6 +1503,12 @@ export const API_ROUTES = {
   productDownloadUpload: { method: 'POST', path: '/api/products/:productId/downloads/upload' },
   productDownloadComplete: { method: 'POST', path: '/api/products/:productId/downloads/:assetId/complete' },
   productDownloadDelete: { method: 'DELETE', path: '/api/products/:productId/downloads/:assetId' },
+  courseCoverUpload: { method: 'POST', path: '/api/image-assets/course-cover/upload' },
+  courseCoverComplete: { method: 'POST', path: '/api/image-assets/course-cover/complete' },
+  productCoverUpload: { method: 'POST', path: '/api/image-assets/product-cover/upload' },
+  productCoverComplete: { method: 'POST', path: '/api/image-assets/product-cover/complete' },
+  brandingAssetUpload: { method: 'POST', path: '/api/image-assets/branding/upload' },
+  brandingAssetComplete: { method: 'POST', path: '/api/image-assets/branding/complete' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
@@ -1474,12 +1542,15 @@ export const API_ROUTES = {
   spaceFeed: { method: 'GET', path: '/api/spaces/:spaceId/feed' },
   spaceFollow: { method: 'POST', path: '/api/spaces/follow' },
   spaceUnfollow: { method: 'POST', path: '/api/spaces/unfollow' },
+  spaceSeen: { method: 'POST', path: '/api/spaces/:spaceId/seen' },
   notifications: { method: 'GET', path: '/api/notifications' },
   notificationRead: { method: 'POST', path: '/api/notifications/read' },
   notificationsReadAll: { method: 'POST', path: '/api/notifications/read-all' },
   notificationsUnread: { method: 'GET', path: '/api/notifications/unread-count' },
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
+  memberNavigation: { method: 'GET', path: '/api/member/navigation' },
+  memberHomeFeed: { method: 'GET', path: '/api/member/home-feed' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
@@ -1594,6 +1665,11 @@ export const API_PATHS = {
   autoInvoiceDispatch: API_ROUTES.autoInvoiceDispatch.path,
   ksefDispatch: API_ROUTES.ksefDispatch.path,
   publicOffer: API_ROUTES.publicOffer.path,
+  publicNavigation: API_ROUTES.publicNavigation.path,
+  publicCourseStructure: API_ROUTES.publicCourseStructure.path,
+  publicSpaceFeed: API_ROUTES.publicSpaceFeed.path,
+  publicSpaceThread: API_ROUTES.publicSpaceThread.path,
+  publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
   couponCheckoutValidation: API_ROUTES.couponCheckoutValidation.path,
@@ -1651,6 +1727,12 @@ export const API_PATHS = {
   productDownloadUpload: API_ROUTES.productDownloadUpload.path,
   productDownloadComplete: API_ROUTES.productDownloadComplete.path,
   productDownloadDelete: API_ROUTES.productDownloadDelete.path,
+  courseCoverUpload: API_ROUTES.courseCoverUpload.path,
+  courseCoverComplete: API_ROUTES.courseCoverComplete.path,
+  productCoverUpload: API_ROUTES.productCoverUpload.path,
+  productCoverComplete: API_ROUTES.productCoverComplete.path,
+  brandingAssetUpload: API_ROUTES.brandingAssetUpload.path,
+  brandingAssetComplete: API_ROUTES.brandingAssetComplete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
   studentLesson: API_ROUTES.studentLesson.path,
@@ -1683,12 +1765,15 @@ export const API_PATHS = {
   spaceFeed: API_ROUTES.spaceFeed.path,
   spaceFollow: API_ROUTES.spaceFollow.path,
   spaceUnfollow: API_ROUTES.spaceUnfollow.path,
+  spaceSeen: API_ROUTES.spaceSeen.path,
   notifications: API_ROUTES.notifications.path,
   notificationRead: API_ROUTES.notificationRead.path,
   notificationsReadAll: API_ROUTES.notificationsReadAll.path,
   notificationsUnread: API_ROUTES.notificationsUnread.path,
   notificationsStream: API_ROUTES.notificationsStream.path,
   devGrant: API_ROUTES.devGrant.path,
+  memberNavigation: API_ROUTES.memberNavigation.path,
+  memberHomeFeed: API_ROUTES.memberHomeFeed.path,
   myProducts: API_ROUTES.myProducts.path,
   memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,

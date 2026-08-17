@@ -74,6 +74,7 @@ const course: Course = {
   description: '',
   imageUrl: null,
   moduleOrder: ['module-1'],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };

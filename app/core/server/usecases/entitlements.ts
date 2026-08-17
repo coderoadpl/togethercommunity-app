@@ -29,6 +29,7 @@ import {
   aggregateAccessItems,
   buildAccessLookup,
   buildCourseStructure,
+  coursesContainingLesson,
   fullCourseLookup,
   isLessonAccessibleByLookup,
   linearizeCourse,
@@ -62,6 +63,22 @@ const requireMember = (ctx: Ctx, capability: 'member:product:read'): Result<Memb
 };
 
 const isStaff = (ctx: Ctx): boolean => ctx.identity.staffRole !== null;
+
+const isAnonymous = (ctx: Ctx): boolean =>
+  ctx.identity.memberId === null && ctx.identity.staffRole === null;
+
+/**
+ * A free preview reaches an anonymous visitor only through a publicly visible
+ * course; without one the lesson stays behind the login nudge.
+ */
+const previewOpenToAnonymous = async (
+  tenantId: string,
+  lessonId: string,
+  deps: Pick<CourseAccessDeps, 'courses' | 'modules'>,
+): Promise<boolean> => {
+  const [courses, modules] = await Promise.all([deps.courses.list(tenantId), deps.modules.list(tenantId)]);
+  return coursesContainingLesson(lessonId, courses, modules).some((course) => course.publiclyVisible);
+};
 
 export const resolveMemberEntitlements = async (
   ctx: Ctx,
@@ -141,7 +158,12 @@ export const getAccessibleLesson = async (
   const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
   const lesson = await deps.lessons.findById(tenant.value, lessonId);
-  if (lesson?.isPreview === true) return ok(lesson);
+  if (lesson?.isPreview === true) {
+    if (!isAnonymous(ctx)) return ok(lesson);
+    return (await previewOpenToAnonymous(tenant.value, lessonId, deps))
+      ? ok(lesson)
+      : err(forbidden('This lesson is not accessible'));
+  }
   const access = await isLessonAccessible(ctx, lessonId, deps);
   if (!access.ok) return access;
   if (!lesson) return err(notFound(`No lesson "${lessonId}" in this tenant`));

@@ -13,7 +13,11 @@ import {
   API_PATHS,
   checkoutSessionRequestSchema,
   couponCheckoutValidationRequestSchema,
+  courseStructureOutputSchema,
+  discussionOutputSchema,
+  publicNavigationOutputSchema,
   publicOfferOutputSchema,
+  spaceFeedOutputSchema,
   studentLessonOutputSchema,
   STRIPE_WEBHOOK_PATH_PATTERN,
   TENANT_HEADER
@@ -39,7 +43,12 @@ import {
   fulfillStripeWebhook,
   getPaymentConfig,
   getPlayableLesson,
+  getPublicCourseStructure,
+  getPublicImageAssetUrl,
+  getPublicNavigation,
   getPublicOffer,
+  getPublicSpaceFeed,
+  getPublicSpaceThread,
   recordCheckoutMarketingConsents,
   resolveIdentity,
   resolveTenant,
@@ -298,11 +307,34 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   );
 
   registerOpenCors(app, API_PATHS.publicOffer, 'GET');
+  registerOpenCors(app, API_PATHS.publicNavigation, 'GET');
+  registerOpenCors(app, API_PATHS.publicCourseStructure, 'GET');
+  registerOpenCors(app, API_PATHS.publicSpaceFeed, 'GET');
+  registerOpenCors(app, API_PATHS.publicSpaceThread, 'GET');
   registerOpenCors(app, API_PATHS.studentLesson, 'GET', API_PATHS.studentLessonNext);
   registerOpenCors(app, API_PATHS.publicPaymentConfig, 'GET');
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
   registerOpenCors(app, API_PATHS.authConfig, 'GET');
+
+  app.get(API_PATHS.publicImageAsset, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const result = await getPublicImageAssetUrl(
+      tenant.value.tenant.id,
+      { kind: c.req.param('kind'), file: c.req.param('file') },
+      deps,
+    );
+    if (!result.ok) return respondPublic(result);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: result.value,
+        'cache-control': 'public, max-age=300',
+      },
+    });
+  });
 
   app.get(API_PATHS.publicOffer, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
@@ -315,6 +347,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     }
 
     const result = await getPublicOffer(tenant.value.tenant, {
+      courses: deps.courses,
       products: deps.products,
       lessons: deps.lessons,
       prices: deps.prices,
@@ -326,6 +359,84 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     const parsed = publicOfferOutputSchema.safeParse(result.value);
     if (!parsed.success) return respondPublic(err(internal('Public offer response does not match the contract')), etag);
     return respondPublic(ok(parsed.data), etag);
+  });
+
+  app.get(API_PATHS.publicNavigation, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+
+    const etag = `W/"pubnav-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}"`;
+    if (c.req.header('if-none-match') === etag) {
+      return respondNotModified(publicHeaders(etag));
+    }
+
+    const result = await getPublicNavigation(tenant.value.tenant, deps);
+    if (!result.ok) return respondPublic(result, etag);
+    const parsed = publicNavigationOutputSchema.safeParse({ navigation: result.value });
+    if (!parsed.success) {
+      return respondPublic(err(internal('Public navigation response does not match the contract')), etag);
+    }
+    return respondPublic(ok(parsed.data), etag);
+  });
+
+  app.get(API_PATHS.publicCourseStructure, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+
+    const courseId = c.req.param('courseId');
+    const etag = `W/"pubcourse-${tenant.value.tenant.id}-${courseId}-${tenant.value.tenant.contentVersion}"`;
+    if (c.req.header('if-none-match') === etag) {
+      return respondNotModified(publicHeaders(etag));
+    }
+
+    const result = await getPublicCourseStructure(tenant.value.tenant, courseId, deps);
+    if (!result.ok) return respondPublic(result, etag);
+    const parsed = courseStructureOutputSchema.safeParse({ structure: result.value });
+    if (!parsed.success) {
+      return respondPublic(err(internal('Public course structure response does not match the contract')), etag);
+    }
+    return respondPublic(ok(parsed.data), etag);
+  });
+
+  app.get(API_PATHS.publicSpaceFeed, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+
+    const limit = c.req.query('limit');
+    const result = await getPublicSpaceFeed(
+      tenant.value.tenant,
+      {
+        spaceId: c.req.param('spaceId'),
+        cursor: c.req.query('cursor'),
+        ...(limit === undefined ? {} : { limit: Number(limit) }),
+      },
+      deps,
+    );
+    if (!result.ok) return respondPublic(result);
+    const parsed = spaceFeedOutputSchema.safeParse({ feed: result.value });
+    return parsed.success
+      ? respondPublic(ok(parsed.data))
+      : respondPublic(err(internal('Public space feed response does not match the contract')));
+  });
+
+  app.get(API_PATHS.publicSpaceThread, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+
+    const result = await getPublicSpaceThread(
+      tenant.value.tenant,
+      { spaceId: c.req.param('spaceId'), postId: c.req.param('postId') },
+      deps,
+    );
+    if (!result.ok) return respondPublic(result);
+    const parsed = discussionOutputSchema.safeParse({ discussion: result.value });
+    return parsed.success
+      ? respondPublic(ok(parsed.data))
+      : respondPublic(err(internal('Public space thread response does not match the contract')));
   });
 
   app.get(API_PATHS.studentLesson, async (c, next) => {

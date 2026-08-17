@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -33,7 +40,30 @@ interface StoredSettings {
   invoiceVatRatePercent?: 5 | 8 | 23 | null;
   invoiceExemptionBasisKind?: 'art_113_1' | 'art_113_9' | 'art_43_1' | 'other_statute' | 'other' | null;
   invoiceExemptionBasis?: string | null;
+  defaultHomeSpaceId?: string | null;
 }
+
+interface StubSpace {
+  id: string;
+  name: string;
+  publicReadOnly: boolean;
+  archivedAt: string | null;
+}
+
+const staffSpace = ({ id, name, publicReadOnly, archivedAt }: StubSpace) => ({
+  tenantId: 'tenant-akademia',
+  id,
+  slug: id,
+  name,
+  description: null,
+  visibility: 'members',
+  productIds: [],
+  publicReadOnly,
+  position: 0,
+  archivedAt,
+  createdAt: '2026-07-20T08:00:00.000Z',
+  stats: { posts: 0, followers: 0 },
+});
 
 const EMPTY_SETTINGS: StoredSettings = {
   name: 'Akademia',
@@ -48,13 +78,23 @@ const EMPTY_SETTINGS: StoredSettings = {
   privacyUrl: null,
 };
 
-const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true) => {
+const PANEL_TENANT = {
+  id: 'tenant-akademia',
+  slug: 'akademia',
+  name: 'Akademia',
+  staffRole: 'owner' as const,
+  memberId: null,
+};
+
+const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = []) => {
   let settings = { ...initial };
-  let secrets: Array<{ key: string; maskedPreview: string; updatedAt: string }> = [];
   const updates: unknown[] = [];
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('/api/spaces/staff', () =>
+      HttpResponse.json({ ok: true, data: { spaces: spaces.map(staffSpace) } }),
+    ),
     http.get('*', ({ request }) =>
       new URL(request.url).pathname.endsWith('/passkey/list-user-passkeys')
         ? HttpResponse.json([])
@@ -67,46 +107,53 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = t
       }
       return HttpResponse.json({ ok: true, data: { settings } });
     }),
-    http.get('/api/tenant-secrets', () =>
-      HttpResponse.json({
-        ok: true,
-        data: {
-          secrets,
-          stripeMode: null,
-          stripeWebhookUrl: 'https://app.example.test/api/webhooks/stripe/tenant-1',
-        },
-      })),
-    http.post('/api/tenant-secrets', async ({ request }) => {
-      const body = await request.json();
-      const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';
-      const secret = {
-        key,
-        maskedPreview: '••••test',
-        updatedAt: '2026-07-28T10:00:00.000Z',
-      };
-      secrets = [...secrets.filter((item) => item.key !== key), secret];
-      return HttpResponse.json({ ok: true, data: { secret } });
-    }),
-    http.post('/api/integrations/ksef/test', () =>
-      HttpResponse.json({
-        ok: true,
-        data: { ok: true, diagnostic: 'KSeF accepted the token for this NIP context.' },
-      })),
   );
+
+  return { updates };
+};
+
+const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true, spaces: StubSpace[] = []) => {
+  const { updates } = installSettingsBackend(initial, spaces);
 
   const { queryClient } = renderWithProviders(
     <PanelContextProvider
-      value={{
-        tenant: { id: 'tenant-akademia', slug: 'akademia', name: 'Akademia', staffRole: 'owner', memberId: null },
-        email: 'creator3@together.dev',
-        emailVerified,
-      }}
+      value={{ tenant: PANEL_TENANT, email: 'creator3@together.dev', emailVerified }}
     >
       <SettingsPanel />
     </PanelContextProvider>,
   );
 
   return { queryClient, updates };
+};
+
+const renderPanelInRouter = (initial: StoredSettings = EMPTY_SETTINGS) => {
+  installSettingsBackend(initial);
+
+  const rootRoute = createRootRoute();
+  const settingsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/settings',
+    component: () => (
+      <PanelContextProvider
+        value={{ tenant: PANEL_TENANT, email: 'creator3@together.dev', emailVerified: true }}
+      >
+        <SettingsPanel />
+      </PanelContextProvider>
+    ),
+  });
+  const integrationsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/integrations',
+    component: () => <div data-testid="integrations-route" />,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([settingsRoute, integrationsRoute]),
+    history: createMemoryHistory({ initialEntries: ['/panel/settings'] }),
+  });
+
+  renderWithProviders(<RouterProvider router={router} />);
+
+  return { router };
 };
 
 const openSettingsSection = async (label: string) => {
@@ -130,8 +177,18 @@ describe('SettingsPanel information architecture', () => {
       pl.settingsNavigation.diagnostics,
     ]);
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'settings-panel-company');
-    expect(document.querySelector('#billing')).not.toBeNull();
     expect(document.querySelector('#support')).not.toBeNull();
+    expect(screen.queryByTestId('billing-portal-url')).not.toBeInTheDocument();
+  });
+
+  it('sends the retired billing deep link to the integrations stripe tab', async () => {
+    window.history.replaceState(null, '', '/panel/settings#billing');
+
+    const { router } = renderPanelInRouter();
+
+    expect(await screen.findByTestId('integrations-route')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/panel/integrations');
+    expect(router.state.location.hash).toBe('stripe');
   });
 
   it('opens the company tab for billing and support deep links', async () => {
@@ -317,22 +374,49 @@ describe('SettingsPanel legal documents', () => {
   });
 });
 
-describe('SettingsPanel direct KSeF', () => {
-  it('keeps the token write-only, explains InvoiceWrite, and tests stored credentials', async () => {
-    renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
+describe('SettingsPanel public access', () => {
+  const spaces: StubSpace[] = [
+    { id: 's1', name: 'Ogólna', publicReadOnly: true, archivedAt: null },
+    { id: 's2', name: 'Zamknięta', publicReadOnly: false, archivedAt: null },
+    { id: 's3', name: 'Archiwalna', publicReadOnly: true, archivedAt: '2026-07-20T09:00:00.000Z' },
+  ];
 
-    expect(await screen.findAllByText(/InvoiceWrite/)).not.toHaveLength(0);
-    expect(await screen.findByTestId('secret-input-ksef.token')).toHaveAttribute('type', 'password');
-    await userEvent.type(screen.getByTestId('secret-input-ksef.contextNip'), '5555555555');
-    await userEvent.click(screen.getByTestId('secret-save-ksef.contextNip'));
-    await userEvent.type(screen.getByTestId('secret-input-ksef.token'), 'test-token');
-    await userEvent.click(screen.getByTestId('secret-save-ksef.token'));
-    const testButton = screen.getByTestId('ksef-test-connection');
-    await waitFor(() => expect(testButton).toBeEnabled());
-    await userEvent.click(testButton);
-    expect(await screen.findByTestId('ksef-test-result')).toHaveTextContent(
-      'KSeF accepted the token for this NIP context.',
+  it('offers only active publicly readable spaces as the visitors home space', async () => {
+    renderPanel(EMPTY_SETTINGS, true, spaces);
+
+    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await userEvent.click(picker);
+
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      pl.publicAccess.homeSpaceNone,
+      'Ogólna',
+    ]);
+  });
+
+  it('saves the picked home space and clears it again', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultHomeSpaceId: 's1' }, true, spaces);
+
+    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toHaveTextContent('Ogólna'));
+    await userEvent.click(picker);
+    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceNone }));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: '' }));
+  });
+});
+
+describe('SettingsPanel direct KSeF', () => {
+  it('points the KSeF credentials at the invoicing integration instead of duplicating them', async () => {
+    renderPanelInRouter({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
+
+    expect(await screen.findByText(pl.billing.ksefConfiguredInIntegrations)).toBeInTheDocument();
+    expect(screen.getByTestId('ksef-integrations-link')).toHaveAttribute(
+      'href',
+      '/panel/integrations#invoicing',
     );
+    expect(screen.queryByTestId('secret-input-ksef.token')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ksef-test-connection')).not.toBeInTheDocument();
   });
 });
 
@@ -379,6 +463,7 @@ describe('SettingsPanel branding', () => {
     const { updates } = renderPanel();
     await openSettingsSection(pl.settingsNavigation.brand);
 
+    expect(await screen.findAllByRole('button', { name: pl.imageAssets.upload })).toHaveLength(2);
     await userEvent.type(await screen.findByTestId('branding-logo-url'), 'https://cdn.example.com/logo.svg');
     await userEvent.type(screen.getByTestId('branding-accent-color'), '#0E7490');
     await userEvent.type(screen.getByTestId('branding-favicon-url'), 'https://cdn.example.com/favicon.svg');

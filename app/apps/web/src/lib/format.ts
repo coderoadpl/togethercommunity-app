@@ -8,6 +8,13 @@ export const formatPrice = (priceCents: number, currency: string, language: stri
     currency,
   }).format(priceCents / 100);
 
+export const formatOfferPrice = (
+  priceCents: number,
+  currency: string,
+  language: string,
+  freeLabel: string,
+): string => (priceCents === 0 ? freeLabel : formatPrice(priceCents, currency, language));
+
 export const formatDate = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium' }).format(new Date(value));
 

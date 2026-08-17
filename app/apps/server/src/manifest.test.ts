@@ -66,6 +66,7 @@ const deps = (tenants: Tenant[], accentColor: string | null = null): ManifestDep
         supportUrl: null,
         termsUrl: null,
         privacyUrl: null,
+        defaultHomeSpaceId: null,
       };
     },
     updateSettings: async (_id, settings) => settings,

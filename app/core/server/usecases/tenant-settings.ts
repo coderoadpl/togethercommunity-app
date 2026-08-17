@@ -14,10 +14,11 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { TenantRepository } from '../ports.js';
+import type { SpaceRepository, TenantRepository } from '../ports.js';
 
 export interface TenantSettingsDeps {
   tenants: TenantRepository;
+  spaces: SpaceRepository;
 }
 
 export const getTenantSettings = async (
@@ -53,6 +54,13 @@ export const updateTenantSettings = async (
   }
   const current = await deps.tenants.findSettings(tenant.value);
   if (!current) return err(tenantNotFound());
+  const homeSpaceId = parsed.data.defaultHomeSpaceId;
+  if (homeSpaceId !== undefined && homeSpaceId !== null) {
+    const space = await deps.spaces.findById(tenant.value, homeSpaceId);
+    if (!space || space.archivedAt !== null || !space.publicReadOnly) {
+      return err(validation('The tenant home space must be an active publicly readable space'));
+    }
+  }
   const merged: TenantSettings = { ...current };
   for (const [key, value] of Object.entries(parsed.data)) {
     if (value !== undefined) Object.assign(merged, { [key]: value });

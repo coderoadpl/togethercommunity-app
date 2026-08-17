@@ -30,12 +30,21 @@ export interface Messages {
     name: string;
     description: string;
     noOptions: string;
+    free: string;
     add: string;
     open: string;
     status: string;
     retry: string;
     unsavedChanges: string;
     unsavedChangesConfirm: string;
+  };
+  imageAssets: {
+    upload: string;
+    uploading: string;
+    storageMissing: string;
+    storageLink: string;
+    invalidType: string;
+    tooLarge: string;
   };
   bootSplash: {
     opening: string;
@@ -91,6 +100,8 @@ export interface Messages {
     messageTenantNotFound: string;
     messageIntegrationNotConfigured: string;
     messageIntegrationAuth: string;
+    messageEmailSendingNotConfigured: string;
+    messagePlatformEmailPoolExhausted: string;
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
     messageSlugReservedGeneric: string;
@@ -189,7 +200,6 @@ export interface Messages {
     marketingConsents: string;
     marketingDocuments: string;
     marketingLayouts: string;
-    marketingSettings: string;
     aria: string;
     comingSoon: string;
   };
@@ -380,7 +390,6 @@ export interface Messages {
   notifications: {
     bell: string;
     heading: string;
-    mobileTab: string;
     empty: string;
     loading: string;
     markAllRead: string;
@@ -447,6 +456,13 @@ export interface Messages {
   integrations: {
     heading: string;
     intro: string;
+    tabsAria: string;
+    tabStripe: string;
+    tabEmail: string;
+    tabStorage: string;
+    tabVideo: string;
+    tabInvoicing: string;
+    tabApiKeys: string;
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;
@@ -473,6 +489,7 @@ export interface Messages {
     testFailed: string;
     paymentAvailable: string;
     emailAvailable: string;
+    emailTestedVia: (params: { transport: string }) => string;
     storageAvailable: string;
     saveKeysFirst: string;
     webhookUrlLabel: string;
@@ -571,6 +588,7 @@ export interface Messages {
     storageProbeCredentials: string;
     storageProbeBucket: string;
     storageProbeCors: string;
+    storageProbeCorsOrigin: (params: { origin: string }) => string;
     storageProbeUnavailable: string;
   };
   products: {
@@ -726,6 +744,8 @@ export interface Messages {
     saveDetails: string;
     savingDetails: string;
     detailsSaved: string;
+    publicVisibilityLabel: string;
+    publicVisibilityHelper: string;
     heading: string;
     loading: string;
     empty: string;
@@ -813,6 +833,7 @@ export interface Messages {
     durationHelper: string;
     previewLabel: string;
     previewHelper: string;
+    previewNeedsPublicCourseHint: string;
     htmlLabel: string;
     storageKeyLabel: string;
     streamVideoIdLabel: string;
@@ -997,11 +1018,64 @@ export interface Messages {
     bannedSince: (params: { date: string }) => string;
     banVsRemoval: string;
   };
+  shell: {
+    navigationAria: string;
+    start: string;
+    searchEntry: string;
+    spacesSection: string;
+    lockedSpaceHint: string;
+    courseProgressLabel: (params: { name: string; percent: number }) => string;
+    spaceUnreadLabel: (params: { name: string }) => string;
+    backTo: (params: { name: string }) => string;
+    courseOverviewEntry: string;
+    courseSpaceEntry: string;
+    lessonsOf: (params: { done: number; total: number }) => string;
+    menuTab: string;
+    menuTitle: string;
+    programButton: string;
+    programTitle: string;
+    closeSheet: string;
+  };
+  start: {
+    title: string;
+    eyebrow: string;
+    continueHeading: string;
+    continueLabel: (params: { lesson: string }) => string;
+    reviewLabel: (params: { lesson: string }) => string;
+    continueCta: string;
+    reviewCta: string;
+    coursesSection: string;
+    spacesSection: string;
+    lockedSection: string;
+    feedSection: string;
+    feedEmpty: string;
+    emptyTitle: string;
+    emptyBody: string;
+  };
+  anon: {
+    eyebrow: string;
+    homeTitle: string;
+    signInCta: string;
+    joinDiscussionCta: string;
+    readOnlyBanner: string;
+    lockedCourseHint: string;
+    unlockCta: string;
+    emptyTitle: string;
+    emptyBody: string;
+  };
+  search: {
+    title: string;
+    eyebrow: string;
+    inputLabel: string;
+    placeholder: string;
+    empty: string;
+    lessonsHeading: string;
+    spacesHeading: string;
+    unresolvedHeading: string;
+  };
   student: {
     myCourses: string;
     myProducts: string;
-    mobileCourses: string;
-    mobileProducts: string;
     courseLibrary: string;
     productsLibrary: string;
     loadingCourses: string;
@@ -1012,9 +1086,6 @@ export interface Messages {
     noProducts: string;
     productsWillAppear: string;
     staffNoMember: string;
-    completionNotStarted: string;
-    completionInProgress: string;
-    completionCompleted: string;
     courseEyebrow: string;
     courseContentComingSoon: string;
     courseContentArrivesLater: string;
@@ -1151,7 +1222,6 @@ export interface Messages {
     searchCourseEmpty: string;
   };
   community: {
-    tab: string;
     heading: string;
     listEyebrow: string;
     loadingSpaces: string;
@@ -1220,6 +1290,9 @@ export interface Messages {
     productsHint: string;
     noProducts: string;
     productGatedNeedsProduct: string;
+    publicReadOnlyLabel: string;
+    publicReadOnlyHelper: string;
+    publicReadOnlyHomeSpaceBlocked: string;
     positionLabel: string;
     create: string;
     creating: string;
@@ -1347,6 +1420,8 @@ export interface Messages {
     clear: string;
     configured: string;
     notConfigured: string;
+    ksefConfiguredInIntegrations: string;
+    ksefOpenIntegrations: string;
     invoiceHeading: string;
     invoiceIntro: string;
     autoIssue: string;
@@ -1374,6 +1449,13 @@ export interface Messages {
     sellerName: string;
     sellerAddress: string;
     saveSeller: string;
+  };
+  publicAccess: {
+    heading: string;
+    intro: string;
+    homeSpaceLabel: string;
+    homeSpaceNone: string;
+    homeSpaceHint: string;
   };
   legal: {
     heading: string;
@@ -1701,8 +1783,6 @@ export interface Messages {
     allLayouts: string;
     layoutHtmlLabel: string;
     layoutSlotHint: string;
-    settingsTitle: string;
-    settingsDescription: string;
     settingsLoading: string;
     saveSettingsAction: string;
     credentials: string;
@@ -1722,6 +1802,7 @@ export interface Messages {
     testEmailSent: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
+    platformPoolHint: string;
     platformPoolNudge: string;
     accessKeyLabel: string;
     secretKeyLabel: string;

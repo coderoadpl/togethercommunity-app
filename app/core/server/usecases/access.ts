@@ -161,6 +161,24 @@ export const locateLesson = (
   return null;
 };
 
+/** Every course whose modules reference the lesson, not just the first match `locateLesson` picks. */
+export const coursesContainingLesson = (
+  lessonId: string,
+  courses: Course[],
+  modules: CourseModule[],
+): Course[] => {
+  const courseIds = new Set(
+    modules
+      .filter((module) =>
+        module.chapters.some((chapter) =>
+          chapter.contents.some((content) => content.lessonId === lessonId),
+        ),
+      )
+      .flatMap((module) => module.courseIds),
+  );
+  return courses.filter((course) => courseIds.has(course.id));
+};
+
 /**
  * The cheapest published product whose access items unlock the given lesson —
  * the one upsell target a locked row can honestly advertise.

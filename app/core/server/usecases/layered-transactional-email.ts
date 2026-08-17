@@ -1,20 +1,43 @@
-import { appError, ok, type TransactionalEmailTransport } from '#core/domain/index.js';
+import {
+  appError,
+  ok,
+  type EmailIntegrationTransport,
+  type TransactionalEmailTransport,
+} from '#core/domain/index.js';
 
 import type {
+  EmailIntegrationTransportResolver,
   EmailPort,
   PlatformTransactionalPool,
   TransactionalEmailSender,
-  TransactionalEmailTransportResolver,
 } from '../ports.js';
 
 export interface LayeredTransactionalEmailDeps {
-  tenantSes: TransactionalEmailTransportResolver;
-  smtp: TransactionalEmailTransportResolver;
-  resend: TransactionalEmailTransportResolver;
+  transports: EmailIntegrationTransportResolver;
   platform: EmailPort;
   pool: PlatformTransactionalPool;
   platformLimit: number;
 }
+
+const TENANT_TRANSPORT_ORDER: readonly {
+  integration: EmailIntegrationTransport;
+  transactional: TransactionalEmailTransport;
+}[] = [
+  { integration: 'ses', transactional: 'tenant-ses' },
+  { integration: 'smtp', transactional: 'smtp' },
+  { integration: 'resend', transactional: 'resend' },
+];
+
+export const resolveTenantTransactionalTransport = async (
+  tenantId: string,
+  transports: EmailIntegrationTransportResolver,
+): Promise<{ transport: TransactionalEmailTransport; email: EmailPort } | null> => {
+  for (const { integration, transactional } of TENANT_TRANSPORT_ORDER) {
+    const email = await transports.resolve(tenantId, integration);
+    if (email !== null) return { transport: transactional, email };
+  }
+  return null;
+};
 
 const sendWith = async (
   transport: TransactionalEmailTransport,
@@ -38,12 +61,8 @@ export const createLayeredTransactionalEmailSender = (
 ): TransactionalEmailSender => ({
   send: async (message) => {
     if (message.tenantId === null) return sendWith('platform', deps.platform, message);
-    const tenantSes = await deps.tenantSes.resolve(message.tenantId);
-    if (tenantSes !== null) return sendWith('tenant-ses', tenantSes, message);
-    const smtp = await deps.smtp.resolve(message.tenantId);
-    if (smtp !== null) return sendWith('smtp', smtp, message);
-    const resend = await deps.resend.resolve(message.tenantId);
-    if (resend !== null) return sendWith('resend', resend, message);
+    const tenant = await resolveTenantTransactionalTransport(message.tenantId, deps.transports);
+    if (tenant !== null) return sendWith(tenant.transport, tenant.email, message);
     if (message.tenantTransportRequired === true) {
       return {
         ok: false,

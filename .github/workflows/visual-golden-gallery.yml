@@ -25,7 +25,7 @@ jobs:
             const marker = '<!-- visual-golden-gallery -->';
             const root = 'app/tasks/visual-goldens/';
             const baselinePath = /^app\/tasks\/visual-goldens\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+\.png$/;
-            const maxRows = 100;
+            const maxRows = 150;
             const { owner, repo } = context.repo;
             const pullNumber = context.payload.pull_request.number;
             const baseTipSha = context.payload.pull_request.base.sha;

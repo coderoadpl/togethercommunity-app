@@ -184,6 +184,7 @@ describe('resolveTenantSocial', () => {
       supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
+      defaultHomeSpaceId: null,
     })).toEqual({
       title: 'Acme',
       description: null,
@@ -208,6 +209,7 @@ describe('resolveTenantSocial', () => {
       supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
+      defaultHomeSpaceId: null,
     })).toEqual({
       title: 'Acme Academy',
       description: 'Learn with Acme',
@@ -239,6 +241,7 @@ describe('tenantSettingsSchema', () => {
       supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
+      defaultHomeSpaceId: null,
     });
   });
 });

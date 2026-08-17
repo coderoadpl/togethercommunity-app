@@ -1,4 +1,4 @@
-import { type Hono } from 'hono';
+import { type Hono, type HonoRequest } from 'hono';
 import { z } from 'zod';
 
 import {
@@ -20,6 +20,8 @@ import {
   emailSendsQuerySchema,
   grantCreateInputSchema,
   grantRevokeInputSchema,
+  imageAssetCompleteRequestSchema,
+  imageAssetUploadRequestSchema,
   integrationTestInputSchema,
   storageConfigureInputSchema,
   storageProbeInputSchema,
@@ -46,6 +48,7 @@ import {
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
   memberBanInputSchema,
+  memberHomeFeedGetInputSchema,
   memberProgressResetInputSchema,
   memberErasureRequestCreateInputSchema,
   memberErasureRejectInputSchema,
@@ -84,6 +87,7 @@ import {
   spaceDeleteInputSchema,
   spaceFeedGetInputSchema,
   spaceFollowInputSchema,
+  spaceSeenInputSchema,
   spaceUpdateInputSchema,
   stripeConfigureInputSchema,
   subscriptionSimulateInputSchema,
@@ -125,7 +129,10 @@ import {
   addManualSuppression,
   archiveCoupon,
   attachModuleToCourse,
+  beginBrandingAssetUpload,
+  beginCourseCoverUpload,
   beginLessonAttachmentUpload,
+  beginProductCoverUpload,
   beginProductDownloadUpload,
   authenticateApiKey,
   autoIssueOnPayment,
@@ -147,7 +154,10 @@ import {
   createTenantApiKey,
   createTenantDocument,
   configureStorageConnection,
+  completeBrandingAssetUpload,
+  completeCourseCoverUpload,
   completeLessonAttachmentUpload,
+  completeProductCoverUpload,
   completeProductDownloadUpload,
   deactivateProductPrice,
   deleteLesson,
@@ -188,6 +198,8 @@ import {
   getMarketingConsentDefinition,
   getMemberCommerceOverview,
   getMemberLearningSummary,
+  getMemberHomeFeed,
+  getMemberNavigation,
   getNextLesson,
   getOrder,
   getLessonAttachmentDownload,
@@ -243,6 +255,7 @@ import {
   markAllNotificationsRead,
   markLessonCompleted,
   markNotificationRead,
+  markSpaceSeen,
   muteThread,
   pauseCampaign,
   pollSesOnboarding,
@@ -304,8 +317,7 @@ import {
   validateTermsConsent,
   type AuthenticatedUser,
   type PaymentWebhookEvent,
-  type SimulatePurchaseResult,
-  type TenantSource
+  type SimulatePurchaseResult
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
@@ -324,13 +336,24 @@ type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; }
 const magicLinkBaseUrl = (
   hostHeader: string,
   forwardedProto: string | null,
-  source: TenantSource,
+  fromTenantHeader: boolean,
   appBaseUrl: string,
 ): string => {
-  if (source === 'tenant-header' || hostHeader === '') return appBaseUrl;
+  if (fromTenantHeader || hostHeader === '') return appBaseUrl;
   const proto = forwardedProto ?? new URL(appBaseUrl).protocol.replace(':', '');
   return `${proto}://${hostHeader}`;
 };
+
+const requestOrigin = (req: HonoRequest, appBaseUrl: string): string =>
+  new URL(magicLinkBaseUrl(
+    req.header('host') ?? '',
+    req.header('x-forwarded-proto') ?? null,
+    req.header(TENANT_HEADER) !== undefined,
+    appBaseUrl,
+  )).origin;
+
+const probeCorsOrigins = (req: HonoRequest, appBaseUrl: string): string[] =>
+  [...new Set([requestOrigin(req, appBaseUrl), new URL(appBaseUrl).origin])];
 
 const emailBranding = async (deps: AppDeps, tenantId: string): Promise<EmailBranding | undefined> => {
   const settings = await deps.tenants.findSettings(tenantId);
@@ -398,6 +421,39 @@ const productDownloadView = (asset: ProductDownloadAsset): ProductDownloadAssetV
     .replace(':productId', encodeURIComponent(asset.productId))
     .replace(':assetId', encodeURIComponent(asset.id)),
 });
+
+const respondImageAssetUpload = async (
+  begin: typeof beginCourseCoverUpload,
+  identity: Identity,
+  body: unknown,
+  deps: AppDeps,
+): Promise<Response> => {
+  const parsed = imageAssetUploadRequestSchema.safeParse(body);
+  if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
+  const result = await begin({ identity }, parsed.data, deps);
+  return respond(result.ok
+    ? ok({
+        key: result.value.key,
+        servePath: result.value.servePath,
+        upload: {
+          url: result.value.uploadUrl,
+          headers: { 'content-type': parsed.data.contentType },
+          expiresAt: result.value.expiresAt,
+        },
+      })
+    : result);
+};
+
+const respondImageAssetCompletion = async (
+  complete: typeof completeCourseCoverUpload,
+  identity: Identity,
+  body: unknown,
+  deps: AppDeps,
+): Promise<Response> => {
+  const parsed = imageAssetCompleteRequestSchema.safeParse(body);
+  if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));
+  return respond(await complete({ identity }, parsed.data, deps));
+};
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   userId: user.userId,
@@ -758,7 +814,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
           confirmationBaseUrl: `${magicLinkBaseUrl(
             c.req.header('host') ?? '',
             c.req.header('x-forwarded-proto') ?? null,
-            tenant.value.source,
+            tenant.value.source === 'tenant-header',
             deps.appBaseUrl,
           )}/marketing/confirm`,
           ...checkoutConsentEvidence(c.req.raw.headers),
@@ -784,7 +840,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       const baseUrl = magicLinkBaseUrl(
         c.req.header('host') ?? '',
         c.req.header('x-forwarded-proto') ?? null,
-        tenant.value.source,
+        tenant.value.source === 'tenant-header',
         deps.appBaseUrl,
       );
       const issuedMagicLink = await issueMagicLink(deps, {
@@ -1493,6 +1549,51 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     ));
   });
 
+  app.get(API_PATHS.memberNavigation, async (c) => {
+    const result = await getMemberNavigation({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ navigation: result.value }) : result);
+  });
+
+  app.get(API_PATHS.memberHomeFeed, async (c) => {
+    const parsed = memberHomeFeedGetInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid home feed query', parsed.error.flatten())));
+    const result = await getMemberHomeFeed({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ feed: result.value }) : result);
+  });
+
+  app.post(API_PATHS.courseCoverUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetUpload(beginCourseCoverUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.courseCoverComplete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetCompletion(completeCourseCoverUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.productCoverUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetUpload(beginProductCoverUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.productCoverComplete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetCompletion(completeProductCoverUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.brandingAssetUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetUpload(beginBrandingAssetUpload, c.get('identity'), body, deps);
+  });
+
+  app.post(API_PATHS.brandingAssetComplete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetCompletion(completeBrandingAssetUpload, c.get('identity'), body, deps);
+  });
+
   app.get(API_PATHS.myProducts, async (c) => {
     const result = await listMyProducts({ identity: c.get('identity') }, deps);
     return respond(
@@ -1702,6 +1803,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
+        corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl),
         email: deps.email,
         emailSender: deps.emailSender,
         emailTransports: deps.emailTransports,
@@ -1718,7 +1820,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await probeStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { storage: deps.storage },
+      { storage: deps.storage, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
     ));
   });
 
@@ -1729,7 +1831,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await configureStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      deps,
+      { ...deps, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
     ));
   });
 
@@ -2485,6 +2587,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const parsed = postsSearchInputSchema.safeParse({
       query: c.req.query('query'),
       lessonIds: c.req.queries('lessonId'),
+      spaceIds: c.req.queries('spaceId'),
       ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
     });
     if (!parsed.success) return respond(err(validation('Invalid post search query', parsed.error.flatten())));
@@ -2569,6 +2672,12 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const parsed = spaceFollowInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid space follow payload', parsed.error.flatten())));
     return respond(await unfollowSpace({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.spaceSeen, async (c) => {
+    const parsed = spaceSeenInputSchema.safeParse({ spaceId: c.req.param('spaceId') });
+    if (!parsed.success) return respond(err(validation('Invalid space id', parsed.error.flatten())));
+    return respond(await markSpaceSeen({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.get(API_PATHS.notifications, async (c) => {

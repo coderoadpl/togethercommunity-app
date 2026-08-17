@@ -30,6 +30,8 @@ import {
   healthOutputSchema,
   healthLiveOutputSchema,
   healthReadyOutputSchema,
+  imageAssetCompleteOutputSchema,
+  imageAssetUploadOutputSchema,
   ifirmaTestConnectionOutputSchema,
   integrationTestOutputSchema,
   storageConfigureOutputSchema,
@@ -93,6 +95,8 @@ import {
   memberGrantsOutputSchema,
   memberCommerceOutputSchema,
   memberLearningSummaryOutputSchema,
+  memberNavigationOutputSchema,
+  memberHomeFeedOutputSchema,
   memberTimelineOutputSchema,
   memberProgressResetOutputSchema,
   memberRemoveOutputSchema,
@@ -127,12 +131,14 @@ import {
   spaceDeleteOutputSchema,
   spaceFeedOutputSchema,
   spaceFollowOutputSchema,
+  spaceSeenOutputSchema,
   spaceOutputSchema,
   spacesListOutputSchema,
   staffSpacesListOutputSchema,
   productsAccessItemsOutputSchema,
   productsAccessIssuesOutputSchema,
   progressOutputSchema,
+  publicNavigationOutputSchema,
   publicOfferOutputSchema,
   publicPaymentConfigOutputSchema,
   productsCreateOutputSchema,
@@ -181,6 +187,7 @@ import {
   type LessonCreateInput,
   type LessonUpdateInput,
   type LessonAttachmentUploadRequest,
+  type ImageAssetUploadRequest,
   type ProductDownloadUploadRequest,
   type M2mEnrollRequest,
   type M2mTransactionalMessageRequest,
@@ -201,6 +208,7 @@ import {
   type EmailSendsExportQueryInput,
   type EmailSendsQueryInput,
   type SchedulerRunsQueryInput,
+  type MemberHomeFeedGetInput,
   type MemberRemoveInput,
   type MemberBanInput,
   type MemberErasureRequestCreateInput,
@@ -230,8 +238,10 @@ import {
   type SpaceArchiveInput,
   type SpaceCreateInput,
   type SpaceDeleteInput,
+  type PublicSpaceThreadGetInput,
   type SpaceFeedGetInput,
   type SpaceFollowInput,
+  type SpaceSeenInput,
   type SpaceUpdateInput,
   type SupportMessageInput,
   type ProductsAccessItemsInput,
@@ -302,6 +312,10 @@ export interface ProductDownloadFileUpload extends ProductDownloadUploadRequest 
   body: BodyInit;
 }
 
+export interface ImageAssetFileUpload extends ImageAssetUploadRequest {
+  body: BodyInit;
+}
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -350,6 +364,41 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   }
   return ok(data.data);
 };
+
+const uploadImageAsset = (
+  options: ApiClientOptions,
+  begin: { method: 'POST'; path: string },
+  complete: { method: 'POST'; path: string },
+  input: ImageAssetFileUpload,
+  signal?: AbortSignal,
+) =>
+  uploadPresignedStorageAsset(
+    input,
+    options.fetchImpl ?? fetch,
+    () => request(
+      options,
+      begin.method,
+      begin.path,
+      imageAssetUploadOutputSchema,
+      {
+        kind: input.kind,
+        fileName: input.fileName,
+        contentType: input.contentType,
+        sizeBytes: input.sizeBytes,
+      },
+      signal,
+    ),
+    (started) => started.upload,
+    (started) => request(
+      options,
+      complete.method,
+      complete.path,
+      imageAssetCompleteOutputSchema,
+      { key: started.key },
+      signal,
+    ),
+    signal,
+  );
 
 /** The single typed gateway to the API. No client ever hand-writes HTTP. */
 export const createApiClient = (options: ApiClientOptions) => ({
@@ -546,6 +595,50 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.publicOffer.method,
       API_ROUTES.publicOffer.path,
       publicOfferOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicNavigation: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicNavigation.method,
+      API_ROUTES.publicNavigation.path,
+      publicNavigationOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicCourseStructure: (courseId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicCourseStructure.method,
+      API_ROUTES.publicCourseStructure.path.replace(':courseId', encodeURIComponent(courseId)),
+      courseStructureOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicSpaceFeed: (input: SpaceFeedGetInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const path = API_ROUTES.publicSpaceFeed.path.replace(':spaceId', encodeURIComponent(input.spaceId));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.publicSpaceFeed.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      spaceFeedOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  publicSpaceThread: (input: PublicSpaceThreadGetInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicSpaceThread.method,
+      API_ROUTES.publicSpaceThread.path
+        .replace(':spaceId', encodeURIComponent(input.spaceId))
+        .replace(':postId', encodeURIComponent(input.postId)),
+      discussionOutputSchema,
       undefined,
       signal,
     ),
@@ -871,6 +964,29 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  memberNavigation: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberNavigation.method,
+      API_ROUTES.memberNavigation.path,
+      memberNavigationOutputSchema,
+      undefined,
+      signal,
+    ),
+  memberHomeFeed: (input: MemberHomeFeedGetInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.memberHomeFeed.method,
+      suffix.length > 0 ? `${API_ROUTES.memberHomeFeed.path}?${suffix}` : API_ROUTES.memberHomeFeed.path,
+      memberHomeFeedOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   myProducts: (signal?: AbortSignal) =>
     request(options, API_ROUTES.myProducts.method, API_ROUTES.myProducts.path, myProductsOutputSchema, undefined, signal),
   exportMyData: (signal?: AbortSignal) =>
@@ -1223,6 +1339,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  uploadCourseCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.courseCoverUpload, API_ROUTES.courseCoverComplete, input, signal),
+  uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.productCoverUpload, API_ROUTES.productCoverComplete, input, signal),
+  uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.brandingAssetUpload, API_ROUTES.brandingAssetComplete, input, signal),
   deleteProductDownload: (input: { productId: string; assetId: string }, signal?: AbortSignal) =>
     request(
       options,
@@ -1414,6 +1536,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     const params = new URLSearchParams({ query: input.query });
     if (input.limit !== undefined) params.set('limit', String(input.limit));
     for (const lessonId of input.lessonIds ?? []) params.append('lessonId', lessonId);
+    for (const spaceId of input.spaceIds ?? []) params.append('spaceId', spaceId);
     return request(
       options,
       API_ROUTES.postsSearch.method,
@@ -1477,6 +1600,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.spaceUnfollow.path,
       spaceFollowOutputSchema,
       input,
+      signal,
+    ),
+  markSpaceSeen: (input: SpaceSeenInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.spaceSeen.method,
+      API_ROUTES.spaceSeen.path.replace(':spaceId', encodeURIComponent(input.spaceId)),
+      spaceSeenOutputSchema,
+      undefined,
       signal,
     ),
   listNotifications: (input: NotificationsListInput = {}, signal?: AbortSignal) => {

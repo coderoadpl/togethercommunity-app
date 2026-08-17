@@ -19,7 +19,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { z } from 'zod';
@@ -59,7 +59,6 @@ import {
   MarketingDocumentsIcon,
   MarketingLayoutsIcon,
   MarketingSendsIcon,
-  MarketingSettingsIcon,
   MembersIcon,
   MenuIcon,
   ProductsIcon,
@@ -88,7 +87,6 @@ type PanelSection =
   | 'marketingConsents'
   | 'marketingDocuments'
   | 'marketingLayouts'
-  | 'marketingSettings'
   | 'settings';
 
 interface SectionDescriptor {
@@ -137,6 +135,7 @@ const navigationGroupPreference = persistedJsonPreference(
 );
 
 const overviewDescriptor: SectionDescriptor = { id: 'dashboard', to: '/panel', exact: true };
+const integrationsDescriptor: SectionDescriptor = { id: 'integrations', to: '/panel/integrations' };
 const settingsDescriptor: SectionDescriptor = { id: 'settings', to: '/panel/settings' };
 
 const sectionDescriptors: NavigationGroupDescriptor[] = [
@@ -166,7 +165,6 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
     id: 'sales',
     sections: [
       { id: 'sales', to: '/panel/sales' },
-      { id: 'integrations', to: '/panel/integrations' },
     ],
   },
   {
@@ -178,7 +176,6 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
       { id: 'marketingLayouts', to: '/panel/marketing/layouts' },
       { id: 'marketingConsents', to: '/panel/marketing/consents' },
       { id: 'marketingDocuments', to: '/panel/marketing/documents' },
-      { id: 'marketingSettings', to: '/panel/marketing/settings' },
     ],
   },
 ];
@@ -227,8 +224,6 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <MarketingDocumentsIcon />;
     case 'marketingLayouts':
       return <MarketingLayoutsIcon />;
-    case 'marketingSettings':
-      return <MarketingSettingsIcon />;
     case 'settings':
       return <SettingsIcon />;
   }
@@ -244,6 +239,20 @@ const ExpandIcon = ({ expanded }: { expanded: boolean }) => (
     <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
   </SvgIcon>
 );
+
+const NavCountBadge = styled('span')(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: theme.palette.text.primary,
+  color: theme.palette.background.default,
+  borderRadius: '999px',
+  minWidth: '18px',
+  height: '18px',
+  padding: '0 5px',
+  fontSize: '0.6875rem',
+  fontWeight: 600,
+}));
 
 const navigationGroupHeaderSx = {
   alignItems: 'center',
@@ -265,11 +274,13 @@ const NavigationItem = ({
   pathname,
   onNavigate,
   openReportCount,
+  grouped = true,
 }: {
   descriptor: SectionDescriptor;
   pathname: string;
   onNavigate: (to: string) => void;
   openReportCount: number | undefined;
+  grouped?: boolean;
 }) => {
   const t = useTranslations();
   const { id, to, exact } = descriptor;
@@ -281,14 +292,14 @@ const NavigationItem = ({
       selected={active}
       aria-current={active ? 'page' : undefined}
       onClick={() => onNavigate(to)}
-      sx={{ pl: id === 'dashboard' ? undefined : '1rem' }}
+      sx={{ pl: grouped ? '1rem' : undefined }}
     >
       <ListItemIcon>
         <SectionIcon id={id} />
       </ListItemIcon>
       <ListItemText primary={t.sections[id]} />
       {id === 'reports' && openReportCount !== undefined ? (
-        <Chip data-testid="reports-open-count" size="small" label={openReportCount} />
+        <NavCountBadge data-testid="reports-open-count">{openReportCount}</NavCountBadge>
       ) : null}
     </PanelNavItem>
   );
@@ -313,6 +324,7 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
         pathname={pathname}
         onNavigate={onNavigate}
         openReportCount={undefined}
+        grouped={false}
       />
       {sectionDescriptors.map((group) => {
         const active = group.sections.some((descriptor) =>
@@ -352,11 +364,20 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
           </Box>
         );
       })}
+      <Divider component="li" sx={{ mt: '0.75rem', mb: '0.5rem' }} />
+      <NavigationItem
+        descriptor={integrationsDescriptor}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        openReportCount={undefined}
+        grouped={false}
+      />
       <NavigationItem
         descriptor={settingsDescriptor}
         pathname={pathname}
         onNavigate={onNavigate}
         openReportCount={undefined}
+        grouped={false}
       />
       {openReports.isError ? (
         <StatusView surface={false} state={{ kind: 'error', message: localizeError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />
@@ -475,6 +496,29 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
       footer={(
         <BuildStamp />
       )}
+      brand={
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            px: '1.25rem',
+            pt: '0.9rem',
+            pb: '0.75rem',
+          }}
+        >
+          <AppBarTitle component="span" noWrap data-testid="tenant-name">
+            {tenant.name}
+          </AppBarTitle>
+          <AppBarWordmark
+            src={theme.palette.mode === 'dark'
+              ? '/brand/together-horizontal-dark.svg'
+              : '/brand/together-horizontal-light.svg'}
+            alt={t.common.appName}
+            data-testid="panel-brand-lockup"
+          />
+        </Box>
+      }
       header={
         <>
           {isDesktop ? null : (
@@ -491,18 +535,11 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
               </IconButton>
             </Tooltip>
           )}
-          <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <AppBarTitle component="span" noWrap data-testid="tenant-name">
+          {isDesktop ? null : (
+            <AppBarTitle component="span" noWrap>
               {tenant.name}
             </AppBarTitle>
-            <AppBarWordmark
-              src={theme.palette.mode === 'dark'
-                ? '/brand/together-horizontal-dark.svg'
-                : '/brand/together-horizontal-light.svg'}
-              alt={t.common.appName}
-              data-testid="panel-brand-lockup"
-            />
-          </Box>
+          )}
           <Box sx={{ flex: 1 }} />
           <Box
             sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}
@@ -546,6 +583,16 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
       footer={(
         <BuildStamp />
       )}
+      brand={
+        <Box sx={{ display: 'flex', minWidth: 0, px: '1.25rem', pt: '0.9rem', pb: '0.75rem' }}>
+          <AppBarWordmark
+            src={theme.palette.mode === 'dark'
+              ? '/brand/together-horizontal-dark.svg'
+              : '/brand/together-horizontal-light.svg'}
+            alt={t.common.appName}
+          />
+        </Box>
+      }
       header={
         <>
           {isDesktop ? null : (
@@ -562,12 +609,7 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
               </IconButton>
             </Tooltip>
           )}
-          <AppBarWordmark
-            src={theme.palette.mode === 'dark'
-              ? '/brand/together-horizontal-dark.svg'
-              : '/brand/together-horizontal-light.svg'}
-            alt={t.common.appName}
-          />
+          <Box sx={{ flex: 1 }} />
         </>
       }
     />

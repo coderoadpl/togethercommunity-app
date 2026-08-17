@@ -3239,3 +3239,10 @@ export const DiscussionHitSnippet = styled(Typography)<AsElement>(({ theme }) =>
   color: theme.palette.text.secondary,
   overflowWrap: 'anywhere',
 }));
+
+export const ThreadHeadline = styled('span')({
+  display: 'block',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+});

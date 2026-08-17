@@ -166,6 +166,7 @@ const harness = (options: {
         supportUrl: null,
         termsUrl: null,
         privacyUrl: null,
+        defaultHomeSpaceId: null,
         autoIssueInvoices: options.auto ?? false,
         autoIssueInvoiceScope: options.scope ?? 'b2b_only',
         invoiceVatRatePercent: 23,

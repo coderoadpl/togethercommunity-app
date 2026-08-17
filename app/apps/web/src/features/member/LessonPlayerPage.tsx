@@ -10,18 +10,18 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import type { SxProps, Theme } from '@mui/material/styles';
+import { type SxProps, type Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
 import { ApiError } from '#core/client/index.js';
-import type { CourseStructureWithAccess, LessonBlock, PlayableLessonBlock } from '#core/domain/index.js';
+import type { LessonBlock, PlayableLessonBlock } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
-import { formatPrice } from '../../lib/format.js';
+import { formatOfferPrice } from '../../lib/format.js';
 import {
   DataValue,
   Eyebrow,
@@ -32,7 +32,6 @@ import {
   LessonMediaIframe,
   LessonPlaceholder,
 } from '../../theme.js';
-import { CurriculumCard } from './CourseRail.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { CodeIcon, LinkIcon, LockedState } from './lesson-icons.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -179,13 +178,11 @@ const LockedView = ({
   courseId,
   lessonName,
   courseName,
-  structure,
   unlockProductId,
 }: {
   courseId: string;
   lessonName?: string | undefined;
   courseName?: string | undefined;
-  structure?: CourseStructureWithAccess | undefined;
   unlockProductId?: string;
 }) => {
   const t = useTranslations();
@@ -208,10 +205,6 @@ const LockedView = ({
               { label: lessonName ?? t.lesson.contentLocked },
             ],
           })}
-      {...(structure === undefined
-        ? {}
-        : { rail: <CurriculumCard courseId={courseId} structure={structure} /> })}
-      mobileRail="after"
     >
       {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
       <SectionCard
@@ -235,7 +228,7 @@ const LockedView = ({
           <LockedState />
           {product !== undefined && (
             <Typography variant="h3" component="p" data-testid="locked-product-price">
-              <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
+              <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
             </Typography>
           )}
           <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>
@@ -318,15 +311,20 @@ export const LessonPlayerPage = ({
     ? optimisticDone.done
     : completedFromServer;
 
+  const settleCompletion = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.studentCourseInvalidates()),
+      queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+    ]);
+    setOptimisticDone(null);
+  };
+
   const complete = useMutation({
     ...actions.completeLesson,
     onMutate: ({ lessonId: completedLessonId }) =>
       setOptimisticDone({ lessonId: completedLessonId, done: true }),
     onError: () => setOptimisticDone(null),
-    onSettled: async () => {
-      await queryClient.invalidateQueries(actions.studentCourseInvalidates());
-      setOptimisticDone(null);
-    },
+    onSettled: settleCompletion,
   });
 
   const uncomplete = useMutation({
@@ -334,10 +332,7 @@ export const LessonPlayerPage = ({
     onMutate: ({ lessonId: uncompletedLessonId }) =>
       setOptimisticDone({ lessonId: uncompletedLessonId, done: false }),
     onError: () => setOptimisticDone(null),
-    onSettled: async () => {
-      await queryClient.invalidateQueries(actions.studentCourseInvalidates());
-      setOptimisticDone(null);
-    },
+    onSettled: settleCompletion,
   });
 
   useEffect(() => {
@@ -354,8 +349,7 @@ export const LessonPlayerPage = ({
   if (lesson.isPending) {
     return (
       <MemberSurface
-        authenticated={authenticated}
-        title={t.lesson.loading}
+          title={t.lesson.loading}
         eyebrow={t.lesson.eyebrow}
         width="wide"
         state={{ kind: 'loading', label: t.lesson.loading }}
@@ -370,7 +364,6 @@ export const LessonPlayerPage = ({
       if (structure.isError) {
         return (
           <MemberSurface
-            authenticated
             title={t.lesson.unavailable}
             eyebrow={t.lesson.eyebrow}
             width="wide"
@@ -386,7 +379,6 @@ export const LessonPlayerPage = ({
           courseId={courseId}
           lessonName={lockedRow?.name}
           courseName={structure.data?.structure.name}
-          structure={structure.data?.structure}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -395,8 +387,7 @@ export const LessonPlayerPage = ({
     }
     return (
       <MemberSurface
-        authenticated={authenticated}
-        title={t.lesson.unavailable}
+          title={t.lesson.unavailable}
         eyebrow={t.lesson.eyebrow}
         width="wide"
         state={{
@@ -427,7 +418,6 @@ export const LessonPlayerPage = ({
 
   return (
     <MemberSurface
-      authenticated={authenticated}
       title={lessonName}
       eyebrow={t.lesson.eyebrow}
       width="wide"
@@ -444,18 +434,6 @@ export const LessonPlayerPage = ({
               { label: lessonName },
             ],
           })}
-      {...(structure.data === undefined
-        ? {}
-        : {
-            rail: (
-              <CurriculumCard
-                courseId={courseId}
-                structure={structure.data.structure}
-                currentLessonId={lessonId}
-              />
-            ),
-          })}
-      mobileRail="after"
     >
       <Box sx={{ minWidth: 0 }}>
         {transitioning ? (

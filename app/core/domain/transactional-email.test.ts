@@ -256,9 +256,9 @@ describe('notification opt-out footer', () => {
   it('links space-unfollow management from the space-post mail in both languages', () => {
     const pl = spacePost('pl', postInput);
     expect(pl.html).toContain(
-      `<a href="${postInput.url}">Zarządzaj powiadomieniami</a> (w strefie możesz przestać ją obserwować)`,
+      `<a href="${postInput.url}">Zarządzaj powiadomieniami</a> (w przestrzeni możesz przestać ją obserwować)`,
     );
-    expect(pl.text).toContain(`Zarządzaj powiadomieniami (w strefie możesz przestać ją obserwować): ${postInput.url}`);
+    expect(pl.text).toContain(`Zarządzaj powiadomieniami (w przestrzeni możesz przestać ją obserwować): ${postInput.url}`);
 
     const en = spacePost('en', postInput);
     expect(en.html).toContain(

@@ -5,8 +5,9 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
+import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
@@ -50,18 +51,18 @@ const tenantsBody = {
 
 const stub = (label: string) => () => <div>{label}</div>;
 
-const renderHome = async () => {
+const renderHome = async (component: () => ReactNode = TenantHomePage) => {
   const rootRoute = createRootRoute();
-  const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: TenantHomePage });
+  const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component });
   const panelRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: stub('PANEL') });
   const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/login', component: stub('LOGIN') });
-  const myRoute = createRoute({ getParentRoute: () => rootRoute, path: '/my', component: stub('MY') });
+  const startRoute = createRoute({ getParentRoute: () => rootRoute, path: '/start', component: stub('START') });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, panelRoute, loginRoute, myRoute]),
+    routeTree: rootRoute.addChildren([indexRoute, panelRoute, loginRoute, startRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return { ...renderWithProviders(<RouterProvider router={router} />), router };
 };
 
 describe('TenantHomePage dispatcher', () => {
@@ -71,10 +72,10 @@ describe('TenantHomePage dispatcher', () => {
     expect(await screen.findByText('PANEL')).toBeInTheDocument();
   });
 
-  it('redirects a member-only account to their courses', async () => {
+  it('redirects a member-only account to their start page', async () => {
     server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: meMemberOnly })));
     await renderHome();
-    expect(await screen.findByText('MY')).toBeInTheDocument();
+    expect(await screen.findByText('START')).toBeInTheDocument();
   });
 
   it('redirects an unauthenticated visitor to sign in', async () => {
@@ -146,5 +147,47 @@ describe('TenantHomePage dispatcher', () => {
 
     expect(await screen.findByTestId('resend-verification-email')).toBeInTheDocument();
     expect(await screen.findByLabelText(pl.tenant.nameLabel)).toBeInTheDocument();
+  });
+
+  it('renders the anonymous home on a tenant host instead of redirecting to sign in', async () => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }),
+      ),
+    );
+
+    const { router } = await renderHome(() => (
+      <TenantHomePage hostname="acme.localhost" anonymousHome={<div>ANON</div>} />
+    ));
+
+    expect(await screen.findByText('ANON')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/');
+  });
+
+  it('keeps the sign-in redirect on a tenant host without an anonymous surface', async () => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }),
+      ),
+    );
+
+    await renderHome(() => <TenantHomePage hostname="acme.localhost" />);
+
+    expect(await screen.findByText('LOGIN')).toBeInTheDocument();
+  });
+
+  it('keeps the sign-in redirect on the platform host even with an anonymous surface', async () => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }),
+      ),
+    );
+
+    const { router } = await renderHome(() => (
+      <TenantHomePage hostname="localhost" anonymousHome={<div>ANON</div>} />
+    ));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+    expect(screen.queryByText('ANON')).not.toBeInTheDocument();
   });
 });

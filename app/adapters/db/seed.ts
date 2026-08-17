@@ -564,6 +564,7 @@ interface CourseDef {
   name: string;
   description: string;
   imageUrl: string;
+  publiclyVisible?: boolean;
 }
 
 const courseDefs: CourseDef[] = [
@@ -573,6 +574,7 @@ const courseDefs: CourseDef[] = [
     name: 'Kurs JavaScript od podstaw',
     description: 'Kompletny kurs JavaScript: od zmiennych, przez funkcje i DOM, po pierwszy projekt.',
     imageUrl: 'https://picsum.photos/seed/together-course-js/960/540',
+    publiclyVisible: true,
   },
   {
     id: 'course-react',
@@ -867,7 +869,7 @@ await db
 
 await db
   .update(tenants)
-  .set({ billingPortalUrl: STUDIO_BILLING_PORTAL_URL })
+  .set({ billingPortalUrl: STUDIO_BILLING_PORTAL_URL, defaultHomeSpaceId: 'space-studio-spolecznosc' })
   .where(eq(tenants.id, 'tenant-studio'));
 
 // Only akademia is branded; studio and acme stay on the stock look so the
@@ -1014,6 +1016,7 @@ await db
       name: course.name,
       description: course.description,
       imageUrl: course.imageUrl,
+      publiclyVisible: course.publiclyVisible ?? false,
       createdAt: nextIso(),
     })),
   )
@@ -1023,6 +1026,7 @@ await db
       name: sql`excluded.name`,
       description: sql`excluded.description`,
       imageUrl: sql`excluded.image_url`,
+      publiclyVisible: sql`excluded.publicly_visible`,
     },
   });
 
@@ -2016,6 +2020,7 @@ interface SeedSpaceDef {
   description: string;
   visibility: 'members' | 'product';
   productIds: string[];
+  publicReadOnly?: boolean;
   position: number;
 }
 
@@ -2024,19 +2029,32 @@ const spaceDefs: SeedSpaceDef[] = [
     id: 'space-studio-spolecznosc',
     slug: 'spolecznosc',
     name: 'Społeczność',
-    description: 'Otwarta strefa dla wszystkich uczestników — przedstaw się i pogadaj z innymi.',
+    description:
+      'Otwarta przestrzeń dla wszystkich uczestników — przedstaw się i pogadaj z innymi.',
     visibility: 'members',
     productIds: [],
+    publicReadOnly: true,
     position: 0,
   },
   {
     id: 'space-studio-klub-js',
     slug: 'klub-js',
     name: 'Klub JavaScriptu',
-    description: 'Strefa dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.',
+    description:
+      'Przestrzeń dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.',
     visibility: 'product',
     productIds: ['product-js-full'],
     position: 1,
+  },
+  {
+    id: 'space-studio-klub-react',
+    slug: 'klub-react',
+    name: 'Klub Reacta',
+    description:
+      'Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.',
+    visibility: 'product',
+    productIds: ['product-react-full'],
+    position: 2,
   },
 ];
 
@@ -2051,6 +2069,7 @@ await db
       description: space.description,
       visibility: space.visibility,
       productIds: space.productIds,
+      publicReadOnly: space.publicReadOnly ?? false,
       position: space.position,
       createdAt: relativeIso(-30),
     })),
@@ -2062,6 +2081,7 @@ await db
       description: sql`excluded.description`,
       visibility: sql`excluded.visibility`,
       productIds: sql`excluded.product_ids`,
+      publicReadOnly: sql`excluded.public_read_only`,
       position: sql`excluded.position`,
     },
   });
@@ -2075,7 +2095,7 @@ const spacePosts: SeedPostDef[] = [
     authorUserId: studioCreatorUserId,
     authorDisplay: 'Studio Creator',
     authorIsStaff: true,
-    body: 'Witajcie w Społeczności! To otwarta strefa dla wszystkich uczestników — przedstawcie się w komentarzach i napiszcie, czego się teraz uczycie.',
+    body: 'Witajcie w Społeczności! To otwarta przestrzeń dla wszystkich uczestników — przedstawcie się w komentarzach i napiszcie, czego się teraz uczycie.',
     createdAt: relativeIso(-14),
     deletedAt: null,
   },
@@ -2261,7 +2281,8 @@ for (const member of memberSpecs) {
   console.log(`  member   ${member.email}  ->  ${member.tenantId}`);
 }
 console.log('  community  discussions under course-js lessons; unread notification for kursant.aktywny@together.dev');
-console.log('  spaces   Społeczność (members) + Klub JavaScriptu (product-js-full) on studio, with posts/reactions/follows');
+console.log('  spaces   Społeczność (members) + Klub JavaScriptu (product-js-full) + Klub Reacta (product-react-full, locked for kursant.aktywny) on studio, with posts/reactions/follows');
+console.log('  public   course-js is publicly visible; Społeczność is publicly readable and is the studio home space');
 console.log('  sales    product-club subscription (monthly+yearly), active simulated subscription for kursant.abonent@together.dev, demo orders on studio');
 console.log('  tenants  http://studio.localhost:48730  http://acme.localhost:48730  http://akademia.localhost:48730');
 process.exit(0);

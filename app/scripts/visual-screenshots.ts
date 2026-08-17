@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,13 +25,11 @@ const webDistDir = join(rootDir, 'dist/web');
 const goldenDir = join(rootDir, 'tasks/visual-goldens');
 const currentDir = join(rootDir, 'out/visual/current');
 const diffDir = join(rootDir, 'out/visual/diff');
-const argosDir = join(rootDir, 'out/visual/argos');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const chromeCdpEndpoint = process.env['PLAYWRIGHT_CHROME_CDP_ENDPOINT'];
 const playwrightWsEndpoint = process.env['PLAYWRIGHT_WS_ENDPOINT'];
 
 const updateMode = process.argv.includes('--update');
-const argosCaptureMode = process.argv.includes('--argos-capture');
 const goldenAuthoringPlatform = 'darwin';
 
 const languageStorageKey = 'together-language';
@@ -48,11 +46,13 @@ const VIEWPORTS = [
 ] as const;
 
 type AuthKind = 'public' | 'member' | 'member-free' | 'creator';
+type ViewportName = (typeof VIEWPORTS)[number]['name'];
 
 interface ScreenSpec {
   name: string;
   auth: AuthKind;
   path: string;
+  viewports?: readonly ViewportName[];
   tenantSlug?: string;
   prepare?: (page: Page) => Promise<ScreenPreparation>;
   ready: (page: Page) => Promise<void>;
@@ -111,14 +111,14 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
-// The unread badge lives on the header bell on sm+ and on the bottom
-// tab-bar bell on xs (decision D4) — wait on the instance this viewport
-// actually shows, otherwise a shot can land before the async count arrives.
+// The member shell keeps the bell in the sidebar from md up and in the top bar
+// below it — wait on the instance this viewport actually shows, otherwise a
+// shot can land before the async count arrives.
 const waitForUnreadBadge = async (page: Page): Promise<void> => {
   const width = page.viewportSize()?.width ?? 0;
-  const bellTestId = width < 600 ? 'notification-tab' : 'notification-bell';
+  const badgeTestId = width < 900 ? 'notification-badge' : 'notification-nav-badge';
   await page
-    .locator(`[data-testid="${bellTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
+    .locator(`[data-testid="${badgeTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
     .waitFor(visible);
 };
 
@@ -184,13 +184,48 @@ const SCREENS: ScreenSpec[] = [
   {
     // Waits target the LAST async element of each screen (waterfall queries),
     // otherwise a shot can land mid-load and produce a flaky golden.
+    name: 'start',
+    auth: 'member',
+    path: '/start',
+    ready: async (page) => {
+      await page.getByTestId('start-continue-cta').waitFor(visible);
+      await page.getByTestId('home-feed-post-post-klub-wyzwanie').waitFor(visible);
+      await page.getByTestId('start-spaces').waitFor(visible);
+      await page.getByTestId('start-courses').waitFor(visible);
+      await page.getByTestId('start-locked').waitFor(visible);
+      await waitForUnreadBadge(page);
+    },
+  },
+  {
+    name: 'start-menu-sheet',
+    auth: 'member',
+    path: '/start',
+    viewports: ['mobile'],
+    ready: async (page) => {
+      await page.getByTestId('member-tab-menu').click();
+      await page.getByTestId('member-menu-sheet').waitFor(visible);
+      await page.getByTestId('sidebar-course-course-js').waitFor(visible);
+      await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
+    },
+  },
+  {
+    name: 'search',
+    auth: 'member',
+    path: '/search',
+    ready: async (page) => {
+      await page.getByTestId('search-input').fill('lekcj');
+      await page.getByTestId('search-space-space-studio-spolecznosc').waitFor(visible);
+      await page.getByTestId('search-lesson-lesson-js-zmienne-1').waitFor(visible);
+      await page.getByTestId('search-lesson-lesson-js-dom-1').waitFor(visible);
+    },
+  },
+  {
     name: 'my-courses',
     auth: 'member',
     path: '/my',
     ready: async (page) => {
-      const seededCourseCard = page.locator('a[href="/my/courses/course-js"]');
-      await seededCourseCard.waitFor(visible);
-      await seededCourseCard.getByTestId('completion-course-js').waitFor(visible);
+      await page.getByTestId('course-card-course-js').waitFor(visible);
+      await page.getByTestId('course-progress-course-js').waitFor(visible);
       await waitForUnreadBadge(page);
     },
   },
@@ -199,8 +234,10 @@ const SCREENS: ScreenSpec[] = [
     auth: 'member',
     path: '/my/courses/course-js',
     ready: async (page) => {
-      await page.getByTestId('course-tree').waitFor(visible);
-      await page.getByText('Przejdź do pierwszej lekcji').waitFor(visible);
+      await page.getByTestId('progress-percent').waitFor(visible);
+      await page.getByTestId('continue-cta').waitFor(visible);
+      await page.getByTestId('course-cover').waitFor(visible);
+      await page.getByTestId('course-discussion-search').waitFor(visible);
     },
   },
   {
@@ -312,7 +349,7 @@ const SCREENS: ScreenSpec[] = [
   {
     name: 'panel-storage-wizard',
     auth: 'creator',
-    path: '/panel/integrations',
+    path: '/panel/integrations#storage',
     ready: (page) => page.getByTestId('storage-provider-step').waitFor(visible),
     settled: async (page) => {
       await page.getByTestId('storage-wizard').evaluate((element) =>
@@ -421,9 +458,9 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByRole('heading', { name: 'Układy e-mail' }).waitFor(visible),
   },
   {
-    name: 'panel-marketing-settings',
+    name: 'panel-integrations-email',
     auth: 'creator',
-    path: '/panel/marketing/settings',
+    path: '/panel/integrations#email',
     ready: (page) => page.getByTestId('marketing-readiness').waitFor(visible),
   },
   {
@@ -608,12 +645,16 @@ const placeholderPng = Buffer.from(
 const isLocalHost = (hostname: string): boolean =>
   hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
 
+const spaceSeenPath = new RegExp(`^${API_PATHS.spaceSeen.replace(':spaceId', '[^/]+')}$`);
+
 const stubNonDeterministicRequests = async (context: BrowserContext): Promise<void> => {
   await context.route('**/*', (route) => {
     const url = new URL(route.request().url());
-    // Last-viewed tracking would mutate the seeded demo progress and change
-    // what later captures render; the mutation's failure is silent in the UI.
-    if (url.pathname === '/api/student/progress/last-viewed') return route.abort();
+    // Last-viewed tracking and space read marks would mutate the seeded demo
+    // state and change what later captures render (progress, unread signals);
+    // both mutations fail silently in the UI.
+    if (url.pathname === API_PATHS.studentLastViewed) return route.abort();
+    if (spaceSeenPath.test(url.pathname)) return route.abort();
     if (isLocalHost(url.hostname)) return route.continue();
     if (route.request().resourceType() === 'image') {
       return route.fulfill({ contentType: 'image/png', body: placeholderPng });
@@ -723,24 +764,15 @@ let server: ChildProcess | null = null;
 let browser: Browser | null = null;
 
 try {
-  if (updateMode && argosCaptureMode) {
-    fail('Golden authoring and Argos capture modes cannot run together.');
-  }
-
   if (updateMode && process.platform !== goldenAuthoringPlatform) {
     fail(
       `Baseline authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`,
     );
   }
 
-  if (argosCaptureMode) {
-    rmSync(argosDir, { recursive: true, force: true });
-    mkdirSync(argosDir, { recursive: true });
-  } else {
-    mkdirSync(goldenDir, { recursive: true });
-    mkdirSync(currentDir, { recursive: true });
-    mkdirSync(diffDir, { recursive: true });
-  }
+  mkdirSync(goldenDir, { recursive: true });
+  mkdirSync(currentDir, { recursive: true });
+  mkdirSync(diffDir, { recursive: true });
 
   console.log(`visual: preparing the dev database (SEED_BASE_TIME=${SEED_BASE_TIME})...`);
   await prepareDatabase();
@@ -782,6 +814,7 @@ try {
       for (const auth of ['public', 'member', 'member-free', 'creator'] satisfies AuthKind[]) {
         const screens = SCREENS.filter((screen) =>
           screen.auth === auth
+          && (screen.viewports?.includes(viewport.name) ?? true)
           && (viewport.scope === 'all'
             || screen.name === 'checkout'
             || screen.auth === 'member'
@@ -819,10 +852,7 @@ try {
                   }),
               );
             }
-            const shotPath = join(
-              argosCaptureMode ? argosDir : updateMode ? goldenDir : currentDir,
-              file,
-            );
+            const shotPath = join(updateMode ? goldenDir : currentDir, file);
             await page.screenshot({
               path: shotPath,
               animations: 'disabled',
@@ -834,7 +864,7 @@ try {
             const minBytes = screen.minBytes ?? minPngBytes;
             assert(size > minBytes, `${file} is only ${size} bytes (expected > ${minBytes})`);
             captured += 1;
-            if (!updateMode && !argosCaptureMode) {
+            if (!updateMode) {
               const failure = comparePng({
                 file,
                 baselinePath: join(goldenDir, file),
@@ -857,11 +887,7 @@ try {
   }
 
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-  if (argosCaptureMode) {
-    console.log(
-      `\nvisual:argos-capture: DONE (${seconds}s) — ${captured} screenshots written to ${argosDir}`,
-    );
-  } else if (updateMode) {
+  if (updateMode) {
     console.log(`\nvisual:update: PASS (${seconds}s) — ${captured} baseline images written to ${goldenDir}`);
     console.log('Review the baseline diffs and commit them with the change that caused them.');
   } else if (failures.length > 0) {

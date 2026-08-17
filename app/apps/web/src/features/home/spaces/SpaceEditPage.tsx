@@ -1,5 +1,5 @@
 import { Alert, Button, Stack } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
 import type { StaffSpace } from '#core/domain/index.js';
@@ -14,6 +14,7 @@ export const SpaceEditPage = ({ space }: { space: StaffSpace }) => {
   const t = useTranslations();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
 
   const updateSpace = useMutation({
     ...actions.updateSpace,
@@ -30,6 +31,7 @@ export const SpaceEditPage = ({ space }: { space: StaffSpace }) => {
       description: values.description.trim() === '' ? null : values.description.trim(),
       visibility: values.visibility,
       productIds: values.productIds,
+      publicReadOnly: values.publicReadOnly,
       position: values.position,
     });
 
@@ -57,8 +59,10 @@ export const SpaceEditPage = ({ space }: { space: StaffSpace }) => {
           description: space.description ?? '',
           visibility: space.visibility,
           productIds: space.productIds,
+          publicReadOnly: space.publicReadOnly,
           position: space.position,
         }}
+        isDefaultHomeSpace={settings.data?.settings.defaultHomeSpaceId === space.id}
         pending={updateSpace.isPending}
         error={updateSpace.isError ? updateSpace.error : null}
         onSubmit={submit}

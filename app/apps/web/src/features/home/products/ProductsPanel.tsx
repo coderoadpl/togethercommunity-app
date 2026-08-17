@@ -125,7 +125,7 @@ const ProductRow = ({
   const deliveryError = !hasDelivery
     && !deliveryPending
     && (spacesError || (product.type === 'digital_download' && downloads.isError));
-  const checkoutUrl = `${window.location.origin}/checkout/${product.id}`;
+  const checkoutUrl = `${window.location.origin}/checkout/${encodeURIComponent(product.slug)}`;
   const publishBlockers = product.published
     ? []
     : [

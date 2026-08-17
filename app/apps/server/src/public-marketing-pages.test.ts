@@ -19,6 +19,7 @@ const brand: PublicBrand = {
     accentColor: '#0E7490', faviconUrl: '/favicon.svg',
     ogTitle: null, ogDescription: null, ogImageUrl: null,
     supportEmail: null, supportUrl: null, termsUrl: null, privacyUrl: null,
+    defaultHomeSpaceId: null,
   },
 };
 

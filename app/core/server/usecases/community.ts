@@ -141,7 +141,7 @@ const contextAccess = async (
   return space.ok ? ok(undefined) : space;
 };
 
-const nestReplies = (rootId: string, replies: Post[], viewerUserId: string): DiscussionPost[] => {
+export const nestReplies = (rootId: string, replies: Post[], viewerUserId: string): DiscussionPost[] => {
   const byParent = new Map<string, Post[]>();
   for (const reply of replies) {
     const parentId = reply.parentPostId ?? rootId;

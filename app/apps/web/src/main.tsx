@@ -68,7 +68,6 @@ import {
   LayoutCreatePage,
   LayoutDetailPage,
   LayoutsPanel,
-  MarketingSettingsPanel,
   SchedulerActivityDetailPage,
   SchedulerActivityPanel,
   SendDetailPage,
@@ -84,6 +83,7 @@ import {
   PanelLessonsRoute,
   PanelLessonCreateRoute,
   PanelLessonEditRoute,
+  PanelMarketingSettingsRedirectRoute,
   PanelMemberDetailRoute,
   PanelMembersRoute,
   PanelReportsRoute,
@@ -106,10 +106,13 @@ import {
   CourseStructureRoute,
   LessonPlayerRoute,
   MemberAccountRoute,
+  MemberShellRoute,
   MyCoursesRoute,
   MyProductsRoute,
+  SearchRoute,
   SpaceFeedRoute,
   SpaceThreadRoute,
+  StartRoute,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
@@ -144,31 +147,46 @@ const loginRoute = createRoute({
 });
 const checkoutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/checkout/$productId',
+  path: '/checkout/$productRef',
   component: CheckoutRoute,
 });
-const myCoursesRoute = createRoute({
+const memberShellRoute = createRoute({
   getParentRoute: () => rootRoute,
+  id: 'member-shell',
+  component: MemberShellRoute,
+});
+const startRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/start',
+  component: StartRoute,
+});
+const searchRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/search',
+  component: SearchRoute,
+});
+const myCoursesRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
   path: '/my',
   component: MyCoursesRoute,
 });
 const myProductsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/my/products',
   component: MyProductsRoute,
 });
 const courseRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/my/course/$productId',
   component: CourseRoute,
 });
 const courseStructureRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/my/courses/$courseId',
   component: CourseStructureRoute,
 });
 const lessonPlayerRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.lesson,
   component: LessonPlayerRoute,
 });
@@ -188,22 +206,22 @@ const resetPasswordRoute = createRoute({
   component: ResetPasswordRoute,
 });
 const accountRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/account',
   component: MemberAccountRoute,
 });
 const communityRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: '/community',
   component: CommunityRoute,
 });
 const spaceFeedRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.communitySpace,
   component: SpaceFeedRoute,
 });
 const spaceThreadRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.communityPost,
   component: SpaceThreadRoute,
 });
@@ -414,10 +432,10 @@ const panelMarketingLayoutDetailRoute = createRoute({
   path: 'marketing/layouts/$layoutId',
   component: LayoutDetailPage,
 });
-const panelMarketingSettingsRoute = createRoute({
+const panelMarketingSettingsRedirectRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'marketing/settings',
-  component: MarketingSettingsPanel,
+  component: PanelMarketingSettingsRedirectRoute,
 });
 
 const router = createRouter({
@@ -425,18 +443,22 @@ const router = createRouter({
     indexRoute,
     loginRoute,
     checkoutRoute,
-    myCoursesRoute,
-    myProductsRoute,
-    courseRoute,
-    courseStructureRoute,
-    lessonPlayerRoute,
     registerRoute,
     forgotPasswordRoute,
     resetPasswordRoute,
-    accountRoute,
-    communityRoute,
-    spaceFeedRoute,
-    spaceThreadRoute,
+    memberShellRoute.addChildren([
+      startRoute,
+      searchRoute,
+      myCoursesRoute,
+      myProductsRoute,
+      courseRoute,
+      courseStructureRoute,
+      lessonPlayerRoute,
+      accountRoute,
+      communityRoute,
+      spaceFeedRoute,
+      spaceThreadRoute,
+    ]),
     panelLayoutRoute.addChildren([
       panelIndexRoute,
       panelProductsRoute,
@@ -478,7 +500,7 @@ const router = createRouter({
       panelMarketingLayoutsRoute,
       panelMarketingLayoutCreateRoute,
       panelMarketingLayoutDetailRoute,
-      panelMarketingSettingsRoute,
+      panelMarketingSettingsRedirectRoute,
     ]),
   ]),
 });

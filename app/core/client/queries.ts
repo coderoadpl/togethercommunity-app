@@ -31,6 +31,7 @@ import type {
   LessonUncompleteInput,
   LessonCreateInput,
   LessonUpdateInput,
+  MemberHomeFeedGetInput,
   MemberProgressResetInput,
   MemberBanInput,
   MemberRemoveInput,
@@ -65,10 +66,12 @@ import type {
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
+  PublicSpaceThreadGetInput,
   SpaceArchiveInput,
   SpaceCreateInput,
   SpaceFeedGetInput,
   SpaceFollowInput,
+  SpaceSeenInput,
   SpaceUpdateInput,
   SupportMessageInput,
   ProductsAccessItemsInput,
@@ -97,6 +100,7 @@ import {
   unwrap,
   type ApiClient,
   type ProductDownloadFileUpload,
+  type ImageAssetFileUpload,
   type ReadResult,
   type WriteResult,
 } from './http.js';
@@ -175,6 +179,15 @@ const publicOfferScopes = {
   all: () => ['public-offer'] as const,
 };
 
+const publicSurfaceScopes = {
+  navigation: () => ['public-navigation'] as const,
+  courseStructure: (courseId: string) => ['public-course-structure', courseId] as const,
+  spaceFeed: (spaceId: string, limit?: number) =>
+    ['public-space-feed', spaceId, limit ?? null] as const,
+  spaceThread: (spaceId: string, postId: string) =>
+    ['public-space-thread', spaceId, postId] as const,
+};
+
 const authConfigScopes = {
   all: () => ['auth-config'] as const,
 };
@@ -199,6 +212,10 @@ const productDownloadsScopes = {
   list: (productId: string) => ['product-downloads', 'list', productId] as const,
 };
 
+const imageAssetsScopes = {
+  all: () => ['image-assets'] as const,
+};
+
 const salesScopes = {
   all: () => ['sales'] as const,
   orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
@@ -219,6 +236,15 @@ const couponScopes = {
 
 const myProductsScopes = {
   all: () => ['my-products'] as const,
+};
+
+const memberNavigationScopes = {
+  all: () => ['member-navigation'] as const,
+};
+
+const memberHomeFeedScopes = {
+  all: () => ['member-home-feed'] as const,
+  page: (limit?: number) => ['member-home-feed', 'page', limit ?? null] as const,
 };
 
 const membersScopes = {
@@ -292,8 +318,8 @@ const studentScopes = {
 const discussionScopes = {
   all: () => ['discussion'] as const,
   lesson: (lessonId: string, limit?: number) => ['discussion', 'lesson', lessonId, limit ?? null] as const,
-  search: (query: string, lessonIds: readonly string[]) =>
-    ['discussion', 'search', query, lessonIds.join(',')] as const,
+  search: (query: string, lessonIds: readonly string[], spaceIds: readonly string[]) =>
+    ['discussion', 'search', query, lessonIds.join(','), spaceIds.join(',')] as const,
 };
 
 const spacesScopes = {
@@ -471,6 +497,30 @@ export const publicOfferQuery = (api: ApiClient) =>
 
 export const publicOfferInvalidates = () => ({ queryKey: publicOfferScopes.all() });
 
+export const publicNavigationQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.navigation(),
+    call: ({ signal }) => api.publicNavigation(signal),
+  });
+
+export const publicCourseStructureQuery = (api: ApiClient, courseId: string) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.courseStructure(courseId),
+    call: ({ signal }) => api.publicCourseStructure(courseId, signal),
+  });
+
+export const publicSpaceFeedQuery = (api: ApiClient, input: SpaceFeedGetInput) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.spaceFeed(input.spaceId, input.limit),
+    call: ({ signal }) => api.publicSpaceFeed(input, signal),
+  });
+
+export const publicSpaceThreadQuery = (api: ApiClient, input: PublicSpaceThreadGetInput) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.spaceThread(input.spaceId, input.postId),
+    call: ({ signal }) => api.publicSpaceThread(input, signal),
+  });
+
 export const publicPaymentConfigQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: ['payment-config'] as const,
@@ -545,6 +595,18 @@ export const myProductsQuery = (api: ApiClient) =>
     call: ({ signal }) => api.myProducts(signal),
   });
 
+export const memberNavigationQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: memberNavigationScopes.all(),
+    call: ({ signal }) => api.memberNavigation(signal),
+  });
+
+export const memberHomeFeedQuery = (api: ApiClient, input: MemberHomeFeedGetInput) =>
+  defineQuery({
+    queryKey: memberHomeFeedScopes.page(input.limit),
+    call: ({ signal }) => api.memberHomeFeed(input, signal),
+  });
+
 export const membersQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: membersScopes.all(),
@@ -583,6 +645,24 @@ export const uploadProductDownloadMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...productDownloadsScopes.all(), 'upload'],
     call: (input: ProductDownloadFileUpload) => api.uploadProductDownload(input),
+  });
+
+export const uploadCourseCoverMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'course-cover', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadCourseCover(input),
+  });
+
+export const uploadProductCoverMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'product-cover', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadProductCover(input),
+  });
+
+export const uploadBrandingAssetMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'branding', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadBrandingAsset(input),
   });
 
 export const deleteProductDownloadMutation = (api: ApiClient) =>
@@ -1009,7 +1089,7 @@ export const muteThreadMutation = (api: ApiClient) =>
 
 export const postsSearchQuery = (api: ApiClient, input: PostsSearchInput) =>
   defineQuery({
-    queryKey: discussionScopes.search(input.query, input.lessonIds ?? []),
+    queryKey: discussionScopes.search(input.query, input.lessonIds ?? [], input.spaceIds ?? []),
     call: ({ signal }) => api.searchPosts(input, signal),
   });
 
@@ -1059,6 +1139,12 @@ export const unfollowSpaceMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'unfollow'],
     call: (input: SpaceFollowInput) => api.unfollowSpace(input),
+  });
+
+export const markSpaceSeenMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'seen'],
+    call: (input: SpaceSeenInput) => api.markSpaceSeen(input),
   });
 
 export const reactToPostMutation = (api: ApiClient) =>
@@ -1281,6 +1367,12 @@ export const productsInvalidates = () => ({ queryKey: productsScopes.all() });
 
 /** The invalidation filter a simulated purchase applies after it settles. */
 export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });
+
+/** Every surface that changes a member's progress or follow state refreshes the shell aggregate. */
+export const memberNavigationInvalidates = () => ({ queryKey: memberNavigationScopes.all() });
+
+/** Every surface that adds or removes a space post refreshes the aggregated home feed. */
+export const memberHomeFeedInvalidates = () => ({ queryKey: memberHomeFeedScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
 

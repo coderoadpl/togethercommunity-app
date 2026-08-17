@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageSchema, type Language } from './language.js';
 
@@ -230,7 +231,7 @@ export const spacePost = (
   const author = escapeHtml(input.authorDisplay);
   const snippet = escapeHtml(input.snippet);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'w strefie możesz przestać ją obserwować',
+    pl: 'w przestrzeni możesz przestać ją obserwować',
     en: 'you can unfollow the space there',
   });
 
@@ -243,11 +244,11 @@ export const spacePost = (
     });
   }
 
-  const actionLink = link(input.url, 'Otwórz strefę');
+  const actionLink = link(input.url, 'Otwórz przestrzeń');
   return emailMessageSchema.parse({
-    subject: `Nowy wpis w strefie „${input.spaceName}”`,
-    html: `<p>Cześć!</p><p>${author} opublikował(a) wpis w strefie „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} opublikował(a) wpis w strefie „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz strefę: ${input.url}${footer.text}`,
+    subject: `Nowy wpis w przestrzeni „${input.spaceName}”`,
+    html: `<p>Cześć!</p><p>${author} opublikował(a) wpis w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+    text: `Cześć!\n\n${input.authorDisplay} opublikował(a) wpis w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz przestrzeń: ${input.url}${footer.text}`,
   });
 };
 
@@ -400,7 +401,7 @@ export const memberErasureRequestEmail = (
 
 export const emailTransportTest = (
   language: string,
-  input: { transport: EmailIntegrationTransport | 'platform' },
+  input: { transport: EmailIntegrationTransport | TransactionalEmailTransport },
 ): EmailMessage => {
   const transport = escapeHtml(input.transport);
   if (languageOrDefault(language) === 'en') {

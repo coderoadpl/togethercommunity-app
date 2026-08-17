@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Box,
   Collapse,
-  FormControl,
-  FormLabel,
   Link as MuiLink,
   List,
   ListItemButton,
@@ -313,17 +311,15 @@ export const CourseTree = ({
 
   return (
     <Box>
-      <FormControl fullWidth sx={{ mb: '1rem' }}>
-        <FormLabel htmlFor="lesson-search">{t.courseTree.searchLessons}</FormLabel>
-        <OutlinedInput
-          id="lesson-search"
-          size="small"
-          value={rawSearch}
-          onChange={(event) => setRawSearch(event.target.value)}
-          placeholder={t.courseTree.filterPlaceholder}
-          inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
-        />
-      </FormControl>
+      <OutlinedInput
+        fullWidth
+        size="small"
+        sx={{ mb: '1rem' }}
+        value={rawSearch}
+        onChange={(event) => setRawSearch(event.target.value)}
+        placeholder={t.courseTree.filterPlaceholder}
+        inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
+      />
 
       {modules.length === 0 ? (
         <Box sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-no-results">

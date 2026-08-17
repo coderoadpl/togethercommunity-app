@@ -92,6 +92,24 @@ describe('demo seed lifecycle', () => {
     expect(accountTimestamp.rows[0]?.created_at).toBe('2026-07-15 08:00:00');
   }, 180_000);
 
+  it('seeds a public course, a publicly readable space and the tenant home space', async () => {
+    runDatabaseScript('seed.ts');
+
+    const publicCourses = await client.query<{ id: string }>(
+      `SELECT id FROM courses WHERE publicly_visible ORDER BY id`,
+    );
+    const publicSpaces = await client.query<{ id: string }>(
+      `SELECT id FROM spaces WHERE public_read_only ORDER BY id`,
+    );
+    const homeSpace = await client.query<{ default_home_space_id: string | null }>(
+      `SELECT default_home_space_id FROM tenants WHERE id = 'tenant-studio'`,
+    );
+
+    expect(publicCourses.rows.map(({ id }) => id)).toEqual(['course-js']);
+    expect(publicSpaces.rows.map(({ id }) => id)).toEqual(['space-studio-spolecznosc']);
+    expect(homeSpace.rows).toEqual([{ default_home_space_id: 'space-studio-spolecznosc' }]);
+  }, 180_000);
+
   it('converges existing creator credentials without adding rows when repeated', async () => {
     runDatabaseScript('seed.ts');
     const firstCounts = await rowCounts(client);

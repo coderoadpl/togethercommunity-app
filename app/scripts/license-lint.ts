@@ -100,39 +100,6 @@ const exceptions = new Map<string, LicenseException>([
       versionPattern: /^.+$/,
     },
   ],
-  [
-    '@img/sharp-libvips-*@1.3.2',
-    {
-      devOnly: true,
-      license: 'LGPL-3.0-or-later',
-      packagePattern: /^@img\/sharp-libvips-.+$/,
-      reason:
-        'dev-only Argos upload tooling (sharp/libvips prebuilt); never part of the product bundle; owner-approved Argos evaluation 2026-07-28.',
-      versionPattern: /^1\.3\.2$/,
-    },
-  ],
-  [
-    '@img/sharp-wasm32@0.35.3',
-    {
-      devOnly: true,
-      license: 'Apache-2.0 AND LGPL-3.0-or-later AND MIT',
-      packagePattern: /^@img\/sharp-wasm32$/,
-      reason:
-        'dev-only Argos upload tooling (sharp/libvips prebuilt); never part of the product bundle; owner-approved Argos evaluation 2026-07-28.',
-      versionPattern: /^0\.35\.3$/,
-    },
-  ],
-  [
-    '@img/sharp-win32-*@0.35.3',
-    {
-      devOnly: true,
-      license: 'Apache-2.0 AND LGPL-3.0-or-later',
-      packagePattern: /^@img\/sharp-win32-(?:arm64|ia32|x64)$/,
-      reason:
-        'dev-only Argos upload tooling (sharp/libvips prebuilt); never part of the product bundle; owner-approved Argos evaluation 2026-07-28.',
-      versionPattern: /^0\.35\.3$/,
-    },
-  ],
 ]);
 
 const hasAllowedAlternative = (license: string): boolean => {

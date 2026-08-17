@@ -7,6 +7,7 @@ import {
   FormControl,
   FormControlLabel,
   FormLabel,
+  Link as MuiLink,
   MenuItem,
   OutlinedInput,
   Select,
@@ -16,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, Navigate } from '@tanstack/react-router';
 
 import {
   accentColorSchema,
@@ -26,7 +28,7 @@ import {
   TENANT_OG_TITLE_MAX_LENGTH,
   tenantSocialLinkSchema,
 } from '#core/domain/index.js';
-import type { ExemptionBasisKind, TenantSecretKey, TenantSocialLink } from '#core/domain/index.js';
+import type { ExemptionBasisKind, TenantSocialLink } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -42,8 +44,8 @@ import {
 } from '../../../lib/build-info.js';
 import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
-import { SecretField } from '../integrations/SecretField.js';
 import { usePanelContext } from '../panel-context.js';
+import { ImageAssetField } from '../ImageAssetField.js';
 
 const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
   value === 'art_113_1' ||
@@ -68,79 +70,15 @@ const settingsSectionFromHash = (hash: string): SettingsSection => {
     case 'build':
       return 'diagnostics';
     case 'company':
-    case 'billing':
     case 'support':
+    case 'public-access':
     case 'invoice':
     default:
       return 'company';
   }
 };
 
-const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
-  const t = useTranslations();
-  const queryClient = useQueryClient();
-  const settings = useQuery(actions.tenantSettings);
-  const [url, setUrl] = useState<string | null>(null);
-
-  const value = url ?? settings.data?.settings.billingPortalUrl ?? '';
-
-  const updateSettings = useMutation({
-    ...actions.updateTenantSettings,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
-    },
-  });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    updateSettings.mutate({ billingPortalUrl: value.trim() === '' ? null : value.trim() });
-  };
-
-  return (
-    <SectionCard title={t.billing.heading} description={t.billing.intro} onSubmit={submit}>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="billing-portal-url">{t.billing.urlLabel}</FormLabel>
-          {settings.isPending ? (
-            <StatusView
-              state={{ kind: 'loading', label: t.common.loading }}
-              data-testid="billing-portal-url-loading"
-            />
-          ) : (
-            <OutlinedInput
-              id="billing-portal-url"
-              type="url"
-              value={value}
-              disabled={!canEdit || !settings.isSuccess}
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder={t.billing.placeholder}
-              inputProps={{ 'data-testid': 'billing-portal-url' }}
-            />
-          )}
-        </FormControl>
-        {settings.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
-        ) : null}
-        {canEdit ? (
-          <Box>
-            <Button
-              type="submit"
-              variant="outlined"
-              data-testid="billing-portal-save"
-              disabled={updateSettings.isPending || !settings.isSuccess}
-            >
-              {updateSettings.isPending ? t.billing.saving : t.billing.save}
-            </Button>
-          </Box>
-        ) : null}
-        {updateSettings.isSuccess ? (
-          <Typography variant="caption" component="p" data-testid="billing-portal-saved">
-            {t.billing.saved}
-          </Typography>
-        ) : null}
-        {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
-    </SectionCard>
-  );
-};
+const isRetiredBillingHash = (hash: string): boolean => hash.replace(/^#/, '') === 'billing';
 
 const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
@@ -198,67 +136,22 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   );
 };
 
-const previewFor = (
-  secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,
-  key: TenantSecretKey,
-): string | null => secrets?.find((secret) => secret.key === key)?.maskedPreview ?? null;
-
-const KsefSettings = ({ canEdit }: { canEdit: boolean }) => {
+const KsefCredentialsPointer = () => {
   const t = useTranslations();
-  const secrets = useQuery(actions.tenantSecrets);
-  const testConnection = useMutation(actions.testKsefConnection);
-  const tokenPreview = previewFor(secrets.data?.secrets, 'ksef.token');
-  const nipPreview = previewFor(secrets.data?.secrets, 'ksef.contextNip');
-  const ready = tokenPreview !== null && nipPreview !== null;
-
   return (
-    <Stack useFlexGap spacing="1rem">
+    <Stack useFlexGap spacing="0.5rem">
       <Typography variant="h6" component="h3">{t.integrations.ksefHeading}</Typography>
-      <Typography color="text.secondary">{t.integrations.ksefDescription}</Typography>
-      <Typography variant="body2">{t.integrations.ksefTokenHelp}</Typography>
-      {secrets.isPending ? (
-        <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
-      ) : secrets.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
-      ) : canEdit ? (
-        <>
-          <SecretField
-            secretKey="ksef.contextNip"
-            label={t.integrations.ksefContextNipLabel}
-            maskedPreview={nipPreview}
-          />
-          <SecretField
-            secretKey="ksef.token"
-            label={t.integrations.ksefTokenLabel}
-            maskedPreview={tokenPreview}
-          />
-        </>
-      ) : (
-        <Typography variant="body2">
-          {ready ? t.integrations.configured : t.integrations.notConfigured}
-        </Typography>
-      )}
-      <Button
-        type="button"
-        variant="contained"
-        data-testid="ksef-test-connection"
-        disabled={!canEdit || !ready || testConnection.isPending}
-        onClick={() => testConnection.mutate(undefined)}
-        sx={{ alignSelf: 'flex-start' }}
-      >
-        {testConnection.isPending ? t.integrations.testing : t.integrations.testConnection}
-      </Button>
-      {!ready ? (
-        <Typography variant="caption" component="p">{t.integrations.ksefSaveFirst}</Typography>
-      ) : null}
-      {testConnection.isSuccess ? (
-        <Typography variant="caption" component="p" data-testid="ksef-test-result">
-          {testConnection.data.diagnostic}
-        </Typography>
-      ) : null}
-      {testConnection.isError ? (
-        <Alert severity="error" data-testid="ksef-test-error">{localizeError(testConnection.error, t)}</Alert>
-      ) : null}
+      <Typography variant="body2">{t.billing.ksefConfiguredInIntegrations}</Typography>
+      <Box>
+        <MuiLink
+          component={Link}
+          to="/panel/integrations"
+          hash="invoicing"
+          data-testid="ksef-integrations-link"
+        >
+          {t.billing.ksefOpenIntegrations}
+        </MuiLink>
+      </Box>
     </Stack>
   );
 };
@@ -443,7 +336,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       >
         {t.billing.saveSeller}
       </Button>
-      {provider === 'ksef' ? <KsefSettings canEdit={canEdit} /> : null}
+      {provider === 'ksef' ? <KsefCredentialsPointer /> : null}
       {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
@@ -527,6 +420,54 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         <Typography variant="caption" component="p" data-testid="legal-saved">
           {t.legal.saved}
         </Typography>
+      ) : null}
+      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
+const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const spaces = useQuery(actions.staffSpaces);
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+
+  const publicSpaces = (spaces.data?.spaces ?? []).filter(
+    (space) => space.publicReadOnly && space.archivedAt === null,
+  );
+  const homeSpaceId = settings.data?.settings.defaultHomeSpaceId ?? '';
+  const selectable = publicSpaces.some((space) => space.id === homeSpaceId) ? homeSpaceId : '';
+
+  return (
+    <SectionCard title={t.publicAccess.heading} description={t.publicAccess.intro}>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="public-home-space">{t.publicAccess.homeSpaceLabel}</FormLabel>
+        <Select
+          id="public-home-space"
+          value={selectable}
+          disabled={!canEdit || !settings.isSuccess || !spaces.isSuccess || updateSettings.isPending}
+          inputProps={{ 'aria-label': t.publicAccess.homeSpaceLabel }}
+          onChange={(event) => updateSettings.mutate({ defaultHomeSpaceId: event.target.value })}
+        >
+          <MenuItem value="">{t.publicAccess.homeSpaceNone}</MenuItem>
+          {publicSpaces.map((space) => (
+            <MenuItem key={space.id} value={space.id}>
+              {space.name}
+            </MenuItem>
+          ))}
+        </Select>
+        <Typography variant="caption" component="p">
+          {t.publicAccess.homeSpaceHint}
+        </Typography>
+      </FormControl>
+      {spaces.isError ? (
+        <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
       ) : null}
       {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
@@ -621,17 +562,16 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             />
             <Typography variant="caption" component="p">{t.branding.nameHint}</Typography>
           </FormControl>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="branding-logo-url">{t.branding.logoLabel}</FormLabel>
-            <OutlinedInput
-              id="branding-logo-url"
-              value={logoValue}
-              disabled={disabled}
-              onChange={(event) => setLogoUrl(event.target.value)}
-              placeholder={t.branding.logoPlaceholder}
-              inputProps={{ 'data-testid': 'branding-logo-url' }}
-            />
-          </FormControl>
+          <ImageAssetField
+            id="branding-logo-url"
+            label={t.branding.logoLabel}
+            hint={t.branding.logoPlaceholder}
+            value={logoValue}
+            onChange={setLogoUrl}
+            kind="logo"
+            disabled={disabled}
+            testId="branding-logo-url"
+          />
           <FormControl fullWidth error={accentError}>
             <FormLabel htmlFor="branding-accent-color">{t.branding.accentLabel}</FormLabel>
             <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.75rem' }}>
@@ -657,17 +597,16 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {accentError ? t.branding.accentInvalid : t.branding.previewHint}
             </Typography>
           </FormControl>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="branding-favicon-url">{t.branding.faviconLabel}</FormLabel>
-            <OutlinedInput
-              id="branding-favicon-url"
-              value={faviconValue}
-              disabled={disabled}
-              onChange={(event) => setFaviconUrl(event.target.value)}
-              placeholder={t.branding.faviconPlaceholder}
-              inputProps={{ 'data-testid': 'branding-favicon-url' }}
-            />
-          </FormControl>
+          <ImageAssetField
+            id="branding-favicon-url"
+            label={t.branding.faviconLabel}
+            hint={t.branding.faviconPlaceholder}
+            value={faviconValue}
+            onChange={setFaviconUrl}
+            kind="favicon"
+            disabled={disabled}
+            testId="branding-favicon-url"
+          />
           <Typography variant="h6" component="h3">{t.branding.profileLinksHeading}</Typography>
           <Typography variant="body2">
             {t.branding.profileLinksIntro({ count: SOCIAL_LINKS_MAX_COUNT })}
@@ -988,25 +927,29 @@ const EmailVerificationPanel = () => {
 export const SettingsPanel = () => {
   const { tenant } = usePanelContext();
   const t = useTranslations();
-  const [section, setSection] = useState<SettingsSection>(() =>
-    settingsSectionFromHash(window.location.hash),
-  );
+  const [hash, setHash] = useState(() => window.location.hash);
   const canEdit = tenant.staffRole === 'owner';
 
   useEffect(() => {
-    const syncSection = () => setSection(settingsSectionFromHash(window.location.hash));
-    window.addEventListener('hashchange', syncSection);
-    return () => window.removeEventListener('hashchange', syncSection);
+    const syncHash = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
   }, []);
 
   const changeSection = (_event: SyntheticEvent, value: SettingsSection) => {
-    setSection(value);
+    setHash(`#${value}`);
     window.history.replaceState(
       null,
       '',
       `${window.location.pathname}${window.location.search}#${value}`,
     );
   };
+
+  if (isRetiredBillingHash(hash)) {
+    return <Navigate to="/panel/integrations" hash="stripe" replace />;
+  }
+
+  const section = settingsSectionFromHash(hash);
 
   return (
     <PanelPage title={t.sections.settings}>
@@ -1026,11 +969,11 @@ export const SettingsPanel = () => {
 
       {section === 'company' ? (
         <Stack id="settings-panel-company" role="tabpanel" aria-labelledby="settings-tab-company" useFlexGap spacing="1.5rem">
-          <Box id="billing" sx={{ scrollMarginTop: '1rem' }}>
-            <BillingSettingsPanel canEdit={canEdit} />
-          </Box>
           <Box id="support" sx={{ scrollMarginTop: '1rem' }}>
             <SupportSettingsPanel canEdit={canEdit} />
+          </Box>
+          <Box id="public-access" sx={{ scrollMarginTop: '1rem' }}>
+            <PublicAccessPanel canEdit={canEdit} />
           </Box>
           <Box id="invoice" sx={{ scrollMarginTop: '1rem' }}>
             <InvoiceSettingsPanel canEdit={canEdit} />

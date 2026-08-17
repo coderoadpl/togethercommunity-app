@@ -28,7 +28,7 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { formatPrice } from '../../lib/format.js';
+import { formatOfferPrice, formatPrice } from '../../lib/format.js';
 import {
   CardTitle,
   CheckoutDisclosureButton,
@@ -97,7 +97,7 @@ const couponError = (
   }
 };
 
-export const CheckoutPage = ({ productId }: { productId: string }) => {
+export const CheckoutPage = ({ productRef }: { productRef: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
@@ -123,7 +123,10 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [magicLinkUrl, setMagicLinkUrl] = useState<string | null>(null);
-  const product = offer.data?.products.find((candidate) => candidate.id === productId);
+  const product = offer.data?.products.find(
+    (candidate) => candidate.id === productRef || candidate.slug === productRef,
+  );
+  const productId = product?.id ?? productRef;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
 
   const simulatePurchase = useMutation({
@@ -355,7 +358,9 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           <CardTitle variant="h1">{product.title}</CardTitle>
           {product.prices.length <= 1 ? (
             <CheckoutPrice component="p">
-              <DataValue>{formatPrice(selectedAmountCents, selectedCurrency, language)}</DataValue>
+              <DataValue>
+                {formatOfferPrice(selectedAmountCents, selectedCurrency, language, t.common.free)}
+              </DataValue>
             </CheckoutPrice>
           ) : null}
           {product.coverUrl === null ? null : (
@@ -389,7 +394,11 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                     <FormControlLabel
                       value={price.id}
                       control={<Radio />}
-                      label={priceLabel(price, formatPrice(price.amountCents, price.currency, language), t)}
+                      label={priceLabel(
+                        price,
+                        formatOfferPrice(price.amountCents, price.currency, language, t.common.free),
+                        t,
+                      )}
                       data-testid={`checkout-price-${price.id}`}
                     />
                   </CheckoutPriceOption>

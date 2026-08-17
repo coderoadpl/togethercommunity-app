@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Product, ProductType, Tenant } from '#core/domain/index.js';
+import type { Course, Product, ProductType, Tenant } from '#core/domain/index.js';
 
 import type { ConsentDefinitionRepository, ProductRepository, TenantRepository } from '../ports.js';
 import { getPublicOffer } from './public-offer.js';
@@ -45,6 +45,24 @@ const noPrices = {
 
 const noLessons = { listPreviews: async () => [] };
 
+const course = (id: string, publiclyVisible: boolean): Course => ({
+  id,
+  tenantId: 't-acme',
+  name: `Course ${id}`,
+  description: '',
+  imageUrl: null,
+  moduleOrder: [],
+  publiclyVisible,
+  legacyId: null,
+  createdAt: '2026-07-12T00:00:00.000Z',
+});
+
+const fakeCourses = (initial: Course[]) => ({
+  list: async (tenantId: string) => initial.filter((candidate) => candidate.tenantId === tenantId),
+});
+
+const noCourses = fakeCourses([]);
+
 const fakeTenants = (branding?: {
   logoUrl: string | null;
   accentColor: string | null;
@@ -71,6 +89,7 @@ const fakeTenants = (branding?: {
           supportUrl: null,
           termsUrl: null,
           privacyUrl: null,
+          defaultHomeSpaceId: null,
           ...branding,
         },
   updateSettings: async (_tenantId, next) => next,
@@ -103,6 +122,7 @@ describe('getPublicOffer', () => {
       ]),
       prices: noPrices,
       lessons: noLessons,
+      courses: noCourses,
       tenants: fakeTenants(),
     });
 
@@ -167,6 +187,7 @@ describe('getPublicOffer', () => {
       products: fakeProducts([]),
       prices: noPrices,
       lessons: { listPreviews: async () => lessons },
+      courses: fakeCourses([course('course-1', true)]),
       tenants: fakeTenants(),
     });
 
@@ -176,11 +197,31 @@ describe('getPublicOffer', () => {
     });
   });
 
+  it('drops previews of courses that are not publicly visible', async () => {
+    const lessons = [
+      { id: 'open', name: 'Open preview', courseId: 'course-public' },
+      { id: 'hidden', name: 'Hidden preview', courseId: 'course-private' },
+    ];
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([]),
+      prices: noPrices,
+      lessons: { listPreviews: async () => lessons },
+      courses: fakeCourses([course('course-public', true), course('course-private', false)]),
+      tenants: fakeTenants(),
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { previewLessons: [{ id: 'open', courseId: 'course-public' }] },
+    });
+  });
+
   it('takes a resolved tenant instead of an identity-scoped context', async () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([]),
       prices: noPrices,
       lessons: noLessons,
+      courses: noCourses,
       tenants: fakeTenants(),
     });
 
@@ -200,6 +241,7 @@ describe('getPublicOffer', () => {
       products: fakeProducts([]),
       prices: noPrices,
       lessons: noLessons,
+      courses: noCourses,
       tenants: fakeTenants(branding),
     });
 
@@ -215,6 +257,7 @@ describe('getPublicOffer', () => {
       products: fakeProducts([]),
       prices: noPrices,
       lessons: noLessons,
+      courses: noCourses,
       tenants: fakeTenants({ logoUrl: null, accentColor: null, faviconUrl: null, socialLinks }),
     });
 
@@ -270,6 +313,7 @@ describe('getPublicOffer', () => {
       products: fakeProducts([attached]),
       prices: noPrices,
       lessons: noLessons,
+      courses: noCourses,
       tenants: fakeTenants(),
       definitions,
     });
@@ -327,6 +371,7 @@ describe('getPublicOffer', () => {
       products: fakeProducts([attached]),
       prices: noPrices,
       lessons: noLessons,
+      courses: noCourses,
       tenants: fakeTenants(),
       definitions,
       documents: {

@@ -53,6 +53,7 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
 image: null,
 memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 });
 
 const course = (

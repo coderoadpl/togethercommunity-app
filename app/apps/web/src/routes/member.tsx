@@ -1,9 +1,12 @@
 import { useParams, useSearch } from '@tanstack/react-router';
 
 import { CoursePage } from '../features/member/CoursePage.js';
+import { EventPage } from '../features/member/events/EventPage.js';
 import { CourseStructurePage } from '../features/member/CourseStructurePage.js';
 import { LessonPlayerPage } from '../features/member/LessonPlayerPage.js';
 import { MemberAccountPage } from '../features/member/MemberAccountPage.js';
+import { ConversationPage } from '../features/member/messages/ConversationPage.js';
+import { MessagesListPage } from '../features/member/messages/MessagesListPage.js';
 import { MyCoursesPage } from '../features/member/MyCoursesPage.js';
 import { MyProductsPage } from '../features/member/MyProductsPage.js';
 import { NotificationsPage } from '../features/member/NotificationsPage.js';
@@ -50,6 +53,13 @@ export const LessonPlayerRoute = () => {
 
 export const NotificationsRoute = () => <NotificationsPage />;
 
+export const MessagesRoute = () => <MessagesListPage />;
+
+export const ConversationRoute = () => {
+  const params = useParams({ strict: false });
+  return <ConversationPage conversationId={params.conversationId ?? ''} />;
+};
+
 export const CommunityRoute = () => <SpacesListPage />;
 
 export const SpaceFeedRoute = () => {
@@ -60,4 +70,9 @@ export const SpaceFeedRoute = () => {
 export const SpaceThreadRoute = () => {
   const params = useParams({ strict: false });
   return <SpaceThreadPage spaceId={params.spaceId ?? ''} postId={params.postId ?? ''} />;
+};
+
+export const CommunityEventRoute = () => {
+  const params = useParams({ strict: false });
+  return <EventPage spaceId={params.spaceId ?? ''} eventId={params.eventId ?? ''} />;
 };

@@ -54,6 +54,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
   ...over,
 });
 

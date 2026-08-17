@@ -1,4 +1,10 @@
-import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -17,6 +23,8 @@ import {
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { ThemeModeProvider } from '../../theme-mode.js';
+import { MemberShell } from './shell/MemberShell.js';
 import { SpaceFeedPage } from './SpaceFeedPage.js';
 import { SpaceThreadPage } from './SpaceThreadPage.js';
 import { SpacesListPage } from './SpacesListPage.js';
@@ -148,6 +156,56 @@ const renderPage = async (component: () => ReactNode, path: string) => {
   });
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
+};
+
+const countedAnonMe = (counter: { calls: number }) =>
+  http.get('/api/me', () => {
+    counter.calls += 1;
+    return HttpResponse.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } },
+      { status: 401 },
+    );
+  });
+
+const okOffer = () =>
+  http.get('/api/public/offer', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        tenant: {
+          slug: 'acme',
+          name: 'Acme',
+          branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+          socialLinks: [],
+        },
+        contentVersion: 1,
+        products: [],
+      },
+    }),
+  );
+
+const renderShellPage = async (component: () => ReactNode, path: string) => {
+  const rootRoute = createRootRoute();
+  const shellRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    id: 'member-shell',
+    component: MemberShell,
+  });
+  const spaceRoute = createRoute({
+    getParentRoute: () => shellRoute,
+    path: '/community/$spaceId',
+    component,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([shellRoute.addChildren([spaceRoute])]),
+    history: createMemoryHistory({ initialEntries: [path] }),
+  });
+  await router.load();
+  return renderWithProviders(
+    <ThemeModeProvider>
+      <RouterProvider router={router} />
+    </ThemeModeProvider>,
+  );
 };
 
 describe('community pages', () => {
@@ -382,5 +440,26 @@ describe('community pages', () => {
     expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Odpowiedź');
     expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/login');
     expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
+  });
+
+  it('settles an anonymous visitor inside the shell without refetching the identity in a loop', async () => {
+    const counter = { calls: 0 };
+    server.use(
+      countedAnonMe(counter),
+      okOffer(),
+      okPublicNavigation(),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Publiczny wpis' })]),
+    );
+
+    await renderShellPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Publiczny wpis');
+    expect(screen.getByTestId('anon-read-only')).toHaveTextContent(pl.anon.readOnlyBanner);
+
+    const settledCalls = counter.calls;
+    await new Promise((resolve) => {
+      setTimeout(resolve, 200);
+    });
+    expect(counter.calls).toBe(settledCalls);
   });
 });

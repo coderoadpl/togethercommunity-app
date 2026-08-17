@@ -596,6 +596,20 @@
       "when": 1786987008831,
       "tag": "0084_tenant_composite_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1786991430288,
+      "tag": "0085_direct_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1786997731896,
+      "tag": "0086_space_events",
+      "breakpoints": true
     }
   ]
 }

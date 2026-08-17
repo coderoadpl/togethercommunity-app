@@ -79,7 +79,10 @@ export const NotificationBell = ({
   useEffect(() => {
     if (!live) return;
     const stream = connectNotificationsStream({
-      onEvent: () => void queryClient.invalidateQueries(actions.notificationsInvalidates()),
+      onEvent: () => {
+        void queryClient.invalidateQueries(actions.notificationsInvalidates());
+        void queryClient.invalidateQueries(actions.messagesInvalidates());
+      },
       onFallback: () => setPolling(true),
     });
     return () => stream.close();

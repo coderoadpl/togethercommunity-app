@@ -208,6 +208,7 @@ const harness = (
       },
       updateEmail: async () => null,
       updateDisplayName: async () => null,
+      updateDmOptOut: async () => null,
     setBanned: async () => null,
     },
     products: {

@@ -4,6 +4,9 @@ import type {
   CourseLesson,
   LessonAttachment,
   CourseModule,
+  DmConversation,
+  DmConversationState,
+  DmMessage,
   EntityHistoryEntry,
   EntityKind,
   EmailBranding,
@@ -52,6 +55,9 @@ import type {
   ReactionEmoji,
   ReactionSummary,
   Space,
+  SpaceEvent,
+  SpaceEventRsvp,
+  SpaceEventRsvpStatus,
   SpaceStats,
   StorageConfiguration,
   Tenant,
@@ -364,6 +370,85 @@ export interface ThreadSubscriptionRepository {
   listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]>;
 }
 
+export interface SpaceEventRepository {
+  findById(tenantId: string, id: string): Promise<SpaceEvent | null>;
+  insert(tenantId: string, event: SpaceEvent): Promise<SpaceEvent>;
+  update(tenantId: string, event: SpaceEvent): Promise<SpaceEvent | null>;
+  softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<SpaceEvent | null>;
+  /** 'upcoming' returns events ending at or after `now` ascending, 'past' the rest descending. */
+  listForSpace(
+    tenantId: string,
+    query: { spaceId: string; scope: 'upcoming' | 'past'; now: string; cursor?: string; limit: number },
+  ): Promise<{ events: SpaceEvent[]; nextCursor: string | null }>;
+  listUpcomingForSpaces(
+    tenantId: string,
+    query: { spaceIds: string[]; now: string; limit: number },
+  ): Promise<SpaceEvent[]>;
+}
+
+export interface SpaceEventRsvpRepository {
+  upsert(
+    tenantId: string,
+    input: { eventId: string; userId: string; status: SpaceEventRsvpStatus; updatedAt: string },
+  ): Promise<SpaceEventRsvp>;
+  countsForEvents(
+    tenantId: string,
+    eventIds: string[],
+  ): Promise<Map<string, { going: number; notGoing: number }>>;
+  listForViewer(
+    tenantId: string,
+    input: { userId: string; eventIds: string[] },
+  ): Promise<SpaceEventRsvp[]>;
+}
+
+export interface DmConversationRepository {
+  findById(tenantId: string, id: string): Promise<DmConversation | null>;
+  findByParticipants(
+    tenantId: string,
+    pair: { low: string; high: string },
+  ): Promise<DmConversation | null>;
+  insert(tenantId: string, conversation: DmConversation): Promise<DmConversation>;
+  listForParticipant(
+    tenantId: string,
+    query: { userId: string; cursor?: string; limit: number },
+  ): Promise<{ conversations: DmConversation[]; nextCursor: string | null }>;
+  countCreatedBySince(
+    tenantId: string,
+    query: { createdByUserId: string; since: string },
+  ): Promise<number>;
+  countUnreadForParticipant(tenantId: string, userId: string): Promise<number>;
+  applyLastMessage(
+    tenantId: string,
+    input: {
+      conversationId: string;
+      lastMessageId: string;
+      lastMessageAt: string;
+      lastMessageSnippet: string;
+      lastMessageSenderUserId: string;
+    },
+  ): Promise<DmConversation | null>;
+}
+
+export interface DmMessageRepository {
+  insert(tenantId: string, message: DmMessage): Promise<DmMessage>;
+  listForConversation(
+    tenantId: string,
+    query: { conversationId: string; cursor?: string; limit: number },
+  ): Promise<{ messages: DmMessage[]; nextCursor: string | null }>;
+  countRecentBySender(tenantId: string, senderUserId: string, sinceIso: string): Promise<number>;
+}
+
+export interface DmConversationStateRepository {
+  findForViewer(
+    tenantId: string,
+    input: { userId: string; conversationIds: string[] },
+  ): Promise<DmConversationState[]>;
+  markRead(
+    tenantId: string,
+    input: { conversationId: string; userId: string; lastReadAt: string },
+  ): Promise<DmConversationState>;
+}
+
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
   listForRecipient(
@@ -373,6 +458,16 @@ export interface NotificationRepository {
   markRead(tenantId: string, input: { id: string; recipientUserId: string; readAt: string }): Promise<Notification | null>;
   markAllRead(tenantId: string, input: { recipientUserId: string; readAt: string }): Promise<number>;
   unreadCount(tenantId: string, recipientUserId: string): Promise<number>;
+  /** Collapse guard: one bell item and one e-mail per conversation burst. */
+  hasUnreadDmNotification(
+    tenantId: string,
+    recipientUserId: string,
+    conversationId: string,
+  ): Promise<boolean>;
+  markDmConversationRead(
+    tenantId: string,
+    input: { recipientUserId: string; conversationId: string; readAt: string },
+  ): Promise<number>;
 }
 
 export interface NotificationDeliveryContext {
@@ -388,15 +483,31 @@ export interface NotificationChannelPort {
   deliver(notification: Notification, context: NotificationDeliveryContext): Promise<Result<void, AppError>>;
 }
 
+/** @public */
 export interface RealtimeNotificationEvent {
+  kind: 'notification';
   tenantId: string;
   recipientUserId: string;
   notification: Notification;
 }
 
+/**
+ * Direct messages collapse into a single bell notification per conversation, so
+ * an open conversation needs its own lightweight live signal.
+ */
+/** @public */
+export interface RealtimeDmEvent {
+  kind: 'dm';
+  tenantId: string;
+  recipientUserId: string;
+  conversationId: string;
+}
+
+export type RealtimeEvent = RealtimeNotificationEvent | RealtimeDmEvent;
+
 export interface RealtimeBusPort {
-  publish(event: RealtimeNotificationEvent): void;
-  subscribe(listener: (event: RealtimeNotificationEvent) => void): () => void;
+  publish(event: RealtimeEvent): void;
+  subscribe(listener: (event: RealtimeEvent) => void): () => void;
 }
 
 export interface DiscussionLinkPort {
@@ -406,6 +517,8 @@ export interface DiscussionLinkPort {
     lessonId: string;
   }): string;
   spaceUrl(input: { tenantSlug: string | null; spaceId: string; rootPostId?: string }): string;
+  conversationUrl(input: { tenantSlug: string | null; conversationId: string }): string;
+  eventUrl(input: { tenantSlug: string | null; spaceId: string; eventId: string }): string;
 }
 
 export interface MemberCourseProgressRepository {
@@ -432,6 +545,11 @@ export interface MemberRepository {
     tenantId: string,
     memberId: string,
     displayName: string | null,
+  ): Promise<Member | null>;
+  updateDmOptOut(
+    tenantId: string,
+    memberId: string,
+    dmOptOutAt: string | null,
   ): Promise<Member | null>;
   setBanned(
     tenantId: string,

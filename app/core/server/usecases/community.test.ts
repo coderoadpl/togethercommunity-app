@@ -72,6 +72,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
   ...overrides,
 });
 
@@ -547,6 +548,14 @@ class FakeNotifications implements NotificationRepository {
     return this.rows.filter((item) => item.tenantId === tenantId && item.recipientUserId === recipientUserId && item.readAt === null).length;
   }
 
+  async hasUnreadDmNotification(): Promise<boolean> {
+    return false;
+  }
+
+  async markDmConversationRead(): Promise<number> {
+    return 0;
+  }
+
   private replace(notification: Notification): void {
     const index = this.rows.findIndex((item) => item.id === notification.id);
     if (index >= 0) this.rows[index] = notification;
@@ -600,10 +609,10 @@ const deps = (
   staffUserIds: string[] = [],
 ): CommunityDeps => {
   const members: Member[] = [
-    { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
-    { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
-    { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
-    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+    { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+    { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+    { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
   ];
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
@@ -647,6 +656,8 @@ const deps = (
     links: {
       lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
         `http://${tenantSlug ?? 'app'}.localhost/my/courses/${courseId ?? 'none'}/lessons/${lessonId}`,
+      conversationUrl: ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
+      eventUrl: ({ spaceId, eventId }) => `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
       spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
         `http://${tenantSlug ?? 'app'}.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },

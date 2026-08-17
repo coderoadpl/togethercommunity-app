@@ -7,6 +7,7 @@ import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { PostBody } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
+import { PublicSpaceEventsSection } from './events/PublicSpaceEventsSection.js';
 import { PublicFeedList } from './PublicFeed.js';
 import { anonHomePath } from './shell/member-nav.js';
 
@@ -75,19 +76,22 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   }
 
   const rail = (
-    <SectionCard title={t.community.aboutHeading} data-testid="anon-space-about">
-      <PostBody variant="body2" component="p" color="text.secondary">
-        {space.description ?? t.community.noDescription}
-      </PostBody>
-      <PostBody variant="body2" component="p" color="text.secondary" data-testid="anon-read-only">
-        {t.anon.readOnlyBanner}
-      </PostBody>
-      <Box>
-        <Button component={Link} to="/login" variant="contained" data-testid="anon-join-cta">
-          {t.anon.joinDiscussionCta}
-        </Button>
-      </Box>
-    </SectionCard>
+    <>
+      <SectionCard title={t.community.aboutHeading} data-testid="anon-space-about">
+        <PostBody variant="body2" component="p" color="text.secondary">
+          {space.description ?? t.community.noDescription}
+        </PostBody>
+        <PostBody variant="body2" component="p" color="text.secondary" data-testid="anon-read-only">
+          {t.anon.readOnlyBanner}
+        </PostBody>
+        <Box>
+          <Button component={Link} to="/login" variant="contained" data-testid="anon-join-cta">
+            {t.anon.joinDiscussionCta}
+          </Button>
+        </Box>
+      </SectionCard>
+      <PublicSpaceEventsSection spaceId={spaceId} />
+    </>
   );
 
   return (

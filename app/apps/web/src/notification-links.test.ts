@@ -7,9 +7,10 @@ import { notificationTarget, notificationTitle } from './notification-links.js';
 
 const notification = (input: {
   kind: Notification['kind'];
-  contextKind: 'lesson' | 'space';
+  contextKind: 'lesson' | 'space' | 'dm';
   contextId: string;
   courseId: string | null;
+  eventId?: string | null;
   lessonName?: string;
 }): Notification => ({
   id: 'n1',
@@ -22,6 +23,7 @@ const notification = (input: {
     contextKind: input.contextKind,
     contextId: input.contextId,
     courseId: input.courseId,
+    eventId: input.eventId ?? null,
     lessonName: input.lessonName ?? 'Hamaki w kamperze',
     authorDisplay: 'Ola',
     authorAvatarUrl: null,
@@ -66,6 +68,41 @@ describe('notificationTarget', () => {
     ).toEqual({ kind: 'lesson-thread', courseId: 'c1', lessonId: 'l1', rootPostId: 'root-1' });
   });
 
+  it('routes a direct message to its conversation', () => {
+    expect(
+      notificationTarget(
+        notification({ kind: 'dm-message', contextKind: 'dm', contextId: 'c1', courseId: null }),
+      ),
+    ).toEqual({ kind: 'dm-conversation', conversationId: 'c1' });
+  });
+
+  it('routes a space event to its event page', () => {
+    expect(
+      notificationTarget(
+        notification({
+          kind: 'space-event',
+          contextKind: 'space',
+          contextId: 's1',
+          courseId: null,
+          eventId: 'e1',
+        }),
+      ),
+    ).toEqual({ kind: 'space-event', spaceId: 's1', eventId: 'e1' });
+  });
+
+  it('leaves a space event without an event id unroutable', () => {
+    expect(
+      notificationTarget(
+        notification({
+          kind: 'space-event',
+          contextKind: 'space',
+          contextId: 's1',
+          courseId: null,
+        }),
+      ),
+    ).toEqual({ kind: 'none' });
+  });
+
   it('leaves a legacy lesson notification without a course unroutable', () => {
     expect(
       notificationTarget(
@@ -94,6 +131,37 @@ describe('notificationTitle', () => {
         }),
       ),
     ).toBe(pl.notifications.spacePost({ author: 'Ola', space: 'Ogólna' }));
+  });
+
+  it('names the sender for a direct message', () => {
+    expect(
+      notificationTitle(
+        pl,
+        notification({
+          kind: 'dm-message',
+          contextKind: 'dm',
+          contextId: 'c1',
+          courseId: null,
+          lessonName: 'Ola',
+        }),
+      ),
+    ).toBe(pl.notifications.dmMessage({ author: 'Ola' }));
+  });
+
+  it('names the space for a new event', () => {
+    expect(
+      notificationTitle(
+        pl,
+        notification({
+          kind: 'space-event',
+          contextKind: 'space',
+          contextId: 's1',
+          courseId: null,
+          eventId: 'e1',
+          lessonName: 'Ogólna',
+        }),
+      ),
+    ).toBe(pl.notifications.spaceEvent({ space: 'Ogólna' }));
   });
 
   it('names the lesson for a question and for a reply', () => {

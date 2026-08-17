@@ -61,6 +61,15 @@ const SpaceRow = ({ space }: { space: StaffSpace }) => {
         >
           {t.spacesPanel.manage}
         </Button>
+        <Button
+          size="small"
+          variant="text"
+          component={Link}
+          to={`/panel/spaces/${encodeURIComponent(space.id)}/events`}
+          data-testid={`space-events-${space.id}`}
+        >
+          {t.events.manageEvents}
+        </Button>
         {isArchived ? (
           <Button
             size="small"

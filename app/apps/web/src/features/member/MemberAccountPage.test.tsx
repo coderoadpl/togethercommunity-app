@@ -132,6 +132,40 @@ describe('MemberAccountPage', () => {
     expect(body).toEqual({ displayName: 'Ada Lovelace' });
   });
 
+  it('toggles the direct-message opt-out without dropping the display name', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(true, { displayName: 'Ada', dmOptOut: false }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ ok: true, data: { displayName: 'Ada', dmOptOut: true } });
+      }),
+    );
+    await renderAccount();
+
+    const toggle = await screen.findByRole('switch', { name: pl.messages.optOutLabel });
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+
+    expect(await screen.findByTestId('account-dm-opt-out-saved')).toHaveTextContent(
+      pl.messages.optOutSaved,
+    );
+    expect(body).toEqual({ displayName: 'Ada', dmOptOut: true });
+  });
+
+  it('reflects an active opt-out and hides the privacy card without a member row', async () => {
+    server.use(
+      stubMe(true, { dmOptOut: true }),
+      stubSettings(null),
+      stubBillingOrders(),
+    );
+    await renderAccount();
+
+    expect(await screen.findByRole('switch', { name: pl.messages.optOutLabel })).toBeChecked();
+  });
+
   it('hides the profile card for a staff identity without a member row', async () => {
     server.use(
       stubMe(true, { staffRole: 'owner', memberId: null }),
@@ -142,6 +176,7 @@ describe('MemberAccountPage', () => {
 
     expect(await screen.findByTestId('account-email')).toBeInTheDocument();
     expect(screen.queryByLabelText(pl.account.displayNameLabel)).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: pl.messages.optOutLabel })).not.toBeInTheDocument();
   });
 
   it('hides the manage-payments link when no billing portal URL is set', async () => {

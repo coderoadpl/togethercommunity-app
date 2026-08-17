@@ -41,13 +41,23 @@ export const SpaceEditPage = ({ space }: { space: StaffSpace }) => {
       description={space.slug}
       backTo={<PanelBackLink to="/panel/spaces">{t.spacesPanel.allSpaces}</PanelBackLink>}
       action={
-        <Button
-          component={Link}
-          to={`/community/${encodeURIComponent(space.id)}`}
-          variant="text"
-        >
-          {t.spacesPanel.openFeed}
-        </Button>
+        <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
+          <Button
+            component={Link}
+            to={`/panel/spaces/${encodeURIComponent(space.id)}/events`}
+            variant="text"
+            data-testid="space-edit-events"
+          >
+            {t.events.manageEvents}
+          </Button>
+          <Button
+            component={Link}
+            to={`/community/${encodeURIComponent(space.id)}`}
+            variant="text"
+          >
+            {t.spacesPanel.openFeed}
+          </Button>
+        </Stack>
       }
     >
       {space.archivedAt !== null ? <Alert severity="info" data-testid="space-archived-note">{t.spacesPanel.archivedNote}</Alert> : null}

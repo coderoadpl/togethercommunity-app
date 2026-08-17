@@ -102,6 +102,7 @@ const harness = (options: {
     },
     updateEmail: async () => null,
     updateDisplayName: async () => null,
+    updateDmOptOut: async () => null,
   setBanned: async () => null,
   };
 
@@ -206,6 +207,7 @@ const seedMember = async (deps: M2mEnrollDeps): Promise<void> => {
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
   });
 };
 

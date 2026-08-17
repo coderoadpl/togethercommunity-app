@@ -4,10 +4,12 @@ import {
   Box,
   Button,
   FormControl,
+  FormControlLabel,
   FormLabel,
   OutlinedInput,
   Snackbar,
   Stack,
+  Switch,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -58,6 +60,12 @@ export const MemberAccountPage = () => {
     ...actions.updateMyProfile,
     onSuccess: async () => {
       setDisplayNameDraft(null);
+      await queryClient.invalidateQueries(actions.meInvalidates());
+    },
+  });
+  const updatePrivacy = useMutation({
+    ...actions.updateMyProfile,
+    onSuccess: async () => {
       await queryClient.invalidateQueries(actions.meInvalidates());
     },
   });
@@ -123,6 +131,7 @@ export const MemberAccountPage = () => {
 
   const email = me.data.email;
   const savedDisplayName = me.data.tenant?.displayName ?? '';
+  const dmOptOut = me.data.tenant?.dmOptOut ?? false;
   const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
@@ -309,6 +318,29 @@ export const MemberAccountPage = () => {
             </Box>
             {updateProfile.isError ? (
               <Alert severity="error">{localizeError(updateProfile.error, t)}</Alert>
+            ) : null}
+          </SectionCard>
+        ) : null}
+
+        {me.data.tenant?.memberId ? (
+          <SectionCard title={t.messages.privacyHeading} description={t.messages.optOutHint}>
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={dmOptOut}
+                  disabled={updatePrivacy.isPending}
+                  onChange={(event) =>
+                    updatePrivacy.mutate({
+                      displayName: savedDisplayName.trim() === '' ? null : savedDisplayName.trim(),
+                      dmOptOut: event.target.checked,
+                    })
+                  }
+                />
+              )}
+              label={t.messages.optOutLabel}
+            />
+            {updatePrivacy.isError ? (
+              <Alert severity="error">{localizeError(updatePrivacy.error, t)}</Alert>
             ) : null}
           </SectionCard>
         ) : null}
@@ -518,6 +550,16 @@ export const MemberAccountPage = () => {
         >
           <Alert severity="success" data-testid="account-display-name-saved">
             {t.account.displayNameSaved}
+          </Alert>
+        </Snackbar>
+
+        <Snackbar
+          open={updatePrivacy.isSuccess}
+          autoHideDuration={4000}
+          onClose={() => updatePrivacy.reset()}
+        >
+          <Alert severity="success" data-testid="account-dm-opt-out-saved">
+            {t.messages.optOutSaved}
           </Alert>
         </Snackbar>
       </Stack>

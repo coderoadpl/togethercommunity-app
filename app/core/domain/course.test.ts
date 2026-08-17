@@ -57,6 +57,16 @@ describe('lesson video embed URLs', () => {
       'https://player.vimeo.com/video/76979871?h=5e2d1c1e6d',
       'https://player.vimeo.com/video/76979871?h=5e2d1c1e6d',
     ],
+    [
+      'Bunny embed',
+      'https://iframe.mediadelivery.net/embed/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d',
+      'https://iframe.mediadelivery.net/embed/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d',
+    ],
+    [
+      'Bunny embed with signed playback parameters',
+      'https://iframe.mediadelivery.net/embed/12345/6A7B8C9D-1E2F-4A5B-8C9D-0E1F2A3B4C5D?token=abc123&expires=1799999999&autoplay=false',
+      'https://iframe.mediadelivery.net/embed/12345/6A7B8C9D-1E2F-4A5B-8C9D-0E1F2A3B4C5D?token=abc123&expires=1799999999&autoplay=false',
+    ],
   ])('normalizes a %s URL', (_name, input, expected) => {
     expect(lessonBlockSchema.parse({ type: 'embed', embedUrl: input })).toEqual({
       type: 'embed',
@@ -70,6 +80,9 @@ describe('lesson video embed URLs', () => {
     ['https://www.youtube.com/embed/videoseries?list=PLabc', VIDEO_EMBED_URL_MESSAGE.youtube],
     ['https://vimeo.com/76979871/not-a-hash', VIDEO_EMBED_URL_MESSAGE.vimeo],
     ['https://player.vimeo.com/video/not-a-number', VIDEO_EMBED_URL_MESSAGE.vimeo],
+    ['https://iframe.mediadelivery.net/embed/12345/not-a-guid', VIDEO_EMBED_URL_MESSAGE.bunny],
+    ['https://iframe.mediadelivery.net/embed/library/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d', VIDEO_EMBED_URL_MESSAGE.bunny],
+    ['https://iframe.mediadelivery.net/play/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d', VIDEO_EMBED_URL_MESSAGE.bunny],
     ['javascript:alert(1)', VIDEO_EMBED_URL_MESSAGE.url],
   ])('rejects a malformed provider URL: %s', (embedUrl, message) => {
     const parsed = lessonBlockSchema.safeParse({ type: 'embed', embedUrl });

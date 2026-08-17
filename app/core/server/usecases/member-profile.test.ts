@@ -21,6 +21,7 @@ const member: Member = {
   bannedAt: null,
   bannedReason: null,
   bannedByUserId: null,
+  dmOptOutAt: null,
 };
 
 const context = (overrides: Partial<Ctx['identity']> = {}): Ctx => ({
@@ -37,25 +38,34 @@ const context = (overrides: Partial<Ctx['identity']> = {}): Ctx => ({
     image: null,
     memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
     ...overrides,
   },
 });
 
 const harness = (stored: Member | null = member) => {
   const calls: Array<{ tenantId: string; memberId: string; displayName: string | null }> = [];
+  const optOutCalls: Array<string | null> = [];
+  let current = stored;
   const members: MemberRepository = {
-    findById: async () => stored,
+    findById: async () => current,
     findByEmail: async () => null,
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
     updateDisplayName: async (tenantId, memberId, displayName) => {
       calls.push({ tenantId, memberId, displayName });
-      return stored === null ? null : { ...stored, displayName };
+      current = current === null ? null : { ...current, displayName };
+      return current;
+    },
+    updateDmOptOut: async (_tenantId, _memberId, dmOptOutAt) => {
+      optOutCalls.push(dmOptOutAt);
+      current = current === null ? null : { ...current, dmOptOutAt };
+      return current;
     },
     setBanned: async () => null,
   };
-  return { calls, deps: { members } };
+  return { calls, optOutCalls, deps: { members, clock: { nowIso: () => now } } };
 };
 
 describe('updateMyProfile', () => {
@@ -64,7 +74,7 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { displayName: 'Ada L.' }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: 'Ada L.' },
+      value: { displayName: 'Ada L.', dmOptOut: false },
     });
     expect(calls).toEqual([
       { tenantId: 'tenant-1', memberId: 'member-1', displayName: 'Ada L.' },
@@ -76,9 +86,21 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { displayName: null }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: null },
+      value: { displayName: null, dmOptOut: false },
     });
     expect(calls[0]?.displayName).toBeNull();
+  });
+
+  it('records and clears the direct-message opt-out beside the display name', async () => {
+    const { optOutCalls, deps } = harness();
+
+    await expect(
+      updateMyProfile(context(), { displayName: 'Ada L.', dmOptOut: true }, deps),
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: true } });
+    await expect(
+      updateMyProfile(context(), { displayName: 'Ada L.', dmOptOut: false }, deps),
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false } });
+    expect(optOutCalls).toEqual([now, null]);
   });
 
   it('refuses an identity without a tenant', async () => {

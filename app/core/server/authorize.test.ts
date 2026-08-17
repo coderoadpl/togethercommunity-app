@@ -17,6 +17,7 @@ const identity = (tenantId: string | null): Identity => ({
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 describe('authorize', () => {

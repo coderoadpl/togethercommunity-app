@@ -85,8 +85,19 @@ import {
   SCHEDULER_OPERATOR_SECRET_HEADER,
   tenantSchedulerRunOutputSchema,
   tenantSchedulerRunsOutputSchema,
+  eventDeleteOutputSchema,
+  eventIcsOutputSchema,
+  eventOutputSchema,
+  eventsListOutputSchema,
+  memberUpcomingEventsOutputSchema,
   meOutputSchema,
   meProfileUpdateOutputSchema,
+  messagesListOutputSchema,
+  messagesReadOutputSchema,
+  messagesSendOutputSchema,
+  messagesStartOutputSchema,
+  messagesThreadOutputSchema,
+  messagesUnreadOutputSchema,
   memberBillingOrdersOutputSchema,
   memberBanOutputSchema,
   memberDataExportOutputSchema,
@@ -209,7 +220,19 @@ import {
   type EmailSendsExportQueryInput,
   type EmailSendsQueryInput,
   type SchedulerRunsQueryInput,
+  type EventCreateInput,
+  type EventRefInput,
+  type EventRsvpInput,
+  type EventUpdateInput,
+  type EventsBySpaceInput,
+  type MemberUpcomingEventsInput,
+  type PublicSpaceEventInput,
   type MeProfileUpdateInput,
+  type MessagesListInput,
+  type MessagesReadInput,
+  type MessagesSendInput,
+  type MessagesStartInput,
+  type MessagesThreadInput,
   type MemberHomeFeedGetInput,
   type MemberRemoveInput,
   type MemberBanInput,
@@ -641,6 +664,36 @@ export const createApiClient = (options: ApiClientOptions) => ({
         .replace(':spaceId', encodeURIComponent(input.spaceId))
         .replace(':postId', encodeURIComponent(input.postId)),
       discussionOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicSpaceEvents: (input: EventsBySpaceInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.scope !== undefined) params.set('scope', input.scope);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const path = API_ROUTES.publicSpaceEvents.path.replace(
+      ':spaceId',
+      encodeURIComponent(input.spaceId),
+    );
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.publicSpaceEvents.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      eventsListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  publicSpaceEvent: (input: PublicSpaceEventInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicSpaceEvent.method,
+      API_ROUTES.publicSpaceEvent.path
+        .replace(':spaceId', encodeURIComponent(input.spaceId))
+        .replace(':eventId', encodeURIComponent(input.eventId)),
+      eventOutputSchema,
       undefined,
       signal,
     ),
@@ -1622,6 +1675,94 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listSpaceEvents: (input: EventsBySpaceInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.scope !== undefined) params.set('scope', input.scope);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const path = API_ROUTES.eventsBySpace.path.replace(
+      ':spaceId',
+      encodeURIComponent(input.spaceId),
+    );
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.eventsBySpace.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      eventsListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  listUpcomingEvents: (input: MemberUpcomingEventsInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.memberUpcomingEvents.method,
+      suffix.length > 0
+        ? `${API_ROUTES.memberUpcomingEvents.path}?${suffix}`
+        : API_ROUTES.memberUpcomingEvents.path,
+      memberUpcomingEventsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  getEvent: (input: EventRefInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.eventGet.method,
+      API_ROUTES.eventGet.path.replace(':eventId', encodeURIComponent(input.eventId)),
+      eventOutputSchema,
+      undefined,
+      signal,
+    ),
+  getEventIcs: (input: EventRefInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.eventIcs.method,
+      API_ROUTES.eventIcs.path.replace(':eventId', encodeURIComponent(input.eventId)),
+      eventIcsOutputSchema,
+      undefined,
+      signal,
+    ),
+  createEvent: (input: EventCreateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.eventsCreate.method,
+      API_ROUTES.eventsCreate.path,
+      eventOutputSchema,
+      input,
+      signal,
+    ),
+  updateEvent: (input: EventUpdateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.eventsUpdate.method,
+      API_ROUTES.eventsUpdate.path,
+      eventOutputSchema,
+      input,
+      signal,
+    ),
+  deleteEvent: (input: EventRefInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.eventsDelete.method,
+      API_ROUTES.eventsDelete.path.replace(':eventId', encodeURIComponent(input.eventId)),
+      eventDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  rsvpEvent: (input: EventRsvpInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.eventRsvp.method,
+      API_ROUTES.eventRsvp.path,
+      eventOutputSchema,
+      input,
+      signal,
+    ),
   listNotifications: (input: NotificationsListInput = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
@@ -1660,6 +1801,74 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.notificationsUnread.method,
       API_ROUTES.notificationsUnread.path,
       notificationsUnreadOutputSchema,
+      undefined,
+      signal,
+    ),
+  listConversations: (input: MessagesListInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.messagesList.method,
+      suffix.length > 0 ? `${API_ROUTES.messagesList.path}?${suffix}` : API_ROUTES.messagesList.path,
+      messagesListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  getConversation: (input: MessagesThreadInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const path = API_ROUTES.messagesThread.path.replace(
+      ':conversationId',
+      encodeURIComponent(input.conversationId),
+    );
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.messagesThread.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      messagesThreadOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  startConversation: (input: MessagesStartInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesStart.method,
+      API_ROUTES.messagesStart.path,
+      messagesStartOutputSchema,
+      input,
+      signal,
+    ),
+  sendMessage: (input: MessagesSendInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesSend.method,
+      API_ROUTES.messagesSend.path,
+      messagesSendOutputSchema,
+      input,
+      signal,
+    ),
+  markConversationRead: (input: MessagesReadInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesRead.method,
+      API_ROUTES.messagesRead.path,
+      messagesReadOutputSchema,
+      input,
+      signal,
+    ),
+  unreadMessageCount: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesUnread.method,
+      API_ROUTES.messagesUnread.path,
+      messagesUnreadOutputSchema,
       undefined,
       signal,
     ),

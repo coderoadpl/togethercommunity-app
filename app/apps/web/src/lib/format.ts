@@ -18,6 +18,9 @@ export const formatOfferPrice = (
 export const formatDate = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium' }).format(new Date(value));
 
+export const formatTime = (value: string, language: string): string =>
+  new Intl.DateTimeFormat(localeFor(language), { timeStyle: 'short' }).format(new Date(value));
+
 export const formatDateTime = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 

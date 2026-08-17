@@ -1,31 +1,39 @@
 import {
   err,
+  listSpaceEventsInputSchema,
   listSpaceFeedInputSchema,
   MAX_PINNED_POSTS_PER_SPACE,
   notFound,
   ok,
+  publicSpaceEventRefSchema,
   publicSpaceThreadInputSchema,
   renderPost,
   toPublicPost,
+  toPublicSpaceEvent,
   validation,
   type AppError,
   type CourseLesson,
   type CourseStructureWithAccess,
   type Discussion,
   type PublicNavigation,
+  type PublicSpaceEvent,
   type Result,
   type Space,
+  type SpaceEvent,
   type SpaceFeed,
   type Tenant,
 } from '#core/domain/index.js';
 
 import type {
+  Clock,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
   PostReactionRepository,
   PostRepository,
   ProductRepository,
+  SpaceEventRepository,
+  SpaceEventRsvpRepository,
   SpaceRepository,
   TenantRepository,
 } from '../ports.js';
@@ -58,6 +66,13 @@ export interface PublicSpaceDeps {
     'findById' | 'listThreadsForContext' | 'listPinnedForContext' | 'listReplies'
   >;
   reactions: Pick<PostReactionRepository, 'summarize'>;
+}
+
+export interface PublicSpaceEventDeps {
+  spaces: Pick<SpaceRepository, 'findById'>;
+  events: Pick<SpaceEventRepository, 'findById' | 'listForSpace'>;
+  eventRsvps: Pick<SpaceEventRsvpRepository, 'countsForEvents'>;
+  clock: Clock;
 }
 
 /** No account is attached to an anonymous read, so no post is ever own or reacted to. */
@@ -209,6 +224,66 @@ export const getPublicSpaceFeed = async (
     nextCursor: listed.nextCursor,
     isFollowing: false,
   });
+};
+
+const projectPublicEvents = async (
+  tenantId: string,
+  events: readonly SpaceEvent[],
+  deps: PublicSpaceEventDeps,
+): Promise<PublicSpaceEvent[]> => {
+  if (events.length === 0) return [];
+  const counts = await deps.eventRsvps.countsForEvents(
+    tenantId,
+    events.map((event) => event.id),
+  );
+  const now = deps.clock.nowIso();
+  return events.map((event) =>
+    toPublicSpaceEvent(event, {
+      goingCount: counts.get(event.id)?.going ?? 0,
+      notGoingCount: counts.get(event.id)?.notGoing ?? 0,
+      viewerRsvp: null,
+      now,
+    }),
+  );
+};
+
+export const getPublicSpaceEvents = async (
+  tenant: Tenant,
+  input: unknown,
+  deps: PublicSpaceEventDeps,
+): Promise<Result<{ events: PublicSpaceEvent[]; nextCursor: string | null }, AppError>> => {
+  const parsed = listSpaceEventsInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid events query', parsed.error.flatten()));
+  const space = await publiclyReadableSpace(tenant.id, parsed.data.spaceId, deps);
+  if (!space.ok) return space;
+  const listed = await deps.events.listForSpace(tenant.id, {
+    spaceId: space.value.id,
+    scope: parsed.data.scope,
+    now: deps.clock.nowIso(),
+    limit: parsed.data.limit,
+    ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
+  });
+  return ok({
+    events: await projectPublicEvents(tenant.id, listed.events, deps),
+    nextCursor: listed.nextCursor,
+  });
+};
+
+export const getPublicSpaceEvent = async (
+  tenant: Tenant,
+  input: unknown,
+  deps: PublicSpaceEventDeps,
+): Promise<Result<PublicSpaceEvent, AppError>> => {
+  const parsed = publicSpaceEventRefSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid event query', parsed.error.flatten()));
+  const space = await publiclyReadableSpace(tenant.id, parsed.data.spaceId, deps);
+  if (!space.ok) return space;
+  const event = await deps.events.findById(tenant.id, parsed.data.eventId);
+  if (event === null || event.deletedAt !== null || event.spaceId !== space.value.id) {
+    return err(notFound('Event not found'));
+  }
+  const [projected] = await projectPublicEvents(tenant.id, [event], deps);
+  return projected === undefined ? err(notFound('Event not found')) : ok(projected);
 };
 
 export const getPublicSpaceThread = async (

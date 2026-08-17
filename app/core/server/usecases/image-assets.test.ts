@@ -40,6 +40,7 @@ const identity = (staffRole: Identity['staffRole'], memberId: string | null): Id
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const ownerCtx: Ctx = { identity: identity('owner', null) };

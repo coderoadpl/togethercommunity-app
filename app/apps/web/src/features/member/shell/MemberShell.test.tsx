@@ -234,6 +234,26 @@ describe('MemberShell', () => {
     expect(within(sidebar).getByText(pl.shell.spacesSection)).toBeInTheDocument();
   });
 
+  it('marks the messages row when direct messages are waiting', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.get('*/api/messages/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 3 } })),
+    );
+
+    await renderShell('/my');
+
+    const messages = await screen.findByTestId('sidebar-messages');
+    expect(messages).toHaveAttribute('href', '/messages');
+    await waitFor(() =>
+      expect(messages).toHaveAttribute('aria-label', pl.messages.unreadAria({ count: 3 })));
+    expect(within(messages).getByTestId('sidebar-messages-unread')).toBeInTheDocument();
+  });
+
   it('marks a space row with an unread dot and a labelled row', async () => {
     stubViewport(true);
     server.use(

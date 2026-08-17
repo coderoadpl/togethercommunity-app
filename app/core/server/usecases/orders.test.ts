@@ -18,6 +18,7 @@ const identity = (staffRole: 'owner' | 'admin' | null, tenantId: string | null =
 image: null,
 memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 });
 
 const orderItem = (id: string, over: Partial<OrderListItem> = {}): OrderListItem => ({

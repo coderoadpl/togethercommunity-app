@@ -17,4 +17,5 @@ export interface Identity {
   memberId: string | null;
   memberDisplayName: string | null;
   memberBannedAt: string | null;
+  memberDmOptOutAt: string | null;
 }

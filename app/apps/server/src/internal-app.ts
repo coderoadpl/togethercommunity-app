@@ -48,6 +48,17 @@ import {
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
   meProfileUpdateInputSchema,
+  eventCreateInputSchema,
+  eventRefInputSchema,
+  eventRsvpInputSchema,
+  eventUpdateInputSchema,
+  eventsBySpaceInputSchema,
+  memberUpcomingEventsInputSchema,
+  messagesListInputSchema,
+  messagesReadInputSchema,
+  messagesSendInputSchema,
+  messagesStartInputSchema,
+  messagesThreadInputSchema,
   memberBanInputSchema,
   memberHomeFeedGetInputSchema,
   memberProgressResetInputSchema,
@@ -255,11 +266,26 @@ import {
   listImportAuditForApiKey,
   listTenantDocuments,
   m2mEnroll,
+  createEvent,
+  deleteEvent,
+  dmUnreadCount,
+  getDmConversation,
+  getEvent,
+  getEventIcs,
+  listDmConversations,
+  listDmMessages,
+  listSpaceEvents,
+  listUpcomingEvents,
+  rsvpEvent,
+  updateEvent,
   markAllNotificationsRead,
+  markDmConversationRead,
   markLessonCompleted,
   markNotificationRead,
   markSpaceSeen,
   muteThread,
+  sendDmMessage,
+  startDmConversation,
   pauseCampaign,
   pollSesOnboarding,
   previewMarketingAudience,
@@ -471,6 +497,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   memberId: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): Identity => ({
@@ -486,6 +513,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberId: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const checkoutConsentEvidence = (headers: Headers) => {
@@ -1370,6 +1398,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
               memberId: identity.memberId,
               displayName: identity.memberDisplayName,
               banned: identity.memberBannedAt !== null,
+              dmOptOut: identity.memberDmOptOutAt !== null,
             }
             : null,
       }),
@@ -1384,7 +1413,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await updateMyProfile(
       { identity: c.get('identity') },
       parsed.data,
-      { members: deps.members },
+      { members: deps.members, clock: deps.clock },
     ));
   });
 
@@ -2701,6 +2730,72 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await markSpaceSeen({ identity: c.get('identity') }, parsed.data, deps));
   });
 
+  app.get(API_PATHS.eventsBySpace, async (c) => {
+    const parsed = eventsBySpaceInputSchema.safeParse({
+      spaceId: c.req.param('spaceId'),
+      ...(c.req.query('scope') === undefined ? {} : { scope: c.req.query('scope') }),
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid events query', parsed.error.flatten())));
+    return respond(await listSpaceEvents({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.memberUpcomingEvents, async (c) => {
+    const parsed = memberUpcomingEventsInputSchema.safeParse(
+      c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) },
+    );
+    if (!parsed.success) {
+      return respond(err(validation('Invalid upcoming events query', parsed.error.flatten())));
+    }
+    return respond(await listUpcomingEvents({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.eventsCreate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = eventCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid event payload', parsed.error.flatten())));
+    const result = await createEvent({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ event: result.value }) : result);
+  });
+
+  app.post(API_PATHS.eventsUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = eventUpdateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid event update payload', parsed.error.flatten())));
+    }
+    const result = await updateEvent({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ event: result.value }) : result);
+  });
+
+  app.post(API_PATHS.eventRsvp, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = eventRsvpInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid rsvp payload', parsed.error.flatten())));
+    const result = await rsvpEvent({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ event: result.value }) : result);
+  });
+
+  app.get(API_PATHS.eventIcs, async (c) => {
+    const parsed = eventRefInputSchema.safeParse({ eventId: c.req.param('eventId') });
+    if (!parsed.success) return respond(err(validation('Invalid event id', parsed.error.flatten())));
+    return respond(await getEventIcs({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.eventGet, async (c) => {
+    const parsed = eventRefInputSchema.safeParse({ eventId: c.req.param('eventId') });
+    if (!parsed.success) return respond(err(validation('Invalid event id', parsed.error.flatten())));
+    const result = await getEvent({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ event: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.eventGet, async (c) => {
+    const parsed = eventRefInputSchema.safeParse({ eventId: c.req.param('eventId') });
+    if (!parsed.success) return respond(err(validation('Invalid event id', parsed.error.flatten())));
+    return respond(await deleteEvent({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
   app.get(API_PATHS.notifications, async (c) => {
     const parsed = notificationsListInputSchema.safeParse({
       cursor: c.req.query('cursor'),
@@ -2725,6 +2820,64 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   app.get(API_PATHS.notificationsUnread, async (c) =>
     respond(await unreadNotificationCount({ identity: c.get('identity') }, deps)),
   );
+
+  app.get(API_PATHS.messagesList, async (c) => {
+    const parsed = messagesListInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid conversations query', parsed.error.flatten())));
+    return respond(await listDmConversations({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.messagesUnread, async (c) =>
+    respond(await dmUnreadCount({ identity: c.get('identity') }, deps)),
+  );
+
+  app.post(API_PATHS.messagesStart, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = messagesStartInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
+    const result = await startDmConversation({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ conversation: result.value }) : result);
+  });
+
+  app.post(API_PATHS.messagesSend, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = messagesSendInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid message payload', parsed.error.flatten())));
+    const result = await sendDmMessage({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ message: result.value }) : result);
+  });
+
+  app.post(API_PATHS.messagesRead, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = messagesReadInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
+    return respond(await markDmConversationRead({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.messagesThread, async (c) => {
+    const parsed = messagesThreadInputSchema.safeParse({
+      conversationId: c.req.param('conversationId'),
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid conversation query', parsed.error.flatten())));
+    const ctx = { identity: c.get('identity') };
+    const conversation = await getDmConversation(ctx, parsed.data, deps);
+    if (!conversation.ok) return respond(conversation);
+    const messages = await listDmMessages(ctx, parsed.data, deps);
+    return respond(
+      messages.ok
+        ? ok({
+            conversation: conversation.value,
+            messages: messages.value.messages,
+            nextCursor: messages.value.nextCursor,
+          })
+        : messages,
+    );
+  });
 
   app.get(API_PATHS.notificationsStream, (c) => {
     const identity = c.get('identity');

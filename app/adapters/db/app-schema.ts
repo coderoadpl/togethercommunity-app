@@ -227,6 +227,7 @@ export const members = pgTable(
     bannedAt: text('banned_at'),
     bannedReason: text('banned_reason'),
     bannedByUserId: text('banned_by_user_id'),
+    dmOptOutAt: text('dm_opt_out_at'),
   },
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
@@ -1358,6 +1359,59 @@ export const spaceSeenMarks = pgTable(
   ],
 );
 
+export const spaceEvents = pgTable(
+  'space_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    spaceId: text('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    startsAt: text('starts_at').notNull(),
+    endsAt: text('ends_at').notNull(),
+    location: text('location'),
+    url: text('url'),
+    liveEmbedUrl: text('live_embed_url'),
+    replayUrl: text('replay_url'),
+    discussionRootPostId: text('discussion_root_post_id'),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at'),
+    deletedAt: text('deleted_at'),
+  },
+  (table) => [
+    index('space_events_tenant_space_starts_idx').on(table.tenantId, table.spaceId, table.startsAt),
+    index('space_events_tenant_starts_idx').on(table.tenantId, table.startsAt),
+  ],
+);
+
+export const spaceEventRsvps = pgTable(
+  'space_event_rsvps',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => spaceEvents.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    status: text('status', { enum: ['going', 'not-going'] }).notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('space_event_rsvps_tenant_event_idx').on(table.tenantId, table.eventId),
+    uniqueIndex('space_event_rsvps_tenant_event_user_uidx').on(
+      table.tenantId,
+      table.eventId,
+      table.userId,
+    ),
+  ],
+);
+
 export const threadSubscriptions = pgTable(
   'thread_subscriptions',
   {
@@ -1387,7 +1441,9 @@ export const notifications = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
-    kind: text('kind', { enum: ['thread-reply', 'space-post', 'lesson-question'] }).notNull(),
+    kind: text('kind', {
+      enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'space-event'],
+    }).notNull(),
     payload: jsonb('payload').notNull(),
     readAt: text('read_at'),
     createdAt: text('created_at').notNull(),
@@ -1398,6 +1454,97 @@ export const notifications = pgTable(
       table.recipientUserId,
       table.readAt,
       table.createdAt.desc(),
+    ),
+  ],
+);
+
+export const dmConversations = pgTable(
+  'dm_conversations',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    participantLowUserId: text('participant_low_user_id').notNull(),
+    participantHighUserId: text('participant_high_user_id').notNull(),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    lastMessageId: text('last_message_id'),
+    lastMessageAt: text('last_message_at').notNull(),
+    lastMessageSnippet: text('last_message_snippet').notNull(),
+    lastMessageSenderUserId: text('last_message_sender_user_id').notNull(),
+  },
+  (table) => [
+    uniqueIndex('dm_conversations_tenant_pair_uidx').on(
+      table.tenantId,
+      table.participantLowUserId,
+      table.participantHighUserId,
+    ),
+    index('dm_conversations_tenant_last_message_idx').on(
+      table.tenantId,
+      table.lastMessageAt.desc(),
+    ),
+    index('dm_conversations_tenant_participant_low_idx').on(
+      table.tenantId,
+      table.participantLowUserId,
+    ),
+    index('dm_conversations_tenant_participant_high_idx').on(
+      table.tenantId,
+      table.participantHighUserId,
+    ),
+    index('dm_conversations_tenant_creator_created_idx').on(
+      table.tenantId,
+      table.createdByUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const dmMessages = pgTable(
+  'dm_messages',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => dmConversations.id, { onDelete: 'cascade' }),
+    senderUserId: text('sender_user_id').notNull(),
+    body: text('body').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('dm_messages_tenant_conversation_created_idx').on(
+      table.tenantId,
+      table.conversationId,
+      table.createdAt,
+    ),
+    index('dm_messages_tenant_sender_created_idx').on(
+      table.tenantId,
+      table.senderUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const dmConversationStates = pgTable(
+  'dm_conversation_states',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => dmConversations.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    lastReadAt: text('last_read_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('dm_conversation_states_tenant_conversation_user_uidx').on(
+      table.tenantId,
+      table.conversationId,
+      table.userId,
     ),
   ],
 );

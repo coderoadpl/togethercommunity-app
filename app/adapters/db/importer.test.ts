@@ -622,6 +622,7 @@ describe('importer', () => {
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
     });
     const restoredRows = await db
       .select()

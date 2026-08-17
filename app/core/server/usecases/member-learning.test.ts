@@ -42,6 +42,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
   ...over,
 });
 
@@ -65,6 +66,7 @@ const member = (id: string): Member => ({
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
 });
 
 const lesson = (id: string): CourseLesson => ({
@@ -211,6 +213,7 @@ const deps = (input: {
     create: async () => undefined,
     updateEmail: async () => null,
     updateDisplayName: async () => null,
+    updateDmOptOut: async () => null,
   setBanned: async () => null,
   };
 

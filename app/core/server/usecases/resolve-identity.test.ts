@@ -28,6 +28,7 @@ const member: Member = {
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
 };
 
 const fakeTenantAccess = (memberships: Membership[], members: Member[] = []): TenantAccessReader => ({
@@ -93,6 +94,7 @@ const deps = (
       return refreshed;
     },
     updateDisplayName: async () => null,
+    updateDmOptOut: async () => null,
     setBanned: async () => null,
     delete: async () => false,
   },

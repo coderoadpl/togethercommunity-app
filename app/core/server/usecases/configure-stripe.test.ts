@@ -24,6 +24,7 @@ const identity = (staffRole: Identity['staffRole']): Identity => ({
   image: null,
   memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const payment = (

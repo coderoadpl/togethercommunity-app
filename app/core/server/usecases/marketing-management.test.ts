@@ -39,6 +39,7 @@ const ctx: Ctx = { identity: {
 image: null,
 memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 } satisfies Identity };
 const clock = { nowIso: () => NOW };
 const sequence = () => {

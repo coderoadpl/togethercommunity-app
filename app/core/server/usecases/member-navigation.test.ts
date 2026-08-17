@@ -21,6 +21,7 @@ import type {
   MemberCourseProgressRepository,
   PostRepository,
   ProductGrantRepository,
+  ProductRepository,
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscription,
@@ -197,6 +198,7 @@ const allSpaces = [openSpace, entitledSpace, lockedSpace, archivedSpace];
 const clock: Clock = { nowIso: () => NOW };
 
 const deps = (input: {
+  spaces?: Space[];
   products?: Product[];
   grants?: ProductGrant[];
   progress?: MemberCourseProgress[];
@@ -204,6 +206,7 @@ const deps = (input: {
   latestRootPostAt?: Record<string, string>;
   seenMarks?: Array<{ spaceId: string; seenAt: string }>;
 }): MemberNavigationDeps => {
+  const spaces = input.spaces ?? allSpaces;
   const products = input.products ?? [];
   const grants = input.grants ?? [];
   const progress = input.progress ?? [];
@@ -213,7 +216,7 @@ const deps = (input: {
 
   const spacesRepo: SpaceRepository = {
     list: async (tenantId, options) =>
-      allSpaces.filter(
+      spaces.filter(
         (row) =>
           row.tenantId === tenantId && (options?.includeArchived === true || row.archivedAt === null),
       ),
@@ -290,6 +293,17 @@ const deps = (input: {
     },
   };
 
+  const productsRepo: ProductRepository = {
+    listByTenant: async (tenantId) => products.filter((row) => row.tenantId === tenantId),
+    listPublishedByTenant: async (tenantId) =>
+      products.filter((row) => row.tenantId === tenantId && row.published),
+    findById: async (_t, id) => products.find((row) => row.id === id) ?? null,
+    create: async () => 'created',
+    updateAccessItems: async () => null,
+    setPublished: async () => undefined,
+    bumpContentVersion: async () => undefined,
+  };
+
   const coursesRepo: CourseRepository = {
     list: async () => allCourses,
     findById: async (_t, id) => allCourses.find((row) => row.id === id) ?? null,
@@ -340,6 +354,7 @@ const deps = (input: {
     spaceSeen: spaceSeenRepo,
     posts: postsRepo,
     grants: grantsRepo,
+    products: productsRepo,
     courses: coursesRepo,
     modules: modulesRepo,
     lessons: lessonsRepo,
@@ -352,6 +367,39 @@ const entitledToModuleM1 = {
   products: [pModuleM1],
   grants: [grant('g1', 'p-module-m1')],
 };
+
+const pBothCourses = product('p-both', [
+  { level: 'course', courseId: 'c1' },
+  { level: 'lessons', courseId: 'c2', lessonIds: ['l5'] },
+]);
+const pForgottenCourse = product('p-forgotten', [{ level: 'course', courseId: 'c-removed' }]);
+
+const secondModuleSpace = space({
+  id: 's-module-2',
+  slug: 's-module-2',
+  name: 'Second module space',
+  visibility: 'product',
+  productIds: ['p-module-m1'],
+  position: 4,
+});
+
+const sharedSpace = space({
+  id: 's-shared',
+  slug: 's-shared',
+  name: 'Shared space',
+  visibility: 'product',
+  productIds: ['p-both'],
+  position: 5,
+});
+
+const forgottenCourseSpace = space({
+  id: 's-forgotten',
+  slug: 's-forgotten',
+  name: 'Forgotten course space',
+  visibility: 'product',
+  productIds: ['p-forgotten'],
+  position: 6,
+});
 
 describe('getMemberNavigation', () => {
   it('requires a tenant', async () => {
@@ -485,6 +533,68 @@ describe('getMemberNavigation', () => {
       deps({ ...entitledToModuleM1, latestRootPostAt: { 's-locked': NOW } }),
     );
     expect(result.ok && result.value.lockedSpaces[0]).not.toHaveProperty('unread');
+  });
+
+  it('associates a product-gated space with the course its product grants', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({ spaces: [openSpace, entitledSpace], ...entitledToModuleM1 }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        spaces: [
+          { id: 's-open', courseIds: [] },
+          { id: 's-module', courseIds: ['c1'] },
+        ],
+      },
+    });
+  });
+
+  it('associates every space gated by the same product with that course', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({ spaces: [entitledSpace, secondModuleSpace], ...entitledToModuleM1 }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        spaces: [
+          { id: 's-module', courseIds: ['c1'] },
+          { id: 's-module-2', courseIds: ['c1'] },
+        ],
+      },
+    });
+  });
+
+  it('carries every course a shared gating product grants', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({
+        spaces: [sharedSpace],
+        products: [pBothCourses],
+        grants: [grant('g1', 'p-both')],
+      }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: { spaces: [{ id: 's-shared', courseIds: ['c1', 'c2'] }] },
+    });
+  });
+
+  it('leaves a space unassociated when its products grant no course of this tenant', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({
+        spaces: [forgottenCourseSpace],
+        products: [pForgottenCourse],
+        grants: [grant('g1', 'p-forgotten')],
+      }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: { spaces: [{ id: 's-forgotten', courseIds: [] }] },
+    });
   });
 
   it('gives staff every space and course without any entitlement', async () => {

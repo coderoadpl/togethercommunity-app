@@ -5,7 +5,7 @@ import { Link } from '@tanstack/react-router';
 import { StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { UnreadDot } from '../../../theme.js';
-import { NavRow, UnreadRowText } from './shell-chrome.js';
+import { NavRow, SubNavRow, UnreadRowText } from './shell-chrome.js';
 
 export const LinkRow = ({
   to,
@@ -38,6 +38,36 @@ export const LinkRow = ({
     />
     {unread === undefined ? null : <UnreadDot aria-hidden data-testid={`${testId}-unread`} />}
   </NavRow>
+);
+
+export const SubLinkRow = ({
+  to,
+  label,
+  active,
+  testId,
+  unread,
+}: {
+  to: string;
+  label: string;
+  active: boolean;
+  testId: string;
+  unread?: { label: string };
+}) => (
+  <SubNavRow
+    component={Link}
+    to={to}
+    activeOptions={{ exact: true }}
+    selected={active}
+    aria-current={active ? 'page' : undefined}
+    {...(unread === undefined ? {} : { 'aria-label': unread.label })}
+    data-testid={testId}
+  >
+    <ListItemText
+      primary={unread === undefined ? label : <UnreadRowText>{label}</UnreadRowText>}
+      slotProps={{ primary: { noWrap: true } }}
+    />
+    {unread === undefined ? null : <UnreadDot aria-hidden data-testid={`${testId}-unread`} />}
+  </SubNavRow>
 );
 
 export const SidebarLoading = () => {

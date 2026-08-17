@@ -97,6 +97,7 @@ const space = (id: string, name: string, unread = false) => ({
   position: 0,
   isFollowing: false,
   unread,
+  courseIds: [],
 });
 
 const renderStart = async () => {

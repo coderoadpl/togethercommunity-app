@@ -528,9 +528,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-data-export.ts:52` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:48` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:53` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| staff-role | `core/server/usecases/member-navigation.ts:52` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
-| member-scope | `core/server/usecases/member-navigation.ts:52` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
-| member-scope | `core/server/usecases/member-navigation.ts:53` | `? { tenantId, memberId: ctx.identity.memberId }` |
+| staff-role | `core/server/usecases/member-navigation.ts:73` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
+| member-scope | `core/server/usecases/member-navigation.ts:73` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
+| member-scope | `core/server/usecases/member-navigation.ts:74` | `? { tenantId, memberId: ctx.identity.memberId }` |
 | member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |

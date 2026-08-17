@@ -1024,6 +1024,7 @@ export interface Messages {
     spaceUnreadLabel: (params: { name: string }) => string;
     backTo: (params: { name: string }) => string;
     courseOverviewEntry: string;
+    courseSpaceEntry: string;
     lessonsOf: (params: { done: number; total: number }) => string;
     menuTab: string;
     menuTitle: string;

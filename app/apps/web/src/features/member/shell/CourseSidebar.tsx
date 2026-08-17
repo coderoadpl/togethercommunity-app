@@ -12,9 +12,10 @@ import { RailProgressBar } from '../../../theme.js';
 import { AccountIcon } from '../account-icons.js';
 import { courseTotals } from '../CourseRail.js';
 import { CourseTree } from '../CourseTree.js';
+import { spacesForCourse } from './course-spaces.js';
 import { memberHomePath } from './member-nav.js';
 import { BrandLink, type ShellVariant } from './shell-chrome.js';
-import { BackIcon, CourseOverviewIcon } from './shell-icons.js';
+import { BackIcon, CourseOverviewIcon, SpaceIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
 
 const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) => {
@@ -49,6 +50,28 @@ const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) =
         })}`}
       </Typography>
     </Box>
+  );
+};
+
+const CourseSpaceRows = ({ courseId }: { courseId: string }) => {
+  const t = useTranslations();
+  const navigation = useQuery(actions.memberNavigation);
+  if (!navigation.isSuccess) return null;
+
+  const spaces = spacesForCourse(navigation.data.navigation.spaces, courseId);
+  return (
+    <>
+      {spaces.map((space) => (
+        <LinkRow
+          key={space.id}
+          to={`/community/${encodeURIComponent(space.id)}`}
+          label={spaces.length === 1 ? t.shell.courseSpaceEntry : space.name}
+          icon={<SpaceIcon />}
+          active={false}
+          testId={`course-sidebar-space-${space.id}`}
+        />
+      ))}
+    </>
   );
 };
 
@@ -108,6 +131,7 @@ export const CourseSidebar = ({
                 active={currentLessonId === null}
                 testId="course-sidebar-overview"
               />
+              <CourseSpaceRows courseId={courseId} />
             </List>
             <Typography variant="overline" component="p" sx={{ px: '0.6rem', pt: '0.75rem' }}>
               {t.courseOverview.curriculum}

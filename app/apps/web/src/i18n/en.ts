@@ -1141,6 +1141,7 @@ export const en: Messages = {
     spaceUnreadLabel: ({ name }) => format('New posts: {name}', { name }),
     backTo: ({ name }) => format('Back to {name}', { name }),
     courseOverviewEntry: 'Course overview',
+    courseSpaceEntry: 'Course space →',
     lessonsOf: ({ done, total }) => format('{done} of {total} lessons', { done, total }),
     menuTab: 'Menu',
     menuTitle: 'Menu',

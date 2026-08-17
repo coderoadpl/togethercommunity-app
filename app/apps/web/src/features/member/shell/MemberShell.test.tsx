@@ -57,7 +57,7 @@ const okMe = (overrides: { memberId?: string | null; banned?: boolean; tenant?: 
 
 const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation => ({
   spaces: [
-    { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: false },
+    { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: false, courseIds: [] },
   ],
   courses: [
     {
@@ -214,8 +214,8 @@ describe('MemberShell', () => {
       okMe(),
       okNavigation(navigation({
         spaces: [
-          { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: true },
-          { id: 's2', slug: 'cicha', name: 'Cicha', visibility: 'members', position: 1, isFollowing: false, unread: false },
+          { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: true, courseIds: [] },
+          { id: 's2', slug: 'cicha', name: 'Cicha', visibility: 'members', position: 1, isFollowing: false, unread: false, courseIds: [] },
         ],
       })),
       okOffer(),
@@ -231,6 +231,52 @@ describe('MemberShell', () => {
     const quiet = screen.getByTestId('sidebar-space-s2');
     expect(quiet).not.toHaveAttribute('aria-label');
     expect(within(quiet).queryByTestId('sidebar-space-s2-unread')).not.toBeInTheDocument();
+  });
+
+  it('nests a course space under its course row instead of the flat space list', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(navigation({
+        spaces: [
+          { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: false, courseIds: [] },
+          { id: 's2', slug: 'js', name: 'Kurs JS', visibility: 'product', position: 1, isFollowing: true, unread: true, courseIds: ['c1'] },
+        ],
+      })),
+      okOffer(),
+      noNotifications(),
+    );
+
+    await renderShell('/my');
+
+    const nested = await screen.findByTestId('sidebar-space-s2');
+    expect(screen.getByTestId('sidebar-course-c1').nextElementSibling).toBe(nested);
+    expect(nested).toHaveAttribute('href', '/community/s2');
+    expect(nested).toHaveStyle({ paddingLeft: '34px' });
+    expect(within(nested).getByTestId('sidebar-space-s2-unread')).toBeInTheDocument();
+    expect(nested).toHaveAccessibleName(pl.shell.spaceUnreadLabel({ name: 'Kurs JS' }));
+    expect(screen.getByTestId('sidebar-space-s1').nextElementSibling).toBe(
+      screen.getByTestId('sidebar-course-c1'),
+    );
+  });
+
+  it('keeps a space shared by two courses in the flat list', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(navigation({
+        spaces: [
+          { id: 's2', slug: 'js', name: 'Kurs JS', visibility: 'product', position: 0, isFollowing: true, unread: false, courseIds: ['c1', 'c2'] },
+        ],
+      })),
+      okOffer(),
+      noNotifications(),
+    );
+
+    await renderShell('/my');
+
+    const shared = await screen.findByTestId('sidebar-space-s2');
+    expect(shared.nextElementSibling).toBe(screen.getByTestId('sidebar-course-c1'));
   });
 
   it('renders a locked space without a product as a non-interactive row', async () => {

@@ -1158,6 +1158,7 @@ export const pl: Messages = {
     spaceUnreadLabel: ({ name }) => format('Nowe wpisy: {name}', { name }),
     backTo: ({ name }) => format('Wróć do {name}', { name }),
     courseOverviewEntry: 'Przegląd kursu',
+    courseSpaceEntry: 'Przestrzeń kursu →',
     lessonsOf: ({ done, total }) => format('{done} z {total} lekcji', { done, total }),
     menuTab: 'Menu',
     menuTitle: 'Menu',

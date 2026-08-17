@@ -8,7 +8,7 @@ import { screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { CourseStructureWithAccess } from '#core/domain/index.js';
+import type { CourseStructureWithAccess, MemberNavigation } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -60,6 +60,29 @@ const okStructure = () =>
     HttpResponse.json({ ok: true, data: { structure } }),
   );
 
+const spaceEntry = (
+  id: string,
+  name: string,
+  courseIds: string[],
+): MemberNavigation['spaces'][number] => ({
+  id,
+  slug: id,
+  name,
+  visibility: 'product',
+  position: 0,
+  isFollowing: false,
+  unread: false,
+  courseIds,
+});
+
+const okNavigation = (spaces: MemberNavigation['spaces'] = []) =>
+  http.get('/api/member/navigation', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { navigation: { spaces, courses: [], lockedSpaces: [] } },
+    }),
+  );
+
 const noNotifications = () =>
   http.get('/api/notifications/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }));
@@ -91,7 +114,7 @@ const renderSidebar = async (currentLessonId: string | null) => {
 
 describe('CourseSidebar', () => {
   it('leads with a way back home and the course progress header', async () => {
-    server.use(okStructure(), noNotifications());
+    server.use(okStructure(), okNavigation(), noNotifications());
 
     await renderSidebar(null);
 
@@ -108,7 +131,7 @@ describe('CourseSidebar', () => {
   });
 
   it('marks the course overview as the current page on the overview route', async () => {
-    server.use(okStructure(), noNotifications());
+    server.use(okStructure(), okNavigation(), noNotifications());
 
     await renderSidebar(null);
 
@@ -119,7 +142,7 @@ describe('CourseSidebar', () => {
   });
 
   it('highlights the open lesson in the program instead of the overview', async () => {
-    server.use(okStructure(), noNotifications());
+    server.use(okStructure(), okNavigation(), noNotifications());
 
     await renderSidebar('l2');
 
@@ -130,12 +153,72 @@ describe('CourseSidebar', () => {
   });
 
   it('keeps notifications and the account within reach while the course owns the bar', async () => {
-    server.use(okStructure(), noNotifications());
+    server.use(okStructure(), okNavigation(), noNotifications());
 
     await renderSidebar('l2');
 
     expect(await screen.findByText(pl.notifications.bell)).toBeInTheDocument();
     expect(screen.getByTestId('course-sidebar-account')).toHaveAttribute('href', '/account');
+  });
+
+  it('links to the space of the course below the overview entry', async () => {
+    server.use(
+      okStructure(),
+      okNavigation([spaceEntry('s1', 'Kurs JS', ['course-1'])]),
+      noNotifications(),
+    );
+
+    await renderSidebar('l2');
+
+    const spaceRow = await screen.findByTestId('course-sidebar-space-s1');
+    expect(spaceRow).toHaveAttribute('href', '/community/s1');
+    expect(spaceRow).toHaveTextContent(pl.shell.courseSpaceEntry);
+    expect(screen.getByTestId('course-sidebar-overview').nextElementSibling).toBe(spaceRow);
+  });
+
+  it('names each space when the course has more than one', async () => {
+    server.use(
+      okStructure(),
+      okNavigation([
+        spaceEntry('s1', 'Kurs JS', ['course-1']),
+        spaceEntry('s2', 'Zadania JS', ['course-1']),
+      ]),
+      noNotifications(),
+    );
+
+    await renderSidebar(null);
+
+    expect(await screen.findByTestId('course-sidebar-space-s1')).toHaveTextContent('Kurs JS');
+    expect(screen.getByTestId('course-sidebar-space-s2')).toHaveTextContent('Zadania JS');
+  });
+
+  it('links to a space shared with another course as well', async () => {
+    server.use(
+      okStructure(),
+      okNavigation([spaceEntry('s1', 'Kurs JS', ['course-1', 'course-2'])]),
+      noNotifications(),
+    );
+
+    await renderSidebar(null);
+
+    expect(await screen.findByTestId('course-sidebar-space-s1')).toHaveAttribute(
+      'href',
+      '/community/s1',
+    );
+  });
+
+  it('hides the space entry when no space belongs to the course', async () => {
+    server.use(
+      okStructure(),
+      okNavigation([spaceEntry('s1', 'Inny kurs', ['course-9'])]),
+      noNotifications(),
+    );
+
+    await renderSidebar(null);
+
+    expect(await screen.findByTestId('course-sidebar-overview')).toBeInTheDocument();
+    expect(screen.queryByTestId('course-sidebar-space-s1')).not.toBeInTheDocument();
+    expect(screen.queryByText(pl.shell.courseSpaceEntry)).not.toBeInTheDocument();
   });
 
   it('offers a retry when the course structure fails to load', async () => {
@@ -146,6 +229,7 @@ describe('CourseSidebar', () => {
           { status: 500 },
         ),
       ),
+      okNavigation(),
       noNotifications(),
     );
 

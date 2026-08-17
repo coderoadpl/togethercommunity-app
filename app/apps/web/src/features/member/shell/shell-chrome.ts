@@ -14,6 +14,11 @@ export type ShellVariant = 'drawer' | 'sheet';
 
 export const NavRow = styled(PanelNavItem)<ShellLinkProps>({});
 
+export const SubNavRow = styled(NavRow)({
+  paddingLeft: 34,
+  '& .MuiListItemText-primary': { fontSize: '0.8125rem' },
+});
+
 export const UnreadRowText = styled('span')({ fontWeight: 600 });
 
 export const BrandLink = styled(Box)<ShellLinkProps>(({ theme }) => ({

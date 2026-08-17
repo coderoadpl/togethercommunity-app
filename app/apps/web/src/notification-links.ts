@@ -8,10 +8,19 @@ export type NotificationTarget =
   | { kind: 'space-thread'; spaceId: string; postId: string }
   | { kind: 'lesson-thread'; courseId: string; lessonId: string; rootPostId: string }
   | { kind: 'dm-conversation'; conversationId: string }
+  | { kind: 'space-event'; spaceId: string; eventId: string }
   | { kind: 'none' };
 
 export const notificationTarget = (notification: Notification): NotificationTarget =>
-  notification.payload.contextKind === 'dm'
+  notification.kind === 'space-event'
+    ? notification.payload.eventId === null
+      ? { kind: 'none' }
+      : {
+          kind: 'space-event',
+          spaceId: notification.payload.contextId,
+          eventId: notification.payload.eventId,
+        }
+    : notification.payload.contextKind === 'dm'
     ? { kind: 'dm-conversation', conversationId: notification.payload.contextId }
     : notification.payload.contextKind === 'space'
       ? {
@@ -29,7 +38,9 @@ export const notificationTarget = (notification: Notification): NotificationTarg
           };
 
 export const notificationTitle = (t: Messages, notification: Notification): string =>
-  notification.kind === 'dm-message'
+  notification.kind === 'space-event'
+    ? t.notifications.spaceEvent({ space: notification.payload.lessonName })
+    : notification.kind === 'dm-message'
     ? t.notifications.dmMessage({ author: notification.payload.authorDisplay })
     : notification.kind === 'space-post'
       ? t.notifications.spacePost({
@@ -64,6 +75,11 @@ export const useNotificationNavigation = () => {
       void navigate({
         to: '/messages/$conversationId',
         params: { conversationId: target.conversationId },
+      });
+    } else if (target.kind === 'space-event') {
+      void navigate({
+        to: '/community/$spaceId/events/$eventId',
+        params: { spaceId: target.spaceId, eventId: target.eventId },
       });
     }
   };

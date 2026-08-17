@@ -19,6 +19,7 @@ import {
   PostMetaText,
 } from '../../theme.js';
 import { EmptyFeedIcon } from './community-icons.js';
+import { SpaceEventsSection } from './events/SpaceEventsSection.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
@@ -287,27 +288,30 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   };
 
   const rail = (
-    <SectionCard title={t.community.aboutHeading} data-testid="space-about">
-      <PostBody variant="body2" component="p" color="text.secondary">
-        {space.description ?? t.community.noDescription}
-      </PostBody>
-      <Chip
-        size="small"
-        variant="outlined"
-        label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
-        sx={{ alignSelf: 'flex-start' }}
-      />
-      <Box>
-        <Button
-          variant={isFollowing ? 'outlined' : 'contained'}
-          aria-pressed={isFollowing}
-          data-testid="space-follow-toggle"
-          onClick={toggleFollow}
-        >
-          {isFollowing ? t.community.unfollow : t.community.follow}
-        </Button>
-      </Box>
-    </SectionCard>
+    <>
+      <SectionCard title={t.community.aboutHeading} data-testid="space-about">
+        <PostBody variant="body2" component="p" color="text.secondary">
+          {space.description ?? t.community.noDescription}
+        </PostBody>
+        <Chip
+          size="small"
+          variant="outlined"
+          label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
+          sx={{ alignSelf: 'flex-start' }}
+        />
+        <Box>
+          <Button
+            variant={isFollowing ? 'outlined' : 'contained'}
+            aria-pressed={isFollowing}
+            data-testid="space-follow-toggle"
+            onClick={toggleFollow}
+          >
+            {isFollowing ? t.community.unfollow : t.community.follow}
+          </Button>
+        </Box>
+      </SectionCard>
+      <SpaceEventsSection spaceId={spaceId} />
+    </>
   );
 
   const items = feed.data?.feed.items ?? [];

@@ -429,6 +429,10 @@ export const en: Messages = {
         ? format('{author} posted in the “{space}” space', { author, space })
         : format('{author} posted in a space', { author }),
     dmMessage: ({ author }) => format('New message from {author}', { author }),
+    spaceEvent: ({ space }) =>
+      space.length > 0
+        ? format('New event in the “{space}” space', { space })
+        : 'New event in a space',
   },
   messages: {
     navLabel: 'Messages',
@@ -456,6 +460,31 @@ export const en: Messages = {
     optOutSaved: 'Privacy settings saved.',
     recipientUnavailable: 'This person is not accepting messages right now.',
     rateLimited: 'You are sending messages too quickly — take a short break.',
+  },
+  events: {
+    sectionTitle: 'Events',
+    eyebrow: 'Event',
+    loading: 'Loading events…',
+    upcoming: 'Upcoming',
+    past: 'Past',
+    emptyUpcoming: 'No upcoming events',
+    emptyPast: 'No past events',
+    upcomingHeading: 'Upcoming events',
+    rsvpGoing: 'I am going',
+    rsvpNotGoing: 'I am not going',
+    goingCount: ({ count }) => format('Going: {count}', { count }),
+    notGoingCount: ({ count }) => format('Not going: {count}', { count }),
+    addToCalendar: 'Add to calendar (ICS)',
+    calendarError: 'The calendar file could not be downloaded.',
+    location: 'Location',
+    link: 'Meeting link',
+    openLink: 'Open link',
+    ended: 'This event is already over.',
+    discussionTitle: 'Discussion',
+    discussionEmpty: 'No one has discussed this event yet.',
+    backToSpace: 'Back to the space',
+    notFoundTitle: 'Event not found',
+    notFoundBody: 'This event was removed or you do not have access to it.',
   },
   emailVerification: {
     heading: 'Email verification',

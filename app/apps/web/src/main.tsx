@@ -101,6 +101,7 @@ import {
   PanelSpaceDetailRoute,
 } from './routes/panel.js';
 import {
+  CommunityEventRoute,
   CommunityRoute,
   ConversationRoute,
   CourseRoute,
@@ -247,6 +248,11 @@ const spaceThreadRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.communityPost,
   component: SpaceThreadRoute,
+});
+const communityEventRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: MEMBER_ROUTE_PATHS.communityEvent,
+  component: CommunityEventRoute,
 });
 
 const panelLayoutRoute = createRoute({
@@ -484,6 +490,7 @@ const router = createRouter({
       communityRoute,
       spaceFeedRoute,
       spaceThreadRoute,
+      communityEventRoute,
     ]),
     panelLayoutRoute.addChildren([
       panelIndexRoute,

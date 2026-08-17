@@ -435,6 +435,10 @@ export const pl: Messages = {
         ? format('{author} dodał(a) nowy wpis w przestrzeni „{space}”', { author, space })
         : format('{author} dodał(a) nowy wpis w przestrzeni', { author }),
     dmMessage: ({ author }) => format('Nowa wiadomość od {author}', { author }),
+    spaceEvent: ({ space }) =>
+      space.length > 0
+        ? format('Nowe wydarzenie w przestrzeni „{space}”', { space })
+        : 'Nowe wydarzenie w przestrzeni',
   },
   messages: {
     navLabel: 'Wiadomości',
@@ -462,6 +466,31 @@ export const pl: Messages = {
     optOutSaved: 'Zapisano ustawienia prywatności.',
     recipientUnavailable: 'Ta osoba nie przyjmuje teraz wiadomości.',
     rateLimited: 'Wysyłasz wiadomości zbyt szybko — zrób krótką przerwę.',
+  },
+  events: {
+    sectionTitle: 'Wydarzenia',
+    eyebrow: 'Wydarzenie',
+    loading: 'Wczytywanie wydarzeń…',
+    upcoming: 'Nadchodzące',
+    past: 'Minione',
+    emptyUpcoming: 'Brak nadchodzących wydarzeń',
+    emptyPast: 'Brak minionych wydarzeń',
+    upcomingHeading: 'Nadchodzące wydarzenia',
+    rsvpGoing: 'Wezmę udział',
+    rsvpNotGoing: 'Nie wezmę udziału',
+    goingCount: ({ count }) => format('Wybiera się: {count}', { count }),
+    notGoingCount: ({ count }) => format('Nie wybiera się: {count}', { count }),
+    addToCalendar: 'Dodaj do kalendarza (ICS)',
+    calendarError: 'Nie udało się pobrać pliku kalendarza.',
+    location: 'Miejsce',
+    link: 'Link do spotkania',
+    openLink: 'Otwórz link',
+    ended: 'To wydarzenie już się zakończyło.',
+    discussionTitle: 'Dyskusja',
+    discussionEmpty: 'Nie ma jeszcze dyskusji o tym wydarzeniu.',
+    backToSpace: 'Wróć do przestrzeni',
+    notFoundTitle: 'Nie znaleziono wydarzenia',
+    notFoundBody: 'To wydarzenie zostało usunięte albo nie masz do niego dostępu.',
   },
   emailVerification: {
     heading: 'Weryfikacja adresu e-mail',

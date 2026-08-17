@@ -1,6 +1,7 @@
 import { useParams, useSearch } from '@tanstack/react-router';
 
 import { CoursePage } from '../features/member/CoursePage.js';
+import { EventPage } from '../features/member/events/EventPage.js';
 import { CourseStructurePage } from '../features/member/CourseStructurePage.js';
 import { LessonPlayerPage } from '../features/member/LessonPlayerPage.js';
 import { MemberAccountPage } from '../features/member/MemberAccountPage.js';
@@ -69,4 +70,9 @@ export const SpaceFeedRoute = () => {
 export const SpaceThreadRoute = () => {
   const params = useParams({ strict: false });
   return <SpaceThreadPage spaceId={params.spaceId ?? ''} postId={params.postId ?? ''} />;
+};
+
+export const CommunityEventRoute = () => {
+  const params = useParams({ strict: false });
+  return <EventPage spaceId={params.spaceId ?? ''} eventId={params.eventId ?? ''} />;
 };

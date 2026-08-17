@@ -403,6 +403,7 @@ export interface Messages {
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
     dmMessage: (params: { author: string }) => string;
+    spaceEvent: (params: { space: string }) => string;
   };
   messages: {
     navLabel: string;
@@ -430,6 +431,31 @@ export interface Messages {
     optOutSaved: string;
     recipientUnavailable: string;
     rateLimited: string;
+  };
+  events: {
+    sectionTitle: string;
+    eyebrow: string;
+    loading: string;
+    upcoming: string;
+    past: string;
+    emptyUpcoming: string;
+    emptyPast: string;
+    upcomingHeading: string;
+    rsvpGoing: string;
+    rsvpNotGoing: string;
+    goingCount: (params: { count: number }) => string;
+    notGoingCount: (params: { count: number }) => string;
+    addToCalendar: string;
+    calendarError: string;
+    location: string;
+    link: string;
+    openLink: string;
+    ended: string;
+    discussionTitle: string;
+    discussionEmpty: string;
+    backToSpace: string;
+    notFoundTitle: string;
+    notFoundBody: string;
   };
   emailVerification: {
     heading: string;

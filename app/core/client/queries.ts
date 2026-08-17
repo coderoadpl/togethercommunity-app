@@ -366,6 +366,7 @@ const eventsScopes = {
   bySpace: (input: EventsBySpaceInput) => ['events', 'space', input] as const,
   detail: (eventId: string) => ['events', 'detail', eventId] as const,
   upcoming: (limit?: number) => ['events', 'upcoming', limit ?? null] as const,
+  ics: (eventId: string) => ['events', 'ics', eventId] as const,
 };
 
 const marketingScopes = {
@@ -1317,6 +1318,15 @@ export const upcomingEventsQuery = (api: ApiClient, input: MemberUpcomingEventsI
   });
 
 /** @public */
+export const eventIcsQuery = (api: ApiClient, input: EventRefInput) =>
+  defineQuery({
+    queryKey: eventsScopes.ics(input.eventId),
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.getEventIcs(input, signal),
+  });
+
+/** @public */
 export const createEventMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...eventsScopes.all(), 'create'],
@@ -1526,6 +1536,9 @@ export const notificationsInvalidates = () => ({ queryKey: notificationScopes.al
 
 /** @public */
 export const messagesInvalidates = () => ({ queryKey: messagesScopes.all() });
+
+/** @public */
+export const eventsInvalidates = () => ({ queryKey: eventsScopes.all() });
 
 export const discussionInvalidates = () => ({ queryKey: discussionScopes.all() });
 

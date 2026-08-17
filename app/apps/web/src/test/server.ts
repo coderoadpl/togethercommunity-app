@@ -7,6 +7,12 @@ export const server = setupServer(
   http.get('*/api/messages/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }),
   ),
+  http.get('*/api/member/upcoming-events', () =>
+    HttpResponse.json({ ok: true, data: { events: [] } }),
+  ),
+  http.get('*/api/spaces/:spaceId/events', () =>
+    HttpResponse.json({ ok: true, data: { events: [], nextCursor: null } }),
+  ),
   http.get('*/api/health', () =>
     HttpResponse.json({
       ok: true,

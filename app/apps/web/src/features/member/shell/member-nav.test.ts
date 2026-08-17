@@ -12,13 +12,13 @@ describe('activeNavEntry', () => {
     ['/my/products', { kind: 'products' }],
     ['/my/products/product-1', { kind: 'products' }],
     ['/account', { kind: 'account' }],
+    ['/my', { kind: 'start' }],
+    ['/community', { kind: 'start' }],
   ])('resolves %s', (pathname, expected) => {
     expect(activeNavEntry(pathname)).toEqual(expected);
   });
 
   it.each([
-    ['/community'],
-    ['/my'],
     ['/my/course/product-1'],
     ['/my/courses'],
     ['/checkout/product-1'],

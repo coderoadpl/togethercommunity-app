@@ -5,7 +5,6 @@ import type { CourseStructureLesson, CourseStructureWithAccess } from '#core/dom
 
 import { useTranslations, type Messages } from '../../i18n/index.js';
 import { CourseCompletedNote, Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
-import { CourseTree } from './CourseTree.js';
 
 export const flattenLessons = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
   structure.modules.flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons));
@@ -40,15 +39,18 @@ export const continueLessonId = (
   const accessible = flattenLessons(structure).filter(
     (lesson) => lesson.accessStatus === 'fully-accessible',
   );
-  const lastViewed = accessible.find(
-    (lesson) =>
-      lesson.lessonId === lastViewedLessonId && lesson.completionStatus !== 'fully-completed',
+  const unfinished = (lesson: CourseStructureLesson) =>
+    lesson.completionStatus !== 'fully-completed';
+  const lastViewedIndex = accessible.findIndex(
+    (lesson) => lesson.lessonId === lastViewedLessonId,
   );
-  if (lastViewed) return lastViewed.lessonId;
-  const firstUnfinished = accessible.find(
-    (lesson) => lesson.completionStatus !== 'fully-completed',
-  );
-  return firstUnfinished?.lessonId ?? accessible[0]?.lessonId ?? null;
+  if (lastViewedIndex !== -1) {
+    const lastViewed = accessible[lastViewedIndex];
+    if (lastViewed !== undefined && unfinished(lastViewed)) return lastViewed.lessonId;
+    const following = accessible.slice(lastViewedIndex + 1).find(unfinished);
+    if (following !== undefined) return following.lessonId;
+  }
+  return accessible.find(unfinished)?.lessonId ?? accessible[0]?.lessonId ?? null;
 };
 
 export const formatTotalDuration = (t: Messages, totalMinutes: number): string =>
@@ -137,30 +139,6 @@ export const CourseProgressCard = ({
           )}
         </Stack>
       )}
-    </Paper>
-  );
-};
-
-export const CurriculumCard = ({
-  courseId,
-  structure,
-  currentLessonId,
-}: {
-  courseId: string;
-  structure: CourseStructureWithAccess;
-  currentLessonId?: string;
-}) => {
-  const t = useTranslations();
-  return (
-    <Paper elevation={1} sx={{ p: '1.25rem' }} data-testid="curriculum-card">
-      <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
-        {t.courseOverview.curriculum}
-      </Eyebrow>
-      <CourseTree
-        courseId={courseId}
-        structure={structure}
-        {...(currentLessonId === undefined ? {} : { currentLessonId })}
-      />
     </Paper>
   );
 };

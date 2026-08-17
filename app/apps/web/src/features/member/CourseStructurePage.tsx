@@ -16,12 +16,7 @@ import {
   StatTileLabel,
   StatTileValue,
 } from '../../theme.js';
-import {
-  courseTotals,
-  CourseProgressCard,
-  CurriculumCard,
-  formatTotalDuration,
-} from './CourseRail.js';
+import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseRail.js';
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyCourseIcon, StatCheckIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
@@ -148,20 +143,7 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
           lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
         />
       }
-      rail={
-        <>
-          {hasModules && (
-            <Box sx={{ order: { md: 2 } }}>
-              <CurriculumCard courseId={courseId} structure={course} />
-            </Box>
-          )}
-          {hasModules && (
-            <Box sx={{ order: { md: 1 } }}>
-              <CourseDiscussionSearch courseId={courseId} structure={course} />
-            </Box>
-          )}
-        </>
-      }
+      rail={hasModules ? <CourseDiscussionSearch courseId={courseId} structure={course} /> : undefined}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>
         {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}

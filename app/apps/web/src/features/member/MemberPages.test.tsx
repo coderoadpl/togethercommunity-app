@@ -128,6 +128,7 @@ describe('member pages', () => {
       pl.student.subscriptionPastDueLabel,
     );
     expect(screen.getByTestId('subscription-status-canceled')).toHaveTextContent('Anulowana — dostęp do');
+    expect(screen.queryByTestId('grant-status-active')).not.toBeInTheDocument();
     expect(screen.getByTestId('subscription-date-active')).toHaveTextContent('Odnowienie:');
     expect(screen.getByTestId('subscription-date-canceled')).toHaveTextContent('Dostęp do:');
     expect(screen.getAllByRole('link', { name: pl.student.manageSubscription })).toHaveLength(3);

@@ -252,6 +252,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
         size="small"
         variant="outlined"
         label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
+        sx={{ alignSelf: 'flex-start' }}
       />
       <Box>
         <Button

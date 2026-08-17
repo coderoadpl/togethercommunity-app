@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Box, IconButton, Typography } from '@mui/material';
 
+import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { MemberSidebar } from './MemberSidebar.js';
@@ -57,6 +58,9 @@ export const MemberMenuSheet = ({
   return (
     <ShellSheet open={open} onClose={onClose} title={t.shell.menuTitle} testId="member-menu-sheet">
       <MemberSidebar name={name} email={email} variant="sheet" />
+      <Box sx={{ px: '1rem', pb: '1rem' }}>
+        <ColorSchemeSwitcher compact />
+      </Box>
     </ShellSheet>
   );
 };

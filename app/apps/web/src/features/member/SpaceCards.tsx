@@ -6,7 +6,7 @@ import { Link } from '@tanstack/react-router';
 import type { SpaceVisibility } from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
-import { CardTitle, CourseCardRoot, EmberCtaButton } from '../../theme.js';
+import { CourseCardRoot, EmberCtaButton } from '../../theme.js';
 import { LockClosed } from './tree-icons.js';
 
 const EmberCtaLink = styled(EmberCtaButton)<{ component?: ElementType; to?: string }>({});
@@ -32,9 +32,9 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
     <CourseCardRoot component={Link} to={`/community/${encodeURIComponent(space.id)}`} data-testid={`space-card-${space.id}`}>
       <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', height: '100%' }}>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'flex-start', columnGap: '0.75rem' }}>
-          <CardTitle variant="h2" sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="h2" component="h3" sx={{ flex: 1, minWidth: 0 }}>
             {space.name}
-          </CardTitle>
+          </Typography>
           {space.isFollowing && (
             <Chip
               size="small"
@@ -45,13 +45,18 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
             />
           )}
         </Stack>
-        {space.description ? <Typography variant="body2">{space.description}</Typography> : null}
-        <Box sx={{ flex: 1 }} />
+        {space.description ? (
+          <>
+            <Typography variant="body2">{space.description}</Typography>
+            <Box sx={{ flex: 1 }} />
+          </>
+        ) : null}
         <Chip
           size="small"
           variant="outlined"
           label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
           data-testid={`space-visibility-${space.id}`}
+          sx={{ alignSelf: 'flex-start' }}
         />
       </Box>
     </CourseCardRoot>
@@ -66,9 +71,9 @@ export const LockedSpaceCard = ({ space }: { space: LockedSpaceCardSpace }) => {
       <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', height: '100%' }}>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem' }}>
           <LockClosed />
-          <CardTitle variant="h2" color="text.secondary" sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="h2" component="h3" color="text.secondary" sx={{ flex: 1, minWidth: 0 }}>
             {space.name}
-          </CardTitle>
+          </Typography>
         </Stack>
         {space.description ? (
           <Typography variant="body2" color="text.secondary">

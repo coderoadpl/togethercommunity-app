@@ -744,6 +744,8 @@ export interface Messages {
     saveDetails: string;
     savingDetails: string;
     detailsSaved: string;
+    publicVisibilityLabel: string;
+    publicVisibilityHelper: string;
     heading: string;
     loading: string;
     empty: string;
@@ -831,6 +833,7 @@ export interface Messages {
     durationHelper: string;
     previewLabel: string;
     previewHelper: string;
+    previewNeedsPublicCourseHint: string;
     htmlLabel: string;
     storageKeyLabel: string;
     streamVideoIdLabel: string;
@@ -1276,6 +1279,9 @@ export interface Messages {
     productsHint: string;
     noProducts: string;
     productGatedNeedsProduct: string;
+    publicReadOnlyLabel: string;
+    publicReadOnlyHelper: string;
+    publicReadOnlyHomeSpaceBlocked: string;
     positionLabel: string;
     create: string;
     creating: string;
@@ -1432,6 +1438,13 @@ export interface Messages {
     sellerName: string;
     sellerAddress: string;
     saveSeller: string;
+  };
+  publicAccess: {
+    heading: string;
+    intro: string;
+    homeSpaceLabel: string;
+    homeSpaceNone: string;
+    homeSpaceHint: string;
   };
   legal: {
     heading: string;

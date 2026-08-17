@@ -786,6 +786,9 @@ export const en: Messages = {
     saveDetails: 'Save details',
     savingDetails: 'Saving…',
     detailsSaved: 'Course details saved.',
+    publicVisibilityLabel: 'Publicly visible',
+    publicVisibilityHelper:
+      'Anonymous visitors see the course tile and full program, never lesson content.',
     heading: 'Courses',
     loading: 'Loading courses…',
     empty: 'No courses yet.',
@@ -890,6 +893,8 @@ export const en: Messages = {
     durationHelper: 'Shown in the course curriculum, e.g. "12 min".',
     previewLabel: 'Free preview lesson',
     previewHelper: 'Anyone can open this lesson without purchasing the course or signing in.',
+    previewNeedsPublicCourseHint:
+      'Attach this lesson to a publicly visible course to offer it as a free preview.',
     htmlLabel: 'HTML content',
     storageKeyLabel: 'Storage object key',
     streamVideoIdLabel: 'Bunny video ID',
@@ -1398,6 +1403,11 @@ export const en: Messages = {
     productsHint: 'Pick the products whose holders can see this space.',
     noProducts: 'You have no products yet.',
     productGatedNeedsProduct: 'A product-gated space needs at least one product.',
+    publicReadOnlyLabel: 'Publicly readable',
+    publicReadOnlyHelper:
+      'Anonymous visitors can read this space; posting, reactions and following still require an account.',
+    publicReadOnlyHomeSpaceBlocked:
+      'This space is the public home space. Point the home space elsewhere in settings before making it private.',
     positionLabel: 'Position',
     create: 'Create space',
     creating: 'Creating…',
@@ -1569,6 +1579,15 @@ export const en: Messages = {
     sellerName: 'Seller legal name',
     sellerAddress: 'Seller address',
     saveSeller: 'Save invoice settings',
+  },
+  publicAccess: {
+    heading: 'Public access',
+    intro:
+      'Choose what anonymous visitors see before signing in: publicly readable spaces, publicly visible courses and the space that opens your home page.',
+    homeSpaceLabel: 'Home space for visitors',
+    homeSpaceNone: 'None',
+    homeSpaceHint:
+      'Only active publicly readable spaces can be picked. Without one, visitors land on the tiles alone.',
   },
   legal: {
     heading: 'Terms of service and privacy policy',

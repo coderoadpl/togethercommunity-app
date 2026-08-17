@@ -71,6 +71,7 @@ const settingsSectionFromHash = (hash: string): SettingsSection => {
       return 'diagnostics';
     case 'company':
     case 'support':
+    case 'public-access':
     case 'invoice':
     default:
       return 'company';
@@ -419,6 +420,54 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         <Typography variant="caption" component="p" data-testid="legal-saved">
           {t.legal.saved}
         </Typography>
+      ) : null}
+      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
+const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const spaces = useQuery(actions.staffSpaces);
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+
+  const publicSpaces = (spaces.data?.spaces ?? []).filter(
+    (space) => space.publicReadOnly && space.archivedAt === null,
+  );
+  const homeSpaceId = settings.data?.settings.defaultHomeSpaceId ?? '';
+  const selectable = publicSpaces.some((space) => space.id === homeSpaceId) ? homeSpaceId : '';
+
+  return (
+    <SectionCard title={t.publicAccess.heading} description={t.publicAccess.intro}>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="public-home-space">{t.publicAccess.homeSpaceLabel}</FormLabel>
+        <Select
+          id="public-home-space"
+          value={selectable}
+          disabled={!canEdit || !settings.isSuccess || !spaces.isSuccess || updateSettings.isPending}
+          inputProps={{ 'aria-label': t.publicAccess.homeSpaceLabel }}
+          onChange={(event) => updateSettings.mutate({ defaultHomeSpaceId: event.target.value })}
+        >
+          <MenuItem value="">{t.publicAccess.homeSpaceNone}</MenuItem>
+          {publicSpaces.map((space) => (
+            <MenuItem key={space.id} value={space.id}>
+              {space.name}
+            </MenuItem>
+          ))}
+        </Select>
+        <Typography variant="caption" component="p">
+          {t.publicAccess.homeSpaceHint}
+        </Typography>
+      </FormControl>
+      {spaces.isError ? (
+        <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
       ) : null}
       {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
@@ -922,6 +971,9 @@ export const SettingsPanel = () => {
         <Stack id="settings-panel-company" role="tabpanel" aria-labelledby="settings-tab-company" useFlexGap spacing="1.5rem">
           <Box id="support" sx={{ scrollMarginTop: '1rem' }}>
             <SupportSettingsPanel canEdit={canEdit} />
+          </Box>
+          <Box id="public-access" sx={{ scrollMarginTop: '1rem' }}>
+            <PublicAccessPanel canEdit={canEdit} />
           </Box>
           <Box id="invoice" sx={{ scrollMarginTop: '1rem' }}>
             <InvoiceSettingsPanel canEdit={canEdit} />

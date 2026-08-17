@@ -31,11 +31,26 @@ const renderLessonsAt = async (initialEntry = '/panel/lessons', secrets: TenantS
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
+const referencesPayload = (courses: Array<{ courseId: string; courseName: string; publiclyVisible: boolean }>) => ({
+  ok: true,
+  data: {
+    references: {
+      lessonId: 'lesson-1',
+      lessonName: 'Intro lesson',
+      chapters: [],
+      courses,
+      products: [],
+      progressCount: 0,
+    },
+  },
+});
+
 beforeEach(() => {
   server.use(
     http.get('/api/lessons/:lessonId/attachments', () =>
       HttpResponse.json({ ok: true, data: { attachments: [] } }),
     ),
+    http.get('/api/lessons/references', () => HttpResponse.json(referencesPayload([]))),
   );
 });
 
@@ -219,8 +234,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     expect(await screen.findByText('Reordered Lesson')).toBeInTheDocument();
   });
 
-  it('submits the free preview setting when creating a lesson', async () => {
-    let submittedPreview = false;
+  it('blocks the free preview switch on a new lesson, which no course references yet', async () => {
+    let submittedPreview: boolean | undefined;
     server.use(
       http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
       http.post('/api/lessons', async ({ request }) => {
@@ -242,10 +257,71 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await renderLessonsAt('/panel/lessons/new');
 
     fireEvent.change(await screen.findByLabelText(pl.common.name), { target: { value: 'Preview' } });
-    fireEvent.click(screen.getByRole('switch', { name: pl.lessons.previewLabel }));
+    expect(screen.getByRole('switch', { name: pl.lessons.previewLabel })).toBeDisabled();
+    expect(screen.getByText(pl.lessons.previewNeedsPublicCourseHint)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
 
+    await waitFor(() => expect(submittedPreview).toBe(false));
+  });
+
+  it('unblocks the free preview switch once a publicly visible course references the lesson', async () => {
+    const existing: CourseLesson = {
+      id: 'lesson-1',
+      tenantId: 't1',
+      name: 'Intro lesson',
+      isPreview: false,
+      contents: [],
+      legacyId: null,
+      createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    let submittedPreview: boolean | undefined;
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [existing] } })),
+      http.get('/api/lessons/references', () =>
+        HttpResponse.json(referencesPayload([{ courseId: 'c1', courseName: 'Launch Kit', publiclyVisible: true }])),
+      ),
+      http.post('/api/lessons/update', async ({ request }) => {
+        const body = lessonUpdateInputSchema.parse(await request.json());
+        submittedPreview = body.isPreview;
+        return HttpResponse.json({
+          ok: true,
+          data: { lesson: { ...existing, isPreview: body.isPreview ?? existing.isPreview } },
+        });
+      }),
+    );
+
+    await renderLessonsAt('/panel/lessons/lesson-1');
+
+    const preview = await screen.findByRole('switch', { name: pl.lessons.previewLabel });
+    await waitFor(() => expect(preview).toBeEnabled());
+    expect(screen.getByText(pl.lessons.previewHelper)).toBeInTheDocument();
+    await userEvent.click(preview);
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.saveLesson }));
+
     await waitFor(() => expect(submittedPreview).toBe(true));
+  });
+
+  it('keeps the free preview switch blocked when every referencing course stays private', async () => {
+    const existing: CourseLesson = {
+      id: 'lesson-1',
+      tenantId: 't1',
+      name: 'Intro lesson',
+      isPreview: false,
+      contents: [],
+      legacyId: null,
+      createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [existing] } })),
+      http.get('/api/lessons/references', () =>
+        HttpResponse.json(referencesPayload([{ courseId: 'c1', courseName: 'Launch Kit', publiclyVisible: false }])),
+      ),
+    );
+
+    await renderLessonsAt('/panel/lessons/lesson-1');
+
+    expect(await screen.findByRole('switch', { name: pl.lessons.previewLabel })).toBeDisabled();
+    expect(screen.getByText(pl.lessons.previewNeedsPublicCourseHint)).toBeInTheDocument();
   });
 
   it('preloads and updates the free preview setting for an existing lesson', async () => {
@@ -275,6 +351,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     const preview = await screen.findByRole('switch', { name: pl.lessons.previewLabel });
     expect(preview).toBeChecked();
+    expect(preview).toBeEnabled();
     await userEvent.click(preview);
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.saveLesson }));
 

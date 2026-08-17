@@ -796,6 +796,9 @@ export const pl: Messages = {
     saveDetails: 'Zapisz dane',
     savingDetails: 'Zapisywanie…',
     detailsSaved: 'Zapisano dane kursu.',
+    publicVisibilityLabel: 'Widoczny publicznie',
+    publicVisibilityHelper:
+      'Niezalogowani widzą kafelek kursu i cały program, nigdy treść lekcji.',
     heading: 'Kursy',
     loading: 'Ładowanie kursów…',
     empty: 'Nie masz jeszcze żadnych kursów.',
@@ -900,6 +903,8 @@ export const pl: Messages = {
     durationHelper: 'Widoczny w programie kursu, np. „12 min”.',
     previewLabel: 'Darmowa lekcja podglądowa',
     previewHelper: 'Każdy może otworzyć tę lekcję bez zakupu kursu ani logowania.',
+    previewNeedsPublicCourseHint:
+      'Dodaj tę lekcję do kursu widocznego publicznie, aby udostępnić ją jako darmowy podgląd.',
     htmlLabel: 'Treść HTML',
     storageKeyLabel: 'Klucz pliku w zasobniku',
     streamVideoIdLabel: 'Identyfikator wideo Bunny',
@@ -1416,6 +1421,11 @@ export const pl: Messages = {
     noProducts: 'Nie masz jeszcze żadnego produktu.',
     productGatedNeedsProduct:
       'Przestrzeń dla posiadaczy produktu wymaga co najmniej jednego produktu.',
+    publicReadOnlyLabel: 'Czytelna publicznie',
+    publicReadOnlyHelper:
+      'Niezalogowani mogą czytać tę przestrzeń; pisanie, reakcje i obserwowanie nadal wymagają konta.',
+    publicReadOnlyHomeSpaceBlocked:
+      'Ta przestrzeń jest publiczną stroną główną. Wskaż w ustawieniach inną przestrzeń, zanim ją ukryjesz.',
     positionLabel: 'Kolejność',
     create: 'Utwórz przestrzeń',
     creating: 'Tworzenie…',
@@ -1588,6 +1598,15 @@ export const pl: Messages = {
     sellerName: 'Pełna nazwa sprzedawcy',
     sellerAddress: 'Adres sprzedawcy',
     saveSeller: 'Zapisz ustawienia faktur',
+  },
+  publicAccess: {
+    heading: 'Dostęp publiczny',
+    intro:
+      'Zdecyduj, co widzą niezalogowani przed zalogowaniem: przestrzenie czytelne publicznie, kursy widoczne publicznie oraz przestrzeń otwierającą stronę główną.',
+    homeSpaceLabel: 'Przestrzeń startowa dla odwiedzających',
+    homeSpaceNone: 'Brak',
+    homeSpaceHint:
+      'Wybrać można tylko aktywne przestrzenie czytelne publicznie. Bez niej odwiedzający zobaczą same kafelki.',
   },
   legal: {
     heading: 'Regulamin i polityka prywatności',

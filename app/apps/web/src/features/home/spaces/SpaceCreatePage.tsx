@@ -27,13 +27,22 @@ export const SpaceCreatePage = () => {
       description: values.description.trim() === '' ? undefined : values.description.trim(),
       visibility: values.visibility,
       productIds: values.productIds,
+      publicReadOnly: values.publicReadOnly,
     });
 
   return (
     <PanelPage title={t.spacesPanel.newSpace} backTo={<PanelBackLink to="/panel/spaces">{t.spacesPanel.allSpaces}</PanelBackLink>}>
       <SpaceForm
         mode="create"
-        initial={{ name: '', slug: '', description: '', visibility: 'members', productIds: [], position: 0 }}
+        initial={{
+          name: '',
+          slug: '',
+          description: '',
+          visibility: 'members',
+          productIds: [],
+          publicReadOnly: false,
+          position: 0,
+        }}
         pending={createSpace.isPending}
         error={createSpace.isError ? createSpace.error : null}
         onSubmit={submit}

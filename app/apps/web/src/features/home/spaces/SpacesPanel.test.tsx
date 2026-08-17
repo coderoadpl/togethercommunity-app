@@ -42,6 +42,22 @@ const staffSpace = (over: Partial<StaffSpace> & { id: string }): StaffSpace => (
 const noProducts = () =>
   http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } }));
 
+const tenantSettings = (defaultHomeSpaceId: string | null = null) =>
+  http.get('/api/tenant/settings', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        settings: {
+          name: 'Akademia',
+          socialLinks: [],
+          billingPortalUrl: null,
+          bunnyStreamLibraryId: null,
+          defaultHomeSpaceId,
+        },
+      },
+    }),
+  );
+
 const renderPanel = async (initialEntry = '/panel/spaces') => {
   const rootRoute = createRootRoute();
   const listRoute = createRoute({
@@ -95,7 +111,9 @@ describe('spaces panel', () => {
     await userEvent.click(screen.getByTestId('space-form-submit'));
 
     await waitFor(() =>
-      expect(created).toEqual([{ slug: 'klub', name: 'Klub', visibility: 'members', productIds: [] }]),
+      expect(created).toEqual([
+        { slug: 'klub', name: 'Klub', visibility: 'members', productIds: [], publicReadOnly: false },
+      ]),
     );
     expect(await screen.findByText('Klub')).toBeInTheDocument();
   });
@@ -131,6 +149,7 @@ describe('spaces panel', () => {
     const updates: unknown[] = [];
     server.use(
       noProducts(),
+      tenantSettings(),
       http.get('/api/spaces/staff', () => HttpResponse.json({ ok: true, data: { spaces: [original] } })),
       http.post('/api/spaces/update', async ({ request }) => {
         const body = updateSpaceInputSchema.parse(await request.json());
@@ -155,9 +174,50 @@ describe('spaces panel', () => {
           description: 'Stary opis',
           visibility: 'members',
           productIds: [],
+          publicReadOnly: false,
           position: 0,
         },
       ]),
     );
+  });
+
+  it('opens a space to anonymous readers from the detail subpage', async () => {
+    const original = staffSpace({ id: 's1' });
+    const updates: unknown[] = [];
+    server.use(
+      noProducts(),
+      tenantSettings(),
+      http.get('/api/spaces/staff', () => HttpResponse.json({ ok: true, data: { spaces: [original] } })),
+      http.post('/api/spaces/update', async ({ request }) => {
+        const body = updateSpaceInputSchema.parse(await request.json());
+        updates.push(body);
+        return HttpResponse.json({ ok: true, data: { space: { ...original, publicReadOnly: true } } });
+      }),
+    );
+
+    await renderPanel('/panel/spaces/s1');
+
+    const toggle = await screen.findByRole('checkbox', { name: pl.spacesPanel.publicReadOnlyLabel });
+    expect(screen.getByText(pl.spacesPanel.publicReadOnlyHelper)).toBeInTheDocument();
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByTestId('space-form-submit'));
+
+    await waitFor(() => expect(updates).toMatchObject([{ id: 's1', publicReadOnly: true }]));
+  });
+
+  it('locks the public toggle of the tenant home space', async () => {
+    const original = staffSpace({ id: 's1', publicReadOnly: true });
+    server.use(
+      noProducts(),
+      tenantSettings('s1'),
+      http.get('/api/spaces/staff', () => HttpResponse.json({ ok: true, data: { spaces: [original] } })),
+    );
+
+    await renderPanel('/panel/spaces/s1');
+
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: pl.spacesPanel.publicReadOnlyLabel })).toBeDisabled(),
+    );
+    expect(screen.getByText(pl.spacesPanel.publicReadOnlyHomeSpaceBlocked)).toBeInTheDocument();
   });
 });

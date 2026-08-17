@@ -40,7 +40,30 @@ interface StoredSettings {
   invoiceVatRatePercent?: 5 | 8 | 23 | null;
   invoiceExemptionBasisKind?: 'art_113_1' | 'art_113_9' | 'art_43_1' | 'other_statute' | 'other' | null;
   invoiceExemptionBasis?: string | null;
+  defaultHomeSpaceId?: string | null;
 }
+
+interface StubSpace {
+  id: string;
+  name: string;
+  publicReadOnly: boolean;
+  archivedAt: string | null;
+}
+
+const staffSpace = ({ id, name, publicReadOnly, archivedAt }: StubSpace) => ({
+  tenantId: 'tenant-akademia',
+  id,
+  slug: id,
+  name,
+  description: null,
+  visibility: 'members',
+  productIds: [],
+  publicReadOnly,
+  position: 0,
+  archivedAt,
+  createdAt: '2026-07-20T08:00:00.000Z',
+  stats: { posts: 0, followers: 0 },
+});
 
 const EMPTY_SETTINGS: StoredSettings = {
   name: 'Akademia',
@@ -63,12 +86,15 @@ const PANEL_TENANT = {
   memberId: null,
 };
 
-const installSettingsBackend = (initial: StoredSettings) => {
+const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = []) => {
   let settings = { ...initial };
   const updates: unknown[] = [];
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('/api/spaces/staff', () =>
+      HttpResponse.json({ ok: true, data: { spaces: spaces.map(staffSpace) } }),
+    ),
     http.get('*', ({ request }) =>
       new URL(request.url).pathname.endsWith('/passkey/list-user-passkeys')
         ? HttpResponse.json([])
@@ -86,8 +112,8 @@ const installSettingsBackend = (initial: StoredSettings) => {
   return { updates };
 };
 
-const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true) => {
-  const { updates } = installSettingsBackend(initial);
+const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true, spaces: StubSpace[] = []) => {
+  const { updates } = installSettingsBackend(initial, spaces);
 
   const { queryClient } = renderWithProviders(
     <PanelContextProvider
@@ -345,6 +371,38 @@ describe('SettingsPanel legal documents', () => {
 
     expect(await screen.findByTestId('legal-saved')).toBeInTheDocument();
     expect(updates).toContainEqual({ termsUrl: null, privacyUrl: null });
+  });
+});
+
+describe('SettingsPanel public access', () => {
+  const spaces: StubSpace[] = [
+    { id: 's1', name: 'Ogólna', publicReadOnly: true, archivedAt: null },
+    { id: 's2', name: 'Zamknięta', publicReadOnly: false, archivedAt: null },
+    { id: 's3', name: 'Archiwalna', publicReadOnly: true, archivedAt: '2026-07-20T09:00:00.000Z' },
+  ];
+
+  it('offers only active publicly readable spaces as the visitors home space', async () => {
+    renderPanel(EMPTY_SETTINGS, true, spaces);
+
+    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await userEvent.click(picker);
+
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      pl.publicAccess.homeSpaceNone,
+      'Ogólna',
+    ]);
+  });
+
+  it('saves the picked home space and clears it again', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultHomeSpaceId: 's1' }, true, spaces);
+
+    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toHaveTextContent('Ogólna'));
+    await userEvent.click(picker);
+    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceNone }));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: '' }));
   });
 });
 

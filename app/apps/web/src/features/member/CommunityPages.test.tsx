@@ -103,7 +103,7 @@ const renderPage = async (component: () => ReactNode, path: string) => {
 };
 
 describe('community pages', () => {
-  it('lists visibility-filtered spaces with the community tab present', async () => {
+  it('lists visibility-filtered spaces', async () => {
     server.use(
       okMe(),
       noNotifications(),
@@ -114,7 +114,6 @@ describe('community pages', () => {
 
     expect(await screen.findByTestId('space-card-s1')).toHaveTextContent('Ogólna');
     expect(screen.getByTestId('space-following-s1')).toHaveTextContent(pl.community.followingChip);
-    expect(screen.getAllByRole('link', { name: pl.community.tab }).length).toBeGreaterThan(0);
     expect(screen.queryByTestId('space-card-gated')).not.toBeInTheDocument();
   });
 

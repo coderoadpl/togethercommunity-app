@@ -4,12 +4,13 @@ import {
   createRoute,
   createRouter,
   RouterProvider,
+  useParams,
 } from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CourseStructureWithAccess,
@@ -124,6 +125,19 @@ const okProgress = (completedLessonIds: string[] = []) =>
 const okNext = (next: NextLesson) =>
   http.get('/api/student/lessons/next', () => HttpResponse.json({ ok: true, data: { next } }));
 
+const stubDesktopViewport = () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('min-width'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 const renderPage = async (node: ReactNode) => {
   const rootRoute = createRootRoute({ component: () => node });
   const router = createRouter({
@@ -135,6 +149,8 @@ const renderPage = async (node: ReactNode) => {
 };
 
 describe('LessonPlayerPage', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
     server.use(
       http.get('/api/me', () =>
@@ -247,7 +263,6 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Preview body');
-    expect(screen.getByRole('link', { name: pl.auth.signInLink })).toHaveAttribute('href', '/login');
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-section')).not.toBeInTheDocument();
     expect(memberOnlyRequests).toBe(0);
@@ -451,7 +466,6 @@ describe('LessonPlayerPage', () => {
 
     expect(await screen.findByRole('heading', { name: pl.lesson.contentLocked })).toBeInTheDocument();
     expect(screen.getByTestId('locked-lesson-upsell')).toBeInTheDocument();
-    expect(screen.getByTestId('member-bottom-nav')).toBeInTheDocument();
     expect(screen.getByTestId('locked-state-icon')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: pl.lesson.backToCourse })).toHaveAttribute(
       'href',
@@ -517,23 +531,30 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('locked-product-price')).toHaveTextContent('199');
   });
 
-  it('renders the rail curriculum with the current lesson highlighted', async () => {
+  it('leaves the program to the shell below md, where the program sheet carries it', async () => {
     server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    const rail = await screen.findByTestId('curriculum-card');
-    expect(rail).toHaveTextContent(pl.courseOverview.curriculum);
-    const current = within(rail).getByTestId('lesson-button-l1');
-    expect(current).toHaveClass('Mui-selected');
+    expect(await screen.findByTestId('lesson-html')).toBeInTheDocument();
+    expect(screen.queryByTestId('curriculum-card')).not.toBeInTheDocument();
   });
 
-  it('keeps the program sidebar and member nav mounted across a lesson switch', async () => {
+  it('leaves the program to the shell sidebar from md up', async () => {
+    stubDesktopViewport();
+    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('lesson-html')).toBeInTheDocument();
+    expect(screen.queryByTestId('curriculum-card')).not.toBeInTheDocument();
+  });
+
+  it('keeps the lesson shell mounted across a lesson switch', async () => {
     let releaseLesson: () => void = () => undefined;
     const lessonGate = new Promise<void>((resolve) => {
       releaseLesson = resolve;
     });
     server.use(
-      okNext(null),
+      okNext({ id: 'l2', name: 'Advanced Variables' }),
       okStructure(),
       okProgress(),
       http.get('/api/student/lessons/:lessonId', async ({ params }) => {
@@ -554,13 +575,14 @@ describe('LessonPlayerPage', () => {
     );
 
     const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+    };
     const lessonRoute = createRoute({
       getParentRoute: () => rootRoute,
       path: '/my/courses/$courseId/lessons/$lessonId',
-      component: () => {
-        const params = lessonRoute.useParams();
-        return <LessonPlayerPage courseId={params.courseId} lessonId={params.lessonId} />;
-      },
+      component: LessonRouteComponent,
     });
     const router = createRouter({
       routeTree: rootRoute.addChildren([lessonRoute]),
@@ -573,18 +595,17 @@ describe('LessonPlayerPage', () => {
     renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('L1 body');
-    const card = await screen.findByTestId('curriculum-card');
-    await user.click(screen.getByTestId('lesson-button-l2'));
+    const breadcrumbs = await screen.findByTestId('member-breadcrumbs');
+    await user.click(screen.getByTestId('next-lesson'));
 
-    expect(screen.getByTestId('curriculum-card')).toBe(card);
+    expect(screen.getByTestId('member-breadcrumbs')).toBe(breadcrumbs);
     expect(screen.getByTestId('lesson-transition-loading')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: pl.auth.signInLink })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.student.myCourses })).toBeInTheDocument();
 
     releaseLesson();
 
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('L2 body');
-    expect(screen.getByTestId('curriculum-card')).toBe(card);
+    expect(screen.getByTestId('member-breadcrumbs')).toBe(breadcrumbs);
   });
 
   it('shows a friendly empty state for a lesson without blocks', async () => {

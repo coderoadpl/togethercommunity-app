@@ -389,7 +389,6 @@ export interface Messages {
   notifications: {
     bell: string;
     heading: string;
-    mobileTab: string;
     empty: string;
     loading: string;
     markAllRead: string;
@@ -1015,11 +1014,35 @@ export interface Messages {
     bannedSince: (params: { date: string }) => string;
     banVsRemoval: string;
   };
+  shell: {
+    navigationAria: string;
+    start: string;
+    spacesSection: string;
+    lockedSpaceHint: string;
+    courseProgressLabel: (params: { name: string; percent: number }) => string;
+    backTo: (params: { name: string }) => string;
+    courseOverviewEntry: string;
+    lessonsOf: (params: { done: number; total: number }) => string;
+    menuTab: string;
+    menuTitle: string;
+    programButton: string;
+    programTitle: string;
+    closeSheet: string;
+  };
+  start: {
+    title: string;
+    eyebrow: string;
+    continueLabel: (params: { lesson: string; course: string }) => string;
+    reviewLabel: (params: { lesson: string; course: string }) => string;
+    coursesSection: string;
+    spacesSection: string;
+    lockedSection: string;
+    emptyTitle: string;
+    emptyBody: string;
+  };
   student: {
     myCourses: string;
     myProducts: string;
-    mobileCourses: string;
-    mobileProducts: string;
     courseLibrary: string;
     productsLibrary: string;
     loadingCourses: string;
@@ -1030,9 +1053,6 @@ export interface Messages {
     noProducts: string;
     productsWillAppear: string;
     staffNoMember: string;
-    completionNotStarted: string;
-    completionInProgress: string;
-    completionCompleted: string;
     courseEyebrow: string;
     courseContentComingSoon: string;
     courseContentArrivesLater: string;
@@ -1169,7 +1189,6 @@ export interface Messages {
     searchCourseEmpty: string;
   };
   community: {
-    tab: string;
     heading: string;
     listEyebrow: string;
     loadingSpaces: string;

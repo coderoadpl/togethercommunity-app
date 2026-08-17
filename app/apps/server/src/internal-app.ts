@@ -196,6 +196,7 @@ import {
   getMarketingConsentDefinition,
   getMemberCommerceOverview,
   getMemberLearningSummary,
+  getMemberNavigation,
   getNextLesson,
   getOrder,
   getLessonAttachmentDownload,
@@ -1542,6 +1543,11 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       c.req.param('assetId'),
       deps,
     ));
+  });
+
+  app.get(API_PATHS.memberNavigation, async (c) => {
+    const result = await getMemberNavigation({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ navigation: result.value }) : result);
   });
 
   app.post(API_PATHS.courseCoverUpload, async (c) => {

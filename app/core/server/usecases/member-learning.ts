@@ -4,6 +4,9 @@ import {
   ok,
   validation,
   type AppError,
+  type Course,
+  type CourseLesson,
+  type CourseModule,
   type MemberCourseLearningSummary,
   type MemberLearningSummary,
   type Result,
@@ -20,8 +23,43 @@ import type {
   MemberRepository,
   ProductGrantRepository,
 } from '../ports.js';
-import { isLessonAccessibleByLookup, linearizeCourse } from './access.js';
+import { isLessonAccessibleByLookup, linearizeCourse, type AccessLookup } from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
+
+export interface CourseProgressCounts {
+  accessibleLessonCount: number;
+  completedLessonIds: string[];
+  lessonNames: Map<string, string>;
+}
+
+/** Null when the actor reaches no lesson of the course, which keeps it out of every learning surface. */
+export const countCourseProgress = (input: {
+  course: Course;
+  modules: CourseModule[];
+  lessonsById: Map<string, CourseLesson>;
+  lookup: AccessLookup;
+  completedLessonIds: readonly string[];
+}): CourseProgressCounts | null => {
+  const lessonNames = new Map<string, string>();
+  const accessibleLessonIds = new Set<string>();
+  for (const content of linearizeCourse(input.course, input.modules, input.lessonsById)) {
+    lessonNames.set(content.lessonId, content.name);
+    const location = {
+      courseId: input.course.id,
+      moduleId: content.moduleId,
+      lessonId: content.lessonId,
+    };
+    if (isLessonAccessibleByLookup(input.lookup, location)) accessibleLessonIds.add(content.lessonId);
+  }
+  if (accessibleLessonIds.size === 0) return null;
+  return {
+    accessibleLessonCount: accessibleLessonIds.size,
+    completedLessonIds: input.completedLessonIds.filter((lessonId) =>
+      accessibleLessonIds.has(lessonId),
+    ),
+    lessonNames,
+  };
+};
 
 export interface MemberLearningSummaryDeps {
   members: MemberRepository;
@@ -64,34 +102,27 @@ export const getMemberLearningSummary = async (
 
   const summaries: MemberCourseLearningSummary[] = [];
   for (const course of courses) {
-    const nameByLessonId = new Map<string, string>();
-    const accessibleLessonIds = new Set<string>();
-    for (const content of linearizeCourse(course, modules, lessonsById)) {
-      nameByLessonId.set(content.lessonId, content.name);
-      const location = {
-        courseId: course.id,
-        moduleId: content.moduleId,
-        lessonId: content.lessonId,
-      };
-      if (isLessonAccessibleByLookup(lookup, location)) accessibleLessonIds.add(content.lessonId);
-    }
-    if (accessibleLessonIds.size === 0) continue;
-
     const row = progressByCourse.get(course.id);
-    const completedLessonIds = (row?.completedLessonIds ?? []).filter((lessonId) =>
-      accessibleLessonIds.has(lessonId),
-    );
-    const latestCompletedId = completedLessonIds.at(-1);
+    const counts = countCourseProgress({
+      course,
+      modules,
+      lessonsById,
+      lookup,
+      completedLessonIds: row?.completedLessonIds ?? [],
+    });
+    if (counts === null) continue;
+
+    const latestCompletedId = counts.completedLessonIds.at(-1);
     summaries.push({
       courseId: course.id,
       courseName: course.name,
-      completedLessonCount: completedLessonIds.length,
-      accessibleLessonCount: accessibleLessonIds.size,
+      completedLessonCount: counts.completedLessonIds.length,
+      accessibleLessonCount: counts.accessibleLessonCount,
       lastActivityAt: row?.updatedAt ?? null,
       latestCompletedLesson:
         latestCompletedId === undefined
           ? null
-          : { lessonId: latestCompletedId, name: nameByLessonId.get(latestCompletedId) ?? '' },
+          : { lessonId: latestCompletedId, name: counts.lessonNames.get(latestCompletedId) ?? '' },
     });
   }
 

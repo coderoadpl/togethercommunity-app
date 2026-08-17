@@ -111,12 +111,12 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
-// The unread badge lives on the header bell on sm+ and on the bottom
-// tab-bar bell on xs (decision D4) — wait on the instance this viewport
-// actually shows, otherwise a shot can land before the async count arrives.
+// The member shell keeps the bell in the sidebar from md up and in the bottom
+// tab bar below it — wait on the instance this viewport actually shows,
+// otherwise a shot can land before the async count arrives.
 const waitForUnreadBadge = async (page: Page): Promise<void> => {
   const width = page.viewportSize()?.width ?? 0;
-  const bellTestId = width < 600 ? 'notification-tab' : 'notification-bell';
+  const bellTestId = width < 900 ? 'notification-tab' : 'notification-nav';
   await page
     .locator(`[data-testid="${bellTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
     .waitFor(visible);
@@ -190,7 +190,7 @@ const SCREENS: ScreenSpec[] = [
     ready: async (page) => {
       const seededCourseCard = page.locator('a[href="/my/courses/course-js"]');
       await seededCourseCard.waitFor(visible);
-      await seededCourseCard.getByTestId('completion-course-js').waitFor(visible);
+      await seededCourseCard.getByTestId('course-progress-course-js').waitFor(visible);
       await waitForUnreadBadge(page);
     },
   },
@@ -199,7 +199,7 @@ const SCREENS: ScreenSpec[] = [
     auth: 'member',
     path: '/my/courses/course-js',
     ready: async (page) => {
-      await page.getByTestId('course-tree').waitFor(visible);
+      await page.getByTestId('course-tree').first().waitFor(visible);
       await page.getByText('Przejdź do pierwszej lekcji').waitFor(visible);
     },
   },

@@ -55,9 +55,9 @@ const renderHome = async () => {
   const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: TenantHomePage });
   const panelRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: stub('PANEL') });
   const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/login', component: stub('LOGIN') });
-  const myRoute = createRoute({ getParentRoute: () => rootRoute, path: '/my', component: stub('MY') });
+  const startRoute = createRoute({ getParentRoute: () => rootRoute, path: '/start', component: stub('START') });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, panelRoute, loginRoute, myRoute]),
+    routeTree: rootRoute.addChildren([indexRoute, panelRoute, loginRoute, startRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
   await router.load();
@@ -71,10 +71,10 @@ describe('TenantHomePage dispatcher', () => {
     expect(await screen.findByText('PANEL')).toBeInTheDocument();
   });
 
-  it('redirects a member-only account to their courses', async () => {
+  it('redirects a member-only account to their start page', async () => {
     server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: meMemberOnly })));
     await renderHome();
-    expect(await screen.findByText('MY')).toBeInTheDocument();
+    expect(await screen.findByText('START')).toBeInTheDocument();
   });
 
   it('redirects an unauthenticated visitor to sign in', async () => {

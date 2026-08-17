@@ -95,6 +95,7 @@ import {
   memberGrantsOutputSchema,
   memberCommerceOutputSchema,
   memberLearningSummaryOutputSchema,
+  memberNavigationOutputSchema,
   memberTimelineOutputSchema,
   memberProgressResetOutputSchema,
   memberRemoveOutputSchema,
@@ -911,6 +912,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.devSubscriptionSimulateFailure.path,
       subscriptionSimulateOutputSchema,
       input,
+      signal,
+    ),
+  memberNavigation: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberNavigation.method,
+      API_ROUTES.memberNavigation.path,
+      memberNavigationOutputSchema,
+      undefined,
       signal,
     ),
   myProducts: (signal?: AbortSignal) =>

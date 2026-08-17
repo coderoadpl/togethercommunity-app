@@ -76,6 +76,7 @@ import {
   memberErasureRequestStatusSchema,
   memberErasureRequestWithMemberSchema,
   memberLearningSummarySchema,
+  memberNavigationSchema,
   memberTimelineEventSchema,
   memberWithProductIdsSchema,
   memberSchema,
@@ -419,6 +420,10 @@ export const memberGrantsOutputSchema = z.object({
 
 export const memberLearningSummaryOutputSchema = z.object({
   summary: memberLearningSummarySchema,
+});
+
+export const memberNavigationOutputSchema = z.object({
+  navigation: memberNavigationSchema,
 });
 
 export const memberTimelineOutputSchema = z.object({
@@ -1511,6 +1516,7 @@ export const API_ROUTES = {
   notificationsUnread: { method: 'GET', path: '/api/notifications/unread-count' },
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
+  memberNavigation: { method: 'GET', path: '/api/member/navigation' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
@@ -1727,6 +1733,7 @@ export const API_PATHS = {
   notificationsUnread: API_ROUTES.notificationsUnread.path,
   notificationsStream: API_ROUTES.notificationsStream.path,
   devGrant: API_ROUTES.devGrant.path,
+  memberNavigation: API_ROUTES.memberNavigation.path,
   myProducts: API_ROUTES.myProducts.path,
   memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,

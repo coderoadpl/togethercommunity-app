@@ -21,6 +21,7 @@ export * from './usecases/fulfill-enrollment.js';
 export * from './usecases/my-products.js';
 export * from './usecases/members.js';
 export * from './usecases/member-learning.js';
+export * from './usecases/member-navigation.js';
 export * from './usecases/member-events.js';
 export * from './usecases/member-commerce.js';
 export * from './usecases/tenants.js';

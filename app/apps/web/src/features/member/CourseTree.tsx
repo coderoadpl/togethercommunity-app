@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   Box,
   Collapse,
@@ -293,6 +293,7 @@ export const CourseTree = ({
   const [rawSearch, setRawSearch] = useState('');
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const searchId = useId();
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(rawSearch.trim().toLowerCase()), 300);
@@ -314,9 +315,9 @@ export const CourseTree = ({
   return (
     <Box>
       <FormControl fullWidth sx={{ mb: '1rem' }}>
-        <FormLabel htmlFor="lesson-search">{t.courseTree.searchLessons}</FormLabel>
+        <FormLabel htmlFor={searchId}>{t.courseTree.searchLessons}</FormLabel>
         <OutlinedInput
-          id="lesson-search"
+          id={searchId}
           size="small"
           value={rawSearch}
           onChange={(event) => setRawSearch(event.target.value)}

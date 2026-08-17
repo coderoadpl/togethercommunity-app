@@ -40,7 +40,7 @@ export const TenantHomePage = () => {
   useEffect(() => {
     if (unauthorized) void navigate({ to: '/login' });
     else if (staff) void navigate({ to: '/panel' });
-    else if (memberOnly) void navigate({ to: '/my' });
+    else if (memberOnly) void navigate({ to: '/start' });
   }, [unauthorized, staff, memberOnly, navigate]);
 
   if (me.isPending) {

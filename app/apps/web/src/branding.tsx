@@ -64,12 +64,7 @@ export const TenantLogo = () => {
   if (tenant === null) return null;
   if (tenant.branding.logoUrl === null) {
     return (
-      <Wordmark
-        component="p"
-        variant="h3"
-        data-testid="tenant-name-mark"
-        sx={{ mb: '0.9rem' }}
-      >
+      <Wordmark component="p" variant="h3" data-testid="tenant-name-mark">
         {tenant.name}
       </Wordmark>
     );
@@ -86,7 +81,6 @@ export const TenantLogo = () => {
         maxWidth: '14rem',
         objectFit: 'contain',
         objectPosition: 'left center',
-        mb: '0.9rem',
       }}
     />
   );

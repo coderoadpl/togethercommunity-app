@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 99. Route rows: 241. Exported `Ctx` use-case rows: 203.
+Closed capability count: 99. Route rows: 242. Exported `Ctx` use-case rows: 204.
 
 ## Human-readable diff
 
@@ -146,6 +146,7 @@ no changes
 | `POST /api/products/:productId/downloads/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/products/:productId/downloads/:assetId/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/products/:productId/downloads/:assetId` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/member/navigation` | space:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/course-cover/upload` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/course-cover/complete` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/product-cover/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -415,6 +416,7 @@ no changes
 | `member-erasure-requests.ts#cancelMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-events.ts#listMemberTimeline` | member:timeline:read | owner, admin | owner, admin | yes | core/server/usecases/member-events.ts authorization call |
 | `member-learning.ts#getMemberLearningSummary` | member:learning:read | owner, admin | owner, admin | yes | core/server/usecases/member-learning.ts authorization call |
+| `member-navigation.ts#getMemberNavigation` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-navigation.ts authorization call |
 | `members.ts#listMembers` | member:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#exportMembers` | member:export | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#removeMember` | member:remove | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
@@ -484,10 +486,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:135` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:906` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:908` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1351` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1351` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:907` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:909` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1352` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1352` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:79` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -522,6 +524,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-data-export.ts:52` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:48` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:53` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
+| staff-role | `core/server/usecases/member-navigation.ts:45` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
+| member-scope | `core/server/usecases/member-navigation.ts:45` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
+| member-scope | `core/server/usecases/member-navigation.ts:46` | `? { tenantId, memberId: ctx.identity.memberId }` |
 | member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |

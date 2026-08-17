@@ -226,6 +226,10 @@ const myProductsScopes = {
   all: () => ['my-products'] as const,
 };
 
+const memberNavigationScopes = {
+  all: () => ['member-navigation'] as const,
+};
+
 const membersScopes = {
   all: () => ['members'] as const,
   export: (format: MemberExportFormat) => ['members', 'export', format] as const,
@@ -548,6 +552,12 @@ export const myProductsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: myProductsScopes.all(),
     call: ({ signal }) => api.myProducts(signal),
+  });
+
+export const memberNavigationQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: memberNavigationScopes.all(),
+    call: ({ signal }) => api.memberNavigation(signal),
   });
 
 export const membersQuery = (api: ApiClient) =>
@@ -1304,6 +1314,9 @@ export const productsInvalidates = () => ({ queryKey: productsScopes.all() });
 
 /** The invalidation filter a simulated purchase applies after it settles. */
 export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });
+
+/** Every surface that changes a member's progress or follow state refreshes the shell aggregate. */
+export const memberNavigationInvalidates = () => ({ queryKey: memberNavigationScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
 

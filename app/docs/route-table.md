@@ -15,6 +15,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
+| `GET /api/public/assets/:kind/:file` | public | read | Tenant image assets (covers, branding) redirected from private BYO storage |
 | `GET /api/public/offer` | public | read | Public offer discovery |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
@@ -125,6 +126,12 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/products/:productId/downloads/:assetId/complete` | authenticated | mutating | product download complete |
 | `DELETE /api/products/:productId/downloads/:assetId` | authenticated | mutating | product download delete |
 | `GET /api/member/navigation` | authenticated | read | member navigation |
+| `POST /api/image-assets/course-cover/upload` | authenticated | mutating | course cover upload |
+| `POST /api/image-assets/course-cover/complete` | authenticated | mutating | course cover complete |
+| `POST /api/image-assets/product-cover/upload` | authenticated | mutating | product cover upload |
+| `POST /api/image-assets/product-cover/complete` | authenticated | mutating | product cover complete |
+| `POST /api/image-assets/branding/upload` | authenticated | mutating | branding asset upload |
+| `POST /api/image-assets/branding/complete` | authenticated | mutating | branding asset complete |
 | `GET /api/my/products` | authenticated | read | my products |
 | `GET /api/my/products/:productId/downloads/:assetId` | authenticated | read | member product download |
 | `GET /api/members` | authenticated | read | members |

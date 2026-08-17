@@ -151,6 +151,57 @@ describe('createApiClient', () => {
     });
   });
 
+  it('uploads an image asset through begin, storage PUT, and complete', async () => {
+    const requests: Array<{ url: string; method: string; body: BodyInit | null | undefined }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method ?? 'GET', body: init?.body });
+      if (url.endsWith('/api/image-assets/branding/upload')) {
+        return jsonResponse({
+          ok: true,
+          data: {
+            key: 'image-assets/tenant-1/logo/00000000-0000-4000-8000-000000000001.png',
+            servePath: '/api/public/assets/logo/00000000-0000-4000-8000-000000000001.png',
+            upload: {
+              url: 'https://storage.example.test/signed-put',
+              headers: { 'content-type': 'image/png' },
+              expiresAt: '2026-08-16T12:15:00.000Z',
+            },
+          },
+        });
+      }
+      if (url === 'https://storage.example.test/signed-put') {
+        expect(new Headers(init?.headers).get('content-type')).toBe('image/png');
+        return new Response(null, { status: 200 });
+      }
+      return jsonResponse({
+        ok: true,
+        data: { url: '/api/public/assets/logo/00000000-0000-4000-8000-000000000001.png' },
+      });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    const result = await client.uploadBrandingAsset({
+      kind: 'logo',
+      fileName: 'logo.png',
+      contentType: 'image/png',
+      sizeBytes: 5,
+      body: new Blob(['image'], { type: 'image/png' }),
+    });
+
+    expect(result).toEqual(ok({
+      url: '/api/public/assets/logo/00000000-0000-4000-8000-000000000001.png',
+    }));
+    expect(requests.map(({ url, method }) => ({ url, method }))).toEqual([
+      { url: 'https://api.example.test/api/image-assets/branding/upload', method: 'POST' },
+      { url: 'https://storage.example.test/signed-put', method: 'PUT' },
+      { url: 'https://api.example.test/api/image-assets/branding/complete', method: 'POST' },
+    ]);
+    expect(JSON.parse(String(requests[2]?.body))).toEqual({
+      key: 'image-assets/tenant-1/logo/00000000-0000-4000-8000-000000000001.png',
+    });
+  });
+
   it('turns malformed envelopes into failures', async () => {
     const fetchImpl: typeof fetch = async () => jsonResponse({ data: { status: 'ok' } });
     const client = createApiClient({ baseUrl: '', fetchImpl });

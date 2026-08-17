@@ -1041,7 +1041,10 @@ export interface BunnyTokenSigner {
 
 export interface StorageProvider {
   objectUrl(configuration: StorageConfiguration, key: string): URL;
-  probe(input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>>;
+  probe(
+    input: StorageConfiguration,
+    corsOrigins?: string[] | undefined,
+  ): Promise<Result<ProviderDiagnostic, AppError>>;
   presignPut(input: {
     url: string;
     accessKeyId: string;
@@ -1069,7 +1072,10 @@ export interface StorageProvider {
     region?: string;
   }): Promise<Result<{ sizeBytes: number }, AppError>>;
   healthcheck(input: { tenantId: string }): Promise<Result<{ healthy: true }, AppError>>;
-  test(input: { tenantId: string }): Promise<Result<ProviderDiagnostic, AppError>>;
+  test(input: {
+    tenantId: string;
+    corsOrigins?: string[] | undefined;
+  }): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 
 export interface ProductPriceRepository {

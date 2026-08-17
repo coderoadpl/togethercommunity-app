@@ -391,7 +391,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     );
     expect(screen.getByRole('link', { name: pl.lessons.videoPickerOpenIntegrations })).toHaveAttribute(
       'href',
-      '/panel/integrations',
+      '/panel/integrations#video',
     );
 
     await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));

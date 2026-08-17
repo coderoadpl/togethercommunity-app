@@ -74,7 +74,7 @@ export const BunnyVideoPickerDialog = ({
             <Stack useFlexGap spacing="0.5rem" data-testid="bunny-picker-not-configured">
               <Typography variant="body2">{t.lessons.videoPickerNotConfigured}</Typography>
               <Box>
-                <MuiLink component={Link} to="/panel/integrations">{t.lessons.videoPickerOpenIntegrations}</MuiLink>
+                <MuiLink component={Link} to="/panel/integrations" hash="video">{t.lessons.videoPickerOpenIntegrations}</MuiLink>
               </Box>
               <Typography variant="caption" component="p">
                 {t.lessons.videoPickerManualHint}

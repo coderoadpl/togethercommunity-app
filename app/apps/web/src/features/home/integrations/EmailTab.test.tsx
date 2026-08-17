@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
-import { MarketingSettingsPanel } from './MarketingSettingsPanel.js';
+import { EmailTab } from './EmailTab.js';
 
 const now = '2026-07-27T10:00:00.000Z';
 
@@ -96,7 +96,7 @@ describe('email transport wizard', () => {
       }),
     );
     const user = userEvent.setup();
-    renderWithProviders(<MarketingSettingsPanel />);
+    renderWithProviders(<EmailTab />);
 
     expect(within((await screen.findByText('Zestaw konfiguracji SES')).closest('li') ?? document.body).getByText('Gotowe')).toBeInTheDocument();
     expect(within(screen.getByText('Subskrypcja SNS').closest('li') ?? document.body).getByText('Gotowe')).toBeInTheDocument();

@@ -188,6 +188,7 @@ describe('CoursesPanel courses tab', () => {
     await renderCoursesPanel('/panel/courses/course-1');
 
     const title = await screen.findByLabelText(pl.courses.titleLabel);
+    expect(screen.getByRole('button', { name: pl.imageAssets.upload })).toBeInTheDocument();
     await userEvent.clear(title);
     await userEvent.type(title, 'Updated Launch Kit');
     await userEvent.clear(screen.getByLabelText(pl.common.description));

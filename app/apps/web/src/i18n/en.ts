@@ -32,6 +32,14 @@ export const en: Messages = {
     unsavedChanges: 'Unsaved changes',
     unsavedChangesConfirm: 'You have unsaved changes. Leave this page and discard them?',
   },
+  imageAssets: {
+    upload: 'Upload file',
+    uploading: 'Uploading…',
+    storageMissing: 'File upload requires tenant storage. Configure it under',
+    storageLink: 'Integrations → File storage (S3)',
+    invalidType: 'Choose a PNG, JPEG, WebP, or SVG image. Favicons can also use ICO.',
+    tooLarge: 'The image must be no larger than 5 MB.',
+  },
   bootSplash: {
     opening: 'Opening the creator panel',
     tenant: ({ host }) => format('Workspace {host}', { host }),
@@ -88,11 +96,15 @@ export const en: Messages = {
       'This integration is not configured yet. Fill in its details in the Integrations section.',
     messageIntegrationAuth:
       'The external service rejected the stored key. Check the key in the Integrations section.',
+    messageEmailSendingNotConfigured:
+      'E-mail sending is not configured. Set the sender and provider in Integrations → E-mail.',
+    messagePlatformEmailPoolExhausted:
+      'The starter sending pool is exhausted. Configure your own provider in Integrations → E-mail.',
     messageIntegrationUnavailable:
       'The external service is temporarily unavailable. Please try again in a moment.',
     messageRateLimited: 'Too many attempts. Please wait a moment before trying again.',
     messageSlugReservedGeneric: 'That address is reserved by the platform. Pick another one.',
-    messageInvoiceExemptionBasisMissing: 'VAT exemption is selected but the legal basis is missing. Open Settings → Automatic invoices and enter the provision you rely on (for example art. 113 ust. 1). Polish law requires it on the invoice.',
+    messageInvoiceExemptionBasisMissing: 'VAT exemption is selected but the legal basis is missing. Open Settings → Company → Automatic invoices and enter the provision you rely on (for example art. 113 ust. 1). Polish law requires it on the invoice.',
     messageSlugReserved: ({ slug }) =>
       format('The `{slug}` address is reserved by the platform. Pick another one — adding your brand name usually works.', { slug }),
     messageInternal: 'Something went wrong on our end. Please try again in a moment.',
@@ -190,7 +202,6 @@ export const en: Messages = {
     marketingConsents: 'Consent forms',
     marketingDocuments: 'Legal documents',
     marketingLayouts: 'Email layouts',
-    marketingSettings: 'Sending settings',
     aria: 'Creator sections',
     comingSoon: 'Coming soon.',
   },
@@ -470,6 +481,13 @@ export const en: Messages = {
   integrations: {
     heading: 'Integrations',
     intro: 'Connect your own service accounts. Keys are encrypted and kept server-side.',
+    tabsAria: 'Integration sections',
+    tabStripe: 'Stripe / Payments',
+    tabEmail: 'E-mail',
+    tabStorage: 'File storage (S3)',
+    tabVideo: 'Video (Bunny Stream)',
+    tabInvoicing: 'Invoicing (iFirma / KSeF)',
+    tabApiKeys: 'Migration API keys',
     stripeHeading: 'Stripe',
     stripeDescription:
       'Enter a restricted key. Together creates the webhook automatically and stores its signing secret.',
@@ -498,6 +516,7 @@ export const en: Messages = {
     testFailed: 'The connection test failed.',
     paymentAvailable: 'The payment provider accepted the credentials.',
     emailAvailable: "The email provider passed its diagnostic and sent a test e-mail to your account's e-mail address.",
+    emailTestedVia: ({ transport }) => format('Tested path: {transport}.', { transport }),
     storageAvailable: 'Storage passed the write, read and delete probe.',
     saveKeysFirst: 'Save your Stripe key to create the webhook before testing the connection.',
     webhookUrlLabel: 'Webhook URL',
@@ -505,7 +524,8 @@ export const en: Messages = {
     webhookActiveHint: 'This webhook is registered in Stripe and ready to receive payment events.',
     loading: 'Loading integrations…',
     emailHeading: 'Transactional email',
-    emailDescription: 'Check the connection to the active email provider configured for the application.',
+    emailDescription:
+      'The test sends a message through the same path the app uses in production (the workspace SES / SMTP / Resend transport, or the platform pool).',
     importKeysHeading: 'Migration API keys',
     importKeysDescription:
       'Issue short-lived keys for draft content and member imports. Import access cannot send email, enroll through the legacy API, or publish content.',
@@ -607,6 +627,7 @@ export const en: Messages = {
     storageProbeBucket: 'Check that the bucket name is exact and that this key can access it.',
     storageProbeCors:
       'Allow this Together origin and PUT, GET and DELETE methods in bucket CORS, with Content-Type in AllowedHeaders.',
+    storageProbeCorsOrigin: ({ origin }) => format('The bucket CORS policy rejected the origin {origin}. Add your community domain to the allowed origins.', { origin }),
     storageProbeUnavailable: 'Check the endpoint URL and network access, then run the probe again.',
   },
   products: {
@@ -922,7 +943,7 @@ export const en: Messages = {
     videoPickerEmptyLibrary: 'The library is empty. Upload a video in the Bunny Stream dashboard and come back here.',
     videoPickerNoMatches: 'No videos match your search.',
     videoPickerNotConfigured:
-      'The Bunny Stream integration is not configured. Add the API key and library id in the Integrations section, or type the ids manually below.',
+      'The Bunny Stream integration is not configured. Add the API key and library id in the Integrations → Video section, or type the ids manually below.',
     videoPickerOpenIntegrations: 'Open Integrations',
     videoPickerSelectAria: ({ title }) => format('Pick the video “{title}”', { title }),
     videoPickerPageInfo: ({ page, pages }) => format('Page {page} of {pages}', { page, pages }),
@@ -1500,6 +1521,9 @@ export const en: Messages = {
     clear: 'Remove',
     configured: 'Configured',
     notConfigured: 'Not set',
+    ksefConfiguredInIntegrations:
+      'Configure the KSeF token and context NIP in Integrations → Invoicing.',
+    ksefOpenIntegrations: 'Open Integrations → Invoicing',
     invoiceHeading: 'Automatic invoices',
     invoiceIntro: 'Choose iFirma or direct KSeF issuance after payment fulfillment.',
     autoIssue: 'Issue automatically after payment',
@@ -1731,7 +1755,7 @@ export const en: Messages = {
     publish: 'Publish new version', saveAndPublish: 'Save and publish', publishing: 'Saving and publishing…', publicUrls: 'Public URLs', latestUrl: 'Latest published version',
     immutableUrl: ({ version }) => `Immutable version ${version} URL`, draft: 'Draft', published: 'Published', layoutsTitle: 'Email layouts', layoutsDescription: 'Manage campaign wrappers with exactly one content slot.',
     layoutsEmpty: 'No email layouts yet.', layoutsLoading: 'Loading layouts…', newLayout: 'New layout', layoutEditor: 'Layout editor', allLayouts: '← All layouts', layoutHtmlLabel: 'Layout HTML',
-    layoutSlotHint: 'HTML must contain exactly one {{{content}}} marker.', settingsTitle: 'Sending settings', settingsDescription: 'Connect your own Amazon SES account and check broadcast readiness.',
+    layoutSlotHint: 'HTML must contain exactly one {{{content}}} marker.',
     settingsLoading: 'Loading sending settings…', saveSettingsAction: 'Save settings',
     credentials: 'SES credentials', credentialsHint: "Campaigns only use this workspace's own account key.",
     smtpTitle: 'SMTP for transactional mail',

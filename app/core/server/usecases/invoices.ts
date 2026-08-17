@@ -109,7 +109,7 @@ const invoicingConfig = async (
     deps.tenantSecrets.findByKey(tenantId, 'ifirma.username'),
   ]);
   if (invoiceApiKeySecret === null || usernameSecret === null) {
-    return err(integrationNotConfigured('Connect iFirma in Integrations before issuing invoices'));
+    return err(integrationNotConfigured('Connect iFirma in Integrations → Invoicing before issuing invoices'));
   }
   const invoiceApiKey = deps.secretCrypto.decrypt(invoiceApiKeySecret);
   if (!invoiceApiKey.ok) return invoiceApiKey;

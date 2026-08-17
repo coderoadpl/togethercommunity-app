@@ -235,7 +235,6 @@ describe('Creator panel routing', () => {
       'marketingLayouts',
       'marketingConsents',
       'marketingDocuments',
-      'marketingSettings',
     ] as const;
     for (const id of alwaysVisibleSectionIds) {
       expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
@@ -273,6 +272,22 @@ describe('Creator panel routing', () => {
     expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('3');
     expect(screen.getByRole('heading', { name: pl.members.heading, level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('build-stamp')).toBeInTheDocument();
+  });
+
+  it('keeps the two configuration entries ungrouped at the bottom', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    await renderPanelAt('/panel/members');
+    await screen.findByTestId('tenant-name');
+
+    await userEvent.click(screen.getByTestId('group-sales'));
+
+    expect(screen.queryByTestId('section-sales')).not.toBeInTheDocument();
+    const navigation = screen.getByRole('navigation', { name: pl.sections.aria });
+    const entries = [...navigation.querySelectorAll('[data-testid^="section-"]')].map((entry) =>
+      entry.getAttribute('data-testid'));
+    expect(entries.slice(-2)).toEqual(['section-integrations', 'section-settings']);
   });
 
   it('persists each group preference across panel mounts', async () => {

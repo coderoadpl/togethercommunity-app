@@ -38,6 +38,14 @@ export const pl: Messages = {
     unsavedChanges: 'Niezapisane zmiany',
     unsavedChangesConfirm: 'Masz niezapisane zmiany. Opuścić stronę i je odrzucić?',
   },
+  imageAssets: {
+    upload: 'Wgraj plik',
+    uploading: 'Wgrywanie…',
+    storageMissing: 'Wgrywanie plików wymaga pamięci plików przestrzeni. Skonfiguruj ją w',
+    storageLink: 'Integracje → Pamięć plików (S3)',
+    invalidType: 'Wybierz obraz PNG, JPEG, WebP lub SVG. Favicon może być również plikiem ICO.',
+    tooLarge: 'Obraz nie może być większy niż 5 MB.',
+  },
   bootSplash: {
     opening: 'Otwieranie panelu twórcy',
     tenant: ({ host }) => format('Przestrzeń {host}', { host }),
@@ -94,11 +102,15 @@ export const pl: Messages = {
       'Ta integracja nie jest jeszcze skonfigurowana. Uzupełnij dane w sekcji Integracje.',
     messageIntegrationAuth:
       'Usługa zewnętrzna odrzuciła zapisany klucz. Sprawdź klucz w sekcji Integracje.',
+    messageEmailSendingNotConfigured:
+      'Wysyłka e-mail nie jest skonfigurowana. Uzupełnij dane nadawcy i dostawcę w sekcji Integracje → E-mail.',
+    messagePlatformEmailPoolExhausted:
+      'Pula startowa wysyłki została wyczerpana. Skonfiguruj własnego dostawcę w sekcji Integracje → E-mail.',
     messageIntegrationUnavailable:
       'Usługa zewnętrzna jest chwilowo niedostępna. Spróbuj ponownie za chwilę.',
     messageRateLimited: 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.',
     messageSlugReservedGeneric: 'Ten adres jest zarezerwowany dla platformy. Wybierz inny.',
-    messageInvoiceExemptionBasisMissing: 'Wybrano zwolnienie z VAT, ale brakuje podstawy prawnej. Otwórz Ustawienia → Automatyczne faktury i wskaż przepis, z którego korzystasz (np. art. 113 ust. 1). Przepisy wymagają jej na fakturze.',
+    messageInvoiceExemptionBasisMissing: 'Wybrano zwolnienie z VAT, ale brakuje podstawy prawnej. Otwórz Ustawienia → Firma → Automatyczne faktury i wskaż przepis, z którego korzystasz (np. art. 113 ust. 1). Przepisy wymagają jej na fakturze.',
     messageSlugReserved: ({ slug }) =>
       format('Adres `{slug}` jest zarezerwowany dla platformy. Wybierz inny — np. dodaj nazwę marki.', { slug }),
     messageInternal: 'Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.',
@@ -196,7 +208,6 @@ export const pl: Messages = {
     marketingConsents: 'Kreator zgód',
     marketingDocuments: 'Dokumenty prawne',
     marketingLayouts: 'Układy e-mail',
-    marketingSettings: 'Ustawienia wysyłki',
     aria: 'Sekcje panelu twórcy',
     comingSoon: 'Już wkrótce.',
   },
@@ -476,6 +487,13 @@ export const pl: Messages = {
   integrations: {
     heading: 'Integracje',
     intro: 'Podłącz własne konta usług. Klucze są szyfrowane i przechowywane po stronie serwera.',
+    tabsAria: 'Sekcje integracji',
+    tabStripe: 'Stripe / Płatności',
+    tabEmail: 'E-mail',
+    tabStorage: 'Pamięć plików (S3)',
+    tabVideo: 'Wideo (Bunny Stream)',
+    tabInvoicing: 'Fakturowanie (iFirma / KSeF)',
+    tabApiKeys: 'Klucze API migracji',
     stripeHeading: 'Stripe',
     stripeDescription:
       'Podaj klucz ograniczony (restricted key). Together automatycznie utworzy webhook i zapisze jego sekret podpisu.',
@@ -504,6 +522,7 @@ export const pl: Messages = {
     testFailed: 'Test połączenia nie powiódł się.',
     paymentAvailable: 'Dostawca płatności przyjął dane dostępowe.',
     emailAvailable: 'Dostawca e-mail przeszedł diagnostykę i wysłał wiadomość testową na adres e-mail Twojego konta.',
+    emailTestedVia: ({ transport }) => format('Przetestowano ścieżkę: {transport}.', { transport }),
     storageAvailable: 'Storage przeszedł próbę zapisu, odczytu i usunięcia.',
     saveKeysFirst: 'Zapisz klucz Stripe, aby utworzyć webhook przed testem połączenia.',
     webhookUrlLabel: 'URL webhooka',
@@ -511,7 +530,8 @@ export const pl: Messages = {
     webhookActiveHint: 'Webhook jest zarejestrowany w Stripe i gotowy na zdarzenia płatności.',
     loading: 'Ładowanie integracji…',
     emailHeading: 'E-mail transakcyjny',
-    emailDescription: 'Sprawdź połączenie z aktywnym dostawcą e-mail skonfigurowanym dla aplikacji.',
+    emailDescription:
+      'Test wysyła wiadomość tą samą ścieżką, którą aplikacja wysyła e-maile produkcyjnie (SES / SMTP / Resend przestrzeni albo pula platformy).',
     importKeysHeading: 'Klucze API migracji',
     importKeysDescription:
       'Twórz krótkoterminowe klucze do importu roboczych treści i użytkowników. Dostęp importu nie pozwala wysyłać e-maili, zapisywać przez dotychczasowe API ani publikować treści.',
@@ -613,6 +633,7 @@ export const pl: Messages = {
     storageProbeBucket: 'Sprawdź dokładną nazwę bucketu i czy ten klucz ma do niego dostęp.',
     storageProbeCors:
       'W CORS bucketu zezwól na ten origin Together i metody PUT, GET i DELETE oraz dodaj Content-Type do AllowedHeaders.',
+    storageProbeCorsOrigin: ({ origin }) => format('Polityka CORS bucketu odrzuciła domenę {origin}. Dodaj domenę Twojej przestrzeni do dozwolonych originów.', { origin }),
     storageProbeUnavailable: 'Sprawdź URL endpointu i dostęp sieciowy, a następnie ponów test.',
   },
   products: {
@@ -932,7 +953,7 @@ export const pl: Messages = {
     videoPickerEmptyLibrary: 'Biblioteka jest pusta. Wgraj wideo w panelu Bunny Stream i wróć tutaj.',
     videoPickerNoMatches: 'Żadne wideo nie pasuje do wyszukiwania.',
     videoPickerNotConfigured:
-      'Integracja z Bunny Stream nie jest skonfigurowana. Dodaj klucz API i identyfikator biblioteki w sekcji Integracje, albo wpisz identyfikatory ręcznie poniżej.',
+      'Integracja z Bunny Stream nie jest skonfigurowana. Dodaj klucz API i identyfikator biblioteki w sekcji Integracje → Wideo, albo wpisz identyfikatory ręcznie poniżej.',
     videoPickerOpenIntegrations: 'Przejdź do Integracji',
     videoPickerSelectAria: ({ title }) => format('Wybierz wideo „{title}”', { title }),
     videoPickerPageInfo: ({ page, pages }) => format('Strona {page} z {pages}', { page, pages }),
@@ -1518,6 +1539,9 @@ export const pl: Messages = {
     clear: 'Usuń',
     configured: 'Skonfigurowano',
     notConfigured: 'Nie ustawiono',
+    ksefConfiguredInIntegrations:
+      'Token KSeF i NIP kontekstu skonfigurujesz w Integracje → Fakturowanie.',
+    ksefOpenIntegrations: 'Otwórz Integracje → Fakturowanie',
     invoiceHeading: 'Automatyczne faktury',
     invoiceIntro: 'Wybierz iFirmę lub bezpośrednie wystawianie w KSeF po zakończeniu płatności.',
     autoIssue: 'Wystawiaj automatycznie po płatności',
@@ -1755,7 +1779,7 @@ export const pl: Messages = {
     layoutsTitle: 'Układy e-mail', layoutsDescription: 'Zarządzaj oprawą kampanii z dokładnie jednym miejscem na treść.', layoutsEmpty: 'Nie masz jeszcze układów e-mail.',
     layoutsLoading: 'Wczytywanie układów…', newLayout: 'Nowy układ', layoutEditor: 'Edytor układu', allLayouts: '← Wszystkie układy', layoutHtmlLabel: 'HTML układu',
     layoutSlotHint: 'HTML musi zawierać dokładnie jeden znacznik {{{content}}}.',
-    settingsTitle: 'Ustawienia wysyłki', settingsDescription: 'Podłącz własne konto Amazon SES i sprawdź gotowość do kampanii.', settingsLoading: 'Wczytywanie ustawień wysyłki…',
+    settingsLoading: 'Wczytywanie ustawień wysyłki…',
     saveSettingsAction: 'Zapisz ustawienia',
     credentials: 'Dane dostępowe SES', credentialsHint: 'Kampanie używają wyłącznie klucza z konta tej przestrzeni.',
     smtpTitle: 'SMTP dla wiadomości transakcyjnych',

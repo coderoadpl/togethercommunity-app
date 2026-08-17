@@ -23,7 +23,13 @@ import {
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { localizeError, providerCodeOf, useTranslations, type Messages } from '../../../i18n/index.js';
+import {
+  localizeError,
+  providerCodeOf,
+  rejectedCorsOriginOf,
+  useTranslations,
+  type Messages,
+} from '../../../i18n/index.js';
 
 type WizardStep = 'provider' | 'connection' | 'probe';
 
@@ -66,11 +72,14 @@ const isProbeErrorCode = (value: string): value is StorageProbeErrorCode =>
   STORAGE_PROBE_ERROR_CODES.some((candidate) => candidate === value);
 
 const localizedProbeError = (error: unknown, t: Messages): string => {
+  const rejectedOrigin = rejectedCorsOriginOf(error);
   const messages: Record<StorageProbeErrorCode, string> = {
     'storage.wrong_region': t.integrations.storageProbeWrongRegion,
     'storage.credentials': t.integrations.storageProbeCredentials,
     'storage.bucket': t.integrations.storageProbeBucket,
-    'storage.cors': t.integrations.storageProbeCors,
+    'storage.cors': rejectedOrigin === null
+      ? t.integrations.storageProbeCors
+      : t.integrations.storageProbeCorsOrigin({ origin: rejectedOrigin }),
     'storage.unavailable': t.integrations.storageProbeUnavailable,
   };
   const code = providerCodeOf(error);

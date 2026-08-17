@@ -30,6 +30,8 @@ import {
   healthOutputSchema,
   healthLiveOutputSchema,
   healthReadyOutputSchema,
+  imageAssetCompleteOutputSchema,
+  imageAssetUploadOutputSchema,
   ifirmaTestConnectionOutputSchema,
   integrationTestOutputSchema,
   storageConfigureOutputSchema,
@@ -182,6 +184,7 @@ import {
   type LessonCreateInput,
   type LessonUpdateInput,
   type LessonAttachmentUploadRequest,
+  type ImageAssetUploadRequest,
   type ProductDownloadUploadRequest,
   type M2mEnrollRequest,
   type M2mTransactionalMessageRequest,
@@ -303,6 +306,10 @@ export interface ProductDownloadFileUpload extends ProductDownloadUploadRequest 
   body: BodyInit;
 }
 
+export interface ImageAssetFileUpload extends ImageAssetUploadRequest {
+  body: BodyInit;
+}
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -351,6 +358,41 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   }
   return ok(data.data);
 };
+
+const uploadImageAsset = (
+  options: ApiClientOptions,
+  begin: { method: 'POST'; path: string },
+  complete: { method: 'POST'; path: string },
+  input: ImageAssetFileUpload,
+  signal?: AbortSignal,
+) =>
+  uploadPresignedStorageAsset(
+    input,
+    options.fetchImpl ?? fetch,
+    () => request(
+      options,
+      begin.method,
+      begin.path,
+      imageAssetUploadOutputSchema,
+      {
+        kind: input.kind,
+        fileName: input.fileName,
+        contentType: input.contentType,
+        sizeBytes: input.sizeBytes,
+      },
+      signal,
+    ),
+    (started) => started.upload,
+    (started) => request(
+      options,
+      complete.method,
+      complete.path,
+      imageAssetCompleteOutputSchema,
+      { key: started.key },
+      signal,
+    ),
+    signal,
+  );
 
 /** The single typed gateway to the API. No client ever hand-writes HTTP. */
 export const createApiClient = (options: ApiClientOptions) => ({
@@ -1233,6 +1275,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  uploadCourseCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.courseCoverUpload, API_ROUTES.courseCoverComplete, input, signal),
+  uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.productCoverUpload, API_ROUTES.productCoverComplete, input, signal),
+  uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.brandingAssetUpload, API_ROUTES.brandingAssetComplete, input, signal),
   deleteProductDownload: (input: { productId: string; assetId: string }, signal?: AbortSignal) =>
     request(
       options,

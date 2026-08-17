@@ -60,6 +60,7 @@ export * from './usecases/lesson-media.js';
 export * from './usecases/lesson-playback.js';
 export * from './usecases/lesson-attachments.js';
 export * from './usecases/product-downloads.js';
+export * from './usecases/image-assets.js';
 export * from './usecases/progress.js';
 export * from './usecases/community-access.js';
 export * from './usecases/community.js';

@@ -97,6 +97,7 @@ import {
   unwrap,
   type ApiClient,
   type ProductDownloadFileUpload,
+  type ImageAssetFileUpload,
   type ReadResult,
   type WriteResult,
 } from './http.js';
@@ -197,6 +198,10 @@ const productPricesScopes = {
 const productDownloadsScopes = {
   all: () => ['product-downloads'] as const,
   list: (productId: string) => ['product-downloads', 'list', productId] as const,
+};
+
+const imageAssetsScopes = {
+  all: () => ['image-assets'] as const,
 };
 
 const salesScopes = {
@@ -593,6 +598,24 @@ export const uploadProductDownloadMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...productDownloadsScopes.all(), 'upload'],
     call: (input: ProductDownloadFileUpload) => api.uploadProductDownload(input),
+  });
+
+export const uploadCourseCoverMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'course-cover', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadCourseCover(input),
+  });
+
+export const uploadProductCoverMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'product-cover', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadProductCover(input),
+  });
+
+export const uploadBrandingAssetMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'branding', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadBrandingAsset(input),
   });
 
 export const deleteProductDownloadMutation = (api: ApiClient) =>

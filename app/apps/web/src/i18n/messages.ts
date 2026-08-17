@@ -37,6 +37,14 @@ export interface Messages {
     unsavedChanges: string;
     unsavedChangesConfirm: string;
   };
+  imageAssets: {
+    upload: string;
+    uploading: string;
+    storageMissing: string;
+    storageLink: string;
+    invalidType: string;
+    tooLarge: string;
+  };
   bootSplash: {
     opening: string;
     tenant: (params: { host: string }) => string;
@@ -91,6 +99,8 @@ export interface Messages {
     messageTenantNotFound: string;
     messageIntegrationNotConfigured: string;
     messageIntegrationAuth: string;
+    messageEmailSendingNotConfigured: string;
+    messagePlatformEmailPoolExhausted: string;
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
     messageSlugReservedGeneric: string;
@@ -189,7 +199,6 @@ export interface Messages {
     marketingConsents: string;
     marketingDocuments: string;
     marketingLayouts: string;
-    marketingSettings: string;
     aria: string;
     comingSoon: string;
   };
@@ -446,6 +455,13 @@ export interface Messages {
   integrations: {
     heading: string;
     intro: string;
+    tabsAria: string;
+    tabStripe: string;
+    tabEmail: string;
+    tabStorage: string;
+    tabVideo: string;
+    tabInvoicing: string;
+    tabApiKeys: string;
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;
@@ -472,6 +488,7 @@ export interface Messages {
     testFailed: string;
     paymentAvailable: string;
     emailAvailable: string;
+    emailTestedVia: (params: { transport: string }) => string;
     storageAvailable: string;
     saveKeysFirst: string;
     webhookUrlLabel: string;
@@ -570,6 +587,7 @@ export interface Messages {
     storageProbeCredentials: string;
     storageProbeBucket: string;
     storageProbeCors: string;
+    storageProbeCorsOrigin: (params: { origin: string }) => string;
     storageProbeUnavailable: string;
   };
   products: {
@@ -1366,6 +1384,8 @@ export interface Messages {
     clear: string;
     configured: string;
     notConfigured: string;
+    ksefConfiguredInIntegrations: string;
+    ksefOpenIntegrations: string;
     invoiceHeading: string;
     invoiceIntro: string;
     autoIssue: string;
@@ -1720,8 +1740,6 @@ export interface Messages {
     allLayouts: string;
     layoutHtmlLabel: string;
     layoutSlotHint: string;
-    settingsTitle: string;
-    settingsDescription: string;
     settingsLoading: string;
     saveSettingsAction: string;
     credentials: string;

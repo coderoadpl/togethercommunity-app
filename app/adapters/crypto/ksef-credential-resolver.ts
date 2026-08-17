@@ -16,7 +16,7 @@ export const createKsefCredentialResolver = (
       secrets.resolve(tenantId, 'ksef.contextNip'),
     ]);
     if (!token.ok || !contextNip.ok) {
-      return err(integrationNotConfigured('Save the KSeF token and context NIP in Integrations'));
+      return err(integrationNotConfigured('Save the KSeF token and context NIP in Integrations → Invoicing'));
     }
     const parsedNip = nipSchema.safeParse(contextNip.value);
     if (!parsedNip.success) return err(validation('The KSeF context NIP is invalid'));

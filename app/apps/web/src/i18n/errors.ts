@@ -13,14 +13,20 @@ export const errorCodeOf = (error: unknown): ErrorCode | null => {
   return typeof code === 'string' && isErrorCode(code) ? code : null;
 };
 
-export const providerCodeOf = (error: unknown): string | null => {
+const errorDetailOf = (error: unknown, key: string): string | null => {
   if (typeof error !== 'object' || error === null || !('appError' in error)) return null;
   const { appError } = error;
   if (typeof appError !== 'object' || appError === null || !('details' in appError)) return null;
   const { details } = appError;
-  if (typeof details !== 'object' || details === null || !('providerCode' in details)) return null;
-  return typeof details.providerCode === 'string' ? details.providerCode : null;
+  if (typeof details !== 'object' || details === null || !(key in details)) return null;
+  const value: unknown = Reflect.get(details, key);
+  return typeof value === 'string' ? value : null;
 };
+
+export const providerCodeOf = (error: unknown): string | null => errorDetailOf(error, 'providerCode');
+
+export const rejectedCorsOriginOf = (error: unknown): string | null =>
+  errorDetailOf(error, 'corsOrigin');
 
 export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
   switch (code) {
@@ -56,8 +62,9 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageValidation;
     case 'ses_not_configured':
     case 'broadcasts_disabled':
+      return t.errors.messageEmailSendingNotConfigured;
     case 'transactional_platform_cap_reached':
-      return t.errors.messageIntegrationNotConfigured;
+      return t.errors.messagePlatformEmailPoolExhausted;
     case 'slug_reserved':
       return t.errors.messageSlugReservedGeneric;
     case 'invoice_exemption_basis_missing':

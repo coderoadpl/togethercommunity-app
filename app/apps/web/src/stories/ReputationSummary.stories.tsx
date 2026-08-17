@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Box } from '@mui/material';
 
-import { ReputationSummary } from '../features/home/marketing/ReputationSummary.js';
+import { ReputationSummary } from '../features/home/integrations/ReputationSummary.js';
 
 const meta = {
   title: 'Marketing/Reputation summary',

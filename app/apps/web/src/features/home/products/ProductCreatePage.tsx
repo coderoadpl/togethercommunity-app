@@ -14,7 +14,6 @@ import { useLocation, useNavigate } from '@tanstack/react-router';
 
 import {
   PRODUCT_TYPES,
-  productCoverUrlSchema,
   productSlugFromTitle,
   type ProductType,
 } from '#core/domain/index.js';
@@ -22,9 +21,9 @@ import {
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
-import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { errorCodeOf, localizeError, useTranslations } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { ImageAssetField } from '../ImageAssetField.js';
 import { productTypeLabel } from './product-type.js';
 
 export const ProductCreatePage = () => {
@@ -50,8 +49,6 @@ export const ProductCreatePage = () => {
       });
     },
   });
-  const parsedCoverUrl = productCoverUrlSchema.safeParse(coverUrl);
-  const coverPreviewUrl = parsedCoverUrl.success ? parsedCoverUrl.data : null;
   const slugError = createProduct.isError && errorCodeOf(createProduct.error) === 'slug_reserved'
     ? localizeError(createProduct.error, t)
     : null;
@@ -124,24 +121,15 @@ export const ProductCreatePage = () => {
           onChange={setDescription}
           fieldLabel={t.common.description}
         />
-        <FormControl fullWidth>
-          <FormLabel htmlFor="product-cover-url">{t.products.coverUrlLabel}</FormLabel>
-          <OutlinedInput
-            id="product-cover-url"
-            type="url"
-            value={coverUrl}
-            onChange={(event) => setCoverUrl(event.target.value)}
-          />
-          <FormHelperText>{t.products.coverUrlHint}</FormHelperText>
-        </FormControl>
-        {coverPreviewUrl === null ? null : (
-          <CoverPreview
-            key={coverPreviewUrl}
-            src={coverPreviewUrl}
-            label={title === '' ? t.products.coverUrlLabel : title}
-            testId="product-cover-preview"
-          />
-        )}
+        <ImageAssetField
+          id="product-cover-url"
+          label={t.products.coverUrlLabel}
+          hint={t.products.coverUrlHint}
+          value={coverUrl}
+          onChange={setCoverUrl}
+          kind="product-cover"
+          testId="product-cover"
+        />
         <Button type="submit" variant="contained" disabled={createProduct.isPending}>
           {createProduct.isPending ? t.products.creating : t.products.create}
         </Button>

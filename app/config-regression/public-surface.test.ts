@@ -28,6 +28,7 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'fulfillStripeWebhook',
   'getPaymentConfig',
   'getPlayableLesson',
+  'getPublicImageAssetUrl',
   'getPublicOffer',
   'recordCheckoutMarketingConsents',
   'resolveIdentity',

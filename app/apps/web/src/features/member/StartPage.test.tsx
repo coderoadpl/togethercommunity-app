@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
@@ -108,12 +108,17 @@ const renderStart = async () => {
     path: '/start',
     component: StartPage,
   });
+  const homeRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    component: () => <p>Podgląd dla gości</p>,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([startRoute]),
+    routeTree: rootRoute.addChildren([startRoute, homeRoute]),
     history: createMemoryHistory({ initialEntries: ['/start'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return { ...renderWithProviders(<RouterProvider router={router} />), router };
 };
 
 describe('StartPage', () => {
@@ -351,5 +356,26 @@ describe('StartPage', () => {
       'href',
       '/my/products',
     );
+  });
+
+  it('sends an anonymous visitor to the tenant home instead of the login page', async () => {
+    server.use(
+      http.get('/api/student/courses', () =>
+        HttpResponse.json(
+          { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } },
+          { status: 401 },
+        ),
+      ),
+      http.get('/api/member/navigation', () =>
+        HttpResponse.json(
+          { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } },
+          { status: 401 },
+        ),
+      ),
+    );
+
+    const { router } = await renderStart();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 });

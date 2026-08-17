@@ -1188,6 +1188,19 @@ export const pl: Messages = {
     emptyTitle: 'Nic tu jeszcze nie ma',
     emptyBody: 'Kursy i przestrzenie, do których dołączysz, pojawią się w tym miejscu.',
   },
+  anon: {
+    eyebrow: 'Podgląd dla gości',
+    homeTitle: 'Zajrzyj do środka',
+    signInCta: 'Zaloguj się, aby dołączyć',
+    joinDiscussionCta: 'Zaloguj się, aby dołączyć do dyskusji',
+    readOnlyBanner:
+      'Przeglądasz jako gość: czytanie jest otwarte, pisanie i reakcje wymagają konta.',
+    lockedCourseHint:
+      'Lekcje oznaczone jako darmowy podgląd otworzysz od razu; resztę odblokujesz po zakupie.',
+    unlockCta: 'Odblokuj dostęp',
+    emptyTitle: 'Nic publicznego',
+    emptyBody: 'Ta społeczność nie udostępniła jeszcze gościom żadnej przestrzeni ani kursu.',
+  },
   search: {
     title: 'Szukaj',
     eyebrow: 'Wyszukiwanie',

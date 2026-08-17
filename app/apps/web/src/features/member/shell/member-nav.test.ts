@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   activeNavEntry,
+  anonHomePath,
   courseContextFromPath,
   memberHomePath,
   memberSearchPath,
@@ -10,6 +11,7 @@ import {
 describe('activeNavEntry', () => {
   it.each([
     [memberHomePath(), { kind: 'start' }],
+    [anonHomePath(), { kind: 'start' }],
     [memberSearchPath(), { kind: 'search' }],
     ['/community/space-1', { kind: 'space', spaceId: 'space-1' }],
     ['/community/space-1/posts/post-1', { kind: 'space', spaceId: 'space-1' }],
@@ -49,6 +51,7 @@ describe('courseContextFromPath', () => {
 
   it.each([
     [memberHomePath()],
+    [anonHomePath()],
     [memberSearchPath()],
     ['/my'],
     ['/my/courses'],

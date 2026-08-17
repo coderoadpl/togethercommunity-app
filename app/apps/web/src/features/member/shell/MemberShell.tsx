@@ -14,6 +14,7 @@ import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
+import { AnonShell } from './AnonShell.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
 import { courseContextFromPath, memberHomePath } from './member-nav.js';
@@ -104,24 +105,10 @@ export const MemberShell = () => {
 
   if (!isMember && !me.isPending) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-        <AppBar position="fixed">
-          <Toolbar sx={{ gap: '0.75rem' }}>
-            {brand}
-            <Box sx={{ flex: 1 }} />
-            <Button component={Link} to="/login" color="inherit" size="small">
-              {t.auth.signInLink}
-            </Button>
-          </Toolbar>
-        </AppBar>
-        <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
-          <Toolbar />
-          <Box sx={{ px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
-            {notices}
-            <Outlet />
-          </Box>
-        </Box>
-      </Box>
+      <AnonShell>
+        {notices}
+        <Outlet />
+      </AnonShell>
     );
   }
 

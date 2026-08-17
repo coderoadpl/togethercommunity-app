@@ -1052,6 +1052,17 @@ export interface Messages {
     emptyTitle: string;
     emptyBody: string;
   };
+  anon: {
+    eyebrow: string;
+    homeTitle: string;
+    signInCta: string;
+    joinDiscussionCta: string;
+    readOnlyBanner: string;
+    lockedCourseHint: string;
+    unlockCta: string;
+    emptyTitle: string;
+    emptyBody: string;
+  };
   search: {
     title: string;
     eyebrow: string;

@@ -1171,6 +1171,19 @@ export const en: Messages = {
     emptyTitle: 'Nothing here yet',
     emptyBody: 'Courses and spaces you join will show up here.',
   },
+  anon: {
+    eyebrow: 'Visitor preview',
+    homeTitle: 'Look inside',
+    signInCta: 'Sign in to join',
+    joinDiscussionCta: 'Sign in to join the discussion',
+    readOnlyBanner:
+      'You are browsing as a visitor: reading is open, posting and reactions need an account.',
+    lockedCourseHint:
+      'Lessons marked as a free preview open right away; the rest unlocks after purchase.',
+    unlockCta: 'Unlock access',
+    emptyTitle: 'Nothing public yet',
+    emptyBody: 'This community has not opened any space or course to visitors yet.',
+  },
   search: {
     title: 'Search',
     eyebrow: 'Search',

@@ -13,6 +13,8 @@ export interface CourseContext {
 
 export const memberHomePath = (): '/start' => '/start';
 
+export const anonHomePath = (): '/' => '/';
+
 export const memberSearchPath = (): '/search' => '/search';
 
 const segmentsOf = (pathname: string): string[] =>
@@ -28,7 +30,7 @@ export const courseContextFromPath = (pathname: string): CourseContext | null =>
 };
 
 export const activeNavEntry = (pathname: string): MemberNavEntry | null => {
-  if (pathname === memberHomePath()) return { kind: 'start' };
+  if (pathname === memberHomePath() || pathname === anonHomePath()) return { kind: 'start' };
   if (pathname === memberSearchPath()) return { kind: 'search' };
   const [first, second] = segmentsOf(pathname);
   if (first === 'community' && second !== undefined) return { kind: 'space', spaceId: second };

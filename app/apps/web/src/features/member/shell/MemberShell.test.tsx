@@ -10,7 +10,11 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CourseStructureWithAccess, MemberNavigation } from '#core/domain/index.js';
+import type {
+  CourseStructureWithAccess,
+  MemberNavigation,
+  PublicNavigation,
+} from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -83,6 +87,20 @@ const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation
 
 const okNavigation = (value: MemberNavigation = navigation()) =>
   http.get('/api/member/navigation', () =>
+    HttpResponse.json({ ok: true, data: { navigation: value } }));
+
+const publicNavigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
+  defaultHomeSpaceId: 's1',
+  spaces: [{ id: 's1', slug: 'ogolna', name: 'Ogólna', description: null, position: 0 }],
+  courses: [{ id: 'c1', name: 'JavaScript od zera', description: '', imageUrl: null }],
+  lockedSpaces: [
+    { id: 's9', slug: 'premium', name: 'Premium', description: null, productIds: ['p1'] },
+  ],
+  ...overrides,
+});
+
+const okPublicNavigation = (value: PublicNavigation = publicNavigation()) =>
+  http.get('/api/public/navigation', () =>
     HttpResponse.json({ ok: true, data: { navigation: value } }));
 
 const courseStructure: CourseStructureWithAccess = {
@@ -502,9 +520,9 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('program-button')).not.toBeInTheDocument();
   });
 
-  it('serves the public tier without a sidebar and with a sign-in link', async () => {
+  it('serves the public tier with the anonymous sidebar and a sign-in link', async () => {
     stubViewport(true);
-    server.use(okMe({ tenant: null }), okOffer());
+    server.use(okMe({ tenant: null }), okOffer(), okPublicNavigation());
 
     await renderShell('/my');
 
@@ -513,6 +531,30 @@ describe('MemberShell', () => {
       '/login',
     );
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
+  });
+
+  it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {
+    stubViewport(true);
+    server.use(okMe({ tenant: null }), okOffer(), okPublicNavigation());
+
+    await renderShell('/community/s1');
+
+    const nav = await screen.findByTestId('anon-sidebar');
+    const space = await within(nav).findByTestId('anon-sidebar-space-s1');
+    expect(within(nav).getByTestId('anon-sidebar-start')).toHaveAttribute('href', '/');
+    expect(space).toHaveAttribute('href', '/community/s1');
+    expect(space).toHaveAttribute('aria-current', 'page');
+    expect(within(nav).getByTestId('anon-sidebar-course-c1')).toHaveAttribute(
+      'href',
+      '/my/courses/c1',
+    );
+    expect(within(nav).getByTestId('anon-sidebar-locked-s9')).toHaveAttribute(
+      'href',
+      '/checkout/p1',
+    );
+    expect(within(nav).getByTestId('anon-sidebar-signin')).toHaveAttribute('href', '/login');
+    expect(within(nav).queryByTestId('member-identity')).not.toBeInTheDocument();
   });
 });

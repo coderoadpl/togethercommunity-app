@@ -13,6 +13,8 @@ import {
 } from '../../theme.js';
 import { coursePercent, type CourseLessonCounts } from './course-progress.js';
 
+export type CourseCardCourse = Pick<Course, 'id' | 'name' | 'description' | 'imageUrl'>;
+
 const courseInitials = (name: string): string =>
   name
     .split(/\s+/)
@@ -21,7 +23,7 @@ const courseInitials = (name: string): string =>
     .map((word) => (word[0] ?? '').toLocaleUpperCase())
     .join('');
 
-const CourseCardMedia = ({ course }: { course: Course }) => {
+const CourseCardMedia = ({ course }: { course: CourseCardCourse }) => {
   const t = useTranslations();
   if (course.imageUrl !== null) {
     return (
@@ -64,7 +66,7 @@ const CourseCardProgress = ({ courseId, counts }: { courseId: string; counts: Co
   );
 };
 
-export const CourseCard = ({ course, counts }: { course: Course; counts?: CourseLessonCounts }) => (
+export const CourseCard = ({ course, counts }: { course: CourseCardCourse; counts?: CourseLessonCounts }) => (
   <CourseCardRoot component={Link} to={`/my/courses/${encodeURIComponent(course.id)}`} data-testid={`course-card-${course.id}`}>
     <CourseCardMedia course={course} />
     <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>

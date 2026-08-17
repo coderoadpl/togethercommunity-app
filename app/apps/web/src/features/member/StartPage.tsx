@@ -17,6 +17,7 @@ import { continueLessonId, flattenLessons } from './CourseRail.js';
 import { HomeFeedSection } from './HomeFeedSection.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
+import { anonHomePath } from './shell/member-nav.js';
 import { SectionHeadingLink } from './shell/shell-chrome.js';
 import { LockedSpaceCard, SpaceCard } from './SpaceCards.js';
 
@@ -98,7 +99,7 @@ const ContinueCard = ({ course }: { course: MemberNavigationCourse }) => {
   );
 };
 
-const TileSection = ({
+export const TileSection = ({
   title,
   to,
   testId,
@@ -140,7 +141,7 @@ export const StartPage = () => {
   const unauthorized = isUnauthorized(navigation.error) || isUnauthorized(courses.error);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
+    if (unauthorized) void navigate({ to: anonHomePath() });
   }, [navigate, unauthorized]);
 
   if (navigation.isPending || courses.isPending) {

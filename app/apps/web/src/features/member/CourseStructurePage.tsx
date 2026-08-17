@@ -20,6 +20,8 @@ import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseR
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyCourseIcon, StatCheckIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
+import { PublicCourseStructurePage } from './PublicCourseStructurePage.js';
+import { useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -79,6 +81,28 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
 };
 
 export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
+  const t = useTranslations();
+  const viewer = useViewerKind();
+
+  if (viewer === 'pending') {
+    return (
+      <MemberSurface
+        title={t.student.myCourses}
+        eyebrow={t.courseTree.courseSyllabus}
+        width="wide"
+        state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
+      />
+    );
+  }
+
+  return viewer === 'anonymous' ? (
+    <PublicCourseStructurePage courseId={courseId} />
+  ) : (
+    <MemberCourseStructurePage courseId={courseId} />
+  );
+};
+
+const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
   const progress = useQuery(actions.studentProgress(courseId));

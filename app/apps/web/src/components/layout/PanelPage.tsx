@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 
+import { LedgerHeader } from '../../theme.js';
 import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
 
 interface PanelPageProps {
-  /** Quiet h1 (decision D1): title + optional description, no eyebrow or rule. */
+  /** Quiet h1 (decision D1): title + optional description, no eyebrow. */
   title: ReactNode;
   description?: ReactNode;
   /** Primary action, top-right; wraps under the title on narrow viewports. */
@@ -30,7 +31,7 @@ export const PanelPage = ({
 
   return (
     <Box data-testid={testId} sx={{ maxWidth: PAGE_WIDTH.panel, mx: 'auto' }}>
-      <Box component="header" sx={{ mb: '1.5rem' }}>
+      <LedgerHeader component="header" sx={{ pb: '1rem', mb: '1.5rem' }}>
         {backTo !== undefined && <Box sx={{ mb: '0.75rem' }}>{backTo}</Box>}
         <Stack
           direction="row"
@@ -49,7 +50,7 @@ export const PanelPage = ({
             <Box sx={{ flexShrink: 0, '& .MuiButtonBase-root': { minHeight: '44px' } }}>{action}</Box>
           )}
         </Stack>
-      </Box>
+      </LedgerHeader>
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
         {state?.kind === 'loading' ? (
           <BrandLoader scope="container" caption={state.label} />

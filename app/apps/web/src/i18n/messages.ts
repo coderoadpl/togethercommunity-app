@@ -30,6 +30,7 @@ export interface Messages {
     name: string;
     description: string;
     noOptions: string;
+    free: string;
     add: string;
     open: string;
     status: string;

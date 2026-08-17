@@ -265,7 +265,7 @@ the Stripe CLI can still forward events:
 stripe listen --events checkout.session.completed --forward-to http://localhost:48730/api/webhooks/stripe/<tenant-id>
 ```
 
-Open a published product's `/checkout/<product-id>` page and pay with a Stripe
+Open a published product's `/checkout/<product-slug-or-id>` page and pay with a Stripe
 test card. The browser return page only shows status; the signed webhook creates
 or renews access and sends the welcome magic link.
 

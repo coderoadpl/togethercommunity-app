@@ -147,7 +147,7 @@ const loginRoute = createRoute({
 });
 const checkoutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/checkout/$productId',
+  path: '/checkout/$productRef',
   component: CheckoutRoute,
 });
 const memberShellRoute = createRoute({

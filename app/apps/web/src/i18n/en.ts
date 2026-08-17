@@ -25,6 +25,7 @@ export const en: Messages = {
     name: 'Name',
     description: 'Description',
     noOptions: 'No options',
+    free: 'Free',
     add: 'Add',
     open: 'Open',
     status: 'Status',

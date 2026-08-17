@@ -31,6 +31,7 @@ export const pl: Messages = {
     name: 'Nazwa',
     description: 'Opis',
     noOptions: 'Brak opcji',
+    free: 'Bezpłatnie',
     add: 'Dodaj',
     open: 'Otwórz',
     status: 'Status',

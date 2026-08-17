@@ -22,6 +22,7 @@ import type {
   CourseRepository,
   ProductGrantRepository,
   SpaceRepository,
+  TenantAccessReader,
 } from '../ports.js';
 import { isLessonAccessibleByLookup, locateLesson, type AccessLookup } from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
@@ -183,6 +184,28 @@ export const spaceVisibleToMemberScope = async (
     deps.clock.nowIso(),
   );
   return activeGrants.some((grant) => space.productIds.includes(grant.productId));
+};
+
+export interface SpaceNotificationRecipientDeps extends Pick<SpaceAccessDeps, 'grants' | 'clock'> {
+  tenantAccess: TenantAccessReader;
+}
+
+/** Staff keep their fan-out; a ban takes it away, mirroring the write gate in `requireUnbannedMember`. */
+export const spaceNotificationRecipient = async (
+  tenantId: string,
+  userId: string,
+  space: Space,
+  deps: SpaceNotificationRecipientDeps,
+): Promise<{ email: string | null } | null> => {
+  const [staffGrant, member] = await Promise.all([
+    deps.tenantAccess.findStaffGrant(userId, { tenantId }),
+    deps.tenantAccess.findMember(tenantId, userId),
+  ]);
+  if (staffGrant !== null) return { email: member?.email ?? null };
+  if (member === null || member.bannedAt !== null) return null;
+  return (await spaceVisibleToMemberScope({ tenantId, memberId: member.id }, space, deps))
+    ? { email: member.email }
+    : null;
 };
 
 export const spaceContextAccess = async (

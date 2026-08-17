@@ -332,6 +332,7 @@ const fixture = (input: {
   spaces?: Space[];
   events?: SpaceEvent[];
   followers?: string[];
+  bannedUserIds?: string[];
   staffUserIds?: string[];
   grants?: ProductGrant[];
   products?: Product[];
@@ -445,8 +446,11 @@ const fixture = (input: {
               staffRole: 'admin',
             }
           : null,
-      findMember: async (tenantId, userId) =>
-        MEMBERS.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null,
+      findMember: async (tenantId, userId) => {
+        const found = MEMBERS.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null;
+        if (found === null || !(input.bannedUserIds ?? []).includes(userId)) return found;
+        return { ...found, bannedAt: NOW };
+      },
     },
     links: {
       lessonDiscussionUrl: () => 'http://tenant.localhost/my',
@@ -568,6 +572,15 @@ describe('createEvent', () => {
       { userId: 'u1', url: `http://tenant.localhost/community/s-open/events/${created.value.id}` },
       { userId: 'u2', url: `http://tenant.localhost/community/s-open/events/${created.value.id}` },
     ]);
+  });
+
+  it('skips a banned follower while the rest of the space still hears about the event', async () => {
+    const f = fixture({ followers: ['u1', 'u2'], bannedUserIds: ['u2'] });
+
+    await createEvent(staffCtx(), validInput, f.deps);
+
+    expect(f.notifications.rows.map((row) => row.recipientUserId)).toEqual(['u1']);
+    expect(f.delivered.map((row) => row.userId)).toEqual(['u1']);
   });
 
   it('skips followers who lost access to a product-gated space', async () => {

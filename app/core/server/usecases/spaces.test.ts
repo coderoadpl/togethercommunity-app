@@ -661,6 +661,7 @@ const fixture = (input: {
   grants?: ProductGrant[];
   products?: Product[];
   staffUserIds?: string[];
+  bannedUserIds?: string[];
   defaultHomeSpaceId?: string;
 }): Fixture => {
   const contentVersionBumps: string[] = [];
@@ -688,8 +689,11 @@ const fixture = (input: {
             staffRole: 'admin',
           }
         : null,
-    findMember: async (tenantId, userId) =>
-      MEMBERS.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
+    findMember: async (tenantId, userId) => {
+      const found = MEMBERS.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null;
+      if (found === null || !(input.bannedUserIds ?? []).includes(userId)) return found;
+      return { ...found, bannedAt: NOW };
+    },
   };
   const avatarSources: AvatarSourceReader = {
     listAvatarSources: async (tenantId, userIds) =>
@@ -1225,6 +1229,19 @@ describe('space-post notifications', () => {
       snippet: 'nowy wpis',
       authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160',
     });
+  });
+
+  it('skips a banned follower', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })], bannedUserIds: ['u2'] });
+    for (const userId of ['u2', 'u5']) {
+      await f.spaceSubscriptions.follow('t1', { userId, spaceId: 's-open', createdAt: NOW });
+    }
+
+    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'nowy wpis' }, f.deps);
+
+    expect(created.ok).toBe(true);
+    expect(f.delivered).toEqual(['u5']);
+    expect(f.notifications.rows.map((notification) => notification.recipientUserId)).toEqual(['u5']);
   });
 
   it('does not fan out space-post notifications for replies (thread machinery owns those)', async () => {

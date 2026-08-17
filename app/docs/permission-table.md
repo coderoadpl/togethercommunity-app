@@ -545,15 +545,15 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:101` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:107` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:548` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `core/server/usecases/community-access.ts:61` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/community-access.ts:61` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
-| staff-role | `core/server/usecases/community-access.ts:73` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
-| member-scope | `core/server/usecases/community-access.ts:81` | `ctx.identity.tenantId && ctx.identity.memberId` |
-| member-scope | `core/server/usecases/community-access.ts:82` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
-| staff-role | `core/server/usecases/community-access.ts:99` | `if (ctx.identity.staffRole) return ok(undefined);` |
-| staff-role | `core/server/usecases/community-access.ts:133` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
-| staff-role | `core/server/usecases/community-access.ts:197` | `if (ctx.identity.staffRole) return ok(space);` |
-| staff-role | `core/server/usecases/community-access.ts:213` | `if (ctx.identity.staffRole) return ok(spaces);` |
+| staff-role | `core/server/usecases/community-access.ts:62` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/community-access.ts:62` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
+| staff-role | `core/server/usecases/community-access.ts:74` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
+| member-scope | `core/server/usecases/community-access.ts:82` | `ctx.identity.tenantId && ctx.identity.memberId` |
+| member-scope | `core/server/usecases/community-access.ts:83` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
+| staff-role | `core/server/usecases/community-access.ts:100` | `if (ctx.identity.staffRole) return ok(undefined);` |
+| staff-role | `core/server/usecases/community-access.ts:134` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
+| staff-role | `core/server/usecases/community-access.ts:220` | `if (ctx.identity.staffRole) return ok(space);` |
+| staff-role | `core/server/usecases/community-access.ts:236` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:339` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:370` | `if (ctx.identity.staffRole === null) {` |
 | staff-role | `core/server/usecases/community.ts:518` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |

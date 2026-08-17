@@ -52,7 +52,7 @@ import {
   requireMemberOrStaff,
   requireUnbannedMember,
   spaceContextAccess,
-  spaceVisibleToMemberScope,
+  spaceNotificationRecipient,
 } from './community-access.js';
 import { resolveAuthorDisplay } from './community.js';
 
@@ -188,14 +188,8 @@ const notifySpaceFollowersOfEvent = async (
   const reference = event.discussionRootPostId ?? event.id;
   for (const follower of followers) {
     if (follower.userId === event.createdByUserId) continue;
-    const [staffGrant, member] = await Promise.all([
-      deps.tenantAccess.findStaffGrant(follower.userId, { tenantId }),
-      deps.tenantAccess.findMember(tenantId, follower.userId),
-    ]);
-    const memberCanAccess =
-      member !== null &&
-      (await spaceVisibleToMemberScope({ tenantId, memberId: member.id }, space, deps));
-    if (staffGrant === null && !memberCanAccess) continue;
+    const recipient = await spaceNotificationRecipient(tenantId, follower.userId, space, deps);
+    if (recipient === null) continue;
     const notification: Notification = {
       id: deps.ids.nextId(),
       tenantId,
@@ -219,7 +213,7 @@ const notifySpaceFollowersOfEvent = async (
     const inserted = await deps.notifications.insert(tenantId, notification);
     for (const channel of deps.notificationChannels) {
       const delivered = await channel.deliver(inserted, {
-        recipientEmail: member?.email ?? null,
+        recipientEmail: recipient.email,
         tenantName: tenant.tenantName,
         contextName: space.name,
         contextUrl: eventUrl,

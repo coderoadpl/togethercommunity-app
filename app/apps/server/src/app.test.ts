@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   API_PATHS,
+  API_ROUTES,
   capabilitiesForPrincipal,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   TENANT_HEADER,
@@ -14,7 +15,8 @@ import {
 } from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
-import { PUBLIC_ROUTE_MANIFEST } from './public-route-manifest.js';
+import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
+import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
 import {
   err,
   emailEventSchema,
@@ -3666,6 +3668,151 @@ describe('anonymous public surface routes', () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+  });
+
+  describe('anonymous threat model', () => {
+    const errorCodeSchema = z.object({ error: z.object({ code: z.string() }) });
+    const memberRoutes = Object.values(API_ROUTES).filter((route) =>
+      route.path.startsWith('/api/')
+      && publicRouteManifestEntry(route) === undefined
+      && selfAuthenticatingRouteManifestEntry(route) === undefined);
+
+    it('answers unauthorized on every member API route without a session', async () => {
+      const app = buildApp(deps({ authenticated: true }));
+
+      const verdicts = await Promise.all(memberRoutes.map(async (route) => {
+        const response = await app.request(route.path.replace(/:[^/]+/g, 'probe'), {
+          method: route.method,
+          headers: { host: 'acme.localhost:48730' },
+        });
+        const body = errorCodeSchema.safeParse(await response.json());
+        return `${route.method} ${route.path} ${response.status} ${body.success ? body.data.error.code : 'ok'}`;
+      }));
+
+      expect(memberRoutes.length).toBeGreaterThan(150);
+      expect(verdicts.filter((verdict) => !verdict.endsWith('401 unauthorized'))).toEqual([]);
+    });
+
+    it('varies every anonymous surface on the tenant and keeps hits and misses cached honestly', async () => {
+      const openPost = rootPost('post-open', 'open');
+      const app = publicApp({
+        spaces: [space({ id: 'open', publicReadOnly: true }), space({ id: 'private', publicReadOnly: false })],
+        posts: [openPost],
+        courses: [publicCourse, hiddenCourse],
+      });
+      const thread = (spaceId: string) => API_PATHS.publicSpaceThread
+        .replace(':spaceId', spaceId)
+        .replace(':postId', openPost.id);
+
+      for (const surface of [
+        { path: API_PATHS.publicOffer, status: 200, cacheControl: 'public, no-cache' },
+        { path: API_PATHS.publicNavigation, status: 200, cacheControl: 'public, no-cache' },
+        {
+          path: API_PATHS.publicCourseStructure.replace(':courseId', publicCourse.id),
+          status: 200,
+          cacheControl: 'public, no-cache',
+        },
+        {
+          path: API_PATHS.publicCourseStructure.replace(':courseId', hiddenCourse.id),
+          status: 404,
+          cacheControl: 'no-store',
+        },
+        { path: API_PATHS.publicSpaceFeed.replace(':spaceId', 'open'), status: 200, cacheControl: 'no-store' },
+        { path: API_PATHS.publicSpaceFeed.replace(':spaceId', 'private'), status: 404, cacheControl: 'no-store' },
+        { path: thread('open'), status: 200, cacheControl: 'no-store' },
+        { path: thread('private'), status: 404, cacheControl: 'no-store' },
+      ]) {
+        const response = await anonymousRequest(app, surface.path);
+        expect([
+          surface.path,
+          response.status,
+          response.headers.get('vary'),
+          response.headers.get('cache-control'),
+        ]).toEqual([surface.path, surface.status, `Host, ${TENANT_HEADER}`, surface.cacheControl]);
+      }
+    });
+
+    it('keeps author accounts and viewer state out of public post payloads', async () => {
+      const post = {
+        ...rootPost('post-open', 'open'),
+        authorUserId: 'user-hidden-account',
+        authorDisplay: 'Pseudonym',
+      };
+      const app = publicApp({ spaces: [space({ id: 'open', publicReadOnly: true })], posts: [post] });
+
+      const feed = await anonymousRequest(app, API_PATHS.publicSpaceFeed.replace(':spaceId', 'open'));
+      const thread = await anonymousRequest(
+        app,
+        API_PATHS.publicSpaceThread.replace(':spaceId', 'open').replace(':postId', post.id),
+      );
+
+      for (const response of [feed, thread]) {
+        const body = await response.text();
+        expect(response.status).toBe(200);
+        expect(body).not.toContain(post.authorUserId);
+        expect(body).toContain(post.authorDisplay);
+      }
+    });
+
+    it('rejects a public feed page above the clamped limit', async () => {
+      const app = publicApp({ spaces: [space({ id: 'open', publicReadOnly: true })] });
+
+      const response = await anonymousRequest(
+        app,
+        `${API_PATHS.publicSpaceFeed.replace(':spaceId', 'open')}?limit=1000`,
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    });
+
+    it('reads the public surface through the resolved tenant only', async () => {
+      const openSpace = space({ id: 'open', publicReadOnly: true });
+      const post = rootPost('post-open', openSpace.id);
+      const base = deps({ lessons: [previewLesson, paidLesson] });
+      const forAcme = <T>(tenantId: string, rows: T[]): T[] => (tenantId === acme.id ? rows : []);
+      const app = buildApp({
+        ...base,
+        spaces: {
+          ...base.spaces,
+          list: async (tenantId) => forAcme(tenantId, [openSpace]),
+          findById: async (tenantId, id) => forAcme(tenantId, [openSpace]).find((row) => row.id === id) ?? null,
+        },
+        posts: {
+          ...base.posts,
+          findById: async (tenantId, id) => forAcme(tenantId, [post]).find((row) => row.id === id) ?? null,
+          listThreadsForContext: async (tenantId) => ({
+            threads: forAcme(tenantId, [{ post, replyCount: 0 }]),
+            nextCursor: null,
+          }),
+          listReplies: async () => [],
+        },
+        courses: {
+          ...base.courses,
+          list: async (tenantId) => forAcme(tenantId, [publicCourse]),
+          findById: async (tenantId, id) => forAcme(tenantId, [publicCourse]).find((row) => row.id === id) ?? null,
+        },
+        modules: { ...base.modules, list: async () => [openModule] },
+      });
+      const asGlobex = (path: string) => app.request(path, { headers: { [TENANT_HEADER]: globex.slug } });
+
+      const navigation = await asGlobex(API_PATHS.publicNavigation);
+      expect(navigation.status).toBe(200);
+      expect(await navigation.json()).toMatchObject({
+        ok: true,
+        data: { navigation: { defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] } },
+      });
+
+      for (const path of [
+        API_PATHS.publicCourseStructure.replace(':courseId', publicCourse.id),
+        API_PATHS.publicSpaceFeed.replace(':spaceId', openSpace.id),
+        API_PATHS.publicSpaceThread.replace(':spaceId', openSpace.id).replace(':postId', post.id),
+      ]) {
+        const response = await asGlobex(path);
+        expect([path, response.status]).toEqual([path, 404]);
+        expect([path, await response.json()]).toMatchObject([path, { ok: false, error: { code: 'not_found' } }]);
+      }
+    });
   });
 });
 

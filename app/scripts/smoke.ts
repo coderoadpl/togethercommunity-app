@@ -8,7 +8,7 @@ import pg from 'pg';
 import { z } from 'zod';
 
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
-import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
+import { API_PATHS, EXIT_CODE_BY_ERROR_CODE, TENANT_HEADER } from '#core/contract/index.js';
 
 import {
   bootServer,
@@ -347,6 +347,26 @@ const spaceFeedSchema = z.object({
   }),
 });
 const reactedSchema = z.object({ postId: z.string(), reactions: reactionsSchema });
+const publicNavigationSchema = z.object({
+  navigation: z.object({
+    defaultHomeSpaceId: z.string().nullable(),
+    spaces: z.array(z.object({ id: z.string(), slug: z.string(), name: z.string() })),
+    courses: z.array(z.object({ id: z.string(), name: z.string() })),
+    lockedSpaces: z.array(z.object({ id: z.string(), productIds: z.array(z.string()) })),
+  }),
+});
+const publicThreadSchema = z.object({
+  discussion: z.object({
+    threads: z.array(z.object({ id: z.string(), replyCount: z.number() })),
+  }),
+});
+
+const PUBLIC_COURSE_ID = 'course-js';
+const PRIVATE_COURSE_ID = 'course-react';
+const PUBLIC_PREVIEW_LESSON_ID = 'lesson-js-zmienne-1';
+const PUBLIC_HOME_SPACE_ID = 'space-studio-spolecznosc';
+const PUBLIC_THREAD_POST_ID = 'post-spolecznosc-hello';
+const LOCKED_SPACE_ID = 'space-studio-klub-js';
 
 const readEnvelope = (result: Run, label: string): unknown => {
   try {
@@ -1402,6 +1422,162 @@ const driveSpacesFlow = async (port: number, homes: string[]): Promise<void> => 
   assert(archivedRow.stats.followers === 1, `exactly one follower should be counted, got ${archivedRow.stats.followers}`);
 };
 
+const driveAnonymousPublicFlow = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const creatorHome = mkdtempSync(join(tmpdir(), 'smoke-public-creator-'));
+  const anonHome = mkdtempSync(join(tmpdir(), 'smoke-public-anon-'));
+  homes.push(creatorHome, anonHome);
+  const cli = (args: string[], home: string): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: home });
+  const studio = (args: string[], home: string): Promise<Run> =>
+    cli(['--json', '--api-url', url, '--tenant', 'studio', ...args], home);
+  const publicGet = (path: string, headers: Record<string, string> = {}): Promise<Response> =>
+    fetch(`${url}${path}`, { headers: { [TENANT_HEADER]: 'studio', ...headers } });
+  const publicData = async (response: Response, label: string): Promise<unknown> => {
+    assert(response.status === 200, `${label}: expected 200, got ${response.status}`);
+    assert(
+      response.headers.get('vary') === `Host, ${TENANT_HEADER}`,
+      `${label}: the anonymous response must vary on the tenant`,
+    );
+    const parsed = envelope.parse(await response.json());
+    assert(parsed.ok, `${label}: expected an ok envelope, got an error.`);
+    return parsed.data;
+  };
+  const expectPublicNotFound = async (path: string, label: string): Promise<void> => {
+    const response = await publicGet(path);
+    assert(response.status === 404, `${label}: expected 404, got ${response.status}`);
+    const parsed = envelope.parse(await response.json());
+    assert(!parsed.ok && parsed.error.code === 'not_found', `${label}: expected a not_found envelope.`);
+  };
+
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login', '--email', 'creator@together.dev', '--password', 'demo-password-15'], creatorHome),
+    'public: staff login',
+  );
+  expectOk(
+    await studio(['lesson', 'update', '--data', `{"id":"${PUBLIC_PREVIEW_LESSON_ID}","isPreview":true}`], creatorHome),
+    'public: flag a seeded lesson as a free preview',
+  );
+
+  const navigationResponse = await publicGet(API_PATHS.publicNavigation);
+  const navigation = publicNavigationSchema.parse(
+    await publicData(navigationResponse, 'public: anonymous navigation'),
+  ).navigation;
+  assert(
+    navigation.defaultHomeSpaceId === PUBLIC_HOME_SPACE_ID,
+    `public: expected the seeded home space, got ${String(navigation.defaultHomeSpaceId)}`,
+  );
+  assert(
+    navigation.spaces.some((space) => space.id === PUBLIC_HOME_SPACE_ID),
+    'public: the publicly readable space should be listed anonymously',
+  );
+  assert(
+    navigation.courses.some((course) => course.id === PUBLIC_COURSE_ID),
+    'public: the publicly visible course should be listed anonymously',
+  );
+  assert(
+    !navigation.courses.some((course) => course.id === PRIVATE_COURSE_ID),
+    'public: a course that is not publicly visible must stay out of the anonymous navigation',
+  );
+  const lockedSpace = navigation.lockedSpaces.find((space) => space.id === LOCKED_SPACE_ID);
+  assert(lockedSpace !== undefined, 'public: the product-gated space should surface as a locked entry');
+  assert(
+    lockedSpace.productIds.includes('product-js-full'),
+    'public: the locked entry should carry its checkout product',
+  );
+
+  const navigationEtag = navigationResponse.headers.get('etag');
+  assert(navigationEtag !== null, 'public: the navigation response should carry a content-version ETag');
+  const revalidated = await publicGet(API_PATHS.publicNavigation, { 'if-none-match': navigationEtag });
+  assert(revalidated.status === 304, `public: expected a 304 revalidation, got ${revalidated.status}`);
+
+  const structure = structureSchema.parse(
+    await publicData(
+      await publicGet(API_PATHS.publicCourseStructure.replace(':courseId', PUBLIC_COURSE_ID)),
+      'public: anonymous course structure',
+    ),
+  ).structure;
+  const structureLessons = structure.modules.flatMap((item) => item.chapters.flatMap((chapter) => chapter.lessons));
+  const previewRow = structureLessons.find((lesson) => lesson.lessonId === PUBLIC_PREVIEW_LESSON_ID);
+  assert(previewRow !== undefined, 'public: the preview lesson should appear in the anonymous program');
+  assert(
+    previewRow.accessStatus === 'fully-accessible',
+    `public: the preview lesson should read as accessible, got ${previewRow.accessStatus}`,
+  );
+  assert(
+    structureLessons.some((lesson) => lesson.accessStatus === 'not-accessible'),
+    'public: paid lessons must stay locked in the anonymous program',
+  );
+  await expectPublicNotFound(
+    API_PATHS.publicCourseStructure.replace(':courseId', PRIVATE_COURSE_ID),
+    'public: structure of a course that is not publicly visible',
+  );
+
+  const feed = spaceFeedSchema.parse(
+    await publicData(
+      await publicGet(API_PATHS.publicSpaceFeed.replace(':spaceId', PUBLIC_HOME_SPACE_ID)),
+      'public: anonymous space feed',
+    ),
+  ).feed;
+  assert(feed.items.length > 0, 'public: the seeded publicly readable space should expose its posts');
+  assert(!feed.isFollowing, 'public: an anonymous reader can never follow a space');
+  assert(
+    feed.items.every((item) => item.reactions.every((reaction) => !reaction.viewerReacted)),
+    'public: an anonymous reader must never own a reaction',
+  );
+  const thread = publicThreadSchema.parse(
+    await publicData(
+      await publicGet(
+        API_PATHS.publicSpaceThread
+          .replace(':spaceId', PUBLIC_HOME_SPACE_ID)
+          .replace(':postId', PUBLIC_THREAD_POST_ID),
+      ),
+      'public: anonymous space thread',
+    ),
+  ).discussion;
+  assert(
+    thread.threads.some((item) => item.id === PUBLIC_THREAD_POST_ID && item.replyCount > 0),
+    'public: the anonymous thread should carry the seeded replies',
+  );
+  await expectPublicNotFound(
+    API_PATHS.publicSpaceFeed.replace(':spaceId', LOCKED_SPACE_ID),
+    'public: feed of a product-gated space',
+  );
+
+  const preview = lessonSchema.parse(
+    expectOk(await studio(['student', 'lesson', PUBLIC_PREVIEW_LESSON_ID], anonHome), 'public: anonymous preview lesson'),
+  );
+  assert(preview.lesson.contents.length > 0, 'public: the preview lesson should serve its contents without a session');
+  expectError(
+    await studio(['student', 'courses'], anonHome),
+    'public: member course list without a session',
+    EXIT_CODE_BY_ERROR_CODE.unauthorized,
+    'unauthorized',
+  );
+
+  expectOk(
+    await studio(['tenant-secret', 'set', 'stripe.restrictedKey', 'rk_test_smoke_public'], creatorHome),
+    'public: configure the studio restricted key',
+  );
+  expectOk(
+    await studio(['tenant-secret', 'set', 'stripe.webhookSecret', 'whsec_smoke_public'], creatorHome),
+    'public: configure the studio webhook secret',
+  );
+  const checkoutSession = checkoutSessionSchema.parse(
+    expectOk(
+      await studio(
+        ['checkout', 'session', '--product', 'product-js-full', '--email', 'anon-public@together.dev', '--language', 'pl'],
+        anonHome,
+      ),
+      'public: anonymous checkout session from the public surface',
+    ),
+  );
+  assert(
+    checkoutSession.url.startsWith('https://fake.checkout.local/'),
+    `public: the anonymous checkout should hand back a provider session, got ${checkoutSession.url}`,
+  );
+};
+
 const startedAt = Date.now();
 const homes: string[] = [];
 let server: ChildProcess | null = null;
@@ -1443,6 +1619,8 @@ try {
   await driveCommunityFlow(port, homes);
   console.log('smoke: driving the spaces surface...');
   await driveSpacesFlow(port, homes);
+  console.log('smoke: driving the anonymous public surface...');
+  await driveAnonymousPublicFlow(port, homes);
   console.log('smoke: proving password rotation with two isolated CLI homes...');
   await proveCliPasswordRotation(port, homes);
   console.log('smoke: proving provider-validated email verification resend...');

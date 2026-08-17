@@ -19,7 +19,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { z } from 'zod';
@@ -240,6 +240,20 @@ const ExpandIcon = ({ expanded }: { expanded: boolean }) => (
   </SvgIcon>
 );
 
+const NavCountBadge = styled('span')(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: theme.palette.text.primary,
+  color: theme.palette.background.default,
+  borderRadius: '999px',
+  minWidth: '18px',
+  height: '18px',
+  padding: '0 5px',
+  fontSize: '0.6875rem',
+  fontWeight: 600,
+}));
+
 const navigationGroupHeaderSx = {
   alignItems: 'center',
   display: 'flex',
@@ -285,7 +299,7 @@ const NavigationItem = ({
       </ListItemIcon>
       <ListItemText primary={t.sections[id]} />
       {id === 'reports' && openReportCount !== undefined ? (
-        <Chip data-testid="reports-open-count" size="small" label={openReportCount} />
+        <NavCountBadge data-testid="reports-open-count">{openReportCount}</NavCountBadge>
       ) : null}
     </PanelNavItem>
   );
@@ -482,6 +496,29 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
       footer={(
         <BuildStamp />
       )}
+      brand={
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            px: '1.25rem',
+            pt: '0.9rem',
+            pb: '0.75rem',
+          }}
+        >
+          <AppBarTitle component="span" noWrap data-testid="tenant-name">
+            {tenant.name}
+          </AppBarTitle>
+          <AppBarWordmark
+            src={theme.palette.mode === 'dark'
+              ? '/brand/together-horizontal-dark.svg'
+              : '/brand/together-horizontal-light.svg'}
+            alt={t.common.appName}
+            data-testid="panel-brand-lockup"
+          />
+        </Box>
+      }
       header={
         <>
           {isDesktop ? null : (
@@ -498,18 +535,11 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
               </IconButton>
             </Tooltip>
           )}
-          <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <AppBarTitle component="span" noWrap data-testid="tenant-name">
+          {isDesktop ? null : (
+            <AppBarTitle component="span" noWrap>
               {tenant.name}
             </AppBarTitle>
-            <AppBarWordmark
-              src={theme.palette.mode === 'dark'
-                ? '/brand/together-horizontal-dark.svg'
-                : '/brand/together-horizontal-light.svg'}
-              alt={t.common.appName}
-              data-testid="panel-brand-lockup"
-            />
-          </Box>
+          )}
           <Box sx={{ flex: 1 }} />
           <Box
             sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}
@@ -553,6 +583,16 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
       footer={(
         <BuildStamp />
       )}
+      brand={
+        <Box sx={{ display: 'flex', minWidth: 0, px: '1.25rem', pt: '0.9rem', pb: '0.75rem' }}>
+          <AppBarWordmark
+            src={theme.palette.mode === 'dark'
+              ? '/brand/together-horizontal-dark.svg'
+              : '/brand/together-horizontal-light.svg'}
+            alt={t.common.appName}
+          />
+        </Box>
+      }
       header={
         <>
           {isDesktop ? null : (
@@ -569,12 +609,7 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
               </IconButton>
             </Tooltip>
           )}
-          <AppBarWordmark
-            src={theme.palette.mode === 'dark'
-              ? '/brand/together-horizontal-dark.svg'
-              : '/brand/together-horizontal-light.svg'}
-            alt={t.common.appName}
-          />
+          <Box sx={{ flex: 1 }} />
         </>
       }
     />

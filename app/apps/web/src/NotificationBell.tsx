@@ -23,7 +23,7 @@ import {
 
 const POLL_INTERVAL_MS = 30_000;
 
-const MemberBadge = styled(Badge)(({ theme }) => ({
+const CountBadge = styled(Badge)(({ theme }) => ({
   '& .MuiBadge-badge': {
     backgroundColor: theme.palette.text.primary,
     color: theme.palette.background.default,
@@ -138,9 +138,9 @@ export const NotificationBell = ({
       onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
     >
       <ListItemIcon>
-        <MemberBadge badgeContent={unreadCount} data-testid="notification-nav-badge">
+        <CountBadge badgeContent={unreadCount} data-testid="notification-nav-badge">
           <TabBellIcon />
-        </MemberBadge>
+        </CountBadge>
       </ListItemIcon>
       <ListItemText primary={navLabel} slotProps={{ primary: { noWrap: true } }} />
     </PanelNavItem>
@@ -156,9 +156,9 @@ export const NotificationBell = ({
           onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
           sx={{ minHeight: '44px', minWidth: '44px' }}
         >
-          <Badge badgeContent={unreadCount} color="error" data-testid="notification-badge">
+          <CountBadge badgeContent={unreadCount} data-testid="notification-badge">
             <BellIcon />
-          </Badge>
+          </CountBadge>
         </IconButton>
     </Tooltip>
   ) : (
@@ -170,9 +170,9 @@ export const NotificationBell = ({
       onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
       sx={{ minHeight: '44px', minWidth: '44px', py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
     >
-      <MemberBadge badgeContent={unreadCount} data-testid="notification-tab-badge">
+      <CountBadge badgeContent={unreadCount} data-testid="notification-tab-badge">
         <TabBellIcon />
-      </MemberBadge>
+      </CountBadge>
       <Typography variant="caption" component="span" noWrap title={tabLabel} sx={{ maxWidth: '100%' }}>{tabLabel}</Typography>
     </ButtonBase>
   );

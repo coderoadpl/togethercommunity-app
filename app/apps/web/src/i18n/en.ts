@@ -1138,6 +1138,7 @@ export const en: Messages = {
     spacesSection: 'Spaces',
     lockedSpaceHint: 'This space needs access — click to unlock it.',
     courseProgressLabel: ({ name, percent }) => `${name} — ${percent}% complete`,
+    spaceUnreadLabel: ({ name }) => format('New posts: {name}', { name }),
     backTo: ({ name }) => format('Back to {name}', { name }),
     courseOverviewEntry: 'Course overview',
     lessonsOf: ({ done, total }) => format('{done} of {total} lessons', { done, total }),

@@ -1277,6 +1277,27 @@ export const spaceSubscriptions = pgTable(
   ],
 );
 
+export const spaceSeenMarks = pgTable(
+  'space_seen_marks',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    spaceId: text('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    seenAt: text('seen_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('space_seen_marks_tenant_user_space_uidx').on(
+      table.tenantId,
+      table.userId,
+      table.spaceId,
+    ),
+  ],
+);
+
 export const threadSubscriptions = pgTable(
   'thread_subscriptions',
   {

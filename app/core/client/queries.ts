@@ -70,6 +70,7 @@ import type {
   SpaceCreateInput,
   SpaceFeedGetInput,
   SpaceFollowInput,
+  SpaceSeenInput,
   SpaceUpdateInput,
   SupportMessageInput,
   ProductsAccessItemsInput,
@@ -1104,6 +1105,12 @@ export const unfollowSpaceMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'unfollow'],
     call: (input: SpaceFollowInput) => api.unfollowSpace(input),
+  });
+
+export const markSpaceSeenMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'seen'],
+    call: (input: SpaceSeenInput) => api.markSpaceSeen(input),
   });
 
 export const reactToPostMutation = (api: ApiClient) =>

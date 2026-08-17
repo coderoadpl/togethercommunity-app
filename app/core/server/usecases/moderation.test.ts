@@ -228,6 +228,7 @@ const makeDeps = (
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
+      latestRootPostAt: async () => new Map(),
       search: async () => [],
     },
     spaces: {

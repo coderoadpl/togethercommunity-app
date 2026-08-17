@@ -14,8 +14,10 @@ import type {
   CourseModuleRepository,
   CourseRepository,
   MemberCourseProgressRepository,
+  PostRepository,
   ProductGrantRepository,
   SpaceRepository,
+  SpaceSeenRepository,
   SpaceSubscriptionRepository,
 } from '../ports.js';
 import { fullCourseLookup } from './access.js';
@@ -26,6 +28,8 @@ import { countCourseProgress } from './member-learning.js';
 export interface MemberNavigationDeps {
   spaces: SpaceRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
+  spaceSeen: SpaceSeenRepository;
+  posts: PostRepository;
   grants: ProductGrantRepository;
   courses: CourseRepository;
   modules: CourseModuleRepository;
@@ -33,6 +37,9 @@ export interface MemberNavigationDeps {
   progress: MemberCourseProgressRepository;
   clock: Clock;
 }
+
+const hasUnreadPosts = (latestPostAt: string | undefined, seenAt: string | undefined): boolean =>
+  latestPostAt !== undefined && (seenAt === undefined || latestPostAt > seenAt);
 
 export const getMemberNavigation = async (
   ctx: Ctx,
@@ -60,11 +67,14 @@ export const getMemberNavigation = async (
     (accessible ? accessibleSpaces : lockedSpaces).push(space);
   }
 
-  const followed = await deps.spaceSubscriptions.listForUser(tenantId, {
-    userId,
-    spaceIds: accessibleSpaces.map((space) => space.id),
-  });
+  const accessibleSpaceIds = accessibleSpaces.map((space) => space.id);
+  const [followed, latestPostAt, seenMarks] = await Promise.all([
+    deps.spaceSubscriptions.listForUser(tenantId, { userId, spaceIds: accessibleSpaceIds }),
+    deps.posts.latestRootPostAt(tenantId, accessibleSpaceIds),
+    deps.spaceSeen.listForUser(tenantId, { userId, spaceIds: accessibleSpaceIds }),
+  ]);
   const followedIds = new Set(followed.map((subscription) => subscription.spaceId));
+  const seenAtBySpace = new Map(seenMarks.map((mark) => [mark.spaceId, mark.seenAt]));
 
   const lessonsById = new Map(lessons.map((lesson) => [lesson.id, lesson]));
   const progressRows = scope === null ? [] : await deps.progress.listByMember(tenantId, scope.memberId);
@@ -102,6 +112,7 @@ export const getMemberNavigation = async (
       visibility: space.visibility,
       position: space.position,
       isFollowing: followedIds.has(space.id),
+      unread: hasUnreadPosts(latestPostAt.get(space.id), seenAtBySpace.get(space.id)),
     })),
     courses: navigationCourses,
     lockedSpaces: lockedSpaces.map((space) => ({

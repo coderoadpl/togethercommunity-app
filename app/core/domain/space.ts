@@ -143,3 +143,7 @@ export const memberHomeFeedInputSchema = z.object({
 export const followSpaceInputSchema = z.object({
   spaceId: z.string().min(1),
 });
+
+export const markSpaceSeenInputSchema = z.object({
+  spaceId: z.string().min(1),
+});

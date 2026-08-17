@@ -89,13 +89,14 @@ const noNotifications = () =>
   http.get('/api/notifications/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }));
 
-const space = (id: string, name: string) => ({
+const space = (id: string, name: string, unread = false) => ({
   id,
   slug: id,
   name,
   visibility: 'members' as const,
   position: 0,
   isFollowing: false,
+  unread,
 });
 
 const renderStart = async () => {
@@ -248,6 +249,23 @@ describe('StartPage', () => {
     expect(within(courses).getByTestId('course-progress-c1')).toHaveTextContent('25%');
     expect(within(courses).getByTestId('start-courses-link')).toHaveAttribute('href', '/my');
     expect(screen.queryByTestId('start-spaces')).not.toBeInTheDocument();
+  });
+
+  it('marks a space tile with an unread dot only while it carries new posts', async () => {
+    server.use(
+      okCourses([]),
+      okNavigation({ spaces: [space('s1', 'Ogólna', true), space('s2', 'Cicha')] }),
+      okHomeFeed(),
+      noNotifications(),
+    );
+
+    await renderStart();
+
+    const loud = await screen.findByTestId('space-card-s1');
+    expect(within(loud).getByTestId('space-unread-s1')).toHaveAccessibleName(
+      pl.shell.spaceUnreadLabel({ name: 'Ogólna' }),
+    );
+    expect(within(screen.getByTestId('space-card-s2')).queryByTestId('space-unread-s2')).not.toBeInTheDocument();
   });
 
   it('sends the space section header to the community list', async () => {

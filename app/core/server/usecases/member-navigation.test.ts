@@ -19,8 +19,10 @@ import type {
   CourseModuleRepository,
   CourseRepository,
   MemberCourseProgressRepository,
+  PostRepository,
   ProductGrantRepository,
   SpaceRepository,
+  SpaceSeenRepository,
   SpaceSubscription,
   SpaceSubscriptionRepository,
 } from '../ports.js';
@@ -199,11 +201,15 @@ const deps = (input: {
   grants?: ProductGrant[];
   progress?: MemberCourseProgress[];
   follows?: SpaceSubscription[];
+  latestRootPostAt?: Record<string, string>;
+  seenMarks?: Array<{ spaceId: string; seenAt: string }>;
 }): MemberNavigationDeps => {
   const products = input.products ?? [];
   const grants = input.grants ?? [];
   const progress = input.progress ?? [];
   const follows = input.follows ?? [];
+  const latestRootPostAt = input.latestRootPostAt ?? {};
+  const seenMarks = input.seenMarks ?? [];
 
   const spacesRepo: SpaceRepository = {
     list: async (tenantId, options) =>
@@ -231,6 +237,32 @@ const deps = (input: {
           row.userId === query.userId &&
           query.spaceIds.includes(row.spaceId),
       ),
+  };
+
+  const postsRepo: PostRepository = {
+    createPost: async (_tenantId, post) => post,
+    findById: async () => null,
+    findByIds: async () => [],
+    countByAuthorSince: async () => 0,
+    listRecentBodiesByAuthor: async () => [],
+    listByAuthor: async () => [],
+    listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
+    listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
+    listReplies: async () => [],
+    updateBody: async () => null,
+    softDelete: async () => null,
+    setPinned: async () => null,
+    listPinnedForContext: async () => [],
+    countPinnedForContext: async () => 0,
+    latestRootPostAt: async (_tenantId, spaceIds) =>
+      new Map(Object.entries(latestRootPostAt).filter(([spaceId]) => spaceIds.includes(spaceId))),
+    search: async () => [],
+  };
+
+  const spaceSeenRepo: SpaceSeenRepository = {
+    markSeen: async () => undefined,
+    listForUser: async (_tenantId, query) =>
+      seenMarks.filter((row) => query.spaceIds.includes(row.spaceId)),
   };
 
   const grantsRepo: ProductGrantRepository = {
@@ -305,6 +337,8 @@ const deps = (input: {
   return {
     spaces: spacesRepo,
     spaceSubscriptions: spaceSubscriptionsRepo,
+    spaceSeen: spaceSeenRepo,
+    posts: postsRepo,
     grants: grantsRepo,
     courses: coursesRepo,
     modules: modulesRepo,
@@ -417,6 +451,40 @@ describe('getMemberNavigation', () => {
       },
     });
     expect(result.ok && result.value.courses[0]).not.toHaveProperty('lastViewedLessonId');
+  });
+
+  it('flags a space whose newest root post is younger than the viewer mark', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({
+        ...entitledToModuleM1,
+        latestRootPostAt: { 's-open': '2026-05-20T00:00:00.000Z', 's-module': '2026-05-20T00:00:00.000Z' },
+        seenMarks: [{ spaceId: 's-open', seenAt: '2026-05-10T00:00:00.000Z' }, { spaceId: 's-module', seenAt: '2026-05-25T00:00:00.000Z' }],
+      }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: { spaces: [{ id: 's-open', unread: true }, { id: 's-module', unread: false }] },
+    });
+  });
+
+  it('flags a never-seen space with posts and stays quiet for an empty one', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({ ...entitledToModuleM1, latestRootPostAt: { 's-open': EARLIER } }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: { spaces: [{ id: 's-open', unread: true }, { id: 's-module', unread: false }] },
+    });
+  });
+
+  it('never flags a locked space', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({ ...entitledToModuleM1, latestRootPostAt: { 's-locked': NOW } }),
+    );
+    expect(result.ok && result.value.lockedSpaces[0]).not.toHaveProperty('unread');
   });
 
   it('gives staff every space and course without any entitlement', async () => {

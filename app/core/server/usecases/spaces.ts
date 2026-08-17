@@ -6,6 +6,7 @@ import {
   err,
   followSpaceInputSchema,
   listSpaceFeedInputSchema,
+  markSpaceSeenInputSchema,
   MAX_PINNED_POSTS_PER_SPACE,
   notFound,
   ok,
@@ -43,6 +44,7 @@ import type {
   PostRepository,
   ProductGrantRepository,
   SpaceRepository,
+  SpaceSeenRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
 } from '../ports.js';
@@ -61,6 +63,7 @@ export interface SpacesDeps {
   posts: PostRepository;
   reactions: PostReactionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
+  spaceSeen: SpaceSeenRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   courses: CourseRepository;
@@ -320,6 +323,27 @@ export const unfollowSpace = async (
     spaceId: parsed.data.spaceId,
   });
   return ok({ spaceId: parsed.data.spaceId, isFollowing: false });
+};
+
+/** The write behind the sidebar dot: `getMemberNavigation` compares this mark with the newest root post. */
+export const markSpaceSeen = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: SpacesDeps,
+): Promise<Result<{ spaceId: string; seenAt: string }, AppError>> => {
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  if (!actor.ok) return actor;
+  const parsed = markSpaceSeenInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid space seen payload', parsed.error.flatten()));
+  const space = await spaceContextAccess(ctx, parsed.data.spaceId, deps);
+  if (!space.ok) return space;
+  const seenAt = deps.clock.nowIso();
+  await deps.spaceSeen.markSeen(actor.value.tenantId, {
+    userId: actor.value.userId,
+    spaceId: space.value.id,
+    seenAt,
+  });
+  return ok({ spaceId: space.value.id, seenAt });
 };
 
 const postContextAccess = async (ctx: Ctx, post: Post, deps: SpacesDeps): Promise<Result<void, AppError>> => {

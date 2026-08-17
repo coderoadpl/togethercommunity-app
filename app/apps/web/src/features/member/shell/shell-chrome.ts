@@ -14,6 +14,8 @@ export type ShellVariant = 'drawer' | 'sheet';
 
 export const NavRow = styled(PanelNavItem)<ShellLinkProps>({});
 
+export const UnreadRowText = styled('span')({ fontWeight: 600 });
+
 export const BrandLink = styled(Box)<ShellLinkProps>(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',

@@ -256,6 +256,8 @@ export interface PostRepository {
     tenantId: string,
     query: { contextKind: PostContextKind; contextId: string },
   ): Promise<number>;
+  /** Newest non-deleted root post per space, keyed by space id; spaces without one are absent. */
+  latestRootPostAt(tenantId: string, spaceIds: string[]): Promise<Map<string, string>>;
   search(
     tenantId: string,
     query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },
@@ -325,6 +327,14 @@ export interface SpaceSubscriptionRepository {
   unfollow(tenantId: string, input: { userId: string; spaceId: string }): Promise<boolean>;
   listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]>;
   listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]>;
+}
+
+export interface SpaceSeenRepository {
+  markSeen(tenantId: string, input: { userId: string; spaceId: string; seenAt: string }): Promise<void>;
+  listForUser(
+    tenantId: string,
+    input: { userId: string; spaceIds: string[] },
+  ): Promise<Array<{ spaceId: string; seenAt: string }>>;
 }
 
 export interface ThreadSubscription {

@@ -242,6 +242,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/spaces/:spaceId/feed` | authenticated | read | space feed |
 | `POST /api/spaces/follow` | authenticated | mutating | space follow |
 | `POST /api/spaces/unfollow` | authenticated | mutating | space unfollow |
+| `POST /api/spaces/:spaceId/seen` | authenticated | mutating | space seen |
 | `GET /api/notifications` | authenticated | read | notifications |
 | `POST /api/notifications/read` | authenticated | mutating | notification read |
 | `POST /api/notifications/read-all` | authenticated | mutating | notifications read all |

@@ -1021,6 +1021,7 @@ export interface Messages {
     spacesSection: string;
     lockedSpaceHint: string;
     courseProgressLabel: (params: { name: string; percent: number }) => string;
+    spaceUnreadLabel: (params: { name: string }) => string;
     backTo: (params: { name: string }) => string;
     courseOverviewEntry: string;
     lessonsOf: (params: { done: number; total: number }) => string;

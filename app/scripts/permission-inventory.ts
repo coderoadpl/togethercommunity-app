@@ -194,7 +194,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads')) {
     return method === 'GET' ? 'community:read' : 'community:write';
   }
-  if (path.includes('/follow') || path.includes('/react')) return 'space:interact';
+  if (path.includes('/follow') || path.includes('/react') || path === '/api/spaces/:spaceId/seen') return 'space:interact';
   if (path === '/api/spaces/staff') return 'space:write';
   if (path.startsWith('/api/spaces')) return method === 'GET' ? 'space:read' : 'space:write';
   if (path.startsWith('/api/notifications')) return method === 'GET' ? 'notification:read' : 'notification:write';
@@ -243,7 +243,7 @@ const beforeForRoute = (
   if (path === '/api/posts/pin') return staff;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications')) return tenantActors;
   if (path.startsWith('/api/spaces') && path !== '/api/spaces/staff' && method === 'GET') return tenantActors;
-  if (path.includes('/follow') || path.includes('/react')) return tenantActors;
+  if (path.includes('/follow') || path.includes('/react') || path === '/api/spaces/:spaceId/seen') return tenantActors;
   if (
     (path === '/api/tenant/settings' && method !== 'GET')
     || (path.startsWith('/api/tenant-secrets') && method !== 'GET')

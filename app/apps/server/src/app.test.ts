@@ -541,6 +541,7 @@ const deps = (input: {
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
+      latestRootPostAt: async () => new Map(),
       search: async () => [],
     },
     spaces: {
@@ -562,6 +563,10 @@ const deps = (input: {
       follow: async () => undefined,
       unfollow: async () => false,
       listFollowersForSpace: async () => [],
+      listForUser: async () => [],
+    },
+    spaceSeen: {
+      markSeen: async () => undefined,
       listForUser: async () => [],
     },
     threadSubscriptions: {

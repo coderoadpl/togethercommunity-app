@@ -57,7 +57,7 @@ const okMe = (overrides: { memberId?: string | null; banned?: boolean; tenant?: 
 
 const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation => ({
   spaces: [
-    { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true },
+    { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: false },
   ],
   courses: [
     {
@@ -206,6 +206,31 @@ describe('MemberShell', () => {
 
     expect(within(sidebar).getByTestId('sidebar-locked-s9')).toHaveAttribute('href', '/checkout/p1');
     expect(within(sidebar).getByText(pl.shell.spacesSection)).toBeInTheDocument();
+  });
+
+  it('marks a space row with an unread dot and a labelled row', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(navigation({
+        spaces: [
+          { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: true },
+          { id: 's2', slug: 'cicha', name: 'Cicha', visibility: 'members', position: 1, isFollowing: false, unread: false },
+        ],
+      })),
+      okOffer(),
+      noNotifications(),
+    );
+
+    await renderShell('/my');
+
+    const unread = await screen.findByTestId('sidebar-space-s1');
+    expect(unread).toHaveAttribute('aria-label', pl.shell.spaceUnreadLabel({ name: 'Ogólna' }));
+    expect(within(unread).getByTestId('sidebar-space-s1-unread')).toBeInTheDocument();
+
+    const quiet = screen.getByTestId('sidebar-space-s2');
+    expect(quiet).not.toHaveAttribute('aria-label');
+    expect(within(quiet).queryByTestId('sidebar-space-s2-unread')).not.toBeInTheDocument();
   });
 
   it('renders a locked space without a product as a non-interactive row', async () => {

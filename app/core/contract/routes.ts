@@ -19,6 +19,7 @@ import {
   deleteSpaceInputSchema,
   followSpaceInputSchema,
   listSpaceFeedInputSchema,
+  markSpaceSeenInputSchema,
   memberHomeFeedInputSchema,
   memberHomeFeedSchema,
   memberSpaceSchema,
@@ -983,6 +984,15 @@ export const spaceFollowOutputSchema = z.object({
   isFollowing: z.boolean(),
 });
 
+export const spaceSeenInputSchema = markSpaceSeenInputSchema;
+
+export type SpaceSeenInput = z.input<typeof spaceSeenInputSchema>;
+
+export const spaceSeenOutputSchema = z.object({
+  spaceId: z.string(),
+  seenAt: z.string().datetime(),
+});
+
 export const postReactInputSchema = reactToPostInputSchema;
 
 export type PostReactInput = z.input<typeof postReactInputSchema>;
@@ -1520,6 +1530,7 @@ export const API_ROUTES = {
   spaceFeed: { method: 'GET', path: '/api/spaces/:spaceId/feed' },
   spaceFollow: { method: 'POST', path: '/api/spaces/follow' },
   spaceUnfollow: { method: 'POST', path: '/api/spaces/unfollow' },
+  spaceSeen: { method: 'POST', path: '/api/spaces/:spaceId/seen' },
   notifications: { method: 'GET', path: '/api/notifications' },
   notificationRead: { method: 'POST', path: '/api/notifications/read' },
   notificationsReadAll: { method: 'POST', path: '/api/notifications/read-all' },
@@ -1738,6 +1749,7 @@ export const API_PATHS = {
   spaceFeed: API_ROUTES.spaceFeed.path,
   spaceFollow: API_ROUTES.spaceFollow.path,
   spaceUnfollow: API_ROUTES.spaceUnfollow.path,
+  spaceSeen: API_ROUTES.spaceSeen.path,
   notifications: API_ROUTES.notifications.path,
   notificationRead: API_ROUTES.notificationRead.path,
   notificationsReadAll: API_ROUTES.notificationsReadAll.path,

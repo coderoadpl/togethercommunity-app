@@ -355,6 +355,23 @@ class FakePosts implements PostRepository {
     return (await this.listPinnedForContext(tenantId, { ...query, limit: this.rows.length })).length;
   }
 
+  async latestRootPostAt(tenantId: string, spaceIds: string[]): Promise<Map<string, string>> {
+    const latest = new Map<string, string>();
+    for (const post of this.rows) {
+      const eligible =
+        post.tenantId === tenantId &&
+        post.contextKind === 'space' &&
+        spaceIds.includes(post.contextId) &&
+        post.parentPostId === null &&
+        post.deletedAt === null;
+      const current = latest.get(post.contextId);
+      if (eligible && (current === undefined || post.createdAt > current)) {
+        latest.set(post.contextId, post.createdAt);
+      }
+    }
+    return latest;
+  }
+
   async search(
     tenantId: string,
     query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },

@@ -57,6 +57,9 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
           icon={<SpaceIcon />}
           active={active?.kind === 'space' && active.spaceId === space.id}
           testId={`sidebar-space-${space.id}`}
+          {...(space.unread
+            ? { unread: { label: t.shell.spaceUnreadLabel({ name: space.name }) } }
+            : {})}
         />
       ))}
       {courses.map((course) => {

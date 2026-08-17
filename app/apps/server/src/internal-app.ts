@@ -87,6 +87,7 @@ import {
   spaceDeleteInputSchema,
   spaceFeedGetInputSchema,
   spaceFollowInputSchema,
+  spaceSeenInputSchema,
   spaceUpdateInputSchema,
   stripeConfigureInputSchema,
   subscriptionSimulateInputSchema,
@@ -254,6 +255,7 @@ import {
   markAllNotificationsRead,
   markLessonCompleted,
   markNotificationRead,
+  markSpaceSeen,
   muteThread,
   pauseCampaign,
   pollSesOnboarding,
@@ -2670,6 +2672,12 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const parsed = spaceFollowInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid space follow payload', parsed.error.flatten())));
     return respond(await unfollowSpace({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.spaceSeen, async (c) => {
+    const parsed = spaceSeenInputSchema.safeParse({ spaceId: c.req.param('spaceId') });
+    if (!parsed.success) return respond(err(validation('Invalid space id', parsed.error.flatten())));
+    return respond(await markSpaceSeen({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.get(API_PATHS.notifications, async (c) => {

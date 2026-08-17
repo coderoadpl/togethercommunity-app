@@ -95,6 +95,7 @@ import type {
   OnboardingStateRepository,
   PostReactionRepository,
   SpaceRepository,
+  SpaceSeenRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -147,6 +148,7 @@ import {
   products,
   spaces,
   suppressions,
+  spaceSeenMarks,
   spaceSubscriptions,
   tenantAdmins,
   tenantApiKeys,
@@ -1171,6 +1173,23 @@ export const createPostRepository = (db: Db): PostRepository => ({
       );
     return rows[0]?.value ?? 0;
   },
+  latestRootPostAt: async (tenantId, spaceIds) => {
+    if (spaceIds.length === 0) return new Map();
+    const rows = await db
+      .select({ spaceId: posts.contextId, latestAt: sql<string>`max(${posts.createdAt})` })
+      .from(posts)
+      .where(
+        and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.contextKind, 'space'),
+          inArray(posts.contextId, spaceIds),
+          isNull(posts.parentPostId),
+          isNull(posts.deletedAt),
+        ),
+      )
+      .groupBy(posts.contextId);
+    return new Map(rows.map((row) => [row.spaceId, row.latestAt]));
+  },
   search: async (tenantId, query) => {
     const contextFilters: SQL[] = [];
     if (query.lessonIds.length > 0) {
@@ -1572,6 +1591,31 @@ export const createSpaceSubscriptionRepository = (db: Db): SpaceSubscriptionRepo
               eq(spaceSubscriptions.tenantId, tenantId),
               eq(spaceSubscriptions.userId, input.userId),
               inArray(spaceSubscriptions.spaceId, input.spaceIds),
+            ),
+          ),
+});
+
+export const createSpaceSeenRepository = (db: Db): SpaceSeenRepository => ({
+  markSeen: async (tenantId, input) => {
+    await db
+      .insert(spaceSeenMarks)
+      .values({ tenantId, userId: input.userId, spaceId: input.spaceId, seenAt: input.seenAt })
+      .onConflictDoUpdate({
+        target: [spaceSeenMarks.tenantId, spaceSeenMarks.userId, spaceSeenMarks.spaceId],
+        set: { seenAt: input.seenAt },
+      });
+  },
+  listForUser: async (tenantId, input) =>
+    input.spaceIds.length === 0
+      ? []
+      : db
+          .select({ spaceId: spaceSeenMarks.spaceId, seenAt: spaceSeenMarks.seenAt })
+          .from(spaceSeenMarks)
+          .where(
+            and(
+              eq(spaceSeenMarks.tenantId, tenantId),
+              eq(spaceSeenMarks.userId, input.userId),
+              inArray(spaceSeenMarks.spaceId, input.spaceIds),
             ),
           ),
 });

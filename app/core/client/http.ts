@@ -131,6 +131,7 @@ import {
   spaceDeleteOutputSchema,
   spaceFeedOutputSchema,
   spaceFollowOutputSchema,
+  spaceSeenOutputSchema,
   spaceOutputSchema,
   spacesListOutputSchema,
   staffSpacesListOutputSchema,
@@ -238,6 +239,7 @@ import {
   type SpaceDeleteInput,
   type SpaceFeedGetInput,
   type SpaceFollowInput,
+  type SpaceSeenInput,
   type SpaceUpdateInput,
   type SupportMessageInput,
   type ProductsAccessItemsInput,
@@ -1552,6 +1554,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.spaceUnfollow.path,
       spaceFollowOutputSchema,
       input,
+      signal,
+    ),
+  markSpaceSeen: (input: SpaceSeenInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.spaceSeen.method,
+      API_ROUTES.spaceSeen.path.replace(':spaceId', encodeURIComponent(input.spaceId)),
+      spaceSeenOutputSchema,
+      undefined,
       signal,
     ),
   listNotifications: (input: NotificationsListInput = {}, signal?: AbortSignal) => {

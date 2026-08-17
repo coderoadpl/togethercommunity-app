@@ -89,25 +89,4 @@ describe('MemberPage', () => {
     expect(screen.queryByText('Nie powinno się pojawić')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Moje kursy' })).toBeInTheDocument();
   });
-
-  it('renders the bottom tab bar slot inside a fixed nav landmark', () => {
-    render(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki" bottomNav={<div>Zakładki</div>}>
-        <p>Treść</p>
-      </MemberPage>,
-    );
-
-    const bottomNav = screen.getByTestId('member-bottom-nav');
-    expect(bottomNav.tagName).toBe('NAV');
-    expect(bottomNav).toHaveTextContent('Zakładki');
-  });
-
-  it('omits the bottom nav container when no slot is passed', () => {
-    render(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki">
-        <p>Treść</p>
-      </MemberPage>,
-    );
-    expect(screen.queryByTestId('member-bottom-nav')).not.toBeInTheDocument();
-  });
 });

@@ -24,6 +24,24 @@ export const CourseOverviewIcon = () => (
   </SvgIcon>
 );
 
+export const MenuIcon = () => (
+  <SvgIcon aria-hidden viewBox="0 0 24 24">
+    <path d="M3 18h18v-2H3zm0-5h18v-2H3zm0-7v2h18V6z" />
+  </SvgIcon>
+);
+
+export const ProgramIcon = () => (
+  <SvgIcon aria-hidden viewBox="0 0 24 24" fontSize="small">
+    <path d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z" />
+  </SvgIcon>
+);
+
+export const CloseIcon = () => (
+  <SvgIcon aria-hidden viewBox="0 0 24 24">
+    <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4l-6.3 6.31-1.42-1.42L9.17 12l-6.3-6.29 1.42-1.42 6.3 6.31 6.3-6.31z" />
+  </SvgIcon>
+);
+
 export const ProductsIcon = () => (
   <SvgIcon aria-hidden viewBox="0 0 24 24">
     <path d="M20 2H4c-1.1 0-2 .9-2 2v3.01c0 .72.43 1.34 1 1.69V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.57-.35 1-.97 1-1.69V4c0-1.1-.9-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z" />

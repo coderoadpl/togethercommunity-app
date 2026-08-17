@@ -71,7 +71,7 @@ const renderSidebar = async (currentLessonId: string | null) => {
         courseId="course-1"
         currentLessonId={currentLessonId}
         tenantName="Acme"
-        liveNotifications={false}
+        variant="drawer"
       />
     ),
   });

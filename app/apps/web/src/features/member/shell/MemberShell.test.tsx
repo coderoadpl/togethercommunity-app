@@ -5,7 +5,8 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -306,6 +307,73 @@ describe('MemberShell', () => {
 
     expect(await screen.findByTestId('member-sidebar')).toBeInTheDocument();
     expect(screen.queryByTestId('course-sidebar')).not.toBeInTheDocument();
+  });
+
+  it('swaps the sidebar for the bottom bar below md', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell(memberHomePath());
+
+    const bar = await screen.findByTestId('member-bottom-nav');
+    expect(within(bar).getByTestId('member-tab-start')).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
+  });
+
+  it('opens the menu sheet with the same navigation list and no second bell', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+    const user = userEvent.setup();
+
+    await renderShell('/my');
+    await user.click(await screen.findByTestId('member-tab-menu'));
+
+    const sheet = await screen.findByTestId('member-menu-sheet');
+    expect(within(sheet).getByTestId('member-sidebar')).toBeInTheDocument();
+    expect(await within(sheet).findByTestId('sidebar-space-s1')).toHaveTextContent('Ogólna');
+    expect(within(sheet).getByTestId('sidebar-products')).toHaveAttribute('href', '/my/products');
+    expect(within(sheet).getByTestId('member-identity')).toHaveTextContent('Jan Uczestnik');
+    expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
+  });
+
+  it('carries the course program in a sheet opened from the app bar', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    const user = userEvent.setup();
+
+    await renderShell('/my/courses/c1/lessons/l1');
+    await user.click(await screen.findByTestId('program-button'));
+
+    const sheet = await screen.findByTestId('course-program-sheet');
+    expect(await within(sheet).findByTestId('lesson-button-l1')).toHaveClass('Mui-selected');
+    expect(within(sheet).getByTestId('course-sidebar-back')).toHaveAttribute(
+      'href',
+      memberHomePath(),
+    );
+  });
+
+  it('closes an open sheet once navigation lands on the next page', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    const user = userEvent.setup();
+
+    await renderShell('/my/courses/c1');
+    await user.click(await screen.findByTestId('program-button'));
+    await user.click(await screen.findByTestId('lesson-button-l1'));
+
+    expect(await screen.findByText('Lekcja')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByTestId('course-program-sheet')).not.toBeInTheDocument());
+  });
+
+  it('offers the program button only in course context', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/community/s1');
+
+    expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
+    expect(screen.queryByTestId('program-button')).not.toBeInTheDocument();
   });
 
   it('serves the public tier without a sidebar and with a sign-in link', async () => {

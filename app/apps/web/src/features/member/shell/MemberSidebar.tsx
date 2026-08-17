@@ -17,6 +17,7 @@ import {
   IdentityRow,
   NavRow,
   type ShellLinkProps,
+  type ShellVariant,
 } from './shell-chrome.js';
 import { ProductsIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
@@ -106,11 +107,11 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
 export const MemberSidebar = ({
   name,
   email,
-  liveNotifications,
+  variant,
 }: {
   name: string;
   email: string;
-  liveNotifications: boolean;
+  variant: ShellVariant;
 }) => {
   const t = useTranslations();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -131,14 +132,16 @@ export const MemberSidebar = ({
         pb: '0.75rem',
       }}
     >
-      <BrandLink
-        component={Link}
-        to={memberHomePath()}
-        data-testid="sidebar-brand"
-        sx={{ px: '0.6rem', pb: '0.9rem' }}
-      >
-        <TenantLogo />
-      </BrandLink>
+      {variant === 'drawer' ? (
+        <BrandLink
+          component={Link}
+          to={memberHomePath()}
+          data-testid="sidebar-brand"
+          sx={{ px: '0.6rem', pb: '0.9rem' }}
+        >
+          <TenantLogo />
+        </BrandLink>
+      ) : null}
       <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <List component="div" disablePadding>
           <LinkRow
@@ -163,7 +166,7 @@ export const MemberSidebar = ({
           active={active?.kind === 'products'}
           testId="sidebar-products"
         />
-        <NotificationBell navLabel={t.notifications.bell} live={liveNotifications} />
+        {variant === 'drawer' ? <NotificationBell navLabel={t.notifications.bell} /> : null}
         <LinkRow
           to="/account"
           label={t.account.menuAccount}

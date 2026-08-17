@@ -10,14 +10,13 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import useMediaQuery from '@mui/material/useMediaQuery';
-import { useTheme, type SxProps, type Theme } from '@mui/material/styles';
+import { type SxProps, type Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
 import { ApiError } from '#core/client/index.js';
-import type { CourseStructureWithAccess, LessonBlock, PlayableLessonBlock } from '#core/domain/index.js';
+import type { LessonBlock, PlayableLessonBlock } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -33,7 +32,6 @@ import {
   LessonMediaIframe,
   LessonPlaceholder,
 } from '../../theme.js';
-import { CurriculumCard } from './CourseRail.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { CodeIcon, LinkIcon, LockedState } from './lesson-icons.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -47,11 +45,6 @@ const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
 
 const VIDEO_ALLOW = 'accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture;';
-
-const useShellOwnsProgram = () => {
-  const theme = useTheme();
-  return useMediaQuery(theme.breakpoints.up('md'));
-};
 
 const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
   switch (type) {
@@ -185,18 +178,15 @@ const LockedView = ({
   courseId,
   lessonName,
   courseName,
-  structure,
   unlockProductId,
 }: {
   courseId: string;
   lessonName?: string | undefined;
   courseName?: string | undefined;
-  structure?: CourseStructureWithAccess | undefined;
   unlockProductId?: string;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const shellOwnsProgram = useShellOwnsProgram();
   const offer = useQuery({ ...actions.publicOffer, enabled: unlockProductId !== undefined });
   const product = offer.data?.products.find((candidate) => candidate.id === unlockProductId);
   return (
@@ -215,10 +205,6 @@ const LockedView = ({
               { label: lessonName ?? t.lesson.contentLocked },
             ],
           })}
-      {...(structure === undefined || shellOwnsProgram
-        ? {}
-        : { rail: <CurriculumCard courseId={courseId} structure={structure} /> })}
-      mobileRail="after"
     >
       {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
       <SectionCard
@@ -260,7 +246,6 @@ export const LessonPlayerPage = ({
   lessonId: string;
 }) => {
   const t = useTranslations();
-  const shellOwnsProgram = useShellOwnsProgram();
   const lesson = useQuery({
     ...actions.studentLesson(lessonId),
     placeholderData: (previous) => previous,
@@ -364,8 +349,7 @@ export const LessonPlayerPage = ({
   if (lesson.isPending) {
     return (
       <MemberSurface
-        authenticated={authenticated}
-        title={t.lesson.loading}
+          title={t.lesson.loading}
         eyebrow={t.lesson.eyebrow}
         width="wide"
         state={{ kind: 'loading', label: t.lesson.loading }}
@@ -380,7 +364,6 @@ export const LessonPlayerPage = ({
       if (structure.isError) {
         return (
           <MemberSurface
-            authenticated
             title={t.lesson.unavailable}
             eyebrow={t.lesson.eyebrow}
             width="wide"
@@ -396,7 +379,6 @@ export const LessonPlayerPage = ({
           courseId={courseId}
           lessonName={lockedRow?.name}
           courseName={structure.data?.structure.name}
-          structure={structure.data?.structure}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -405,8 +387,7 @@ export const LessonPlayerPage = ({
     }
     return (
       <MemberSurface
-        authenticated={authenticated}
-        title={t.lesson.unavailable}
+          title={t.lesson.unavailable}
         eyebrow={t.lesson.eyebrow}
         width="wide"
         state={{
@@ -437,7 +418,6 @@ export const LessonPlayerPage = ({
 
   return (
     <MemberSurface
-      authenticated={authenticated}
       title={lessonName}
       eyebrow={t.lesson.eyebrow}
       width="wide"
@@ -454,18 +434,6 @@ export const LessonPlayerPage = ({
               { label: lessonName },
             ],
           })}
-      {...(structure.data === undefined || shellOwnsProgram
-        ? {}
-        : {
-            rail: (
-              <CurriculumCard
-                courseId={courseId}
-                structure={structure.data.structure}
-                currentLessonId={lessonId}
-              />
-            ),
-          })}
-      mobileRail="after"
     >
       <Box sx={{ minWidth: 0 }}>
         {transitioning ? (

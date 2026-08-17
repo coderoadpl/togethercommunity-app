@@ -13,7 +13,7 @@ import { AccountIcon } from '../account-icons.js';
 import { courseTotals } from '../CourseRail.js';
 import { CourseTree } from '../CourseTree.js';
 import { memberHomePath } from './member-nav.js';
-import { BrandLink } from './shell-chrome.js';
+import { BrandLink, type ShellVariant } from './shell-chrome.js';
 import { BackIcon, CourseOverviewIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
 
@@ -56,12 +56,12 @@ export const CourseSidebar = ({
   courseId,
   currentLessonId,
   tenantName,
-  liveNotifications,
+  variant,
 }: {
   courseId: string;
   currentLessonId: string | null;
   tenantName: string;
-  liveNotifications: boolean;
+  variant: ShellVariant;
 }) => {
   const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
@@ -120,17 +120,21 @@ export const CourseSidebar = ({
           </>
         ) : null}
       </Box>
-      <Divider sx={{ my: '0.5rem' }} />
-      <List component="div" disablePadding>
-        <NotificationBell navLabel={t.notifications.bell} live={liveNotifications} />
-        <LinkRow
-          to="/account"
-          label={t.account.menuAccount}
-          icon={<AccountIcon />}
-          active={false}
-          testId="course-sidebar-account"
-        />
-      </List>
+      {variant === 'drawer' ? (
+        <>
+          <Divider sx={{ my: '0.5rem' }} />
+          <List component="div" disablePadding>
+            <NotificationBell navLabel={t.notifications.bell} />
+            <LinkRow
+              to="/account"
+              label={t.account.menuAccount}
+              icon={<AccountIcon />}
+              active={false}
+              testId="course-sidebar-account"
+            />
+          </List>
+        </>
+      ) : null}
     </Box>
   );
 };

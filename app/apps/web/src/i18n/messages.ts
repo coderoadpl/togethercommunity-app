@@ -380,7 +380,6 @@ export interface Messages {
   notifications: {
     bell: string;
     heading: string;
-    mobileTab: string;
     empty: string;
     loading: string;
     markAllRead: string;
@@ -1006,6 +1005,11 @@ export interface Messages {
     backTo: (params: { name: string }) => string;
     courseOverviewEntry: string;
     lessonsOf: (params: { done: number; total: number }) => string;
+    menuTab: string;
+    menuTitle: string;
+    programButton: string;
+    programTitle: string;
+    closeSheet: string;
   };
   start: {
     title: string;
@@ -1021,8 +1025,6 @@ export interface Messages {
   student: {
     myCourses: string;
     myProducts: string;
-    mobileCourses: string;
-    mobileProducts: string;
     courseLibrary: string;
     productsLibrary: string;
     loadingCourses: string;
@@ -1169,7 +1171,6 @@ export interface Messages {
     searchCourseEmpty: string;
   };
   community: {
-    tab: string;
     heading: string;
     listEyebrow: string;
     loadingSpaces: string;

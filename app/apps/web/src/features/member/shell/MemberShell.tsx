@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, AppBar, Box, Button, Toolbar, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
@@ -13,9 +13,12 @@ import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { CourseSidebar } from './CourseSidebar.js';
+import { MemberBottomBar } from './MemberBottomBar.js';
 import { courseContextFromPath, memberHomePath } from './member-nav.js';
+import { CourseProgramSheet, MemberMenuSheet } from './MemberMenuSheet.js';
 import { MemberSidebar } from './MemberSidebar.js';
 import { BrandLink } from './shell-chrome.js';
+import { ProgramIcon } from './shell-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -28,21 +31,51 @@ export const MemberShell = () => {
   const me = useQuery(actions.me);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const courseContext = courseContextFromPath(pathname);
+  const [openSheet, setOpenSheet] = useState<'menu' | 'program' | null>(null);
+
+  useEffect(() => {
+    setOpenSheet(null);
+  }, [pathname]);
+
   const tenant = me.data?.tenant ?? null;
   const isMember = tenant !== null && (tenant.memberId !== null || tenant.staffRole !== null);
   const identity = isMember && tenant !== null && me.data !== undefined
     ? { name: me.data.name, email: me.data.email, tenantName: tenant.name }
     : null;
 
-  const sidebar = identity === null ? null : courseContext === null ? (
-    <MemberSidebar name={identity.name} email={identity.email} liveNotifications={isDesktop} />
+  const hasMobileNavigation = identity !== null && !isDesktop;
+  const closeSheet = () => setOpenSheet(null);
+
+  const sidebar = identity === null || !isDesktop ? null : courseContext === null ? (
+    <MemberSidebar name={identity.name} email={identity.email} variant="drawer" />
   ) : (
     <CourseSidebar
       courseId={courseContext.courseId}
       currentLessonId={courseContext.lessonId}
       tenantName={identity.tenantName}
-      liveNotifications={isDesktop}
+      variant="drawer"
     />
+  );
+
+  const mobileNavigation = !hasMobileNavigation || identity === null ? null : (
+    <>
+      <MemberBottomBar menuOpen={openSheet === 'menu'} onOpenMenu={() => setOpenSheet('menu')} />
+      <MemberMenuSheet
+        open={openSheet === 'menu'}
+        onClose={closeSheet}
+        name={identity.name}
+        email={identity.email}
+      />
+      {courseContext === null ? null : (
+        <CourseProgramSheet
+          open={openSheet === 'program'}
+          onClose={closeSheet}
+          courseId={courseContext.courseId}
+          currentLessonId={courseContext.lessonId}
+          tenantName={identity.tenantName}
+        />
+      )}
+    </>
   );
 
   const brand = (
@@ -91,24 +124,42 @@ export const MemberShell = () => {
   }
 
   return (
-    <AppShell
-      isDesktop={isDesktop}
-      mobileNavigationOpen={false}
-      onMobileNavigationClose={() => undefined}
-      mobileNavigationCloseLabel={t.panel.closeNavigation}
-      header={(
-        <>
-          <Box sx={{ display: { xs: 'flex', md: 'none' }, minWidth: 0 }}>{brand}</Box>
-          <Box sx={{ flex: 1 }} />
-          <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
-            <MemberAccountMenu />
-          </Box>
-        </>
-      )}
-      navigation={sidebar}
-    >
-      {notices}
-      <Outlet />
-    </AppShell>
+    <>
+      <AppShell
+        isDesktop={isDesktop}
+        mobileNavigationOpen={false}
+        onMobileNavigationClose={() => undefined}
+        mobileNavigationCloseLabel={t.panel.closeNavigation}
+        header={(
+          <>
+            <Box sx={{ display: { xs: 'flex', md: 'none' }, minWidth: 0 }}>{brand}</Box>
+            <Box sx={{ flex: 1 }} />
+            {hasMobileNavigation && courseContext !== null ? (
+              <Button
+                color="inherit"
+                size="small"
+                startIcon={<ProgramIcon />}
+                aria-haspopup="dialog"
+                aria-expanded={openSheet === 'program' ? true : undefined}
+                onClick={() => setOpenSheet('program')}
+                data-testid="program-button"
+              >
+                {t.shell.programButton}
+              </Button>
+            ) : null}
+            <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
+              <MemberAccountMenu />
+            </Box>
+          </>
+        )}
+        navigation={sidebar}
+      >
+        <Box sx={{ pb: hasMobileNavigation ? 'calc(4.5rem + env(safe-area-inset-bottom))' : 0 }}>
+          {notices}
+          <Outlet />
+        </Box>
+      </AppShell>
+      {mobileNavigation}
+    </>
   );
 };

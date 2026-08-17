@@ -395,7 +395,6 @@ export const en: Messages = {
   notifications: {
     bell: 'Notifications',
     heading: 'Notifications',
-    mobileTab: 'Alerts',
     empty: 'You have no notifications yet.',
     loading: 'Loading notifications…',
     markAllRead: 'Mark all as read',
@@ -1120,6 +1119,11 @@ export const en: Messages = {
     backTo: ({ name }) => format('Back to {name}', { name }),
     courseOverviewEntry: 'Course overview',
     lessonsOf: ({ done, total }) => format('{done} of {total} lessons', { done, total }),
+    menuTab: 'Menu',
+    menuTitle: 'Menu',
+    programButton: 'Program',
+    programTitle: 'Course program',
+    closeSheet: 'Close',
   },
   start: {
     title: 'Start',
@@ -1136,8 +1140,6 @@ export const en: Messages = {
   student: {
     myCourses: 'My courses',
     myProducts: 'My products',
-    mobileCourses: 'Courses',
-    mobileProducts: 'Products',
     courseLibrary: 'Course library',
     productsLibrary: 'Purchased products',
     loadingCourses: 'Loading your courses…',
@@ -1289,7 +1291,6 @@ export const en: Messages = {
     searchCourseEmpty: 'Nothing found in this course’s discussions.',
   },
   community: {
-    tab: 'Community',
     heading: 'Community',
     listEyebrow: 'Community spaces',
     loadingSpaces: 'Loading spaces…',

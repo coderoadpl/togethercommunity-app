@@ -26,8 +26,6 @@ export interface MemberPageProps {
    * 'split' (leading rail content, main content, trailing rail content).
    */
   mobileRail?: 'before' | 'after' | 'split';
-  /** Persistent bottom tab bar below md; caller supplies the tabs. */
-  bottomNav?: ReactNode;
   state?: PageState;
   children?: ReactNode;
   'data-testid'?: string;
@@ -51,7 +49,6 @@ export const MemberPage = ({
   rail,
   railLeading,
   mobileRail = 'before',
-  bottomNav,
   state,
   children,
   'data-testid': testId,
@@ -68,13 +65,7 @@ export const MemberPage = ({
   return (
     <Container
       disableGutters
-      sx={{
-        maxWidth: `${PAGE_WIDTH[width]} !important`,
-        pb:
-          bottomNav === undefined
-            ? '3rem'
-            : { xs: 'calc(7.5rem + env(safe-area-inset-bottom))', md: '3rem' },
-      }}
+      sx={{ maxWidth: `${PAGE_WIDTH[width]} !important`, pb: '3rem' }}
       data-testid={testId}
     >
       <LedgerHeader component="header" sx={{ pb: '21px' }}>
@@ -150,23 +141,6 @@ export const MemberPage = ({
       ) : (
         <Box component="main" sx={{ mt: '2.5rem' }}>
           {body}
-        </Box>
-      )}
-
-      {bottomNav !== undefined && (
-        <Box
-          component="nav"
-          sx={{
-            display: { xs: 'block', md: 'none' },
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 'appBar',
-          }}
-          data-testid="member-bottom-nav"
-        >
-          {bottomNav}
         </Box>
       )}
     </Container>

@@ -401,7 +401,6 @@ export const pl: Messages = {
   notifications: {
     bell: 'Powiadomienia',
     heading: 'Powiadomienia',
-    mobileTab: 'Alerty',
     empty: 'Nie masz jeszcze żadnych powiadomień.',
     loading: 'Wczytywanie powiadomień…',
     markAllRead: 'Oznacz wszystkie jako przeczytane',
@@ -1137,6 +1136,11 @@ export const pl: Messages = {
     backTo: ({ name }) => format('Wróć do {name}', { name }),
     courseOverviewEntry: 'Przegląd kursu',
     lessonsOf: ({ done, total }) => format('{done} z {total} lekcji', { done, total }),
+    menuTab: 'Menu',
+    menuTitle: 'Menu',
+    programButton: 'Program',
+    programTitle: 'Program kursu',
+    closeSheet: 'Zamknij',
   },
   start: {
     title: 'Start',
@@ -1153,8 +1157,6 @@ export const pl: Messages = {
   student: {
     myCourses: 'Moje kursy',
     myProducts: 'Moje produkty',
-    mobileCourses: 'Kursy',
-    mobileProducts: 'Produkty',
     courseLibrary: 'Biblioteka kursów',
     productsLibrary: 'Zakupione produkty',
     loadingCourses: 'Ładowanie Twoich kursów…',
@@ -1306,7 +1308,6 @@ export const pl: Messages = {
     searchCourseEmpty: 'Nic nie znaleziono w dyskusjach tego kursu.',
   },
   community: {
-    tab: 'Społeczność',
     heading: 'Społeczność',
     listEyebrow: 'Strefy społeczności',
     loadingSpaces: 'Ładowanie stref…',

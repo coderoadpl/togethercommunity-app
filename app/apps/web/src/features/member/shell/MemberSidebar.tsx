@@ -10,7 +10,12 @@ import { NotificationBell } from '../../../NotificationBell.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { LockClosed } from '../tree-icons.js';
-import { activeNavEntry, memberHomePath, type MemberNavEntry } from './member-nav.js';
+import {
+  activeNavEntry,
+  memberHomePath,
+  memberSearchPath,
+  type MemberNavEntry,
+} from './member-nav.js';
 import {
   BrandLink,
   IdentityAvatar,
@@ -19,7 +24,7 @@ import {
   type ShellLinkProps,
   type ShellVariant,
 } from './shell-chrome.js';
-import { ProductsIcon, SpaceIcon, StartIcon } from './shell-icons.js';
+import { ProductsIcon, SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
 
 const memberInitials = (name: string): string =>
@@ -150,6 +155,13 @@ export const MemberSidebar = ({
             icon={<StartIcon />}
             active={active?.kind === 'start'}
             testId="sidebar-start"
+          />
+          <LinkRow
+            to={memberSearchPath()}
+            label={t.shell.searchEntry}
+            icon={<SearchIcon />}
+            active={active?.kind === 'search'}
+            testId="sidebar-search"
           />
         </List>
         <Typography variant="overline" component="p" sx={{ px: '0.6rem', pt: '0.75rem' }}>

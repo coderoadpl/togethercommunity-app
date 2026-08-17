@@ -301,8 +301,8 @@ const studentScopes = {
 const discussionScopes = {
   all: () => ['discussion'] as const,
   lesson: (lessonId: string, limit?: number) => ['discussion', 'lesson', lessonId, limit ?? null] as const,
-  search: (query: string, lessonIds: readonly string[]) =>
-    ['discussion', 'search', query, lessonIds.join(',')] as const,
+  search: (query: string, lessonIds: readonly string[], spaceIds: readonly string[]) =>
+    ['discussion', 'search', query, lessonIds.join(','), spaceIds.join(',')] as const,
 };
 
 const spacesScopes = {
@@ -1042,7 +1042,7 @@ export const muteThreadMutation = (api: ApiClient) =>
 
 export const postsSearchQuery = (api: ApiClient, input: PostsSearchInput) =>
   defineQuery({
-    queryKey: discussionScopes.search(input.query, input.lessonIds ?? []),
+    queryKey: discussionScopes.search(input.query, input.lessonIds ?? [], input.spaceIds ?? []),
     call: ({ signal }) => api.searchPosts(input, signal),
   });
 

@@ -2573,6 +2573,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const parsed = postsSearchInputSchema.safeParse({
       query: c.req.query('query'),
       lessonIds: c.req.queries('lessonId'),
+      spaceIds: c.req.queries('spaceId'),
       ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
     });
     if (!parsed.success) return respond(err(validation('Invalid post search query', parsed.error.flatten())));

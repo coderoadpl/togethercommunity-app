@@ -1134,6 +1134,7 @@ export const en: Messages = {
   shell: {
     navigationAria: 'Member navigation',
     start: 'Start',
+    searchEntry: 'Search',
     spacesSection: 'Spaces',
     lockedSpaceHint: 'This space needs access — click to unlock it.',
     courseProgressLabel: ({ name, percent }) => `${name} — ${percent}% complete`,
@@ -1159,6 +1160,16 @@ export const en: Messages = {
     lockedSection: 'Unlock more',
     emptyTitle: 'Nothing here yet',
     emptyBody: 'Courses and spaces you join will show up here.',
+  },
+  search: {
+    title: 'Search',
+    eyebrow: 'Search',
+    inputLabel: 'Search posts',
+    placeholder: 'Search across every course and space…',
+    empty: 'Nothing matches this query.',
+    lessonsHeading: 'Course lessons',
+    spacesHeading: 'Spaces',
+    unresolvedHeading: 'Other posts',
   },
   student: {
     myCourses: 'My courses',

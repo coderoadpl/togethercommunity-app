@@ -1017,6 +1017,7 @@ export interface Messages {
   shell: {
     navigationAria: string;
     start: string;
+    searchEntry: string;
     spacesSection: string;
     lockedSpaceHint: string;
     courseProgressLabel: (params: { name: string; percent: number }) => string;
@@ -1042,6 +1043,16 @@ export interface Messages {
     lockedSection: string;
     emptyTitle: string;
     emptyBody: string;
+  };
+  search: {
+    title: string;
+    eyebrow: string;
+    inputLabel: string;
+    placeholder: string;
+    empty: string;
+    lessonsHeading: string;
+    spacesHeading: string;
+    unresolvedHeading: string;
   };
   student: {
     myCourses: string;

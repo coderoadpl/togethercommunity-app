@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { activeNavEntry, courseContextFromPath, memberHomePath } from './member-nav.js';
+import {
+  activeNavEntry,
+  courseContextFromPath,
+  memberHomePath,
+  memberSearchPath,
+} from './member-nav.js';
 
 describe('activeNavEntry', () => {
   it.each([
     [memberHomePath(), { kind: 'start' }],
+    [memberSearchPath(), { kind: 'search' }],
     ['/community/space-1', { kind: 'space', spaceId: 'space-1' }],
     ['/community/space-1/posts/post-1', { kind: 'space', spaceId: 'space-1' }],
     ['/my/courses/course-1', { kind: 'course', courseId: 'course-1' }],
@@ -43,6 +49,7 @@ describe('courseContextFromPath', () => {
 
   it.each([
     [memberHomePath()],
+    [memberSearchPath()],
     ['/my'],
     ['/my/courses'],
     ['/my/course/product-1'],

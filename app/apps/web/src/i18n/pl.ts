@@ -1151,6 +1151,7 @@ export const pl: Messages = {
   shell: {
     navigationAria: 'Nawigacja uczestnika',
     start: 'Start',
+    searchEntry: 'Szukaj',
     spacesSection: 'Przestrzenie',
     lockedSpaceHint: 'Ta przestrzeń wymaga dostępu — kliknij, aby go kupić.',
     courseProgressLabel: ({ name, percent }) => `${name} — ukończono ${percent}%`,
@@ -1176,6 +1177,16 @@ export const pl: Messages = {
     lockedSection: 'Do odblokowania',
     emptyTitle: 'Nic tu jeszcze nie ma',
     emptyBody: 'Kursy i przestrzenie, do których dołączysz, pojawią się w tym miejscu.',
+  },
+  search: {
+    title: 'Szukaj',
+    eyebrow: 'Wyszukiwanie',
+    inputLabel: 'Szukaj wpisów',
+    placeholder: 'Szukaj we wszystkich kursach i przestrzeniach…',
+    empty: 'Brak wyników dla tego zapytania.',
+    lessonsHeading: 'Lekcje kursów',
+    spacesHeading: 'Przestrzenie',
+    unresolvedHeading: 'Inne wpisy',
   },
   student: {
     myCourses: 'Moje kursy',

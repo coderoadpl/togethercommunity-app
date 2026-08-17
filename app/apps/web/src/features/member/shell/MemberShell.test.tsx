@@ -16,7 +16,7 @@ import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ThemeModeProvider } from '../../../theme-mode.js';
-import { memberHomePath } from './member-nav.js';
+import { memberHomePath, memberSearchPath } from './member-nav.js';
 import { MemberShell } from './MemberShell.js';
 
 const stubViewport = (isDesktop: boolean) => {
@@ -153,6 +153,7 @@ const renderShell = async (path: string) => {
   const routeTree = rootRoute.addChildren([
     shellRoute.addChildren([
       createRoute({ getParentRoute: () => shellRoute, path: '/start', component: page('Start') }),
+      createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page('Szukaj') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my', component: page('Biblioteka') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my/products', component: page('Produkty') }),
       createRoute({
@@ -252,6 +253,45 @@ describe('MemberShell', () => {
     await renderShell('/my');
 
     expect(await screen.findByTestId('sidebar-start')).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('lists Szukaj above the spaces section', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell(memberSearchPath());
+
+    const search = await screen.findByTestId('sidebar-search');
+    expect(search).toHaveAttribute('href', memberSearchPath());
+    expect(search).toHaveTextContent(pl.shell.searchEntry);
+    expect(search).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('sidebar-start')).not.toHaveAttribute('aria-current');
+  });
+
+  it('keeps the bell in the sidebar on desktop and in the app bar below md', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    const desktop = await renderShell(memberHomePath());
+    expect(await screen.findByTestId('notification-nav')).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
+    desktop.unmount();
+
+    stubViewport(false);
+    await renderShell(memberHomePath());
+
+    expect(await screen.findByTestId('notification-bell')).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-nav')).not.toBeInTheDocument();
+  });
+
+  it('leaves the unauthenticated tier without a bell', async () => {
+    stubViewport(false);
+    server.use(okMe({ tenant: null }), okOffer());
+
+    await renderShell(memberHomePath());
+
+    expect(await screen.findByRole('link', { name: pl.auth.signInLink })).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
   });
 
   it('offers the colour scheme toggle in the member topbar', async () => {

@@ -12,6 +12,7 @@ import { StatusView } from '../../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
 import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { NotificationBell } from '../../../NotificationBell.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
@@ -146,6 +147,7 @@ export const MemberShell = () => {
                   {t.shell.programButton}
                 </Button>
               ) : null}
+              {hasMobileNavigation ? <NotificationBell /> : null}
               <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
                 <ColorSchemeSwitcher compact />
               </Box>

@@ -1472,6 +1472,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     const params = new URLSearchParams({ query: input.query });
     if (input.limit !== undefined) params.set('limit', String(input.limit));
     for (const lessonId of input.lessonIds ?? []) params.append('lessonId', lessonId);
+    for (const spaceId of input.spaceIds ?? []) params.append('spaceId', spaceId);
     return request(
       options,
       API_ROUTES.postsSearch.method,

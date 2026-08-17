@@ -72,6 +72,7 @@ const member = (id: string, tenantId: string): Member => ({
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
 });
 
 const product = (id: string, tenantId: string): Product => ({
@@ -120,6 +121,7 @@ const harness = (options: { members?: Member[]; products?: Product[]; grants?: P
     create: async () => undefined,
     updateEmail: async () => null,
     updateDisplayName: async () => null,
+    updateDmOptOut: async () => null,
   setBanned: async () => null,
   };
 

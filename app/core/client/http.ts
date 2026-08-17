@@ -87,6 +87,12 @@ import {
   tenantSchedulerRunsOutputSchema,
   meOutputSchema,
   meProfileUpdateOutputSchema,
+  messagesListOutputSchema,
+  messagesReadOutputSchema,
+  messagesSendOutputSchema,
+  messagesStartOutputSchema,
+  messagesThreadOutputSchema,
+  messagesUnreadOutputSchema,
   memberBillingOrdersOutputSchema,
   memberBanOutputSchema,
   memberDataExportOutputSchema,
@@ -210,6 +216,11 @@ import {
   type EmailSendsQueryInput,
   type SchedulerRunsQueryInput,
   type MeProfileUpdateInput,
+  type MessagesListInput,
+  type MessagesReadInput,
+  type MessagesSendInput,
+  type MessagesStartInput,
+  type MessagesThreadInput,
   type MemberHomeFeedGetInput,
   type MemberRemoveInput,
   type MemberBanInput,
@@ -1660,6 +1671,74 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.notificationsUnread.method,
       API_ROUTES.notificationsUnread.path,
       notificationsUnreadOutputSchema,
+      undefined,
+      signal,
+    ),
+  listConversations: (input: MessagesListInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.messagesList.method,
+      suffix.length > 0 ? `${API_ROUTES.messagesList.path}?${suffix}` : API_ROUTES.messagesList.path,
+      messagesListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  getConversation: (input: MessagesThreadInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const path = API_ROUTES.messagesThread.path.replace(
+      ':conversationId',
+      encodeURIComponent(input.conversationId),
+    );
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.messagesThread.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      messagesThreadOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  startConversation: (input: MessagesStartInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesStart.method,
+      API_ROUTES.messagesStart.path,
+      messagesStartOutputSchema,
+      input,
+      signal,
+    ),
+  sendMessage: (input: MessagesSendInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesSend.method,
+      API_ROUTES.messagesSend.path,
+      messagesSendOutputSchema,
+      input,
+      signal,
+    ),
+  markConversationRead: (input: MessagesReadInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesRead.method,
+      API_ROUTES.messagesRead.path,
+      messagesReadOutputSchema,
+      input,
+      signal,
+    ),
+  unreadMessageCount: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesUnread.method,
+      API_ROUTES.messagesUnread.path,
+      messagesUnreadOutputSchema,
       undefined,
       signal,
     ),

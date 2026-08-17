@@ -340,6 +340,7 @@ const mem1: Member = {
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
 };
 
 const membersRepo = (rows: Member[]): MemberRepository => ({
@@ -350,6 +351,7 @@ const membersRepo = (rows: Member[]): MemberRepository => ({
   create: async () => undefined,
   updateEmail: async () => null,
   updateDisplayName: async () => null,
+  updateDmOptOut: async () => null,
 setBanned: async () => null,
 });
 

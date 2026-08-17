@@ -227,6 +227,7 @@ export const members = pgTable(
     bannedAt: text('banned_at'),
     bannedReason: text('banned_reason'),
     bannedByUserId: text('banned_by_user_id'),
+    dmOptOutAt: text('dm_opt_out_at'),
   },
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
@@ -1387,7 +1388,7 @@ export const notifications = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
-    kind: text('kind', { enum: ['thread-reply', 'space-post', 'lesson-question'] }).notNull(),
+    kind: text('kind', { enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message'] }).notNull(),
     payload: jsonb('payload').notNull(),
     readAt: text('read_at'),
     createdAt: text('created_at').notNull(),
@@ -1398,6 +1399,97 @@ export const notifications = pgTable(
       table.recipientUserId,
       table.readAt,
       table.createdAt.desc(),
+    ),
+  ],
+);
+
+export const dmConversations = pgTable(
+  'dm_conversations',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    participantLowUserId: text('participant_low_user_id').notNull(),
+    participantHighUserId: text('participant_high_user_id').notNull(),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    lastMessageId: text('last_message_id'),
+    lastMessageAt: text('last_message_at').notNull(),
+    lastMessageSnippet: text('last_message_snippet').notNull(),
+    lastMessageSenderUserId: text('last_message_sender_user_id').notNull(),
+  },
+  (table) => [
+    uniqueIndex('dm_conversations_tenant_pair_uidx').on(
+      table.tenantId,
+      table.participantLowUserId,
+      table.participantHighUserId,
+    ),
+    index('dm_conversations_tenant_last_message_idx').on(
+      table.tenantId,
+      table.lastMessageAt.desc(),
+    ),
+    index('dm_conversations_tenant_participant_low_idx').on(
+      table.tenantId,
+      table.participantLowUserId,
+    ),
+    index('dm_conversations_tenant_participant_high_idx').on(
+      table.tenantId,
+      table.participantHighUserId,
+    ),
+    index('dm_conversations_tenant_creator_created_idx').on(
+      table.tenantId,
+      table.createdByUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const dmMessages = pgTable(
+  'dm_messages',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => dmConversations.id, { onDelete: 'cascade' }),
+    senderUserId: text('sender_user_id').notNull(),
+    body: text('body').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('dm_messages_tenant_conversation_created_idx').on(
+      table.tenantId,
+      table.conversationId,
+      table.createdAt,
+    ),
+    index('dm_messages_tenant_sender_created_idx').on(
+      table.tenantId,
+      table.senderUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const dmConversationStates = pgTable(
+  'dm_conversation_states',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => dmConversations.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    lastReadAt: text('last_read_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('dm_conversation_states_tenant_conversation_user_uidx').on(
+      table.tenantId,
+      table.conversationId,
+      table.userId,
     ),
   ],
 );

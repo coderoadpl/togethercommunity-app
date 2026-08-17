@@ -291,6 +291,7 @@ export const memberSchema = z.object({
   bannedAt: z.string().datetime().nullable().default(null),
   bannedReason: z.string().nullable().default(null),
   bannedByUserId: z.string().nullable().default(null),
+  dmOptOutAt: z.string().datetime().nullable().default(null),
 });
 
 export type Member = z.infer<typeof memberSchema>;

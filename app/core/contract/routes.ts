@@ -17,14 +17,21 @@ import {
   createSpaceInputSchema,
   deletePostInputSchema,
   deleteSpaceInputSchema,
+  dmConversationRefSchema,
   followSpaceInputSchema,
+  listDmConversationsInputSchema,
+  listDmMessagesInputSchema,
   listSpaceFeedInputSchema,
   markSpaceSeenInputSchema,
   memberHomeFeedInputSchema,
   memberHomeFeedSchema,
   memberSpaceSchema,
+  publicDmConversationSchema,
+  publicDmMessageSchema,
   reactToPostInputSchema,
   reactionSummarySchema,
+  sendDmMessageInputSchema,
+  startDmConversationInputSchema,
   setSpaceArchivedInputSchema,
   spaceFeedSchema,
   spaceSchema,
@@ -229,11 +236,13 @@ export const meOutputSchema = z.object({
 
 export const meProfileUpdateInputSchema = z.object({
   displayName: z.string().trim().min(1).max(200).nullable(),
+  dmOptOut: z.boolean().optional(),
 });
 export type MeProfileUpdateInput = z.infer<typeof meProfileUpdateInputSchema>;
 
 export const meProfileUpdateOutputSchema = z.object({
   displayName: z.string().nullable(),
+  dmOptOut: z.boolean().default(false),
 });
 
 export const memberBillingOrdersQuerySchema = z.object({
@@ -1074,6 +1083,54 @@ export const notificationsUnreadOutputSchema = z.object({
   unread: z.number().int().nonnegative(),
 });
 
+export const messagesListInputSchema = listDmConversationsInputSchema;
+
+export type MessagesListInput = z.input<typeof messagesListInputSchema>;
+
+export const messagesListOutputSchema = z.object({
+  conversations: z.array(publicDmConversationSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const messagesThreadInputSchema = listDmMessagesInputSchema;
+
+export type MessagesThreadInput = z.input<typeof messagesThreadInputSchema>;
+
+export const messagesThreadOutputSchema = z.object({
+  conversation: publicDmConversationSchema,
+  messages: z.array(publicDmMessageSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const messagesStartInputSchema = startDmConversationInputSchema;
+
+export type MessagesStartInput = z.input<typeof messagesStartInputSchema>;
+
+export const messagesStartOutputSchema = z.object({
+  conversation: publicDmConversationSchema,
+});
+
+export const messagesSendInputSchema = sendDmMessageInputSchema;
+
+export type MessagesSendInput = z.input<typeof messagesSendInputSchema>;
+
+export const messagesSendOutputSchema = z.object({
+  message: publicDmMessageSchema,
+});
+
+export const messagesReadInputSchema = dmConversationRefSchema;
+
+export type MessagesReadInput = z.input<typeof messagesReadInputSchema>;
+
+export const messagesReadOutputSchema = z.object({
+  conversationId: z.string(),
+  lastReadAt: z.string().datetime(),
+});
+
+export const messagesUnreadOutputSchema = z.object({
+  unread: z.number().int().nonnegative(),
+});
+
 export const devGrantOutputSchema = z.object({
   memberId: z.string(),
   productId: z.string(),
@@ -1560,6 +1617,12 @@ export const API_ROUTES = {
   notificationsReadAll: { method: 'POST', path: '/api/notifications/read-all' },
   notificationsUnread: { method: 'GET', path: '/api/notifications/unread-count' },
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
+  messagesList: { method: 'GET', path: '/api/messages' },
+  messagesStart: { method: 'POST', path: '/api/messages/start' },
+  messagesSend: { method: 'POST', path: '/api/messages/send' },
+  messagesRead: { method: 'POST', path: '/api/messages/read' },
+  messagesUnread: { method: 'GET', path: '/api/messages/unread-count' },
+  messagesThread: { method: 'GET', path: '/api/messages/:conversationId' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   memberNavigation: { method: 'GET', path: '/api/member/navigation' },
   memberHomeFeed: { method: 'GET', path: '/api/member/home-feed' },
@@ -1784,6 +1847,12 @@ export const API_PATHS = {
   notificationsReadAll: API_ROUTES.notificationsReadAll.path,
   notificationsUnread: API_ROUTES.notificationsUnread.path,
   notificationsStream: API_ROUTES.notificationsStream.path,
+  messagesList: API_ROUTES.messagesList.path,
+  messagesStart: API_ROUTES.messagesStart.path,
+  messagesSend: API_ROUTES.messagesSend.path,
+  messagesRead: API_ROUTES.messagesRead.path,
+  messagesUnread: API_ROUTES.messagesUnread.path,
+  messagesThread: API_ROUTES.messagesThread.path,
   devGrant: API_ROUTES.devGrant.path,
   memberNavigation: API_ROUTES.memberNavigation.path,
   memberHomeFeed: API_ROUTES.memberHomeFeed.path,

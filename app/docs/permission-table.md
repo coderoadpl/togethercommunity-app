@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 100. Route rows: 253. Exported `Ctx` use-case rows: 207.
+Closed capability count: 102. Route rows: 259. Exported `Ctx` use-case rows: 214.
 
 ## Human-readable diff
 
@@ -277,6 +277,12 @@ no changes
 | `POST /api/notifications/read` | notification:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/notifications/read-all` | notification:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/notifications/unread-count` | notification:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/messages` | dm:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/messages/unread-count` | dm:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/messages/start` | dm:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/messages/send` | dm:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/messages/read` | dm:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/messages/:conversationId` | dm:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/notifications/stream` | notification:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /*` | offer:read | public | public | yes | public route manifest |
 
@@ -329,6 +335,13 @@ no changes
 | `course-management.ts#deleteLesson` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
 | `course-management.ts#updateProductAccessItems` | product:access:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
 | `create-tenant.ts#createTenant` | tenant:create | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/create-tenant.ts authorization call |
+| `direct-messages.ts#startDmConversation` | dm:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
+| `direct-messages.ts#sendDmMessage` | dm:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
+| `direct-messages.ts#listDmConversations` | dm:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
+| `direct-messages.ts#getDmConversation` | dm:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
+| `direct-messages.ts#listDmMessages` | dm:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
+| `direct-messages.ts#markDmConversationRead` | dm:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
+| `direct-messages.ts#dmUnreadCount` | dm:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
 | `email-reputation.ts#getEmailReputation` | marketing:reputation:read | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts authorization call |
 | `email-reputation.ts#runReputationAlerts` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts authorization call |
 | `email-send-observability.ts#listEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
@@ -499,11 +512,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:138` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:918` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:920` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1364` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1364` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:143` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:930` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:932` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1376` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1376` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:79` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -543,8 +556,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/member-navigation.ts:73` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
 | member-scope | `core/server/usecases/member-navigation.ts:73` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
 | member-scope | `core/server/usecases/member-navigation.ts:74` | `? { tenantId, memberId: ctx.identity.memberId }` |
-| member-scope | `core/server/usecases/member-profile.ts:30` | `if (ctx.identity.memberId === null) {` |
-| member-scope | `core/server/usecases/member-profile.ts:42` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
+| member-scope | `core/server/usecases/member-profile.ts:37` | `if (ctx.identity.memberId === null) {` |
+| member-scope | `core/server/usecases/member-profile.ts:57` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |

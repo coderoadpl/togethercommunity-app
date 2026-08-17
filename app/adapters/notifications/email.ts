@@ -30,15 +30,24 @@ export const createEmailNotificationChannel = (
               snippet: notification.payload.snippet,
               url: context.contextUrl,
             }
-          : {
-              kind: 'thread-reply' as const,
-              language: context.language,
-              tenantName: context.tenantName,
-              lessonName: context.contextName,
-              authorDisplay: notification.payload.authorDisplay,
-              snippet: notification.payload.snippet,
-              url: context.contextUrl,
-            };
+          : notification.kind === 'dm-message'
+            ? {
+                kind: 'direct-message' as const,
+                language: context.language,
+                tenantName: context.tenantName,
+                senderDisplay: context.contextName,
+                snippet: notification.payload.snippet,
+                url: context.contextUrl,
+              }
+            : {
+                kind: 'thread-reply' as const,
+                language: context.language,
+                tenantName: context.tenantName,
+                lessonName: context.contextName,
+                authorDisplay: notification.payload.authorDisplay,
+                snippet: notification.payload.snippet,
+                url: context.contextUrl,
+              };
     const queued = await emailOutbox.enqueue({
       id: ids.nextId(),
       tenantId: notification.tenantId,

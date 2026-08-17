@@ -48,6 +48,11 @@ import {
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
   meProfileUpdateInputSchema,
+  messagesListInputSchema,
+  messagesReadInputSchema,
+  messagesSendInputSchema,
+  messagesStartInputSchema,
+  messagesThreadInputSchema,
   memberBanInputSchema,
   memberHomeFeedGetInputSchema,
   memberProgressResetInputSchema,
@@ -255,11 +260,18 @@ import {
   listImportAuditForApiKey,
   listTenantDocuments,
   m2mEnroll,
+  dmUnreadCount,
+  getDmConversation,
+  listDmConversations,
+  listDmMessages,
   markAllNotificationsRead,
+  markDmConversationRead,
   markLessonCompleted,
   markNotificationRead,
   markSpaceSeen,
   muteThread,
+  sendDmMessage,
+  startDmConversation,
   pauseCampaign,
   pollSesOnboarding,
   previewMarketingAudience,
@@ -1384,7 +1396,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await updateMyProfile(
       { identity: c.get('identity') },
       parsed.data,
-      { members: deps.members },
+      { members: deps.members, clock: deps.clock },
     ));
   });
 
@@ -2725,6 +2737,64 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   app.get(API_PATHS.notificationsUnread, async (c) =>
     respond(await unreadNotificationCount({ identity: c.get('identity') }, deps)),
   );
+
+  app.get(API_PATHS.messagesList, async (c) => {
+    const parsed = messagesListInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid conversations query', parsed.error.flatten())));
+    return respond(await listDmConversations({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.messagesUnread, async (c) =>
+    respond(await dmUnreadCount({ identity: c.get('identity') }, deps)),
+  );
+
+  app.post(API_PATHS.messagesStart, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = messagesStartInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
+    const result = await startDmConversation({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ conversation: result.value }) : result);
+  });
+
+  app.post(API_PATHS.messagesSend, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = messagesSendInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid message payload', parsed.error.flatten())));
+    const result = await sendDmMessage({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ message: result.value }) : result);
+  });
+
+  app.post(API_PATHS.messagesRead, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = messagesReadInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
+    return respond(await markDmConversationRead({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.messagesThread, async (c) => {
+    const parsed = messagesThreadInputSchema.safeParse({
+      conversationId: c.req.param('conversationId'),
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid conversation query', parsed.error.flatten())));
+    const ctx = { identity: c.get('identity') };
+    const conversation = await getDmConversation(ctx, parsed.data, deps);
+    if (!conversation.ok) return respond(conversation);
+    const messages = await listDmMessages(ctx, parsed.data, deps);
+    return respond(
+      messages.ok
+        ? ok({
+            conversation: conversation.value,
+            messages: messages.value.messages,
+            nextCursor: messages.value.nextCursor,
+          })
+        : messages,
+    );
+  });
 
   app.get(API_PATHS.notificationsStream, (c) => {
     const identity = c.get('identity');

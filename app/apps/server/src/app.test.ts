@@ -159,6 +159,7 @@ const deps = (input: {
       create: async () => undefined,
       updateEmail: async () => null,
       updateDisplayName: async () => null,
+      updateDmOptOut: async () => null,
       setBanned: async () => null,
     },
     memberEvents: {
@@ -366,6 +367,7 @@ const deps = (input: {
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
         },
         grantCreated: true,
       }),
@@ -402,6 +404,7 @@ const deps = (input: {
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
           updateDisplayName: async () => null,
+          updateDmOptOut: async () => null,
         setBanned: async () => null,
         },
         grants: {
@@ -595,12 +598,32 @@ const deps = (input: {
       listSubscribersForRoot: async () => [],
       listForUser: async () => [],
     },
+    dmConversations: {
+      findById: async () => null,
+      findByParticipants: async () => null,
+      insert: async (_tenantId, conversation) => conversation,
+      listForParticipant: async () => ({ conversations: [], nextCursor: null }),
+      countCreatedBySince: async () => 0,
+      countUnreadForParticipant: async () => 0,
+      applyLastMessage: async () => null,
+    },
+    dmMessages: {
+      insert: async (_tenantId, message) => message,
+      listForConversation: async () => ({ messages: [], nextCursor: null }),
+      countRecentBySender: async () => 0,
+    },
+    dmConversationStates: {
+      findForViewer: async () => [],
+      markRead: async (tenantId, input) => ({ tenantId, ...input }),
+    },
     notifications: {
       insert: async (_tenantId, notification) => notification,
       listForRecipient: async () => ({ notifications: [], nextCursor: null }),
       markRead: async () => null,
       markAllRead: async () => 0,
       unreadCount: async () => 0,
+      hasUnreadDmNotification: async () => false,
+      markDmConversationRead: async () => 0,
     },
     notificationChannels: [],
     realtimeBus: {
@@ -608,6 +631,7 @@ const deps = (input: {
       subscribe: () => () => undefined,
     },
     links: {
+      conversationUrl: ({ conversationId }) => `http://localhost/messages/${conversationId}`,
       lessonDiscussionUrl: ({ lessonId }) => `http://localhost/my/courses/c1/lessons/${lessonId}`,
       spaceUrl: ({ spaceId, rootPostId }) =>
         `http://localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
@@ -709,6 +733,7 @@ const scopedApp = (
     bannedAt: scope === 'banned-member' ? '1998-07-12T00:00:00.000Z' : null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
   };
   const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin' };
   const post: Post = {

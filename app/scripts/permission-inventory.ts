@@ -203,6 +203,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/spaces/staff') return 'space:write';
   if (path.startsWith('/api/spaces')) return method === 'GET' ? 'space:read' : 'space:write';
   if (path.startsWith('/api/notifications')) return method === 'GET' ? 'notification:read' : 'notification:write';
+  if (path.startsWith('/api/messages')) return method === 'GET' ? 'dm:read' : 'dm:write';
   if (path === '/api/bunny/videos') return 'course:read';
   if (path === '/api/bunny/test') return 'integration:test';
   return null;
@@ -246,7 +247,7 @@ const beforeForRoute = (
   if (path === '/api/support/message') return tenantActors;
   if (path === '/api/api-keys/:id/import-audit') return owner;
   if (path === '/api/posts/pin') return staff;
-  if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications')) return tenantActors;
+  if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications') || path.startsWith('/api/messages')) return tenantActors;
   if (path.startsWith('/api/spaces') && path !== '/api/spaces/staff' && method === 'GET') return tenantActors;
   if (path.includes('/follow') || path.includes('/react') || path === '/api/spaces/:spaceId/seen') return tenantActors;
   if (
@@ -486,6 +487,7 @@ const beforeForUseCase = (
   if (
     file === 'community-access.ts'
     || file === 'community.ts'
+    || file === 'direct-messages.ts'
     || file === 'member-home-feed.ts'
     || file === 'member-navigation.ts'
   ) return tenantActors;

@@ -826,10 +826,10 @@ describe('marketing e-mail use-case integration', () => {
         };
       },
     };
-    const member = { id: 'member-1', tenantId: 'tenant-1', userId: 'user-1', email: 'member@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null };
+    const member = { id: 'member-1', tenantId: 'tenant-1', userId: 'user-1', email: 'member@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null };
     const members = {
       findById: async () => member, findByEmail: async () => member, listWithProductIds: async () => [],
-      create: async () => undefined, updateEmail: async () => member, updateDisplayName: async () => member, setBanned: async () => null,
+      create: async () => undefined, updateEmail: async () => member, updateDisplayName: async () => member, updateDmOptOut: async () => member, setBanned: async () => null,
     };
     const erased = await removeMember(ctx, { memberId: 'member-1' }, {
       members,

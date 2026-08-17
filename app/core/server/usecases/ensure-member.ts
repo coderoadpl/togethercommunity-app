@@ -33,6 +33,7 @@ export const ensureMember = async (
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
   };
   await deps.members.create(tenantId, member);
   const stored = await deps.members.findByEmail(tenantId, normalizedEmail);

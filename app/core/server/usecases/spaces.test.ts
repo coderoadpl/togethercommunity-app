@@ -536,6 +536,14 @@ class FakeNotifications implements NotificationRepository {
   async unreadCount(): Promise<number> {
     return 0;
   }
+
+  async hasUnreadDmNotification(): Promise<boolean> {
+    return false;
+  }
+
+  async markDmConversationRead(): Promise<number> {
+    return 0;
+  }
 }
 
 const emptyCourses: CourseRepository = {
@@ -642,9 +650,9 @@ interface Fixture {
 }
 
 const MEMBERS: Member[] = [
-  { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
-  { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
-  { id: 'm5', tenantId: 't1', userId: 'u5', email: 'u5@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+  { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+  { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+  { id: 'm5', tenantId: 't1', userId: 'u5', email: 'u5@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
 ];
 
 const fixture = (input: {
@@ -715,6 +723,7 @@ const fixture = (input: {
     tenantAccess,
     links: {
       lessonDiscussionUrl: ({ lessonId }) => `http://tenant.localhost/my/courses/c1/lessons/${lessonId}`,
+      conversationUrl: ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
       spaceUrl: ({ spaceId, rootPostId }) =>
         `http://tenant.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },

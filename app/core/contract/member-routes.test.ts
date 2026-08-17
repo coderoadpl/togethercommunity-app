@@ -4,6 +4,7 @@ import {
   MEMBER_ROUTE_PATHS,
   communityPostPath,
   communitySpacePath,
+  conversationPath,
   lessonPath,
 } from './member-routes.js';
 
@@ -13,9 +14,11 @@ describe('member route paths', () => {
       lesson: '/my/courses/$courseId/lessons/$lessonId',
       communitySpace: '/community/$spaceId',
       communityPost: '/community/$spaceId/posts/$postId',
+      conversation: '/messages/$conversationId',
     });
     expect(lessonPath('course-1', 'lesson-1')).toBe('/my/courses/course-1/lessons/lesson-1');
     expect(communitySpacePath('space-1')).toBe('/community/space-1');
     expect(communityPostPath('space-1', 'post-1')).toBe('/community/space-1/posts/post-1');
+    expect(conversationPath('conversation-1')).toBe('/messages/conversation-1');
   });
 });

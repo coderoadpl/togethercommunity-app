@@ -256,5 +256,11 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/notifications/read` | authenticated | mutating | notification read |
 | `POST /api/notifications/read-all` | authenticated | mutating | notifications read all |
 | `GET /api/notifications/unread-count` | authenticated | read | notifications unread |
+| `GET /api/messages` | authenticated | read | messages list |
+| `GET /api/messages/unread-count` | authenticated | read | messages unread |
+| `POST /api/messages/start` | authenticated | mutating | messages start |
+| `POST /api/messages/send` | authenticated | mutating | messages send |
+| `POST /api/messages/read` | authenticated | mutating | messages read |
+| `GET /api/messages/:conversationId` | authenticated | read | messages thread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
 | `GET /*` | public | read | Tenant social preview for link crawlers |

@@ -53,6 +53,9 @@ import {
   createDevEmailReader,
   createDevMagicLinkReader,
   createDevSinkPurge,
+  createDmConversationRepository,
+  createDmConversationStateRepository,
+  createDmMessageRepository,
   createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
@@ -177,6 +180,9 @@ import type {
   KsefSubmissionJobRepository,
   MemberCourseProgressRepository,
   MemberErasureRequestRepository,
+  DmConversationRepository,
+  DmConversationStateRepository,
+  DmMessageRepository,
   MemberErasurePort,
   MemberEventRepository,
   MemberRepository,
@@ -237,7 +243,7 @@ import {
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
-import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
+import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import { type Env, isProductionEnvironment } from './env.js';
 import { APP_VERSION } from './version.js';
@@ -300,6 +306,9 @@ export interface AppDeps {
   reactions: PostReactionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
   spaceSeen: SpaceSeenRepository;
+  dmConversations: DmConversationRepository;
+  dmMessages: DmMessageRepository;
+  dmConversationStates: DmConversationStateRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   realtimeBus: RealtimeBusPort;
@@ -841,6 +850,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           : communityPostPath(spaceId, rootPostId),
         routing,
       ),
+    conversationUrl: ({ tenantSlug, conversationId }) =>
+      tenantUrl(tenantSlug, conversationPath(conversationId), routing),
   };
 
   const google =
@@ -922,6 +933,9 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     reactions: createPostReactionRepository(db),
     spaceSubscriptions: createSpaceSubscriptionRepository(db),
     spaceSeen: createSpaceSeenRepository(db),
+    dmConversations: createDmConversationRepository(db),
+    dmMessages: createDmMessageRepository(db),
+    dmConversationStates: createDmConversationStateRepository(db),
     notifications: createNotificationRepository(db),
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),

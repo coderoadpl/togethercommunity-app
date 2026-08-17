@@ -104,6 +104,41 @@ describe('email notification channel', () => {
     expect(sent[0]?.payload).toMatchObject({ kind: 'lesson-question', language: 'en', lessonName: 'Lekcja o hamakach' });
   });
 
+  it('renders the directMessage template for dm-message notifications', async () => {
+    const { sent, port } = captureEmail();
+
+    const delivered = await channel(port).deliver(
+      {
+        ...notification,
+        kind: 'dm-message',
+        payload: {
+          ...notification.payload,
+          contextKind: 'dm',
+          contextId: 'dc1',
+          courseId: null,
+          lessonName: 'Ola',
+          snippet: 'Cześć, mam pytanie o hamaki',
+        },
+      },
+      {
+        ...context,
+        contextName: 'Ola',
+        contextUrl: 'http://acme.localhost:48730/messages/dc1',
+      },
+    );
+
+    expect(delivered.ok).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.payload).toMatchObject({
+      kind: 'direct-message',
+      language: 'pl',
+      tenantName: 'Caravan',
+      senderDisplay: 'Ola',
+      snippet: 'Cześć, mam pytanie o hamaki',
+      url: 'http://acme.localhost:48730/messages/dc1',
+    });
+  });
+
   it('skips recipients without an email address', async () => {
     const { sent, port } = captureEmail();
 

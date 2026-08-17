@@ -32,6 +32,11 @@ import type {
   LessonCreateInput,
   LessonUpdateInput,
   MeProfileUpdateInput,
+  MessagesListInput,
+  MessagesReadInput,
+  MessagesSendInput,
+  MessagesStartInput,
+  MessagesThreadInput,
   MemberHomeFeedGetInput,
   MemberProgressResetInput,
   MemberBanInput,
@@ -340,6 +345,14 @@ const notificationScopes = {
   list: () => ['notifications', 'list'] as const,
   page: (limit?: number) => ['notifications', 'page', limit ?? null] as const,
   unread: () => ['notifications', 'unread'] as const,
+};
+
+const messagesScopes = {
+  all: () => ['messages'] as const,
+  list: (limit?: number) => ['messages', 'list', limit ?? null] as const,
+  thread: (conversationId: string, limit?: number) =>
+    ['messages', 'thread', conversationId, limit ?? null] as const,
+  unread: () => ['messages', 'unread'] as const,
 };
 
 const marketingScopes = {
@@ -1227,6 +1240,48 @@ export const markAllNotificationsReadMutation = (
     call: () => api.markAllNotificationsRead(),
   });
 
+/** @public */
+export const conversationsQuery = (api: ApiClient, input: MessagesListInput = {}) =>
+  defineQuery({
+    queryKey: messagesScopes.list(input.limit),
+    call: ({ signal }) => api.listConversations(input, signal),
+  });
+
+/** @public */
+export const conversationQuery = (api: ApiClient, input: MessagesThreadInput) =>
+  defineQuery({
+    queryKey: messagesScopes.thread(input.conversationId, input.limit),
+    call: ({ signal }) => api.getConversation(input, signal),
+  });
+
+/** @public */
+export const unreadMessagesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: messagesScopes.unread(),
+    call: ({ signal }) => api.unreadMessageCount(signal),
+  });
+
+/** @public */
+export const startConversationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'start'],
+    call: (input: MessagesStartInput) => api.startConversation(input),
+  });
+
+/** @public */
+export const sendMessageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'send'],
+    call: (input: MessagesSendInput) => api.sendMessage(input),
+  });
+
+/** @public */
+export const markConversationReadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'read'],
+    call: (input: MessagesReadInput) => api.markConversationRead(input),
+  });
+
 export const tenantSecretsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: tenantSecretsScopes.lists(),
@@ -1406,6 +1461,9 @@ export const memberLearningSummaryInvalidates = (memberId: string) => ({
 export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });
 
 export const notificationsInvalidates = () => ({ queryKey: notificationScopes.all() });
+
+/** @public */
+export const messagesInvalidates = () => ({ queryKey: messagesScopes.all() });
 
 export const discussionInvalidates = () => ({ queryKey: discussionScopes.all() });
 

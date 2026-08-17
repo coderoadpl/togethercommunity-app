@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Notification } from '#core/domain/index.js';
-import type { NotificationDeliveryContext, RealtimeNotificationEvent } from '#core/server/index.js';
+import type { NotificationDeliveryContext, RealtimeEvent } from '#core/server/index.js';
 
 import { createInAppNotificationChannel, createRealtimeBus } from './in-app.js';
 
@@ -36,18 +36,18 @@ const context: NotificationDeliveryContext = {
 describe('in-app notification channel', () => {
   it('publishes the notification onto the realtime bus', async () => {
     const bus = createRealtimeBus();
-    const received: RealtimeNotificationEvent[] = [];
+    const received: RealtimeEvent[] = [];
     bus.subscribe((event) => received.push(event));
 
     const delivered = await createInAppNotificationChannel(bus).deliver(notification, context);
 
     expect(delivered.ok).toBe(true);
-    expect(received).toEqual([{ tenantId: 't1', recipientUserId: 'u2', notification }]);
+    expect(received).toEqual([{ kind: 'notification', tenantId: 't1', recipientUserId: 'u2', notification }]);
   });
 
   it('stops delivering to unsubscribed listeners', async () => {
     const bus = createRealtimeBus();
-    const received: RealtimeNotificationEvent[] = [];
+    const received: RealtimeEvent[] = [];
     const unsubscribe = bus.subscribe((event) => received.push(event));
     unsubscribe();
 

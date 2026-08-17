@@ -48,6 +48,7 @@ const member: Member = {
   bannedAt: null,
   bannedReason: null,
   bannedByUserId: null,
+  dmOptOutAt: null,
 };
 
 const event: MemberEvent = {
@@ -125,6 +126,7 @@ const members: MemberRepository = {
   create: async () => undefined,
   updateEmail: async () => null,
   updateDisplayName: async () => null,
+  updateDmOptOut: async () => null,
   setBanned: async () => null,
 };
 

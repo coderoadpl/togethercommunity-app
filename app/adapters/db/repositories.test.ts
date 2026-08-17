@@ -13,6 +13,8 @@ import type {
   CourseLesson,
   CourseModule,
   Course,
+  DmConversation,
+  DmMessage,
   Member,
   MemberSubscription,
   Notification,
@@ -41,6 +43,9 @@ import {
   createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
+  createDmConversationRepository,
+  createDmConversationStateRepository,
+  createDmMessageRepository,
   createMemberSubscriptionRepository,
   createNotificationRepository,
   createOrderRepository,
@@ -195,6 +200,7 @@ const member = (over: Partial<Member> & { id: string; tenantId: string; userId: 
   bannedAt: over.bannedAt ?? null,
   bannedReason: over.bannedReason ?? null,
   bannedByUserId: over.bannedByUserId ?? null,
+  dmOptOutAt: over.dmOptOutAt ?? null,
 });
 
 beforeAll(async () => {
@@ -2094,6 +2100,182 @@ describe('notification repository', () => {
     ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(third.nextCursor).toBeNull();
+  });
+});
+
+describe('direct message repositories', () => {
+  const conversation = (id: string, over: Partial<DmConversation> = {}): DmConversation => ({
+    id,
+    tenantId: ACME,
+    participantLowUserId: 'user-acme-member',
+    participantHighUserId: 'user-acme-owner',
+    createdByUserId: 'user-acme-member',
+    createdAt: NOW,
+    lastMessageId: null,
+    lastMessageAt: NOW,
+    lastMessageSnippet: '',
+    lastMessageSenderUserId: 'user-acme-member',
+    ...over,
+  });
+
+  const message = (id: string, over: Partial<DmMessage> = {}): DmMessage => ({
+    id,
+    tenantId: ACME,
+    conversationId: 'dm-conversation-1',
+    senderUserId: 'user-acme-member',
+    body: `Body ${id}`,
+    createdAt: NOW,
+    ...over,
+  });
+
+  it('keeps one row per canonical pair and finds it from either side', async () => {
+    const repository = createDmConversationRepository(db);
+    await repository.insert(ACME, conversation('dm-conversation-1'));
+
+    const found = await repository.findByParticipants(ACME, {
+      low: 'user-acme-member',
+      high: 'user-acme-owner',
+    });
+    const crossTenant = await repository.findById(GLOBEX, 'dm-conversation-1');
+
+    expect(found?.id).toBe('dm-conversation-1');
+    expect(crossTenant).toBeNull();
+    await expect(
+      repository.insert(ACME, conversation('dm-conversation-duplicate')),
+    ).rejects.toThrow();
+  });
+
+  it('orders conversations by the last message and paginates by cursor', async () => {
+    const repository = createDmConversationRepository(db);
+    const messages = createDmMessageRepository(db);
+    await repository.insert(
+      ACME,
+      conversation('dm-conversation-2', {
+        participantHighUserId: 'user-acme-second',
+        lastMessageAt: '1998-07-14T09:00:00.000Z',
+      }),
+    );
+    await messages.insert(ACME, message('dm-message-1', { createdAt: '1998-07-14T09:30:00.000Z' }));
+    await repository.applyLastMessage(ACME, {
+      conversationId: 'dm-conversation-1',
+      lastMessageId: 'dm-message-1',
+      lastMessageAt: '1998-07-14T09:30:00.000Z',
+      lastMessageSnippet: 'Body dm-message-1',
+      lastMessageSenderUserId: 'user-acme-member',
+    });
+
+    const first = await repository.listForParticipant(ACME, {
+      userId: 'user-acme-member',
+      limit: 1,
+    });
+    if (first.nextCursor === null) throw new Error('Expected a second conversation page');
+    const second = await repository.listForParticipant(ACME, {
+      userId: 'user-acme-member',
+      cursor: first.nextCursor,
+      limit: 1,
+    });
+
+    expect(first.conversations.map((row) => row.id)).toEqual(['dm-conversation-1']);
+    expect(second.conversations.map((row) => row.id)).toEqual(['dm-conversation-2']);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('counts unread conversations against the viewer read cursor', async () => {
+    const repository = createDmConversationRepository(db);
+    const states = createDmConversationStateRepository(db);
+
+    const senderBefore = await repository.countUnreadForParticipant(ACME, 'user-acme-member');
+    const recipientBefore = await repository.countUnreadForParticipant(ACME, 'user-acme-owner');
+    await states.markRead(ACME, {
+      conversationId: 'dm-conversation-1',
+      userId: 'user-acme-owner',
+      lastReadAt: '1998-07-14T10:00:00.000Z',
+    });
+    const recipientAfter = await repository.countUnreadForParticipant(ACME, 'user-acme-owner');
+
+    expect(senderBefore).toBe(0);
+    expect(recipientBefore).toBe(1);
+    expect(recipientAfter).toBe(0);
+  });
+
+  it('counts a sender rate-limit window and paginates messages newest first', async () => {
+    const repository = createDmMessageRepository(db);
+    await repository.insert(ACME, message('dm-message-2', { createdAt: '1998-07-14T10:30:00.000Z' }));
+
+    const page = await repository.listForConversation(ACME, {
+      conversationId: 'dm-conversation-1',
+      limit: 10,
+    });
+    const windowed = await repository.countRecentBySender(
+      ACME,
+      'user-acme-member',
+      '1998-07-14T10:00:00.000Z',
+    );
+
+    expect(page.messages.map((row) => row.id)).toEqual(['dm-message-2', 'dm-message-1']);
+    expect(windowed).toBe(1);
+  });
+
+  it('collapses direct-message notifications per conversation until they are read', async () => {
+    const repository = createNotificationRepository(db);
+    const dmNotification: Notification = {
+      id: 'notification-dm-1',
+      tenantId: ACME,
+      recipientUserId: 'user-acme-owner',
+      kind: 'dm-message',
+      payload: {
+        rootPostId: 'dm-message-1',
+        postId: 'dm-message-1',
+        contextKind: 'dm',
+        contextId: 'dm-conversation-1',
+        courseId: null,
+        lessonName: 'Acme Member',
+        authorDisplay: 'Acme Member',
+        authorAvatarUrl: null,
+        snippet: 'Body dm-message-1',
+      },
+      readAt: null,
+      createdAt: NOW,
+    };
+    await repository.insert(ACME, dmNotification);
+
+    const pending = await repository.hasUnreadDmNotification(
+      ACME,
+      'user-acme-owner',
+      'dm-conversation-1',
+    );
+    const otherConversation = await repository.hasUnreadDmNotification(
+      ACME,
+      'user-acme-owner',
+      'dm-conversation-2',
+    );
+    const marked = await repository.markDmConversationRead(ACME, {
+      recipientUserId: 'user-acme-owner',
+      conversationId: 'dm-conversation-1',
+      readAt: '1998-07-14T11:00:00.000Z',
+    });
+    const afterRead = await repository.hasUnreadDmNotification(
+      ACME,
+      'user-acme-owner',
+      'dm-conversation-1',
+    );
+
+    expect(pending).toBe(true);
+    expect(otherConversation).toBe(false);
+    expect(marked).toBe(1);
+    expect(afterRead).toBe(false);
+  });
+
+  it('stores the direct-message opt-out on the member row', async () => {
+    const repository = createMemberRepository(db);
+
+    const optedOut = await repository.updateDmOptOut(ACME, 'mem-acme', NOW);
+    const clearedForOtherTenant = await repository.updateDmOptOut(GLOBEX, 'mem-acme', NOW);
+    const cleared = await repository.updateDmOptOut(ACME, 'mem-acme', null);
+
+    expect(optedOut?.dmOptOutAt).toBe(NOW);
+    expect(clearedForOtherTenant).toBeNull();
+    expect(cleared?.dmOptOutAt).toBeNull();
   });
 });
 

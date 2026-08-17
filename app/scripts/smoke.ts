@@ -320,6 +320,24 @@ const notificationsListSchema = z.object({
 const notificationReadSchema = z.object({
   notification: z.object({ id: z.string(), readAt: z.string().nullable() }),
 });
+const conversationSchema = z.object({
+  conversation: z.object({
+    id: z.string(),
+    otherParticipant: z.object({ display: z.string(), isStaff: z.boolean() }),
+    unread: z.boolean(),
+  }),
+});
+const conversationsListSchema = z.object({
+  conversations: z.array(
+    z.object({ id: z.string(), lastMessageSnippet: z.string(), unread: z.boolean() }),
+  ),
+});
+const conversationThreadSchema = z.object({
+  conversation: z.object({ id: z.string() }),
+  messages: z.array(z.object({ id: z.string(), body: z.string(), isOwn: z.boolean() })),
+});
+const messageSentSchema = z.object({ message: z.object({ id: z.string(), isOwn: z.boolean() }) });
+const unreadMessagesSchema = z.object({ unread: z.number() });
 const searchHitsSchema = z.object({
   hits: z.array(z.object({ post: z.object({ id: z.string() }), lessonId: z.string(), snippet: z.string() })),
 });
@@ -1239,6 +1257,98 @@ const driveCommunityFlow = async (port: number, homes: string[]): Promise<void> 
   );
 };
 
+const driveDirectMessagesFlow = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const authorHome = mkdtempSync(join(tmpdir(), 'smoke-dm-author-'));
+  const senderHome = mkdtempSync(join(tmpdir(), 'smoke-dm-sender-'));
+  const strangerHome = mkdtempSync(join(tmpdir(), 'smoke-dm-stranger-'));
+  homes.push(authorHome, senderHome, strangerHome);
+  const cli = (args: string[], home: string): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: home });
+  const studio = (args: string[], home: string): Promise<Run> =>
+    cli(['--json', '--api-url', url, '--tenant', 'studio', ...args], home);
+
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.aktywny@together.dev'], authorHome),
+    'dm: author login',
+  );
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.modul@together.dev'], senderHome),
+    'dm: sender login',
+  );
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.wygasly@together.dev'], strangerHome),
+    'dm: stranger login',
+  );
+
+  const marker = `dm${randomUUID().slice(0, 8)}`;
+  const posted = postCreatedSchema.parse(
+    expectOk(
+      await studio(
+        ['discussion', 'post', '--lesson', 'lesson-js-dom-1', '--body', `Pytanie ${marker}: jak debugowac selektory?`],
+        authorHome,
+      ),
+      'dm: author posts a question',
+    ),
+  );
+
+  const started = conversationSchema.parse(
+    expectOk(await studio(['dm', 'start', '--to-post', posted.post.id], senderHome), 'dm: start from the post author'),
+  );
+  const reopened = conversationSchema.parse(
+    expectOk(await studio(['dm', 'start', '--to-post', posted.post.id], senderHome), 'dm: start is idempotent'),
+  );
+  assert(
+    reopened.conversation.id === started.conversation.id,
+    'starting the same conversation twice should return the same row',
+  );
+
+  const sent = messageSentSchema.parse(
+    expectOk(
+      await studio(['dm', 'send', '--conversation', started.conversation.id, '--body', `Czesc ${marker}`], senderHome),
+      'dm: send a message',
+    ),
+  );
+  assert(sent.message.isOwn, 'the sender should own the message they just sent');
+
+  const inbox = conversationsListSchema.parse(
+    expectOk(await studio(['dm', 'list'], authorHome), 'dm: recipient lists conversations'),
+  );
+  const conversation = inbox.conversations.find((item) => item.id === started.conversation.id);
+  assert(conversation !== undefined, 'the recipient should see the conversation');
+  assert(conversation.unread, 'the recipient should see the conversation as unread');
+  assert(
+    conversation.lastMessageSnippet.includes(marker),
+    'the conversation projection should carry the last message snippet',
+  );
+
+  const unread = unreadMessagesSchema.parse(
+    expectOk(await studio(['dm', 'unread'], authorHome), 'dm: recipient unread badge'),
+  );
+  assert(unread.unread >= 1, 'the recipient badge should count the unread conversation');
+
+  const thread = conversationThreadSchema.parse(
+    expectOk(await studio(['dm', 'thread', started.conversation.id], authorHome), 'dm: recipient reads the thread'),
+  );
+  assert(
+    thread.messages.some((item) => item.id === sent.message.id && !item.isOwn),
+    'the recipient should read the message as not their own',
+  );
+
+  expectOk(await studio(['dm', 'read', started.conversation.id], authorHome), 'dm: recipient marks the thread read');
+  const afterRead = unreadMessagesSchema.parse(
+    expectOk(await studio(['dm', 'unread'], authorHome), 'dm: badge after reading'),
+  );
+  assert(afterRead.unread === 0, 'reading the conversation should clear the recipient badge');
+
+  expectError(
+    await studio(['dm', 'thread', started.conversation.id], strangerHome),
+    'dm: a non-participant cannot read the conversation',
+    EXIT_CODE_BY_ERROR_CODE.not_found,
+    'not_found',
+  );
+};
+
 const driveSpacesFlow = async (port: number, homes: string[]): Promise<void> => {
   const url = `http://localhost:${port}`;
   const staffHome = mkdtempSync(join(tmpdir(), 'smoke-spaces-staff-'));
@@ -1617,6 +1727,8 @@ try {
   await driveM2mFlow(port, homes);
   console.log('smoke: driving the community surface...');
   await driveCommunityFlow(port, homes);
+  console.log('smoke: driving the direct-message surface...');
+  await driveDirectMessagesFlow(port, homes);
   console.log('smoke: driving the spaces surface...');
   await driveSpacesFlow(port, homes);
   console.log('smoke: driving the anonymous public surface...');

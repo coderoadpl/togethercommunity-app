@@ -46,11 +46,13 @@ const VIEWPORTS = [
 ] as const;
 
 type AuthKind = 'public' | 'member' | 'member-free' | 'creator';
+type ViewportName = (typeof VIEWPORTS)[number]['name'];
 
 interface ScreenSpec {
   name: string;
   auth: AuthKind;
   path: string;
+  viewports?: readonly ViewportName[];
   tenantSlug?: string;
   prepare?: (page: Page) => Promise<ScreenPreparation>;
   ready: (page: Page) => Promise<void>;
@@ -109,14 +111,14 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
-// The member shell keeps the bell in the sidebar from md up and in the bottom
-// tab bar below it — wait on the instance this viewport actually shows,
-// otherwise a shot can land before the async count arrives.
+// The member shell keeps the bell in the sidebar from md up and in the top bar
+// below it — wait on the instance this viewport actually shows, otherwise a
+// shot can land before the async count arrives.
 const waitForUnreadBadge = async (page: Page): Promise<void> => {
   const width = page.viewportSize()?.width ?? 0;
-  const bellTestId = width < 900 ? 'notification-tab' : 'notification-nav';
+  const badgeTestId = width < 900 ? 'notification-badge' : 'notification-nav-badge';
   await page
-    .locator(`[data-testid="${bellTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
+    .locator(`[data-testid="${badgeTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
     .waitFor(visible);
 };
 
@@ -182,13 +184,48 @@ const SCREENS: ScreenSpec[] = [
   {
     // Waits target the LAST async element of each screen (waterfall queries),
     // otherwise a shot can land mid-load and produce a flaky golden.
+    name: 'start',
+    auth: 'member',
+    path: '/start',
+    ready: async (page) => {
+      await page.getByTestId('start-continue-cta').waitFor(visible);
+      await page.getByTestId('home-feed-post-post-klub-wyzwanie').waitFor(visible);
+      await page.getByTestId('start-spaces').waitFor(visible);
+      await page.getByTestId('start-courses').waitFor(visible);
+      await page.getByTestId('start-locked').waitFor(visible);
+      await waitForUnreadBadge(page);
+    },
+  },
+  {
+    name: 'start-menu-sheet',
+    auth: 'member',
+    path: '/start',
+    viewports: ['mobile'],
+    ready: async (page) => {
+      await page.getByTestId('member-tab-menu').click();
+      await page.getByTestId('member-menu-sheet').waitFor(visible);
+      await page.getByTestId('sidebar-course-course-js').waitFor(visible);
+      await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
+    },
+  },
+  {
+    name: 'search',
+    auth: 'member',
+    path: '/search',
+    ready: async (page) => {
+      await page.getByTestId('search-input').fill('lekcj');
+      await page.getByTestId('search-space-space-studio-spolecznosc').waitFor(visible);
+      await page.getByTestId('search-lesson-lesson-js-zmienne-1').waitFor(visible);
+      await page.getByTestId('search-lesson-lesson-js-dom-1').waitFor(visible);
+    },
+  },
+  {
     name: 'my-courses',
     auth: 'member',
     path: '/my',
     ready: async (page) => {
-      const seededCourseCard = page.locator('a[href="/my/courses/course-js"]');
-      await seededCourseCard.waitFor(visible);
-      await seededCourseCard.getByTestId('course-progress-course-js').waitFor(visible);
+      await page.getByTestId('course-card-course-js').waitFor(visible);
+      await page.getByTestId('course-progress-course-js').waitFor(visible);
       await waitForUnreadBadge(page);
     },
   },
@@ -197,8 +234,10 @@ const SCREENS: ScreenSpec[] = [
     auth: 'member',
     path: '/my/courses/course-js',
     ready: async (page) => {
-      await page.getByTestId('course-tree').first().waitFor(visible);
-      await page.getByText('Przejdź do pierwszej lekcji').waitFor(visible);
+      await page.getByTestId('progress-percent').waitFor(visible);
+      await page.getByTestId('continue-cta').waitFor(visible);
+      await page.getByTestId('course-cover').waitFor(visible);
+      await page.getByTestId('course-discussion-search').waitFor(visible);
     },
   },
   {
@@ -310,7 +349,7 @@ const SCREENS: ScreenSpec[] = [
   {
     name: 'panel-storage-wizard',
     auth: 'creator',
-    path: '/panel/integrations',
+    path: '/panel/integrations#storage',
     ready: (page) => page.getByTestId('storage-provider-step').waitFor(visible),
     settled: async (page) => {
       await page.getByTestId('storage-wizard').evaluate((element) =>
@@ -606,12 +645,16 @@ const placeholderPng = Buffer.from(
 const isLocalHost = (hostname: string): boolean =>
   hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
 
+const spaceSeenPath = new RegExp(`^${API_PATHS.spaceSeen.replace(':spaceId', '[^/]+')}$`);
+
 const stubNonDeterministicRequests = async (context: BrowserContext): Promise<void> => {
   await context.route('**/*', (route) => {
     const url = new URL(route.request().url());
-    // Last-viewed tracking would mutate the seeded demo progress and change
-    // what later captures render; the mutation's failure is silent in the UI.
-    if (url.pathname === '/api/student/progress/last-viewed') return route.abort();
+    // Last-viewed tracking and space read marks would mutate the seeded demo
+    // state and change what later captures render (progress, unread signals);
+    // both mutations fail silently in the UI.
+    if (url.pathname === API_PATHS.studentLastViewed) return route.abort();
+    if (spaceSeenPath.test(url.pathname)) return route.abort();
     if (isLocalHost(url.hostname)) return route.continue();
     if (route.request().resourceType() === 'image') {
       return route.fulfill({ contentType: 'image/png', body: placeholderPng });
@@ -771,6 +814,7 @@ try {
       for (const auth of ['public', 'member', 'member-free', 'creator'] satisfies AuthKind[]) {
         const screens = SCREENS.filter((screen) =>
           screen.auth === auth
+          && (screen.viewports?.includes(viewport.name) ?? true)
           && (viewport.scope === 'all'
             || screen.name === 'checkout'
             || screen.auth === 'member'

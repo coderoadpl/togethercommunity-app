@@ -56,7 +56,7 @@ describe('visual golden gallery workflow', () => {
     expect(script).toContain("file.status === 'removed'");
     expect(script).toContain("file.status === 'renamed'");
     expect(script).toContain('left.name.localeCompare(right.name)');
-    expect(script).toContain('const maxRows = 100;');
+    expect(script).toContain('const maxRows = 150;');
     expect(script).toContain('let baseSha = baseTipSha;');
     expect(script).toContain("baseDescription = 'pull request base';");
     expect(script).toContain('catch (error)');

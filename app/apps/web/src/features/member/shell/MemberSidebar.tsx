@@ -1,13 +1,11 @@
-import type { ReactNode } from 'react';
 import { Box, Divider, List, ListItemIcon, ListItemText, Tooltip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
-import { StatusView } from '../../../components/layout/index.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
@@ -21,6 +19,7 @@ import {
   type ShellLinkProps,
 } from './shell-chrome.js';
 import { ProductsIcon, SpaceIcon, StartIcon } from './shell-icons.js';
+import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
 
 const memberInitials = (name: string): string =>
   name
@@ -30,56 +29,14 @@ const memberInitials = (name: string): string =>
     .map((word) => (word[0] ?? '').toLocaleUpperCase())
     .join('');
 
-const LinkRow = ({
-  to,
-  label,
-  icon,
-  active,
-  testId,
-}: {
-  to: string;
-  label: string;
-  icon: ReactNode;
-  active: boolean;
-  testId: string;
-}) => (
-  <NavRow
-    component={Link}
-    to={to}
-    selected={active}
-    aria-current={active ? 'page' : undefined}
-    data-testid={testId}
-  >
-    <ListItemIcon>{icon}</ListItemIcon>
-    <ListItemText primary={label} slotProps={{ primary: { noWrap: true } }} />
-  </NavRow>
-);
-
 const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
   const t = useTranslations();
   const navigation = useQuery(actions.memberNavigation);
 
-  if (navigation.isPending) {
-    return (
-      <Typography variant="body2" color="text.secondary" sx={{ px: '0.6rem', py: '0.5rem' }}>
-        {t.common.loading}
-      </Typography>
-    );
-  }
+  if (navigation.isPending) return <SidebarLoading />;
 
   if (navigation.isError) {
-    return (
-      <Box sx={{ px: '0.35rem' }}>
-        <StatusView
-          surface={false}
-          state={{
-            kind: 'error',
-            message: localizeError(navigation.error, t),
-            retry: { label: t.common.retry, onRetry: () => void navigation.refetch() },
-          }}
-        />
-      </Box>
-    );
+    return <SidebarError error={navigation.error} onRetry={() => void navigation.refetch()} />;
   }
 
   const { spaces, courses, lockedSpaces } = navigation.data.navigation;

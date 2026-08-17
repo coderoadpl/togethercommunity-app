@@ -4,7 +4,11 @@ import { styled } from '@mui/material/styles';
 
 import { PanelNavItem } from '../../../theme.js';
 
-export type ShellLinkProps = { component?: ElementType; to?: string };
+export type ShellLinkProps = {
+  component?: ElementType;
+  to?: string;
+  activeOptions?: { exact?: boolean };
+};
 
 export const NavRow = styled(PanelNavItem)<ShellLinkProps>({});
 

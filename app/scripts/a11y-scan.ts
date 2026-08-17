@@ -103,7 +103,7 @@ const SCREENS: ScreenSpec[] = [
     path: '/my/courses/course-js',
     viewports: memberViewports,
     ready: async (page) => {
-      await page.getByTestId('course-tree').waitFor(visible);
+      await page.getByTestId('course-tree').first().waitFor(visible);
       await page.getByText('Przejdź do pierwszej lekcji').waitFor(visible);
     },
   },

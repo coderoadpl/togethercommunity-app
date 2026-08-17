@@ -443,7 +443,7 @@ const capturePolishSurfaces = async (
   const studentPage = await studentContext.newPage();
   await signInStudent(studentPage, studioBaseUrl, fixture.studentEmail, POLISH_MAGIC_LINK);
   await studentPage.goto(`${studioBaseUrl}/my/courses/${fixture.courseId}`, { waitUntil: 'load' });
-  await studentPage.getByTestId('course-tree').waitFor({ state: 'visible', timeout: 20000 });
+  await studentPage.getByTestId('course-tree').first().waitFor({ state: 'visible', timeout: 20000 });
   await studentPage.getByText('Advanced Patterns').first().waitFor({ state: 'visible', timeout: 20000 });
   await shoot(studentPage, '17-student-tree-pl.png');
   await studentContext.close();
@@ -504,7 +504,7 @@ const captureStudentJourney = async (
   await shoot(page, '08-my-courses.png');
 
   await page.goto(`${studioBaseUrl}/my/courses/${fixture.courseId}`, { waitUntil: 'load' });
-  await page.getByTestId('course-tree').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('course-tree').first().waitFor({ state: 'visible', timeout: 20000 });
   await page.getByText('Advanced Patterns').first().waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '09-course-tree-locks.png');
 

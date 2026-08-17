@@ -10,7 +10,8 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import type { SxProps, Theme } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme, type SxProps, type Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
@@ -46,6 +47,11 @@ const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
 
 const VIDEO_ALLOW = 'accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture;';
+
+const useShellOwnsProgram = () => {
+  const theme = useTheme();
+  return useMediaQuery(theme.breakpoints.up('md'));
+};
 
 const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
   switch (type) {
@@ -190,6 +196,7 @@ const LockedView = ({
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const shellOwnsProgram = useShellOwnsProgram();
   const offer = useQuery({ ...actions.publicOffer, enabled: unlockProductId !== undefined });
   const product = offer.data?.products.find((candidate) => candidate.id === unlockProductId);
   return (
@@ -208,7 +215,7 @@ const LockedView = ({
               { label: lessonName ?? t.lesson.contentLocked },
             ],
           })}
-      {...(structure === undefined
+      {...(structure === undefined || shellOwnsProgram
         ? {}
         : { rail: <CurriculumCard courseId={courseId} structure={structure} /> })}
       mobileRail="after"
@@ -253,6 +260,7 @@ export const LessonPlayerPage = ({
   lessonId: string;
 }) => {
   const t = useTranslations();
+  const shellOwnsProgram = useShellOwnsProgram();
   const lesson = useQuery({
     ...actions.studentLesson(lessonId),
     placeholderData: (previous) => previous,
@@ -446,7 +454,7 @@ export const LessonPlayerPage = ({
               { label: lessonName },
             ],
           })}
-      {...(structure.data === undefined
+      {...(structure.data === undefined || shellOwnsProgram
         ? {}
         : {
             rail: (

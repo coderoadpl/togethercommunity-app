@@ -1134,6 +1134,9 @@ export const pl: Messages = {
     spacesSection: 'Przestrzenie',
     lockedSpaceHint: 'Ta przestrzeń wymaga dostępu — kliknij, aby go kupić.',
     courseProgressLabel: ({ name, percent }) => `${name} — ukończono ${percent}%`,
+    backTo: ({ name }) => format('Wróć do {name}', { name }),
+    courseOverviewEntry: 'Przegląd kursu',
+    lessonsOf: ({ done, total }) => format('{done} z {total} lekcji', { done, total }),
   },
   start: {
     title: 'Start',

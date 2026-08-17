@@ -12,6 +12,18 @@ export const SpaceIcon = () => (
   </SvgIcon>
 );
 
+export const BackIcon = () => (
+  <SvgIcon aria-hidden viewBox="0 0 24 24" fontSize="small">
+    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z" />
+  </SvgIcon>
+);
+
+export const CourseOverviewIcon = () => (
+  <SvgIcon aria-hidden viewBox="0 0 24 24">
+    <path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z" />
+  </SvgIcon>
+);
+
 export const ProductsIcon = () => (
   <SvgIcon aria-hidden viewBox="0 0 24 24">
     <path d="M20 2H4c-1.1 0-2 .9-2 2v3.01c0 .72.43 1.34 1 1.69V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.57-.35 1-.97 1-1.69V4c0-1.1-.9-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z" />

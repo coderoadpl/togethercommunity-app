@@ -9,7 +9,7 @@ import { screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { MemberNavigation } from '#core/domain/index.js';
+import type { CourseStructureWithAccess, MemberNavigation } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -83,6 +83,42 @@ const okNavigation = (value: MemberNavigation = navigation()) =>
   http.get('/api/member/navigation', () =>
     HttpResponse.json({ ok: true, data: { navigation: value } }));
 
+const courseStructure: CourseStructureWithAccess = {
+  courseId: 'c1',
+  name: 'JavaScript od zera',
+  accessStatus: 'fully-accessible',
+  completionStatus: 'partially-completed',
+  modules: [
+    {
+      id: 'm1',
+      name: 'Podstawy',
+      accessStatus: 'fully-accessible',
+      completionStatus: 'partially-completed',
+      chapters: [
+        {
+          id: 'ch1',
+          name: 'Start',
+          accessStatus: 'fully-accessible',
+          completionStatus: 'partially-completed',
+          lessons: [
+            {
+              contentId: 'ct1',
+              lessonId: 'l1',
+              name: 'Zmienne',
+              accessStatus: 'fully-accessible',
+              completionStatus: 'not-completed',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const okStructure = () =>
+  http.get('/api/student/courses/:courseId/structure', () =>
+    HttpResponse.json({ ok: true, data: { structure: courseStructure } }));
+
 const okOffer = () =>
   http.get('/api/public/offer', () =>
     HttpResponse.json({
@@ -121,6 +157,11 @@ const renderShell = async (path: string) => {
         getParentRoute: () => shellRoute,
         path: '/my/courses/$courseId',
         component: page('Kurs'),
+      }),
+      createRoute({
+        getParentRoute: () => shellRoute,
+        path: '/my/courses/$courseId/lessons/$lessonId',
+        component: page('Lekcja'),
       }),
       createRoute({
         getParentRoute: () => shellRoute,
@@ -227,6 +268,44 @@ describe('MemberShell', () => {
     await renderShell('/my');
 
     expect(await screen.findAllByText(pl.community.bannedBanner)).toHaveLength(1);
+  });
+
+  it('hands the bar over to the course while a course page is open', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1');
+
+    const overview = await screen.findByTestId('course-sidebar-overview');
+    const courseSidebar = screen.getByTestId('course-sidebar');
+    expect(courseSidebar).toContainElement(overview);
+    expect(overview).toHaveAttribute('aria-current', 'page');
+    expect(within(courseSidebar).getByTestId('course-sidebar-back')).toHaveAttribute(
+      'href',
+      memberHomePath(),
+    );
+    expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
+  });
+
+  it('keeps the course bar with the open lesson highlighted', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const currentLesson = await screen.findByTestId('lesson-button-l1');
+    expect(screen.getByTestId('course-sidebar')).toContainElement(currentLesson);
+    expect(currentLesson).toHaveClass('Mui-selected');
+  });
+
+  it('restores the member bar outside course pages', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/community/s1');
+
+    expect(await screen.findByTestId('member-sidebar')).toBeInTheDocument();
+    expect(screen.queryByTestId('course-sidebar')).not.toBeInTheDocument();
   });
 
   it('serves the public tier without a sidebar and with a sign-in link', async () => {

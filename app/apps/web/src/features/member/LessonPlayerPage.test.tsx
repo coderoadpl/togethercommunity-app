@@ -10,7 +10,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CourseStructureWithAccess,
@@ -125,6 +125,19 @@ const okProgress = (completedLessonIds: string[] = []) =>
 const okNext = (next: NextLesson) =>
   http.get('/api/student/lessons/next', () => HttpResponse.json({ ok: true, data: { next } }));
 
+const stubDesktopViewport = () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('min-width'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 const renderPage = async (node: ReactNode) => {
   const rootRoute = createRootRoute({ component: () => node });
   const router = createRouter({
@@ -136,6 +149,8 @@ const renderPage = async (node: ReactNode) => {
 };
 
 describe('LessonPlayerPage', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
     server.use(
       http.get('/api/me', () =>
@@ -526,6 +541,15 @@ describe('LessonPlayerPage', () => {
     expect(rail).toHaveTextContent(pl.courseOverview.curriculum);
     const current = within(rail).getByTestId('lesson-button-l1');
     expect(current).toHaveClass('Mui-selected');
+  });
+
+  it('leaves the program to the shell sidebar from md up', async () => {
+    stubDesktopViewport();
+    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('lesson-html')).toBeInTheDocument();
+    expect(screen.queryByTestId('curriculum-card')).not.toBeInTheDocument();
   });
 
   it('keeps the program sidebar and member nav mounted across a lesson switch', async () => {

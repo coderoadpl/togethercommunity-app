@@ -1,18 +1,12 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
-import { server } from '../../../test/server.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
-import { memberHomePath } from './member-nav.js';
-
-const unreadCount = (unread: number) =>
-  http.get('/api/notifications/unread-count', () =>
-    HttpResponse.json({ ok: true, data: { unread } }));
+import { memberHomePath, memberSearchPath } from './member-nav.js';
 
 const renderBar = async (path: string, onOpenMenu: () => void = () => undefined) => {
   const rootRoute = createRootRoute({
@@ -27,22 +21,28 @@ const renderBar = async (path: string, onOpenMenu: () => void = () => undefined)
 };
 
 describe('MemberBottomBar', () => {
-  it('offers start, notifications and menu as the only thumb-reach tabs', async () => {
-    server.use(unreadCount(0));
-
+  it('offers start, search and menu as the only thumb-reach tabs', async () => {
     await renderBar('/my');
 
     const bar = screen.getByTestId('member-bottom-nav');
     expect(bar.tagName).toBe('NAV');
     expect(screen.getByTestId('member-tab-start')).toHaveAttribute('href', memberHomePath());
-    expect(screen.getByTestId('notification-tab')).toHaveTextContent(pl.notifications.bell);
+    const search = screen.getByTestId('member-tab-search');
+    expect(search).toHaveAttribute('href', memberSearchPath());
+    expect(search).toHaveTextContent(pl.shell.searchEntry);
     expect(screen.getByTestId('member-tab-menu')).toHaveTextContent(pl.shell.menuTab);
+    expect(screen.queryByTestId('notification-tab')).not.toBeInTheDocument();
     expect(bar.childElementCount).toBe(3);
   });
 
-  it('marks start as the current page only on the member home path', async () => {
-    server.use(unreadCount(0));
+  it('marks search as the current page on the search path', async () => {
+    await renderBar(memberSearchPath());
 
+    expect(screen.getByTestId('member-tab-search')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('member-tab-start')).not.toHaveAttribute('aria-current');
+  });
+
+  it('marks start as the current page only on the member home path', async () => {
     await renderBar(memberHomePath());
     expect(screen.getByTestId('member-tab-start')).toHaveAttribute('aria-current', 'page');
 
@@ -51,8 +51,6 @@ describe('MemberBottomBar', () => {
   });
 
   it('keeps clear of the home indicator with safe-area padding', async () => {
-    server.use(unreadCount(0));
-
     await renderBar('/my');
 
     expect(window.getComputedStyle(screen.getByTestId('member-bottom-nav')).paddingBottom).toContain(
@@ -61,7 +59,6 @@ describe('MemberBottomBar', () => {
   });
 
   it('opens the menu sheet from the menu tab', async () => {
-    server.use(unreadCount(0));
     const onOpenMenu = vi.fn();
     const user = userEvent.setup();
 
@@ -69,14 +66,5 @@ describe('MemberBottomBar', () => {
     await user.click(screen.getByTestId('member-tab-menu'));
 
     expect(onOpenMenu).toHaveBeenCalledOnce();
-  });
-
-  it('carries the unread badge on the notifications tab', async () => {
-    server.use(unreadCount(4));
-
-    await renderBar('/my');
-
-    await waitFor(() =>
-      expect(screen.getByTestId('notification-tab-badge')).toHaveTextContent('4'));
   });
 });

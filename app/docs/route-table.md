@@ -126,6 +126,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/products/:productId/downloads/:assetId/complete` | authenticated | mutating | product download complete |
 | `DELETE /api/products/:productId/downloads/:assetId` | authenticated | mutating | product download delete |
 | `GET /api/member/navigation` | authenticated | read | member navigation |
+| `GET /api/member/home-feed` | authenticated | read | member home feed |
 | `POST /api/image-assets/course-cover/upload` | authenticated | mutating | course cover upload |
 | `POST /api/image-assets/course-cover/complete` | authenticated | mutating | course cover complete |
 | `POST /api/image-assets/product-cover/upload` | authenticated | mutating | product cover upload |
@@ -241,6 +242,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/spaces/:spaceId/feed` | authenticated | read | space feed |
 | `POST /api/spaces/follow` | authenticated | mutating | space follow |
 | `POST /api/spaces/unfollow` | authenticated | mutating | space unfollow |
+| `POST /api/spaces/:spaceId/seen` | authenticated | mutating | space seen |
 | `GET /api/notifications` | authenticated | read | notifications |
 | `POST /api/notifications/read` | authenticated | mutating | notification read |
 | `POST /api/notifications/read-all` | authenticated | mutating | notifications read all |

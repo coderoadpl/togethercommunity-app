@@ -1018,11 +1018,14 @@ export interface Messages {
   shell: {
     navigationAria: string;
     start: string;
+    searchEntry: string;
     spacesSection: string;
     lockedSpaceHint: string;
     courseProgressLabel: (params: { name: string; percent: number }) => string;
+    spaceUnreadLabel: (params: { name: string }) => string;
     backTo: (params: { name: string }) => string;
     courseOverviewEntry: string;
+    courseSpaceEntry: string;
     lessonsOf: (params: { done: number; total: number }) => string;
     menuTab: string;
     menuTitle: string;
@@ -1041,8 +1044,20 @@ export interface Messages {
     coursesSection: string;
     spacesSection: string;
     lockedSection: string;
+    feedSection: string;
+    feedEmpty: string;
     emptyTitle: string;
     emptyBody: string;
+  };
+  search: {
+    title: string;
+    eyebrow: string;
+    inputLabel: string;
+    placeholder: string;
+    empty: string;
+    lessonsHeading: string;
+    spacesHeading: string;
+    unresolvedHeading: string;
   };
   student: {
     myCourses: string;

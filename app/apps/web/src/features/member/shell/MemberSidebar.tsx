@@ -1,6 +1,9 @@
+import { Fragment } from 'react';
 import { Box, Divider, List, ListItemIcon, ListItemText, Tooltip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
+
+import type { MemberNavigationSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
@@ -10,7 +13,13 @@ import { NotificationBell } from '../../../NotificationBell.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { LockClosed } from '../tree-icons.js';
-import { activeNavEntry, memberHomePath, type MemberNavEntry } from './member-nav.js';
+import { nestSpacesUnderCourses } from './course-spaces.js';
+import {
+  activeNavEntry,
+  memberHomePath,
+  memberSearchPath,
+  type MemberNavEntry,
+} from './member-nav.js';
 import {
   BrandLink,
   IdentityAvatar,
@@ -19,8 +28,8 @@ import {
   type ShellLinkProps,
   type ShellVariant,
 } from './shell-chrome.js';
-import { ProductsIcon, SpaceIcon, StartIcon } from './shell-icons.js';
-import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
+import { ProductsIcon, SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
+import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-rows.js';
 
 const memberInitials = (name: string): string =>
   name
@@ -41,47 +50,55 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
   }
 
   const { spaces, courses, lockedSpaces } = navigation.data.navigation;
+  const { spacesByCourse, ungroupedSpaces } = nestSpacesUnderCourses(spaces, courses);
+
+  const spaceRowProps = (space: MemberNavigationSpace) => ({
+    to: `/community/${encodeURIComponent(space.id)}`,
+    label: space.name,
+    active: active?.kind === 'space' && active.spaceId === space.id,
+    testId: `sidebar-space-${space.id}`,
+    ...(space.unread
+      ? { unread: { label: t.shell.spaceUnreadLabel({ name: space.name }) } }
+      : {}),
+  });
 
   return (
     <List component="div" disablePadding>
-      {spaces.map((space) => (
-        <LinkRow
-          key={space.id}
-          to={`/community/${encodeURIComponent(space.id)}`}
-          label={space.name}
-          icon={<SpaceIcon />}
-          active={active?.kind === 'space' && active.spaceId === space.id}
-          testId={`sidebar-space-${space.id}`}
-        />
+      {ungroupedSpaces.map((space) => (
+        <LinkRow key={space.id} icon={<SpaceIcon />} {...spaceRowProps(space)} />
       ))}
       {courses.map((course) => {
         const percent = coursePercent(course);
         const done = isCourseDone(course);
         return (
-          <NavRow
-            key={course.courseId}
-            component={Link}
-            to={`/my/courses/${encodeURIComponent(course.courseId)}`}
-            selected={active?.kind === 'course' && active.courseId === course.courseId}
-            aria-current={
-              active?.kind === 'course' && active.courseId === course.courseId ? 'page' : undefined
-            }
-            aria-label={t.shell.courseProgressLabel({ name: course.courseName, percent })}
-            data-testid={`sidebar-course-${course.courseId}`}
-          >
-            <ListItemIcon>
-              <ProgressRing value={percent} done={done} />
-            </ListItemIcon>
-            <ListItemText
-              primary={course.courseName}
-              slotProps={{ primary: { noWrap: true } }}
-            />
-            {done ? null : (
-              <Typography variant="caption" color="text.secondary" component="span">
-                {`${percent}%`}
-              </Typography>
-            )}
-          </NavRow>
+          <Fragment key={course.courseId}>
+            <NavRow
+              component={Link}
+              to={`/my/courses/${encodeURIComponent(course.courseId)}`}
+              selected={active?.kind === 'course' && active.courseId === course.courseId}
+              aria-current={
+                active?.kind === 'course' && active.courseId === course.courseId ? 'page' : undefined
+              }
+              aria-label={t.shell.courseProgressLabel({ name: course.courseName, percent })}
+              data-testid={`sidebar-course-${course.courseId}`}
+            >
+              <ListItemIcon>
+                <ProgressRing value={percent} done={done} />
+              </ListItemIcon>
+              <ListItemText
+                primary={course.courseName}
+                slotProps={{ primary: { noWrap: true } }}
+              />
+              {done ? null : (
+                <Typography variant="caption" color="text.secondary" component="span">
+                  {`${percent}%`}
+                </Typography>
+              )}
+            </NavRow>
+            {(spacesByCourse.get(course.courseId) ?? []).map((space) => (
+              <SubLinkRow key={space.id} {...spaceRowProps(space)} />
+            ))}
+          </Fragment>
         );
       })}
       {lockedSpaces.map((space) => {
@@ -150,6 +167,13 @@ export const MemberSidebar = ({
             icon={<StartIcon />}
             active={active?.kind === 'start'}
             testId="sidebar-start"
+          />
+          <LinkRow
+            to={memberSearchPath()}
+            label={t.shell.searchEntry}
+            icon={<SearchIcon />}
+            active={active?.kind === 'search'}
+            testId="sidebar-search"
           />
         </List>
         <Typography variant="overline" component="p" sx={{ px: '0.6rem', pt: '0.75rem' }}>

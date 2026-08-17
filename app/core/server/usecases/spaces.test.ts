@@ -27,6 +27,7 @@ import type {
   PostRepository,
   ProductGrantRepository,
   SpaceRepository,
+  SpaceSeenRepository,
   SpaceSubscription,
   SpaceSubscriptionRepository,
   TenantAccessReader,
@@ -41,6 +42,7 @@ import {
   getSpaceFeed,
   listSpacesForMember,
   listSpacesForStaff,
+  markSpaceSeen,
   reactToPost,
   setSpaceArchived,
   setPostPinned,
@@ -267,6 +269,35 @@ class FakePosts implements PostRepository {
     };
   }
 
+  async listThreadsForSpaces(
+    tenantId: string,
+    query: { spaceIds: string[]; cursor?: string; limit: number },
+  ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }> {
+    const cursorOf = (post: Post): string => `${post.createdAt}|${post.id}`;
+    const roots = this.rows
+      .filter(
+        (post) =>
+          post.tenantId === tenantId &&
+          post.contextKind === 'space' &&
+          query.spaceIds.includes(post.contextId) &&
+          post.parentPostId === null &&
+          (query.cursor === undefined || cursorOf(post) < query.cursor),
+      )
+      .sort((a, b) => cursorOf(b).localeCompare(cursorOf(a)));
+    const page = roots.slice(0, query.limit);
+    const overflow = roots[query.limit];
+    const last = page.at(-1);
+    return {
+      threads: page.map((post) => ({
+        post,
+        replyCount: this.rows.filter(
+          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id,
+        ).length,
+      })),
+      nextCursor: overflow && last ? cursorOf(last) : null,
+    };
+  }
+
   async listReplies(tenantId: string, rootPostId: string): Promise<Post[]> {
     return this.rows.filter(
       (post) => post.tenantId === tenantId && post.rootPostId === rootPostId && post.parentPostId !== null,
@@ -316,6 +347,23 @@ class FakePosts implements PostRepository {
     query: { contextKind: PostContextKind; contextId: string },
   ): Promise<number> {
     return (await this.listPinnedForContext(tenantId, { ...query, limit: this.rows.length })).length;
+  }
+
+  async latestRootPostAt(tenantId: string, spaceIds: string[]): Promise<Map<string, string>> {
+    const latest = new Map<string, string>();
+    for (const post of this.rows) {
+      const eligible =
+        post.tenantId === tenantId &&
+        post.contextKind === 'space' &&
+        spaceIds.includes(post.contextId) &&
+        post.parentPostId === null &&
+        post.deletedAt === null;
+      const current = latest.get(post.contextId);
+      if (eligible && (current === undefined || post.createdAt > current)) {
+        latest.set(post.contextId, post.createdAt);
+      }
+    }
+    return latest;
   }
 
   async search(): Promise<[]> {
@@ -398,6 +446,29 @@ class FakeSpaceSubscriptions implements SpaceSubscriptionRepository {
     return this.rows.filter(
       (item) => item.tenantId === tenantId && item.userId === input.userId && input.spaceIds.includes(item.spaceId),
     );
+  }
+}
+
+class FakeSpaceSeen implements SpaceSeenRepository {
+  readonly rows: Array<{ tenantId: string; userId: string; spaceId: string; seenAt: string }> = [];
+
+  async markSeen(tenantId: string, input: { userId: string; spaceId: string; seenAt: string }): Promise<void> {
+    const existing = this.rows.find(
+      (row) => row.tenantId === tenantId && row.userId === input.userId && row.spaceId === input.spaceId,
+    );
+    if (existing) existing.seenAt = input.seenAt;
+    else this.rows.push({ tenantId, userId: input.userId, spaceId: input.spaceId, seenAt: input.seenAt });
+  }
+
+  async listForUser(
+    tenantId: string,
+    input: { userId: string; spaceIds: string[] },
+  ): Promise<Array<{ spaceId: string; seenAt: string }>> {
+    return this.rows
+      .filter(
+        (row) => row.tenantId === tenantId && row.userId === input.userId && input.spaceIds.includes(row.spaceId),
+      )
+      .map((row) => ({ spaceId: row.spaceId, seenAt: row.seenAt }));
   }
 }
 
@@ -513,6 +584,7 @@ interface Fixture {
   posts: FakePosts;
   reactions: FakeReactions;
   spaceSubscriptions: FakeSpaceSubscriptions;
+  spaceSeen: FakeSpaceSeen;
   notifications: FakeNotifications;
   delivered: string[];
 }
@@ -532,6 +604,7 @@ const fixture = (input: {
   const posts = new FakePosts();
   const reactions = new FakeReactions();
   const spaceSubscriptions = new FakeSpaceSubscriptions();
+  const spaceSeen = new FakeSpaceSeen();
   const notifications = new FakeNotifications();
   const delivered: string[] = [];
   const channel: NotificationChannelPort = {
@@ -569,6 +642,7 @@ const fixture = (input: {
     },
     reactions,
     spaceSubscriptions,
+    spaceSeen,
     threadSubscriptions: new FakeThreadSubscriptions(),
     notifications,
     notificationChannels: [channel],
@@ -585,7 +659,7 @@ const fixture = (input: {
     ids: new SequenceIds(),
     clock: new MutableClock(),
   };
-  return { deps, posts, reactions, spaceSubscriptions, notifications, delivered };
+  return { deps, posts, reactions, spaceSubscriptions, spaceSeen, notifications, delivered };
 };
 
 const membersSpace = space({ id: 's-open', slug: 'open', name: 'Otwarta', visibility: 'members' });
@@ -1015,6 +1089,64 @@ describe('space-post notifications', () => {
     const threadReplies = f.notifications.rows.filter((notification) => notification.kind === 'thread-reply');
     expect(threadReplies.map((notification) => notification.recipientUserId)).toEqual(['u1']);
     expect(threadReplies[0]?.payload).toMatchObject({ contextKind: 'space', lessonName: 'Otwarta' });
+  });
+});
+
+describe('space seen marks', () => {
+  it('stamps the viewer mark and moves it forward on a second visit', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+
+    const first = await markSpaceSeen(ctx(), { spaceId: 's-open' }, f.deps);
+    expect(first).toMatchObject({ ok: true, value: { spaceId: 's-open' } });
+    const second = await markSpaceSeen(ctx(), { spaceId: 's-open' }, f.deps);
+
+    expect(f.spaceSeen.rows).toHaveLength(1);
+    expect(second.ok && first.ok && second.value.seenAt > first.value.seenAt).toBe(true);
+    expect(f.spaceSeen.rows[0]).toMatchObject({
+      tenantId: 't1',
+      userId: 'u1',
+      spaceId: 's-open',
+      seenAt: second.ok ? second.value.seenAt : '',
+    });
+  });
+
+  it('keeps marks per viewer and per tenant', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+
+    await markSpaceSeen(ctx(), { spaceId: 's-open' }, f.deps);
+    await markSpaceSeen(ctx({ userId: 'u2', memberId: 'm2' }), { spaceId: 's-open' }, f.deps);
+
+    await expect(f.spaceSeen.listForUser('t1', { userId: 'u1', spaceIds: ['s-open'] })).resolves.toHaveLength(1);
+    await expect(f.spaceSeen.listForUser('t2', { userId: 'u1', spaceIds: ['s-open'] })).resolves.toEqual([]);
+  });
+
+  it('lets staff mark any space and rejects a visitor who is neither member nor staff', async () => {
+    const f = fixture({ spaces: [space({ ...gatedSpace })], staffUserIds: ['u9'] });
+
+    const staff = await markSpaceSeen(
+      ctx({ userId: 'u9', staffRole: 'admin', memberId: null }),
+      { spaceId: 's-club' },
+      f.deps,
+    );
+    const visitor = await markSpaceSeen(ctx({ memberId: null }), { spaceId: 's-club' }, f.deps);
+
+    expect(staff).toMatchObject({ ok: true, value: { spaceId: 's-club' } });
+    expect(visitor).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('refuses spaces the member cannot open and unknown ids', async () => {
+    const f = fixture({ spaces: [space({ ...gatedSpace }), space({ ...membersSpace, archivedAt: NOW })] });
+
+    const gated = await markSpaceSeen(ctx(), { spaceId: 's-club' }, f.deps);
+    const archived = await markSpaceSeen(ctx(), { spaceId: 's-open' }, f.deps);
+    const unknown = await markSpaceSeen(ctx(), { spaceId: 's-missing' }, f.deps);
+    const invalid = await markSpaceSeen(ctx(), { spaceId: '' }, f.deps);
+
+    expect(gated).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(archived).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(unknown).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(f.spaceSeen.rows).toEqual([]);
   });
 });
 

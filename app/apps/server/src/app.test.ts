@@ -534,12 +534,14 @@ const deps = (input: {
       listRecentBodiesByAuthor: async () => [],
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
+      listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
+      latestRootPostAt: async () => new Map(),
       search: async () => [],
     },
     spaces: {
@@ -561,6 +563,10 @@ const deps = (input: {
       follow: async () => undefined,
       unfollow: async () => false,
       listFollowersForSpace: async () => [],
+      listForUser: async () => [],
+    },
+    spaceSeen: {
+      markSeen: async () => undefined,
       listForUser: async () => [],
     },
     threadSubscriptions: {
@@ -2929,6 +2935,49 @@ describe('new route authorization', () => {
     });
     expect(JSON.stringify(payload)).not.toContain('minio-access');
     expect(JSON.stringify(payload)).not.toContain('minio-secret');
+  });
+});
+
+describe('post search route', () => {
+  it('parses repeated lesson and space filters out of the query string', async () => {
+    const base = deps();
+    const searches: Array<{ query: string; lessonIds: string[]; spaceIds: string[]; limit: number }> = [];
+    const overrides: Partial<AppDeps> = {
+      posts: {
+        ...base.posts,
+        search: async (_tenantId, query) => {
+          searches.push(query);
+          return [];
+        },
+      },
+      spaces: {
+        ...base.spaces,
+        list: async () => [
+          {
+            id: 'space-1',
+            tenantId: acme.id,
+            slug: 'general',
+            name: 'General',
+            description: null,
+            visibility: 'members',
+            productIds: [],
+            position: 0,
+            archivedAt: null,
+            createdAt: '1998-07-12T00:00:00.000Z',
+          },
+        ],
+      },
+    };
+    const path = `${API_PATHS.postsSearch}?query=silnik&spaceId=space-1&spaceId=space-9`;
+
+    const response = await scopedApp('staff', { overrides }).request(path, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(searches).toEqual([
+      { query: 'silnik', lessonIds: [], spaceIds: ['space-1'], limit: 20 },
+    ]);
   });
 });
 

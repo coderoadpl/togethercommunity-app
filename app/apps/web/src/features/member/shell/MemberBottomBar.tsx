@@ -2,10 +2,9 @@ import { Typography } from '@mui/material';
 import { Link, useRouterState } from '@tanstack/react-router';
 
 import { useTranslations } from '../../../i18n/index.js';
-import { NotificationBell } from '../../../NotificationBell.js';
-import { activeNavEntry, memberHomePath } from './member-nav.js';
+import { activeNavEntry, memberHomePath, memberSearchPath } from './member-nav.js';
 import { TabBar, TabButton } from './shell-chrome.js';
-import { MenuIcon, StartIcon } from './shell-icons.js';
+import { MenuIcon, SearchIcon, StartIcon } from './shell-icons.js';
 
 const TabLabel = ({ label }: { label: string }) => (
   <Typography variant="caption" component="span" noWrap title={label} sx={{ maxWidth: '100%' }}>
@@ -24,6 +23,7 @@ export const MemberBottomBar = ({
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const active = activeNavEntry(pathname);
   const startActive = active?.kind === 'start';
+  const searchActive = active?.kind === 'search';
 
   return (
     <TabBar aria-label={t.shell.navigationAria} data-testid="member-bottom-nav">
@@ -36,7 +36,15 @@ export const MemberBottomBar = ({
         <StartIcon />
         <TabLabel label={t.shell.start} />
       </TabButton>
-      <NotificationBell tabLabel={t.notifications.bell} />
+      <TabButton
+        component={Link}
+        to={memberSearchPath()}
+        aria-current={searchActive ? 'page' : undefined}
+        data-testid="member-tab-search"
+      >
+        <SearchIcon />
+        <TabLabel label={t.shell.searchEntry} />
+      </TabButton>
       <TabButton
         onClick={onOpenMenu}
         aria-haspopup="dialog"

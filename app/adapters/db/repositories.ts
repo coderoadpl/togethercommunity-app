@@ -95,6 +95,7 @@ import type {
   OnboardingStateRepository,
   PostReactionRepository,
   SpaceRepository,
+  SpaceSeenRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -147,6 +148,7 @@ import {
   products,
   spaces,
   suppressions,
+  spaceSeenMarks,
   spaceSubscriptions,
   tenantAdmins,
   tenantApiKeys,
@@ -255,6 +257,24 @@ const parseThreadCursor = (cursor: string): { createdAt: string; id: string } =>
   return separator === -1
     ? { createdAt: cursor, id: '' }
     : { createdAt: cursor.slice(0, separator), id: cursor.slice(separator + 1) };
+};
+
+const countThreadReplies = async (
+  db: Db,
+  tenantId: string,
+  post: { id: string; rootPostId: string },
+): Promise<number> => {
+  const counts = await db
+    .select({ value: sql<number>`count(*)::int` })
+    .from(posts)
+    .where(
+      and(
+        eq(posts.tenantId, tenantId),
+        eq(posts.rootPostId, post.rootPostId),
+        sql`${posts.id} <> ${post.id}`,
+      ),
+    );
+  return counts[0]?.value ?? 0;
 };
 
 const parseSpace = (space: typeof spaces.$inferSelect): Space => spaceSchema.parse(space);
@@ -1046,19 +1066,10 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const page = rows.slice(0, query.limit);
     const overflow = rows[query.limit];
     const threads = await Promise.all(
-      page.map(async (post) => {
-        const counts = await db
-          .select({ value: sql<number>`count(*)::int` })
-          .from(posts)
-          .where(
-            and(
-              eq(posts.tenantId, tenantId),
-              eq(posts.rootPostId, post.rootPostId),
-              sql`${posts.id} <> ${post.id}`,
-            ),
-          );
-        return { post: parsePost(post), replyCount: counts[0]?.value ?? 0 };
-      }),
+      page.map(async (post) => ({
+        post: parsePost(post),
+        replyCount: await countThreadReplies(db, tenantId, post),
+      })),
     );
     const last = page.at(-1);
     return {
@@ -1066,6 +1077,36 @@ export const createPostRepository = (db: Db): PostRepository => ({
       // Cursor = last item of the page, so the overflow row opens the next page.
       nextCursor: overflow && last ? threadCursor(last) : null,
     };
+  },
+  listThreadsForSpaces: async (tenantId, query) => {
+    if (query.spaceIds.length === 0) return { threads: [], nextCursor: null };
+    const cursor = query.cursor === undefined ? null : parseThreadCursor(query.cursor);
+    const rows = await db
+      .select()
+      .from(posts)
+      .where(
+        and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.contextKind, 'space'),
+          inArray(posts.contextId, query.spaceIds),
+          sql`${posts.parentPostId} is null`,
+          ...(cursor === null
+            ? []
+            : [sql`(${posts.createdAt}, ${posts.id}) < (${cursor.createdAt}, ${cursor.id})`]),
+        ),
+      )
+      .orderBy(desc(posts.createdAt), desc(posts.id))
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const overflow = rows[query.limit];
+    const threads = await Promise.all(
+      page.map(async (post) => ({
+        post: parsePost(post),
+        replyCount: await countThreadReplies(db, tenantId, post),
+      })),
+    );
+    const last = page.at(-1);
+    return { threads, nextCursor: overflow && last ? threadCursor(last) : null };
   },
   listReplies: async (tenantId, rootPostId) =>
     (
@@ -1131,6 +1172,23 @@ export const createPostRepository = (db: Db): PostRepository => ({
         ),
       );
     return rows[0]?.value ?? 0;
+  },
+  latestRootPostAt: async (tenantId, spaceIds) => {
+    if (spaceIds.length === 0) return new Map();
+    const rows = await db
+      .select({ spaceId: posts.contextId, latestAt: sql<string>`max(${posts.createdAt})` })
+      .from(posts)
+      .where(
+        and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.contextKind, 'space'),
+          inArray(posts.contextId, spaceIds),
+          isNull(posts.parentPostId),
+          isNull(posts.deletedAt),
+        ),
+      )
+      .groupBy(posts.contextId);
+    return new Map(rows.map((row) => [row.spaceId, row.latestAt]));
   },
   search: async (tenantId, query) => {
     const contextFilters: SQL[] = [];
@@ -1533,6 +1591,31 @@ export const createSpaceSubscriptionRepository = (db: Db): SpaceSubscriptionRepo
               eq(spaceSubscriptions.tenantId, tenantId),
               eq(spaceSubscriptions.userId, input.userId),
               inArray(spaceSubscriptions.spaceId, input.spaceIds),
+            ),
+          ),
+});
+
+export const createSpaceSeenRepository = (db: Db): SpaceSeenRepository => ({
+  markSeen: async (tenantId, input) => {
+    await db
+      .insert(spaceSeenMarks)
+      .values({ tenantId, userId: input.userId, spaceId: input.spaceId, seenAt: input.seenAt })
+      .onConflictDoUpdate({
+        target: [spaceSeenMarks.tenantId, spaceSeenMarks.userId, spaceSeenMarks.spaceId],
+        set: { seenAt: input.seenAt },
+      });
+  },
+  listForUser: async (tenantId, input) =>
+    input.spaceIds.length === 0
+      ? []
+      : db
+          .select({ spaceId: spaceSeenMarks.spaceId, seenAt: spaceSeenMarks.seenAt })
+          .from(spaceSeenMarks)
+          .where(
+            and(
+              eq(spaceSeenMarks.tenantId, tenantId),
+              eq(spaceSeenMarks.userId, input.userId),
+              inArray(spaceSeenMarks.spaceId, input.spaceIds),
             ),
           ),
 });

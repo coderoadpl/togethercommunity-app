@@ -96,6 +96,7 @@ import {
   memberCommerceOutputSchema,
   memberLearningSummaryOutputSchema,
   memberNavigationOutputSchema,
+  memberHomeFeedOutputSchema,
   memberTimelineOutputSchema,
   memberProgressResetOutputSchema,
   memberRemoveOutputSchema,
@@ -130,6 +131,7 @@ import {
   spaceDeleteOutputSchema,
   spaceFeedOutputSchema,
   spaceFollowOutputSchema,
+  spaceSeenOutputSchema,
   spaceOutputSchema,
   spacesListOutputSchema,
   staffSpacesListOutputSchema,
@@ -205,6 +207,7 @@ import {
   type EmailSendsExportQueryInput,
   type EmailSendsQueryInput,
   type SchedulerRunsQueryInput,
+  type MemberHomeFeedGetInput,
   type MemberRemoveInput,
   type MemberBanInput,
   type MemberErasureRequestCreateInput,
@@ -236,6 +239,7 @@ import {
   type SpaceDeleteInput,
   type SpaceFeedGetInput,
   type SpaceFollowInput,
+  type SpaceSeenInput,
   type SpaceUpdateInput,
   type SupportMessageInput,
   type ProductsAccessItemsInput,
@@ -923,6 +927,20 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  memberHomeFeed: (input: MemberHomeFeedGetInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.memberHomeFeed.method,
+      suffix.length > 0 ? `${API_ROUTES.memberHomeFeed.path}?${suffix}` : API_ROUTES.memberHomeFeed.path,
+      memberHomeFeedOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   myProducts: (signal?: AbortSignal) =>
     request(options, API_ROUTES.myProducts.method, API_ROUTES.myProducts.path, myProductsOutputSchema, undefined, signal),
   exportMyData: (signal?: AbortSignal) =>
@@ -1472,6 +1490,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     const params = new URLSearchParams({ query: input.query });
     if (input.limit !== undefined) params.set('limit', String(input.limit));
     for (const lessonId of input.lessonIds ?? []) params.append('lessonId', lessonId);
+    for (const spaceId of input.spaceIds ?? []) params.append('spaceId', spaceId);
     return request(
       options,
       API_ROUTES.postsSearch.method,
@@ -1535,6 +1554,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.spaceUnfollow.path,
       spaceFollowOutputSchema,
       input,
+      signal,
+    ),
+  markSpaceSeen: (input: SpaceSeenInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.spaceSeen.method,
+      API_ROUTES.spaceSeen.path.replace(':spaceId', encodeURIComponent(input.spaceId)),
+      spaceSeenOutputSchema,
+      undefined,
       signal,
     ),
   listNotifications: (input: NotificationsListInput = {}, signal?: AbortSignal) => {

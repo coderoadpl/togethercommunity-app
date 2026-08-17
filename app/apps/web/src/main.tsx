@@ -109,6 +109,7 @@ import {
   MemberShellRoute,
   MyCoursesRoute,
   MyProductsRoute,
+  SearchRoute,
   SpaceFeedRoute,
   SpaceThreadRoute,
   StartRoute,
@@ -158,6 +159,11 @@ const startRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/start',
   component: StartRoute,
+});
+const searchRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/search',
+  component: SearchRoute,
 });
 const myCoursesRoute = createRoute({
   getParentRoute: () => memberShellRoute,
@@ -442,6 +448,7 @@ const router = createRouter({
     resetPasswordRoute,
     memberShellRoute.addChildren([
       startRoute,
+      searchRoute,
       myCoursesRoute,
       myProductsRoute,
       courseRoute,

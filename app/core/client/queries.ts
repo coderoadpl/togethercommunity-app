@@ -31,6 +31,7 @@ import type {
   LessonUncompleteInput,
   LessonCreateInput,
   LessonUpdateInput,
+  MemberHomeFeedGetInput,
   MemberProgressResetInput,
   MemberBanInput,
   MemberRemoveInput,
@@ -69,6 +70,7 @@ import type {
   SpaceCreateInput,
   SpaceFeedGetInput,
   SpaceFollowInput,
+  SpaceSeenInput,
   SpaceUpdateInput,
   SupportMessageInput,
   ProductsAccessItemsInput,
@@ -230,6 +232,11 @@ const memberNavigationScopes = {
   all: () => ['member-navigation'] as const,
 };
 
+const memberHomeFeedScopes = {
+  all: () => ['member-home-feed'] as const,
+  page: (limit?: number) => ['member-home-feed', 'page', limit ?? null] as const,
+};
+
 const membersScopes = {
   all: () => ['members'] as const,
   export: (format: MemberExportFormat) => ['members', 'export', format] as const,
@@ -301,8 +308,8 @@ const studentScopes = {
 const discussionScopes = {
   all: () => ['discussion'] as const,
   lesson: (lessonId: string, limit?: number) => ['discussion', 'lesson', lessonId, limit ?? null] as const,
-  search: (query: string, lessonIds: readonly string[]) =>
-    ['discussion', 'search', query, lessonIds.join(',')] as const,
+  search: (query: string, lessonIds: readonly string[], spaceIds: readonly string[]) =>
+    ['discussion', 'search', query, lessonIds.join(','), spaceIds.join(',')] as const,
 };
 
 const spacesScopes = {
@@ -558,6 +565,12 @@ export const memberNavigationQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: memberNavigationScopes.all(),
     call: ({ signal }) => api.memberNavigation(signal),
+  });
+
+export const memberHomeFeedQuery = (api: ApiClient, input: MemberHomeFeedGetInput) =>
+  defineQuery({
+    queryKey: memberHomeFeedScopes.page(input.limit),
+    call: ({ signal }) => api.memberHomeFeed(input, signal),
   });
 
 export const membersQuery = (api: ApiClient) =>
@@ -1042,7 +1055,7 @@ export const muteThreadMutation = (api: ApiClient) =>
 
 export const postsSearchQuery = (api: ApiClient, input: PostsSearchInput) =>
   defineQuery({
-    queryKey: discussionScopes.search(input.query, input.lessonIds ?? []),
+    queryKey: discussionScopes.search(input.query, input.lessonIds ?? [], input.spaceIds ?? []),
     call: ({ signal }) => api.searchPosts(input, signal),
   });
 
@@ -1092,6 +1105,12 @@ export const unfollowSpaceMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'unfollow'],
     call: (input: SpaceFollowInput) => api.unfollowSpace(input),
+  });
+
+export const markSpaceSeenMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'seen'],
+    call: (input: SpaceSeenInput) => api.markSpaceSeen(input),
   });
 
 export const reactToPostMutation = (api: ApiClient) =>
@@ -1317,6 +1336,9 @@ export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() }
 
 /** Every surface that changes a member's progress or follow state refreshes the shell aggregate. */
 export const memberNavigationInvalidates = () => ({ queryKey: memberNavigationScopes.all() });
+
+/** Every surface that adds or removes a space post refreshes the aggregated home feed. */
+export const memberHomeFeedInvalidates = () => ({ queryKey: memberHomeFeedScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
 

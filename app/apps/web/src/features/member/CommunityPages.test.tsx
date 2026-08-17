@@ -81,6 +81,13 @@ const okFeed = (spaceId: string, items: SpaceFeedItem[], isFollowing = false) =>
     }),
   );
 
+const okSeen = (calls: string[] = []) =>
+  http.post('/api/spaces/:spaceId/seen', ({ params }) => {
+    const spaceId = String(params.spaceId);
+    calls.push(spaceId);
+    return HttpResponse.json({ ok: true, data: { spaceId, seenAt: '2026-07-20T09:00:00.000Z' } });
+  });
+
 const okDiscussion = (
   threads: DiscussionPost[],
   viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
@@ -131,6 +138,7 @@ describe('community pages', () => {
         }),
         feedItem({ id: 'p2', body: 'Drugi wpis' }),
       ]),
+      okSeen(),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
@@ -150,6 +158,7 @@ describe('community pages', () => {
       noNotifications(),
       okSpaces([space({ id: 's1' })]),
       okFeed('s1', []),
+      okSeen(),
       http.post('/api/posts', async ({ request }) => {
         const body = createPostInputSchema.parse(await request.json());
         bodies.push(body);
@@ -178,6 +187,7 @@ describe('community pages', () => {
       noNotifications(),
       okSpaces([space({ id: 's1' })]),
       okFeed('s1', [feedItem({ id: 'p1', reactions: [{ emoji: '👍', count: 1, viewerReacted: false }] })]),
+      okSeen(),
       http.post('/api/posts/react', async ({ request }) => {
         const body = reactToPostInputSchema.parse(await request.json());
         reactCalls.push(body);
@@ -226,6 +236,34 @@ describe('community pages', () => {
 
     await waitFor(() => expect(muteCalls).toEqual([{ rootPostId: 'p1' }]));
     expect(screen.getByTestId('follow-toggle-p1')).toHaveTextContent(pl.discussion.mutedState);
+  });
+
+  it('marks the space seen once it opens and again after posting', async () => {
+    const seenCalls: string[] = [];
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', []),
+      okSeen(seenCalls),
+      http.post('/api/posts', async ({ request }) => {
+        const body = createPostInputSchema.parse(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: { post: feedItem({ id: 'new1', body: body.body, isOwn: true }) },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await waitFor(() => expect(seenCalls).toEqual(['s1']));
+
+    await user.type(await screen.findByTestId('space-composer-input'), 'Mój nowy wpis');
+    await user.click(screen.getByTestId('space-composer-submit'));
+
+    await waitFor(() => expect(seenCalls).toEqual(['s1', 's1']));
   });
 
   it('hides a gated space the member cannot access behind a not-found state', async () => {

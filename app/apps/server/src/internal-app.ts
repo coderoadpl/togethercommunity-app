@@ -48,6 +48,7 @@ import {
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
   memberBanInputSchema,
+  memberHomeFeedGetInputSchema,
   memberProgressResetInputSchema,
   memberErasureRequestCreateInputSchema,
   memberErasureRejectInputSchema,
@@ -86,6 +87,7 @@ import {
   spaceDeleteInputSchema,
   spaceFeedGetInputSchema,
   spaceFollowInputSchema,
+  spaceSeenInputSchema,
   spaceUpdateInputSchema,
   stripeConfigureInputSchema,
   subscriptionSimulateInputSchema,
@@ -196,6 +198,7 @@ import {
   getMarketingConsentDefinition,
   getMemberCommerceOverview,
   getMemberLearningSummary,
+  getMemberHomeFeed,
   getMemberNavigation,
   getNextLesson,
   getOrder,
@@ -252,6 +255,7 @@ import {
   markAllNotificationsRead,
   markLessonCompleted,
   markNotificationRead,
+  markSpaceSeen,
   muteThread,
   pauseCampaign,
   pollSesOnboarding,
@@ -1550,6 +1554,16 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ navigation: result.value }) : result);
   });
 
+  app.get(API_PATHS.memberHomeFeed, async (c) => {
+    const parsed = memberHomeFeedGetInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid home feed query', parsed.error.flatten())));
+    const result = await getMemberHomeFeed({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ feed: result.value }) : result);
+  });
+
   app.post(API_PATHS.courseCoverUpload, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     return respondImageAssetUpload(beginCourseCoverUpload, c.get('identity'), body, deps);
@@ -2573,6 +2587,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const parsed = postsSearchInputSchema.safeParse({
       query: c.req.query('query'),
       lessonIds: c.req.queries('lessonId'),
+      spaceIds: c.req.queries('spaceId'),
       ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
     });
     if (!parsed.success) return respond(err(validation('Invalid post search query', parsed.error.flatten())));
@@ -2657,6 +2672,12 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const parsed = spaceFollowInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid space follow payload', parsed.error.flatten())));
     return respond(await unfollowSpace({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.spaceSeen, async (c) => {
+    const parsed = spaceSeenInputSchema.safeParse({ spaceId: c.req.param('spaceId') });
+    if (!parsed.success) return respond(err(validation('Invalid space id', parsed.error.flatten())));
+    return respond(await markSpaceSeen({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.get(API_PATHS.notifications, async (c) => {

@@ -24,6 +24,7 @@ import type {
   Product,
   ProductGrant,
   ProductPrice,
+  Space,
   TenantApiKey,
   TenantSecret,
 } from '#core/domain/index.js';
@@ -49,6 +50,8 @@ import {
   createProductGrantRepository,
   createProductPriceRepository,
   createProductRepository,
+  createSpaceRepository,
+  createSpaceSeenRepository,
   createTenantAccessReader,
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
@@ -1772,6 +1775,128 @@ describe('post repository', () => {
     ]);
   });
 
+  it('pages newest-first root threads across several spaces', async () => {
+    const repo = createPostRepository(db);
+    const feedPost = (
+      id: string,
+      contextId: string,
+      createdAt: string,
+      over: Partial<Post> = {},
+    ): Post => ({
+      id,
+      tenantId: ACME,
+      contextKind: 'space',
+      contextId,
+      parentPostId: null,
+      rootPostId: id,
+      authorUserId: 'user-acme-member',
+      authorDisplay: 'Acme Member',
+      authorIsStaff: false,
+      body: `Body ${id}`,
+      createdAt,
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+      ...over,
+    });
+    const spaceIds = ['space-feed-one', 'space-feed-two'];
+    await repo.createPost(ACME, feedPost('post-feed-a', 'space-feed-one', '1998-07-14T08:00:00.000Z'));
+    await repo.createPost(ACME, feedPost('post-feed-b', 'space-feed-two', '1998-07-14T09:00:00.000Z'));
+    await repo.createPost(ACME, feedPost('post-feed-c', 'space-feed-one', '1998-07-14T10:00:00.000Z'));
+    await repo.createPost(
+      ACME,
+      feedPost('post-feed-reply', 'space-feed-one', '1998-07-14T11:00:00.000Z', {
+        parentPostId: 'post-feed-c',
+        rootPostId: 'post-feed-c',
+      }),
+    );
+    await repo.createPost(
+      ACME,
+      feedPost('post-feed-elsewhere', 'space-feed-unlisted', '1998-07-14T12:00:00.000Z'),
+    );
+    await repo.createPost(
+      GLOBEX,
+      feedPost('post-feed-globex', 'space-feed-one', '1998-07-14T13:00:00.000Z', { tenantId: GLOBEX }),
+    );
+
+    const first = await repo.listThreadsForSpaces(ACME, { spaceIds, limit: 2 });
+    expect(first.threads.map((thread) => thread.post.id)).toEqual(['post-feed-c', 'post-feed-b']);
+    expect(first.threads[0]?.replyCount).toBe(1);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await repo.listThreadsForSpaces(ACME, {
+      spaceIds,
+      limit: 2,
+      cursor: first.nextCursor ?? '',
+    });
+    expect(second.threads.map((thread) => thread.post.id)).toEqual(['post-feed-a']);
+    expect(second.nextCursor).toBeNull();
+
+    await expect(repo.listThreadsForSpaces(ACME, { spaceIds: [], limit: 2 })).resolves.toEqual({
+      threads: [],
+      nextCursor: null,
+    });
+  });
+
+  it('reports the newest non-deleted root post per space and ignores replies', async () => {
+    const repo = createPostRepository(db);
+    const activityPost = (
+      id: string,
+      contextId: string,
+      createdAt: string,
+      over: Partial<Post> = {},
+    ): Post => ({
+      id,
+      tenantId: ACME,
+      contextKind: 'space',
+      contextId,
+      parentPostId: null,
+      rootPostId: id,
+      authorUserId: 'user-acme-member',
+      authorDisplay: 'Acme Member',
+      authorIsStaff: false,
+      body: `Body ${id}`,
+      createdAt,
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+      ...over,
+    });
+    await repo.createPost(ACME, activityPost('post-activity-root', 'space-activity-one', '1998-07-14T08:00:00.000Z'));
+    await repo.createPost(
+      ACME,
+      activityPost('post-activity-reply', 'space-activity-one', '1998-07-14T09:00:00.000Z', {
+        parentPostId: 'post-activity-root',
+        rootPostId: 'post-activity-root',
+      }),
+    );
+    await repo.createPost(ACME, activityPost('post-activity-older', 'space-activity-two', '1998-07-14T08:00:00.000Z'));
+    await repo.createPost(
+      ACME,
+      activityPost('post-activity-erased', 'space-activity-two', '1998-07-14T10:00:00.000Z', { deletedAt: FUTURE }),
+    );
+    await repo.createPost(
+      ACME,
+      activityPost('post-activity-quiet', 'space-activity-three', '1998-07-14T10:00:00.000Z', { deletedAt: FUTURE }),
+    );
+    await repo.createPost(
+      GLOBEX,
+      activityPost('post-activity-globex', 'space-activity-one', '1998-07-14T12:00:00.000Z', { tenantId: GLOBEX }),
+    );
+
+    const spaceIds = ['space-activity-one', 'space-activity-two', 'space-activity-three'];
+    await expect(repo.latestRootPostAt(ACME, spaceIds)).resolves.toEqual(
+      new Map([
+        ['space-activity-one', '1998-07-14T08:00:00.000Z'],
+        ['space-activity-two', '1998-07-14T08:00:00.000Z'],
+      ]),
+    );
+    await expect(repo.latestRootPostAt(GLOBEX, spaceIds)).resolves.toEqual(
+      new Map([['space-activity-one', '1998-07-14T12:00:00.000Z']]),
+    );
+    await expect(repo.latestRootPostAt(ACME, [])).resolves.toEqual(new Map());
+  });
+
   it('clears a pin when soft-deleting a post', async () => {
     const repo = createPostRepository(db);
     const post: Post = {
@@ -1809,6 +1934,59 @@ describe('post repository', () => {
       contextKind: post.contextKind,
       contextId: post.contextId,
     })).resolves.toBe(0);
+  });
+});
+
+describe('space seen repository', () => {
+  const seenSpace = (id: string, tenantId: string): Space => ({
+    id,
+    tenantId,
+    slug: id,
+    name: id,
+    description: null,
+    visibility: 'members',
+    productIds: [],
+    position: 0,
+    archivedAt: null,
+    createdAt: NOW,
+  });
+
+  it('moves an existing mark forward instead of duplicating it', async () => {
+    const spacesRepo = createSpaceRepository(db);
+    const repo = createSpaceSeenRepository(db);
+    await spacesRepo.create(ACME, seenSpace('space-seen-upsert', ACME));
+
+    await repo.markSeen(ACME, { userId: 'user-acme-member', spaceId: 'space-seen-upsert', seenAt: NOW });
+    await repo.markSeen(ACME, { userId: 'user-acme-member', spaceId: 'space-seen-upsert', seenAt: FUTURE });
+
+    await expect(
+      repo.listForUser(ACME, { userId: 'user-acme-member', spaceIds: ['space-seen-upsert'] }),
+    ).resolves.toEqual([{ spaceId: 'space-seen-upsert', seenAt: FUTURE }]);
+  });
+
+  it('scopes marks to the tenant, the viewer and the requested spaces', async () => {
+    const spacesRepo = createSpaceRepository(db);
+    const repo = createSpaceSeenRepository(db);
+    await spacesRepo.create(ACME, seenSpace('space-seen-scoped', ACME));
+    await spacesRepo.create(ACME, seenSpace('space-seen-other', ACME));
+    await spacesRepo.create(GLOBEX, seenSpace('space-seen-globex', GLOBEX));
+
+    await repo.markSeen(ACME, { userId: 'user-acme-member', spaceId: 'space-seen-scoped', seenAt: NOW });
+    await repo.markSeen(ACME, { userId: 'user-acme-owner', spaceId: 'space-seen-other', seenAt: NOW });
+    await repo.markSeen(GLOBEX, { userId: 'user-acme-member', spaceId: 'space-seen-globex', seenAt: NOW });
+
+    await expect(
+      repo.listForUser(ACME, {
+        userId: 'user-acme-member',
+        spaceIds: ['space-seen-scoped', 'space-seen-other'],
+      }),
+    ).resolves.toEqual([{ spaceId: 'space-seen-scoped', seenAt: NOW }]);
+    await expect(
+      repo.listForUser(GLOBEX, { userId: 'user-acme-member', spaceIds: ['space-seen-scoped'] }),
+    ).resolves.toEqual([]);
+    await expect(
+      repo.listForUser(ACME, { userId: 'user-acme-member', spaceIds: [] }),
+    ).resolves.toEqual([]);
   });
 });
 

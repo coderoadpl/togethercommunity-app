@@ -16,7 +16,7 @@ import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ThemeModeProvider } from '../../../theme-mode.js';
-import { memberHomePath } from './member-nav.js';
+import { memberHomePath, memberSearchPath } from './member-nav.js';
 import { MemberShell } from './MemberShell.js';
 
 const stubViewport = (isDesktop: boolean) => {
@@ -57,7 +57,7 @@ const okMe = (overrides: { memberId?: string | null; banned?: boolean; tenant?: 
 
 const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation => ({
   spaces: [
-    { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true },
+    { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: false, courseIds: [] },
   ],
   courses: [
     {
@@ -153,6 +153,7 @@ const renderShell = async (path: string) => {
   const routeTree = rootRoute.addChildren([
     shellRoute.addChildren([
       createRoute({ getParentRoute: () => shellRoute, path: '/start', component: page('Start') }),
+      createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page('Szukaj') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my', component: page('Biblioteka') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my/products', component: page('Produkty') }),
       createRoute({
@@ -207,6 +208,77 @@ describe('MemberShell', () => {
     expect(within(sidebar).getByText(pl.shell.spacesSection)).toBeInTheDocument();
   });
 
+  it('marks a space row with an unread dot and a labelled row', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(navigation({
+        spaces: [
+          { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: true, courseIds: [] },
+          { id: 's2', slug: 'cicha', name: 'Cicha', visibility: 'members', position: 1, isFollowing: false, unread: false, courseIds: [] },
+        ],
+      })),
+      okOffer(),
+      noNotifications(),
+    );
+
+    await renderShell('/my');
+
+    const unread = await screen.findByTestId('sidebar-space-s1');
+    expect(unread).toHaveAttribute('aria-label', pl.shell.spaceUnreadLabel({ name: 'Ogólna' }));
+    expect(within(unread).getByTestId('sidebar-space-s1-unread')).toBeInTheDocument();
+
+    const quiet = screen.getByTestId('sidebar-space-s2');
+    expect(quiet).not.toHaveAttribute('aria-label');
+    expect(within(quiet).queryByTestId('sidebar-space-s2-unread')).not.toBeInTheDocument();
+  });
+
+  it('nests a course space under its course row instead of the flat space list', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(navigation({
+        spaces: [
+          { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: false, courseIds: [] },
+          { id: 's2', slug: 'js', name: 'Kurs JS', visibility: 'product', position: 1, isFollowing: true, unread: true, courseIds: ['c1'] },
+        ],
+      })),
+      okOffer(),
+      noNotifications(),
+    );
+
+    await renderShell('/my');
+
+    const nested = await screen.findByTestId('sidebar-space-s2');
+    expect(screen.getByTestId('sidebar-course-c1').nextElementSibling).toBe(nested);
+    expect(nested).toHaveAttribute('href', '/community/s2');
+    expect(nested).toHaveStyle({ paddingLeft: '34px' });
+    expect(within(nested).getByTestId('sidebar-space-s2-unread')).toBeInTheDocument();
+    expect(nested).toHaveAccessibleName(pl.shell.spaceUnreadLabel({ name: 'Kurs JS' }));
+    expect(screen.getByTestId('sidebar-space-s1').nextElementSibling).toBe(
+      screen.getByTestId('sidebar-course-c1'),
+    );
+  });
+
+  it('keeps a space shared by two courses in the flat list', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(navigation({
+        spaces: [
+          { id: 's2', slug: 'js', name: 'Kurs JS', visibility: 'product', position: 0, isFollowing: true, unread: false, courseIds: ['c1', 'c2'] },
+        ],
+      })),
+      okOffer(),
+      noNotifications(),
+    );
+
+    await renderShell('/my');
+
+    const shared = await screen.findByTestId('sidebar-space-s2');
+    expect(shared.nextElementSibling).toBe(screen.getByTestId('sidebar-course-c1'));
+  });
+
   it('renders a locked space without a product as a non-interactive row', async () => {
     stubViewport(true);
     server.use(
@@ -252,6 +324,45 @@ describe('MemberShell', () => {
     await renderShell('/my');
 
     expect(await screen.findByTestId('sidebar-start')).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('lists Szukaj above the spaces section', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell(memberSearchPath());
+
+    const search = await screen.findByTestId('sidebar-search');
+    expect(search).toHaveAttribute('href', memberSearchPath());
+    expect(search).toHaveTextContent(pl.shell.searchEntry);
+    expect(search).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('sidebar-start')).not.toHaveAttribute('aria-current');
+  });
+
+  it('keeps the bell in the sidebar on desktop and in the app bar below md', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    const desktop = await renderShell(memberHomePath());
+    expect(await screen.findByTestId('notification-nav')).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
+    desktop.unmount();
+
+    stubViewport(false);
+    await renderShell(memberHomePath());
+
+    expect(await screen.findByTestId('notification-bell')).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-nav')).not.toBeInTheDocument();
+  });
+
+  it('leaves the unauthenticated tier without a bell', async () => {
+    stubViewport(false);
+    server.use(okMe({ tenant: null }), okOffer());
+
+    await renderShell(memberHomePath());
+
+    expect(await screen.findByRole('link', { name: pl.auth.signInLink })).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
   });
 
   it('offers the colour scheme toggle in the member topbar', async () => {

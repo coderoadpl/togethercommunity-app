@@ -19,6 +19,9 @@ import {
   deleteSpaceInputSchema,
   followSpaceInputSchema,
   listSpaceFeedInputSchema,
+  markSpaceSeenInputSchema,
+  memberHomeFeedInputSchema,
+  memberHomeFeedSchema,
   memberSpaceSchema,
   reactToPostInputSchema,
   reactionSummarySchema,
@@ -424,6 +427,14 @@ export const memberLearningSummaryOutputSchema = z.object({
 
 export const memberNavigationOutputSchema = z.object({
   navigation: memberNavigationSchema,
+});
+
+export const memberHomeFeedGetInputSchema = memberHomeFeedInputSchema;
+
+export type MemberHomeFeedGetInput = z.input<typeof memberHomeFeedGetInputSchema>;
+
+export const memberHomeFeedOutputSchema = z.object({
+  feed: memberHomeFeedSchema,
 });
 
 export const memberTimelineOutputSchema = z.object({
@@ -973,6 +984,15 @@ export const spaceFollowOutputSchema = z.object({
   isFollowing: z.boolean(),
 });
 
+export const spaceSeenInputSchema = markSpaceSeenInputSchema;
+
+export type SpaceSeenInput = z.input<typeof spaceSeenInputSchema>;
+
+export const spaceSeenOutputSchema = z.object({
+  spaceId: z.string(),
+  seenAt: z.string().datetime(),
+});
+
 export const postReactInputSchema = reactToPostInputSchema;
 
 export type PostReactInput = z.input<typeof postReactInputSchema>;
@@ -1510,6 +1530,7 @@ export const API_ROUTES = {
   spaceFeed: { method: 'GET', path: '/api/spaces/:spaceId/feed' },
   spaceFollow: { method: 'POST', path: '/api/spaces/follow' },
   spaceUnfollow: { method: 'POST', path: '/api/spaces/unfollow' },
+  spaceSeen: { method: 'POST', path: '/api/spaces/:spaceId/seen' },
   notifications: { method: 'GET', path: '/api/notifications' },
   notificationRead: { method: 'POST', path: '/api/notifications/read' },
   notificationsReadAll: { method: 'POST', path: '/api/notifications/read-all' },
@@ -1517,6 +1538,7 @@ export const API_ROUTES = {
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   memberNavigation: { method: 'GET', path: '/api/member/navigation' },
+  memberHomeFeed: { method: 'GET', path: '/api/member/home-feed' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
@@ -1727,6 +1749,7 @@ export const API_PATHS = {
   spaceFeed: API_ROUTES.spaceFeed.path,
   spaceFollow: API_ROUTES.spaceFollow.path,
   spaceUnfollow: API_ROUTES.spaceUnfollow.path,
+  spaceSeen: API_ROUTES.spaceSeen.path,
   notifications: API_ROUTES.notifications.path,
   notificationRead: API_ROUTES.notificationRead.path,
   notificationsReadAll: API_ROUTES.notificationsReadAll.path,
@@ -1734,6 +1757,7 @@ export const API_PATHS = {
   notificationsStream: API_ROUTES.notificationsStream.path,
   devGrant: API_ROUTES.devGrant.path,
   memberNavigation: API_ROUTES.memberNavigation.path,
+  memberHomeFeed: API_ROUTES.memberHomeFeed.path,
   myProducts: API_ROUTES.myProducts.path,
   memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,

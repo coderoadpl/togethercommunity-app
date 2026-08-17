@@ -121,6 +121,29 @@ export const listSpaceFeedInputSchema = z.object({
 });
 
 
+const memberHomeFeedItemSchema = spaceFeedItemSchema.extend({
+  spaceId: z.string().min(1),
+  spaceName: z.string(),
+});
+
+export type MemberHomeFeedItem = z.output<typeof memberHomeFeedItemSchema>;
+
+export const memberHomeFeedSchema = z.object({
+  items: z.array(memberHomeFeedItemSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export type MemberHomeFeed = z.output<typeof memberHomeFeedSchema>;
+
+export const memberHomeFeedInputSchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(50).default(10),
+});
+
 export const followSpaceInputSchema = z.object({
+  spaceId: z.string().min(1),
+});
+
+export const markSpaceSeenInputSchema = z.object({
   spaceId: z.string().min(1),
 });

@@ -160,7 +160,17 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionSummary[]>>({});
 
-  const invalidateSpaces = () => queryClient.invalidateQueries(actions.spacesInvalidates());
+  const { mutate: markSeen } = useMutation({
+    ...actions.markSpaceSeen,
+    onSettled: () => queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+  });
+  const invalidateSpaces = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.spacesInvalidates()),
+      queryClient.invalidateQueries(actions.memberHomeFeedInvalidates()),
+    ]);
+    markSeen({ spaceId });
+  };
   const settleFollow = async () => {
     await Promise.all([
       queryClient.invalidateQueries(actions.spacesInvalidates()),
@@ -181,6 +191,11 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   useEffect(() => {
     if (unauthorized) void navigate({ to: '/login' });
   }, [navigate, unauthorized]);
+
+  const feedReadable = feed.isSuccess;
+  useEffect(() => {
+    if (feedReadable) markSeen({ spaceId });
+  }, [feedReadable, markSeen, spaceId]);
 
   if (spaces.isPending) {
     return (

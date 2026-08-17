@@ -283,6 +283,28 @@ class FakePosts implements PostRepository {
     };
   }
 
+  async listThreadsForSpaces(
+    tenantId: string,
+    query: { spaceIds: string[]; cursor?: string; limit: number },
+  ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }> {
+    const roots = this.rows
+      .filter(
+        (post) =>
+          post.tenantId === tenantId &&
+          post.contextKind === 'space' &&
+          query.spaceIds.includes(post.contextId) &&
+          post.parentPostId === null,
+      )
+      .slice(0, query.limit);
+    return {
+      threads: roots.map((post) => ({
+        post,
+        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id).length,
+      })),
+      nextCursor: null,
+    };
+  }
+
   async listReplies(tenantId: string, rootPostId: string): Promise<Post[]> {
     return this.rows.filter((post) => post.tenantId === tenantId && post.rootPostId === rootPostId && post.parentPostId !== null);
   }
@@ -331,6 +353,23 @@ class FakePosts implements PostRepository {
     query: { contextKind: PostContextKind; contextId: string },
   ): Promise<number> {
     return (await this.listPinnedForContext(tenantId, { ...query, limit: this.rows.length })).length;
+  }
+
+  async latestRootPostAt(tenantId: string, spaceIds: string[]): Promise<Map<string, string>> {
+    const latest = new Map<string, string>();
+    for (const post of this.rows) {
+      const eligible =
+        post.tenantId === tenantId &&
+        post.contextKind === 'space' &&
+        spaceIds.includes(post.contextId) &&
+        post.parentPostId === null &&
+        post.deletedAt === null;
+      const current = latest.get(post.contextId);
+      if (eligible && (current === undefined || post.createdAt > current)) {
+        latest.set(post.contextId, post.createdAt);
+      }
+    }
+    return latest;
   }
 
   async search(

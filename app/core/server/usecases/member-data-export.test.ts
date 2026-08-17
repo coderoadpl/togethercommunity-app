@@ -134,12 +134,14 @@ const deps = (
     listByAuthor: async (_tenantId, authorUserId) =>
       authoredPosts.filter((value) => value.authorUserId === authorUserId),
     listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
+    listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
     listReplies: async () => [],
     updateBody: async () => null,
     softDelete: async () => null,
     setPinned: async () => null,
     listPinnedForContext: async () => [],
     countPinnedForContext: async () => 0,
+    latestRootPostAt: async () => new Map(),
     search: async () => [],
   },
   consents: {

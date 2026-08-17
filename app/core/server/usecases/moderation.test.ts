@@ -214,6 +214,7 @@ const makeDeps = (
       listRecentBodiesByAuthor: async () => [],
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
+      listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async (tenantId: string, input: { id: string; deletedAt: string }) => {
@@ -227,6 +228,7 @@ const makeDeps = (
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
+      latestRootPostAt: async () => new Map(),
       search: async () => [],
     },
     spaces: {

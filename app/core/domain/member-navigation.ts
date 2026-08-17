@@ -4,7 +4,13 @@ import { spaceSchema } from './space.js';
 
 const memberNavigationSpaceSchema = spaceSchema
   .pick({ id: true, slug: true, name: true, visibility: true, position: true })
-  .extend({ isFollowing: z.boolean() });
+  .extend({
+    isFollowing: z.boolean(),
+    unread: z.boolean().default(false),
+    courseIds: z.array(z.string().min(1)).default([]),
+  });
+
+export type MemberNavigationSpace = z.output<typeof memberNavigationSpaceSchema>;
 
 const memberNavigationCourseSchema = z.object({
   courseId: z.string().min(1),

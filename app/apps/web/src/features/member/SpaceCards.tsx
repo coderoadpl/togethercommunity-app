@@ -6,7 +6,7 @@ import { Link } from '@tanstack/react-router';
 import type { SpaceVisibility } from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
-import { CourseCardRoot, EmberCtaButton } from '../../theme.js';
+import { CourseCardRoot, EmberCtaButton, UnreadDot } from '../../theme.js';
 import { LockClosed } from './tree-icons.js';
 
 const EmberCtaLink = styled(EmberCtaButton)<{ component?: ElementType; to?: string }>({});
@@ -17,6 +17,7 @@ export interface SpaceCardSpace {
   description?: string | null;
   visibility: SpaceVisibility;
   isFollowing: boolean;
+  unread?: boolean;
 }
 
 export interface LockedSpaceCardSpace {
@@ -35,6 +36,13 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
           <Typography variant="h2" component="h3" sx={{ flex: 1, minWidth: 0 }}>
             {space.name}
           </Typography>
+          {space.unread === true && (
+            <UnreadDot
+              role="img"
+              aria-label={t.shell.spaceUnreadLabel({ name: space.name })}
+              data-testid={`space-unread-${space.id}`}
+            />
+          )}
           {space.isFollowing && (
             <Chip
               size="small"

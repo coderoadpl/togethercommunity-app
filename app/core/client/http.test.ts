@@ -140,6 +140,23 @@ describe('createApiClient', () => {
     })).resolves.toMatchObject({ ok: true, value: { filename: 'email-sends-alpha.csv' } });
   });
 
+  it('serializes both lesson and space filters on post search', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      expect(input).toBe(
+        'https://api.example.test/api/posts/search?query=silnik&limit=5&lessonId=l1&spaceId=s1&spaceId=s2',
+      );
+      return jsonResponse({ ok: true, data: { hits: [] } });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.searchPosts({
+      query: 'silnik',
+      limit: 5,
+      lessonIds: ['l1'],
+      spaceIds: ['s1', 's2'],
+    })).resolves.toEqual({ ok: true, value: { hits: [] } });
+  });
+
   it('returns the contract AppError from a non-2xx envelope', async () => {
     const fetchImpl: typeof fetch = async () =>
       jsonResponse({ ok: false, error: { code: 'unauthorized', message: 'Login required' } }, 401);

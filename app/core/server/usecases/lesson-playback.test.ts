@@ -92,6 +92,7 @@ const course: Course = {
   description: '',
   imageUrl: null,
   moduleOrder: ['m1'],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: '1998-01-01T00:00:00.000Z',
 };

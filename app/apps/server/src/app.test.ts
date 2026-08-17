@@ -621,6 +621,7 @@ const deps = (input: {
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
           privacyUrl: null,
+          defaultHomeSpaceId: null,
         } : null,
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async (tenant) => ({
@@ -769,6 +770,7 @@ const scopedApp = (
         description: null,
         visibility: 'members',
         productIds: [],
+        publicReadOnly: false,
         position: 0,
         archivedAt: null,
         createdAt: '1998-07-12T00:00:00.000Z',
@@ -1293,6 +1295,7 @@ describe('migration import HTTP surfaces', () => {
     const progressCourse: Course = {
       id: 'course-native', tenantId: 't-acme', name: 'Course', description: '', imageUrl: null,
       moduleOrder: ['module-native'], legacyId: null, createdAt: '1998-08-01T00:00:00.000Z',
+      publiclyVisible: false,
     };
     const progressLesson: CourseLesson = {
       id: 'lesson-native', tenantId: 't-acme', name: 'Lesson', isPreview: false, contents: [],
@@ -2384,6 +2387,7 @@ describe('student lesson playback route', () => {
             supportUrl: null,
             termsUrl: null,
             privacyUrl: null,
+            defaultHomeSpaceId: null,
           }),
         },
         secretResolver: { resolve: async () => ok('security-key') },
@@ -2961,6 +2965,7 @@ describe('post search route', () => {
             description: null,
             visibility: 'members',
             productIds: [],
+            publicReadOnly: false,
             position: 0,
             archivedAt: null,
             createdAt: '1998-07-12T00:00:00.000Z',
@@ -3217,6 +3222,7 @@ describe('free lesson preview route', () => {
       description: '',
       imageUrl: null,
       moduleOrder: ['module-paid'],
+      publiclyVisible: false,
       legacyId: null,
       createdAt: '1998-07-12T00:00:00.000Z',
     };
@@ -3442,6 +3448,7 @@ const consentApp = (simulatedPayments: boolean) => {
               supportUrl: null,
               termsUrl: 'https://acme.example/terms-v2',
               privacyUrl: 'https://acme.example/privacy-v3',
+              defaultHomeSpaceId: null,
             }
           : null,
     },
@@ -3701,6 +3708,7 @@ describe('checkout consent ordering', () => {
                 supportUrl: null,
                 termsUrl: 'https://acme.example/terms-v2',
                 privacyUrl: 'https://acme.example/privacy-v3',
+                defaultHomeSpaceId: null,
                 autoIssueInvoices: true,
                 autoIssueInvoiceScope: 'all',
                 invoiceVatRatePercent: 23,

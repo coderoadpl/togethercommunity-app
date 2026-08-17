@@ -31,6 +31,7 @@ const staffSpace = (over: Partial<StaffSpace> & { id: string }): StaffSpace => (
   description: 'Rozmowy o wszystkim.',
   visibility: 'members',
   productIds: [],
+  publicReadOnly: false,
   position: 0,
   archivedAt: null,
   createdAt: '2026-07-20T08:00:00.000Z',

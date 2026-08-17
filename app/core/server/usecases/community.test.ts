@@ -78,6 +78,7 @@ const course: Course = {
   description: '',
   imageUrl: null,
   moduleOrder: ['mod1'],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: NOW,
 };

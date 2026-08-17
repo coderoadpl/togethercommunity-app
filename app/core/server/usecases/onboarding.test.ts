@@ -67,6 +67,7 @@ const course = (id: string): Course => ({
   description: '',
   imageUrl: null,
   moduleOrder: [],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: NOW,
 });

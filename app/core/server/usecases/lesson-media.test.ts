@@ -92,6 +92,7 @@ const c1: Course = {
   description: '',
   imageUrl: null,
   moduleOrder: ['m1'],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };
@@ -213,6 +214,7 @@ const tenantSettings: TenantSettings = {
   supportUrl: null,
   termsUrl: null,
   privacyUrl: null,
+  defaultHomeSpaceId: null,
 };
 
 const tenantsRepo = (settings: TenantSettings | null = tenantSettings): TenantRepository => ({

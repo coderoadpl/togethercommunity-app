@@ -37,6 +37,17 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
       legacyId: null,
       createdAt: '2026-01-01T00:00:00.000Z',
     },
+    4: {
+      id: 'course-fixture-4',
+      tenantId: 'tenant-fixture',
+      name: 'Fixture Course',
+      description: 'A representative course snapshot',
+      imageUrl: '/api/public/assets/course-cover/00000000-0000-4000-8000-000000000004.jpg',
+      moduleOrder: ['module-fixture-2', 'module-fixture-1'],
+      publiclyVisible: true,
+      legacyId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
   },
   course_module: {
     1: {

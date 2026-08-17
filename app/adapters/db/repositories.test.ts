@@ -368,6 +368,7 @@ describe('member event repository', () => {
       description: '',
       imageUrl: null,
       moduleOrder: [],
+      publiclyVisible: false,
       legacyId: null,
       createdAt: NOW,
     });
@@ -1041,6 +1042,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
+      defaultHomeSpaceId: null,
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
@@ -1672,7 +1674,7 @@ describe('course/module/lesson repositories', () => {
     const modules = createCourseModuleRepository(db);
     const lessons = createCourseLessonRepository(db);
 
-    const course: Course = { id: 'course-acme', tenantId: ACME, name: 'C', description: '', imageUrl: null, moduleOrder: [], legacyId: null, createdAt: NOW };
+    const course: Course = { id: 'course-acme', tenantId: ACME, name: 'C', description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false, legacyId: null, createdAt: NOW };
     const module: CourseModule = {
       id: 'module-acme', tenantId: ACME, courseIds: ['course-acme'], title: 'M', prefix: null, name: 'M',
       chapters: [{ id: 'chapter-acme', name: 'Chapter', contents: [{ id: 'content-acme', name: 'L', lessonId: 'lesson-acme' }] }],
@@ -1946,6 +1948,7 @@ describe('space seen repository', () => {
     description: null,
     visibility: 'members',
     productIds: [],
+    publicReadOnly: false,
     position: 0,
     archivedAt: null,
     createdAt: NOW,
@@ -2242,6 +2245,7 @@ describe('member erasure repository', () => {
       description: '',
       imageUrl: null,
       moduleOrder: [],
+      publiclyVisible: false,
       legacyId: null,
       createdAt: NOW,
     });

@@ -18,6 +18,7 @@ export const spaceSchema = z.object({
   description: z.string().max(2000).nullable(),
   visibility: spaceVisibilitySchema,
   productIds: z.array(z.string().min(1)).default([]),
+  publicReadOnly: z.boolean().default(false),
   position: z.number().int().nonnegative(),
   archivedAt: z.string().datetime().nullable().default(null),
   createdAt: z.string().datetime(),
@@ -52,6 +53,7 @@ export const createSpaceInputSchema = z.object({
   description: z.string().max(2000).optional(),
   visibility: spaceVisibilitySchema,
   productIds: z.array(z.string().min(1)).optional(),
+  publicReadOnly: z.boolean().optional(),
   position: z.number().int().nonnegative().optional(),
 });
 
@@ -62,6 +64,7 @@ export const updateSpaceInputSchema = z.object({
   description: z.string().max(2000).nullable().optional(),
   visibility: spaceVisibilitySchema.optional(),
   productIds: z.array(z.string().min(1)).optional(),
+  publicReadOnly: z.boolean().optional(),
   position: z.number().int().nonnegative().optional(),
 });
 

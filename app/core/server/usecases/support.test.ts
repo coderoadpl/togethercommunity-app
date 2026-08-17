@@ -41,6 +41,7 @@ const harness = (supportEmail: string | null) => {
         supportUrl: null,
         termsUrl: null,
         privacyUrl: null,
+        defaultHomeSpaceId: null,
       }),
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async () => {

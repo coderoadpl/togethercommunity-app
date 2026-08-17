@@ -40,6 +40,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
       accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
       ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
       privacyUrl: null,
+      defaultHomeSpaceId: null,
     }),
     updateSettings: async (_tenantId, settings) => settings,
     createTenantWithOwnerGrant: async (input, options) => {

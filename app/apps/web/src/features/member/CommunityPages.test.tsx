@@ -44,6 +44,7 @@ const space = (input: Partial<MemberSpace> & { id: string }): MemberSpace => ({
   description: 'Rozmowy o kamperze.',
   visibility: 'members',
   productIds: [],
+  publicReadOnly: false,
   position: 0,
   archivedAt: null,
   createdAt: '2026-07-20T08:00:00.000Z',

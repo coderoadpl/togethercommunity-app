@@ -475,6 +475,7 @@ export const createCourseRepository = (db: Db): CourseRepository => ({
           description: course.description,
           imageUrl: course.imageUrl,
           moduleOrder: course.moduleOrder,
+          publiclyVisible: course.publiclyVisible,
           legacyId: course.legacyId,
         })
         .where(and(eq(courses.tenantId, tenantId), eq(courses.id, course.id)))
@@ -1435,6 +1436,7 @@ export const createSpaceRepository = (db: Db): SpaceRepository => ({
         description: space.description,
         visibility: space.visibility,
         productIds: space.productIds,
+        publicReadOnly: space.publicReadOnly,
         position: space.position,
       })
       .where(and(eq(spaces.tenantId, tenantId), eq(spaces.id, space.id)))
@@ -3025,6 +3027,7 @@ export const createTenantRepository = (
         supportUrl: tenants.supportUrl,
         termsUrl: tenants.termsUrl,
         privacyUrl: tenants.privacyUrl,
+        defaultHomeSpaceId: tenants.defaultHomeSpaceId,
         autoIssueInvoices: tenants.autoIssueInvoices,
         autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
         invoiceVatRatePercent: tenants.invoiceVatRatePercent,
@@ -3056,6 +3059,7 @@ export const createTenantRepository = (
           supportUrl: row.supportUrl,
           termsUrl: row.termsUrl,
           privacyUrl: row.privacyUrl,
+          defaultHomeSpaceId: row.defaultHomeSpaceId,
           autoIssueInvoices: row.autoIssueInvoices,
           autoIssueInvoiceScope: row.autoIssueInvoiceScope,
           invoiceVatRatePercent:
@@ -3103,6 +3107,7 @@ export const createTenantRepository = (
         supportUrl: settings.supportUrl,
         termsUrl: settings.termsUrl,
         privacyUrl: settings.privacyUrl,
+        defaultHomeSpaceId: settings.defaultHomeSpaceId,
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
         invoiceVatRatePercent: settings.invoiceVatRatePercent,
@@ -3130,6 +3135,7 @@ export const createTenantRepository = (
       supportUrl: settings.supportUrl,
       termsUrl: settings.termsUrl,
       privacyUrl: settings.privacyUrl,
+      defaultHomeSpaceId: settings.defaultHomeSpaceId,
       autoIssueInvoices: settings.autoIssueInvoices,
       autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
       invoiceVatRatePercent: settings.invoiceVatRatePercent,

@@ -564,6 +564,7 @@ interface CourseDef {
   name: string;
   description: string;
   imageUrl: string;
+  publiclyVisible?: boolean;
 }
 
 const courseDefs: CourseDef[] = [
@@ -573,6 +574,7 @@ const courseDefs: CourseDef[] = [
     name: 'Kurs JavaScript od podstaw',
     description: 'Kompletny kurs JavaScript: od zmiennych, przez funkcje i DOM, po pierwszy projekt.',
     imageUrl: 'https://picsum.photos/seed/together-course-js/960/540',
+    publiclyVisible: true,
   },
   {
     id: 'course-react',
@@ -867,7 +869,7 @@ await db
 
 await db
   .update(tenants)
-  .set({ billingPortalUrl: STUDIO_BILLING_PORTAL_URL })
+  .set({ billingPortalUrl: STUDIO_BILLING_PORTAL_URL, defaultHomeSpaceId: 'space-studio-spolecznosc' })
   .where(eq(tenants.id, 'tenant-studio'));
 
 // Only akademia is branded; studio and acme stay on the stock look so the
@@ -1014,6 +1016,7 @@ await db
       name: course.name,
       description: course.description,
       imageUrl: course.imageUrl,
+      publiclyVisible: course.publiclyVisible ?? false,
       createdAt: nextIso(),
     })),
   )
@@ -1023,6 +1026,7 @@ await db
       name: sql`excluded.name`,
       description: sql`excluded.description`,
       imageUrl: sql`excluded.image_url`,
+      publiclyVisible: sql`excluded.publicly_visible`,
     },
   });
 
@@ -2016,6 +2020,7 @@ interface SeedSpaceDef {
   description: string;
   visibility: 'members' | 'product';
   productIds: string[];
+  publicReadOnly?: boolean;
   position: number;
 }
 
@@ -2028,6 +2033,7 @@ const spaceDefs: SeedSpaceDef[] = [
       'Otwarta przestrzeń dla wszystkich uczestników — przedstaw się i pogadaj z innymi.',
     visibility: 'members',
     productIds: [],
+    publicReadOnly: true,
     position: 0,
   },
   {
@@ -2063,6 +2069,7 @@ await db
       description: space.description,
       visibility: space.visibility,
       productIds: space.productIds,
+      publicReadOnly: space.publicReadOnly ?? false,
       position: space.position,
       createdAt: relativeIso(-30),
     })),
@@ -2074,6 +2081,7 @@ await db
       description: sql`excluded.description`,
       visibility: sql`excluded.visibility`,
       productIds: sql`excluded.product_ids`,
+      publicReadOnly: sql`excluded.public_read_only`,
       position: sql`excluded.position`,
     },
   });
@@ -2274,6 +2282,7 @@ for (const member of memberSpecs) {
 }
 console.log('  community  discussions under course-js lessons; unread notification for kursant.aktywny@together.dev');
 console.log('  spaces   Społeczność (members) + Klub JavaScriptu (product-js-full) + Klub Reacta (product-react-full, locked for kursant.aktywny) on studio, with posts/reactions/follows');
+console.log('  public   course-js is publicly visible; Społeczność is publicly readable and is the studio home space');
 console.log('  sales    product-club subscription (monthly+yearly), active simulated subscription for kursant.abonent@together.dev, demo orders on studio');
 console.log('  tenants  http://studio.localhost:48730  http://acme.localhost:48730  http://akademia.localhost:48730');
 process.exit(0);

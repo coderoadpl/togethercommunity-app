@@ -4,7 +4,7 @@ import { courseLessonSchema, courseModuleSchema, courseSchema } from './course.j
 import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
 import { productSchema, productSlugFromTitle } from './product.js';
-import { courseSnapshotV3Schema } from './snapshots/course/v3.js';
+import { courseSnapshotV4Schema } from './snapshots/course/v4.js';
 import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
 import { upcastLegacyVideoEmbedUrlV4 } from './snapshots/course_lesson/v4.js';
 import { courseLessonSnapshotV5Schema } from './snapshots/course_lesson/v5.js';
@@ -26,7 +26,7 @@ export type EntityKind = z.infer<typeof entityKindSchema>;
 
 /** Frozen schema for the CURRENT version of each kind (bump adds a new file). */
 const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
-  course: courseSnapshotV3Schema,
+  course: courseSnapshotV4Schema,
   course_module: courseModuleSnapshotV1Schema,
   course_lesson: courseLessonSnapshotV5Schema,
   product: productSnapshotV4Schema,
@@ -41,7 +41,7 @@ const liveEntitySchemas: Record<EntityKind, z.ZodTypeAny> = {
 };
 
 export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
-  course: 3,
+  course: 4,
   course_module: 1,
   course_lesson: 5,
   product: 4,
@@ -69,6 +69,7 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
   course: {
     1: (payload) => ({ ...z.object({}).passthrough().parse(payload), moduleOrder: [] }),
     2: (payload) => payload,
+    3: (payload) => ({ ...z.object({}).passthrough().parse(payload), publiclyVisible: false }),
   },
   course_module: {},
   // v1 payloads (pdfUrl restricted to absolute URLs) are a strict subset of v2,
@@ -244,7 +245,7 @@ export const SNAPSHOT_CURRENT_SCHEMAS: Record<EntityKind, z.ZodTypeAny> = curren
  * in `shapeGuardInstructions`. Updating this map is the LAST step of a bump.
  */
 export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
-  course: 'f4e0436d',
+  course: 'a493edb5',
   course_module: 'db069353',
   course_lesson: '458d6e37',
   product: 'ff78c86b',

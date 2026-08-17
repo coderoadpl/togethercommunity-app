@@ -71,6 +71,7 @@ const fakeTenants = (branding?: {
           supportUrl: null,
           termsUrl: null,
           privacyUrl: null,
+          defaultHomeSpaceId: null,
           ...branding,
         },
   updateSettings: async (_tenantId, next) => next,

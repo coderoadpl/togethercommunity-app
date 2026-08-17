@@ -63,6 +63,7 @@ const space = (overrides: Partial<Space> = {}): Space => ({
   description: null,
   visibility: 'members',
   productIds: [],
+  publicReadOnly: false,
   position: 0,
   archivedAt: null,
   createdAt: NOW,

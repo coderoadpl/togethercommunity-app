@@ -394,6 +394,7 @@ describe('m2m content import', () => {
     h.courses.set('native-course', {
       id: 'native-course', tenantId: TENANT_ID, name: 'Live', description: '', imageUrl: null,
       moduleOrder: [], legacyId: null, createdAt: NOW,
+      publiclyVisible: false,
     });
     const result = await importM2mContent(ctx, apiKey, 'module', {
       datasetVersion: 'together-import/v1',

@@ -290,6 +290,10 @@ const courseUpdateOptionsSchema = z.object({
   name: z.string().trim().min(1).optional(),
   description: z.string().optional(),
   imageUrl: z.string().url().optional(),
+  publiclyVisible: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
   moduleOrder: z
     .string()
     .transform((value) =>
@@ -1414,6 +1418,7 @@ course
   .option('--name <name>')
   .option('--description <description>')
   .option('--image-url <url>')
+  .option('--publicly-visible <value>', "'true' or 'false' — anonymous visitors see the course and its program")
   .option('--module-order <ids>', 'comma-separated module ids in display order')
   .action(
     withInput(z.tuple([z.string().min(1), courseUpdateOptionsSchema]), async (ctx, [id, options]) => {
@@ -1423,6 +1428,7 @@ course
           ...(options.name === undefined ? {} : { name: options.name }),
           ...(options.description === undefined ? {} : { description: options.description }),
           ...(options.imageUrl === undefined ? {} : { imageUrl: options.imageUrl }),
+          ...(options.publiclyVisible === undefined ? {} : { publiclyVisible: options.publiclyVisible }),
           ...(options.moduleOrder === undefined ? {} : { moduleOrder: options.moduleOrder }),
         }),
         ctx.json,

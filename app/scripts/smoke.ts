@@ -1004,6 +1004,16 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
 
   const anonHome = mkdtempSync(join(tmpdir(), 'smoke-anon-student-'));
   homes.push(anonHome);
+  expectError(
+    await acme(['lesson', 'update', '--data', `{"id":"${lessonTwo.lesson.id}","isPreview":true}`], creatorHome),
+    'student flow: free preview before the course is publicly visible',
+    EXIT_CODE_BY_ERROR_CODE.validation,
+    'validation',
+  );
+  expectOk(
+    await acme(['course', 'update', course.course.id, '--publicly-visible', 'true'], creatorHome),
+    'student flow: make the course publicly visible',
+  );
   expectOk(
     await acme(['lesson', 'update', '--data', `{"id":"${lessonTwo.lesson.id}","isPreview":true}`], creatorHome),
     'student flow: flag lesson two as a free preview',

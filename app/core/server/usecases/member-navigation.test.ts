@@ -61,6 +61,7 @@ const space = (over: Partial<Space>): Space => ({
   description: null,
   visibility: 'members',
   productIds: [],
+  publicReadOnly: false,
   position: 0,
   archivedAt: null,
   createdAt: PAST,
@@ -110,6 +111,7 @@ const course = (id: string): Course => ({
   description: '',
   imageUrl: null,
   moduleOrder: [],
+  publiclyVisible: false,
   legacyId: null,
   createdAt: PAST,
 });

@@ -24,6 +24,7 @@ import {
   type CourseModule,
   type EntityKind,
   type LessonReferenceChapter,
+  type LessonReferenceCourse,
   type LessonReferenceProduct,
   type LessonReferences,
   type Product,
@@ -63,6 +64,8 @@ export interface CourseManagementDeps {
 
 const requireStaffTenant = (ctx: Ctx, capability: Capability): Result<string, AppError> =>
   authorizeTenant(ctx, capability);
+
+const PREVIEW_NEEDS_PUBLIC_COURSE = 'Preview requires a publicly visible course';
 
 /**
  * Builds the previous-state snapshot the write-through path persists in the
@@ -106,6 +109,35 @@ const validateCourseIds = async (
   if (courses.length !== ids.length) return err(validation('Module references unknown courses'));
   return ok(undefined);
 };
+
+const coursesReferencingLesson = async (
+  tenantId: string,
+  lessonId: string,
+  deps: Pick<CourseManagementDeps, 'courses' | 'modules'>,
+): Promise<Course[]> => {
+  const [courses, modules] = await Promise.all([deps.courses.list(tenantId), deps.modules.list(tenantId)]);
+  const referencingCourseIds = new Set(
+    modules
+      .filter((module) =>
+        module.chapters.some((chapter) =>
+          chapter.contents.some((content) => content.lessonId === lessonId),
+        ),
+      )
+      .flatMap((module) => module.courseIds),
+  );
+  return courses.filter((course) => referencingCourseIds.has(course.id));
+};
+
+/**
+ * A free preview is only reachable anonymously through a publicly visible
+ * course, so enabling it without one would advertise a lesson nobody can open.
+ */
+const previewAllowed = async (
+  tenantId: string,
+  lessonId: string,
+  deps: Pick<CourseManagementDeps, 'courses' | 'modules'>,
+): Promise<boolean> =>
+  (await coursesReferencingLesson(tenantId, lessonId, deps)).some((course) => course.publiclyVisible);
 
 const validateChapterLessons = async (
   tenantId: string,
@@ -165,10 +197,12 @@ export const createCourse = async (
     description: parsed.data.description,
     imageUrl: parsed.data.imageUrl,
     moduleOrder: [],
+    publiclyVisible: parsed.data.publiclyVisible,
     legacyId: parsed.data.legacyId,
     createdAt: deps.clock.nowIso(),
   };
   await deps.courses.create(tenant.value, course);
+  if (course.publiclyVisible) await deps.products.bumpContentVersion(tenant.value);
   return ok(course);
 };
 
@@ -212,9 +246,14 @@ export const updateCourse = async (
     description: parsed.data.description ?? existing.description,
     imageUrl: parsed.data.imageUrl === undefined ? existing.imageUrl : parsed.data.imageUrl,
     moduleOrder,
+    publiclyVisible: parsed.data.publiclyVisible ?? existing.publiclyVisible,
   };
   const saved = await deps.courses.update(tenant.value, updated, snapshot.value);
-  return saved ? ok(saved) : err(notFound(`No course "${parsed.data.id}" in this tenant`));
+  if (!saved) return err(notFound(`No course "${parsed.data.id}" in this tenant`));
+  if (saved.publiclyVisible !== existing.publiclyVisible) {
+    await deps.products.bumpContentVersion(tenant.value);
+  }
+  return ok(saved);
 };
 
 export const createModule = async (
@@ -290,6 +329,7 @@ export const createLesson = async (
   if (!tenant.ok) return tenant;
   const parsed = newCourseLessonSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid lesson', parsed.error.flatten()));
+  if (parsed.data.isPreview) return err(validation(PREVIEW_NEEDS_PUBLIC_COURSE));
 
   const lesson: CourseLesson = {
     id: deps.ids.nextId(),
@@ -320,6 +360,11 @@ export const updateLesson = async (
 
   const existing = await deps.lessons.findById(tenant.value, parsed.data.id);
   if (!existing) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
+
+  if (parsed.data.isPreview === true && !existing.isPreview) {
+    const allowed = await previewAllowed(tenant.value, existing.id, deps);
+    if (!allowed) return err(validation(PREVIEW_NEEDS_PUBLIC_COURSE));
+  }
 
   const snapshot = snapshotOf(ctx, 'course_lesson', existing.id, existing, deps);
   if (!snapshot.ok) return snapshot;
@@ -412,12 +457,13 @@ export const detachModuleFromCourse = async (
 const collectLessonReferences = async (
   tenantId: string,
   lesson: CourseLesson,
-  deps: Pick<CourseManagementDeps, 'modules' | 'products' | 'progress'>,
+  deps: Pick<CourseManagementDeps, 'courses' | 'modules' | 'products' | 'progress'>,
 ): Promise<LessonReferences> => {
-  const [modules, products, progressCount] = await Promise.all([
+  const [modules, products, progressCount, referencingCourses] = await Promise.all([
     deps.modules.list(tenantId),
     deps.products.listByTenant(tenantId),
     deps.progress.countReferencingLesson(tenantId, lesson.id),
+    coursesReferencingLesson(tenantId, lesson.id, deps),
   ]);
 
   const chapters: LessonReferenceChapter[] = [];
@@ -443,7 +489,20 @@ const collectLessonReferences = async (
     .filter((product) => product.accessItems.some(referencesLesson))
     .map((product) => ({ productId: product.id, productTitle: product.title }));
 
-  return { lessonId: lesson.id, lessonName: lesson.name, chapters, products: productRefs, progressCount };
+  const courseRefs: LessonReferenceCourse[] = referencingCourses.map((course) => ({
+    courseId: course.id,
+    courseName: course.name,
+    publiclyVisible: course.publiclyVisible,
+  }));
+
+  return {
+    lessonId: lesson.id,
+    lessonName: lesson.name,
+    chapters,
+    courses: courseRefs,
+    products: productRefs,
+    progressCount,
+  };
 };
 
 export const listLessonReferences = async (

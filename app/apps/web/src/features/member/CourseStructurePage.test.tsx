@@ -112,6 +112,7 @@ const catalog: Course[] = [
     description: 'Start from zero.',
     imageUrl: 'https://picsum.photos/seed/js/960/540',
     moduleOrder: [],
+    publiclyVisible: false,
     legacyId: null,
     createdAt: '2026-07-12T10:00:00.000Z',
   },

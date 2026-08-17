@@ -29,14 +29,14 @@ const resolveBunnyConfig = async (
   const apiKey = await deps.secretResolver.resolve(tenantId, 'bunny.apiKey');
   if (!apiKey.ok) {
     if (apiKey.error.code === 'not_found') {
-      return err(integrationNotConfigured('Save a Bunny Stream API key in Integrations first'));
+      return err(integrationNotConfigured('Save a Bunny Stream API key in Integrations → Video first'));
     }
     return apiKey;
   }
   const settings = await deps.tenants.findSettings(tenantId);
   const libraryId = settings?.bunnyStreamLibraryId ?? null;
   if (libraryId === null) {
-    return err(integrationNotConfigured('Set the Bunny Stream library id in Integrations first'));
+    return err(integrationNotConfigured('Set the Bunny Stream library id in Integrations → Video first'));
   }
   return ok({ apiKey: apiKey.value, libraryId });
 };

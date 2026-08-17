@@ -42,7 +42,7 @@ export const pl: Messages = {
     upload: 'Wgraj plik',
     uploading: 'Wgrywanie…',
     storageMissing: 'Wgrywanie plików wymaga pamięci plików przestrzeni. Skonfiguruj ją w',
-    storageLink: 'Integracje → S3',
+    storageLink: 'Integracje → Pamięć plików (S3)',
     invalidType: 'Wybierz obraz PNG, JPEG, WebP lub SVG. Favicon może być również plikiem ICO.',
     tooLarge: 'Obraz nie może być większy niż 5 MB.',
   },
@@ -102,11 +102,15 @@ export const pl: Messages = {
       'Ta integracja nie jest jeszcze skonfigurowana. Uzupełnij dane w sekcji Integracje.',
     messageIntegrationAuth:
       'Usługa zewnętrzna odrzuciła zapisany klucz. Sprawdź klucz w sekcji Integracje.',
+    messageEmailSendingNotConfigured:
+      'Wysyłka e-mail nie jest skonfigurowana. Uzupełnij dane nadawcy i dostawcę w sekcji Integracje → E-mail.',
+    messagePlatformEmailPoolExhausted:
+      'Pula startowa wysyłki została wyczerpana. Skonfiguruj własnego dostawcę w sekcji Integracje → E-mail.',
     messageIntegrationUnavailable:
       'Usługa zewnętrzna jest chwilowo niedostępna. Spróbuj ponownie za chwilę.',
     messageRateLimited: 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.',
     messageSlugReservedGeneric: 'Ten adres jest zarezerwowany dla platformy. Wybierz inny.',
-    messageInvoiceExemptionBasisMissing: 'Wybrano zwolnienie z VAT, ale brakuje podstawy prawnej. Otwórz Ustawienia → Automatyczne faktury i wskaż przepis, z którego korzystasz (np. art. 113 ust. 1). Przepisy wymagają jej na fakturze.',
+    messageInvoiceExemptionBasisMissing: 'Wybrano zwolnienie z VAT, ale brakuje podstawy prawnej. Otwórz Ustawienia → Firma → Automatyczne faktury i wskaż przepis, z którego korzystasz (np. art. 113 ust. 1). Przepisy wymagają jej na fakturze.',
     messageSlugReserved: ({ slug }) =>
       format('Adres `{slug}` jest zarezerwowany dla platformy. Wybierz inny — np. dodaj nazwę marki.', { slug }),
     messageInternal: 'Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.',
@@ -527,7 +531,8 @@ export const pl: Messages = {
     webhookActiveHint: 'Webhook jest zarejestrowany w Stripe i gotowy na zdarzenia płatności.',
     loading: 'Ładowanie integracji…',
     emailHeading: 'E-mail transakcyjny',
-    emailDescription: 'Sprawdź połączenie z aktywnym dostawcą e-mail skonfigurowanym dla aplikacji.',
+    emailDescription:
+      'Test wysyła wiadomość tą samą ścieżką, którą aplikacja wysyła e-maile produkcyjnie (SES / SMTP / Resend przestrzeni albo pula platformy).',
     importKeysHeading: 'Klucze API migracji',
     importKeysDescription:
       'Twórz krótkoterminowe klucze do importu roboczych treści i użytkowników. Dostęp importu nie pozwala wysyłać e-maili, zapisywać przez dotychczasowe API ani publikować treści.',
@@ -949,7 +954,7 @@ export const pl: Messages = {
     videoPickerEmptyLibrary: 'Biblioteka jest pusta. Wgraj wideo w panelu Bunny Stream i wróć tutaj.',
     videoPickerNoMatches: 'Żadne wideo nie pasuje do wyszukiwania.',
     videoPickerNotConfigured:
-      'Integracja z Bunny Stream nie jest skonfigurowana. Dodaj klucz API i identyfikator biblioteki w sekcji Integracje, albo wpisz identyfikatory ręcznie poniżej.',
+      'Integracja z Bunny Stream nie jest skonfigurowana. Dodaj klucz API i identyfikator biblioteki w sekcji Integracje → Wideo, albo wpisz identyfikatory ręcznie poniżej.',
     videoPickerOpenIntegrations: 'Przejdź do Integracji',
     videoPickerSelectAria: ({ title }) => format('Wybierz wideo „{title}”', { title }),
     videoPickerPageInfo: ({ page, pages }) => format('Strona {page} z {pages}', { page, pages }),

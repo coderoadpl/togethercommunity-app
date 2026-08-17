@@ -36,7 +36,7 @@ export const en: Messages = {
     upload: 'Upload file',
     uploading: 'Uploading…',
     storageMissing: 'File upload requires tenant storage. Configure it under',
-    storageLink: 'Integrations → S3',
+    storageLink: 'Integrations → File storage (S3)',
     invalidType: 'Choose a PNG, JPEG, WebP, or SVG image. Favicons can also use ICO.',
     tooLarge: 'The image must be no larger than 5 MB.',
   },
@@ -96,11 +96,15 @@ export const en: Messages = {
       'This integration is not configured yet. Fill in its details in the Integrations section.',
     messageIntegrationAuth:
       'The external service rejected the stored key. Check the key in the Integrations section.',
+    messageEmailSendingNotConfigured:
+      'E-mail sending is not configured. Set the sender and provider in Integrations → E-mail.',
+    messagePlatformEmailPoolExhausted:
+      'The starter sending pool is exhausted. Configure your own provider in Integrations → E-mail.',
     messageIntegrationUnavailable:
       'The external service is temporarily unavailable. Please try again in a moment.',
     messageRateLimited: 'Too many attempts. Please wait a moment before trying again.',
     messageSlugReservedGeneric: 'That address is reserved by the platform. Pick another one.',
-    messageInvoiceExemptionBasisMissing: 'VAT exemption is selected but the legal basis is missing. Open Settings → Automatic invoices and enter the provision you rely on (for example art. 113 ust. 1). Polish law requires it on the invoice.',
+    messageInvoiceExemptionBasisMissing: 'VAT exemption is selected but the legal basis is missing. Open Settings → Company → Automatic invoices and enter the provision you rely on (for example art. 113 ust. 1). Polish law requires it on the invoice.',
     messageSlugReserved: ({ slug }) =>
       format('The `{slug}` address is reserved by the platform. Pick another one — adding your brand name usually works.', { slug }),
     messageInternal: 'Something went wrong on our end. Please try again in a moment.',
@@ -521,7 +525,8 @@ export const en: Messages = {
     webhookActiveHint: 'This webhook is registered in Stripe and ready to receive payment events.',
     loading: 'Loading integrations…',
     emailHeading: 'Transactional email',
-    emailDescription: 'Check the connection to the active email provider configured for the application.',
+    emailDescription:
+      'The test sends a message through the same path the app uses in production (the workspace SES / SMTP / Resend transport, or the platform pool).',
     importKeysHeading: 'Migration API keys',
     importKeysDescription:
       'Issue short-lived keys for draft content and member imports. Import access cannot send email, enroll through the legacy API, or publish content.',
@@ -939,7 +944,7 @@ export const en: Messages = {
     videoPickerEmptyLibrary: 'The library is empty. Upload a video in the Bunny Stream dashboard and come back here.',
     videoPickerNoMatches: 'No videos match your search.',
     videoPickerNotConfigured:
-      'The Bunny Stream integration is not configured. Add the API key and library id in the Integrations section, or type the ids manually below.',
+      'The Bunny Stream integration is not configured. Add the API key and library id in the Integrations → Video section, or type the ids manually below.',
     videoPickerOpenIntegrations: 'Open Integrations',
     videoPickerSelectAria: ({ title }) => format('Pick the video “{title}”', { title }),
     videoPickerPageInfo: ({ page, pages }) => format('Page {page} of {pages}', { page, pages }),

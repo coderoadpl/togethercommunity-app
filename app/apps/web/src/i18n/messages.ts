@@ -99,6 +99,8 @@ export interface Messages {
     messageTenantNotFound: string;
     messageIntegrationNotConfigured: string;
     messageIntegrationAuth: string;
+    messageEmailSendingNotConfigured: string;
+    messagePlatformEmailPoolExhausted: string;
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
     messageSlugReservedGeneric: string;

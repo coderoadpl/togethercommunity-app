@@ -62,8 +62,9 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageValidation;
     case 'ses_not_configured':
     case 'broadcasts_disabled':
+      return t.errors.messageEmailSendingNotConfigured;
     case 'transactional_platform_cap_reached':
-      return t.errors.messageIntegrationNotConfigured;
+      return t.errors.messagePlatformEmailPoolExhausted;
     case 'slug_reserved':
       return t.errors.messageSlugReservedGeneric;
     case 'invoice_exemption_basis_missing':

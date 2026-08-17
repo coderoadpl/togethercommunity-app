@@ -28,6 +28,8 @@ import {
   postReportSchema,
   REACTION_EMOJIS,
   reactionSummarySchema,
+  spaceEventSchema,
+  spaceEventRsvpSchema,
   spaceSchema,
   productGrantSchema,
   productSchema,
@@ -58,6 +60,8 @@ import {
   type Product,
   type ReactionSummary,
   type Space,
+  type SpaceEvent,
+  type SpaceEventRsvp,
   type ProductGrant,
   type StaffRole,
   type Tenant,
@@ -104,6 +108,8 @@ import type {
   ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
+  SpaceEventRepository,
+  SpaceEventRsvpRepository,
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
@@ -161,6 +167,8 @@ import {
   products,
   spaces,
   suppressions,
+  spaceEventRsvps,
+  spaceEvents,
   spaceSeenMarks,
   spaceSubscriptions,
   tenantAdmins,
@@ -1541,6 +1549,181 @@ export const createSpaceRepository = (db: Db): SpaceRepository => ({
     }
     return result;
   },
+});
+
+const parseSpaceEvent = (row: typeof spaceEvents.$inferSelect): SpaceEvent =>
+  spaceEventSchema.parse(row);
+
+const eventCursor = (row: { id: string; startsAt: string }): string =>
+  `${row.startsAt}|${row.id}`;
+
+const parseEventCursor = (cursor: string): { startsAt: string; id: string } => {
+  const separator = cursor.indexOf('|');
+  return { startsAt: cursor.slice(0, separator), id: cursor.slice(separator + 1) };
+};
+
+export const createSpaceEventRepository = (db: Db): SpaceEventRepository => ({
+  findById: async (tenantId, id) => {
+    const rows = await db
+      .select()
+      .from(spaceEvents)
+      .where(and(eq(spaceEvents.tenantId, tenantId), eq(spaceEvents.id, id)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseSpaceEvent(row) : null;
+  },
+  insert: async (tenantId, event) => {
+    const rows = await db
+      .insert(spaceEvents)
+      .values({ ...event, tenantId })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('space_events insert returned no row');
+    return parseSpaceEvent(row);
+  },
+  update: async (tenantId, event) => {
+    const rows = await db
+      .update(spaceEvents)
+      .set({
+        title: event.title,
+        description: event.description,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        location: event.location,
+        url: event.url,
+        liveEmbedUrl: event.liveEmbedUrl,
+        replayUrl: event.replayUrl,
+        discussionRootPostId: event.discussionRootPostId,
+        updatedAt: event.updatedAt,
+      })
+      .where(and(eq(spaceEvents.tenantId, tenantId), eq(spaceEvents.id, event.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parseSpaceEvent(row) : null;
+  },
+  softDelete: async (tenantId, input) => {
+    const rows = await db
+      .update(spaceEvents)
+      .set({ deletedAt: input.deletedAt })
+      .where(and(eq(spaceEvents.tenantId, tenantId), eq(spaceEvents.id, input.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parseSpaceEvent(row) : null;
+  },
+  listForSpace: async (tenantId, query) => {
+    const cursor = query.cursor === undefined ? null : parseEventCursor(query.cursor);
+    const upcoming = query.scope === 'upcoming';
+    const rows = await db
+      .select()
+      .from(spaceEvents)
+      .where(
+        and(
+          eq(spaceEvents.tenantId, tenantId),
+          eq(spaceEvents.spaceId, query.spaceId),
+          isNull(spaceEvents.deletedAt),
+          upcoming
+            ? gte(spaceEvents.endsAt, query.now)
+            : sql`${spaceEvents.endsAt} < ${query.now}`,
+          ...(cursor === null
+            ? []
+            : [
+                upcoming
+                  ? sql`(${spaceEvents.startsAt}, ${spaceEvents.id}) > (${cursor.startsAt}, ${cursor.id})`
+                  : sql`(${spaceEvents.startsAt}, ${spaceEvents.id}) < (${cursor.startsAt}, ${cursor.id})`,
+              ]),
+        ),
+      )
+      .orderBy(
+        upcoming ? asc(spaceEvents.startsAt) : desc(spaceEvents.startsAt),
+        upcoming ? asc(spaceEvents.id) : desc(spaceEvents.id),
+      )
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const overflow = rows[query.limit];
+    const last = page.at(-1);
+    return {
+      events: page.map(parseSpaceEvent),
+      nextCursor: overflow && last ? eventCursor(last) : null,
+    };
+  },
+  listUpcomingForSpaces: async (tenantId, query) => {
+    if (query.spaceIds.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(spaceEvents)
+      .where(
+        and(
+          eq(spaceEvents.tenantId, tenantId),
+          inArray(spaceEvents.spaceId, query.spaceIds),
+          isNull(spaceEvents.deletedAt),
+          gte(spaceEvents.endsAt, query.now),
+        ),
+      )
+      .orderBy(asc(spaceEvents.startsAt), asc(spaceEvents.id))
+      .limit(query.limit);
+    return rows.map(parseSpaceEvent);
+  },
+});
+
+export const createSpaceEventRsvpRepository = (db: Db): SpaceEventRsvpRepository => ({
+  upsert: async (tenantId, input) => {
+    const rows = await db
+      .insert(spaceEventRsvps)
+      .values({
+        tenantId,
+        eventId: input.eventId,
+        userId: input.userId,
+        status: input.status,
+        updatedAt: input.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: [spaceEventRsvps.tenantId, spaceEventRsvps.eventId, spaceEventRsvps.userId],
+        set: { status: input.status, updatedAt: input.updatedAt },
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('space_event_rsvps upsert returned no row');
+    return spaceEventRsvpSchema.parse(row);
+  },
+  countsForEvents: async (tenantId, eventIds) => {
+    const counts = new Map<string, { going: number; notGoing: number }>();
+    if (eventIds.length === 0) return counts;
+    for (const eventId of eventIds) counts.set(eventId, { going: 0, notGoing: 0 });
+    const rows = await db
+      .select({
+        eventId: spaceEventRsvps.eventId,
+        status: spaceEventRsvps.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(spaceEventRsvps)
+      .where(and(eq(spaceEventRsvps.tenantId, tenantId), inArray(spaceEventRsvps.eventId, eventIds)))
+      .groupBy(spaceEventRsvps.eventId, spaceEventRsvps.status);
+    for (const row of rows) {
+      const current = counts.get(row.eventId) ?? { going: 0, notGoing: 0 };
+      counts.set(
+        row.eventId,
+        row.status === 'going'
+          ? { ...current, going: row.count }
+          : { ...current, notGoing: row.count },
+      );
+    }
+    return counts;
+  },
+  listForViewer: async (tenantId, input) =>
+    input.eventIds.length === 0
+      ? []
+      : (
+          await db
+            .select()
+            .from(spaceEventRsvps)
+            .where(
+              and(
+                eq(spaceEventRsvps.tenantId, tenantId),
+                eq(spaceEventRsvps.userId, input.userId),
+                inArray(spaceEventRsvps.eventId, input.eventIds),
+              ),
+            )
+        ).map((row): SpaceEventRsvp => spaceEventRsvpSchema.parse(row)),
 });
 
 export const createPostReactionRepository = (db: Db): PostReactionRepository => ({

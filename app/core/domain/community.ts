@@ -87,6 +87,7 @@ const notificationKindSchema = z.enum([
   'space-post',
   'lesson-question',
   'dm-message',
+  'space-event',
 ]);
 
 /** Notification contexts outgrew post contexts: posts stay lesson|space. */
@@ -105,6 +106,7 @@ const notificationPayloadSchema = z.object({
   contextId: z.string().min(1),
   // Defaults keep rows persisted before these fields existed parseable.
   courseId: z.string().min(1).nullable().default(null),
+  eventId: z.string().min(1).nullable().default(null),
   lessonName: z.string().default(''),
   authorDisplay: z.string().trim().min(1),
   authorAvatarUrl: z.string().nullable().default(null),

@@ -55,6 +55,9 @@ import type {
   ReactionEmoji,
   ReactionSummary,
   Space,
+  SpaceEvent,
+  SpaceEventRsvp,
+  SpaceEventRsvpStatus,
   SpaceStats,
   StorageConfiguration,
   Tenant,
@@ -367,6 +370,37 @@ export interface ThreadSubscriptionRepository {
   listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]>;
 }
 
+export interface SpaceEventRepository {
+  findById(tenantId: string, id: string): Promise<SpaceEvent | null>;
+  insert(tenantId: string, event: SpaceEvent): Promise<SpaceEvent>;
+  update(tenantId: string, event: SpaceEvent): Promise<SpaceEvent | null>;
+  softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<SpaceEvent | null>;
+  /** 'upcoming' returns events ending at or after `now` ascending, 'past' the rest descending. */
+  listForSpace(
+    tenantId: string,
+    query: { spaceId: string; scope: 'upcoming' | 'past'; now: string; cursor?: string; limit: number },
+  ): Promise<{ events: SpaceEvent[]; nextCursor: string | null }>;
+  listUpcomingForSpaces(
+    tenantId: string,
+    query: { spaceIds: string[]; now: string; limit: number },
+  ): Promise<SpaceEvent[]>;
+}
+
+export interface SpaceEventRsvpRepository {
+  upsert(
+    tenantId: string,
+    input: { eventId: string; userId: string; status: SpaceEventRsvpStatus; updatedAt: string },
+  ): Promise<SpaceEventRsvp>;
+  countsForEvents(
+    tenantId: string,
+    eventIds: string[],
+  ): Promise<Map<string, { going: number; notGoing: number }>>;
+  listForViewer(
+    tenantId: string,
+    input: { userId: string; eventIds: string[] },
+  ): Promise<SpaceEventRsvp[]>;
+}
+
 export interface DmConversationRepository {
   findById(tenantId: string, id: string): Promise<DmConversation | null>;
   findByParticipants(
@@ -484,6 +518,7 @@ export interface DiscussionLinkPort {
   }): string;
   spaceUrl(input: { tenantSlug: string | null; spaceId: string; rootPostId?: string }): string;
   conversationUrl(input: { tenantSlug: string | null; conversationId: string }): string;
+  eventUrl(input: { tenantSlug: string | null; spaceId: string; eventId: string }): string;
 }
 
 export interface MemberCourseProgressRepository {

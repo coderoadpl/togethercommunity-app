@@ -15,6 +15,8 @@ import {
   couponCheckoutValidationRequestSchema,
   courseStructureOutputSchema,
   discussionOutputSchema,
+  eventOutputSchema,
+  eventsListOutputSchema,
   publicNavigationOutputSchema,
   publicOfferOutputSchema,
   spaceFeedOutputSchema,
@@ -47,6 +49,8 @@ import {
   getPublicImageAssetUrl,
   getPublicNavigation,
   getPublicOffer,
+  getPublicSpaceEvent,
+  getPublicSpaceEvents,
   getPublicSpaceFeed,
   getPublicSpaceThread,
   recordCheckoutMarketingConsents,
@@ -314,6 +318,8 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   registerOpenCors(app, API_PATHS.publicCourseStructure, 'GET');
   registerOpenCors(app, API_PATHS.publicSpaceFeed, 'GET');
   registerOpenCors(app, API_PATHS.publicSpaceThread, 'GET');
+  registerOpenCors(app, API_PATHS.publicSpaceEvents, 'GET');
+  registerOpenCors(app, API_PATHS.publicSpaceEvent, 'GET');
   registerOpenCors(app, API_PATHS.studentLesson, 'GET', API_PATHS.studentLessonNext);
   registerOpenCors(app, API_PATHS.publicPaymentConfig, 'GET');
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
@@ -440,6 +446,47 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     return parsed.success
       ? respondPublic(ok(parsed.data))
       : respondPublic(err(internal('Public space thread response does not match the contract')));
+  });
+
+  app.get(API_PATHS.publicSpaceEvents, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+
+    const limit = c.req.query('limit');
+    const scope = c.req.query('scope');
+    const result = await getPublicSpaceEvents(
+      tenant.value.tenant,
+      {
+        spaceId: c.req.param('spaceId'),
+        ...(scope === undefined ? {} : { scope }),
+        cursor: c.req.query('cursor'),
+        ...(limit === undefined ? {} : { limit: Number(limit) }),
+      },
+      deps,
+    );
+    if (!result.ok) return respondPublic(result);
+    const parsed = eventsListOutputSchema.safeParse(result.value);
+    return parsed.success
+      ? respondPublic(ok(parsed.data))
+      : respondPublic(err(internal('Public space events response does not match the contract')));
+  });
+
+  app.get(API_PATHS.publicSpaceEvent, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+
+    const result = await getPublicSpaceEvent(
+      tenant.value.tenant,
+      { spaceId: c.req.param('spaceId'), eventId: c.req.param('eventId') },
+      deps,
+    );
+    if (!result.ok) return respondPublic(result);
+    const parsed = eventOutputSchema.safeParse({ event: result.value });
+    return parsed.success
+      ? respondPublic(ok(parsed.data))
+      : respondPublic(err(internal('Public space event response does not match the contract')));
   });
 
   app.get(API_PATHS.studentLesson, async (c, next) => {

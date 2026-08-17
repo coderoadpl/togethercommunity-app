@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 102. Route rows: 259. Exported `Ctx` use-case rows: 214.
+Closed capability count: 105. Route rows: 271. Exported `Ctx` use-case rows: 222.
 
 ## Human-readable diff
 
@@ -35,6 +35,8 @@ no changes
 | `OPTIONS /api/public/courses/:courseId/structure` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/spaces/:spaceId/feed` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/spaces/:spaceId/posts/:postId` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/spaces/:spaceId/events` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/spaces/:spaceId/events/:eventId` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/student/lessons/:lessonId` | lesson:play | public | public | yes | public route manifest |
 | `OPTIONS /api/public/payment-config` | checkout:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
@@ -46,6 +48,8 @@ no changes
 | `GET /api/public/courses/:courseId/structure` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/spaces/:spaceId/feed` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/spaces/:spaceId/posts/:postId` | offer:read | public | public | yes | public route manifest |
+| `GET /api/public/spaces/:spaceId/events` | offer:read | public | public | yes | public route manifest |
+| `GET /api/public/spaces/:spaceId/events/:eventId` | offer:read | public | public | yes | public route manifest |
 | `GET /api/student/lessons/:lessonId` | lesson:play | public | public | yes | public route manifest |
 | `GET /api/public/payment-config` | checkout:read | public | public | yes | public route manifest |
 | `POST /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
@@ -273,6 +277,14 @@ no changes
 | `POST /api/spaces/follow` | space:interact | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/spaces/unfollow` | space:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/spaces/:spaceId/seen` | space:interact | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/spaces/:spaceId/events` | event:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/member/upcoming-events` | event:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/events` | event:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/events/update` | event:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/events/rsvp` | event:rsvp | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/events/:eventId/ics` | event:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/events/:eventId` | event:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `DELETE /api/events/:eventId` | event:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/notifications` | notification:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/notifications/read` | notification:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/notifications/read-all` | notification:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -354,6 +366,14 @@ no changes
 | `entitlements.ts#getCourseStructureWithAccess` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#listMyCourses` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#getNextLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
+| `events.ts#createEvent` | event:write | owner, admin | owner, admin | yes | core/server/usecases/events.ts authorization call |
+| `events.ts#updateEvent` | event:write | owner, admin | owner, admin | yes | core/server/usecases/events.ts authorization call |
+| `events.ts#deleteEvent` | event:write | owner, admin | owner, admin | yes | core/server/usecases/events.ts authorization call |
+| `events.ts#listSpaceEvents` | event:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/events.ts authorization call |
+| `events.ts#getEvent` | event:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/events.ts authorization call |
+| `events.ts#rsvpEvent` | event:rsvp | owner, admin, member | owner, admin, member | yes | core/server/usecases/events.ts authorization call |
+| `events.ts#listUpcomingEvents` | event:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/events.ts authorization call |
+| `events.ts#getEventIcs` | event:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/events.ts authorization call |
 | `grants.ts#listMemberGrants` | member:grant:read | owner, admin | owner, admin | yes | core/server/usecases/grants.ts authorization call |
 | `grants.ts#grantProductToMember` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts authorization call |
 | `grants.ts#revokeGrant` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts authorization call |
@@ -512,11 +532,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:143` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:932` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:934` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1378` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1378` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:149` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:946` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:948` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1392` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1392` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:79` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -534,9 +554,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:133` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
 | staff-role | `core/server/usecases/community-access.ts:197` | `if (ctx.identity.staffRole) return ok(space);` |
 | staff-role | `core/server/usecases/community-access.ts:213` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:337` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:368` | `if (ctx.identity.staffRole === null) {` |
-| staff-role | `core/server/usecases/community.ts:516` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| member-scope | `core/server/usecases/community.ts:339` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:370` | `if (ctx.identity.staffRole === null) {` |
+| staff-role | `core/server/usecases/community.ts:518` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |

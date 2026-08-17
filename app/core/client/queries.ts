@@ -21,6 +21,11 @@ import type {
   CouponStatsExportQueryInput,
   CouponStatsQueryInput,
   CourseUpdateInput,
+  EventCreateInput,
+  EventRefInput,
+  EventRsvpInput,
+  EventUpdateInput,
+  EventsBySpaceInput,
   GrantCreateInput,
   GrantRevokeInput,
   EmailSendsExportQueryInput,
@@ -31,6 +36,7 @@ import type {
   LessonUncompleteInput,
   LessonCreateInput,
   LessonUpdateInput,
+  MemberUpcomingEventsInput,
   MeProfileUpdateInput,
   MessagesListInput,
   MessagesReadInput,
@@ -353,6 +359,13 @@ const messagesScopes = {
   thread: (conversationId: string, limit?: number) =>
     ['messages', 'thread', conversationId, limit ?? null] as const,
   unread: () => ['messages', 'unread'] as const,
+};
+
+const eventsScopes = {
+  all: () => ['events'] as const,
+  bySpace: (input: EventsBySpaceInput) => ['events', 'space', input] as const,
+  detail: (eventId: string) => ['events', 'detail', eventId] as const,
+  upcoming: (limit?: number) => ['events', 'upcoming', limit ?? null] as const,
 };
 
 const marketingScopes = {
@@ -1280,6 +1293,55 @@ export const markConversationReadMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...messagesScopes.all(), 'read'],
     call: (input: MessagesReadInput) => api.markConversationRead(input),
+  });
+
+/** @public */
+export const spaceEventsQuery = (api: ApiClient, input: EventsBySpaceInput) =>
+  defineQuery({
+    queryKey: eventsScopes.bySpace(input),
+    call: ({ signal }) => api.listSpaceEvents(input, signal),
+  });
+
+/** @public */
+export const eventQuery = (api: ApiClient, input: EventRefInput) =>
+  defineQuery({
+    queryKey: eventsScopes.detail(input.eventId),
+    call: ({ signal }) => api.getEvent(input, signal),
+  });
+
+/** @public */
+export const upcomingEventsQuery = (api: ApiClient, input: MemberUpcomingEventsInput = {}) =>
+  defineQuery({
+    queryKey: eventsScopes.upcoming(input.limit),
+    call: ({ signal }) => api.listUpcomingEvents(input, signal),
+  });
+
+/** @public */
+export const createEventMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...eventsScopes.all(), 'create'],
+    call: (input: EventCreateInput) => api.createEvent(input),
+  });
+
+/** @public */
+export const updateEventMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...eventsScopes.all(), 'update'],
+    call: (input: EventUpdateInput) => api.updateEvent(input),
+  });
+
+/** @public */
+export const deleteEventMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...eventsScopes.all(), 'delete'],
+    call: (input: EventRefInput) => api.deleteEvent(input),
+  });
+
+/** @public */
+export const rsvpEventMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...eventsScopes.all(), 'rsvp'],
+    call: (input: EventRsvpInput) => api.rsvpEvent(input),
   });
 
 export const tenantSecretsQuery = (api: ApiClient) =>

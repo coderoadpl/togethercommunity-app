@@ -501,6 +501,7 @@ export const notifySpaceFollowers = async (
         contextKind: 'space',
         contextId: space.id,
         courseId: null,
+        eventId: null,
         lessonName: space.name,
         authorDisplay: post.authorDisplay,
         authorAvatarUrl,

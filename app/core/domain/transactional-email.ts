@@ -252,6 +252,36 @@ export const spacePost = (
   });
 };
 
+export const spaceEvent = (
+  language: string,
+  input: { tenantName: string; spaceName: string; authorDisplay: string; snippet: string; url: string },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const spaceName = escapeHtml(input.spaceName);
+  const author = escapeHtml(input.authorDisplay);
+  const snippet = escapeHtml(input.snippet);
+  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
+    pl: 'w przestrzeni możesz przestać ją obserwować',
+    en: 'you can unfollow the space there',
+  });
+
+  if (languageOrDefault(language) === 'en') {
+    const actionLink = link(input.url, 'Open the event');
+    return emailMessageSchema.parse({
+      subject: `New event in “${input.spaceName}”`,
+      html: `<p>Hello!</p><p>${author} scheduled an event in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+      text: `Hello!\n\n${input.authorDisplay} scheduled an event in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the event: ${input.url}${footer.text}`,
+    });
+  }
+
+  const actionLink = link(input.url, 'Otwórz wydarzenie');
+  return emailMessageSchema.parse({
+    subject: `Nowe wydarzenie w przestrzeni „${input.spaceName}”`,
+    html: `<p>Cześć!</p><p>${author} zaplanował(a) wydarzenie w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+    text: `Cześć!\n\n${input.authorDisplay} zaplanował(a) wydarzenie w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz wydarzenie: ${input.url}${footer.text}`,
+  });
+};
+
 export const directMessage = (
   language: string,
   input: { tenantName: string; senderDisplay: string; snippet: string; url: string },

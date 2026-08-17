@@ -14,6 +14,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `OPTIONS /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
 | `OPTIONS /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |
 | `OPTIONS /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
+| `OPTIONS /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
+| `OPTIONS /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
 | `OPTIONS /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -25,6 +27,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
 | `GET /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |
 | `GET /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
+| `GET /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
+| `GET /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -252,6 +256,14 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/spaces/follow` | authenticated | mutating | space follow |
 | `POST /api/spaces/unfollow` | authenticated | mutating | space unfollow |
 | `POST /api/spaces/:spaceId/seen` | authenticated | mutating | space seen |
+| `GET /api/spaces/:spaceId/events` | authenticated | read | events by space |
+| `GET /api/member/upcoming-events` | authenticated | read | member upcoming events |
+| `POST /api/events` | authenticated | mutating | events create |
+| `POST /api/events/update` | authenticated | mutating | events update |
+| `POST /api/events/rsvp` | authenticated | mutating | event rsvp |
+| `GET /api/events/:eventId/ics` | authenticated | read | event ics |
+| `GET /api/events/:eventId` | authenticated | read | event get |
+| `DELETE /api/events/:eventId` | authenticated | mutating | events delete |
 | `GET /api/notifications` | authenticated | read | notifications |
 | `POST /api/notifications/read` | authenticated | mutating | notification read |
 | `POST /api/notifications/read-all` | authenticated | mutating | notifications read all |

@@ -657,6 +657,7 @@ const deps = (
       lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
         `http://${tenantSlug ?? 'app'}.localhost/my/courses/${courseId ?? 'none'}/lessons/${lessonId}`,
       conversationUrl: ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
+      eventUrl: ({ spaceId, eventId }) => `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
       spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
         `http://${tenantSlug ?? 'app'}.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },

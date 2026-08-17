@@ -725,6 +725,7 @@ const fixture = (input: {
     links: {
       lessonDiscussionUrl: ({ lessonId }) => `http://tenant.localhost/my/courses/c1/lessons/${lessonId}`,
       conversationUrl: ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
+      eventUrl: ({ spaceId, eventId }) => `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
       spaceUrl: ({ spaceId, rootPostId }) =>
         `http://tenant.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },

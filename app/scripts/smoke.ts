@@ -356,6 +356,23 @@ const staffSpacesSchema = z.object({
     }),
   ),
 });
+const eventSchema = z.object({
+  event: z.object({
+    id: z.string(),
+    spaceId: z.string(),
+    title: z.string(),
+    startsAt: z.string(),
+    discussionRootPostId: z.string().nullable(),
+    goingCount: z.number(),
+    notGoingCount: z.number(),
+    viewerRsvp: z.string().nullable(),
+    liveNow: z.boolean(),
+  }),
+});
+const eventsListSchema = z.object({
+  events: z.array(z.object({ id: z.string(), title: z.string(), goingCount: z.number() })),
+});
+const eventIcsSchema = z.object({ fileName: z.string(), icsContent: z.string() });
 const reactionsSchema = z.array(z.object({ emoji: z.string(), count: z.number(), viewerReacted: z.boolean() }));
 const spaceFeedSchema = z.object({
   feed: z.object({
@@ -1349,6 +1366,111 @@ const driveDirectMessagesFlow = async (port: number, homes: string[]): Promise<v
   );
 };
 
+const driveEventsFlow = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const staffHome = mkdtempSync(join(tmpdir(), 'smoke-events-staff-'));
+  const followerHome = mkdtempSync(join(tmpdir(), 'smoke-events-follower-'));
+  homes.push(staffHome, followerHome);
+  const cli = (args: string[], home: string): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: home });
+  const studio = (args: string[], home: string): Promise<Run> =>
+    cli(['--json', '--api-url', url, '--tenant', 'studio', ...args], home);
+
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login', '--email', 'creator@together.dev', '--password', 'demo-password-15'], staffHome),
+    'events: staff login',
+  );
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.aktywny@together.dev'], followerHome),
+    'events: member login',
+  );
+
+  const marker = `wyd${randomUUID().slice(0, 8)}`;
+  const space = spaceSchema.parse(
+    expectOk(
+      await studio(['space', 'create', '--slug', `${marker}-events`, '--name', `Wydarzenia ${marker}`, '--visibility', 'members'], staffHome),
+      'events: staff creates the host space',
+    ),
+  ).space;
+  expectOk(await studio(['space', 'follow', '--space', space.id], followerHome), 'events: member follows the space');
+
+  const created = eventSchema.parse(
+    expectOk(
+      await studio(
+        [
+          'event', 'create',
+          '--space', space.id,
+          '--title', `Warsztat ${marker}`,
+          '--starts-at', '2099-07-12T18:00:00.000Z',
+          '--ends-at', '2099-07-12T20:00:00.000Z',
+          '--location', 'Online',
+        ],
+        staffHome,
+      ),
+      'events: staff schedules an event',
+    ),
+  ).event;
+  assert(created.discussionRootPostId !== null, 'creating an event should open its discussion thread');
+  expectError(
+    await studio(
+      ['event', 'create', '--space', space.id, '--title', 'Odwrotnie', '--starts-at', '2099-07-12T20:00:00.000Z', '--ends-at', '2099-07-12T18:00:00.000Z'],
+      staffHome,
+    ),
+    'events: an event cannot end before it starts',
+    EXIT_CODE_BY_ERROR_CODE.validation,
+    'validation',
+  );
+  expectError(
+    await studio(
+      ['event', 'create', '--space', space.id, '--title', 'Nie wolno', '--starts-at', '2099-07-12T18:00:00.000Z', '--ends-at', '2099-07-12T20:00:00.000Z'],
+      followerHome,
+    ),
+    'events: a member cannot schedule events',
+    EXIT_CODE_BY_ERROR_CODE.forbidden,
+    'forbidden',
+  );
+
+  const followerInbox = notificationsListSchema.parse(
+    expectOk(await studio(['notifications', 'list'], followerHome), 'events: follower notifications'),
+  );
+  const eventNotifications = followerInbox.notifications.filter(
+    (item) => item.payload.rootPostId === created.discussionRootPostId,
+  );
+  assert(eventNotifications.length === 1, `a new event should notify followers exactly once, got ${String(eventNotifications.length)}`);
+  assert(
+    eventNotifications[0]?.kind === 'space-event',
+    `expected a space-event notification, got ${String(eventNotifications[0]?.kind)}`,
+  );
+
+  const listed = eventsListSchema.parse(
+    expectOk(await studio(['event', 'list', '--space', space.id], followerHome), 'events: member lists space events'),
+  );
+  assert(listed.events.some((item) => item.id === created.id), 'the member should see the scheduled event');
+  const upcoming = eventsListSchema.parse(
+    expectOk(await studio(['event', 'upcoming'], followerHome), 'events: member lists upcoming events'),
+  );
+  assert(upcoming.events.some((item) => item.id === created.id), 'the upcoming strip should carry the event');
+
+  const answered = eventSchema.parse(
+    expectOk(await studio(['event', 'rsvp', created.id, '--status', 'going'], followerHome), 'events: member answers going'),
+  ).event;
+  assert(answered.viewerRsvp === 'going', 'the rsvp should be echoed back to its author');
+  assert(answered.goingCount === 1, `the going count should be one, got ${String(answered.goingCount)}`);
+  const changed = eventSchema.parse(
+    expectOk(await studio(['event', 'rsvp', created.id, '--status', 'not-going'], followerHome), 'events: member changes the answer'),
+  ).event;
+  assert(changed.goingCount === 0 && changed.notGoingCount === 1, 'changing the answer should move the counts');
+
+  const ics = eventIcsSchema.parse(
+    expectOk(await studio(['event', 'ics', created.id], followerHome), 'events: member downloads the calendar entry'),
+  );
+  assert(ics.fileName.endsWith('.ics'), 'the calendar file should carry an .ics name');
+  assert(
+    ics.icsContent.includes(`SUMMARY:Warsztat ${marker}`) && ics.icsContent.startsWith('BEGIN:VCALENDAR'),
+    'the calendar entry should be a VCALENDAR carrying the event title',
+  );
+};
+
 const driveSpacesFlow = async (port: number, homes: string[]): Promise<void> => {
   const url = `http://localhost:${port}`;
   const staffHome = mkdtempSync(join(tmpdir(), 'smoke-spaces-staff-'));
@@ -1731,6 +1853,8 @@ try {
   await driveDirectMessagesFlow(port, homes);
   console.log('smoke: driving the spaces surface...');
   await driveSpacesFlow(port, homes);
+  console.log('smoke: driving the events surface...');
+  await driveEventsFlow(port, homes);
   console.log('smoke: driving the anonymous public surface...');
   await driveAnonymousPublicFlow(port, homes);
   console.log('smoke: proving password rotation with two isolated CLI homes...');

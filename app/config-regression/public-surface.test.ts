@@ -32,6 +32,8 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'getPublicImageAssetUrl',
   'getPublicNavigation',
   'getPublicOffer',
+  'getPublicSpaceEvent',
+  'getPublicSpaceEvents',
   'getPublicSpaceFeed',
   'getPublicSpaceThread',
   'recordCheckoutMarketingConsents',

@@ -498,6 +498,7 @@ const fixture = (input: { members?: Member[]; staffUserIds?: string[]; posts?: P
       lessonDiscussionUrl: () => 'http://tenant.localhost/my',
       spaceUrl: () => 'http://tenant.localhost/community/s1',
       conversationUrl: ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
+      eventUrl: () => '',
     },
     ids: new SequenceIds(),
     clock: new MutableClock(),

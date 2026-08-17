@@ -48,6 +48,12 @@ import {
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
   meProfileUpdateInputSchema,
+  eventCreateInputSchema,
+  eventRefInputSchema,
+  eventRsvpInputSchema,
+  eventUpdateInputSchema,
+  eventsBySpaceInputSchema,
+  memberUpcomingEventsInputSchema,
   messagesListInputSchema,
   messagesReadInputSchema,
   messagesSendInputSchema,
@@ -260,10 +266,18 @@ import {
   listImportAuditForApiKey,
   listTenantDocuments,
   m2mEnroll,
+  createEvent,
+  deleteEvent,
   dmUnreadCount,
   getDmConversation,
+  getEvent,
+  getEventIcs,
   listDmConversations,
   listDmMessages,
+  listSpaceEvents,
+  listUpcomingEvents,
+  rsvpEvent,
+  updateEvent,
   markAllNotificationsRead,
   markDmConversationRead,
   markLessonCompleted,
@@ -2714,6 +2728,72 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const parsed = spaceSeenInputSchema.safeParse({ spaceId: c.req.param('spaceId') });
     if (!parsed.success) return respond(err(validation('Invalid space id', parsed.error.flatten())));
     return respond(await markSpaceSeen({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.eventsBySpace, async (c) => {
+    const parsed = eventsBySpaceInputSchema.safeParse({
+      spaceId: c.req.param('spaceId'),
+      ...(c.req.query('scope') === undefined ? {} : { scope: c.req.query('scope') }),
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid events query', parsed.error.flatten())));
+    return respond(await listSpaceEvents({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.memberUpcomingEvents, async (c) => {
+    const parsed = memberUpcomingEventsInputSchema.safeParse(
+      c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) },
+    );
+    if (!parsed.success) {
+      return respond(err(validation('Invalid upcoming events query', parsed.error.flatten())));
+    }
+    return respond(await listUpcomingEvents({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.eventsCreate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = eventCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid event payload', parsed.error.flatten())));
+    const result = await createEvent({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ event: result.value }) : result);
+  });
+
+  app.post(API_PATHS.eventsUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = eventUpdateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid event update payload', parsed.error.flatten())));
+    }
+    const result = await updateEvent({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ event: result.value }) : result);
+  });
+
+  app.post(API_PATHS.eventRsvp, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = eventRsvpInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid rsvp payload', parsed.error.flatten())));
+    const result = await rsvpEvent({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ event: result.value }) : result);
+  });
+
+  app.get(API_PATHS.eventIcs, async (c) => {
+    const parsed = eventRefInputSchema.safeParse({ eventId: c.req.param('eventId') });
+    if (!parsed.success) return respond(err(validation('Invalid event id', parsed.error.flatten())));
+    return respond(await getEventIcs({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.eventGet, async (c) => {
+    const parsed = eventRefInputSchema.safeParse({ eventId: c.req.param('eventId') });
+    if (!parsed.success) return respond(err(validation('Invalid event id', parsed.error.flatten())));
+    const result = await getEvent({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ event: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.eventGet, async (c) => {
+    const parsed = eventRefInputSchema.safeParse({ eventId: c.req.param('eventId') });
+    if (!parsed.success) return respond(err(validation('Invalid event id', parsed.error.flatten())));
+    return respond(await deleteEvent({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.get(API_PATHS.notifications, async (c) => {

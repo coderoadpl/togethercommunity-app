@@ -17,10 +17,14 @@ import {
   createSpaceInputSchema,
   deletePostInputSchema,
   deleteSpaceInputSchema,
+  createEventInputSchema,
   dmConversationRefSchema,
+  eventIcsSchema,
+  eventRefSchema,
   followSpaceInputSchema,
   listDmConversationsInputSchema,
   listDmMessagesInputSchema,
+  listSpaceEventsInputSchema,
   listSpaceFeedInputSchema,
   markSpaceSeenInputSchema,
   memberHomeFeedInputSchema,
@@ -28,12 +32,16 @@ import {
   memberSpaceSchema,
   publicDmConversationSchema,
   publicDmMessageSchema,
+  publicSpaceEventSchema,
   reactToPostInputSchema,
   reactionSummarySchema,
+  rsvpEventInputSchema,
   sendDmMessageInputSchema,
   startDmConversationInputSchema,
   setSpaceArchivedInputSchema,
   spaceFeedSchema,
+  updateEventInputSchema,
+  upcomingEventsInputSchema,
   spaceSchema,
   staffSpaceSchema,
   updateSpaceInputSchema,
@@ -165,7 +173,7 @@ import {
   updateProductAccessItemsInputSchema,
   billingDataSchema,
 } from '#core/domain/index.js';
-import type { PublicSpaceThreadInput } from '#core/domain/index.js';
+import type { PublicSpaceEventRef, PublicSpaceThreadInput } from '#core/domain/index.js';
 
 /**
  * Single source of truth for the HTTP API shared by server and all clients.
@@ -1132,6 +1140,51 @@ export const messagesUnreadOutputSchema = z.object({
   unread: z.number().int().nonnegative(),
 });
 
+export const eventsBySpaceInputSchema = listSpaceEventsInputSchema;
+
+export type EventsBySpaceInput = z.input<typeof eventsBySpaceInputSchema>;
+
+export const eventsListOutputSchema = z.object({
+  events: z.array(publicSpaceEventSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const eventCreateInputSchema = createEventInputSchema;
+
+export type EventCreateInput = z.input<typeof eventCreateInputSchema>;
+
+export const eventUpdateInputSchema = updateEventInputSchema;
+
+export type EventUpdateInput = z.input<typeof eventUpdateInputSchema>;
+
+export const eventRefInputSchema = eventRefSchema;
+
+export type EventRefInput = z.input<typeof eventRefInputSchema>;
+
+export const eventOutputSchema = z.object({
+  event: publicSpaceEventSchema,
+});
+
+export const eventDeleteOutputSchema = z.object({
+  eventId: z.string(),
+});
+
+export const eventRsvpInputSchema = rsvpEventInputSchema;
+
+export type EventRsvpInput = z.input<typeof eventRsvpInputSchema>;
+
+export const eventIcsOutputSchema = eventIcsSchema;
+
+export const memberUpcomingEventsInputSchema = upcomingEventsInputSchema;
+
+export type MemberUpcomingEventsInput = z.input<typeof memberUpcomingEventsInputSchema>;
+
+export const memberUpcomingEventsOutputSchema = z.object({
+  events: z.array(publicSpaceEventSchema),
+});
+
+export type PublicSpaceEventInput = PublicSpaceEventRef;
+
 export const devGrantOutputSchema = z.object({
   memberId: z.string(),
   productId: z.string(),
@@ -1509,6 +1562,8 @@ export const API_ROUTES = {
   publicCourseStructure: { method: 'GET', path: '/api/public/courses/:courseId/structure' },
   publicSpaceFeed: { method: 'GET', path: '/api/public/spaces/:spaceId/feed' },
   publicSpaceThread: { method: 'GET', path: '/api/public/spaces/:spaceId/posts/:postId' },
+  publicSpaceEvents: { method: 'GET', path: '/api/public/spaces/:spaceId/events' },
+  publicSpaceEvent: { method: 'GET', path: '/api/public/spaces/:spaceId/events/:eventId' },
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
@@ -1613,6 +1668,13 @@ export const API_ROUTES = {
   spaceFollow: { method: 'POST', path: '/api/spaces/follow' },
   spaceUnfollow: { method: 'POST', path: '/api/spaces/unfollow' },
   spaceSeen: { method: 'POST', path: '/api/spaces/:spaceId/seen' },
+  eventsBySpace: { method: 'GET', path: '/api/spaces/:spaceId/events' },
+  eventsCreate: { method: 'POST', path: '/api/events' },
+  eventsUpdate: { method: 'POST', path: '/api/events/update' },
+  eventRsvp: { method: 'POST', path: '/api/events/rsvp' },
+  eventIcs: { method: 'GET', path: '/api/events/:eventId/ics' },
+  eventGet: { method: 'GET', path: '/api/events/:eventId' },
+  eventsDelete: { method: 'DELETE', path: '/api/events/:eventId' },
   notifications: { method: 'GET', path: '/api/notifications' },
   notificationRead: { method: 'POST', path: '/api/notifications/read' },
   notificationsReadAll: { method: 'POST', path: '/api/notifications/read-all' },
@@ -1627,6 +1689,7 @@ export const API_ROUTES = {
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   memberNavigation: { method: 'GET', path: '/api/member/navigation' },
   memberHomeFeed: { method: 'GET', path: '/api/member/home-feed' },
+  memberUpcomingEvents: { method: 'GET', path: '/api/member/upcoming-events' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
@@ -1745,6 +1808,8 @@ export const API_PATHS = {
   publicCourseStructure: API_ROUTES.publicCourseStructure.path,
   publicSpaceFeed: API_ROUTES.publicSpaceFeed.path,
   publicSpaceThread: API_ROUTES.publicSpaceThread.path,
+  publicSpaceEvents: API_ROUTES.publicSpaceEvents.path,
+  publicSpaceEvent: API_ROUTES.publicSpaceEvent.path,
   publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
@@ -1843,6 +1908,12 @@ export const API_PATHS = {
   spaceFollow: API_ROUTES.spaceFollow.path,
   spaceUnfollow: API_ROUTES.spaceUnfollow.path,
   spaceSeen: API_ROUTES.spaceSeen.path,
+  eventsBySpace: API_ROUTES.eventsBySpace.path,
+  eventsCreate: API_ROUTES.eventsCreate.path,
+  eventsUpdate: API_ROUTES.eventsUpdate.path,
+  eventRsvp: API_ROUTES.eventRsvp.path,
+  eventIcs: API_ROUTES.eventIcs.path,
+  eventGet: API_ROUTES.eventGet.path,
   notifications: API_ROUTES.notifications.path,
   notificationRead: API_ROUTES.notificationRead.path,
   notificationsReadAll: API_ROUTES.notificationsReadAll.path,
@@ -1857,6 +1928,7 @@ export const API_PATHS = {
   devGrant: API_ROUTES.devGrant.path,
   memberNavigation: API_ROUTES.memberNavigation.path,
   memberHomeFeed: API_ROUTES.memberHomeFeed.path,
+  memberUpcomingEvents: API_ROUTES.memberUpcomingEvents.path,
   myProducts: API_ROUTES.myProducts.path,
   memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,

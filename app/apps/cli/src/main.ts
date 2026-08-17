@@ -456,6 +456,23 @@ const dmSendOptionsSchema = z.object({
   toMember: z.string().min(1).optional(),
   body: z.string().min(1),
 });
+const eventListOptionsSchema = z.object({
+  space: z.string().min(1),
+  scope: z.enum(['upcoming', 'past']).optional(),
+  limit: positiveIntegerOptionSchema,
+});
+const eventCreateOptionsSchema = z.object({
+  space: z.string().min(1),
+  title: z.string().min(1),
+  startsAt: z.string().min(1),
+  endsAt: z.string().min(1),
+  description: z.string().min(1).optional(),
+  location: z.string().min(1).optional(),
+  url: z.string().min(1).optional(),
+});
+const eventRsvpOptionsSchema = z.object({
+  status: z.enum(['going', 'not-going']),
+});
 const notificationsListOptionsSchema = z.object({
   limit: z
     .string()
@@ -2304,6 +2321,104 @@ dm
   .action(
     withCtx(async (ctx) => {
       emit(await ctx.api.unreadMessageCount(), ctx.json, (data) => `${String(data.unread)} unread`);
+    }),
+  );
+
+const event = program.command('event').description('Space events');
+
+event
+  .command('list')
+  .description('List the events of a space')
+  .requiredOption('--space <spaceId>')
+  .option('--scope <scope>', 'upcoming (default) or past')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([eventListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listSpaceEvents({
+          spaceId: options.space,
+          ...(options.scope === undefined ? {} : { scope: options.scope }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) =>
+          data.events.length === 0
+            ? 'no events'
+            : data.events
+                .map(
+                  (item) =>
+                    `- ${item.startsAt} ${item.title} (${item.id.slice(0, 8)}, ${String(item.goingCount)} going${item.liveNow ? ', live' : ''})`,
+                )
+                .join('\n'),
+      );
+    }),
+  );
+
+event
+  .command('upcoming')
+  .description('List upcoming events across the spaces you can see')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([dmListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listUpcomingEvents(options.limit === undefined ? {} : { limit: options.limit }),
+        ctx.json,
+        (data) =>
+          data.events.length === 0
+            ? 'no upcoming events'
+            : data.events
+                .map((item) => `- ${item.startsAt} ${item.title} (${item.id.slice(0, 8)})`)
+                .join('\n'),
+      );
+    }),
+  );
+
+event
+  .command('create')
+  .description('Schedule an event in a space')
+  .requiredOption('--space <spaceId>')
+  .requiredOption('--title <text>')
+  .requiredOption('--starts-at <iso>')
+  .requiredOption('--ends-at <iso>')
+  .option('--description <text>')
+  .option('--location <text>')
+  .option('--url <url>')
+  .action(
+    withInput(z.tuple([eventCreateOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createEvent({
+          spaceId: options.space,
+          title: options.title,
+          startsAt: options.startsAt,
+          endsAt: options.endsAt,
+          ...(options.description === undefined ? {} : { description: options.description }),
+          ...(options.location === undefined ? {} : { location: options.location }),
+          ...(options.url === undefined ? {} : { url: options.url }),
+        }),
+        ctx.json,
+        (data) => `created event ${data.event.id.slice(0, 8)} in space ${data.event.spaceId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+event
+  .command('rsvp <eventId>')
+  .description('Answer an event invitation')
+  .requiredOption('--status <status>', 'going or not-going')
+  .action(
+    withInput(z.tuple([z.string().min(1), eventRsvpOptionsSchema]), async (ctx, [eventId, options]) => {
+      emit(await ctx.api.rsvpEvent({ eventId, status: options.status }), ctx.json, (data) =>
+        `${data.event.viewerRsvp ?? 'no answer'} (${String(data.event.goingCount)} going)`,
+      );
+    }),
+  );
+
+event
+  .command('ics <eventId>')
+  .description('Print the calendar entry of an event')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [eventId]) => {
+      emit(await ctx.api.getEventIcs({ eventId }), ctx.json, (data) => data.icsContent);
     }),
   );
 

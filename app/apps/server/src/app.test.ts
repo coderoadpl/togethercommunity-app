@@ -37,6 +37,7 @@ import {
   type ProductDownloadAsset,
   type ProductGrant,
   type Space,
+  type SpaceEvent,
   type Tenant,
   type TenantApiKey,
   type TenantDomain,
@@ -598,6 +599,19 @@ const deps = (input: {
       listSubscribersForRoot: async () => [],
       listForUser: async () => [],
     },
+    events: {
+      findById: async () => null,
+      insert: async (_tenantId, spaceEvent) => spaceEvent,
+      update: async () => null,
+      softDelete: async () => null,
+      listForSpace: async () => ({ events: [], nextCursor: null }),
+      listUpcomingForSpaces: async () => [],
+    },
+    eventRsvps: {
+      upsert: async (tenantId, rsvp) => ({ tenantId, ...rsvp }),
+      countsForEvents: async () => new Map(),
+      listForViewer: async () => [],
+    },
     dmConversations: {
       findById: async () => null,
       findByParticipants: async () => null,
@@ -632,6 +646,7 @@ const deps = (input: {
     },
     links: {
       conversationUrl: ({ conversationId }) => `http://localhost/messages/${conversationId}`,
+      eventUrl: ({ spaceId, eventId }) => `http://localhost/community/${spaceId}/events/${eventId}`,
       lessonDiscussionUrl: ({ lessonId }) => `http://localhost/my/courses/c1/lessons/${lessonId}`,
       spaceUrl: ({ spaceId, rootPostId }) =>
         `http://localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
@@ -3432,6 +3447,25 @@ describe('anonymous public surface routes', () => {
     pinnedAt: null,
   });
 
+  const spaceEvent = (id: string, spaceId: string): SpaceEvent => ({
+    id,
+    tenantId: acme.id,
+    spaceId,
+    title: `Event ${id}`,
+    description: null,
+    startsAt: '2099-07-12T18:00:00.000Z',
+    endsAt: '2099-07-12T20:00:00.000Z',
+    location: null,
+    url: null,
+    liveEmbedUrl: null,
+    replayUrl: null,
+    discussionRootPostId: null,
+    createdByUserId: 'user-staff-hidden',
+    createdAt: '1998-07-12T00:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+  });
+
   const publicCourse: Course = {
     id: 'course-open',
     tenantId: acme.id,
@@ -3481,13 +3515,30 @@ describe('anonymous public surface routes', () => {
     spaces?: Space[];
     posts?: Post[];
     courses?: Course[];
+    events?: SpaceEvent[];
     defaultHomeSpaceId?: string | null;
   } = {}) => {
     const spaceRows = input.spaces ?? [];
     const postRows = input.posts ?? [];
+    const eventRows = input.events ?? [];
     const base = deps({ lessons: [previewLesson, paidLesson] });
     return buildApp({
       ...base,
+      events: {
+        ...base.events,
+        findById: async (_tenantId, id) => eventRows.find((row) => row.id === id) ?? null,
+        listForSpace: async (_tenantId, query) => ({
+          events: eventRows.filter(
+            (row) => row.spaceId === query.spaceId && row.deletedAt === null,
+          ),
+          nextCursor: null,
+        }),
+      },
+      eventRsvps: {
+        ...base.eventRsvps,
+        countsForEvents: async (_tenantId, eventIds) =>
+          new Map(eventIds.map((id) => [id, { going: 2, notGoing: 1 }])),
+      },
       spaces: {
         ...base.spaces,
         list: async () => spaceRows.filter((row) => row.archivedAt === null),
@@ -3676,6 +3727,42 @@ describe('anonymous public surface routes', () => {
     expect(response.status).toBe(404);
   });
 
+  it('serves read-only events of a publicly readable space without the creating account', async () => {
+    const open = space({ id: 'open', publicReadOnly: true });
+    const app = publicApp({ spaces: [open], events: [spaceEvent('event-open', open.id)] });
+
+    const list = await anonymousRequest(app, API_PATHS.publicSpaceEvents.replace(':spaceId', 'open'));
+    const detail = await anonymousRequest(
+      app,
+      API_PATHS.publicSpaceEvent.replace(':spaceId', 'open').replace(':eventId', 'event-open'),
+    );
+
+    expect(list.status).toBe(200);
+    expect(await list.json()).toMatchObject({
+      ok: true,
+      data: {
+        events: [{ id: 'event-open', goingCount: 2, notGoingCount: 1, viewerRsvp: null, liveNow: false }],
+      },
+    });
+    expect(detail.status).toBe(200);
+    expect(await detail.text()).not.toContain('user-staff-hidden');
+  });
+
+  it('answers not_found for events of spaces that are not publicly readable', async () => {
+    const closed = space({ id: 'private', publicReadOnly: false });
+    const app = publicApp({ spaces: [closed], events: [spaceEvent('event-private', closed.id)] });
+
+    for (const path of [
+      API_PATHS.publicSpaceEvents.replace(':spaceId', 'private'),
+      API_PATHS.publicSpaceEvent.replace(':spaceId', 'private').replace(':eventId', 'event-private'),
+      API_PATHS.publicSpaceEvent.replace(':spaceId', 'missing').replace(':eventId', 'event-private'),
+    ]) {
+      const response = await anonymousRequest(app, path);
+      expect([path, response.status]).toEqual([path, 404]);
+      expect([path, await response.json()]).toMatchObject([path, { ok: false, error: { code: 'not_found' } }]);
+    }
+  });
+
   it('answers OPTIONS preflight for every public surface route', async () => {
     const app = publicApp();
 
@@ -3684,6 +3771,8 @@ describe('anonymous public surface routes', () => {
       API_PATHS.publicCourseStructure.replace(':courseId', publicCourse.id),
       API_PATHS.publicSpaceFeed.replace(':spaceId', 'open'),
       API_PATHS.publicSpaceThread.replace(':spaceId', 'open').replace(':postId', 'post-open'),
+      API_PATHS.publicSpaceEvents.replace(':spaceId', 'open'),
+      API_PATHS.publicSpaceEvent.replace(':spaceId', 'open').replace(':eventId', 'event-open'),
     ]) {
       const response = await app.request(path, { method: 'OPTIONS' });
       expect(response.status).toBe(204);
@@ -3753,6 +3842,8 @@ describe('anonymous public surface routes', () => {
         { path: API_PATHS.publicSpaceFeed.replace(':spaceId', 'private'), status: 404, cacheControl: 'no-store' },
         { path: thread('open'), status: 200, cacheControl: 'no-store' },
         { path: thread('private'), status: 404, cacheControl: 'no-store' },
+        { path: API_PATHS.publicSpaceEvents.replace(':spaceId', 'open'), status: 200, cacheControl: 'no-store' },
+        { path: API_PATHS.publicSpaceEvents.replace(':spaceId', 'private'), status: 404, cacheControl: 'no-store' },
       ]) {
         const response = await anonymousRequest(app, surface.path);
         expect([

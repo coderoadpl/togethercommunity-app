@@ -36,6 +36,7 @@ const notification = (input: {
     contextKind: input.contextKind ?? 'lesson',
     contextId: input.contextId ?? 'l1',
     courseId: input.courseId === undefined ? 'c1' : input.courseId,
+    eventId: null,
     lessonName: 'Hamaki w kamperze',
     authorDisplay: 'Ola',
     authorAvatarUrl: input.authorAvatarUrl ?? null,

@@ -27,6 +27,7 @@ import type {
   ProductGrant,
   ProductPrice,
   Space,
+  SpaceEvent,
   TenantApiKey,
   TenantSecret,
 } from '#core/domain/index.js';
@@ -56,6 +57,8 @@ import {
   createProductGrantRepository,
   createProductPriceRepository,
   createProductRepository,
+  createSpaceEventRepository,
+  createSpaceEventRsvpRepository,
   createSpaceRepository,
   createSpaceSeenRepository,
   createTenantAccessReader,
@@ -1990,6 +1993,181 @@ describe('post repository', () => {
   });
 });
 
+describe('space event repositories', () => {
+  const eventSpace = (id: string, tenantId: string): Space => ({
+    id,
+    tenantId,
+    slug: id,
+    name: id,
+    description: null,
+    visibility: 'members',
+    productIds: [],
+    publicReadOnly: false,
+    position: 0,
+    archivedAt: null,
+    createdAt: NOW,
+  });
+
+  const spaceEvent = (id: string, over: Partial<SpaceEvent> = {}): SpaceEvent => ({
+    id,
+    tenantId: ACME,
+    spaceId: 'space-events',
+    title: `Event ${id}`,
+    description: null,
+    startsAt: FUTURE,
+    endsAt: '1998-12-01T02:00:00.000Z',
+    location: null,
+    url: null,
+    liveEmbedUrl: null,
+    replayUrl: null,
+    discussionRootPostId: null,
+    createdByUserId: 'user-acme-owner',
+    createdAt: NOW,
+    updatedAt: null,
+    deletedAt: null,
+    ...over,
+  });
+
+  beforeAll(async () => {
+    const spacesRepo = createSpaceRepository(db);
+    await spacesRepo.create(ACME, eventSpace('space-events', ACME));
+    await spacesRepo.create(ACME, eventSpace('space-events-other', ACME));
+    await spacesRepo.create(GLOBEX, eventSpace('space-events-globex', GLOBEX));
+  });
+
+  it('splits upcoming and past events around now and paginates by cursor', async () => {
+    const repository = createSpaceEventRepository(db);
+    await repository.insert(
+      ACME,
+      spaceEvent('event-past', { startsAt: PAST, endsAt: '1998-01-01T02:00:00.000Z' }),
+    );
+    await repository.insert(ACME, spaceEvent('event-soon'));
+    await repository.insert(
+      ACME,
+      spaceEvent('event-later', {
+        startsAt: '1998-12-24T18:00:00.000Z',
+        endsAt: '1998-12-24T20:00:00.000Z',
+      }),
+    );
+
+    const first = await repository.listForSpace(ACME, {
+      spaceId: 'space-events',
+      scope: 'upcoming',
+      now: NOW,
+      limit: 1,
+    });
+    if (first.nextCursor === null) throw new Error('Expected a second event page');
+    const second = await repository.listForSpace(ACME, {
+      spaceId: 'space-events',
+      scope: 'upcoming',
+      now: NOW,
+      cursor: first.nextCursor,
+      limit: 10,
+    });
+    const past = await repository.listForSpace(ACME, {
+      spaceId: 'space-events',
+      scope: 'past',
+      now: NOW,
+      limit: 10,
+    });
+
+    expect(first.events.map((row) => row.id)).toEqual(['event-soon']);
+    expect(second.events.map((row) => row.id)).toEqual(['event-later']);
+    expect(past.events.map((row) => row.id)).toEqual(['event-past']);
+  });
+
+  it('scopes reads to the tenant and hides soft-deleted events', async () => {
+    const repository = createSpaceEventRepository(db);
+    await repository.insert(ACME, spaceEvent('event-deleted'));
+    await repository.softDelete(ACME, { id: 'event-deleted', deletedAt: NOW });
+
+    const listed = await repository.listForSpace(ACME, {
+      spaceId: 'space-events',
+      scope: 'upcoming',
+      now: NOW,
+      limit: 10,
+    });
+
+    expect(listed.events.map((row) => row.id)).not.toContain('event-deleted');
+    expect(await repository.findById(GLOBEX, 'event-soon')).toBeNull();
+    expect((await repository.findById(ACME, 'event-deleted'))?.deletedAt).toBe(NOW);
+  });
+
+  it('lists upcoming events across several spaces in start order', async () => {
+    const repository = createSpaceEventRepository(db);
+    await repository.insert(
+      ACME,
+      spaceEvent('event-other-space', {
+        spaceId: 'space-events-other',
+        startsAt: '1998-11-01T18:00:00.000Z',
+        endsAt: '1998-11-01T20:00:00.000Z',
+      }),
+    );
+
+    const upcoming = await repository.listUpcomingForSpaces(ACME, {
+      spaceIds: ['space-events', 'space-events-other'],
+      now: NOW,
+      limit: 10,
+    });
+
+    expect(upcoming.map((row) => row.id)).toEqual(['event-other-space', 'event-soon', 'event-later']);
+    expect(
+      await repository.listUpcomingForSpaces(ACME, { spaceIds: [], now: NOW, limit: 10 }),
+    ).toEqual([]);
+  });
+
+  it('persists edits to the event projection', async () => {
+    const repository = createSpaceEventRepository(db);
+    const stored = await repository.findById(ACME, 'event-soon');
+    if (stored === null) throw new Error('Expected the stored event');
+
+    const updated = await repository.update(ACME, {
+      ...stored,
+      title: 'Event renamed',
+      location: 'Online',
+      updatedAt: FUTURE,
+    });
+
+    expect(updated).toMatchObject({ title: 'Event renamed', location: 'Online', updatedAt: FUTURE });
+    expect(await repository.update(GLOBEX, { ...stored, title: 'Nope' })).toBeNull();
+  });
+
+  it('keeps one rsvp per viewer and counts both answers', async () => {
+    const repository = createSpaceEventRsvpRepository(db);
+
+    await repository.upsert(ACME, {
+      eventId: 'event-soon',
+      userId: 'user-acme-member',
+      status: 'going',
+      updatedAt: NOW,
+    });
+    await repository.upsert(ACME, {
+      eventId: 'event-soon',
+      userId: 'user-acme-member',
+      status: 'not-going',
+      updatedAt: FUTURE,
+    });
+    await repository.upsert(ACME, {
+      eventId: 'event-soon',
+      userId: 'user-acme-owner',
+      status: 'going',
+      updatedAt: NOW,
+    });
+
+    const counts = await repository.countsForEvents(ACME, ['event-soon', 'event-later']);
+    const viewer = await repository.listForViewer(ACME, {
+      userId: 'user-acme-member',
+      eventIds: ['event-soon'],
+    });
+
+    expect(counts.get('event-soon')).toEqual({ going: 1, notGoing: 1 });
+    expect(counts.get('event-later')).toEqual({ going: 0, notGoing: 0 });
+    expect(viewer).toMatchObject([{ eventId: 'event-soon', status: 'not-going', updatedAt: FUTURE }]);
+    expect(await repository.listForViewer(GLOBEX, { userId: 'user-acme-member', eventIds: ['event-soon'] })).toEqual([]);
+    expect(await repository.countsForEvents(ACME, [])).toEqual(new Map());
+  });
+});
+
 describe('space seen repository', () => {
   const seenSpace = (id: string, tenantId: string): Space => ({
     id,
@@ -2059,6 +2237,7 @@ describe('notification repository', () => {
         contextKind: 'lesson',
         contextId: 'lesson-notification-pagination',
         courseId: 'course-notification-pagination',
+        eventId: null,
         lessonName: 'Pagination',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2229,6 +2408,7 @@ describe('direct message repositories', () => {
         contextKind: 'dm',
         contextId: 'dm-conversation-1',
         courseId: null,
+        eventId: null,
         lessonName: 'Acme Member',
         authorDisplay: 'Acme Member',
         authorAvatarUrl: null,

@@ -321,6 +321,7 @@ const makeDeps = (
     },
     links: {
       conversationUrl: () => '',
+      eventUrl: () => '',
       lessonDiscussionUrl: () => '',
       spaceUrl: () => '',
     },

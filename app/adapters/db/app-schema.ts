@@ -1359,6 +1359,59 @@ export const spaceSeenMarks = pgTable(
   ],
 );
 
+export const spaceEvents = pgTable(
+  'space_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    spaceId: text('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    startsAt: text('starts_at').notNull(),
+    endsAt: text('ends_at').notNull(),
+    location: text('location'),
+    url: text('url'),
+    liveEmbedUrl: text('live_embed_url'),
+    replayUrl: text('replay_url'),
+    discussionRootPostId: text('discussion_root_post_id'),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at'),
+    deletedAt: text('deleted_at'),
+  },
+  (table) => [
+    index('space_events_tenant_space_starts_idx').on(table.tenantId, table.spaceId, table.startsAt),
+    index('space_events_tenant_starts_idx').on(table.tenantId, table.startsAt),
+  ],
+);
+
+export const spaceEventRsvps = pgTable(
+  'space_event_rsvps',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => spaceEvents.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    status: text('status', { enum: ['going', 'not-going'] }).notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('space_event_rsvps_tenant_event_idx').on(table.tenantId, table.eventId),
+    uniqueIndex('space_event_rsvps_tenant_event_user_uidx').on(
+      table.tenantId,
+      table.eventId,
+      table.userId,
+    ),
+  ],
+);
+
 export const threadSubscriptions = pgTable(
   'thread_subscriptions',
   {
@@ -1388,7 +1441,9 @@ export const notifications = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
-    kind: text('kind', { enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message'] }).notNull(),
+    kind: text('kind', {
+      enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'space-event'],
+    }).notNull(),
     payload: jsonb('payload').notNull(),
     readAt: text('read_at'),
     createdAt: text('created_at').notNull(),

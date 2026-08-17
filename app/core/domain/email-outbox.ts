@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
-import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, verifyEmail, welcomeSignIn, threadReply, directMessage, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
+import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, verifyEmail, welcomeSignIn, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({
   logoUrl: z.string().url().nullable(),
@@ -43,6 +43,7 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('lesson-question'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('space-post'), language: z.string(), tenantName: z.string(), spaceName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('direct-message'), language: z.string(), tenantName: z.string(), senderDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
+  z.object({ kind: z.literal('space-event'), language: z.string(), tenantName: z.string(), spaceName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('subscription-payment-failed'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), billingPortalUrl: z.string().url().nullable(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('subscription-ended'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), offerUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('support-message'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), memberDisplay: z.string(), subject: z.string(), body: z.string(), branding: brandingSchema.optional() }),
@@ -123,6 +124,8 @@ export const renderEmailOutboxPayload = (raw: unknown) => {
                         ? reputationAlertEmail(value.language, value)
                         : value.kind === 'direct-message'
                           ? directMessage(value.language, value)
-                          : marketingConsentConfirmation(value);
+                          : value.kind === 'space-event'
+                            ? spaceEvent(value.language, value)
+                            : marketingConsentConfirmation(value);
   return { success: true as const, data: emailMessageSchema.parse(message) };
 };

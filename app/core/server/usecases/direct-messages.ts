@@ -344,6 +344,7 @@ const notifyDmRecipient = async (
       contextKind: 'dm',
       contextId: input.conversationId,
       courseId: null,
+      eventId: null,
       lessonName: input.senderDisplay,
       authorDisplay: input.senderDisplay,
       authorAvatarUrl: input.senderAvatarUrl,

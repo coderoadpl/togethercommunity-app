@@ -23,7 +23,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
-import { formatDate, formatPrice } from '../../lib/format.js';
+import { formatDate, formatOfferPrice } from '../../lib/format.js';
 import { DataValue, MemberProductLink } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
 
@@ -122,7 +122,7 @@ const ProductRow = ({
         ) : null}
       </Stack>
       <Typography variant="body2" component="p" sx={{ opacity: inactive ? 0.72 : 1 }}>
-        <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
+        <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
       </Typography>
       {product.description ? <RichTextContent html={product.description} /> : null}
       {product.downloads.length > 0 ? (

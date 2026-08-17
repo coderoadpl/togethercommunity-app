@@ -589,6 +589,13 @@
       "when": 1786961664572,
       "tag": "0083_public_layer_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1786987008831,
+      "tag": "0084_tenant_composite_ids",
+      "breakpoints": true
     }
   ]
 }

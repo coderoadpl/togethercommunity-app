@@ -1021,7 +1021,7 @@ await db
     })),
   )
   .onConflictDoUpdate({
-    target: courses.id,
+    target: [courses.tenantId, courses.id],
     set: {
       name: sql`excluded.name`,
       description: sql`excluded.description`,
@@ -1048,7 +1048,7 @@ await db
     })),
   )
   .onConflictDoUpdate({
-    target: courseLessons.id,
+    target: [courseLessons.tenantId, courseLessons.id],
     set: {
       name: sql`excluded.name`,
       isPreview: sql`excluded.is_preview`,
@@ -1073,7 +1073,7 @@ await db
     })),
   )
   .onConflictDoUpdate({
-    target: courseModules.id,
+    target: [courseModules.tenantId, courseModules.id],
     set: {
       courseIds: sql`excluded.course_ids`,
       title: sql`excluded.title`,
@@ -1167,7 +1167,7 @@ await db
     })),
   )
   .onConflictDoUpdate({
-    target: products.id,
+    target: [products.tenantId, products.id],
     set: {
       title: sql`excluded.title`,
       description: sql`excluded.description`,
@@ -1262,7 +1262,7 @@ await db
     bannedReason: 'Powtarzające się reklamy w społeczności',
     bannedByUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
   })
-  .where(eq(members.id, 'member-studio-free'));
+  .where(and(eq(members.tenantId, 'tenant-studio'), eq(members.id, 'member-studio-free')));
 await db
   .insert(memberEvents)
   .values({

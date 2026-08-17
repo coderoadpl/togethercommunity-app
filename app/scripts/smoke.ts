@@ -136,13 +136,13 @@ const polluteDemoTenants = async (client: pg.Client): Promise<void> => {
     [now],
   );
   await client.query(
-    `update courses set module_order = '["module-js-projekty","module-js-podstawy","module-js-dom"]'::jsonb where id = 'course-js'`,
+    `update courses set module_order = '["module-js-projekty","module-js-podstawy","module-js-dom"]'::jsonb where tenant_id = 'tenant-studio' and id = 'course-js'`,
   );
   await client.query(
     `update member_course_progress
      set completed_lesson_ids = '["lesson-js-demo-video","lesson-js-zmienne-1","lesson-js-zmienne-2","lesson-js-funkcje-1","lesson-js-funkcje-2","lesson-js-dom-1","lesson-js-dom-2","lesson-js-projekt-1"]'::jsonb,
          last_viewed_lesson_id = 'lesson-js-projekt-1'
-     where id = 'progress-member-studio-aktywny'`,
+     where tenant_id = 'tenant-studio' and id = 'progress-member-studio-aktywny'`,
   );
 };
 
@@ -156,7 +156,7 @@ const verifyReseedRestoresCanonicalState = async (databaseUrl: string): Promise<
     assert(reseed.code === 0, `Reseed failed:\n${reseed.stdout}${reseed.stderr}`);
 
     const orderResult = await client.query(
-      `select module_order from courses where id = 'course-js'`,
+      `select module_order from courses where tenant_id = 'tenant-studio' and id = 'course-js'`,
     );
     assert(orderResult.rowCount === 1, 'reseed: course-js should exist after reseed');
     const orderRow = moduleOrderRowSchema.parse(orderResult.rows[0]);

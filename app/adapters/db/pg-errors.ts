@@ -16,3 +16,14 @@ export const uniqueViolation = (
   return error?.['code'] === '23505'
     && (constraint === undefined || error['constraint'] === constraint);
 };
+
+export const uniqueViolationIn = (
+  cause: unknown,
+  constraints: readonly string[],
+): boolean => {
+  const error = pgError(cause);
+  const constraint = error?.['constraint'];
+  return error?.['code'] === '23505'
+    && typeof constraint === 'string'
+    && constraints.includes(constraint);
+};

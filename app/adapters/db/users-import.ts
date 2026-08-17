@@ -15,7 +15,7 @@ import type {
 
 import type { Db } from './client.js';
 import { appendMemberEvent } from './member-events.js';
-import { uniqueViolation } from './pg-errors.js';
+import { uniqueViolationIn } from './pg-errors.js';
 import {
   account,
   importAuditEvents,
@@ -243,6 +243,15 @@ const commitProgress = async (
   return updated.length === 1;
 };
 
+const intraTenantConflictConstraints = [
+  'members_tenant_user_uidx',
+  'members_tenant_legacy_uidx',
+  'product_grants_tenant_member_product_uidx',
+  'product_grants_tenant_legacy_uidx',
+  'member_course_progress_tenant_member_course_uidx',
+  'user_email_unique',
+];
+
 export const createImportUsersRepository = (db: Db): ImportUsersRepository => ({
   findAuthUserByEmail: async (tenantId, email) => {
     const normalizedEmail = normalizeEmail(email);
@@ -356,7 +365,7 @@ export const createImportUsersRepository = (db: Db): ImportUsersRepository => ({
         return 'saved';
       });
     } catch (cause) {
-      if (uniqueViolation(cause)) return 'conflict';
+      if (uniqueViolationIn(cause, intraTenantConflictConstraints)) return 'conflict';
       throw cause;
     }
   },

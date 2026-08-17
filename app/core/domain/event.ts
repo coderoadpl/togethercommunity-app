@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { VIDEO_EMBED_URL_MESSAGE, inspectVideoEmbedUrl } from './course.js';
 import { DEFAULT_LANGUAGE, type Language } from './language.js';
 
 const EVENT_TITLE_MAX_LENGTH = 200;
@@ -9,6 +10,25 @@ const EVENT_DESCRIPTION_MAX_LENGTH = 5000;
 const EVENT_LOCATION_MAX_LENGTH = 200;
 
 const EVENT_TIME_ORDER_MESSAGE = 'An event has to end after it starts';
+
+/**
+ * Stricter than a lesson embed: an event iframes its source on a page open to
+ * every member, so an unsupported host is rejected instead of passed through.
+ */
+const eventEmbedUrlSchema = z.string().url().transform((value, ctx) => {
+  const inspection = inspectVideoEmbedUrl(value);
+  if (inspection.kind === 'supported') return inspection.embedUrl;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message:
+      inspection.kind === 'invalid-url'
+        ? VIDEO_EMBED_URL_MESSAGE.url
+        : inspection.kind === 'unsupported'
+          ? VIDEO_EMBED_URL_MESSAGE.unsupportedHost
+          : VIDEO_EMBED_URL_MESSAGE[inspection.provider],
+  });
+  return z.NEVER;
+});
 
 const spaceEventRsvpStatusSchema = z.enum(['going', 'not-going']);
 
@@ -24,8 +44,8 @@ const spaceEventFieldsSchema = z.object({
   endsAt: z.string().datetime(),
   location: z.string().trim().max(EVENT_LOCATION_MAX_LENGTH).nullable(),
   url: z.string().url().nullable(),
-  liveEmbedUrl: z.string().nullable().default(null),
-  replayUrl: z.string().nullable().default(null),
+  liveEmbedUrl: eventEmbedUrlSchema.nullable().default(null),
+  replayUrl: eventEmbedUrlSchema.nullable().default(null),
   discussionRootPostId: z.string().min(1).nullable().default(null),
   createdByUserId: z.string().min(1),
   createdAt: z.string().datetime(),
@@ -74,6 +94,8 @@ export const createEventInputSchema = z.object({
   endsAt: z.string().datetime(),
   location: z.string().trim().max(EVENT_LOCATION_MAX_LENGTH).optional(),
   url: z.string().url().optional(),
+  liveEmbedUrl: eventEmbedUrlSchema.optional(),
+  replayUrl: eventEmbedUrlSchema.optional(),
 });
 
 export const updateEventInputSchema = z.object({
@@ -84,6 +106,8 @@ export const updateEventInputSchema = z.object({
   endsAt: z.string().datetime().optional(),
   location: z.string().trim().max(EVENT_LOCATION_MAX_LENGTH).nullable().optional(),
   url: z.string().url().nullable().optional(),
+  liveEmbedUrl: eventEmbedUrlSchema.nullable().optional(),
+  replayUrl: eventEmbedUrlSchema.nullable().optional(),
 });
 
 export const eventRefSchema = z.object({

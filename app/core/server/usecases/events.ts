@@ -253,6 +253,8 @@ export const createEvent = async (
     endsAt: parsed.data.endsAt,
     location: parsed.data.location ?? null,
     url: parsed.data.url ?? null,
+    liveEmbedUrl: parsed.data.liveEmbedUrl ?? null,
+    replayUrl: parsed.data.replayUrl ?? null,
     createdByUserId: staff.value.userId,
     createdAt: deps.clock.nowIso(),
   });
@@ -300,6 +302,9 @@ export const updateEvent = async (
     endsAt: parsed.data.endsAt ?? event.endsAt,
     location: parsed.data.location === undefined ? event.location : parsed.data.location,
     url: parsed.data.url === undefined ? event.url : parsed.data.url,
+    liveEmbedUrl:
+      parsed.data.liveEmbedUrl === undefined ? event.liveEmbedUrl : parsed.data.liveEmbedUrl,
+    replayUrl: parsed.data.replayUrl === undefined ? event.replayUrl : parsed.data.replayUrl,
     updatedAt: deps.clock.nowIso(),
   });
   if (!record.success) return err(validation('Invalid event update payload', record.error.flatten()));

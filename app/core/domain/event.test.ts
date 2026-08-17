@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { VIDEO_EMBED_URL_MESSAGE } from './course.js';
 import {
   buildEventIcs,
+  createEventInputSchema,
   eventDiscussionBody,
   isEventLive,
   listSpaceEventsInputSchema,
@@ -9,10 +11,13 @@ import {
   spaceEventSchema,
   toPublicSpaceEvent,
   upcomingEventsInputSchema,
+  updateEventInputSchema,
   type SpaceEvent,
 } from './event.js';
 
 const NOW = '2026-09-01T10:00:00.000Z';
+
+const BUNNY_EMBED = 'https://iframe.mediadelivery.net/embed/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
 
 const event = (overrides: Partial<SpaceEvent> = {}): SpaceEvent =>
   spaceEventSchema.parse({
@@ -74,9 +79,61 @@ describe('space event schema', () => {
   });
 });
 
+describe('live and replay embeds', () => {
+  it('normalizes an allowlisted provider URL on the event and on its inputs', () => {
+    expect(event({ liveEmbedUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })).toMatchObject({
+      liveEmbedUrl: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+    });
+    expect(
+      createEventInputSchema.parse({
+        spaceId: 's1',
+        title: 'Warsztat',
+        startsAt: '2026-09-01T09:00:00.000Z',
+        endsAt: '2026-09-01T11:00:00.000Z',
+        liveEmbedUrl: BUNNY_EMBED,
+      }),
+    ).toMatchObject({ liveEmbedUrl: BUNNY_EMBED });
+    expect(
+      updateEventInputSchema.parse({ eventId: 'e1', replayUrl: 'https://vimeo.com/76979871' }),
+    ).toEqual({ eventId: 'e1', replayUrl: 'https://player.vimeo.com/video/76979871' });
+  });
+
+  it('rejects a host outside the embed allowlist instead of passing it through', () => {
+    const parsed = spaceEventSchema.safeParse({
+      ...event(),
+      liveEmbedUrl: 'https://stream.example.com/room/1',
+    });
+
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.flatten().fieldErrors.liveEmbedUrl).toEqual([
+      VIDEO_EMBED_URL_MESSAGE.unsupportedHost,
+    ]);
+    expect(
+      updateEventInputSchema.safeParse({ eventId: 'e1', replayUrl: 'javascript:alert(1)' }).success,
+    ).toBe(false);
+    expect(
+      createEventInputSchema.safeParse({
+        spaceId: 's1',
+        title: 'Warsztat',
+        startsAt: '2026-09-01T09:00:00.000Z',
+        endsAt: '2026-09-01T11:00:00.000Z',
+        liveEmbedUrl: 'https://iframe.mediadelivery.net/embed/12345/not-a-guid',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps an unset live or replay URL erasable', () => {
+    expect(updateEventInputSchema.parse({ eventId: 'e1', liveEmbedUrl: null })).toEqual({
+      eventId: 'e1',
+      liveEmbedUrl: null,
+    });
+  });
+});
+
 describe('public event projection', () => {
   it('drops the creating account and carries counts, viewer answer and live state', () => {
-    const projected = toPublicSpaceEvent(event({ liveEmbedUrl: 'https://iframe.example/embed' }), {
+    const projected = toPublicSpaceEvent(event({ liveEmbedUrl: BUNNY_EMBED }), {
       goingCount: 3,
       notGoingCount: 1,
       viewerRsvp: 'going',
@@ -89,7 +146,7 @@ describe('public event projection', () => {
   });
 
   it('is live only inside the window and only with a live embed', () => {
-    const live = event({ liveEmbedUrl: 'https://iframe.example/embed' });
+    const live = event({ liveEmbedUrl: BUNNY_EMBED });
 
     expect(isEventLive(live, '2026-09-01T08:59:59.000Z')).toBe(false);
     expect(isEventLive(live, '2026-09-01T09:00:00.000Z')).toBe(true);

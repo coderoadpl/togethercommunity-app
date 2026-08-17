@@ -41,6 +41,7 @@ const SOON = '2026-09-02T18:00:00.000Z';
 const SOON_END = '2026-09-02T20:00:00.000Z';
 const LONG_AGO = '2026-08-01T18:00:00.000Z';
 const LONG_AGO_END = '2026-08-01T20:00:00.000Z';
+const BUNNY_EMBED = 'https://iframe.mediadelivery.net/embed/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
 
 const identity = (overrides: Partial<Identity> = {}): Identity => ({
   userId: 'u1',
@@ -496,6 +497,23 @@ describe('createEvent', () => {
     expect(f.events.rows).toEqual([]);
   });
 
+  it('keeps the live and replay embeds of a new event', async () => {
+    const f = fixture();
+
+    const created = await createEvent(
+      staffCtx(),
+      { ...validInput, liveEmbedUrl: BUNNY_EMBED, replayUrl: 'https://vimeo.com/76979871' },
+      f.deps,
+    );
+
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.value).toMatchObject({
+      liveEmbedUrl: BUNNY_EMBED,
+      replayUrl: 'https://player.vimeo.com/video/76979871',
+    });
+  });
+
   it('rejects an archived space and answers not_found for a missing one', async () => {
     const f = fixture({
       spaces: [space({ id: 's-open', archivedAt: '2026-08-01T00:00:00.000Z' })],
@@ -622,7 +640,7 @@ describe('event reads', () => {
           id: 'e-live',
           startsAt: '2026-09-01T09:00:00.000Z',
           endsAt: '2026-09-01T11:00:00.000Z',
-          liveEmbedUrl: 'https://iframe.example/embed/1/2',
+          liveEmbedUrl: BUNNY_EMBED,
         }),
       ],
     });
@@ -712,6 +730,27 @@ describe('updateEvent and deleteEvent', () => {
     if (!updated.ok) return;
     expect(updated.value).toMatchObject({ title: 'Warsztat II', location: 'Online', updatedAt: NOW });
     expect(f.notifications.rows).toEqual([]);
+  });
+
+  it('stores a normalized live embed and rejects a host outside the allowlist', async () => {
+    const f = fixture({ events: [event({ id: 'e-soon' })] });
+
+    const updated = await updateEvent(
+      staffCtx(),
+      { eventId: 'e-soon', liveEmbedUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+      f.deps,
+    );
+
+    expect(updated.ok && updated.value.liveEmbedUrl).toBe(
+      'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+    );
+    expect(
+      await updateEvent(
+        staffCtx(),
+        { eventId: 'e-soon', replayUrl: 'https://stream.example.com/room/1' },
+        f.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('rejects an edit that inverts the time order', async () => {

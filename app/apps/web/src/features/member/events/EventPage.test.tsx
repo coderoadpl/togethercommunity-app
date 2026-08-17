@@ -24,6 +24,8 @@ import { EventPage } from './EventPage.js';
 
 const FUTURE_START = '2099-09-10T16:00:00.000Z';
 const FUTURE_END = '2099-09-10T17:30:00.000Z';
+const BUNNY_EMBED = 'https://iframe.mediadelivery.net/embed/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
+const REPLAY_EMBED = 'https://player.vimeo.com/video/76979871';
 
 const okMe = () =>
   http.get('/api/me', () =>
@@ -238,6 +240,46 @@ describe('EventPage', () => {
     await renderEvent();
 
     expect(await screen.findByTestId('event-ended')).toHaveTextContent(pl.events.ended);
+    expect(screen.queryByTestId('event-rsvp')).not.toBeInTheDocument();
+  });
+
+  it('plays the stream above the discussion while the event is live', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces(),
+      okEvent(event({ liveEmbedUrl: BUNNY_EMBED, liveNow: true })),
+      okDiscussion(),
+    );
+
+    await renderEvent();
+
+    expect(await screen.findByTestId('event-live-embed')).toHaveAttribute('src', BUNNY_EMBED);
+    expect(screen.getByTestId('event-live')).toHaveTextContent(pl.events.liveBadge);
+    expect(screen.queryByTestId('event-replay')).not.toBeInTheDocument();
+  });
+
+  it('swaps the stream for the recording once the event is over', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces(),
+      okEvent(
+        event({
+          startsAt: '2020-01-01T10:00:00.000Z',
+          endsAt: '2020-01-01T11:00:00.000Z',
+          liveEmbedUrl: BUNNY_EMBED,
+          replayUrl: REPLAY_EMBED,
+        }),
+      ),
+      okDiscussion(),
+    );
+
+    await renderEvent();
+
+    expect(await screen.findByTestId('event-replay-embed')).toHaveAttribute('src', REPLAY_EMBED);
+    expect(screen.getByTestId('event-replay')).toHaveTextContent(pl.events.replay);
+    expect(screen.queryByTestId('event-live')).not.toBeInTheDocument();
     expect(screen.queryByTestId('event-rsvp')).not.toBeInTheDocument();
   });
 

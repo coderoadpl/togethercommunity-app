@@ -12,6 +12,7 @@ import { FinePrint, PostBody, PostMetaText } from '../../../theme.js';
 import { MemberSurface } from '../MemberSurface.js';
 import { PublicThreadView } from '../PublicFeed.js';
 import { formatEventRange } from './event-time.js';
+import { EventMedia } from './EventMedia.js';
 
 const PublicEventDiscussion = ({ spaceId, rootPostId }: { spaceId: string; rootPostId: string }) => {
   const t = useTranslations();
@@ -82,6 +83,7 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
       ]}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }} data-testid="public-event-page">
+        <EventMedia event={event} />
         {event.description === null ? null : (
           <PostBody variant="body1" component="p" data-testid="public-event-description">
             {event.description}

@@ -17,6 +17,8 @@ import { server } from '../../../test/server.js';
 import { SpaceFeedPage } from '../SpaceFeedPage.js';
 import { EventPage } from './EventPage.js';
 
+const BUNNY_EMBED = 'https://iframe.mediadelivery.net/embed/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
+
 const anonMe = () =>
   http.get('/api/me', () =>
     HttpResponse.json(
@@ -161,6 +163,21 @@ describe('public event surface', () => {
     );
     expect(screen.queryByTestId('event-rsvp')).not.toBeInTheDocument();
     expect(screen.queryByTestId('event-ics')).not.toBeInTheDocument();
+  });
+
+  it('plays the live stream of a public event without offering an RSVP', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicEvent(event({ liveEmbedUrl: BUNNY_EMBED, liveNow: true })),
+      okPublicThread(),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    expect(await screen.findByTestId('event-live-embed')).toHaveAttribute('src', BUNNY_EMBED);
+    expect(screen.getByTestId('event-live')).toHaveTextContent(pl.events.liveHeading);
+    expect(screen.getByTestId('public-event-sign-in')).toBeInTheDocument();
   });
 
   it('shows a not-found state when the public event is unavailable', async () => {

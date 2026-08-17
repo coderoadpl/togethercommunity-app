@@ -22,6 +22,8 @@ import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelEventCreateRoute, PanelEventEditRoute, PanelSpaceEventsRoute } from '../panel-routes.js';
 
+const BUNNY_EMBED = 'https://iframe.mediadelivery.net/embed/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
+
 const staffSpace = (): StaffSpace => ({
   id: 's1',
   tenantId: 't1',
@@ -209,9 +211,40 @@ describe('space events panel', () => {
           endsAt: '2099-09-10T17:30:00.000Z',
           location: 'Online',
           url: 'https://meet.example.com/live',
+          liveEmbedUrl: null,
+          replayUrl: null,
         },
       ]),
     );
+  });
+
+  it('carries the live stream link and refuses a host outside the allowlist', async () => {
+    const updates: unknown[] = [];
+    server.use(
+      okStaffSpaces(),
+      okSpaceEvents([event()]),
+      okEvent(event()),
+      http.post('/api/events/update', async ({ request }) => {
+        const body = updateEventInputSchema.parse(await request.json());
+        updates.push(body);
+        return HttpResponse.json({ ok: true, data: { event: event({ liveEmbedUrl: BUNNY_EMBED }) } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await renderPanel('/panel/spaces/s1/events/e1');
+
+    const liveField = await screen.findByLabelText(pl.events.liveEmbedUrlLabel);
+    await user.type(liveField, 'https://stream.example.com/room/1');
+
+    expect(screen.getByTestId('event-live-embed-help')).toHaveTextContent(pl.events.embedUrlError);
+    expect(screen.getByTestId('event-form-submit')).toBeDisabled();
+
+    await user.clear(liveField);
+    await user.type(liveField, BUNNY_EMBED);
+    await user.click(screen.getByTestId('event-form-submit'));
+
+    await waitFor(() => expect(updates).toMatchObject([{ liveEmbedUrl: BUNNY_EMBED }]));
   });
 
   it('deletes an event through the confirmation dialog', async () => {

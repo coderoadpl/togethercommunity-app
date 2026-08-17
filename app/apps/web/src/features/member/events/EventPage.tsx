@@ -14,6 +14,7 @@ import { MemberSurface } from '../MemberSurface.js';
 import { ThreadDiscussion } from '../ThreadDiscussion.js';
 import { useViewerKind } from '../viewer.js';
 import { formatEventRange, hasEnded } from './event-time.js';
+import { EventMedia } from './EventMedia.js';
 import { PublicEventPage } from './PublicEventPage.js';
 import { RsvpButtons } from './RsvpButtons.js';
 
@@ -176,6 +177,7 @@ const MemberEventPage = ({ spaceId, eventId }: { spaceId: string; eventId: strin
       ]}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }} data-testid="event-page">
+        <EventMedia event={current} />
         {current.description === null ? null : (
           <PostBody variant="body1" component="p" data-testid="event-description">
             {current.description}

@@ -1,4 +1,4 @@
-import { Box, Stack, Typography } from '@mui/material';
+import { Box, Chip, Stack, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
 import { communityEventPath } from '#core/contract/index.js';
@@ -18,9 +18,19 @@ export const EventSummaryCard = ({ event }: { event: PublicSpaceEvent }) => {
       data-testid={`event-card-${event.id}`}
     >
       <Box sx={{ p: '1rem 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', height: '100%' }}>
-        <Typography variant="h3" component="h3">
-          {event.title}
-        </Typography>
+        <Stack direction="row" useFlexGap sx={{ columnGap: '0.5rem', alignItems: 'center' }}>
+          <Typography variant="h3" component="h3">
+            {event.title}
+          </Typography>
+          {event.liveNow ? (
+            <Chip
+              size="small"
+              color="error"
+              label={t.events.liveBadge}
+              data-testid={`event-card-live-${event.id}`}
+            />
+          ) : null}
+        </Stack>
         <PostMetaText component="time" dateTime={event.startsAt}>
           {formatEventRange(event.startsAt, event.endsAt, language)}
         </PostMetaText>

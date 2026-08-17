@@ -30,12 +30,14 @@ const videoLessonBlockSchema = z
   })
   .strict();
 
-type VideoEmbedProvider = 'youtube' | 'vimeo';
+type VideoEmbedProvider = 'youtube' | 'vimeo' | 'bunny';
 
 export const VIDEO_EMBED_URL_MESSAGE = {
   url: 'Must be an absolute http(s) video or embed URL',
+  unsupportedHost: 'Must be a YouTube, Vimeo or Bunny Stream URL',
   youtube: 'Must be a YouTube watch, youtu.be, Shorts, live or embed URL with an 11-character video id',
   vimeo: 'Must be a Vimeo video, channel, group or player URL with a numeric video id',
+  bunny: 'Must be a Bunny Stream embed URL with a numeric library id and a video GUID',
 } as const;
 
 export type VideoEmbedUrlInspection =
@@ -53,9 +55,14 @@ const youtubeHosts = new Set([
   'www.youtube-nocookie.com',
 ]);
 const vimeoHosts = new Set(['vimeo.com', 'www.vimeo.com', 'player.vimeo.com']);
+const bunnyHosts = new Set(['iframe.mediadelivery.net']);
 const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 const vimeoVideoIdSchema = z.string().regex(/^\d+$/);
 const vimeoPrivacyHashSchema = z.string().regex(/^[A-Fa-f0-9]{6,16}$/);
+const bunnyLibraryIdSchema = z.string().regex(/^\d+$/);
+const bunnyVideoIdSchema = z
+  .string()
+  .regex(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i);
 
 const youtubeVideoId = (url: URL): string | null => {
   const segments = url.pathname.split('/').filter((segment) => segment.length > 0);
@@ -109,6 +116,23 @@ const inspectVimeoUrl = (url: URL): VideoEmbedUrlInspection => {
   return { kind: 'supported', provider: 'vimeo', embedUrl: embedUrl.toString() };
 };
 
+/** Bunny signs playback with `token`/`expires` query parameters, so the query survives normalization. */
+const inspectBunnyUrl = (url: URL): VideoEmbedUrlInspection => {
+  const segments = url.pathname.split('/').filter((segment) => segment.length > 0);
+  const [prefix, libraryId, videoId] = segments;
+  if (
+    segments.length !== 3
+    || prefix !== 'embed'
+    || !bunnyLibraryIdSchema.safeParse(libraryId).success
+    || !bunnyVideoIdSchema.safeParse(videoId).success
+  ) {
+    return { kind: 'invalid-provider', provider: 'bunny' };
+  }
+  const embedUrl = new URL(`https://iframe.mediadelivery.net/embed/${libraryId}/${videoId}`);
+  embedUrl.search = url.search;
+  return { kind: 'supported', provider: 'bunny', embedUrl: embedUrl.toString() };
+};
+
 /**
  * `z.string().url()` accepts every parseable scheme, including `javascript:`,
  * and embed URLs land in an iframe `src` — so schemes are pinned to http(s).
@@ -121,6 +145,7 @@ export const inspectVideoEmbedUrl = (value: string): VideoEmbedUrlInspection => 
   const hostname = url.hostname.toLowerCase();
   if (youtubeHosts.has(hostname)) return inspectYoutubeUrl(url);
   if (vimeoHosts.has(hostname)) return inspectVimeoUrl(url);
+  if (bunnyHosts.has(hostname)) return inspectBunnyUrl(url);
   return { kind: 'unsupported' };
 };
 

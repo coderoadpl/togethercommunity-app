@@ -479,6 +479,18 @@ export interface Messages {
     deleteConfirmBody: string;
     panelEmpty: string;
     panelEmptyHint: string;
+    liveNow: string;
+    liveBadge: string;
+    liveJoin: string;
+    liveHeading: string;
+    liveFrameTitle: string;
+    replay: string;
+    replayFrameTitle: string;
+    liveEmbedUrlLabel: string;
+    liveEmbedUrlHint: string;
+    replayUrlLabel: string;
+    replayUrlHint: string;
+    embedUrlError: string;
   };
   emailVerification: {
     heading: string;

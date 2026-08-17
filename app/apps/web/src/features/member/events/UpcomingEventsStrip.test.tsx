@@ -75,6 +75,14 @@ describe('UpcomingEventsStrip', () => {
     expect(screen.getByTestId('event-card-e2')).toHaveTextContent('Warsztat');
   });
 
+  it('badges an event that is already on air', async () => {
+    server.use(okUpcoming([{ ...event('e1', 'Live Q&A'), liveNow: true }]));
+
+    await renderStrip();
+
+    expect(await screen.findByTestId('event-card-live-e1')).toHaveTextContent(pl.events.liveBadge);
+  });
+
   it('stays out of the way when nothing is scheduled', async () => {
     server.use(okUpcoming([]));
 

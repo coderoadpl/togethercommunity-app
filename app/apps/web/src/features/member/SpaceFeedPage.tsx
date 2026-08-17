@@ -19,6 +19,7 @@ import {
   PostMetaText,
 } from '../../theme.js';
 import { EmptyFeedIcon } from './community-icons.js';
+import { LiveNowBanner } from './events/LiveNowBanner.js';
 import { SpaceEventsSection } from './events/SpaceEventsSection.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -322,6 +323,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   return (
     <MemberSurface title={space.name} eyebrow={t.community.feedEyebrow} width="wide" rail={rail}>
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
+        <LiveNowBanner spaceId={spaceId} />
         <Paper elevation={1} sx={{ p: '1.25rem' }}>
           <PostComposer
             label={t.community.composerLabel}

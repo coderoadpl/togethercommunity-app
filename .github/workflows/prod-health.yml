@@ -1,0 +1,86 @@
+name: prod-health
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: prod-health
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Probe production health
+        id: probe
+        run: |
+          body=$(curl -sS --max-time 15 --retry 2 --retry-delay 5 https://coderoad.togethercommunity.app/api/health) || {
+            echo "reason=health endpoint unreachable" >> "$GITHUB_OUTPUT"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          echo "$body" | head -c 400
+          ok=$(echo "$body" | jq -r '.ok')
+          database=$(echo "$body" | jq -r '.data.database')
+          schema=$(echo "$body" | jq -r '.data.schemaCurrent')
+          fingerprint=$(echo "$body" | jq -r '.data.schemaFingerprintMatch // "absent"')
+          if [ "$ok" = "true" ] && [ "$database" = "up" ] && [ "$schema" = "true" ] && [ "$fingerprint" != "false" ]; then
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "reason=ok=$ok database=$database schemaCurrent=$schema fingerprintMatch=$fingerprint" >> "$GITHUB_OUTPUT"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Raise a Todoist alert
+        id: todoist
+        if: steps.probe.outputs.failed == 'true'
+        env:
+          TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
+          REASON: ${{ steps.probe.outputs.reason }}
+        run: |
+          if [ -z "$TODOIST_API_TOKEN" ]; then
+            echo "TODOIST_API_TOKEN secret absent - skipping the Todoist alert"
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          existing=$(curl -sS --max-time 15 -H "Authorization: Bearer $TODOIST_API_TOKEN" \
+            "https://api.todoist.com/rest/v2/tasks?project_id=6h4xvJXV2GJrvfVm" \
+            | jq '[.[] | select(.content | startswith("ALERT: prod health"))] | length')
+          if [ "$existing" = "0" ]; then
+            curl -sS --max-time 15 -X POST "https://api.todoist.com/rest/v2/tasks" \
+              -H "Authorization: Bearer $TODOIST_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg reason "$REASON" '{
+                content: "ALERT: prod health failed",
+                description: ("coderoad.togethercommunity.app/api/health: " + $reason + " — run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"),
+                project_id: "6h4xvJXV2GJrvfVm",
+                priority: 4,
+                labels: []
+              }')"
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Send an SMS alert
+        if: steps.probe.outputs.failed == 'true' && steps.todoist.outputs.fresh == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: eu-central-1
+          ALERT_SMS_PHONE: ${{ secrets.ALERT_SMS_PHONE }}
+          REASON: ${{ steps.probe.outputs.reason }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
+            echo "SMS secrets absent - skipping the SMS alert"
+            exit 0
+          fi
+          aws sns publish \
+            --phone-number "$ALERT_SMS_PHONE" \
+            --message "Together prod health FAILED: $REASON" \
+            --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}'
+      - name: Fail the run on unhealthy production
+        if: steps.probe.outputs.failed == 'true'
+        run: |
+          echo "::error::${{ steps.probe.outputs.reason }}"
+          exit 1

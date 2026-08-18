@@ -32,6 +32,7 @@ jobs:
             echo "failed=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Raise a Todoist alert
+        id: todoist
         if: steps.probe.outputs.failed == 'true'
         env:
           TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
@@ -39,6 +40,7 @@ jobs:
         run: |
           if [ -z "$TODOIST_API_TOKEN" ]; then
             echo "TODOIST_API_TOKEN secret absent - skipping the Todoist alert"
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           existing=$(curl -sS --max-time 15 -H "Authorization: Bearer $TODOIST_API_TOKEN" \
@@ -55,7 +57,27 @@ jobs:
                 priority: 4,
                 labels: []
               }')"
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Send an SMS alert
+        if: steps.probe.outputs.failed == 'true' && steps.todoist.outputs.fresh == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: eu-central-1
+          ALERT_SMS_PHONE: ${{ secrets.ALERT_SMS_PHONE }}
+          REASON: ${{ steps.probe.outputs.reason }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
+            echo "SMS secrets absent - skipping the SMS alert"
+            exit 0
+          fi
+          aws sns publish \
+            --phone-number "$ALERT_SMS_PHONE" \
+            --message "Together prod health FAILED: $REASON" \
+            --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}'
       - name: Fail the run on unhealthy production
         if: steps.probe.outputs.failed == 'true'
         run: |

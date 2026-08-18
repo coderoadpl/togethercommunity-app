@@ -25,10 +25,11 @@ jobs:
           ok=$(echo "$body" | jq -r '.ok')
           database=$(echo "$body" | jq -r '.data.database')
           schema=$(echo "$body" | jq -r '.data.schemaCurrent')
-          if [ "$ok" = "true" ] && [ "$database" = "up" ] && [ "$schema" = "true" ]; then
+          fingerprint=$(echo "$body" | jq -r '.data.schemaFingerprintMatch // "absent"')
+          if [ "$ok" = "true" ] && [ "$database" = "up" ] && [ "$schema" = "true" ] && [ "$fingerprint" != "false" ]; then
             echo "failed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "reason=ok=$ok database=$database schemaCurrent=$schema" >> "$GITHUB_OUTPUT"
+            echo "reason=ok=$ok database=$database schemaCurrent=$schema fingerprintMatch=$fingerprint" >> "$GITHUB_OUTPUT"
             echo "failed=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Raise a Todoist alert

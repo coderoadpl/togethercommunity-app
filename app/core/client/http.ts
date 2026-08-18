@@ -173,6 +173,7 @@ import {
   tenantSettingsOutputSchema,
   termsConsentOutputSchema,
   onboardingOutputSchema,
+  tenantSetupReadinessOutputSchema,
   threadSubscriptionOutputSchema,
   type ApiKeyCreateInput,
   type ApiKeyImportAuditQuery,
@@ -2148,6 +2149,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.onboardingDismiss.path,
       onboardingOutputSchema,
       {},
+      signal,
+    ),
+  getTenantSetupReadiness: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.onboardingSetup.method,
+      API_ROUTES.onboardingSetup.path,
+      tenantSetupReadinessOutputSchema,
+      undefined,
       signal,
     ),
 });

@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 105. Route rows: 271. Exported `Ctx` use-case rows: 222.
+Closed capability count: 105. Route rows: 272. Exported `Ctx` use-case rows: 223.
 
 ## Human-readable diff
 
@@ -191,6 +191,7 @@ no changes
 | `POST /api/tenant/settings` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/onboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/onboarding/dismiss` | tenant:onboarding:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/onboarding/setup` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/probe` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
@@ -523,6 +524,7 @@ no changes
 | `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-settings.ts#getTenantSettings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts authorization call |
 | `tenant-settings.ts#updateTenantSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-settings.ts authorization call |
+| `tenant-setup-readiness.ts#getTenantSetupReadiness` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-setup-readiness.ts authorization call |
 | `tenants.ts#listMyTenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/tenants.ts authorization call |
 
 ## Authorization source evidence
@@ -533,10 +535,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:149` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:946` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:948` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1392` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1392` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:947` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:949` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1393` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1393` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:79` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

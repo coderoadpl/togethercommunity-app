@@ -59,6 +59,7 @@ import {
   listReportsInputSchema,
   createApiKeyInputSchema,
   creatorOnboardingSchema,
+  tenantSetupReadinessSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
@@ -1260,6 +1261,10 @@ export const onboardingOutputSchema = z.object({
   onboarding: creatorOnboardingSchema,
 });
 
+export const tenantSetupReadinessOutputSchema = z.object({
+  setup: tenantSetupReadinessSchema,
+});
+
 export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
 
 export type TenantSettingsUpdateInput = z.input<typeof tenantSettingsUpdateInputSchema>;
@@ -1790,6 +1795,7 @@ export const API_ROUTES = {
   supportMessage: { method: 'POST', path: '/api/support/message' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
   onboardingDismiss: { method: 'POST', path: '/api/onboarding/dismiss' },
+  onboardingSetup: { method: 'GET', path: '/api/onboarding/setup' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -2018,6 +2024,7 @@ export const API_PATHS = {
   supportMessage: API_ROUTES.supportMessage.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
+  onboardingSetup: API_ROUTES.onboardingSetup.path,
 } as const;
 
 /**

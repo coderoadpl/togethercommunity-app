@@ -268,6 +268,56 @@ export const pl: Messages = {
       paymentsConfigured: 'Skonfiguruj płatności',
     },
   },
+  tenantSetup: {
+    title: 'Konfiguracja platformy',
+    progress: ({ configured, total }) =>
+      format('{configured} z {total} skonfigurowane', { configured, total }),
+    allConfigured: 'Wszystko skonfigurowane — nic nie blokuje sprzedaży ani dostarczania treści.',
+    requiredHeading: 'Wymagane',
+    optionalHeading: 'Opcjonalne',
+    itemConfigured: 'Skonfigurowane',
+    itemMissing: 'Brak konfiguracji',
+    showItems: 'Pokaż listę',
+    hideItems: 'Ukryj listę',
+    items: {
+      stripe: {
+        label: 'Klucze Stripe',
+        impact: 'Bez klucza i sekretu webhooka checkout nie działa — nikt nie kupi produktu.',
+      },
+      emailSending: {
+        label: 'Wysyłka e-maili',
+        impact: 'Bez nadawcy i transportu (SES, SMTP lub Resend) e-maile transakcyjne idą z limitowanej puli platformy albo nie wychodzą wcale.',
+      },
+      storage: {
+        label: 'Magazyn plików S3',
+        impact: 'Bez S3 nie wgrasz okładek, załączników ani plików do pobrania.',
+      },
+      legalTerms: {
+        label: 'Dokumenty prawne (regulamin, polityka prywatności)',
+        impact: 'Bez linku do regulaminu lub polityki prywatności rejestracja i checkout nie zbierają zgody, więc nie masz dowodu jej akceptacji.',
+      },
+      publicHome: {
+        label: 'Publiczna przestrzeń startowa',
+        impact: 'Bez publicznej przestrzeni strona dla niezalogowanych jest pusta.',
+      },
+      billingPortal: {
+        label: 'Portal rozliczeń Stripe',
+        impact: 'Bez adresu portalu uczestnicy nie zmienią karty ani nie anulują subskrypcji samodzielnie.',
+      },
+      video: {
+        label: 'Bunny Stream',
+        impact: 'Bez Bunny Stream nie wybierzesz wideo do lekcji i nagrania się nie odtworzą.',
+      },
+      branding: {
+        label: 'Logo i kolor marki',
+        impact: 'Bez logo i koloru akcentu panel oraz strony publiczne używają domyślnego wyglądu.',
+      },
+      invoicing: {
+        label: 'Fakturowanie (iFirma lub KSeF)',
+        impact: 'Bez połączenia z dostawcą nie wystawisz faktur do zamówień.',
+      },
+    },
+  },
   settingsNavigation: {
     aria: 'Sekcje ustawień',
     company: 'Firma',

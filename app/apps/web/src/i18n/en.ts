@@ -262,6 +262,56 @@ export const en: Messages = {
       paymentsConfigured: 'Set up payments',
     },
   },
+  tenantSetup: {
+    title: 'Platform setup',
+    progress: ({ configured, total }) =>
+      format('{configured} of {total} configured', { configured, total }),
+    allConfigured: 'Everything is configured — nothing blocks selling or delivering content.',
+    requiredHeading: 'Required',
+    optionalHeading: 'Optional',
+    itemConfigured: 'Configured',
+    itemMissing: 'Not configured',
+    showItems: 'Show list',
+    hideItems: 'Hide list',
+    items: {
+      stripe: {
+        label: 'Stripe keys',
+        impact: 'Without the key and the webhook secret checkout is dead — nobody can buy a product.',
+      },
+      emailSending: {
+        label: 'E-mail sending',
+        impact: 'Without a sender identity and a transport (SES, SMTP or Resend) transactional e-mail falls back to the capped platform pool or never leaves at all.',
+      },
+      storage: {
+        label: 'S3 file storage',
+        impact: 'Without S3 you cannot upload covers, attachments or downloadable files.',
+      },
+      legalTerms: {
+        label: 'Legal documents (terms, privacy policy)',
+        impact: 'Without a terms or privacy policy link registration and checkout collect no consent, so you hold no proof of acceptance.',
+      },
+      publicHome: {
+        label: 'Public home space',
+        impact: 'Without a public space the anonymous landing page stays empty.',
+      },
+      billingPortal: {
+        label: 'Stripe billing portal',
+        impact: 'Without the portal URL members cannot change their card or cancel a subscription themselves.',
+      },
+      video: {
+        label: 'Bunny Stream',
+        impact: 'Without Bunny Stream you cannot pick videos for lessons and recordings will not play.',
+      },
+      branding: {
+        label: 'Logo and brand colour',
+        impact: 'Without a logo and an accent colour the panel and public pages use the default look.',
+      },
+      invoicing: {
+        label: 'Invoicing (iFirma or KSeF)',
+        impact: 'Without a provider connection you cannot issue invoices for orders.',
+      },
+    },
+  },
   settingsNavigation: {
     aria: 'Settings sections',
     company: 'Company',

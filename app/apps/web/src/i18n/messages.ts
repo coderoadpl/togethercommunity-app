@@ -258,6 +258,28 @@ export interface Messages {
       paymentsConfigured: string;
     };
   };
+  tenantSetup: {
+    title: string;
+    progress: (params: { configured: number; total: number }) => string;
+    allConfigured: string;
+    requiredHeading: string;
+    optionalHeading: string;
+    itemConfigured: string;
+    itemMissing: string;
+    showItems: string;
+    hideItems: string;
+    items: {
+      stripe: { label: string; impact: string };
+      emailSending: { label: string; impact: string };
+      storage: { label: string; impact: string };
+      legalTerms: { label: string; impact: string };
+      publicHome: { label: string; impact: string };
+      billingPortal: { label: string; impact: string };
+      video: { label: string; impact: string };
+      branding: { label: string; impact: string };
+      invoicing: { label: string; impact: string };
+    };
+  };
   settingsNavigation: {
     aria: string;
     company: string;

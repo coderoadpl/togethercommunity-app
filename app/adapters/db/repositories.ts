@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
+import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
@@ -128,6 +129,7 @@ import type { Db } from './client.js';
 import { uniqueViolation } from './pg-errors.js';
 import { appendMemberEvent } from './member-events.js';
 import { buildPrefixTsquery } from './post-search-query.js';
+import { fingerprintHash, introspectSchema, shortFingerprint } from './schema-fingerprint.js';
 import {
   consents,
   campaignSends,
@@ -3837,30 +3839,62 @@ const numberField = (row: unknown, field: string): number => {
   return parsed;
 };
 
-export const createHealthPort = (db: Db): HealthPort => ({
-  pingDatabase: async () => {
-    try {
-      await db.execute(sql`select 1`);
-      return true;
-    } catch {
-      return false;
-    }
-  },
-  schemaStatus: async () => {
-    const expectedMigrations = migrationJournal.entries.length;
-    const lastJournalWhen = migrationJournal.entries.at(-1)?.when ?? 0;
-    try {
-      const result = await db.execute(
-        sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from drizzle.__drizzle_migrations`,
-      );
-      const row = firstRow(result);
-      return {
-        expectedMigrations,
-        appliedMigrations: numberField(row, 'applied'),
-        schemaCurrent: numberField(row, 'latest') >= lastJournalWhen,
-      };
-    } catch {
-      return { expectedMigrations, appliedMigrations: null, schemaCurrent: false };
-    }
-  },
-});
+const FINGERPRINT_CACHE_TTL_MS = 60_000;
+
+type FingerprintStatus = {
+  schemaFingerprint: string | null;
+  schemaFingerprintMatch: boolean | null;
+};
+
+const readFingerprintStatus = async (db: Db): Promise<FingerprintStatus> => {
+  try {
+    const hash = fingerprintHash(await introspectSchema(db));
+    return {
+      schemaFingerprint: shortFingerprint(hash),
+      schemaFingerprintMatch: hash === committedFingerprint.hash,
+    };
+  } catch {
+    return { schemaFingerprint: null, schemaFingerprintMatch: null };
+  }
+};
+
+export const createHealthPort = (db: Db): HealthPort => {
+  let cached: { at: number; value: FingerprintStatus } | null = null;
+  const fingerprintStatus = async (): Promise<FingerprintStatus> => {
+    const now = Date.now();
+    if (cached !== null && now - cached.at < FINGERPRINT_CACHE_TTL_MS) return cached.value;
+    const value = await readFingerprintStatus(db);
+    cached = { at: now, value };
+    return value;
+  };
+
+  return {
+    pingDatabase: async () => {
+      try {
+        await db.execute(sql`select 1`);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    schemaStatus: async () => {
+      const expectedMigrations = migrationJournal.entries.length;
+      const lastJournalWhen = migrationJournal.entries.at(-1)?.when ?? 0;
+      const fingerprint = await fingerprintStatus();
+      try {
+        const result = await db.execute(
+          sql`select count(*)::int as applied, coalesce(max(created_at), 0) as latest from drizzle.__drizzle_migrations`,
+        );
+        const row = firstRow(result);
+        return {
+          expectedMigrations,
+          appliedMigrations: numberField(row, 'applied'),
+          schemaCurrent: numberField(row, 'latest') >= lastJournalWhen,
+          ...fingerprint,
+        };
+      } catch {
+        return { expectedMigrations, appliedMigrations: null, schemaCurrent: false, ...fingerprint };
+      }
+    },
+  };
+};

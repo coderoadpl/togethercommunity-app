@@ -199,6 +199,8 @@ describe('schema rescue migration', () => {
         expectedMigrations: expected,
         appliedMigrations: 80,
         schemaCurrent: false,
+        schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
+        schemaFingerprintMatch: expect.any(Boolean),
       });
 
       await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
@@ -211,6 +213,8 @@ describe('schema rescue migration', () => {
         expectedMigrations: expected,
         appliedMigrations: expected - 1,
         schemaCurrent: true,
+        schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
+        schemaFingerprintMatch: expect.any(Boolean),
       });
     });
   }, 60_000);
@@ -229,6 +233,8 @@ describe('schema rescue migration', () => {
         expectedMigrations: expected,
         appliedMigrations: expected,
         schemaCurrent: true,
+        schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
+        schemaFingerprintMatch: expect.any(Boolean),
       });
     });
   }, 60_000);

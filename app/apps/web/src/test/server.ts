@@ -31,6 +31,8 @@ export const server = setupServer(
         expectedMigrations: 82,
         appliedMigrations: 82,
         schemaCurrent: true,
+        schemaFingerprint: 'c087b16a6bb6',
+        schemaFingerprintMatch: true,
       },
     }),
   ),

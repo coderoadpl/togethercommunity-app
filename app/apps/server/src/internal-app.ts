@@ -227,6 +227,7 @@ import {
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
+  getTenantSetupReadiness,
   grantProductToMember,
   listBunnyVideos,
   listCampaignsWithEngagement,
@@ -1842,6 +1843,16 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   app.post(API_PATHS.onboardingDismiss, async (c) => {
     const result = await dismissCreatorOnboarding({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ onboarding: result.value }) : result);
+  });
+
+  app.get(API_PATHS.onboardingSetup, async (c) => {
+    const result = await getTenantSetupReadiness({ identity: c.get('identity') }, {
+      tenants: deps.tenants,
+      tenantSecrets: deps.tenantSecrets,
+      spaces: deps.spaces,
+      sesSettings: deps.marketing?.sesSettings ?? null,
+    });
+    return respond(result.ok ? ok({ setup: result.value }) : result);
   });
 
   app.post(API_PATHS.integrationTest, async (c) => {

@@ -35,6 +35,7 @@ export * from './usecases/tenant-secrets.js';
 export * from './usecases/tenant-settings.js';
 export * from './usecases/terms-consent.js';
 export * from './usecases/onboarding.js';
+export * from './usecases/tenant-setup-readiness.js';
 export * from './usecases/provider-diagnostics.js';
 export * from './usecases/storage-configuration.js';
 export * from './usecases/configure-stripe.js';

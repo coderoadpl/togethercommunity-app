@@ -37,6 +37,7 @@ export * from './support.js';
 export * from './consent.js';
 export * from './tenant-secret.js';
 export * from './onboarding.js';
+export * from './tenant-setup.js';
 export * from './stream-video.js';
 export * from './payment.js';
 export * from './commerce.js';

@@ -170,6 +170,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |
+| `GET /api/onboarding/setup` | authenticated | read | onboarding setup |
 | `POST /api/integrations/test` | authenticated | mutating | integration test |
 | `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
 | `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |

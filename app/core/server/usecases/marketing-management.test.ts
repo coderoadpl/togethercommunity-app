@@ -36,7 +36,10 @@ const NOW = '2026-07-22T10:00:00.000Z';
 const ctx: Ctx = { identity: {
   userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
+image: null,
+memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 } satisfies Identity };
 const clock = { nowIso: () => NOW };
 const sequence = () => {

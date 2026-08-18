@@ -30,6 +30,9 @@ export type Post = z.output<typeof postSchema>;
  */
 export const publicPostSchema = postSchema.omit({ authorUserId: true }).extend({
   isOwn: z.boolean(),
+  // Unlike authorDisplay this is never snapshotted, and it stays null on the
+  // anonymous surface so public JSON carries no e-mail hash (ADR 0016).
+  authorAvatarUrl: z.string().nullable().default(null),
 });
 
 export type PublicPost = z.output<typeof publicPostSchema>;
@@ -79,22 +82,34 @@ export const searchPostsInputSchema = z.object({
   limit: z.number().int().min(1).max(50).default(20),
 });
 
-const notificationKindSchema = z.enum(['thread-reply', 'space-post', 'lesson-question']);
+const notificationKindSchema = z.enum([
+  'thread-reply',
+  'space-post',
+  'lesson-question',
+  'dm-message',
+  'space-event',
+]);
+
+/** Notification contexts outgrew post contexts: posts stay lesson|space. */
+const notificationContextKindSchema = z.enum(['lesson', 'space', 'dm']);
 
 /**
  * One payload shape for every notification kind so clients render without
- * narrowing: `lessonName` holds the lesson name for lesson contexts and the
- * space name for space contexts (courseId stays null there).
+ * narrowing: `lessonName` holds the lesson name for lesson contexts, the
+ * space name for space contexts and the sender display for direct messages
+ * (courseId stays null outside lessons).
  */
 const notificationPayloadSchema = z.object({
   rootPostId: z.string().min(1),
   postId: z.string().min(1),
-  contextKind: postContextKindSchema,
+  contextKind: notificationContextKindSchema,
   contextId: z.string().min(1),
   // Defaults keep rows persisted before these fields existed parseable.
   courseId: z.string().min(1).nullable().default(null),
+  eventId: z.string().min(1).nullable().default(null),
   lessonName: z.string().default(''),
   authorDisplay: z.string().trim().min(1),
+  authorAvatarUrl: z.string().nullable().default(null),
   snippet: z.string(),
 });
 
@@ -175,7 +190,11 @@ export const renderPost = (post: Post): Post =>
   post.deletedAt === null ? post : { ...post, body: DELETED_POST_PLACEHOLDER };
 
 /** Client projection: the raw author id is dropped, ownership pre-computed into isOwn. */
-export const toPublicPost = (post: Post, viewerUserId: string): PublicPost => ({
+export const toPublicPost = (
+  post: Post,
+  viewerUserId: string,
+  authorAvatarUrl: string | null = null,
+): PublicPost => ({
   id: post.id,
   tenantId: post.tenantId,
   contextKind: post.contextKind,
@@ -190,6 +209,7 @@ export const toPublicPost = (post: Post, viewerUserId: string): PublicPost => ({
   deletedAt: post.deletedAt,
   pinnedAt: post.pinnedAt,
   isOwn: post.authorUserId === viewerUserId,
+  authorAvatarUrl,
 });
 
 export const postSnippet = (body: string): string => body.replace(/\s+/g, ' ').slice(0, 180);

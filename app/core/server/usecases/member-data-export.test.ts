@@ -20,6 +20,7 @@ const member: Member = {
   bannedAt: null,
   bannedReason: null,
   bannedByUserId: null,
+  dmOptOutAt: null,
 };
 const post: Post = {
   id: 'post-1',
@@ -63,7 +64,10 @@ const context = (role: 'member' | 'staff' | 'none'): Ctx => ({
     tenantName: role === 'none' ? null : 'Acme',
     staffRole: role === 'staff' ? 'admin' : null,
     memberId: role === 'member' ? 'member-1' : null,
+    image: null,
+    memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
   },
 });
 
@@ -77,6 +81,8 @@ const deps = (
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateDisplayName: async () => null,
+    updateDmOptOut: async () => null,
     setBanned: async () => null,
   },
   grants: {

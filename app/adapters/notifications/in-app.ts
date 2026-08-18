@@ -2,11 +2,11 @@ import { ok } from '#core/domain/index.js';
 import type {
   NotificationChannelPort,
   RealtimeBusPort,
-  RealtimeNotificationEvent,
+  RealtimeEvent,
 } from '#core/server/index.js';
 
 export const createRealtimeBus = (): RealtimeBusPort => {
-  const listeners = new Set<(event: RealtimeNotificationEvent) => void>();
+  const listeners = new Set<(event: RealtimeEvent) => void>();
   return {
     publish: (event) => {
       for (const listener of listeners) listener(event);
@@ -24,6 +24,7 @@ export const createRealtimeBus = (): RealtimeBusPort => {
 export const createInAppNotificationChannel = (bus: RealtimeBusPort): NotificationChannelPort => ({
   deliver: async (notification) => {
     bus.publish({
+      kind: 'notification',
       tenantId: notification.tenantId,
       recipientUserId: notification.recipientUserId,
       notification,

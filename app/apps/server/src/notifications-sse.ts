@@ -39,7 +39,11 @@ export const createNotificationEventStream = (input: {
       send(sseEvent('unread', { unread: await input.unreadCount() }));
       unsubscribe = input.bus.subscribe((event) => {
         if (event.tenantId !== input.tenantId || event.recipientUserId !== input.recipientUserId) return;
-        send(sseEvent('notification', event.notification));
+        send(
+          event.kind === 'notification'
+            ? sseEvent('notification', event.notification)
+            : sseEvent('dm', { conversationId: event.conversationId }),
+        );
       });
       heartbeat = setInterval(() => send(': heartbeat\n\n'), input.heartbeatMs ?? SSE_HEARTBEAT_MS);
     },

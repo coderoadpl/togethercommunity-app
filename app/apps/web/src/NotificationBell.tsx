@@ -1,14 +1,20 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, ListItemIcon, ListItemText, Menu, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
+import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import type { Notification } from '#core/domain/index.js';
 
 import { actions } from './api.js';
+import { MemberAvatar } from './components/ui/MemberAvatar.js';
 import { localizeError, useLanguage, useTranslations } from './i18n/index.js';
 import { formatDate } from './lib/format.js';
+import {
+  notificationTarget,
+  notificationTitle,
+  useNotificationNavigation,
+} from './notification-links.js';
 import { connectNotificationsStream } from './notifications-stream.js';
 import {
   Eyebrow,
@@ -18,6 +24,7 @@ import {
   NotificationSnippet,
   NotificationTitle,
   PanelNavItem,
+  SHELL_SNACKBAR_ANCHOR,
   UnreadDot,
 } from './theme.js';
 
@@ -63,7 +70,7 @@ export const NotificationBell = ({
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const navigate = useNavigate();
+  const navigateToTarget = useNotificationNavigation();
   const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [polling, setPolling] = useState(false);
@@ -72,7 +79,10 @@ export const NotificationBell = ({
   useEffect(() => {
     if (!live) return;
     const stream = connectNotificationsStream({
-      onEvent: () => void queryClient.invalidateQueries(actions.notificationsInvalidates()),
+      onEvent: () => {
+        void queryClient.invalidateQueries(actions.notificationsInvalidates());
+        void queryClient.invalidateQueries(actions.messagesInvalidates());
+      },
       onFallback: () => setPolling(true),
     });
     return () => stream.close();
@@ -97,34 +107,8 @@ export const NotificationBell = ({
   const openNotification = (notification: Notification) => {
     setAnchorEl(null);
     if (notification.readAt === null) markRead.mutate({ id: notification.id });
-    if (notification.payload.contextKind === 'space') {
-      void navigate({ to: '/community/$spaceId', params: { spaceId: notification.payload.contextId } });
-    } else if (notification.payload.courseId !== null) {
-      void navigate({
-        to: '/my/courses/$courseId/lessons/$lessonId',
-        params: {
-          courseId: notification.payload.courseId,
-          lessonId: notification.payload.contextId,
-        },
-      });
-    }
+    navigateToTarget(notificationTarget(notification));
   };
-
-  const notificationTitle = (notification: Notification) =>
-    notification.kind === 'space-post'
-      ? t.notifications.spacePost({
-          author: notification.payload.authorDisplay,
-          space: notification.payload.lessonName,
-        })
-      : notification.kind === 'lesson-question'
-        ? t.notifications.lessonQuestion({
-            author: notification.payload.authorDisplay,
-            lesson: notification.payload.lessonName,
-          })
-        : t.notifications.threadReply({
-            author: notification.payload.authorDisplay,
-            lesson: notification.payload.lessonName,
-          });
 
   const unreadCount = unread.data?.unread ?? 0;
   const notifications = list.data?.notifications ?? [];
@@ -221,9 +205,14 @@ export const NotificationBell = ({
               sx={{ gap: '0.6rem', maxWidth: '22rem' }}
             >
               {notification.readAt === null ? <UnreadDot aria-hidden /> : null}
+              <MemberAvatar
+                name={notification.payload.authorDisplay}
+                avatarUrl={notification.payload.authorAvatarUrl}
+                size="sm"
+              />
               <Box sx={{ minWidth: 0 }}>
                 <NotificationTitle component="p" unread={notification.readAt === null}>
-                  {notificationTitle(notification)}
+                  {notificationTitle(t, notification)}
                 </NotificationTitle>
                 <NotificationSnippet variant="body2" component="p">
                   {notification.payload.snippet}
@@ -237,7 +226,7 @@ export const NotificationBell = ({
         <Box sx={{ px: '1rem', py: '0.5rem' }}>
           <Button
             size="small"
-            data-testid="notifications-mark-all-read"
+            data-testid="notifications-popover-mark-all-read"
             disabled={markAllRead.isPending || unreadCount === 0}
             onClick={() => markAllRead.mutate()}
           >
@@ -253,11 +242,29 @@ export const NotificationBell = ({
           ) : null}
           {markAllRead.isError ? <Alert severity="error">{localizeError(markAllRead.error, t)}</Alert> : null}
         </Box>
+        <MenuItem
+          component={Link}
+          to="/notifications"
+          data-testid="notifications-view-all"
+          onClick={() => setAnchorEl(null)}
+        >
+          {t.notifications.viewAll}
+        </MenuItem>
       </Menu>
-      <Snackbar open={markRead.isError} autoHideDuration={6000} onClose={() => markRead.reset()}>
+      <Snackbar
+        open={markRead.isError}
+        autoHideDuration={6000}
+        anchorOrigin={SHELL_SNACKBAR_ANCHOR}
+        onClose={() => markRead.reset()}
+      >
         <Alert severity="error" onClose={() => markRead.reset()}>{markRead.isError ? localizeError(markRead.error, t) : ''}</Alert>
       </Snackbar>
-      <Snackbar open={markAllRead.isSuccess} autoHideDuration={4000} onClose={() => markAllRead.reset()}>
+      <Snackbar
+        open={markAllRead.isSuccess}
+        autoHideDuration={4000}
+        anchorOrigin={SHELL_SNACKBAR_ANCHOR}
+        onClose={() => markAllRead.reset()}
+      >
         <Alert severity="success" onClose={() => markAllRead.reset()}>{t.notifications.markedAllRead}</Alert>
       </Snackbar>
     </>

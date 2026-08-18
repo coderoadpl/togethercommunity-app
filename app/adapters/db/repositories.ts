@@ -11,6 +11,9 @@ import {
   courseModuleSchema,
   courseSchema,
   entityHistoryEntrySchema,
+  dmConversationSchema,
+  dmConversationStateSchema,
+  dmMessageSchema,
   memberCourseProgressSchema,
   memberEventSchema,
   memberGrantSchema,
@@ -25,6 +28,8 @@ import {
   postReportSchema,
   REACTION_EMOJIS,
   reactionSummarySchema,
+  spaceEventSchema,
+  spaceEventRsvpSchema,
   spaceSchema,
   productGrantSchema,
   productSchema,
@@ -38,6 +43,9 @@ import {
   type LessonAttachment,
   type CourseModule,
   type CheckoutConsentCapture,
+  type DmConversation,
+  type DmConversationState,
+  type DmMessage,
   type MemberCourseProgress,
   type MemberGrant,
   type MemberSubscription,
@@ -52,6 +60,8 @@ import {
   type Product,
   type ReactionSummary,
   type Space,
+  type SpaceEvent,
+  type SpaceEventRsvp,
   type ProductGrant,
   type StaffRole,
   type Tenant,
@@ -60,6 +70,7 @@ import {
   type TenantSettings,
 } from '#core/domain/index.js';
 import type {
+  AvatarSourceReader,
   CourseLessonRepository,
   LessonAttachmentRepository,
   CourseModuleRepository,
@@ -68,6 +79,9 @@ import type {
   DevEmailReader,
   DevMagicLinkReader,
   DevSinkPurge,
+  DmConversationRepository,
+  DmConversationStateRepository,
+  DmMessageRepository,
   EntityVersionRecord,
   EntityVersionRepository,
   HealthPort,
@@ -94,6 +108,8 @@ import type {
   ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
+  SpaceEventRepository,
+  SpaceEventRsvpRepository,
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
@@ -125,6 +141,9 @@ import {
   courses,
   devEmails,
   devMagicLinks,
+  dmConversations,
+  dmConversationStates,
+  dmMessages,
   emailEvents,
   erasedMemberImports,
   entityVersions,
@@ -148,6 +167,8 @@ import {
   products,
   spaces,
   suppressions,
+  spaceEventRsvps,
+  spaceEvents,
   spaceSeenMarks,
   spaceSubscriptions,
   tenantAdmins,
@@ -846,6 +867,42 @@ export const createUserDisplayReader = (db: Db): UserDisplayReader => ({
   },
 });
 
+export const createAvatarSourceReader = (db: Db): AvatarSourceReader => ({
+  listAvatarSources: async (tenantId, userIds) => {
+    if (userIds.length === 0) return [];
+    const rows = await db
+      .select({
+        userId: user.id,
+        accountEmail: user.email,
+        memberEmail: members.email,
+        image: user.image,
+      })
+      .from(user)
+      .leftJoin(members, and(eq(members.tenantId, tenantId), eq(members.userId, user.id)))
+      .where(
+        and(
+          inArray(user.id, userIds),
+          or(
+            isNotNull(members.id),
+            exists(
+              db
+                .select({ id: tenantAdmins.id })
+                .from(tenantAdmins)
+                .where(
+                  and(eq(tenantAdmins.tenantId, tenantId), eq(tenantAdmins.userId, user.id)),
+                ),
+            ),
+          ),
+        ),
+      );
+    return rows.map((row) => ({
+      userId: row.userId,
+      email: row.memberEmail ?? row.accountEmail,
+      image: row.image,
+    }));
+  },
+});
+
 export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgressRepository => ({
   findByMemberAndCourse: async (tenantId, input) => {
     const rows = await db
@@ -1494,6 +1551,181 @@ export const createSpaceRepository = (db: Db): SpaceRepository => ({
   },
 });
 
+const parseSpaceEvent = (row: typeof spaceEvents.$inferSelect): SpaceEvent =>
+  spaceEventSchema.parse(row);
+
+const eventCursor = (row: { id: string; startsAt: string }): string =>
+  `${row.startsAt}|${row.id}`;
+
+const parseEventCursor = (cursor: string): { startsAt: string; id: string } => {
+  const separator = cursor.indexOf('|');
+  return { startsAt: cursor.slice(0, separator), id: cursor.slice(separator + 1) };
+};
+
+export const createSpaceEventRepository = (db: Db): SpaceEventRepository => ({
+  findById: async (tenantId, id) => {
+    const rows = await db
+      .select()
+      .from(spaceEvents)
+      .where(and(eq(spaceEvents.tenantId, tenantId), eq(spaceEvents.id, id)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseSpaceEvent(row) : null;
+  },
+  insert: async (tenantId, event) => {
+    const rows = await db
+      .insert(spaceEvents)
+      .values({ ...event, tenantId })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('space_events insert returned no row');
+    return parseSpaceEvent(row);
+  },
+  update: async (tenantId, event) => {
+    const rows = await db
+      .update(spaceEvents)
+      .set({
+        title: event.title,
+        description: event.description,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        location: event.location,
+        url: event.url,
+        liveEmbedUrl: event.liveEmbedUrl,
+        replayUrl: event.replayUrl,
+        discussionRootPostId: event.discussionRootPostId,
+        updatedAt: event.updatedAt,
+      })
+      .where(and(eq(spaceEvents.tenantId, tenantId), eq(spaceEvents.id, event.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parseSpaceEvent(row) : null;
+  },
+  softDelete: async (tenantId, input) => {
+    const rows = await db
+      .update(spaceEvents)
+      .set({ deletedAt: input.deletedAt })
+      .where(and(eq(spaceEvents.tenantId, tenantId), eq(spaceEvents.id, input.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parseSpaceEvent(row) : null;
+  },
+  listForSpace: async (tenantId, query) => {
+    const cursor = query.cursor === undefined ? null : parseEventCursor(query.cursor);
+    const upcoming = query.scope === 'upcoming';
+    const rows = await db
+      .select()
+      .from(spaceEvents)
+      .where(
+        and(
+          eq(spaceEvents.tenantId, tenantId),
+          eq(spaceEvents.spaceId, query.spaceId),
+          isNull(spaceEvents.deletedAt),
+          upcoming
+            ? gte(spaceEvents.endsAt, query.now)
+            : sql`${spaceEvents.endsAt} < ${query.now}`,
+          ...(cursor === null
+            ? []
+            : [
+                upcoming
+                  ? sql`(${spaceEvents.startsAt}, ${spaceEvents.id}) > (${cursor.startsAt}, ${cursor.id})`
+                  : sql`(${spaceEvents.startsAt}, ${spaceEvents.id}) < (${cursor.startsAt}, ${cursor.id})`,
+              ]),
+        ),
+      )
+      .orderBy(
+        upcoming ? asc(spaceEvents.startsAt) : desc(spaceEvents.startsAt),
+        upcoming ? asc(spaceEvents.id) : desc(spaceEvents.id),
+      )
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const overflow = rows[query.limit];
+    const last = page.at(-1);
+    return {
+      events: page.map(parseSpaceEvent),
+      nextCursor: overflow && last ? eventCursor(last) : null,
+    };
+  },
+  listUpcomingForSpaces: async (tenantId, query) => {
+    if (query.spaceIds.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(spaceEvents)
+      .where(
+        and(
+          eq(spaceEvents.tenantId, tenantId),
+          inArray(spaceEvents.spaceId, query.spaceIds),
+          isNull(spaceEvents.deletedAt),
+          gte(spaceEvents.endsAt, query.now),
+        ),
+      )
+      .orderBy(asc(spaceEvents.startsAt), asc(spaceEvents.id))
+      .limit(query.limit);
+    return rows.map(parseSpaceEvent);
+  },
+});
+
+export const createSpaceEventRsvpRepository = (db: Db): SpaceEventRsvpRepository => ({
+  upsert: async (tenantId, input) => {
+    const rows = await db
+      .insert(spaceEventRsvps)
+      .values({
+        tenantId,
+        eventId: input.eventId,
+        userId: input.userId,
+        status: input.status,
+        updatedAt: input.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: [spaceEventRsvps.tenantId, spaceEventRsvps.eventId, spaceEventRsvps.userId],
+        set: { status: input.status, updatedAt: input.updatedAt },
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('space_event_rsvps upsert returned no row');
+    return spaceEventRsvpSchema.parse(row);
+  },
+  countsForEvents: async (tenantId, eventIds) => {
+    const counts = new Map<string, { going: number; notGoing: number }>();
+    if (eventIds.length === 0) return counts;
+    for (const eventId of eventIds) counts.set(eventId, { going: 0, notGoing: 0 });
+    const rows = await db
+      .select({
+        eventId: spaceEventRsvps.eventId,
+        status: spaceEventRsvps.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(spaceEventRsvps)
+      .where(and(eq(spaceEventRsvps.tenantId, tenantId), inArray(spaceEventRsvps.eventId, eventIds)))
+      .groupBy(spaceEventRsvps.eventId, spaceEventRsvps.status);
+    for (const row of rows) {
+      const current = counts.get(row.eventId) ?? { going: 0, notGoing: 0 };
+      counts.set(
+        row.eventId,
+        row.status === 'going'
+          ? { ...current, going: row.count }
+          : { ...current, notGoing: row.count },
+      );
+    }
+    return counts;
+  },
+  listForViewer: async (tenantId, input) =>
+    input.eventIds.length === 0
+      ? []
+      : (
+          await db
+            .select()
+            .from(spaceEventRsvps)
+            .where(
+              and(
+                eq(spaceEventRsvps.tenantId, tenantId),
+                eq(spaceEventRsvps.userId, input.userId),
+                inArray(spaceEventRsvps.eventId, input.eventIds),
+              ),
+            )
+        ).map((row): SpaceEventRsvp => spaceEventRsvpSchema.parse(row)),
+});
+
 export const createPostReactionRepository = (db: Db): PostReactionRepository => ({
   add: async (tenantId, input) => {
     const rows = await db
@@ -1622,6 +1854,241 @@ export const createSpaceSeenRepository = (db: Db): SpaceSeenRepository => ({
           ),
 });
 
+const parseDmConversation = (row: typeof dmConversations.$inferSelect): DmConversation =>
+  dmConversationSchema.parse(row);
+
+const parseDmMessage = (row: typeof dmMessages.$inferSelect): DmMessage =>
+  dmMessageSchema.parse(row);
+
+const dmCursor = (row: { id: string }, at: string): string => `${at}|${row.id}`;
+
+const parseDmCursor = (cursor: string): { at: string; id: string } => {
+  const separator = cursor.indexOf('|');
+  return { at: cursor.slice(0, separator), id: cursor.slice(separator + 1) };
+};
+
+export const createDmConversationRepository = (db: Db): DmConversationRepository => ({
+  findById: async (tenantId, id) => {
+    const rows = await db
+      .select()
+      .from(dmConversations)
+      .where(and(eq(dmConversations.tenantId, tenantId), eq(dmConversations.id, id)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseDmConversation(row) : null;
+  },
+  findByParticipants: async (tenantId, pair) => {
+    const rows = await db
+      .select()
+      .from(dmConversations)
+      .where(
+        and(
+          eq(dmConversations.tenantId, tenantId),
+          eq(dmConversations.participantLowUserId, pair.low),
+          eq(dmConversations.participantHighUserId, pair.high),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row ? parseDmConversation(row) : null;
+  },
+  insert: async (tenantId, conversation) => {
+    const rows = await db
+      .insert(dmConversations)
+      .values({ ...conversation, tenantId })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('dm_conversations insert returned no row');
+    return parseDmConversation(row);
+  },
+  listForParticipant: async (tenantId, query) => {
+    const cursor = query.cursor === undefined ? null : parseDmCursor(query.cursor);
+    const rows = await db
+      .select()
+      .from(dmConversations)
+      .where(
+        and(
+          eq(dmConversations.tenantId, tenantId),
+          or(
+            eq(dmConversations.participantLowUserId, query.userId),
+            eq(dmConversations.participantHighUserId, query.userId),
+          ),
+          ...(cursor === null
+            ? []
+            : [sql`(${dmConversations.lastMessageAt}, ${dmConversations.id}) < (${cursor.at}, ${cursor.id})`]),
+        ),
+      )
+      .orderBy(desc(dmConversations.lastMessageAt), desc(dmConversations.id))
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const overflow = rows[query.limit];
+    const last = page.at(-1);
+    return {
+      conversations: page.map(parseDmConversation),
+      nextCursor: overflow && last ? dmCursor(last, last.lastMessageAt) : null,
+    };
+  },
+  countCreatedBySince: async (tenantId, query) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(dmConversations)
+      .where(
+        and(
+          eq(dmConversations.tenantId, tenantId),
+          eq(dmConversations.createdByUserId, query.createdByUserId),
+          gte(dmConversations.createdAt, query.since),
+        ),
+      );
+    return rows[0]?.value ?? 0;
+  },
+  countUnreadForParticipant: async (tenantId, userId) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(dmConversations)
+      .leftJoin(
+        dmConversationStates,
+        and(
+          eq(dmConversationStates.tenantId, dmConversations.tenantId),
+          eq(dmConversationStates.conversationId, dmConversations.id),
+          eq(dmConversationStates.userId, userId),
+        ),
+      )
+      .where(
+        and(
+          eq(dmConversations.tenantId, tenantId),
+          or(
+            eq(dmConversations.participantLowUserId, userId),
+            eq(dmConversations.participantHighUserId, userId),
+          ),
+          isNotNull(dmConversations.lastMessageId),
+          ne(dmConversations.lastMessageSenderUserId, userId),
+          or(
+            isNull(dmConversationStates.lastReadAt),
+            sql`${dmConversations.lastMessageAt} > ${dmConversationStates.lastReadAt}`,
+          ),
+        ),
+      );
+    return rows[0]?.value ?? 0;
+  },
+  applyLastMessage: async (tenantId, input) => {
+    const rows = await db
+      .update(dmConversations)
+      .set({
+        lastMessageId: input.lastMessageId,
+        lastMessageAt: input.lastMessageAt,
+        lastMessageSnippet: input.lastMessageSnippet,
+        lastMessageSenderUserId: input.lastMessageSenderUserId,
+      })
+      .where(
+        and(eq(dmConversations.tenantId, tenantId), eq(dmConversations.id, input.conversationId)),
+      )
+      .returning();
+    const row = rows[0];
+    return row ? parseDmConversation(row) : null;
+  },
+});
+
+export const createDmMessageRepository = (db: Db): DmMessageRepository => ({
+  insert: async (tenantId, message) => {
+    const rows = await db
+      .insert(dmMessages)
+      .values({ ...message, tenantId })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('dm_messages insert returned no row');
+    return parseDmMessage(row);
+  },
+  listForConversation: async (tenantId, query) => {
+    const cursor = query.cursor === undefined ? null : parseDmCursor(query.cursor);
+    const rows = await db
+      .select()
+      .from(dmMessages)
+      .where(
+        and(
+          eq(dmMessages.tenantId, tenantId),
+          eq(dmMessages.conversationId, query.conversationId),
+          ...(cursor === null
+            ? []
+            : [sql`(${dmMessages.createdAt}, ${dmMessages.id}) < (${cursor.at}, ${cursor.id})`]),
+        ),
+      )
+      .orderBy(desc(dmMessages.createdAt), desc(dmMessages.id))
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const overflow = rows[query.limit];
+    const last = page.at(-1);
+    return {
+      messages: page.map(parseDmMessage),
+      nextCursor: overflow && last ? dmCursor(last, last.createdAt) : null,
+    };
+  },
+  countRecentBySender: async (tenantId, senderUserId, sinceIso) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(dmMessages)
+      .where(
+        and(
+          eq(dmMessages.tenantId, tenantId),
+          eq(dmMessages.senderUserId, senderUserId),
+          gte(dmMessages.createdAt, sinceIso),
+        ),
+      );
+    return rows[0]?.value ?? 0;
+  },
+});
+
+export const createDmConversationStateRepository = (db: Db): DmConversationStateRepository => ({
+  findForViewer: async (tenantId, input) =>
+    input.conversationIds.length === 0
+      ? []
+      : (
+          await db
+            .select()
+            .from(dmConversationStates)
+            .where(
+              and(
+                eq(dmConversationStates.tenantId, tenantId),
+                eq(dmConversationStates.userId, input.userId),
+                inArray(dmConversationStates.conversationId, input.conversationIds),
+              ),
+            )
+        ).map((row): DmConversationState => dmConversationStateSchema.parse(row)),
+  markRead: async (tenantId, input) => {
+    const rows = await db
+      .insert(dmConversationStates)
+      .values({
+        tenantId,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        lastReadAt: input.lastReadAt,
+      })
+      .onConflictDoUpdate({
+        target: [
+          dmConversationStates.tenantId,
+          dmConversationStates.conversationId,
+          dmConversationStates.userId,
+        ],
+        set: { lastReadAt: input.lastReadAt },
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('dm_conversation_states upsert returned no row');
+    return dmConversationStateSchema.parse(row);
+  },
+});
+
+const unreadDmConversationFilter = (
+  tenantId: string,
+  recipientUserId: string,
+  conversationId: string,
+): SQL[] => [
+  eq(notifications.tenantId, tenantId),
+  eq(notifications.recipientUserId, recipientUserId),
+  eq(notifications.kind, 'dm-message'),
+  sql`${notifications.readAt} is null`,
+  sql`${notifications.payload}->>'contextId' = ${conversationId}`,
+];
+
 export const createNotificationRepository = (db: Db): NotificationRepository => ({
   insert: async (tenantId, notification) => {
     const rows = await db
@@ -1697,6 +2164,24 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
         ),
       );
     return rows[0]?.value ?? 0;
+  },
+  hasUnreadDmNotification: async (tenantId, recipientUserId, conversationId) => {
+    const rows = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(...unreadDmConversationFilter(tenantId, recipientUserId, conversationId)))
+      .limit(1);
+    return rows.length > 0;
+  },
+  markDmConversationRead: async (tenantId, input) => {
+    const rows = await db
+      .update(notifications)
+      .set({ readAt: input.readAt })
+      .where(
+        and(...unreadDmConversationFilter(tenantId, input.recipientUserId, input.conversationId)),
+      )
+      .returning({ id: notifications.id });
+    return rows.length;
   },
 });
 
@@ -1781,6 +2266,30 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .update(members)
       .set({ email })
       .where(and(eq(members.tenantId, tenantId), eq(members.id, memberId)))
+      .returning();
+    return rows[0] ?? null;
+  },
+  updateDisplayName: async (tenantId, memberId, displayName) => {
+    const rows = await db
+      .update(members)
+      .set({ displayName })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.id, memberId),
+        isNull(members.deletedAt),
+      ))
+      .returning();
+    return rows[0] ?? null;
+  },
+  updateDmOptOut: async (tenantId, memberId, dmOptOutAt) => {
+    const rows = await db
+      .update(members)
+      .set({ dmOptOutAt })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.id, memberId),
+        isNull(members.deletedAt),
+      ))
       .returning();
     return rows[0] ?? null;
   },

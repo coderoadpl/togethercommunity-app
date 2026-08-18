@@ -14,7 +14,10 @@ const identity: Identity = {
   tenantName: 'Alpha',
   staffRole: null,
   memberId: 'member-1',
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 };
 
 const harness = (supportEmail: string | null) => {
@@ -63,11 +66,14 @@ const harness = (supportEmail: string | null) => {
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
       }),
       findByEmail: async () => null,
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
+      updateDmOptOut: async () => null,
     setBanned: async () => null,
     },
     tenantAccess: {

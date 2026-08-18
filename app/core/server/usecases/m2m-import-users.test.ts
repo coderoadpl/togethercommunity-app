@@ -51,7 +51,10 @@ const ctx: Ctx = {
     tenantName: 'Tenant',
     staffRole: null,
     memberId: null,
+    image: null,
+    memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
   },
   capabilities: capabilitiesForApiKey(apiKey),
 };

@@ -242,7 +242,11 @@ export default tseslint.config(
         { type: 'web-i18n', pattern: 'apps/web/src/i18n/**', mode: 'full' },
         {
           type: 'web-notifications',
-          pattern: ['apps/web/src/NotificationBell*', 'apps/web/src/notifications-stream*'],
+          pattern: [
+            'apps/web/src/NotificationBell*',
+            'apps/web/src/notification-links*',
+            'apps/web/src/notifications-stream*',
+          ],
           mode: 'full',
         },
         { type: 'web-branding', pattern: 'apps/web/src/branding*', mode: 'full' },
@@ -387,6 +391,7 @@ export default tseslint.config(
               allow: [
                 'web-notifications',
                 'web-api',
+                'web-ui',
                 'web-lib',
                 'web-theme',
                 'web-i18n',

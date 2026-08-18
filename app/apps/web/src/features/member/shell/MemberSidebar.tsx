@@ -10,34 +10,48 @@ import { TenantLogo } from '../../../branding.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
+import { streamlessPollInterval } from '../../../notifications-stream.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
+import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
 import { LockClosed } from '../tree-icons.js';
 import { nestSpacesUnderCourses } from './course-spaces.js';
 import {
   activeNavEntry,
   memberHomePath,
+  memberMessagesPath,
   memberSearchPath,
   type MemberNavEntry,
 } from './member-nav.js';
 import {
   BrandLink,
-  IdentityAvatar,
   IdentityRow,
   NavRow,
   type ShellLinkProps,
   type ShellVariant,
 } from './shell-chrome.js';
-import { ProductsIcon, SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
+import { MessagesIcon, ProductsIcon, SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-rows.js';
 
-const memberInitials = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter((word) => word.length > 0)
-    .slice(0, 2)
-    .map((word) => (word[0] ?? '').toLocaleUpperCase())
-    .join('');
+const MessagesRow = ({ active }: { active: boolean }) => {
+  const t = useTranslations();
+  const unread = useQuery({
+    ...actions.unreadMessages,
+    refetchInterval: streamlessPollInterval(),
+  });
+  const count = unread.data?.unread ?? 0;
+
+  return (
+    <LinkRow
+      to={memberMessagesPath()}
+      label={t.messages.navLabel}
+      icon={<MessagesIcon />}
+      active={active}
+      testId="sidebar-messages"
+      {...(count > 0 ? { unread: { label: t.messages.unreadAria({ count }) } } : {})}
+    />
+  );
+};
 
 const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
   const t = useTranslations();
@@ -124,10 +138,12 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
 export const MemberSidebar = ({
   name,
   email,
+  avatarUrl,
   variant,
 }: {
   name: string;
   email: string;
+  avatarUrl: string | null;
   variant: ShellVariant;
 }) => {
   const t = useTranslations();
@@ -190,6 +206,7 @@ export const MemberSidebar = ({
           active={active?.kind === 'products'}
           testId="sidebar-products"
         />
+        <MessagesRow active={active?.kind === 'messages'} />
         {variant === 'drawer' ? <NotificationBell navLabel={t.notifications.bell} /> : null}
         <LinkRow
           to="/account"
@@ -200,7 +217,7 @@ export const MemberSidebar = ({
         />
       </List>
       <IdentityRow component={Link} to="/account" data-testid="member-identity">
-        <IdentityAvatar aria-hidden>{memberInitials(name)}</IdentityAvatar>
+        <MemberAvatar name={name} avatarUrl={avatarUrl} />
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="body2" component="p" noWrap>
             {name}

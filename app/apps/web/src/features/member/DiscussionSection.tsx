@@ -63,7 +63,13 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
   );
 };
 
-export const DiscussionSection = ({ lessonId }: { lessonId: string }) => {
+export const DiscussionSection = ({
+  lessonId,
+  focusThread,
+}: {
+  lessonId: string;
+  focusThread?: { rootPostId: string; onExit: () => void };
+}) => {
   const t = useTranslations();
   return (
     <ThreadDiscussion
@@ -71,6 +77,9 @@ export const DiscussionSection = ({ lessonId }: { lessonId: string }) => {
       heading={t.discussion.heading}
       eyebrow={t.discussion.eyebrow}
       search={<LessonDiscussionSearch lessonId={lessonId} />}
+      {...(focusThread === undefined
+        ? {}
+        : { focus: { ...focusThread, exitLabel: t.discussion.backToAll } })}
     />
   );
 };

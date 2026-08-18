@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Notification } from '#core/domain/index.js';
-import type { RealtimeBusPort, RealtimeNotificationEvent } from '#core/server/index.js';
+import type { RealtimeBusPort, RealtimeEvent } from '#core/server/index.js';
 
 import { createNotificationEventStream } from './notifications-sse.js';
 
@@ -16,8 +16,10 @@ const notification = (overrides: Partial<Notification>): Notification => ({
     contextKind: 'lesson',
     contextId: 'l1',
     courseId: 'c1',
+    eventId: null,
     lessonName: 'Lesson 1',
     authorDisplay: 'Author',
+    authorAvatarUrl: null,
     snippet: 'hello',
   },
   readAt: null,
@@ -26,7 +28,7 @@ const notification = (overrides: Partial<Notification>): Notification => ({
 });
 
 const recordingBus = () => {
-  const listeners = new Set<(event: RealtimeNotificationEvent) => void>();
+  const listeners = new Set<(event: RealtimeEvent) => void>();
   let unsubscribed = 0;
   const bus: RealtimeBusPort = {
     publish: (event) => {
@@ -66,12 +68,32 @@ describe('notification event stream', () => {
     expect(await readChunk(reader)).toBe('event: unread\ndata: {"unread":3}\n\n');
 
     const mine = notification({ id: 'n-mine' });
-    bus.publish({ tenantId: 't1', recipientUserId: 'u2', notification: notification({ id: 'n-other-user' }) });
-    bus.publish({ tenantId: 't2', recipientUserId: 'u1', notification: notification({ id: 'n-other-tenant' }) });
-    bus.publish({ tenantId: 't1', recipientUserId: 'u1', notification: mine });
+    bus.publish({ kind: 'notification', tenantId: 't1', recipientUserId: 'u2', notification: notification({ id: 'n-other-user' }) });
+    bus.publish({ kind: 'notification', tenantId: 't2', recipientUserId: 'u1', notification: notification({ id: 'n-other-tenant' }) });
+    bus.publish({ kind: 'notification', tenantId: 't1', recipientUserId: 'u1', notification: mine });
 
     const chunk = await readChunk(reader);
     expect(chunk).toBe(`event: notification\ndata: ${JSON.stringify(mine)}\n\n`);
+
+    await reader.cancel();
+  });
+
+  it('sends a lightweight dm event so an open conversation refetches', async () => {
+    const { bus } = recordingBus();
+    const stream = createNotificationEventStream({
+      tenantId: 't1',
+      recipientUserId: 'u1',
+      bus,
+      unreadCount: async () => 0,
+      heartbeatMs: 60_000,
+    });
+    const reader = stream.getReader();
+    await readChunk(reader);
+
+    bus.publish({ kind: 'dm', tenantId: 't1', recipientUserId: 'u2', conversationId: 'c-other' });
+    bus.publish({ kind: 'dm', tenantId: 't1', recipientUserId: 'u1', conversationId: 'c-mine' });
+
+    expect(await readChunk(reader)).toBe('event: dm\ndata: {"conversationId":"c-mine"}\n\n');
 
     await reader.cancel();
   });

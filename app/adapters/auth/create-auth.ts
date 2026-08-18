@@ -511,6 +511,7 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
       email: session.user.email,
       name: session.user.name,
       emailVerified: session.user.emailVerified,
+      image: session.user.image ?? null,
     };
   },
   ensureUser: async (email) => {

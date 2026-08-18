@@ -14,6 +14,7 @@ import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
+import { useViewerKind } from '../viewer.js';
 import { AnonShell } from './AnonShell.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
@@ -32,6 +33,7 @@ export const MemberShell = () => {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const me = useQuery(actions.me);
+  const viewer = useViewerKind();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const courseContext = courseContextFromPath(pathname);
   const [openSheet, setOpenSheet] = useState<'menu' | 'program' | null>(null);
@@ -41,16 +43,26 @@ export const MemberShell = () => {
   }, [pathname]);
 
   const tenant = me.data?.tenant ?? null;
-  const isMember = tenant !== null && (tenant.memberId !== null || tenant.staffRole !== null);
+  const isMember = viewer === 'member';
   const identity = isMember && tenant !== null && me.data !== undefined
-    ? { name: me.data.name, email: me.data.email, tenantName: tenant.name }
+    ? {
+      name: tenant.displayName ?? me.data.name,
+      email: me.data.email,
+      avatarUrl: me.data.avatarUrl,
+      tenantName: tenant.name,
+    }
     : null;
 
   const hasMobileNavigation = identity !== null && !isDesktop;
   const closeSheet = () => setOpenSheet(null);
 
   const sidebar = identity === null || !isDesktop ? null : courseContext === null ? (
-    <MemberSidebar name={identity.name} email={identity.email} variant="drawer" />
+    <MemberSidebar
+      name={identity.name}
+      email={identity.email}
+      avatarUrl={identity.avatarUrl}
+      variant="drawer"
+    />
   ) : (
     <CourseSidebar
       courseId={courseContext.courseId}
@@ -68,6 +80,7 @@ export const MemberShell = () => {
         onClose={closeSheet}
         name={identity.name}
         email={identity.email}
+        avatarUrl={identity.avatarUrl}
       />
       {courseContext === null ? null : (
         <CourseProgramSheet
@@ -103,7 +116,7 @@ export const MemberShell = () => {
     </>
   );
 
-  if (!isMember && !me.isPending) {
+  if (viewer === 'anonymous') {
     return (
       <AnonShell>
         {notices}

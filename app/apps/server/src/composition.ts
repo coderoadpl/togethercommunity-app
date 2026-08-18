@@ -43,6 +43,7 @@ import {
   createProductPriceHistoryRepository,
 } from '#adapters/db/coupon-repositories.js';
 import {
+  createAvatarSourceReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
   createProductDownloadAssetRepository,
@@ -52,6 +53,9 @@ import {
   createDevEmailReader,
   createDevMagicLinkReader,
   createDevSinkPurge,
+  createDmConversationRepository,
+  createDmConversationStateRepository,
+  createDmMessageRepository,
   createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
@@ -64,6 +68,8 @@ import {
   createPostReactionRepository,
   createPostReportRepository,
   createPostRepository,
+  createSpaceEventRepository,
+  createSpaceEventRsvpRepository,
   createSpaceRepository,
   createSpaceSeenRepository,
   createSpaceSubscriptionRepository,
@@ -176,6 +182,9 @@ import type {
   KsefSubmissionJobRepository,
   MemberCourseProgressRepository,
   MemberErasureRequestRepository,
+  DmConversationRepository,
+  DmConversationStateRepository,
+  DmMessageRepository,
   MemberErasurePort,
   MemberEventRepository,
   MemberRepository,
@@ -203,6 +212,8 @@ import type {
   OnboardingStateRepository,
   PostReactionRepository,
   RealtimeBusPort,
+  SpaceEventRepository,
+  SpaceEventRsvpRepository,
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
@@ -225,6 +236,7 @@ import type {
   UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
+  AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
 import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult } from '#core/server/index.js';
@@ -235,7 +247,7 @@ import {
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
-import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
+import { capabilitiesForPrincipal, communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import { type Env, isProductionEnvironment } from './env.js';
 import { APP_VERSION } from './version.js';
@@ -285,6 +297,7 @@ export interface AppDeps {
   downloadAssets: ProductDownloadAssetRepository;
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
+  avatarSources: AvatarSourceReader;
   members: MemberRepository;
   memberEvents: MemberEventRepository;
   memberErasure: MemberErasurePort;
@@ -297,6 +310,11 @@ export interface AppDeps {
   reactions: PostReactionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
   spaceSeen: SpaceSeenRepository;
+  events: SpaceEventRepository;
+  eventRsvps: SpaceEventRsvpRepository;
+  dmConversations: DmConversationRepository;
+  dmMessages: DmMessageRepository;
+  dmConversationStates: DmConversationStateRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   realtimeBus: RealtimeBusPort;
@@ -738,8 +756,9 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     return campaignTick({
       identity: {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-        emailVerified: true,
-        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
+        emailVerified: true, image: null,
+        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
+        memberDmOptOutAt: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
@@ -755,8 +774,9 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-    emailVerified: true,
-    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
+    emailVerified: true, image: null,
+    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
+    memberDmOptOutAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
     return tenantUrl(tenantSlug, '/panel/marketing', {
@@ -838,6 +858,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           : communityPostPath(spaceId, rootPostId),
         routing,
       ),
+    conversationUrl: ({ tenantSlug, conversationId }) =>
+      tenantUrl(tenantSlug, conversationPath(conversationId), routing),
+    eventUrl: ({ tenantSlug, spaceId, eventId }) =>
+      tenantUrl(tenantSlug, communityEventPath(spaceId, eventId), routing),
   };
 
   const google =
@@ -906,6 +930,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     downloadAssets: createProductDownloadAssetRepository(db),
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
+    avatarSources: createAvatarSourceReader(db),
     members: createMemberRepository(db),
     memberEvents: createMemberEventRepository(db),
     memberErasure: createMemberErasureRepository(db, emailHmac),
@@ -918,6 +943,11 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     reactions: createPostReactionRepository(db),
     spaceSubscriptions: createSpaceSubscriptionRepository(db),
     spaceSeen: createSpaceSeenRepository(db),
+    events: createSpaceEventRepository(db),
+    eventRsvps: createSpaceEventRsvpRepository(db),
+    dmConversations: createDmConversationRepository(db),
+    dmMessages: createDmMessageRepository(db),
+    dmConversationStates: createDmConversationStateRepository(db),
     notifications: createNotificationRepository(db),
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),

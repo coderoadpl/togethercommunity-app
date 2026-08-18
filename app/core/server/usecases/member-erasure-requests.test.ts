@@ -37,6 +37,7 @@ const member: Member = {
   bannedAt: null,
   bannedReason: null,
   bannedByUserId: null,
+  dmOptOutAt: null,
 };
 
 const context = (kind: 'member' | 'staff'): Ctx => ({
@@ -50,7 +51,10 @@ const context = (kind: 'member' | 'staff'): Ctx => ({
     tenantName: 'Acme',
     staffRole: kind === 'staff' ? 'admin' : null,
     memberId: kind === 'member' ? member.id : null,
+    image: null,
+    memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
   },
 });
 
@@ -89,6 +93,8 @@ const harness = (selectedMember: Member | null = member) => {
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateDisplayName: async () => null,
+    updateDmOptOut: async () => null,
     setBanned: async () => null,
   };
   let sequence = 0;

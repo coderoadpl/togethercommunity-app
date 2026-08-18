@@ -22,7 +22,10 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
   tenantName: tenantId ? 'Acme Inc' : null,
   staffRole,
   memberId: null,
+image: null,
+memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 });
 
 const fakeRepo = (initial: Product[] = []) => {

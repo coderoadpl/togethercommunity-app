@@ -14,6 +14,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `OPTIONS /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
 | `OPTIONS /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |
 | `OPTIONS /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
+| `OPTIONS /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
+| `OPTIONS /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
 | `OPTIONS /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -25,6 +27,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
 | `GET /api/public/spaces/:spaceId/feed` | public | read | Read-only feed of a publicly readable space |
 | `GET /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
+| `GET /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
+| `GET /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -120,6 +124,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/members/:id/emails` | authenticated | read | member email sends |
 | `POST /api/marketing/suppressions` | authenticated | mutating | marketing staff suppressions create |
 | `GET /api/me` | authenticated | read | me |
+| `POST /api/me/profile` | authenticated | mutating | me profile |
 | `GET /api/me/billing-orders` | authenticated | read | member billing orders |
 | `GET /api/me/data-export` | authenticated | read | member data export |
 | `GET /api/me/erasure-request` | authenticated | read | member erasure request |
@@ -165,6 +170,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |
+| `GET /api/onboarding/setup` | authenticated | read | onboarding setup |
 | `POST /api/integrations/test` | authenticated | mutating | integration test |
 | `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
 | `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
@@ -251,9 +257,23 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/spaces/follow` | authenticated | mutating | space follow |
 | `POST /api/spaces/unfollow` | authenticated | mutating | space unfollow |
 | `POST /api/spaces/:spaceId/seen` | authenticated | mutating | space seen |
+| `GET /api/spaces/:spaceId/events` | authenticated | read | events by space |
+| `GET /api/member/upcoming-events` | authenticated | read | member upcoming events |
+| `POST /api/events` | authenticated | mutating | events create |
+| `POST /api/events/update` | authenticated | mutating | events update |
+| `POST /api/events/rsvp` | authenticated | mutating | event rsvp |
+| `GET /api/events/:eventId/ics` | authenticated | read | event ics |
+| `GET /api/events/:eventId` | authenticated | read | event get |
+| `DELETE /api/events/:eventId` | authenticated | mutating | events delete |
 | `GET /api/notifications` | authenticated | read | notifications |
 | `POST /api/notifications/read` | authenticated | mutating | notification read |
 | `POST /api/notifications/read-all` | authenticated | mutating | notifications read all |
 | `GET /api/notifications/unread-count` | authenticated | read | notifications unread |
+| `GET /api/messages` | authenticated | read | messages list |
+| `GET /api/messages/unread-count` | authenticated | read | messages unread |
+| `POST /api/messages/start` | authenticated | mutating | messages start |
+| `POST /api/messages/send` | authenticated | mutating | messages send |
+| `POST /api/messages/read` | authenticated | mutating | messages read |
+| `GET /api/messages/:conversationId` | authenticated | read | messages thread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
 | `GET /*` | public | read | Tenant social preview for link crawlers |

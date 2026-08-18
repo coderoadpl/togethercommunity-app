@@ -44,6 +44,7 @@ const member = (id: string, email: string): Member => ({
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
 });
 
 interface Harness {
@@ -73,6 +74,8 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
       members.push(m);
     },
     updateEmail: async () => null,
+    updateDisplayName: async () => null,
+    updateDmOptOut: async () => null,
   setBanned: async () => null,
   };
   const grantsRepo: ProductGrantRepository = {

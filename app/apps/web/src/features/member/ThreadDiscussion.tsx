@@ -21,7 +21,9 @@ import {
   PostMetaText,
   ReplyIndent,
 } from '../../theme.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
+import { StartMessageButton } from './messages/StartMessageButton.js';
 
 export const PAGE_SIZE = 20;
 const MAX_INDENT = 5;
@@ -183,7 +185,8 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
 
   return (
     <Box data-testid={`discussion-post-${post.id}`}>
-      <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.6rem', flexWrap: 'wrap' }}>
+      <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}>
+        <MemberAvatar name={post.authorDisplay} avatarUrl={post.authorAvatarUrl} size="sm" />
         <PostAuthorName component="span">{post.authorDisplay}</PostAuthorName>
         {post.authorIsStaff && (
           <AuthorChip data-testid={`author-chip-${post.id}`}>{t.discussion.authorChip}</AuthorChip>
@@ -261,6 +264,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               {t.discussion.delete}
             </Button>
           )}
+          {!own && !deleted ? <StartMessageButton postId={post.id} /> : null}
           {!own && !deleted ? <ReportPostButton postId={post.id} /> : null}
         </Stack>
       )}
@@ -392,6 +396,24 @@ export const ThreadDiscussion = ({
   const threads = discussion.data?.discussion.threads ?? [];
   const viewerSubscriptions = discussion.data?.discussion.viewerSubscriptions ?? {};
   const subthreadRoot = subthreadRootId === null ? null : findPost(threads, subthreadRootId);
+
+  const focusRootPostId = focus?.rootPostId ?? null;
+  const renderedSubthreadId = subthreadRoot === null ? null : subthreadRoot.id;
+  const subthreadElement = useRef<HTMLDivElement | null>(null);
+  const revealedFocus = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (focusRootPostId === null) {
+      revealedFocus.current = null;
+      return;
+    }
+    const element = subthreadElement.current;
+    if (element === null || renderedSubthreadId === null) return;
+    if (revealedFocus.current === focusRootPostId) return;
+    revealedFocus.current = focusRootPostId;
+    element.scrollIntoView({ behavior: 'auto', block: 'start' });
+    element.focus({ preventScroll: true });
+  }, [focusRootPostId, renderedSubthreadId]);
 
   const optimisticVariables =
     create.variables !== undefined &&
@@ -537,6 +559,8 @@ export const ThreadDiscussion = ({
           </Box>
           {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
           <DiscussionThread
+            ref={subthreadElement}
+            tabIndex={-1}
             sx={{ p: '1rem 1.25rem' }}
             data-testid={`discussion-subthread-${subthreadRoot.id}`}
           >

@@ -39,7 +39,10 @@ const ctx = (role: 'owner' | 'admin'): Ctx => ({
     tenantName: 'Acme',
     staffRole: role,
     memberId: null,
+    image: null,
+    memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
   } satisfies Identity,
 });
 

@@ -21,6 +21,11 @@ import type {
   CouponStatsExportQueryInput,
   CouponStatsQueryInput,
   CourseUpdateInput,
+  EventCreateInput,
+  EventRefInput,
+  EventRsvpInput,
+  EventUpdateInput,
+  EventsBySpaceInput,
   GrantCreateInput,
   GrantRevokeInput,
   EmailSendsExportQueryInput,
@@ -31,6 +36,13 @@ import type {
   LessonUncompleteInput,
   LessonCreateInput,
   LessonUpdateInput,
+  MemberUpcomingEventsInput,
+  MeProfileUpdateInput,
+  MessagesListInput,
+  MessagesReadInput,
+  MessagesSendInput,
+  MessagesStartInput,
+  MessagesThreadInput,
   MemberHomeFeedGetInput,
   MemberProgressResetInput,
   MemberBanInput,
@@ -66,6 +78,7 @@ import type {
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
+  PublicSpaceEventInput,
   PublicSpaceThreadGetInput,
   SpaceArchiveInput,
   SpaceCreateInput,
@@ -186,6 +199,10 @@ const publicSurfaceScopes = {
     ['public-space-feed', spaceId, limit ?? null] as const,
   spaceThread: (spaceId: string, postId: string) =>
     ['public-space-thread', spaceId, postId] as const,
+  spaceEvents: (spaceId: string, scope?: string) =>
+    ['public-space-events', spaceId, scope ?? null] as const,
+  spaceEvent: (spaceId: string, eventId: string) =>
+    ['public-space-event', spaceId, eventId] as const,
 };
 
 const authConfigScopes = {
@@ -285,6 +302,10 @@ const onboardingScopes = {
   all: () => ['onboarding'] as const,
 };
 
+const tenantSetupScopes = {
+  all: () => ['tenant-setup'] as const,
+};
+
 const coursesScopes = {
   all: () => ['courses'] as const,
   lists: () => ['courses', 'list'] as const,
@@ -337,7 +358,24 @@ const reportScopes = {
 const notificationScopes = {
   all: () => ['notifications'] as const,
   list: () => ['notifications', 'list'] as const,
+  page: (limit?: number) => ['notifications', 'page', limit ?? null] as const,
   unread: () => ['notifications', 'unread'] as const,
+};
+
+const messagesScopes = {
+  all: () => ['messages'] as const,
+  list: (limit?: number) => ['messages', 'list', limit ?? null] as const,
+  thread: (conversationId: string, limit?: number) =>
+    ['messages', 'thread', conversationId, limit ?? null] as const,
+  unread: () => ['messages', 'unread'] as const,
+};
+
+const eventsScopes = {
+  all: () => ['events'] as const,
+  bySpace: (input: EventsBySpaceInput) => ['events', 'space', input] as const,
+  detail: (eventId: string) => ['events', 'detail', eventId] as const,
+  upcoming: (limit?: number) => ['events', 'upcoming', limit ?? null] as const,
+  ics: (eventId: string) => ['events', 'ics', eventId] as const,
 };
 
 const marketingScopes = {
@@ -477,6 +515,12 @@ export const meQuery = (api: ApiClient) =>
 
 export const meInvalidates = () => ({ queryKey: meScopes.all() });
 
+export const updateMyProfileMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['me', 'profile'],
+    call: (input: MeProfileUpdateInput) => api.updateMyProfile(input),
+  });
+
 export const healthQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: healthScopes.all(),
@@ -519,6 +563,18 @@ export const publicSpaceThreadQuery = (api: ApiClient, input: PublicSpaceThreadG
   defineQuery({
     queryKey: publicSurfaceScopes.spaceThread(input.spaceId, input.postId),
     call: ({ signal }) => api.publicSpaceThread(input, signal),
+  });
+
+export const publicSpaceEventsQuery = (api: ApiClient, input: EventsBySpaceInput) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.spaceEvents(input.spaceId, input.scope),
+    call: ({ signal }) => api.publicSpaceEvents(input, signal),
+  });
+
+export const publicSpaceEventQuery = (api: ApiClient, input: PublicSpaceEventInput) =>
+  defineQuery({
+    queryKey: publicSurfaceScopes.spaceEvent(input.spaceId, input.eventId),
+    call: ({ signal }) => api.publicSpaceEvent(input, signal),
   });
 
 export const publicPaymentConfigQuery = (api: ApiClient) =>
@@ -1193,6 +1249,12 @@ export const notificationsQuery = (api: ApiClient, input: NotificationsListInput
     call: ({ signal }) => api.listNotifications(input, signal),
   });
 
+export const notificationsPageQuery = (api: ApiClient, input: NotificationsListInput = {}) =>
+  defineQuery({
+    queryKey: notificationScopes.page(input.limit),
+    call: ({ signal }) => api.listNotifications(input, signal),
+  });
+
 export const unreadNotificationsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: notificationScopes.unread(),
@@ -1211,6 +1273,106 @@ export const markAllNotificationsReadMutation = (
   defineMutation({
     mutationKey: [...notificationScopes.all(), 'read-all'],
     call: () => api.markAllNotificationsRead(),
+  });
+
+/** @public */
+export const conversationsQuery = (api: ApiClient, input: MessagesListInput = {}) =>
+  defineQuery({
+    queryKey: messagesScopes.list(input.limit),
+    call: ({ signal }) => api.listConversations(input, signal),
+  });
+
+/** @public */
+export const conversationQuery = (api: ApiClient, input: MessagesThreadInput) =>
+  defineQuery({
+    queryKey: messagesScopes.thread(input.conversationId, input.limit),
+    call: ({ signal }) => api.getConversation(input, signal),
+  });
+
+/** @public */
+export const unreadMessagesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: messagesScopes.unread(),
+    call: ({ signal }) => api.unreadMessageCount(signal),
+  });
+
+/** @public */
+export const startConversationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'start'],
+    call: (input: MessagesStartInput) => api.startConversation(input),
+  });
+
+/** @public */
+export const sendMessageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'send'],
+    call: (input: MessagesSendInput) => api.sendMessage(input),
+  });
+
+/** @public */
+export const markConversationReadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'read'],
+    call: (input: MessagesReadInput) => api.markConversationRead(input),
+  });
+
+/** @public */
+export const spaceEventsQuery = (api: ApiClient, input: EventsBySpaceInput) =>
+  defineQuery({
+    queryKey: eventsScopes.bySpace(input),
+    call: ({ signal }) => api.listSpaceEvents(input, signal),
+  });
+
+/** @public */
+export const eventQuery = (api: ApiClient, input: EventRefInput) =>
+  defineQuery({
+    queryKey: eventsScopes.detail(input.eventId),
+    call: ({ signal }) => api.getEvent(input, signal),
+  });
+
+/** @public */
+export const upcomingEventsQuery = (api: ApiClient, input: MemberUpcomingEventsInput = {}) =>
+  defineQuery({
+    queryKey: eventsScopes.upcoming(input.limit),
+    call: ({ signal }) => api.listUpcomingEvents(input, signal),
+  });
+
+/** @public */
+export const eventIcsQuery = (api: ApiClient, input: EventRefInput) =>
+  defineQuery({
+    queryKey: eventsScopes.ics(input.eventId),
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.getEventIcs(input, signal),
+  });
+
+/** @public */
+export const createEventMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...eventsScopes.all(), 'create'],
+    call: (input: EventCreateInput) => api.createEvent(input),
+  });
+
+/** @public */
+export const updateEventMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...eventsScopes.all(), 'update'],
+    call: (input: EventUpdateInput) => api.updateEvent(input),
+  });
+
+/** @public */
+export const deleteEventMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...eventsScopes.all(), 'delete'],
+    call: (input: EventRefInput) => api.deleteEvent(input),
+  });
+
+/** @public */
+export const rsvpEventMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...eventsScopes.all(), 'rsvp'],
+    call: (input: EventRsvpInput) => api.rsvpEvent(input),
   });
 
 export const tenantSecretsQuery = (api: ApiClient) =>
@@ -1351,6 +1513,12 @@ export const dismissOnboardingMutation = (api: ApiClient) =>
 
 export const onboardingInvalidates = () => ({ queryKey: onboardingScopes.all() });
 
+export const tenantSetupReadinessQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tenantSetupScopes.all(),
+    call: ({ signal }) => api.getTenantSetupReadiness(signal),
+  });
+
 /** Invalidation filters for the course tree editor (courses, modules, lessons). */
 export const coursesInvalidates = () => ({ queryKey: coursesScopes.lists() });
 
@@ -1392,6 +1560,12 @@ export const memberLearningSummaryInvalidates = (memberId: string) => ({
 export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });
 
 export const notificationsInvalidates = () => ({ queryKey: notificationScopes.all() });
+
+/** @public */
+export const messagesInvalidates = () => ({ queryKey: messagesScopes.all() });
+
+/** @public */
+export const eventsInvalidates = () => ({ queryKey: eventsScopes.all() });
 
 export const discussionInvalidates = () => ({ queryKey: discussionScopes.all() });
 

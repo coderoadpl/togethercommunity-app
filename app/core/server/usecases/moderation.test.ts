@@ -31,7 +31,10 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'member-1',
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
   ...overrides,
 });
 
@@ -259,6 +262,8 @@ const makeDeps = (
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
+      updateDmOptOut: async () => null,
       setBanned: async () => null,
     },
     threadSubscriptions: {
@@ -279,6 +284,8 @@ const makeDeps = (
       markRead: async () => null,
       markAllRead: async () => 0,
       unreadCount: async () => 0,
+      hasUnreadDmNotification: async () => false,
+      markDmConversationRead: async () => 0,
     },
     notificationChannels: [],
     courses: {
@@ -313,11 +320,15 @@ const makeDeps = (
       findMember: async () => null,
     },
     links: {
+      conversationUrl: () => '',
+      eventUrl: () => '',
       lessonDiscussionUrl: () => '',
       spaceUrl: () => '',
     },
     ids,
     clock: { nowIso: () => NOW },
+    avatarSources: { listAvatarSources: async () => [] },
+    contentHash: { sha256: (content) => `digest(${String(content)})` },
   };
 };
 

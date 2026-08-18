@@ -80,6 +80,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/public/courses/:courseId/structure') return 'offer:read';
   if (path === '/api/public/spaces/:spaceId/feed') return 'offer:read';
   if (path === '/api/public/spaces/:spaceId/posts/:postId') return 'offer:read';
+  if (path.startsWith('/api/public/spaces/') && path.includes('/events')) return 'offer:read';
   if (path === '/api/public/assets/:kind/:file') return 'offer:read';
   if (path === '/api/image-assets/course-cover/upload' || path === '/api/image-assets/course-cover/complete') return 'course:write';
   if (path === '/api/image-assets/product-cover/upload' || path === '/api/image-assets/product-cover/complete') return 'product:write';
@@ -134,8 +135,14 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/me/billing-orders') return 'member:billing:read';
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
+  if (path === '/api/me/profile') return 'member:profile:self-write';
   if (path === '/api/member/navigation') return 'space:read';
   if (path === '/api/member/home-feed') return 'space:read';
+  if (path === '/api/member/upcoming-events') return 'event:read';
+  if (path === '/api/events/rsvp') return 'event:rsvp';
+  if (path === '/api/spaces/:spaceId/events' || path.startsWith('/api/events')) {
+    return method === 'GET' ? 'event:read' : 'event:write';
+  }
   if (path === '/api/my/products') return 'member:product:read';
   if (path.startsWith('/api/my/products/')) return 'member:product:read';
   if (path === '/api/members/ban') return 'member:ban';
@@ -202,6 +209,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/spaces/staff') return 'space:write';
   if (path.startsWith('/api/spaces')) return method === 'GET' ? 'space:read' : 'space:write';
   if (path.startsWith('/api/notifications')) return method === 'GET' ? 'notification:read' : 'notification:write';
+  if (path.startsWith('/api/messages')) return method === 'GET' ? 'dm:read' : 'dm:write';
   if (path === '/api/bunny/videos') return 'course:read';
   if (path === '/api/bunny/test') return 'integration:test';
   return null;
@@ -235,9 +243,13 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
-  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
   if (path === '/api/member/navigation') return tenantActors;
   if (path === '/api/member/home-feed') return tenantActors;
+  if (path === '/api/member/upcoming-events') return tenantActors;
+  if (path === '/api/spaces/:spaceId/events' || path.startsWith('/api/events')) {
+    return method === 'GET' || path === '/api/events/rsvp' ? tenantActors : staff;
+  }
   if (path.startsWith('/api/student/')) {
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
@@ -245,7 +257,7 @@ const beforeForRoute = (
   if (path === '/api/support/message') return tenantActors;
   if (path === '/api/api-keys/:id/import-audit') return owner;
   if (path === '/api/posts/pin') return staff;
-  if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications')) return tenantActors;
+  if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications') || path.startsWith('/api/messages')) return tenantActors;
   if (path.startsWith('/api/spaces') && path !== '/api/spaces/staff' && method === 'GET') return tenantActors;
   if (path.includes('/follow') || path.includes('/react') || path === '/api/spaces/:spaceId/seen') return tenantActors;
   if (
@@ -466,7 +478,7 @@ const beforeForUseCase = (
     return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
   }
   if (file === 'create-tenant.ts') return allHumans;
-  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
+  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {
     return name === 'resolveMemberEntitlements' ? member : tenantActors;
   }
@@ -485,9 +497,11 @@ const beforeForUseCase = (
   if (
     file === 'community-access.ts'
     || file === 'community.ts'
+    || file === 'direct-messages.ts'
     || file === 'member-home-feed.ts'
     || file === 'member-navigation.ts'
   ) return tenantActors;
+  if (file === 'events.ts') return capability === 'event:write' ? staff : tenantActors;
   if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
   if (file === 'support.ts') return tenantActors;
   if (file === 'spaces.ts') {

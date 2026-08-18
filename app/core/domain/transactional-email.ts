@@ -252,6 +252,65 @@ export const spacePost = (
   });
 };
 
+export const spaceEvent = (
+  language: string,
+  input: { tenantName: string; spaceName: string; authorDisplay: string; snippet: string; url: string },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const spaceName = escapeHtml(input.spaceName);
+  const author = escapeHtml(input.authorDisplay);
+  const snippet = escapeHtml(input.snippet);
+  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
+    pl: 'w przestrzeni możesz przestać ją obserwować',
+    en: 'you can unfollow the space there',
+  });
+
+  if (languageOrDefault(language) === 'en') {
+    const actionLink = link(input.url, 'Open the event');
+    return emailMessageSchema.parse({
+      subject: `New event in “${input.spaceName}”`,
+      html: `<p>Hello!</p><p>${author} scheduled an event in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+      text: `Hello!\n\n${input.authorDisplay} scheduled an event in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the event: ${input.url}${footer.text}`,
+    });
+  }
+
+  const actionLink = link(input.url, 'Otwórz wydarzenie');
+  return emailMessageSchema.parse({
+    subject: `Nowe wydarzenie w przestrzeni „${input.spaceName}”`,
+    html: `<p>Cześć!</p><p>${author} zaplanował(a) wydarzenie w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+    text: `Cześć!\n\n${input.authorDisplay} zaplanował(a) wydarzenie w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz wydarzenie: ${input.url}${footer.text}`,
+  });
+};
+
+export const directMessage = (
+  language: string,
+  input: { tenantName: string; senderDisplay: string; snippet: string; url: string },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const sender = escapeHtml(input.senderDisplay);
+  const snippet = escapeHtml(input.snippet);
+  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
+    pl: 'w ustawieniach konta możesz wyłączyć wiadomości od członków społeczności',
+    en: 'you can turn off messages from community members in your account settings',
+  });
+
+  if (languageOrDefault(language) === 'en') {
+    const actionLink = link(input.url, 'Open the conversation');
+    return emailMessageSchema.parse({
+      subject: `New message from ${input.senderDisplay}`,
+      html: `<p>Hello!</p><p>${sender} sent you a message on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+      text: `Hello!\n\n${input.senderDisplay} sent you a message on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the conversation: ${input.url}${footer.text}`,
+    });
+  }
+
+  const actionLink = link(input.url, 'Otwórz rozmowę');
+  return emailMessageSchema.parse({
+    subject: `Nowa wiadomość od ${input.senderDisplay}`,
+    html: `<p>Cześć!</p><p>${sender} wysłał(a) Ci wiadomość na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+    text: `Cześć!\n\n${input.senderDisplay} wysłał(a) Ci wiadomość na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz rozmowę: ${input.url}${footer.text}`,
+  });
+};
+
 export const magicLink = (
   language: string,
   input: { tenantName: string; url: string; branding?: EmailBranding },

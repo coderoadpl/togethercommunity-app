@@ -73,6 +73,7 @@ const fakePurchases = () => {
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
         };
         store.push(member);
       }
@@ -129,6 +130,8 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
         members.push(member);
       },
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
+      updateDmOptOut: async () => null,
     setBanned: async () => null,
     },
     prices: {

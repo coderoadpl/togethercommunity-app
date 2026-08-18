@@ -29,7 +29,10 @@ const identity = (tenantId: string | null): Identity => ({
   tenantName: tenantId === null ? null : 'Acme',
   staffRole: tenantId === null ? null : 'owner',
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const member: Member = {
@@ -46,6 +49,7 @@ const member: Member = {
   bannedAt: null,
   bannedReason: null,
   bannedByUserId: null,
+  dmOptOutAt: null,
 };
 
 const event: MemberEvent = {
@@ -122,6 +126,8 @@ const members: MemberRepository = {
   listWithProductIds: async () => [],
   create: async () => undefined,
   updateEmail: async () => null,
+  updateDisplayName: async () => null,
+  updateDmOptOut: async () => null,
   setBanned: async () => null,
 };
 

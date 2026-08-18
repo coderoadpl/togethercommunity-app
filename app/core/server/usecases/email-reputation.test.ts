@@ -39,7 +39,10 @@ const ctx: Ctx = { identity: {
   tenantName: 'Tenant',
   staffRole: 'owner',
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 } satisfies Identity };
 
 const event = (

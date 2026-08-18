@@ -19,10 +19,14 @@ import {
   PostMetaText,
 } from '../../theme.js';
 import { EmptyFeedIcon } from './community-icons.js';
+import { LiveNowBanner } from './events/LiveNowBanner.js';
+import { SpaceEventsSection } from './events/SpaceEventsSection.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { ReportPostButton } from './ReportPostButton.js';
+import { StartMessageButton } from './messages/StartMessageButton.js';
 import { useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -93,7 +97,8 @@ const FeedPost = ({
   return (
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`feed-post-${item.id}`}>
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.6rem', flexWrap: 'wrap' }}>
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}>
+          <MemberAvatar name={item.authorDisplay} avatarUrl={item.authorAvatarUrl} size="sm" />
           <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
           {item.authorIsStaff && <AuthorChip data-testid={`author-chip-${item.id}`}>{t.discussion.authorChip}</AuthorChip>}
           {item.pinnedAt !== null ? (
@@ -142,6 +147,7 @@ const FeedPost = ({
               {item.pinnedAt === null ? t.community.pin : t.community.unpin}
             </Button>
           ) : null}
+          {!item.isOwn && !deleted ? <StartMessageButton postId={item.id} /> : null}
           {!item.isOwn && !deleted ? <ReportPostButton postId={item.id} /> : null}
         </Stack>
       </Stack>
@@ -283,27 +289,30 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   };
 
   const rail = (
-    <SectionCard title={t.community.aboutHeading} data-testid="space-about">
-      <PostBody variant="body2" component="p" color="text.secondary">
-        {space.description ?? t.community.noDescription}
-      </PostBody>
-      <Chip
-        size="small"
-        variant="outlined"
-        label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
-        sx={{ alignSelf: 'flex-start' }}
-      />
-      <Box>
-        <Button
-          variant={isFollowing ? 'outlined' : 'contained'}
-          aria-pressed={isFollowing}
-          data-testid="space-follow-toggle"
-          onClick={toggleFollow}
-        >
-          {isFollowing ? t.community.unfollow : t.community.follow}
-        </Button>
-      </Box>
-    </SectionCard>
+    <>
+      <SectionCard title={t.community.aboutHeading} data-testid="space-about">
+        <PostBody variant="body2" component="p" color="text.secondary">
+          {space.description ?? t.community.noDescription}
+        </PostBody>
+        <Chip
+          size="small"
+          variant="outlined"
+          label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
+          sx={{ alignSelf: 'flex-start' }}
+        />
+        <Box>
+          <Button
+            variant={isFollowing ? 'outlined' : 'contained'}
+            aria-pressed={isFollowing}
+            data-testid="space-follow-toggle"
+            onClick={toggleFollow}
+          >
+            {isFollowing ? t.community.unfollow : t.community.follow}
+          </Button>
+        </Box>
+      </SectionCard>
+      <SpaceEventsSection spaceId={spaceId} />
+    </>
   );
 
   const items = feed.data?.feed.items ?? [];
@@ -314,6 +323,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   return (
     <MemberSurface title={space.name} eyebrow={t.community.feedEyebrow} width="wide" rail={rail}>
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
+        <LiveNowBanner spaceId={spaceId} />
         <Paper elevation={1} sx={{ p: '1.25rem' }}>
           <PostComposer
             label={t.community.composerLabel}

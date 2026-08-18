@@ -241,9 +241,11 @@ const LockedView = ({
 export const LessonPlayerPage = ({
   courseId,
   lessonId,
+  threadRootPostId = null,
 }: {
   courseId: string;
   lessonId: string;
+  threadRootPostId?: string | null;
 }) => {
   const t = useTranslations();
   const lesson = useQuery({
@@ -554,7 +556,25 @@ export const LessonPlayerPage = ({
           </Stack>
         </LessonFooterBar>}
 
-        {authenticated && <DiscussionSection lessonId={lessonId} />}
+        {authenticated && (
+          <DiscussionSection
+            key={threadRootPostId ?? 'all-threads'}
+            lessonId={lessonId}
+            {...(threadRootPostId === null
+              ? {}
+              : {
+                  focusThread: {
+                    rootPostId: threadRootPostId,
+                    onExit: () =>
+                      void navigate({
+                        to: '/my/courses/$courseId/lessons/$lessonId',
+                        params: { courseId, lessonId },
+                        search: {},
+                      }),
+                  },
+                })}
+          />
+        )}
           </>
         )}
       </Box>

@@ -13,6 +13,8 @@ import type {
   CourseLesson,
   CourseModule,
   Course,
+  DmConversation,
+  DmMessage,
   Member,
   MemberSubscription,
   Notification,
@@ -25,12 +27,14 @@ import type {
   ProductGrant,
   ProductPrice,
   Space,
+  SpaceEvent,
   TenantApiKey,
   TenantSecret,
 } from '#core/domain/index.js';
 
 import type { Db } from './client.js';
 import {
+  createAvatarSourceReader,
   createCourseLessonRepository,
   createCourseModuleRepository,
   createCourseRepository,
@@ -40,6 +44,9 @@ import {
   createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
+  createDmConversationRepository,
+  createDmConversationStateRepository,
+  createDmMessageRepository,
   createMemberSubscriptionRepository,
   createNotificationRepository,
   createOrderRepository,
@@ -50,6 +57,8 @@ import {
   createProductGrantRepository,
   createProductPriceRepository,
   createProductRepository,
+  createSpaceEventRepository,
+  createSpaceEventRsvpRepository,
   createSpaceRepository,
   createSpaceSeenRepository,
   createTenantAccessReader,
@@ -194,6 +203,7 @@ const member = (over: Partial<Member> & { id: string; tenantId: string; userId: 
   bannedAt: over.bannedAt ?? null,
   bannedReason: over.bannedReason ?? null,
   bannedByUserId: over.bannedByUserId ?? null,
+  dmOptOutAt: over.dmOptOutAt ?? null,
 });
 
 beforeAll(async () => {
@@ -306,6 +316,21 @@ describe('member repository', () => {
     const rows = await repo.listWithProductIds(ACME, NOW);
     const acmeMember = rows.find((r) => r.id === 'mem-acme');
     expect(acmeMember?.activeProductIds).toContain('prod-acme');
+  });
+
+  it('sets and clears the display name inside the owning tenant only', async () => {
+    const repo = createMemberRepository(db);
+
+    expect(await repo.updateDisplayName(ACME, 'mem-acme', 'Ada L.')).toMatchObject({
+      id: 'mem-acme',
+      displayName: 'Ada L.',
+    });
+    expect(await repo.findById(ACME, 'mem-acme')).toMatchObject({ displayName: 'Ada L.' });
+    expect(await repo.updateDisplayName(GLOBEX, 'mem-acme', 'Stolen')).toBeNull();
+    expect(await repo.findById(ACME, 'mem-acme')).toMatchObject({ displayName: 'Ada L.' });
+    expect(await repo.updateDisplayName(ACME, 'mem-acme', null)).toMatchObject({
+      displayName: null,
+    });
   });
 
   it('updates ban state and appends its event atomically', async () => {
@@ -1106,6 +1131,35 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       ['user-acme-owner', 'Acme Owner'],
       ['user-acme-member', 'Acme Member'],
     ]));
+  });
+
+  it('reads avatar sources for tenant identities only, preferring the member e-mail', async () => {
+    await db.insert(user).values({
+      id: 'user-acme-avatar',
+      name: 'Avatar Member',
+      email: 'account-avatar@together.dev',
+      image: 'https://lh3.googleusercontent.com/a/avatar',
+    });
+    await createMemberRepository(db).create(ACME, member({
+      id: 'mem-acme-avatar',
+      tenantId: ACME,
+      userId: 'user-acme-avatar',
+      email: 'member-avatar@together.dev',
+    }));
+
+    const reader = createAvatarSourceReader(db);
+    const sources = await reader.listAvatarSources(ACME, [
+      'user-acme-avatar',
+      'user-acme-owner',
+      'user-globex-member',
+    ]);
+
+    expect([...sources].sort((a, b) => a.userId.localeCompare(b.userId))).toEqual([
+      { userId: 'user-acme-avatar', email: 'member-avatar@together.dev', image: 'https://lh3.googleusercontent.com/a/avatar' },
+      { userId: 'user-acme-owner', email: 'owner-acme@together.dev', image: null },
+    ]);
+    expect(await reader.listAvatarSources(GLOBEX, ['user-acme-avatar'])).toEqual([]);
+    expect(await reader.listAvatarSources(ACME, [])).toEqual([]);
   });
 
   it('stores and revokes API keys by hash within the tenant', async () => {
@@ -1939,6 +1993,181 @@ describe('post repository', () => {
   });
 });
 
+describe('space event repositories', () => {
+  const eventSpace = (id: string, tenantId: string): Space => ({
+    id,
+    tenantId,
+    slug: id,
+    name: id,
+    description: null,
+    visibility: 'members',
+    productIds: [],
+    publicReadOnly: false,
+    position: 0,
+    archivedAt: null,
+    createdAt: NOW,
+  });
+
+  const spaceEvent = (id: string, over: Partial<SpaceEvent> = {}): SpaceEvent => ({
+    id,
+    tenantId: ACME,
+    spaceId: 'space-events',
+    title: `Event ${id}`,
+    description: null,
+    startsAt: FUTURE,
+    endsAt: '1998-12-01T02:00:00.000Z',
+    location: null,
+    url: null,
+    liveEmbedUrl: null,
+    replayUrl: null,
+    discussionRootPostId: null,
+    createdByUserId: 'user-acme-owner',
+    createdAt: NOW,
+    updatedAt: null,
+    deletedAt: null,
+    ...over,
+  });
+
+  beforeAll(async () => {
+    const spacesRepo = createSpaceRepository(db);
+    await spacesRepo.create(ACME, eventSpace('space-events', ACME));
+    await spacesRepo.create(ACME, eventSpace('space-events-other', ACME));
+    await spacesRepo.create(GLOBEX, eventSpace('space-events-globex', GLOBEX));
+  });
+
+  it('splits upcoming and past events around now and paginates by cursor', async () => {
+    const repository = createSpaceEventRepository(db);
+    await repository.insert(
+      ACME,
+      spaceEvent('event-past', { startsAt: PAST, endsAt: '1998-01-01T02:00:00.000Z' }),
+    );
+    await repository.insert(ACME, spaceEvent('event-soon'));
+    await repository.insert(
+      ACME,
+      spaceEvent('event-later', {
+        startsAt: '1998-12-24T18:00:00.000Z',
+        endsAt: '1998-12-24T20:00:00.000Z',
+      }),
+    );
+
+    const first = await repository.listForSpace(ACME, {
+      spaceId: 'space-events',
+      scope: 'upcoming',
+      now: NOW,
+      limit: 1,
+    });
+    if (first.nextCursor === null) throw new Error('Expected a second event page');
+    const second = await repository.listForSpace(ACME, {
+      spaceId: 'space-events',
+      scope: 'upcoming',
+      now: NOW,
+      cursor: first.nextCursor,
+      limit: 10,
+    });
+    const past = await repository.listForSpace(ACME, {
+      spaceId: 'space-events',
+      scope: 'past',
+      now: NOW,
+      limit: 10,
+    });
+
+    expect(first.events.map((row) => row.id)).toEqual(['event-soon']);
+    expect(second.events.map((row) => row.id)).toEqual(['event-later']);
+    expect(past.events.map((row) => row.id)).toEqual(['event-past']);
+  });
+
+  it('scopes reads to the tenant and hides soft-deleted events', async () => {
+    const repository = createSpaceEventRepository(db);
+    await repository.insert(ACME, spaceEvent('event-deleted'));
+    await repository.softDelete(ACME, { id: 'event-deleted', deletedAt: NOW });
+
+    const listed = await repository.listForSpace(ACME, {
+      spaceId: 'space-events',
+      scope: 'upcoming',
+      now: NOW,
+      limit: 10,
+    });
+
+    expect(listed.events.map((row) => row.id)).not.toContain('event-deleted');
+    expect(await repository.findById(GLOBEX, 'event-soon')).toBeNull();
+    expect((await repository.findById(ACME, 'event-deleted'))?.deletedAt).toBe(NOW);
+  });
+
+  it('lists upcoming events across several spaces in start order', async () => {
+    const repository = createSpaceEventRepository(db);
+    await repository.insert(
+      ACME,
+      spaceEvent('event-other-space', {
+        spaceId: 'space-events-other',
+        startsAt: '1998-11-01T18:00:00.000Z',
+        endsAt: '1998-11-01T20:00:00.000Z',
+      }),
+    );
+
+    const upcoming = await repository.listUpcomingForSpaces(ACME, {
+      spaceIds: ['space-events', 'space-events-other'],
+      now: NOW,
+      limit: 10,
+    });
+
+    expect(upcoming.map((row) => row.id)).toEqual(['event-other-space', 'event-soon', 'event-later']);
+    expect(
+      await repository.listUpcomingForSpaces(ACME, { spaceIds: [], now: NOW, limit: 10 }),
+    ).toEqual([]);
+  });
+
+  it('persists edits to the event projection', async () => {
+    const repository = createSpaceEventRepository(db);
+    const stored = await repository.findById(ACME, 'event-soon');
+    if (stored === null) throw new Error('Expected the stored event');
+
+    const updated = await repository.update(ACME, {
+      ...stored,
+      title: 'Event renamed',
+      location: 'Online',
+      updatedAt: FUTURE,
+    });
+
+    expect(updated).toMatchObject({ title: 'Event renamed', location: 'Online', updatedAt: FUTURE });
+    expect(await repository.update(GLOBEX, { ...stored, title: 'Nope' })).toBeNull();
+  });
+
+  it('keeps one rsvp per viewer and counts both answers', async () => {
+    const repository = createSpaceEventRsvpRepository(db);
+
+    await repository.upsert(ACME, {
+      eventId: 'event-soon',
+      userId: 'user-acme-member',
+      status: 'going',
+      updatedAt: NOW,
+    });
+    await repository.upsert(ACME, {
+      eventId: 'event-soon',
+      userId: 'user-acme-member',
+      status: 'not-going',
+      updatedAt: FUTURE,
+    });
+    await repository.upsert(ACME, {
+      eventId: 'event-soon',
+      userId: 'user-acme-owner',
+      status: 'going',
+      updatedAt: NOW,
+    });
+
+    const counts = await repository.countsForEvents(ACME, ['event-soon', 'event-later']);
+    const viewer = await repository.listForViewer(ACME, {
+      userId: 'user-acme-member',
+      eventIds: ['event-soon'],
+    });
+
+    expect(counts.get('event-soon')).toEqual({ going: 1, notGoing: 1 });
+    expect(counts.get('event-later')).toEqual({ going: 0, notGoing: 0 });
+    expect(viewer).toMatchObject([{ eventId: 'event-soon', status: 'not-going', updatedAt: FUTURE }]);
+    expect(await repository.listForViewer(GLOBEX, { userId: 'user-acme-member', eventIds: ['event-soon'] })).toEqual([]);
+    expect(await repository.countsForEvents(ACME, [])).toEqual(new Map());
+  });
+});
+
 describe('space seen repository', () => {
   const seenSpace = (id: string, tenantId: string): Space => ({
     id,
@@ -2008,8 +2237,10 @@ describe('notification repository', () => {
         contextKind: 'lesson',
         contextId: 'lesson-notification-pagination',
         courseId: 'course-notification-pagination',
+        eventId: null,
         lessonName: 'Pagination',
         authorDisplay: 'Author',
+        authorAvatarUrl: null,
         snippet: id,
       },
       readAt: null,
@@ -2048,6 +2279,183 @@ describe('notification repository', () => {
     ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(third.nextCursor).toBeNull();
+  });
+});
+
+describe('direct message repositories', () => {
+  const conversation = (id: string, over: Partial<DmConversation> = {}): DmConversation => ({
+    id,
+    tenantId: ACME,
+    participantLowUserId: 'user-acme-member',
+    participantHighUserId: 'user-acme-owner',
+    createdByUserId: 'user-acme-member',
+    createdAt: NOW,
+    lastMessageId: null,
+    lastMessageAt: NOW,
+    lastMessageSnippet: '',
+    lastMessageSenderUserId: 'user-acme-member',
+    ...over,
+  });
+
+  const message = (id: string, over: Partial<DmMessage> = {}): DmMessage => ({
+    id,
+    tenantId: ACME,
+    conversationId: 'dm-conversation-1',
+    senderUserId: 'user-acme-member',
+    body: `Body ${id}`,
+    createdAt: NOW,
+    ...over,
+  });
+
+  it('keeps one row per canonical pair and finds it from either side', async () => {
+    const repository = createDmConversationRepository(db);
+    await repository.insert(ACME, conversation('dm-conversation-1'));
+
+    const found = await repository.findByParticipants(ACME, {
+      low: 'user-acme-member',
+      high: 'user-acme-owner',
+    });
+    const crossTenant = await repository.findById(GLOBEX, 'dm-conversation-1');
+
+    expect(found?.id).toBe('dm-conversation-1');
+    expect(crossTenant).toBeNull();
+    await expect(
+      repository.insert(ACME, conversation('dm-conversation-duplicate')),
+    ).rejects.toThrow();
+  });
+
+  it('orders conversations by the last message and paginates by cursor', async () => {
+    const repository = createDmConversationRepository(db);
+    const messages = createDmMessageRepository(db);
+    await repository.insert(
+      ACME,
+      conversation('dm-conversation-2', {
+        participantHighUserId: 'user-acme-second',
+        lastMessageAt: '1998-07-14T09:00:00.000Z',
+      }),
+    );
+    await messages.insert(ACME, message('dm-message-1', { createdAt: '1998-07-14T09:30:00.000Z' }));
+    await repository.applyLastMessage(ACME, {
+      conversationId: 'dm-conversation-1',
+      lastMessageId: 'dm-message-1',
+      lastMessageAt: '1998-07-14T09:30:00.000Z',
+      lastMessageSnippet: 'Body dm-message-1',
+      lastMessageSenderUserId: 'user-acme-member',
+    });
+
+    const first = await repository.listForParticipant(ACME, {
+      userId: 'user-acme-member',
+      limit: 1,
+    });
+    if (first.nextCursor === null) throw new Error('Expected a second conversation page');
+    const second = await repository.listForParticipant(ACME, {
+      userId: 'user-acme-member',
+      cursor: first.nextCursor,
+      limit: 1,
+    });
+
+    expect(first.conversations.map((row) => row.id)).toEqual(['dm-conversation-1']);
+    expect(second.conversations.map((row) => row.id)).toEqual(['dm-conversation-2']);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('counts unread conversations against the viewer read cursor', async () => {
+    const repository = createDmConversationRepository(db);
+    const states = createDmConversationStateRepository(db);
+
+    const senderBefore = await repository.countUnreadForParticipant(ACME, 'user-acme-member');
+    const recipientBefore = await repository.countUnreadForParticipant(ACME, 'user-acme-owner');
+    await states.markRead(ACME, {
+      conversationId: 'dm-conversation-1',
+      userId: 'user-acme-owner',
+      lastReadAt: '1998-07-14T10:00:00.000Z',
+    });
+    const recipientAfter = await repository.countUnreadForParticipant(ACME, 'user-acme-owner');
+
+    expect(senderBefore).toBe(0);
+    expect(recipientBefore).toBe(1);
+    expect(recipientAfter).toBe(0);
+  });
+
+  it('counts a sender rate-limit window and paginates messages newest first', async () => {
+    const repository = createDmMessageRepository(db);
+    await repository.insert(ACME, message('dm-message-2', { createdAt: '1998-07-14T10:30:00.000Z' }));
+
+    const page = await repository.listForConversation(ACME, {
+      conversationId: 'dm-conversation-1',
+      limit: 10,
+    });
+    const windowed = await repository.countRecentBySender(
+      ACME,
+      'user-acme-member',
+      '1998-07-14T10:00:00.000Z',
+    );
+
+    expect(page.messages.map((row) => row.id)).toEqual(['dm-message-2', 'dm-message-1']);
+    expect(windowed).toBe(1);
+  });
+
+  it('collapses direct-message notifications per conversation until they are read', async () => {
+    const repository = createNotificationRepository(db);
+    const dmNotification: Notification = {
+      id: 'notification-dm-1',
+      tenantId: ACME,
+      recipientUserId: 'user-acme-owner',
+      kind: 'dm-message',
+      payload: {
+        rootPostId: 'dm-message-1',
+        postId: 'dm-message-1',
+        contextKind: 'dm',
+        contextId: 'dm-conversation-1',
+        courseId: null,
+        eventId: null,
+        lessonName: 'Acme Member',
+        authorDisplay: 'Acme Member',
+        authorAvatarUrl: null,
+        snippet: 'Body dm-message-1',
+      },
+      readAt: null,
+      createdAt: NOW,
+    };
+    await repository.insert(ACME, dmNotification);
+
+    const pending = await repository.hasUnreadDmNotification(
+      ACME,
+      'user-acme-owner',
+      'dm-conversation-1',
+    );
+    const otherConversation = await repository.hasUnreadDmNotification(
+      ACME,
+      'user-acme-owner',
+      'dm-conversation-2',
+    );
+    const marked = await repository.markDmConversationRead(ACME, {
+      recipientUserId: 'user-acme-owner',
+      conversationId: 'dm-conversation-1',
+      readAt: '1998-07-14T11:00:00.000Z',
+    });
+    const afterRead = await repository.hasUnreadDmNotification(
+      ACME,
+      'user-acme-owner',
+      'dm-conversation-1',
+    );
+
+    expect(pending).toBe(true);
+    expect(otherConversation).toBe(false);
+    expect(marked).toBe(1);
+    expect(afterRead).toBe(false);
+  });
+
+  it('stores the direct-message opt-out on the member row', async () => {
+    const repository = createMemberRepository(db);
+
+    const optedOut = await repository.updateDmOptOut(ACME, 'mem-acme', NOW);
+    const clearedForOtherTenant = await repository.updateDmOptOut(GLOBEX, 'mem-acme', NOW);
+    const cleared = await repository.updateDmOptOut(ACME, 'mem-acme', null);
+
+    expect(optedOut?.dmOptOutAt).toBe(NOW);
+    expect(clearedForOtherTenant).toBeNull();
+    expect(cleared?.dmOptOutAt).toBeNull();
   });
 });
 

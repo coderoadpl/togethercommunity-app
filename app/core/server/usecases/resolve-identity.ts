@@ -50,12 +50,15 @@ export const resolveIdentity = async (
     email: user.email,
     name: user.name,
     emailVerified: user.emailVerified,
+    image: user.image,
     tenantId: null,
     tenantSlug: null,
     tenantName: null,
     staffRole: null,
     memberId: null,
+    memberDisplayName: null,
     memberBannedAt: null,
+    memberDmOptOutAt: null,
   };
 
   if (!tenant.value) return ok(base);
@@ -79,6 +82,8 @@ export const resolveIdentity = async (
     tenantName: tenant.value.tenant.name,
     staffRole: staffGrant?.staffRole ?? null,
     memberId: member?.id ?? null,
+    memberDisplayName: member?.displayName ?? null,
     memberBannedAt: member?.bannedAt ?? null,
+    memberDmOptOutAt: member?.dmOptOutAt ?? null,
   });
 };

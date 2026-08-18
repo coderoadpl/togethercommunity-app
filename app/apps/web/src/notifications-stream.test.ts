@@ -1,13 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { connectNotificationsStream, type NotificationStreamSource } from './notifications-stream.js';
+import {
+  connectNotificationsStream,
+  streamlessPollInterval,
+  type NotificationStreamSource,
+} from './notifications-stream.js';
+
+type StreamEvent = 'unread' | 'notification' | 'dm' | 'error';
 
 class FakeEventSource implements NotificationStreamSource {
   closed = false;
 
   private readonly listeners = new Map<string, Array<() => void>>();
 
-  addEventListener(type: 'unread' | 'notification' | 'error', listener: () => void): void {
+  addEventListener(type: StreamEvent, listener: () => void): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
   }
 
@@ -15,21 +21,26 @@ class FakeEventSource implements NotificationStreamSource {
     this.closed = true;
   }
 
-  emit(type: 'unread' | 'notification' | 'error'): void {
+  emit(type: StreamEvent): void {
     for (const listener of this.listeners.get(type) ?? []) listener();
   }
 }
 
 describe('notifications stream wrapper', () => {
-  it('invalidates on unread and notification events', () => {
+  it('invalidates on unread, notification and direct-message events', () => {
     const source = new FakeEventSource();
     const onEvent = vi.fn();
     connectNotificationsStream({ onEvent, onFallback: vi.fn(), createSource: () => source });
 
     source.emit('unread');
     source.emit('notification');
+    source.emit('dm');
 
-    expect(onEvent).toHaveBeenCalledTimes(2);
+    expect(onEvent).toHaveBeenCalledTimes(3);
+  });
+
+  it('polls only where EventSource is missing', () => {
+    expect(streamlessPollInterval()).toBe(30_000);
   });
 
   it('falls back to polling after the stream errors twice', () => {

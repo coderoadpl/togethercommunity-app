@@ -10,7 +10,7 @@ import {
 import type { ImportContentMutation, ImportContentRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { uniqueViolation } from './pg-errors.js';
+import { uniqueViolation, uniqueViolationIn } from './pg-errors.js';
 import {
   courseLessons,
   courseModules,
@@ -145,6 +145,13 @@ const updateResource = async (
   return rows.length === 1;
 };
 
+const intraTenantConflictConstraints = [
+  'courses_tenant_legacy_uidx',
+  'course_modules_tenant_legacy_uidx',
+  'course_lessons_tenant_legacy_uidx',
+  'products_tenant_legacy_uidx',
+];
+
 export const createImportContentRepository = (db: Db): ImportContentRepository => ({
   commit: async (tenantId, mutation) => {
     try {
@@ -158,7 +165,7 @@ export const createImportContentRepository = (db: Db): ImportContentRepository =
       if (mutation.kind === 'product' && uniqueViolation(cause, 'products_tenant_slug_uidx')) {
         return 'slug_taken';
       }
-      if (uniqueViolation(cause)) return 'conflict';
+      if (uniqueViolationIn(cause, intraTenantConflictConstraints)) return 'conflict';
       throw cause;
     }
   },

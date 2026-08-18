@@ -61,7 +61,10 @@ const identity = (staffRole: 'admin' | null): Identity => ({
   tenantName: 'Alpha',
   staffRole,
   memberId: staffRole === null ? 'member-1' : null,
+image: null,
+memberDisplayName: null,
 memberBannedAt: null,
+memberDmOptOutAt: null,
 });
 
 const deps: TenantSettingsDeps = {

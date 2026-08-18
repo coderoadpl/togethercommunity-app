@@ -439,6 +439,40 @@ const spaceReplyOptionsSchema = spacePostOptionsSchema.extend({
 const spaceIdOptionsSchema = z.object({
   space: z.string().min(1),
 });
+const positiveIntegerOptionSchema = z
+  .string()
+  .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
+  .transform((value) => Number.parseInt(value, 10))
+  .optional();
+const dmListOptionsSchema = z.object({
+  limit: positiveIntegerOptionSchema,
+});
+const dmStartOptionsSchema = z.object({
+  toMember: z.string().min(1).optional(),
+  toPost: z.string().min(1).optional(),
+});
+const dmSendOptionsSchema = z.object({
+  conversation: z.string().min(1).optional(),
+  toMember: z.string().min(1).optional(),
+  body: z.string().min(1),
+});
+const eventListOptionsSchema = z.object({
+  space: z.string().min(1),
+  scope: z.enum(['upcoming', 'past']).optional(),
+  limit: positiveIntegerOptionSchema,
+});
+const eventCreateOptionsSchema = z.object({
+  space: z.string().min(1),
+  title: z.string().min(1),
+  startsAt: z.string().min(1),
+  endsAt: z.string().min(1),
+  description: z.string().min(1).optional(),
+  location: z.string().min(1).optional(),
+  url: z.string().min(1).optional(),
+});
+const eventRsvpOptionsSchema = z.object({
+  status: z.enum(['going', 'not-going']),
+});
 const notificationsListOptionsSchema = z.object({
   limit: z
     .string()
@@ -2168,6 +2202,223 @@ space
       emit(await ctx.api.unfollowSpace({ spaceId: options.space }), ctx.json, (data) =>
         `unfollowed space ${data.spaceId.slice(0, 8)}`,
       );
+    }),
+  );
+
+const dm = program.command('dm').description('Direct messages');
+
+dm
+  .command('list')
+  .description('List your conversations')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([dmListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listConversations(options.limit === undefined ? {} : { limit: options.limit }),
+        ctx.json,
+        (data) =>
+          data.conversations.length === 0
+            ? 'no conversations'
+            : data.conversations
+                .map(
+                  (item) =>
+                    `- ${item.unread ? 'unread' : 'read'} ${item.otherParticipant.display}: ${item.lastMessageSnippet} (${item.id.slice(0, 8)})`,
+                )
+                .join('\n'),
+      );
+    }),
+  );
+
+dm
+  .command('start')
+  .description('Start or reopen a conversation with a member or the author of a post')
+  .option('--to-member <memberId>')
+  .option('--to-post <postId>')
+  .action(
+    withInput(z.tuple([dmStartOptionsSchema]), async (ctx, [options]) => {
+      if (options.toMember === undefined && options.toPost === undefined) {
+        emit(err(validation('Pass --to-member or --to-post')), ctx.json, () => '');
+        return;
+      }
+      const recipient =
+        options.toMember === undefined
+          ? ({ kind: 'post-author', postId: options.toPost ?? '' } as const)
+          : ({ kind: 'member', memberId: options.toMember } as const);
+      emit(await ctx.api.startConversation({ recipient }), ctx.json, (data) =>
+        `conversation with ${data.conversation.otherParticipant.display} (${data.conversation.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+dm
+  .command('send')
+  .description('Send a message; --to-member starts the conversation when it does not exist yet')
+  .option('--conversation <conversationId>')
+  .option('--to-member <memberId>')
+  .requiredOption('--body <text>')
+  .action(
+    withInput(z.tuple([dmSendOptionsSchema]), async (ctx, [options]) => {
+      let conversationId = options.conversation;
+      if (conversationId === undefined) {
+        if (options.toMember === undefined) {
+          emit(err(validation('Pass --conversation or --to-member')), ctx.json, () => '');
+          return;
+        }
+        const started = await ctx.api.startConversation({
+          recipient: { kind: 'member', memberId: options.toMember },
+        });
+        if (!started.ok) {
+          emit(started, ctx.json, () => '');
+          return;
+        }
+        conversationId = started.value.conversation.id;
+      }
+      emit(await ctx.api.sendMessage({ conversationId, body: options.body }), ctx.json, (data) =>
+        `sent ${data.message.id.slice(0, 8)}`,
+      );
+    }),
+  );
+
+dm
+  .command('thread <conversationId>')
+  .description('Read a conversation, newest first')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([z.string().min(1), dmListOptionsSchema]), async (ctx, [conversationId, options]) => {
+      emit(
+        await ctx.api.getConversation({
+          conversationId,
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) =>
+          data.messages.length === 0
+            ? `no messages with ${data.conversation.otherParticipant.display}`
+            : data.messages
+                .map(
+                  (item) =>
+                    `- ${item.isOwn ? 'you' : data.conversation.otherParticipant.display}: ${item.body} (${item.id.slice(0, 8)})`,
+                )
+                .join('\n'),
+      );
+    }),
+  );
+
+dm
+  .command('read <conversationId>')
+  .description('Mark a conversation as read')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [conversationId]) => {
+      emit(await ctx.api.markConversationRead({ conversationId }), ctx.json, (data) =>
+        `read ${data.conversationId.slice(0, 8)} at ${data.lastReadAt}`,
+      );
+    }),
+  );
+
+dm
+  .command('unread')
+  .description('Count conversations with unread messages')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.unreadMessageCount(), ctx.json, (data) => `${String(data.unread)} unread`);
+    }),
+  );
+
+const event = program.command('event').description('Space events');
+
+event
+  .command('list')
+  .description('List the events of a space')
+  .requiredOption('--space <spaceId>')
+  .option('--scope <scope>', 'upcoming (default) or past')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([eventListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listSpaceEvents({
+          spaceId: options.space,
+          ...(options.scope === undefined ? {} : { scope: options.scope }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) =>
+          data.events.length === 0
+            ? 'no events'
+            : data.events
+                .map(
+                  (item) =>
+                    `- ${item.startsAt} ${item.title} (${item.id.slice(0, 8)}, ${String(item.goingCount)} going${item.liveNow ? ', live' : ''})`,
+                )
+                .join('\n'),
+      );
+    }),
+  );
+
+event
+  .command('upcoming')
+  .description('List upcoming events across the spaces you can see')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([dmListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listUpcomingEvents(options.limit === undefined ? {} : { limit: options.limit }),
+        ctx.json,
+        (data) =>
+          data.events.length === 0
+            ? 'no upcoming events'
+            : data.events
+                .map((item) => `- ${item.startsAt} ${item.title} (${item.id.slice(0, 8)})`)
+                .join('\n'),
+      );
+    }),
+  );
+
+event
+  .command('create')
+  .description('Schedule an event in a space')
+  .requiredOption('--space <spaceId>')
+  .requiredOption('--title <text>')
+  .requiredOption('--starts-at <iso>')
+  .requiredOption('--ends-at <iso>')
+  .option('--description <text>')
+  .option('--location <text>')
+  .option('--url <url>')
+  .action(
+    withInput(z.tuple([eventCreateOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createEvent({
+          spaceId: options.space,
+          title: options.title,
+          startsAt: options.startsAt,
+          endsAt: options.endsAt,
+          ...(options.description === undefined ? {} : { description: options.description }),
+          ...(options.location === undefined ? {} : { location: options.location }),
+          ...(options.url === undefined ? {} : { url: options.url }),
+        }),
+        ctx.json,
+        (data) => `created event ${data.event.id.slice(0, 8)} in space ${data.event.spaceId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+event
+  .command('rsvp <eventId>')
+  .description('Answer an event invitation')
+  .requiredOption('--status <status>', 'going or not-going')
+  .action(
+    withInput(z.tuple([z.string().min(1), eventRsvpOptionsSchema]), async (ctx, [eventId, options]) => {
+      emit(await ctx.api.rsvpEvent({ eventId, status: options.status }), ctx.json, (data) =>
+        `${data.event.viewerRsvp ?? 'no answer'} (${String(data.event.goingCount)} going)`,
+      );
+    }),
+  );
+
+event
+  .command('ics <eventId>')
+  .description('Print the calendar entry of an event')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [eventId]) => {
+      emit(await ctx.api.getEventIcs({ eventId }), ctx.json, (data) => data.icsContent);
     }),
   );
 

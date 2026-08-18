@@ -17,7 +17,9 @@ import {
 
 import type { Ctx } from '../context.js';
 import type {
+  AvatarSourceReader,
   Clock,
+  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -57,6 +59,8 @@ import {
 
 const NOW = '2026-07-15T10:00:00.000Z';
 
+const contentHash: ContentHash = { sha256: (content) => `digest(${String(content)})` };
+
 const identity = (overrides: Partial<Identity>): Identity => ({
   userId: 'u1',
   email: 'u1@example.com',
@@ -67,7 +71,10 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'm1',
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
   ...overrides,
 });
 
@@ -530,6 +537,14 @@ class FakeNotifications implements NotificationRepository {
   async unreadCount(): Promise<number> {
     return 0;
   }
+
+  async hasUnreadDmNotification(): Promise<boolean> {
+    return false;
+  }
+
+  async markDmConversationRead(): Promise<number> {
+    return 0;
+  }
 }
 
 const emptyCourses: CourseRepository = {
@@ -636,9 +651,9 @@ interface Fixture {
 }
 
 const MEMBERS: Member[] = [
-  { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
-  { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
-  { id: 'm5', tenantId: 't1', userId: 'u5', email: 'u5@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+  { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+  { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+  { id: 'm5', tenantId: 't1', userId: 'u5', email: 'u5@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
 ];
 
 const fixture = (input: {
@@ -646,6 +661,7 @@ const fixture = (input: {
   grants?: ProductGrant[];
   products?: Product[];
   staffUserIds?: string[];
+  bannedUserIds?: string[];
   defaultHomeSpaceId?: string;
 }): Fixture => {
   const contentVersionBumps: string[] = [];
@@ -673,8 +689,17 @@ const fixture = (input: {
             staffRole: 'admin',
           }
         : null,
-    findMember: async (tenantId, userId) =>
-      MEMBERS.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
+    findMember: async (tenantId, userId) => {
+      const found = MEMBERS.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null;
+      if (found === null || !(input.bannedUserIds ?? []).includes(userId)) return found;
+      return { ...found, bannedAt: NOW };
+    },
+  };
+  const avatarSources: AvatarSourceReader = {
+    listAvatarSources: async (tenantId, userIds) =>
+      MEMBERS.filter(
+        (member) => member.tenantId === tenantId && userIds.includes(member.userId),
+      ).map((member) => ({ userId: member.userId, email: member.email, image: null })),
   };
   const deps: SpacesDeps & CommunityDeps = {
     spaces: new FakeSpaces(input.spaces),
@@ -703,11 +728,15 @@ const fixture = (input: {
     tenantAccess,
     links: {
       lessonDiscussionUrl: ({ lessonId }) => `http://tenant.localhost/my/courses/c1/lessons/${lessonId}`,
+      conversationUrl: ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
+      eventUrl: ({ spaceId, eventId }) => `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
       spaceUrl: ({ spaceId, rootPostId }) =>
         `http://tenant.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
     ids: new SequenceIds(),
     clock: new MutableClock(),
+    avatarSources,
+    contentHash,
   };
   return { deps, contentVersionBumps, posts, reactions, spaceSubscriptions, spaceSeen, notifications, delivered };
 };
@@ -980,6 +1009,26 @@ describe('space feed', () => {
     ).toMatchObject({ ok: true, value: { pinnedAt: null } });
   });
 
+  it('resolves author avatars for pinned and unpinned feed rows', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const pinned = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'przypięty' }, f.deps);
+    const plain = await createPost(
+      ctx({ userId: 'u2', memberId: 'm2' }),
+      { contextKind: 'space', contextId: 's-open', body: 'zwykły' },
+      f.deps,
+    );
+    if (!pinned.ok || !plain.ok) throw new Error('posts were not created');
+    await setPostPinned(ctx({ staffRole: 'admin', memberId: null }), { postId: pinned.value.id, pinned: true }, f.deps);
+
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
+      ok: true,
+      value: {
+        pinned: [{ authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160' }],
+        items: [{ authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u2@example.com)?d=404&s=160' }],
+      },
+    });
+  });
+
   it('frees the pin slot and removes a pinned post from the feed when its author deletes it', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const created = await createPost(
@@ -1178,7 +1227,21 @@ describe('space-post notifications', () => {
       courseId: null,
       lessonName: 'Klub',
       snippet: 'nowy wpis',
+      authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160',
     });
+  });
+
+  it('skips a banned follower', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })], bannedUserIds: ['u2'] });
+    for (const userId of ['u2', 'u5']) {
+      await f.spaceSubscriptions.follow('t1', { userId, spaceId: 's-open', createdAt: NOW });
+    }
+
+    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'nowy wpis' }, f.deps);
+
+    expect(created.ok).toBe(true);
+    expect(f.delivered).toEqual(['u5']);
+    expect(f.notifications.rows.map((notification) => notification.recipientUserId)).toEqual(['u5']);
   });
 
   it('does not fan out space-post notifications for replies (thread machinery owns those)', async () => {

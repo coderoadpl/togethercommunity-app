@@ -5,6 +5,7 @@ import {
   createRouter,
   RouterProvider,
   useParams,
+  useSearch,
 } from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -14,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CourseStructureWithAccess,
+  DiscussionPost,
   LessonBlock,
   MemberCourseProgress,
   NextLesson,
@@ -149,7 +151,10 @@ const renderPage = async (node: ReactNode) => {
 };
 
 describe('LessonPlayerPage', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 
   beforeEach(() => {
     server.use(
@@ -641,5 +646,88 @@ describe('LessonPlayerPage', () => {
         chapterId: 'c1',
       }),
     );
+  });
+  it('focuses the thread named by the search param and clears it on exit', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const post = (id: string, body: string): DiscussionPost => ({
+      id,
+      tenantId: 't1',
+      contextKind: 'lesson',
+      contextId: 'l1',
+      parentPostId: null,
+      rootPostId: id,
+      isOwn: false,
+      authorDisplay: 'Ola Autorka',
+      authorIsStaff: false,
+      authorAvatarUrl: null,
+      body,
+      createdAt: '2026-08-15T08:00:00.000Z',
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+      replies: [],
+      replyCount: 0,
+    });
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      okNext(null),
+      http.get('/api/discussion', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            discussion: {
+              threads: [post('t1', 'Pytanie o hamaki'), post('t2', 'Pytanie o panele')],
+              nextCursor: null,
+              viewerSubscriptions: {},
+            },
+          },
+        }),
+      ),
+    );
+
+    const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      const { thread } = useSearch({ strict: false });
+      return (
+        <LessonPlayerPage
+          courseId={params.courseId ?? ''}
+          lessonId={params.lessonId ?? ''}
+          threadRootPostId={thread ?? null}
+        />
+      );
+    };
+    const lessonRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/my/courses/$courseId/lessons/$lessonId',
+      validateSearch: (search: Record<string, unknown>): { thread?: string } =>
+        typeof search['thread'] === 'string' ? { thread: search['thread'] } : {},
+      component: LessonRouteComponent,
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([lessonRoute]),
+      history: createMemoryHistory({
+        initialEntries: ['/my/courses/course-1/lessons/l1?thread=t1'],
+      }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    const subthread = await screen.findByTestId('discussion-subthread-t1');
+    expect(subthread).toHaveTextContent('Pytanie o hamaki');
+    expect(screen.queryByTestId('discussion-thread-t2')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(subthread).toHaveFocus());
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+    expect(scrollIntoView.mock.instances).toEqual([subthread]);
+
+    await userEvent.click(screen.getByTestId('back-to-discussion'));
+
+    expect(await screen.findByTestId('discussion-thread-t2')).toHaveTextContent(
+      'Pytanie o panele',
+    );
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
   });
 });

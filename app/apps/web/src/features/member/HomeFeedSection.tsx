@@ -18,6 +18,8 @@ import {
   PostBody,
   PostMetaText,
 } from '../../theme.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { StartMessageButton } from './messages/StartMessageButton.js';
 
 const PAGE_SIZE = 10;
 
@@ -31,8 +33,9 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
         <Stack
           direction="row"
           useFlexGap
-          sx={{ alignItems: 'baseline', columnGap: '0.6rem', flexWrap: 'wrap' }}
+          sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}
         >
+          <MemberAvatar name={item.authorDisplay} avatarUrl={item.authorAvatarUrl} size="sm" />
           <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
           {item.authorIsStaff && (
             <AuthorChip data-testid={`home-feed-author-chip-${item.id}`}>
@@ -92,6 +95,7 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
           >
             {t.community.openThread}
           </MuiLink>
+          {!item.isOwn && !deleted ? <StartMessageButton postId={item.id} /> : null}
         </Stack>
       </Stack>
     </DiscussionThread>

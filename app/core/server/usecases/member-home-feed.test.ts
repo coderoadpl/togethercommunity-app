@@ -10,6 +10,8 @@ import type {
 
 import type { Ctx } from '../context.js';
 import type {
+  AvatarSourceReader,
+  ContentHash,
   PostReactionRepository,
   PostRepository,
   ProductGrantRepository,
@@ -18,6 +20,13 @@ import type {
 import { getMemberHomeFeed, type MemberHomeFeedDeps } from './member-home-feed.js';
 
 const NOW = '2026-07-15T10:00:00.000Z';
+
+const contentHash: ContentHash = { sha256: (content) => `digest(${String(content)})` };
+
+const avatarSources: AvatarSourceReader = {
+  listAvatarSources: async (_tenantId, userIds) =>
+    userIds.map((userId) => ({ userId, email: `${userId}@example.com`, image: null })),
+};
 
 const identity = (overrides: Partial<Identity>): Identity => ({
   userId: 'u1',
@@ -29,7 +38,10 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'm1',
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
   ...overrides,
 });
 
@@ -185,6 +197,8 @@ const fixture = (input: {
     clock: { nowIso: () => NOW },
     posts: posts.repo,
     reactions: reactionsRepository(input.reactions ?? new Map()),
+    avatarSources,
+    contentHash,
   };
   return { deps, feedCalls: posts.callCount };
 };
@@ -212,7 +226,11 @@ describe('member home feed', () => {
     if (!feed.ok) return;
     expect(feed.value.items.map((item) => item.id)).toEqual(['p2', 'p3', 'p1']);
     expect(feed.value.items.map((item) => item.spaceName)).toEqual(['Klub', 'Ogólna', 'Ogólna']);
-    expect(feed.value.items[0]).toMatchObject({ spaceId: 's2', replyCount: 1 });
+    expect(feed.value.items[0]).toMatchObject({
+      spaceId: 's2',
+      replyCount: 1,
+      authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u2@example.com)?d=404&s=160',
+    });
     expect(feed.value.nextCursor).toBeNull();
   });
 

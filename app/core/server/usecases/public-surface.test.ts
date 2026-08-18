@@ -7,17 +7,21 @@ import type {
   Post,
   Product,
   Space,
+  SpaceEvent,
   Tenant,
 } from '#core/domain/index.js';
 
 import {
   getPublicCourseStructure,
   getPublicNavigation,
+  getPublicSpaceEvent,
+  getPublicSpaceEvents,
   getPublicSpaceFeed,
   getPublicSpaceThread,
   type PublicCourseStructureDeps,
   type PublicNavigationDeps,
   type PublicSpaceDeps,
+  type PublicSpaceEventDeps,
 } from './public-surface.js';
 
 const tenant: Tenant = {
@@ -202,6 +206,152 @@ const spaceDeps = (input: {
         ]),
       ),
   },
+});
+
+const PUBLIC_NOW = '2026-09-01T10:00:00.000Z';
+
+const spaceEvent = (input: {
+  id: string;
+  spaceId: string;
+  startsAt?: string;
+  endsAt?: string;
+  deletedAt?: string | null;
+  liveEmbedUrl?: string | null;
+}): SpaceEvent => ({
+  id: input.id,
+  tenantId: tenant.id,
+  spaceId: input.spaceId,
+  title: `Event ${input.id}`,
+  description: null,
+  startsAt: input.startsAt ?? '2026-09-02T18:00:00.000Z',
+  endsAt: input.endsAt ?? '2026-09-02T20:00:00.000Z',
+  location: null,
+  url: null,
+  liveEmbedUrl: input.liveEmbedUrl ?? null,
+  replayUrl: null,
+  discussionRootPostId: null,
+  createdByUserId: 'staff-user',
+  createdAt: '1998-01-01T00:00:00.000Z',
+  updatedAt: null,
+  deletedAt: input.deletedAt ?? null,
+});
+
+const eventDeps = (input: { spaces: Space[]; events?: SpaceEvent[] }): PublicSpaceEventDeps => ({
+  spaces: { findById: async (_tenantId, id) => input.spaces.find((row) => row.id === id) ?? null },
+  events: {
+    findById: async (_tenantId, id) => (input.events ?? []).find((row) => row.id === id) ?? null,
+    listForSpace: async (_tenantId, query) => ({
+      events: (input.events ?? []).filter(
+        (row) =>
+          row.spaceId === query.spaceId &&
+          row.deletedAt === null &&
+          (query.scope === 'upcoming' ? row.endsAt >= query.now : row.endsAt < query.now),
+      ),
+      nextCursor: null,
+    }),
+  },
+  eventRsvps: {
+    countsForEvents: async (_tenantId, eventIds) =>
+      new Map(eventIds.map((id) => [id, { going: 4, notGoing: 1 }])),
+  },
+  clock: { nowIso: () => PUBLIC_NOW },
+});
+
+describe('public space events', () => {
+  const open = space({ id: 'open', publicReadOnly: true });
+  const closed = space({ id: 'closed', publicReadOnly: false });
+
+  it('lists the events of a publicly readable space with counts and no viewer answer', async () => {
+    const result = await getPublicSpaceEvents(
+      tenant,
+      { spaceId: open.id },
+      eventDeps({ spaces: [open], events: [spaceEvent({ id: 'e1', spaceId: open.id })] }),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        events: [{ id: 'e1', goingCount: 4, notGoingCount: 1, viewerRsvp: null, liveNow: false }],
+        nextCursor: null,
+      },
+    });
+  });
+
+  it('never exposes the creating account', async () => {
+    const result = await getPublicSpaceEvents(
+      tenant,
+      { spaceId: open.id },
+      eventDeps({ spaces: [open], events: [spaceEvent({ id: 'e1', spaceId: open.id })] }),
+    );
+
+    expect(JSON.stringify(result)).not.toContain('staff-user');
+  });
+
+  it('answers not_found for spaces that are not publicly readable', async () => {
+    const deps = eventDeps({
+      spaces: [closed, space({ id: 'retired', publicReadOnly: true, archivedAt: PUBLIC_NOW })],
+      events: [spaceEvent({ id: 'e1', spaceId: closed.id })],
+    });
+
+    for (const spaceId of [closed.id, 'retired', 'missing']) {
+      expect(await getPublicSpaceEvents(tenant, { spaceId }, deps)).toMatchObject({
+        ok: false,
+        error: { code: 'not_found' },
+      });
+      expect(await getPublicSpaceEvent(tenant, { spaceId, eventId: 'e1' }, deps)).toMatchObject({
+        ok: false,
+        error: { code: 'not_found' },
+      });
+    }
+  });
+
+  it('answers not_found for a deleted event or one outside the requested space', async () => {
+    const deps = eventDeps({
+      spaces: [open, space({ id: 'other', publicReadOnly: true })],
+      events: [
+        spaceEvent({ id: 'e-gone', spaceId: open.id, deletedAt: PUBLIC_NOW }),
+        spaceEvent({ id: 'e-other', spaceId: 'other' }),
+      ],
+    });
+
+    for (const eventId of ['e-gone', 'e-other', 'e-missing']) {
+      expect(await getPublicSpaceEvent(tenant, { spaceId: open.id, eventId }, deps)).toMatchObject({
+        ok: false,
+        error: { code: 'not_found' },
+      });
+    }
+  });
+
+  it('shows the live embed of an ongoing event', async () => {
+    const result = await getPublicSpaceEvent(
+      tenant,
+      { spaceId: open.id, eventId: 'e-live' },
+      eventDeps({
+        spaces: [open],
+        events: [
+          spaceEvent({
+            id: 'e-live',
+            spaceId: open.id,
+            startsAt: '2026-09-01T09:00:00.000Z',
+            endsAt: '2026-09-01T11:00:00.000Z',
+            liveEmbedUrl: 'https://iframe.example/embed/1/2',
+          }),
+        ],
+      }),
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { liveNow: true, viewerRsvp: null } });
+  });
+
+  it('rejects a page above the clamped limit', async () => {
+    const result = await getPublicSpaceEvents(
+      tenant,
+      { spaceId: open.id, limit: 1000 },
+      eventDeps({ spaces: [open] }),
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
 });
 
 describe('getPublicNavigation', () => {
@@ -423,5 +573,24 @@ describe('getPublicSpaceThread', () => {
     );
 
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('anonymous avatar boundary', () => {
+  const open = space({ id: 'open', publicReadOnly: true });
+  const root = post({ id: 'root', contextId: open.id });
+  const reply = post({ id: 'reply', contextId: open.id, rootPostId: 'root', parentPostId: 'root' });
+
+  it('never emits an avatar url on the public feed or thread', async () => {
+    const deps = spaceDeps({ spaces: [open], posts: [root], replies: [reply] });
+    const feed = await getPublicSpaceFeed(tenant, { spaceId: open.id }, deps);
+    const thread = await getPublicSpaceThread(tenant, { spaceId: open.id, postId: root.id }, deps);
+
+    expect(feed).toMatchObject({ ok: true, value: { items: [{ authorAvatarUrl: null }] } });
+    expect(thread).toMatchObject({
+      ok: true,
+      value: { threads: [{ authorAvatarUrl: null, replies: [{ authorAvatarUrl: null }] }] },
+    });
+    expect(JSON.stringify([feed, thread])).not.toContain('gravatar.com');
   });
 });

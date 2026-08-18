@@ -48,16 +48,18 @@ export const MemberMenuSheet = ({
   onClose,
   name,
   email,
+  avatarUrl,
 }: {
   open: boolean;
   onClose: () => void;
   name: string;
   email: string;
+  avatarUrl: string | null;
 }) => {
   const t = useTranslations();
   return (
     <ShellSheet open={open} onClose={onClose} title={t.shell.menuTitle} testId="member-menu-sheet">
-      <MemberSidebar name={name} email={email} variant="sheet" />
+      <MemberSidebar name={name} email={email} avatarUrl={avatarUrl} variant="sheet" />
       <Box sx={{ px: '1rem', pb: '1rem' }}>
         <ColorSchemeSwitcher compact />
       </Box>

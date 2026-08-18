@@ -17,16 +17,31 @@ import {
   createSpaceInputSchema,
   deletePostInputSchema,
   deleteSpaceInputSchema,
+  createEventInputSchema,
+  dmConversationRefSchema,
+  eventIcsSchema,
+  eventRefSchema,
   followSpaceInputSchema,
+  listDmConversationsInputSchema,
+  listDmMessagesInputSchema,
+  listSpaceEventsInputSchema,
   listSpaceFeedInputSchema,
   markSpaceSeenInputSchema,
   memberHomeFeedInputSchema,
   memberHomeFeedSchema,
   memberSpaceSchema,
+  publicDmConversationSchema,
+  publicDmMessageSchema,
+  publicSpaceEventSchema,
   reactToPostInputSchema,
   reactionSummarySchema,
+  rsvpEventInputSchema,
+  sendDmMessageInputSchema,
+  startDmConversationInputSchema,
   setSpaceArchivedInputSchema,
   spaceFeedSchema,
+  updateEventInputSchema,
+  upcomingEventsInputSchema,
   spaceSchema,
   staffSpaceSchema,
   updateSpaceInputSchema,
@@ -44,6 +59,7 @@ import {
   listReportsInputSchema,
   createApiKeyInputSchema,
   creatorOnboardingSchema,
+  tenantSetupReadinessSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
@@ -158,7 +174,7 @@ import {
   updateProductAccessItemsInputSchema,
   billingDataSchema,
 } from '#core/domain/index.js';
-import type { PublicSpaceThreadInput } from '#core/domain/index.js';
+import type { PublicSpaceEventRef, PublicSpaceThreadInput } from '#core/domain/index.js';
 
 /**
  * Single source of truth for the HTTP API shared by server and all clients.
@@ -213,6 +229,7 @@ export const meOutputSchema = z.object({
   email: z.string(),
   name: z.string(),
   emailVerified: z.boolean(),
+  avatarUrl: z.string().nullable().default(null),
   tenant: z
     .object({
       id: z.string(),
@@ -220,9 +237,22 @@ export const meOutputSchema = z.object({
       name: z.string(),
       staffRole: staffRoleSchema.nullable(),
       memberId: z.string().nullable(),
+      displayName: z.string().nullable().default(null),
       banned: z.boolean(),
+      dmOptOut: z.boolean().default(false),
     })
     .nullable(),
+});
+
+export const meProfileUpdateInputSchema = z.object({
+  displayName: z.string().trim().min(1).max(200).nullable(),
+  dmOptOut: z.boolean().optional(),
+});
+export type MeProfileUpdateInput = z.infer<typeof meProfileUpdateInputSchema>;
+
+export const meProfileUpdateOutputSchema = z.object({
+  displayName: z.string().nullable(),
+  dmOptOut: z.boolean().default(false),
 });
 
 export const memberBillingOrdersQuerySchema = z.object({
@@ -1063,6 +1093,99 @@ export const notificationsUnreadOutputSchema = z.object({
   unread: z.number().int().nonnegative(),
 });
 
+export const messagesListInputSchema = listDmConversationsInputSchema;
+
+export type MessagesListInput = z.input<typeof messagesListInputSchema>;
+
+export const messagesListOutputSchema = z.object({
+  conversations: z.array(publicDmConversationSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const messagesThreadInputSchema = listDmMessagesInputSchema;
+
+export type MessagesThreadInput = z.input<typeof messagesThreadInputSchema>;
+
+export const messagesThreadOutputSchema = z.object({
+  conversation: publicDmConversationSchema,
+  messages: z.array(publicDmMessageSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const messagesStartInputSchema = startDmConversationInputSchema;
+
+export type MessagesStartInput = z.input<typeof messagesStartInputSchema>;
+
+export const messagesStartOutputSchema = z.object({
+  conversation: publicDmConversationSchema,
+});
+
+export const messagesSendInputSchema = sendDmMessageInputSchema;
+
+export type MessagesSendInput = z.input<typeof messagesSendInputSchema>;
+
+export const messagesSendOutputSchema = z.object({
+  message: publicDmMessageSchema,
+});
+
+export const messagesReadInputSchema = dmConversationRefSchema;
+
+export type MessagesReadInput = z.input<typeof messagesReadInputSchema>;
+
+export const messagesReadOutputSchema = z.object({
+  conversationId: z.string(),
+  lastReadAt: z.string().datetime(),
+});
+
+export const messagesUnreadOutputSchema = z.object({
+  unread: z.number().int().nonnegative(),
+});
+
+export const eventsBySpaceInputSchema = listSpaceEventsInputSchema;
+
+export type EventsBySpaceInput = z.input<typeof eventsBySpaceInputSchema>;
+
+export const eventsListOutputSchema = z.object({
+  events: z.array(publicSpaceEventSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const eventCreateInputSchema = createEventInputSchema;
+
+export type EventCreateInput = z.input<typeof eventCreateInputSchema>;
+
+export const eventUpdateInputSchema = updateEventInputSchema;
+
+export type EventUpdateInput = z.input<typeof eventUpdateInputSchema>;
+
+export const eventRefInputSchema = eventRefSchema;
+
+export type EventRefInput = z.input<typeof eventRefInputSchema>;
+
+export const eventOutputSchema = z.object({
+  event: publicSpaceEventSchema,
+});
+
+export const eventDeleteOutputSchema = z.object({
+  eventId: z.string(),
+});
+
+export const eventRsvpInputSchema = rsvpEventInputSchema;
+
+export type EventRsvpInput = z.input<typeof eventRsvpInputSchema>;
+
+export const eventIcsOutputSchema = eventIcsSchema;
+
+export const memberUpcomingEventsInputSchema = upcomingEventsInputSchema;
+
+export type MemberUpcomingEventsInput = z.input<typeof memberUpcomingEventsInputSchema>;
+
+export const memberUpcomingEventsOutputSchema = z.object({
+  events: z.array(publicSpaceEventSchema),
+});
+
+export type PublicSpaceEventInput = PublicSpaceEventRef;
+
 export const devGrantOutputSchema = z.object({
   memberId: z.string(),
   productId: z.string(),
@@ -1136,6 +1259,10 @@ export const tenantSettingsOutputSchema = z.object({
 
 export const onboardingOutputSchema = z.object({
   onboarding: creatorOnboardingSchema,
+});
+
+export const tenantSetupReadinessOutputSchema = z.object({
+  setup: tenantSetupReadinessSchema,
 });
 
 export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
@@ -1440,6 +1567,8 @@ export const API_ROUTES = {
   publicCourseStructure: { method: 'GET', path: '/api/public/courses/:courseId/structure' },
   publicSpaceFeed: { method: 'GET', path: '/api/public/spaces/:spaceId/feed' },
   publicSpaceThread: { method: 'GET', path: '/api/public/spaces/:spaceId/posts/:postId' },
+  publicSpaceEvents: { method: 'GET', path: '/api/public/spaces/:spaceId/events' },
+  publicSpaceEvent: { method: 'GET', path: '/api/public/spaces/:spaceId/events/:eventId' },
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
@@ -1447,6 +1576,7 @@ export const API_ROUTES = {
   termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
+  meProfile: { method: 'POST', path: '/api/me/profile' },
   memberBillingOrders: { method: 'GET', path: '/api/me/billing-orders' },
   memberDataExport: { method: 'GET', path: '/api/me/data-export' },
   memberErasureRequest: { method: 'GET', path: '/api/me/erasure-request' },
@@ -1543,14 +1673,28 @@ export const API_ROUTES = {
   spaceFollow: { method: 'POST', path: '/api/spaces/follow' },
   spaceUnfollow: { method: 'POST', path: '/api/spaces/unfollow' },
   spaceSeen: { method: 'POST', path: '/api/spaces/:spaceId/seen' },
+  eventsBySpace: { method: 'GET', path: '/api/spaces/:spaceId/events' },
+  eventsCreate: { method: 'POST', path: '/api/events' },
+  eventsUpdate: { method: 'POST', path: '/api/events/update' },
+  eventRsvp: { method: 'POST', path: '/api/events/rsvp' },
+  eventIcs: { method: 'GET', path: '/api/events/:eventId/ics' },
+  eventGet: { method: 'GET', path: '/api/events/:eventId' },
+  eventsDelete: { method: 'DELETE', path: '/api/events/:eventId' },
   notifications: { method: 'GET', path: '/api/notifications' },
   notificationRead: { method: 'POST', path: '/api/notifications/read' },
   notificationsReadAll: { method: 'POST', path: '/api/notifications/read-all' },
   notificationsUnread: { method: 'GET', path: '/api/notifications/unread-count' },
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
+  messagesList: { method: 'GET', path: '/api/messages' },
+  messagesStart: { method: 'POST', path: '/api/messages/start' },
+  messagesSend: { method: 'POST', path: '/api/messages/send' },
+  messagesRead: { method: 'POST', path: '/api/messages/read' },
+  messagesUnread: { method: 'GET', path: '/api/messages/unread-count' },
+  messagesThread: { method: 'GET', path: '/api/messages/:conversationId' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   memberNavigation: { method: 'GET', path: '/api/member/navigation' },
   memberHomeFeed: { method: 'GET', path: '/api/member/home-feed' },
+  memberUpcomingEvents: { method: 'GET', path: '/api/member/upcoming-events' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
@@ -1651,6 +1795,7 @@ export const API_ROUTES = {
   supportMessage: { method: 'POST', path: '/api/support/message' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
   onboardingDismiss: { method: 'POST', path: '/api/onboarding/dismiss' },
+  onboardingSetup: { method: 'GET', path: '/api/onboarding/setup' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -1669,6 +1814,8 @@ export const API_PATHS = {
   publicCourseStructure: API_ROUTES.publicCourseStructure.path,
   publicSpaceFeed: API_ROUTES.publicSpaceFeed.path,
   publicSpaceThread: API_ROUTES.publicSpaceThread.path,
+  publicSpaceEvents: API_ROUTES.publicSpaceEvents.path,
+  publicSpaceEvent: API_ROUTES.publicSpaceEvent.path,
   publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
@@ -1676,6 +1823,7 @@ export const API_PATHS = {
   termsConsent: API_ROUTES.termsConsent.path,
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
+  meProfile: API_ROUTES.meProfile.path,
   memberBillingOrders: API_ROUTES.memberBillingOrders.path,
   memberDataExport: API_ROUTES.memberDataExport.path,
   memberErasureRequest: API_ROUTES.memberErasureRequest.path,
@@ -1766,14 +1914,27 @@ export const API_PATHS = {
   spaceFollow: API_ROUTES.spaceFollow.path,
   spaceUnfollow: API_ROUTES.spaceUnfollow.path,
   spaceSeen: API_ROUTES.spaceSeen.path,
+  eventsBySpace: API_ROUTES.eventsBySpace.path,
+  eventsCreate: API_ROUTES.eventsCreate.path,
+  eventsUpdate: API_ROUTES.eventsUpdate.path,
+  eventRsvp: API_ROUTES.eventRsvp.path,
+  eventIcs: API_ROUTES.eventIcs.path,
+  eventGet: API_ROUTES.eventGet.path,
   notifications: API_ROUTES.notifications.path,
   notificationRead: API_ROUTES.notificationRead.path,
   notificationsReadAll: API_ROUTES.notificationsReadAll.path,
   notificationsUnread: API_ROUTES.notificationsUnread.path,
   notificationsStream: API_ROUTES.notificationsStream.path,
+  messagesList: API_ROUTES.messagesList.path,
+  messagesStart: API_ROUTES.messagesStart.path,
+  messagesSend: API_ROUTES.messagesSend.path,
+  messagesRead: API_ROUTES.messagesRead.path,
+  messagesUnread: API_ROUTES.messagesUnread.path,
+  messagesThread: API_ROUTES.messagesThread.path,
   devGrant: API_ROUTES.devGrant.path,
   memberNavigation: API_ROUTES.memberNavigation.path,
   memberHomeFeed: API_ROUTES.memberHomeFeed.path,
+  memberUpcomingEvents: API_ROUTES.memberUpcomingEvents.path,
   myProducts: API_ROUTES.myProducts.path,
   memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,
@@ -1863,6 +2024,7 @@ export const API_PATHS = {
   supportMessage: API_ROUTES.supportMessage.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
+  onboardingSetup: API_ROUTES.onboardingSetup.path,
 } as const;
 
 /**

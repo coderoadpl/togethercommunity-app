@@ -42,7 +42,10 @@ const staff = (tenantId: string | null, tenantSlug: string | null): Identity => 
   tenantName: tenantSlug ? 'Acme' : null,
   staffRole: tenantId ? 'owner' : null,
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const plainMember = (tenantId: string): Identity => ({
@@ -55,7 +58,10 @@ const plainMember = (tenantId: string): Identity => ({
   tenantName: 'Acme',
   staffRole: null,
   memberId: 'member-1',
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 });
 
 const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): MemberWithProductIds => ({
@@ -81,6 +87,8 @@ const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRep
   create: async () => undefined,
   listWithProductIds: async (tenantId) => byTenant[tenantId] ?? [],
   updateEmail: async () => null,
+  updateDisplayName: async () => null,
+  updateDmOptOut: async () => null,
   setBanned: async () => null,
 });
 
@@ -235,6 +243,7 @@ describe('setMemberBanned', () => {
     bannedAt: null,
     bannedReason: null,
     bannedByUserId: null,
+    dmOptOutAt: null,
   };
 
   it('writes the projection and event and is idempotent', async () => {
@@ -246,6 +255,8 @@ describe('setMemberBanned', () => {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => stored,
+      updateDisplayName: async () => stored,
+      updateDmOptOut: async () => stored,
       setBanned: async (_tenantId, input, event) => {
         events.push({
           type: event.type,
@@ -286,7 +297,7 @@ describe('setMemberBanned', () => {
     expect(second).toMatchObject({ ok: true, value: { bannedReason: 'spam' } });
     expect(unbanned).toMatchObject({
       ok: true,
-      value: { bannedAt: null, bannedReason: null, bannedByUserId: null },
+      value: { bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
     });
     expect(events).toEqual([
       { type: 'banned', actorUserId: 'u-staff', reason: 'spam' },
@@ -304,6 +315,8 @@ describe('setMemberBanned', () => {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateDisplayName: async () => null,
+      updateDmOptOut: async () => null,
       setBanned: async () => null,
     };
     const result = await setMemberBanned(

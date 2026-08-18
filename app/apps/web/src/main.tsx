@@ -99,16 +99,23 @@ import {
   PanelSpacesRoute,
   PanelSpaceCreateRoute,
   PanelSpaceDetailRoute,
+  PanelSpaceEventsRoute,
+  PanelEventCreateRoute,
+  PanelEventEditRoute,
 } from './routes/panel.js';
 import {
+  CommunityEventRoute,
   CommunityRoute,
+  ConversationRoute,
   CourseRoute,
   CourseStructureRoute,
   LessonPlayerRoute,
   MemberAccountRoute,
   MemberShellRoute,
   MyCoursesRoute,
+  MessagesRoute,
   MyProductsRoute,
+  NotificationsRoute,
   SearchRoute,
   SpaceFeedRoute,
   SpaceThreadRoute,
@@ -185,9 +192,14 @@ const courseStructureRoute = createRoute({
   path: '/my/courses/$courseId',
   component: CourseStructureRoute,
 });
+const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {
+  const thread = search['thread'];
+  return typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {};
+};
 const lessonPlayerRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.lesson,
+  validateSearch: validateLessonSearch,
   component: LessonPlayerRoute,
 });
 const registerRoute = createRoute({
@@ -210,6 +222,21 @@ const accountRoute = createRoute({
   path: '/account',
   component: MemberAccountRoute,
 });
+const notificationsRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/notifications',
+  component: NotificationsRoute,
+});
+const messagesRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/messages',
+  component: MessagesRoute,
+});
+const conversationRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: MEMBER_ROUTE_PATHS.conversation,
+  component: ConversationRoute,
+});
 const communityRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/community',
@@ -224,6 +251,11 @@ const spaceThreadRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.communityPost,
   component: SpaceThreadRoute,
+});
+const communityEventRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: MEMBER_ROUTE_PATHS.communityEvent,
+  component: CommunityEventRoute,
 });
 
 const panelLayoutRoute = createRoute({
@@ -315,6 +347,21 @@ const panelSpaceDetailRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'spaces/$spaceId',
   component: PanelSpaceDetailRoute,
+});
+const panelSpaceEventsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/$spaceId/events',
+  component: PanelSpaceEventsRoute,
+});
+const panelEventCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/$spaceId/events/new',
+  component: PanelEventCreateRoute,
+});
+const panelEventEditRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/$spaceId/events/$eventId',
+  component: PanelEventEditRoute,
 });
 const panelSalesRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
@@ -455,9 +502,13 @@ const router = createRouter({
       courseStructureRoute,
       lessonPlayerRoute,
       accountRoute,
+      notificationsRoute,
+      messagesRoute,
+      conversationRoute,
       communityRoute,
       spaceFeedRoute,
       spaceThreadRoute,
+      communityEventRoute,
     ]),
     panelLayoutRoute.addChildren([
       panelIndexRoute,
@@ -477,6 +528,9 @@ const router = createRouter({
       panelSpacesRoute,
       panelSpaceCreateRoute,
       panelSpaceDetailRoute,
+      panelSpaceEventsRoute,
+      panelEventCreateRoute,
+      panelEventEditRoute,
       panelSalesRoute,
       panelOrderDetailRoute,
       panelCouponsRoute,

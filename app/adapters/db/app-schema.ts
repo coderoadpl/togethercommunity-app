@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigserial, boolean, check, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import type {
   AccessItem,
@@ -205,7 +205,7 @@ export const tenantAdmins = pgTable(
 export const members = pgTable(
   'members',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -227,8 +227,10 @@ export const members = pgTable(
     bannedAt: text('banned_at'),
     bannedReason: text('banned_reason'),
     bannedByUserId: text('banned_by_user_id'),
+    dmOptOutAt: text('dm_opt_out_at'),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     index('members_tenantId_idx').on(table.tenantId),
     index('members_userId_idx').on(table.userId),
     uniqueIndex('members_tenant_user_uidx').on(table.tenantId, table.userId),
@@ -247,12 +249,17 @@ export const memberEvents = pgTable(
     id: text('id').primaryKey(),
     sequence: bigserial('sequence', { mode: 'number' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
-    memberId: text('member_id').notNull().references(() => members.id, { onDelete: 'restrict' }),
+    memberId: text('member_id').notNull(),
     type: text('type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     occurredAt: text('occurred_at').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'member_events_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('restrict'),
     index('member_events_tenant_member_occurred_idx')
       .on(table.tenantId, table.memberId, table.occurredAt, table.sequence),
   ],
@@ -280,7 +287,7 @@ export const erasedMemberImports = pgTable(
 export const products = pgTable(
   'products',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -299,6 +306,7 @@ export const products = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     index('products_tenantId_idx').on(table.tenantId),
     uniqueIndex('products_tenant_slug_uidx').on(table.tenantId, table.slug),
     uniqueIndex('products_tenant_legacy_uidx')
@@ -314,9 +322,7 @@ export const productPrices = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+    productId: text('product_id').notNull(),
     kind: text('kind', { enum: ['one_time', 'recurring'] }).notNull(),
     interval: text('interval', { enum: ['month', 'year'] }),
     amountCents: integer('amount_cents').notNull(),
@@ -325,6 +331,11 @@ export const productPrices = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'product_prices_tenant_product_fk',
+      columns: [table.tenantId, table.productId],
+      foreignColumns: [products.tenantId, products.id],
+    }).onDelete('cascade'),
     index('product_prices_tenantId_idx').on(table.tenantId),
     index('product_prices_tenant_product_idx').on(table.tenantId, table.productId),
   ],
@@ -337,9 +348,7 @@ export const productDownloadAssets = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+    productId: text('product_id').notNull(),
     fileName: text('file_name').notNull(),
     contentType: text('content_type').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
@@ -348,6 +357,11 @@ export const productDownloadAssets = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'product_download_assets_tenant_product_fk',
+      columns: [table.tenantId, table.productId],
+      foreignColumns: [products.tenantId, products.id],
+    }).onDelete('cascade'),
     index('product_download_assets_tenant_product_idx').on(table.tenantId, table.productId),
     uniqueIndex('product_download_assets_tenant_storage_key_uidx').on(table.tenantId, table.storageKey),
   ],
@@ -422,12 +436,8 @@ export const orders = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    memberId: text('member_id')
-      .notNull()
-      .references(() => members.id, { onDelete: 'no action' }),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull(),
+    productId: text('product_id').notNull(),
     priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
     kind: text('kind', { enum: ['one_time', 'recurring'] }).notNull(),
     status: text('status', { enum: ['paid', 'pending', 'failed', 'refunded'] }).notNull(),
@@ -444,6 +454,16 @@ export const orders = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'orders_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('no action'),
+    foreignKey({
+      name: 'orders_tenant_product_fk',
+      columns: [table.tenantId, table.productId],
+      foreignColumns: [products.tenantId, products.id],
+    }).onDelete('cascade'),
     index('orders_tenant_created_idx').on(table.tenantId, table.createdAt.desc()),
     index('orders_tenant_member_idx').on(table.tenantId, table.memberId),
     index('orders_tenant_product_idx').on(table.tenantId, table.productId),
@@ -666,14 +686,17 @@ export const couponRedemptions = pgTable(
     orderId: text('order_id')
       .notNull()
       .references(() => orders.id, { onDelete: 'restrict' }),
-    memberId: text('member_id')
-      .notNull()
-      .references(() => members.id, { onDelete: 'no action' }),
+    memberId: text('member_id').notNull(),
     email: text('email').notNull(),
     discountCents: integer('discount_cents').notNull(),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'coupon_redemptions_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('no action'),
     uniqueIndex('coupon_redemptions_order_uidx').on(table.orderId),
     index('coupon_redemptions_tenant_coupon_created_idx').on(
       table.tenantId,
@@ -731,9 +754,7 @@ export const couponCheckoutSessions = pgTable(
       .references(() => coupons.id, { onDelete: 'restrict' }),
     providerSessionId: text('provider_session_id'),
     memberEmail: text('member_email').notNull(),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+    productId: text('product_id').notNull(),
     priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
     originalCents: integer('original_cents').notNull(),
     discountCents: integer('discount_cents').notNull(),
@@ -742,6 +763,11 @@ export const couponCheckoutSessions = pgTable(
     startedAt: text('started_at').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'coupon_checkout_sessions_tenant_product_fk',
+      columns: [table.tenantId, table.productId],
+      foreignColumns: [products.tenantId, products.id],
+    }).onDelete('cascade'),
     index('coupon_checkout_sessions_tenant_coupon_started_idx').on(
       table.tenantId,
       table.couponId,
@@ -758,14 +784,17 @@ export const productPriceHistory = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+    productId: text('product_id').notNull(),
     priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
     amountCents: integer('amount_cents').notNull(),
     effectiveFrom: text('effective_from').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'product_price_history_tenant_product_fk',
+      columns: [table.tenantId, table.productId],
+      foreignColumns: [products.tenantId, products.id],
+    }).onDelete('cascade'),
     index('product_price_history_lookup_idx').on(
       table.tenantId,
       table.productId,
@@ -782,12 +811,8 @@ export const memberSubscriptions = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    memberId: text('member_id')
-      .notNull()
-      .references(() => members.id, { onDelete: 'no action' }),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull(),
+    productId: text('product_id').notNull(),
     priceId: text('price_id')
       .notNull()
       .references(() => productPrices.id, { onDelete: 'restrict' }),
@@ -805,6 +830,16 @@ export const memberSubscriptions = pgTable(
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'member_subscriptions_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('no action'),
+    foreignKey({
+      name: 'member_subscriptions_tenant_product_fk',
+      columns: [table.tenantId, table.productId],
+      foreignColumns: [products.tenantId, products.id],
+    }).onDelete('cascade'),
     index('member_subscriptions_tenantId_idx').on(table.tenantId),
     index('member_subscriptions_tenant_member_idx').on(table.tenantId, table.memberId),
     uniqueIndex('member_subscriptions_provider_sub_uidx')
@@ -816,16 +851,12 @@ export const memberSubscriptions = pgTable(
 export const productGrants = pgTable(
   'product_grants',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    memberId: text('member_id')
-      .notNull()
-      .references(() => members.id, { onDelete: 'no action' }),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull(),
+    productId: text('product_id').notNull(),
     source: text('source', { enum: ['simulated', 'manual', 'stripe', 'import'] }).notNull(),
     startsAt: text('starts_at')
       .notNull()
@@ -835,6 +866,17 @@ export const productGrants = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
+    foreignKey({
+      name: 'product_grants_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('no action'),
+    foreignKey({
+      name: 'product_grants_tenant_product_fk',
+      columns: [table.tenantId, table.productId],
+      foreignColumns: [products.tenantId, products.id],
+    }).onDelete('cascade'),
     index('product_grants_tenantId_idx').on(table.tenantId),
     index('product_grants_memberId_idx').on(table.memberId),
     uniqueIndex('product_grants_tenant_member_product_uidx').on(
@@ -955,9 +997,7 @@ export const memberErasureRequests = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    memberId: text('member_id')
-      .notNull()
-      .references(() => members.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull(),
     status: text('status', { enum: ['open', 'cancelled', 'completed', 'rejected'] }).notNull(),
     reason: text('reason'),
     requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'string' }).notNull(),
@@ -967,6 +1007,11 @@ export const memberErasureRequests = pgTable(
     resolutionNote: text('resolution_note'),
   },
   (table) => [
+    foreignKey({
+      name: 'member_erasure_requests_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('cascade'),
     uniqueIndex('member_erasure_requests_open_uidx')
       .on(table.tenantId, table.memberId)
       .where(sql`${table.status} = 'open'`),
@@ -1019,7 +1064,7 @@ export const checkoutConsentCaptures = pgTable(
 export const courses = pgTable(
   'courses',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -1032,6 +1077,7 @@ export const courses = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     index('courses_tenantId_idx').on(table.tenantId),
     uniqueIndex('courses_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
@@ -1042,7 +1088,7 @@ export const courses = pgTable(
 export const courseModules = pgTable(
   'course_modules',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -1054,6 +1100,7 @@ export const courseModules = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     index('course_modules_tenantId_idx').on(table.tenantId),
     uniqueIndex('course_modules_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
@@ -1064,7 +1111,7 @@ export const courseModules = pgTable(
 export const courseLessons = pgTable(
   'course_lessons',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -1076,6 +1123,7 @@ export const courseLessons = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     index('course_lessons_tenantId_idx').on(table.tenantId),
     uniqueIndex('course_lessons_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
@@ -1090,9 +1138,7 @@ export const lessonAttachments = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    lessonId: text('lesson_id')
-      .notNull()
-      .references(() => courseLessons.id, { onDelete: 'cascade' }),
+    lessonId: text('lesson_id').notNull(),
     fileName: text('file_name').notNull(),
     contentType: text('content_type').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
@@ -1101,6 +1147,11 @@ export const lessonAttachments = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'lesson_attachments_tenant_lesson_fk',
+      columns: [table.tenantId, table.lessonId],
+      foreignColumns: [courseLessons.tenantId, courseLessons.id],
+    }).onDelete('cascade'),
     index('lesson_attachments_tenant_lesson_idx').on(table.tenantId, table.lessonId),
     uniqueIndex('lesson_attachments_tenant_storage_key_uidx').on(table.tenantId, table.storageKey),
   ],
@@ -1109,16 +1160,12 @@ export const lessonAttachments = pgTable(
 export const memberCourseProgress = pgTable(
   'member_course_progress',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    memberId: text('member_id')
-      .notNull()
-      .references(() => members.id, { onDelete: 'cascade' }),
-    courseId: text('course_id')
-      .notNull()
-      .references(() => courses.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull(),
+    courseId: text('course_id').notNull(),
     lastViewedLessonId: text('last_viewed_lesson_id'),
     lastViewedModuleId: text('last_viewed_module_id'),
     lastViewedChapterId: text('last_viewed_chapter_id'),
@@ -1126,6 +1173,17 @@ export const memberCourseProgress = pgTable(
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
+    foreignKey({
+      name: 'member_course_progress_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'member_course_progress_tenant_course_fk',
+      columns: [table.tenantId, table.courseId],
+      foreignColumns: [courses.tenantId, courses.id],
+    }).onDelete('cascade'),
     index('member_course_progress_tenantId_idx').on(table.tenantId),
     index('member_course_progress_memberId_idx').on(table.memberId),
     uniqueIndex('member_course_progress_tenant_member_course_uidx').on(
@@ -1301,6 +1359,59 @@ export const spaceSeenMarks = pgTable(
   ],
 );
 
+export const spaceEvents = pgTable(
+  'space_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    spaceId: text('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    startsAt: text('starts_at').notNull(),
+    endsAt: text('ends_at').notNull(),
+    location: text('location'),
+    url: text('url'),
+    liveEmbedUrl: text('live_embed_url'),
+    replayUrl: text('replay_url'),
+    discussionRootPostId: text('discussion_root_post_id'),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at'),
+    deletedAt: text('deleted_at'),
+  },
+  (table) => [
+    index('space_events_tenant_space_starts_idx').on(table.tenantId, table.spaceId, table.startsAt),
+    index('space_events_tenant_starts_idx').on(table.tenantId, table.startsAt),
+  ],
+);
+
+export const spaceEventRsvps = pgTable(
+  'space_event_rsvps',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => spaceEvents.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    status: text('status', { enum: ['going', 'not-going'] }).notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('space_event_rsvps_tenant_event_idx').on(table.tenantId, table.eventId),
+    uniqueIndex('space_event_rsvps_tenant_event_user_uidx').on(
+      table.tenantId,
+      table.eventId,
+      table.userId,
+    ),
+  ],
+);
+
 export const threadSubscriptions = pgTable(
   'thread_subscriptions',
   {
@@ -1330,7 +1441,9 @@ export const notifications = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
-    kind: text('kind', { enum: ['thread-reply', 'space-post', 'lesson-question'] }).notNull(),
+    kind: text('kind', {
+      enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'space-event'],
+    }).notNull(),
     payload: jsonb('payload').notNull(),
     readAt: text('read_at'),
     createdAt: text('created_at').notNull(),
@@ -1341,6 +1454,97 @@ export const notifications = pgTable(
       table.recipientUserId,
       table.readAt,
       table.createdAt.desc(),
+    ),
+  ],
+);
+
+export const dmConversations = pgTable(
+  'dm_conversations',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    participantLowUserId: text('participant_low_user_id').notNull(),
+    participantHighUserId: text('participant_high_user_id').notNull(),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    lastMessageId: text('last_message_id'),
+    lastMessageAt: text('last_message_at').notNull(),
+    lastMessageSnippet: text('last_message_snippet').notNull(),
+    lastMessageSenderUserId: text('last_message_sender_user_id').notNull(),
+  },
+  (table) => [
+    uniqueIndex('dm_conversations_tenant_pair_uidx').on(
+      table.tenantId,
+      table.participantLowUserId,
+      table.participantHighUserId,
+    ),
+    index('dm_conversations_tenant_last_message_idx').on(
+      table.tenantId,
+      table.lastMessageAt.desc(),
+    ),
+    index('dm_conversations_tenant_participant_low_idx').on(
+      table.tenantId,
+      table.participantLowUserId,
+    ),
+    index('dm_conversations_tenant_participant_high_idx').on(
+      table.tenantId,
+      table.participantHighUserId,
+    ),
+    index('dm_conversations_tenant_creator_created_idx').on(
+      table.tenantId,
+      table.createdByUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const dmMessages = pgTable(
+  'dm_messages',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => dmConversations.id, { onDelete: 'cascade' }),
+    senderUserId: text('sender_user_id').notNull(),
+    body: text('body').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('dm_messages_tenant_conversation_created_idx').on(
+      table.tenantId,
+      table.conversationId,
+      table.createdAt,
+    ),
+    index('dm_messages_tenant_sender_created_idx').on(
+      table.tenantId,
+      table.senderUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const dmConversationStates = pgTable(
+  'dm_conversation_states',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => dmConversations.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    lastReadAt: text('last_read_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('dm_conversation_states_tenant_conversation_user_uidx').on(
+      table.tenantId,
+      table.conversationId,
+      table.userId,
     ),
   ],
 );
@@ -1565,7 +1769,7 @@ export const campaignSends = pgTable(
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     campaignId: text('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
     source: text('source', { enum: ['broadcast', 'api'] }).notNull(),
-    memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
+    memberId: text('member_id'),
     email: text('email').notNull(),
     subject: text('subject').notNull(),
     consentRowId: text('consent_row_id').references(() => marketingConsents.id, { onDelete: 'set null' }),
@@ -1581,6 +1785,11 @@ export const campaignSends = pgTable(
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
   },
   (table) => [
+    foreignKey({
+      name: 'campaign_sends_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('set null'),
     index('campaign_sends_consent_row_id_idx').on(table.consentRowId),
     index('campaign_sends_tenant_campaign_status_idx').on(table.tenantId, table.campaignId, table.status),
     index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
@@ -1624,13 +1833,20 @@ export const unsubscribeTokens = pgTable(
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     token: text('token').notNull(),
     email: text('email').notNull(),
-    memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
+    memberId: text('member_id'),
     campaignSendId: text('campaign_send_id').references(() => campaignSends.id, { onDelete: 'set null' }),
     scope: text('scope').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     usedAt: timestamp('used_at', { withTimezone: true, mode: 'string' }),
   },
-  (table) => [uniqueIndex('unsubscribe_tokens_token_uidx').on(table.token)],
+  (table) => [
+    foreignKey({
+      name: 'unsubscribe_tokens_tenant_member_fk',
+      columns: [table.tenantId, table.memberId],
+      foreignColumns: [members.tenantId, members.id],
+    }).onDelete('set null'),
+    uniqueIndex('unsubscribe_tokens_token_uidx').on(table.token),
+  ],
 );
 
 export const consentConfirmationTokens = pgTable(

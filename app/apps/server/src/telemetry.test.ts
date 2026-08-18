@@ -25,7 +25,10 @@ const identity: Identity = {
   tenantName: 'Acme',
   staffRole: 'owner',
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 };
 
 type Vars = { Variables: { identity?: Identity } };

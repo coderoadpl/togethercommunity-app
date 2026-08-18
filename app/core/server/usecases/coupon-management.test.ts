@@ -15,7 +15,10 @@ const identity: Identity = {
   tenantName: 'Alpha',
   staffRole: 'owner',
   memberId: null,
+  image: null,
+  memberDisplayName: null,
   memberBannedAt: null,
+  memberDmOptOutAt: null,
 };
 
 const baseCoupon: Coupon = {

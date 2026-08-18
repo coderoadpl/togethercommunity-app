@@ -110,17 +110,3 @@ export const SheetHeader = styled(Box)(({ theme }) => ({
   padding: '0.6rem 0.6rem 0.6rem 1rem',
   borderBottom: `1px solid ${theme.palette.divider}`,
 }));
-
-export const IdentityAvatar = styled('span')(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-  width: '2rem',
-  height: '2rem',
-  borderRadius: '999px',
-  backgroundColor: theme.palette.action.selected,
-  color: theme.palette.text.primary,
-  fontSize: '0.75rem',
-  fontWeight: 600,
-}));

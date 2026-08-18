@@ -27,6 +27,8 @@ import {
 import { SpacesPanel } from './spaces/SpacesPanel.js';
 import { SpaceCreatePage } from './spaces/SpaceCreatePage.js';
 import { SpaceEditPage } from './spaces/SpaceEditPage.js';
+import { SpaceEventsPanel } from './spaces/SpaceEventsPanel.js';
+import { EventCreatePage, EventEditPage } from './spaces/EventEditPage.js';
 
 export const PanelProductsRoute = () => <ProductsPanel />;
 export const PanelProductCreateRoute = () => <ProductCreatePage />;
@@ -145,6 +147,21 @@ export const PanelSpaceDetailRoute = () => {
   const space = spaces.data.spaces.find((entry) => entry.id === spaceId);
   if (!space) return <Navigate to="/panel/spaces" />;
   return <SpaceEditPage space={space} />;
+};
+
+export const PanelSpaceEventsRoute = () => {
+  const params = useParams({ strict: false });
+  return <SpaceEventsPanel spaceId={params.spaceId ?? ''} />;
+};
+
+export const PanelEventCreateRoute = () => {
+  const params = useParams({ strict: false });
+  return <EventCreatePage spaceId={params.spaceId ?? ''} />;
+};
+
+export const PanelEventEditRoute = () => {
+  const params = useParams({ strict: false });
+  return <EventEditPage spaceId={params.spaceId ?? ''} eventId={params.eventId ?? ''} />;
 };
 
 export const PanelIntegrationsRoute = () => {

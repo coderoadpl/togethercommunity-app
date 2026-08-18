@@ -8,6 +8,7 @@ import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { BreakAllText, Eyebrow } from '../../theme.js';
 import { AccountIcon, ManageAccountIcon, SignOutIcon } from './account-icons.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 
 export const MemberAccountMenu = () => {
   const t = useTranslations();
@@ -26,6 +27,7 @@ export const MemberAccountMenu = () => {
   });
 
   const email = me.data?.email ?? null;
+  const displayName = me.data?.tenant?.displayName ?? me.data?.name ?? '';
 
   return (
     <>
@@ -50,13 +52,16 @@ export const MemberAccountMenu = () => {
       >
         {me.isError ? <Box sx={{ p: '0.75rem' }}><StatusView surface={false} state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }} /></Box> : null}
         {email !== null ? (
-          <Box sx={{ px: '1rem', py: '0.5rem', maxWidth: '18rem' }}>
-            <Eyebrow variant="overline" component="p">
-              {t.panel.signedInAs}
-            </Eyebrow>
-            <BreakAllText variant="body2" data-testid="member-account-email">
-              {email}
-            </BreakAllText>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: '0.75rem', px: '1rem', py: '0.5rem', maxWidth: '18rem' }}>
+            <MemberAvatar name={displayName} avatarUrl={me.data?.avatarUrl ?? null} />
+            <Box sx={{ minWidth: 0 }}>
+              <Eyebrow variant="overline" component="p">
+                {t.panel.signedInAs}
+              </Eyebrow>
+              <BreakAllText variant="body2" data-testid="member-account-email">
+                {email}
+              </BreakAllText>
+            </Box>
           </Box>
         ) : null}
         {email !== null ? <Divider /> : null}

@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
+    inputs:
+      test_sms:
+        description: Send a test SMS regardless of health
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -14,6 +19,22 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - name: Send a test SMS
+        if: inputs.test_sms
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: eu-central-1
+          ALERT_SMS_PHONE: ${{ secrets.ALERT_SMS_PHONE }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
+            echo "::error::SMS secrets absent - cannot send the test SMS"
+            exit 1
+          fi
+          aws sns publish \
+            --phone-number "$ALERT_SMS_PHONE" \
+            --message "Together prod-health: test SMS - the alert channel works" \
+            --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}'
       - name: Probe production health
         id: probe
         run: |
@@ -46,7 +67,7 @@ jobs:
             echo "fresh=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Send an SMS alert
-        if: steps.probe.outputs.failed == 'true' && steps.incident.outputs.fresh == 'true'
+        if: steps.probe.outputs.failed == 'true' && steps.incident.outputs.fresh == 'true' && !inputs.test_sms
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}

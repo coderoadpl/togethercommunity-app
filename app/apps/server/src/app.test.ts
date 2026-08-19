@@ -701,6 +701,8 @@ const deps = (input: {
         expectedMigrations: 82,
         appliedMigrations: 82,
         schemaCurrent: true,
+        schemaFingerprint: 'c087b16a6bb6',
+        schemaFingerprintMatch: true,
       },
     },
     appVersion: '0.1.0-test',
@@ -2127,6 +2129,8 @@ describe('health route', () => {
         expectedMigrations: 82,
         appliedMigrations: 82,
         schemaCurrent: true,
+        schemaFingerprint: 'c087b16a6bb6',
+        schemaFingerprintMatch: true,
       },
     });
 
@@ -2136,7 +2140,13 @@ describe('health route', () => {
 
   it('surfaces schema drift without flipping health status', async () => {
     const response = await buildApp(deps({
-      schemaStatus: { expectedMigrations: 82, appliedMigrations: 80, schemaCurrent: false },
+      schemaStatus: {
+        expectedMigrations: 82,
+        appliedMigrations: 80,
+        schemaCurrent: false,
+        schemaFingerprint: '4d5e6f708192',
+        schemaFingerprintMatch: false,
+      },
     })).request(API_PATHS.health);
 
     expect(response.status).toBe(200);
@@ -2148,6 +2158,8 @@ describe('health route', () => {
         schemaCurrent: false,
         expectedMigrations: 82,
         appliedMigrations: 80,
+        schemaFingerprint: '4d5e6f708192',
+        schemaFingerprintMatch: false,
       },
     });
   });
@@ -2164,6 +2176,8 @@ describe('health route', () => {
         expectedMigrations: 82,
         appliedMigrations: 82,
         schemaCurrent: true,
+        schemaFingerprint: 'c087b16a6bb6',
+        schemaFingerprintMatch: true,
       }),
     };
 

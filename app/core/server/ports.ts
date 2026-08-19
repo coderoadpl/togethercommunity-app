@@ -1892,6 +1892,8 @@ export interface HealthPort {
     expectedMigrations: number;
     appliedMigrations: number | null;
     schemaCurrent: boolean;
+    schemaFingerprint: string | null;
+    schemaFingerprintMatch: boolean | null;
   }>;
 }
 

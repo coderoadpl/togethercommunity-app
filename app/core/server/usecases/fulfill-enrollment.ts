@@ -1,4 +1,5 @@
 import {
+  emailBrandingFrom,
   err,
   notFound,
   ok,
@@ -81,11 +82,7 @@ export const fulfillEnrollment = async (
           language: input.language,
           tenantName: tenant.name,
           actionUrl: created.url,
-          ...(settings === null ? {} : { branding: {
-            logoUrl: settings.logoUrl,
-            accentColor: settings.accentColor,
-            socialLinks: settings.socialLinks,
-          } }),
+          ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
         },
         now: deps.clock.nowIso(),
       });

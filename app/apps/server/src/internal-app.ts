@@ -115,6 +115,7 @@ import {
 import {
   devGrantInputSchema,
   apiKeyHasCapability,
+  emailBrandingFrom,
   err,
   forbidden,
   internal,
@@ -385,20 +386,20 @@ const requestOrigin = (req: HonoRequest, appBaseUrl: string): string =>
 const probeCorsOrigins = (req: HonoRequest, appBaseUrl: string): string[] =>
   [...new Set([requestOrigin(req, appBaseUrl), new URL(appBaseUrl).origin])];
 
-const emailBranding = async (deps: AppDeps, tenantId: string): Promise<EmailBranding | undefined> => {
+const emailBranding = async (
+  deps: AppDeps,
+  tenantId: string,
+  baseUrl: string,
+): Promise<EmailBranding | undefined> => {
   const settings = await deps.tenants.findSettings(tenantId);
-  return settings === null ? undefined : {
-    logoUrl: settings.logoUrl,
-    accentColor: settings.accentColor,
-    socialLinks: settings.socialLinks,
-  };
+  return settings === null ? undefined : emailBrandingFrom(settings, baseUrl);
 };
 
 const issueMagicLink = async (
   deps: AppDeps,
   input: { email: string; tenantId: string; tenantName: string; language: string; baseUrl: string; },
 ) => {
-  const branding = await emailBranding(deps, input.tenantId);
+  const branding = await emailBranding(deps, input.tenantId, input.baseUrl);
   await deps.authPort.requestMagicLink({
     email: input.email,
     callbackURL: input.baseUrl,

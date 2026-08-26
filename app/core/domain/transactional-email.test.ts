@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  emailBrandingFrom,
   emailTransportTest,
   lessonQuestion,
   magicLink,
@@ -332,5 +333,26 @@ describe('email branding header', () => {
     expect(message.html).toContain('YouTube &amp; more');
     expect(message.html).toContain('https://youtube.com/@akademia?a=1&amp;b=2');
     expect(message.text).toContain('YouTube & more: https://youtube.com/@akademia?a=1&b=2');
+  });
+});
+
+describe('emailBrandingFrom', () => {
+  const baseUrl = 'https://akademia.together.test/';
+
+  it('resolves app-relative branding assets against the tenant base URL', () => {
+    expect(
+      emailBrandingFrom({ logoUrl: '/api/public/assets/logo/abc.png', accentColor: '#7C2D92' }, baseUrl),
+    ).toEqual({
+      logoUrl: 'https://akademia.together.test/api/public/assets/logo/abc.png',
+      accentColor: '#7C2D92',
+      socialLinks: undefined,
+    });
+  });
+
+  it('keeps absolute logo URLs and a missing logo untouched', () => {
+    expect(
+      emailBrandingFrom({ logoUrl: 'https://cdn.test/logo.svg', accentColor: null }, baseUrl).logoUrl,
+    ).toBe('https://cdn.test/logo.svg');
+    expect(emailBrandingFrom({ logoUrl: null, accentColor: null }, baseUrl).logoUrl).toBeNull();
   });
 });

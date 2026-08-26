@@ -26,6 +26,7 @@ import {
 } from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
+  emailBrandingFrom,
   err,
   internal,
   languageSchema,
@@ -143,13 +144,13 @@ const magicLinkBaseUrl = (
   return `${proto}://${hostHeader}`;
 };
 
-const emailBranding = async (deps: AppDeps, tenantId: string): Promise<EmailBranding | undefined> => {
+const emailBranding = async (
+  deps: AppDeps,
+  tenantId: string,
+  baseUrl: string,
+): Promise<EmailBranding | undefined> => {
   const settings = await deps.tenants.findSettings(tenantId);
-  return settings === null ? undefined : {
-    logoUrl: settings.logoUrl,
-    accentColor: settings.accentColor,
-    socialLinks: settings.socialLinks,
-  };
+  return settings === null ? undefined : emailBrandingFrom(settings, baseUrl);
 };
 
 const magicLinkRequestBodySchema = z.object({ email: z.string().email() });
@@ -709,12 +710,13 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
       const resolved = tenant.ok ? tenant.value : null;
       const source: TenantSource = resolved?.source ?? 'subdomain';
       const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
-      const branding = resolved ? await emailBranding(deps, resolved.tenant.id) : undefined;
+      const baseUrl = magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl);
+      const branding = resolved ? await emailBranding(deps, resolved.tenant.id, baseUrl) : undefined;
       deps.auth.setMagicLinkDeliveryContext(parsedBody.data.email, {
         ...(resolved ? { tenantName: resolved.tenant.name } : {}),
         language: headerLanguage.success ? headerLanguage.data : 'pl',
         mode: 'email',
-        baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
+        baseUrl,
         ...(branding === undefined ? {} : { branding }),
       });
     }

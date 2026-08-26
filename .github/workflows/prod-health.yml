@@ -1,0 +1,90 @@
+name: prod-health
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      test_sms:
+        description: Send a test SMS regardless of health
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: prod-health
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Send a test SMS
+        if: inputs.test_sms
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: eu-central-1
+          ALERT_SMS_PHONE: ${{ secrets.ALERT_SMS_PHONE }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
+            echo "::error::SMS secrets absent - cannot send the test SMS"
+            exit 1
+          fi
+          aws sns publish \
+            --phone-number "$ALERT_SMS_PHONE" \
+            --message "Together prod-health: test SMS - the alert channel works" \
+            --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}'
+      - name: Probe production health
+        id: probe
+        run: |
+          body=$(curl -sS --max-time 15 --retry 2 --retry-delay 5 https://coderoad.togethercommunity.app/api/health) || {
+            echo "reason=health endpoint unreachable" >> "$GITHUB_OUTPUT"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          echo "$body" | head -c 400
+          ok=$(echo "$body" | jq -r '.ok')
+          database=$(echo "$body" | jq -r '.data.database')
+          schema=$(echo "$body" | jq -r '.data.schemaCurrent')
+          fingerprint=$(echo "$body" | jq -r '.data.schemaFingerprintMatch // "absent"')
+          if [ "$ok" = "true" ] && [ "$database" = "up" ] && [ "$schema" = "true" ] && [ "$fingerprint" != "false" ]; then
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "reason=ok=$ok database=$database schemaCurrent=$schema fingerprintMatch=$fingerprint" >> "$GITHUB_OUTPUT"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check whether this failure is a fresh incident
+        id: incident
+        if: steps.probe.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous=$(gh api "repos/${{ github.repository }}/actions/workflows/prod-health.yml/runs?status=completed&per_page=1" --jq '.workflow_runs[0].conclusion' || echo "unknown")
+          if [ "$previous" = "failure" ]; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Send an SMS alert
+        if: steps.probe.outputs.failed == 'true' && steps.incident.outputs.fresh == 'true' && !inputs.test_sms
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: eu-central-1
+          ALERT_SMS_PHONE: ${{ secrets.ALERT_SMS_PHONE }}
+          REASON: ${{ steps.probe.outputs.reason }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
+            echo "SMS secrets absent - skipping the SMS alert"
+            exit 0
+          fi
+          aws sns publish \
+            --phone-number "$ALERT_SMS_PHONE" \
+            --message "Together prod health FAILED: $REASON" \
+            --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}'
+      - name: Fail the run on unhealthy production
+        if: steps.probe.outputs.failed == 'true'
+        run: |
+          echo "::error::${{ steps.probe.outputs.reason }}"
+          exit 1

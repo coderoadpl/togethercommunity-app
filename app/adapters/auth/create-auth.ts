@@ -192,6 +192,7 @@ export const isAdditionalTwoFactorPath = (path: string | undefined): boolean =>
 
 const twoFactorForEverySignIn = () => {
   const plugin = twoFactor({
+    issuer: 'Together',
     trustDeviceMaxAge: 0,
     totpOptions: {
       digits: AUTH_POLICY.totpDigits,

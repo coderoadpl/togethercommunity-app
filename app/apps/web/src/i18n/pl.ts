@@ -343,6 +343,7 @@ export const pl: Messages = {
     pending: 'Oczekujące',
     failed: 'Nieudane',
     refunded: 'Zwrócone',
+    partially_refunded: 'Częściowo zwrócone',
     date: 'Data',
     member: 'Uczestnik',
     amount: 'Kwota',

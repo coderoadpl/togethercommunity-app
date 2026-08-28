@@ -41,6 +41,10 @@ export const stripeWebhookPayloadSchema = z.object({
       payment_intent: z.string().nullable().optional(),
       charge: z.string().nullable().optional(),
       amount_total: z.number().int().nullable().optional(),
+      amount: z.number().int().nullable().optional(),
+      amount_refunded: z.number().int().nullable().optional(),
+      refunded: z.boolean().nullable().optional(),
+      payment_status: z.enum(['paid', 'unpaid', 'no_payment_required']).nullable().optional(),
       total_details: z
         .object({ amount_discount: z.number().int().nullable().optional() })
         .nullable()
@@ -53,6 +57,7 @@ export const stripeWebhookPayloadSchema = z.object({
       status: z.string().optional(),
     }),
   }),
+  created: z.number().int().nullable().optional(),
 });
 
 /**
@@ -87,7 +92,25 @@ export const stripeChargeObjectSchema = z.object({
   id: z.string(),
   invoice: z.unknown().optional(),
   payment_intent: z.unknown().optional(),
+  refunded: z.boolean().optional(),
+  amount: z.number().int().optional(),
+  amount_refunded: z.number().int().optional(),
 });
+
+export const refundCoverage = (input: {
+  refunded?: boolean | null;
+  amount?: number | null;
+  amountRefunded?: number | null;
+}): { full: boolean; amountRefundedCents: number | null; amountCents: number | null } => {
+  const amountCents = input.amount ?? null;
+  const amountRefundedCents = input.amountRefunded ?? null;
+  const full =
+    input.refunded === true ||
+    amountCents === null ||
+    amountRefundedCents === null ||
+    amountRefundedCents >= amountCents;
+  return { full, amountRefundedCents, amountCents };
+};
 
 export const stripeDisputeObjectSchema = z.object({
   id: z.string(),

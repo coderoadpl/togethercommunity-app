@@ -222,8 +222,9 @@ const deps = (input: {
     paymentRefunds: input.paymentRefunds ?? {
       findOrderByProviderObjectIds: async () => null,
       findLatestSubscriptionOrder: async () => null,
-      listPaidOrdersForMemberProduct: async () => [],
+      listAccessRetainingOrdersForMemberProduct: async () => [],
       markOrderRefunded: async () => null,
+      markOrderPartiallyRefunded: async () => null,
     },
     subscriptions: {
       findById: async () => null,
@@ -716,7 +717,7 @@ const deps = (input: {
     tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
-    logger: input.logger ?? { error: () => undefined },
+    logger: input.logger ?? { error: () => undefined, warn: () => undefined },
     baseDomain: 'localhost',
     platformHost: 'start.localhost',
     singleTenantMode: false,
@@ -4328,15 +4329,16 @@ describe('checkout consent ordering', () => {
     const claimedEvents = new Set<string>();
     let orderResult: Order | null = order;
     const orderLookups: Record<string, string>[] = [];
-    const logger = { error: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn() };
     const base = deps({
       products: [attached],
       autoInvoiceJobs,
       paymentRefunds: {
         findOrderByProviderObjectIds: async () => orderResult,
         findLatestSubscriptionOrder: async () => null,
-        listPaidOrdersForMemberProduct: async () => [],
+        listAccessRetainingOrdersForMemberProduct: async () => [],
         markOrderRefunded: async () => null,
+        markOrderPartiallyRefunded: async () => null,
       },
     });
     let invoiceRequests = 0;
@@ -4586,7 +4588,7 @@ describe('checkout consent ordering', () => {
       createdAt: '1998-07-12T00:00:00.000Z',
       createdBy: null,
     });
-    const logger = { error: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn() };
     const base = deps({ products: [attached, secondAttached], logger });
     const queued: string[] = [];
     let failEnqueue = false;

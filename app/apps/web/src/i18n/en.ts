@@ -337,6 +337,7 @@ export const en: Messages = {
     pending: 'Pending',
     failed: 'Failed',
     refunded: 'Refunded',
+    partially_refunded: 'Partially refunded',
     date: 'Date',
     member: 'Member',
     amount: 'Amount',

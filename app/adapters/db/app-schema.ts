@@ -440,7 +440,7 @@ export const orders = pgTable(
     productId: text('product_id').notNull(),
     priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
     kind: text('kind', { enum: ['one_time', 'recurring'] }).notNull(),
-    status: text('status', { enum: ['paid', 'pending', 'failed', 'refunded'] }).notNull(),
+    status: text('status', { enum: ['paid', 'pending', 'failed', 'refunded', 'partially_refunded'] }).notNull(),
     amountCents: integer('amount_cents').notNull(),
     currency: text('currency').notNull(),
     provider: text('provider', { enum: ['stripe', 'simulated'] }).notNull(),
@@ -985,7 +985,9 @@ export const processedPaymentEvents = pgTable(
   },
   (table) => [
     index('processed_events_tenantId_idx').on(table.tenantId),
-    uniqueIndex('processed_events_object_type_uidx').on(table.objectId, table.type),
+    uniqueIndex('processed_events_fulfillment_uidx')
+      .on(table.tenantId, table.objectId, table.type)
+      .where(sql`${table.type} in ('checkout.session.completed', 'invoice.paid')`),
     index('processed_events_lease_idx').on(table.status, table.leaseExpiresAt),
   ],
 );

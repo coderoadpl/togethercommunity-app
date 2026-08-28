@@ -1299,6 +1299,37 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
   });
 
+  it('dedupes fulfillment events by object and lets later subscription updates through', async () => {
+    const repo = createProcessedPaymentEventRepository(db);
+    const lease = {
+      workerId: 'worker-index',
+      now: NOW,
+      leaseExpiresAt: '1998-07-14T10:05:00.000Z',
+    };
+    const completed: ProcessedPaymentEvent = {
+      id: 'evt-cs-1',
+      tenantId: ACME,
+      type: 'checkout.session.completed',
+      objectId: 'cs-index',
+      processedAt: NOW,
+    };
+    const updated: ProcessedPaymentEvent = {
+      id: 'evt-sub-1',
+      tenantId: ACME,
+      type: 'customer.subscription.updated',
+      objectId: 'sub-index',
+      processedAt: NOW,
+    };
+
+    expect(await repo.claim(ACME, completed, lease)).toBe('claimed');
+    expect(await repo.claim(ACME, { ...completed, id: 'evt-cs-2' }, lease)).toBe('duplicate');
+    expect(
+      await repo.claim(GLOBEX, { ...completed, id: 'evt-cs-3', tenantId: GLOBEX }, lease),
+    ).toBe('claimed');
+    expect(await repo.claim(ACME, updated, lease)).toBe('claimed');
+    expect(await repo.claim(ACME, { ...updated, id: 'evt-sub-2' }, lease)).toBe('claimed');
+  });
+
   it('rolls back payment repository writes when the branch fails', async () => {
     const transaction = createPaymentTransactionPort(db);
     const rolledBackOrder = order({

@@ -18,7 +18,7 @@ export const memberEventRegistry = defineMemberEventRegistry({
     orderId: z.string().min(1),
     productId: z.string().min(1),
     kind: z.enum(['one_time', 'recurring']),
-    status: z.enum(['paid', 'pending', 'failed', 'refunded']),
+    status: z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']),
     amountCents: z.number().int().nonnegative(),
     currency: z.string().min(1),
     provider: z.enum(['stripe', 'simulated']),

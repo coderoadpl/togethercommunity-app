@@ -3,9 +3,11 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   err,
   ok,
+  refundCoverage,
   stripeWebhookPayloadSchema,
   validation,
 } from '#core/domain/index.js';
+import { CHECKOUT_SESSION_EVENT_TYPES } from '#core/server/index.js';
 import type { PaymentProvider, TenantSecretResolver } from '#core/server/index.js';
 
 const signatureIsValid = (payload: string, header: string, secret: string): boolean => {
@@ -76,10 +78,12 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
       id: event.data.id,
       type,
       objectId: object.id,
+      createdAt: epochToIso(event.data.created),
       checkoutSession:
-        type === 'checkout.session.completed'
+        CHECKOUT_SESSION_EVENT_TYPES.has(type)
           ? {
               email: object.customer_details?.email ?? object.customer_email ?? null,
+              paymentStatus: object.payment_status ?? 'paid',
               subscriptionId: object.subscription ?? null,
               paymentIntentId: object.payment_intent ?? null,
               invoiceId: object.invoice ?? null,
@@ -115,6 +119,14 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
               chargeId: type === 'charge.refunded' ? object.id : (object.charge ?? null),
               paymentIntentId: object.payment_intent ?? null,
               invoiceId: object.invoice ?? null,
+              refund:
+                type === 'charge.refunded'
+                  ? refundCoverage({
+                      refunded: object.refunded ?? null,
+                      amount: object.amount ?? null,
+                      amountRefunded: object.amount_refunded ?? null,
+                    })
+                  : null,
             }
           : null,
       subscription:

@@ -1,15 +1,11 @@
-import type { ElementType } from 'react';
 import { Box, Chip, Stack, Typography } from '@mui/material';
-import { styled } from '@mui/material/styles';
 import { Link } from '@tanstack/react-router';
 
 import type { SpaceVisibility } from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
-import { CourseCardRoot, EmberCtaButton, UnreadDot } from '../../theme.js';
+import { CourseCardRoot, EmberCtaLink, UnreadDot } from '../../theme.js';
 import { LockClosed } from './tree-icons.js';
-
-const EmberCtaLink = styled(EmberCtaButton)<{ component?: ElementType; to?: string }>({});
 
 export interface SpaceCardSpace {
   id: string;

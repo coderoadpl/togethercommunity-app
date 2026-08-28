@@ -43,8 +43,15 @@ import { MutationError, newId } from './feedback.js';
 type ModulesData = Awaited<ReturnType<typeof actions.modules.queryFn>>;
 type CoursesData = Awaited<ReturnType<typeof actions.courses.queryFn>>;
 
-const lessonName = (lessons: CourseLesson[], lessonId: string, t: Messages): string =>
-  lessons.find((lesson) => lesson.id === lessonId)?.name ?? t.courses.unknownLesson;
+const contentSourceLabel = (
+  lessons: CourseLesson[],
+  content: { name: string; lessonId: string },
+  t: Messages,
+): string | undefined => {
+  const source = lessons.find((lesson) => lesson.id === content.lessonId)?.name
+    ?? t.courses.unknownLesson;
+  return source === content.name ? undefined : t.courses.sourceLesson({ name: source });
+};
 
 const ChapterEditor = ({
   chapter,
@@ -199,7 +206,7 @@ const ChapterEditor = ({
             >
               <ListItemText
                 primary={content.name}
-                secondary={lessonName(lessons, content.lessonId, t)}
+                secondary={contentSourceLabel(lessons, content, t)}
                 sx={{ minWidth: 0 }}
               />
               <Stack

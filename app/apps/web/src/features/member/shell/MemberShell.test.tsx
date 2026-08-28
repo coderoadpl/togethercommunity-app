@@ -570,10 +570,9 @@ describe('MemberShell', () => {
 
     await renderShell('/my');
 
-    expect(await screen.findByRole('link', { name: pl.auth.signInLink })).toHaveAttribute(
-      'href',
-      '/login',
-    );
+    const sidebarSignIn = await screen.findByTestId('anon-sidebar-signin');
+    expect(sidebarSignIn).toHaveAttribute('href', '/login');
+    expect(sidebarSignIn).toHaveTextContent(pl.auth.signInLink);
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
     expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();

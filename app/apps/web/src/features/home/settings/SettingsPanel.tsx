@@ -6,6 +6,7 @@ import {
   Checkbox,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   MenuItem,
@@ -96,8 +97,13 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const urlValue = url ?? settings.data?.settings.supportUrl ?? '';
   return (
     <SectionCard
-      title={t.support.heading}
-      description={t.support.intro}
+      title={t.support.settingsHeading}
+      description={t.support.settingsIntro}
+      actions={canEdit ? (
+        <Button type="submit" variant="contained" disabled={update.isPending}>
+          {t.support.save}
+        </Button>
+      ) : undefined}
       onSubmit={(event) => {
         event.preventDefault();
         update.mutate({
@@ -126,11 +132,6 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setUrl(event.target.value)}
         />
       </FormControl>
-      {canEdit ? (
-        <Button type="submit" variant="outlined" disabled={update.isPending}>
-          {t.support.save}
-        </Button>
-      ) : null}
       {update.isError ? <Alert severity="error">{localizeError(update.error, t)}</Alert> : null}
     </SectionCard>
   );
@@ -140,7 +141,7 @@ const KsefCredentialsPointer = () => {
   const t = useTranslations();
   return (
     <Stack useFlexGap spacing="0.5rem">
-      <Typography variant="h6" component="h3">{t.integrations.ksefHeading}</Typography>
+      <Typography variant="h3" component="h3">{t.integrations.ksefHeading}</Typography>
       <Typography variant="body2">{t.billing.ksefConfiguredInIntegrations}</Typography>
       <Box>
         <MuiLink
@@ -187,7 +188,29 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const [sellerAddress, setSellerAddress] = useState<string | null>(null);
 
   return (
-    <SectionCard title={t.billing.invoiceHeading} description={t.billing.invoiceIntro}>
+    <SectionCard
+      title={t.billing.invoiceHeading}
+      description={t.billing.invoiceIntro}
+      actions={(
+        <Button
+          variant="contained"
+          disabled={!canEdit || settings.isPending || updateSettings.isPending || basisInvalid}
+          onClick={() => updateSettings.mutate({
+            invoiceVatMode: treatment === 'exempt' ? 'exempt' : 'rate',
+            invoiceVatRatePercent:
+              treatment === 5 || treatment === 8 || treatment === 23 ? treatment : null,
+            invoiceExemptionBasisKind: treatment === 'exempt' && selectedBasisKind !== ''
+              ? selectedBasisKind
+              : null,
+            invoiceExemptionBasis: treatment === 'exempt' ? basisValue.trim() || null : null,
+            invoiceSellerName: sellerName ?? settings.data?.settings.invoiceSellerName ?? null,
+            invoiceSellerAddress: sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? null,
+          })}
+        >
+          {t.billing.saveSeller}
+        </Button>
+      )}
+    >
       <FormControlLabel
         control={(
           <Checkbox
@@ -319,23 +342,6 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setSellerAddress(event.target.value)}
         />
       </FormControl>
-      <Button
-        variant="contained"
-        disabled={!canEdit || settings.isPending || updateSettings.isPending || basisInvalid}
-        onClick={() => updateSettings.mutate({
-          invoiceVatMode: treatment === 'exempt' ? 'exempt' : 'rate',
-          invoiceVatRatePercent:
-            treatment === 5 || treatment === 8 || treatment === 23 ? treatment : null,
-          invoiceExemptionBasisKind: treatment === 'exempt' && selectedBasisKind !== ''
-            ? selectedBasisKind
-            : null,
-          invoiceExemptionBasis: treatment === 'exempt' ? basisValue.trim() || null : null,
-          invoiceSellerName: sellerName ?? settings.data?.settings.invoiceSellerName ?? null,
-          invoiceSellerAddress: sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? null,
-        })}
-      >
-        {t.billing.saveSeller}
-      </Button>
       {provider === 'ksef' ? <KsefCredentialsPointer /> : null}
       {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
@@ -370,7 +376,21 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const disabled = !canEdit || !settings.isSuccess;
 
   return (
-    <SectionCard title={t.legal.heading} description={t.legal.intro} onSubmit={submit}>
+    <SectionCard
+      title={t.legal.heading}
+      description={t.legal.intro}
+      onSubmit={submit}
+      actions={canEdit ? (
+        <Button
+          type="submit"
+          variant="contained"
+          data-testid="legal-save"
+          disabled={updateSettings.isPending || !settings.isSuccess}
+        >
+          {updateSettings.isPending ? t.legal.saving : t.legal.save}
+        </Button>
+      ) : undefined}
+    >
       {settings.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.common.loading }} data-testid="legal-loading" />
       ) : (
@@ -403,18 +423,6 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       )}
       {settings.isError ? (
         <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
-      ) : null}
-      {canEdit ? (
-        <Box>
-          <Button
-            type="submit"
-            variant="outlined"
-            data-testid="legal-save"
-            disabled={updateSettings.isPending || !settings.isSuccess}
-          >
-            {updateSettings.isPending ? t.legal.saving : t.legal.save}
-          </Button>
-        </Box>
       ) : null}
       {updateSettings.isSuccess ? (
         <Typography variant="caption" component="p" data-testid="legal-saved">
@@ -465,6 +473,9 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
         <Typography variant="caption" component="p">
           {t.publicAccess.homeSpaceHint}
         </Typography>
+        <FormHelperText data-testid="public-access-status">
+          {updateSettings.isPending ? t.common.saving : updateSettings.isSuccess ? t.common.saved : ' '}
+        </FormHelperText>
       </FormControl>
       {spaces.isError ? (
         <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
@@ -545,7 +556,21 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const disabled = !canEdit || !settings.isSuccess;
 
   return (
-    <SectionCard title={t.branding.heading} description={t.branding.intro} onSubmit={submit}>
+    <SectionCard
+      title={t.branding.heading}
+      description={t.branding.intro}
+      onSubmit={submit}
+      actions={canEdit ? (
+        <Button
+          type="submit"
+          variant="contained"
+          data-testid="branding-save"
+          disabled={updateSettings.isPending || !settings.isSuccess}
+        >
+          {updateSettings.isPending ? t.branding.saving : t.branding.save}
+        </Button>
+      ) : undefined}
+    >
       {settings.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.common.loading }} data-testid="branding-loading" />
       ) : (
@@ -565,7 +590,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <ImageAssetField
             id="branding-logo-url"
             label={t.branding.logoLabel}
-            hint={t.branding.logoPlaceholder}
+            placeholder={t.branding.logoPlaceholder}
             value={logoValue}
             onChange={setLogoUrl}
             kind="logo"
@@ -600,14 +625,14 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <ImageAssetField
             id="branding-favicon-url"
             label={t.branding.faviconLabel}
-            hint={t.branding.faviconPlaceholder}
+            placeholder={t.branding.faviconPlaceholder}
             value={faviconValue}
             onChange={setFaviconUrl}
             kind="favicon"
             disabled={disabled}
             testId="branding-favicon-url"
           />
-          <Typography variant="h6" component="h3">{t.branding.profileLinksHeading}</Typography>
+          <Typography variant="h3" component="h3">{t.branding.profileLinksHeading}</Typography>
           <Typography variant="body2">
             {t.branding.profileLinksIntro({ count: SOCIAL_LINKS_MAX_COUNT })}
           </Typography>
@@ -681,7 +706,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {t.branding.addSocialLink}
             </Button>
           </Box>
-          <Typography variant="h6" component="h3">{t.branding.socialHeading}</Typography>
+          <Typography variant="h3" component="h3">{t.branding.socialHeading}</Typography>
           <FormControl fullWidth>
             <FormLabel htmlFor="branding-og-title">{t.branding.ogTitleLabel}</FormLabel>
             <OutlinedInput
@@ -730,18 +755,6 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       )}
       {settings.isError ? (
         <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
-      ) : null}
-      {canEdit ? (
-        <Box>
-          <Button
-            type="submit"
-            variant="outlined"
-            data-testid="branding-save"
-            disabled={updateSettings.isPending || !settings.isSuccess}
-          >
-            {updateSettings.isPending ? t.branding.saving : t.branding.save}
-          </Button>
-        </Box>
       ) : null}
       {updateSettings.isSuccess ? (
         <Typography variant="caption" component="p" data-testid="branding-saved">
@@ -948,7 +961,9 @@ export const SettingsPanel = () => {
         onChange={changeSection}
         aria-label={t.settingsNavigation.aria}
         variant="scrollable"
+        scrollButtons="auto"
         allowScrollButtonsMobile
+        sx={{ '& .MuiTabs-scrollButtons.Mui-disabled': { width: 0, minWidth: 0, opacity: 0 } }}
       >
         <Tab id="settings-tab-company" aria-controls="settings-panel-company" value="company" label={t.settingsNavigation.company} />
         <Tab id="settings-tab-legal" aria-controls="settings-panel-legal" value="legal" label={t.settingsNavigation.legal} />

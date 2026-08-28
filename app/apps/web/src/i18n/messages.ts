@@ -37,6 +37,8 @@ export interface Messages {
     retry: string;
     unsavedChanges: string;
     unsavedChangesConfirm: string;
+    saving: string;
+    saved: string;
   };
   imageAssets: {
     upload: string;
@@ -916,6 +918,7 @@ export interface Messages {
     chapterNameAria: (params: { name: string }) => string;
     duplicateLessonWarning: string;
     unknownLesson: string;
+    sourceLesson: (params: { name: string }) => string;
     historyHeading: string;
     historyLoading: string;
     historyEmpty: string;
@@ -1171,7 +1174,8 @@ export interface Messages {
   anon: {
     eyebrow: string;
     homeTitle: string;
-    signInCta: string;
+    coursesSection: string;
+    spacesSection: string;
     joinDiscussionCta: string;
     readOnlyBanner: string;
     lockedCourseHint: string;
@@ -1531,6 +1535,8 @@ export interface Messages {
     emailLabel: string;
     urlLabel: string;
     save: string;
+    settingsHeading: string;
+    settingsIntro: string;
   };
   billing: {
     heading: string;

@@ -28,7 +28,12 @@ export const AnonShell = ({ children }: { children: ReactNode }) => {
         <AppBar position="sticky">
           <Toolbar variant="dense" sx={{ minHeight: '52px', px: '1.25rem', gap: '0.75rem' }}>
             <Box sx={{ display: { xs: 'flex', md: 'none' }, minWidth: 0 }}>
-              <BrandLink component={Link} to={anonHomePath()} data-testid="shell-brand">
+              <BrandLink
+                component={Link}
+                to={anonHomePath()}
+                aria-label={t.shell.start}
+                data-testid="shell-brand"
+              >
                 <TenantLogo />
               </BrandLink>
             </Box>

@@ -34,7 +34,7 @@ export const ProviderTest = ({
     <Box sx={{ display: 'grid', gap: '0.5rem' }}>
       <Button
         type="button"
-        variant="contained"
+        variant="outlined"
         data-testid={`${provider}-test-connection`}
         disabled={test.isPending || !ready}
         onClick={() => test.mutate({ provider, language })}

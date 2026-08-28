@@ -18,6 +18,7 @@ interface ImageAssetFieldProps {
   id: string;
   label: string;
   hint?: string;
+  placeholder?: string;
   value: string;
   onChange: (value: string) => void;
   kind: ImageAssetKind;

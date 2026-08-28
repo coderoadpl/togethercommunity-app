@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Button, FormControl, FormLabel, OutlinedInput, Stack } from '@mui/material';
+import { Button, FormControl, FormHelperText, FormLabel, OutlinedInput, Stack } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -45,6 +45,7 @@ const CreateModuleForm = ({ courseId, onCreated }: { courseId: string; onCreated
         <FormControl sx={{ flex: 1 }}>
           <FormLabel htmlFor="new-module-prefix">{t.courses.prefixLabel}</FormLabel>
           <OutlinedInput id="new-module-prefix" value={prefix} onChange={(event) => setPrefix(event.target.value)} aria-describedby={createModule.isError ? errorId : undefined} />
+          <FormHelperText>{t.courses.prefixHint}</FormHelperText>
         </FormControl>
         <Button type="submit" variant="contained" disabled={createModule.isPending || title.trim().length === 0}>
           {createModule.isPending ? t.courses.creatingModule : t.courses.createModule}

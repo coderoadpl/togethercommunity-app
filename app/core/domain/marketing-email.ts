@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { normalizeEmail } from './email.js';
 import { validation, type AppError } from './errors.js';
+import { languageOrDefault } from './language.js';
 import { err, ok, type Result } from './result.js';
 
 export const isoDateTimeSchema = z.string().datetime();
@@ -569,13 +570,23 @@ export const automationIdempotencyKeySchema = z.object({
 export type AutomationIdempotencyKey = z.infer<typeof automationIdempotencyKeySchema>;
 
 export const marketingConsentConfirmation = (input: {
+  language: string;
   confirmationUrl: string;
   wording: string;
-}): { subject: string; html: string; text: string } => ({
-  subject: 'Confirm your e-mail consent',
-  html: `<p>Confirm that you requested this consent:</p><p>${escapeHtml(input.wording)}</p><p><a href="${escapeHtml(input.confirmationUrl)}">Confirm consent</a></p>`,
-  text: `Confirm that you requested this consent:\n\n${input.wording}\n\n${input.confirmationUrl}`,
-});
+}): { subject: string; html: string; text: string } => {
+  if (languageOrDefault(input.language) === 'en') {
+    return {
+      subject: 'Confirm your e-mail consent',
+      html: `<p>Hello!</p><p>Confirm that you want to receive messages covering:</p><blockquote>${escapeHtml(input.wording)}</blockquote><p><a href="${escapeHtml(input.confirmationUrl)}">Confirm consent</a></p><p>If you did not give this consent, ignore this message.</p>`,
+      text: `Hello!\n\nConfirm that you want to receive messages covering:\n\n${input.wording}\n\nConfirm consent: ${input.confirmationUrl}\n\nIf you did not give this consent, ignore this message.`,
+    };
+  }
+  return {
+    subject: 'Potwierdź zgodę na wiadomości e-mail',
+    html: `<p>Cześć!</p><p>Potwierdź, że chcesz otrzymywać od nas wiadomości w zakresie:</p><blockquote>${escapeHtml(input.wording)}</blockquote><p><a href="${escapeHtml(input.confirmationUrl)}">Potwierdzam zgodę</a></p><p>Jeśli to nie Ty zapisujesz się na te wiadomości, zignoruj tę wiadomość.</p>`,
+    text: `Cześć!\n\nPotwierdź, że chcesz otrzymywać od nas wiadomości w zakresie:\n\n${input.wording}\n\nPotwierdzam zgodę: ${input.confirmationUrl}\n\nJeśli to nie Ty zapisujesz się na te wiadomości, zignoruj tę wiadomość.`,
+  };
+};
 
 export const throttleBudget = (input: {
   ratePerSecond: number;

@@ -5,14 +5,14 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../../api.js';
-import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations, type Messages } from '../../../i18n/index.js';
 
 const startErrorMessage = (error: Error, t: Messages): string =>
   error instanceof ApiError && error.appError.code === 'rate_limited'
     ? t.messages.rateLimited
     : error instanceof ApiError && (error.appError.code === 'forbidden' || error.appError.code === 'not_found')
       ? t.messages.recipientUnavailable
-      : localizeError(error, t);
+      : localizePanelError(error, t);
 
 export const MessageMemberButton = ({ memberId }: { memberId: string }) => {
   const t = useTranslations();

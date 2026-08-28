@@ -3,6 +3,8 @@ export {
   errorCodeOf,
   localizeError,
   localizeErrorCode,
+  localizeErrorCodeForPanel,
+  localizePanelError,
   providerCodeOf,
   rejectedCorsOriginOf,
 } from './errors.js';

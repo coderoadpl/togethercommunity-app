@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  DELETED_MEMBER_DISPLAY,
+  deletedMemberDisplay,
   err,
   memberTombstone,
   ok,
@@ -359,7 +359,7 @@ describe('removeMember', () => {
           deletedAt: clock.nowIso(),
           tombstoneEmail: memberTombstone('m1').email,
           severedUserId: memberTombstone('m1').userId,
-          postAuthorDisplay: DELETED_MEMBER_DISPLAY,
+          postAuthorDisplay: deletedMemberDisplay(),
         },
       },
     ]);

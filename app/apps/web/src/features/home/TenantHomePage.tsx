@@ -23,7 +23,7 @@ import { BrandLoader } from '../../components/layout/BrandLoader.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
-import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { hostHasTenantSubdomain, tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
 
@@ -60,7 +60,7 @@ export const TenantHomePage = ({
   if (me.isError) {
     return (
       <Container sx={{ maxWidth: '44rem' }}>
-        <Alert severity="error" sx={{ mt: 4 }}>{localizeError(me.error, t)}</Alert>
+        <Alert severity="error" sx={{ mt: 4 }}>{localizePanelError(me.error, t)}</Alert>
         <Button variant="outlined" sx={{ mt: 2 }} onClick={() => void me.refetch()}>{t.common.retry}</Button>
       </Container>
     );
@@ -112,7 +112,7 @@ const PickTenant = ({ account }: { account: { email: string; emailVerified: bool
             {t.tenant.loading}
           </Typography>
         ) : null}
-        {tenants.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenants.error, t), retry: { label: t.common.retry, onRetry: () => void tenants.refetch() } }} /> : null}
+        {tenants.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(tenants.error, t), retry: { label: t.common.retry, onRetry: () => void tenants.refetch() } }} /> : null}
         <List sx={{ mt: '1.2rem' }} disablePadding>
           {tenants.data?.tenants.map((m) => (
             <ListItem key={m.tenant.id} disablePadding>
@@ -177,7 +177,7 @@ const PickTenant = ({ account }: { account: { email: string; emailVerified: bool
             {createTenant.isPending ? t.tenant.creating : t.tenant.createButton}
           </Button>
           {createTenant.isError ? (
-            <Alert severity="error">{localizeError(createTenant.error, t)}</Alert>
+            <Alert severity="error">{localizePanelError(createTenant.error, t)}</Alert>
           ) : null}
           {createdSlug ? (
             <Link href={tenantUrl(createdSlug)}>{t.tenant.open({ url: tenantUrl(createdSlug) })}</Link>

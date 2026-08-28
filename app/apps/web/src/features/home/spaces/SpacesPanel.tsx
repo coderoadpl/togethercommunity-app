@@ -7,7 +7,7 @@ import type { StaffSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { DataValue } from '../../../theme.js';
 
 type SpaceFilter = 'all' | 'active' | 'archived';
@@ -93,7 +93,7 @@ const SpaceRow = ({ space }: { space: StaffSpace }) => {
         )}
       </Stack>
 
-      {setArchived.isError ? <Alert severity="error">{localizeError(setArchived.error, t)}</Alert> : null}
+      {setArchived.isError ? <Alert severity="error">{localizePanelError(setArchived.error, t)}</Alert> : null}
 
       <ConfirmDialog
         open={confirmArchive}
@@ -177,7 +177,7 @@ export const SpacesPanel = () => {
         {spaces.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.spacesPanel.loading }} />
         ) : spaces.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1rem">
             {visible.map((space) => (

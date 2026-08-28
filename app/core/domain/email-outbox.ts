@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { DEFAULT_LANGUAGE } from './language.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
 import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, verifyEmail, welcomeSignIn, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
@@ -49,7 +50,7 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('support-message'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), memberDisplay: z.string(), subject: z.string(), body: z.string(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('member-erasure-request'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), requestedAt: z.string().datetime(), dueAt: z.string().datetime(), panelUrl: z.string().url() }),
   z.object({ kind: z.literal('reputation-alert'), language: z.string(), tenantName: z.string(), status: z.enum(['warn', 'critical']), hardBounceRate: z.number().nonnegative().nullable(), complaintRate: z.number().nonnegative().nullable(), windowStart: z.string().datetime(), windowEnd: z.string().datetime(), dashboardUrl: z.string().url() }),
-  z.object({ kind: z.literal('marketing-consent-confirmation'), wording: z.string().min(1), confirmationUrl: z.string().url() }),
+  z.object({ kind: z.literal('marketing-consent-confirmation'), language: z.string().default(DEFAULT_LANGUAGE), wording: z.string().min(1), confirmationUrl: z.string().url() }),
   m2mTransactionalPayloadSchema,
 ]);
 

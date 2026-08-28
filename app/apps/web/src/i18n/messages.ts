@@ -426,6 +426,7 @@ export interface Messages {
     loadMore: string;
     olderTruncated: string;
     unreadLabel: string;
+    unreadAria: (params: { count: number }) => string;
     threadReply: (params: { author: string; lesson: string }) => string;
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
@@ -439,6 +440,7 @@ export interface Messages {
     loading: string;
     emptyList: string;
     emptyListHint: string;
+    browseSpaces: string;
     emptyConversation: string;
     conversationEyebrow: string;
     backToList: string;

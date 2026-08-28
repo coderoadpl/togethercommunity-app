@@ -1,5 +1,6 @@
 import {
   DEFAULT_LANGUAGE,
+  emailBrandingFrom,
   err,
   integrationNotConfigured,
   notFound,
@@ -19,9 +20,10 @@ import type {
   TenantAccessReader,
   TenantRepository,
 } from '../ports.js';
+import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 import { requireMemberOrStaff } from './community-access.js';
 
-export interface SupportMessageDeps {
+export interface SupportMessageDeps extends TenantUrlDeps {
   tenants: TenantRepository;
   members: MemberRepository;
   tenantAccess: TenantAccessReader;
@@ -69,11 +71,7 @@ export const sendSupportMessage = async (
       memberDisplay: member?.displayName ?? ctx.identity.name,
       subject: parsed.data.subject,
       body: parsed.data.body,
-      branding: {
-        logoUrl: settings.logoUrl,
-        accentColor: settings.accentColor,
-        socialLinks: settings.socialLinks,
-      },
+      branding: emailBrandingFrom(settings, tenantUrl(ctx.identity.tenantSlug, '/', deps)),
     },
     now: deps.clock.nowIso(),
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type EmailOutboxPayload, type Identity } from '#core/domain/index.js';
+import { emailOutboxPayloadSchema, ok, type EmailOutboxPayload, type Identity } from '#core/domain/index.js';
 
 import { sendSupportMessage, type SupportMessageDeps } from './support.js';
 
@@ -23,6 +23,9 @@ const identity: Identity = {
 const harness = (supportEmail: string | null) => {
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const deps: SupportMessageDeps = {
+    appBaseUrl: 'https://app.together.test',
+    baseDomain: 'together.test',
+    singleTenantMode: false,
     tenants: {
       findById: async () => null,
       findBySlug: async () => null,
@@ -133,6 +136,24 @@ describe('sendSupportMessage', () => {
         configured.deps,
       ),
     ).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('queues an outbox-valid payload for a tenant logo stored as an app path', async () => {
+    const h = harness('support@alpha.test');
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : { ...settings, logoUrl: '/api/public/assets/logo/abc.png' };
+    };
+
+    expect(
+      await sendSupportMessage({ identity }, { subject: 'Help', body: 'Body' }, h.deps),
+    ).toEqual({ ok: true, value: { queued: true } });
+    const payload = h.queued[0]?.payload;
+    expect(emailOutboxPayloadSchema.safeParse(payload).success).toBe(true);
+    expect(payload).toMatchObject({
+      branding: { logoUrl: 'https://alpha.together.test/api/public/assets/logo/abc.png' },
+    });
   });
 
   it('rejects an authenticated identity without member or staff scope', async () => {

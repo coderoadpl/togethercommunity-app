@@ -1,5 +1,6 @@
 import {
   DEFAULT_LANGUAGE,
+  emailBrandingFrom,
   err,
   graceExpiresAt,
   internal,
@@ -105,12 +106,7 @@ const enqueueSubscriptionNotice = async (
   ]);
   if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
   const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
-  const branding =
-    settings === null ? undefined : {
-      logoUrl: settings.logoUrl,
-      accentColor: settings.accentColor,
-      socialLinks: settings.socialLinks,
-    };
+  const branding = settings === null ? undefined : emailBrandingFrom(settings, tenantBaseUrl);
   const payload =
     kind === 'subscription-payment-failed'
       ? {

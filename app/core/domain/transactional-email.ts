@@ -67,6 +67,20 @@ export interface EmailBranding {
   socialLinks?: Array<{ label: string; url: string }> | undefined;
 }
 
+/** Branding assets may be stored as app-relative paths; mail clients need absolute URLs. */
+export const emailBrandingFrom = (
+  settings: {
+    logoUrl: string | null;
+    accentColor: string | null;
+    socialLinks?: Array<{ label: string; url: string }> | undefined;
+  },
+  baseUrl: string,
+): EmailBranding => ({
+  logoUrl: settings.logoUrl === null ? null : new URL(settings.logoUrl, baseUrl).toString(),
+  accentColor: settings.accentColor,
+  socialLinks: settings.socialLinks,
+});
+
 /** Tenant-branded header; an empty string (byte-identical mail) without branding. */
 const brandHeader = (branding: EmailBranding | undefined): string => {
   if (branding === undefined || (branding.logoUrl === null && branding.accentColor === null)) return '';

@@ -4,6 +4,7 @@ import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'js
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
 
 import {
+  ACCESS_RETAINING_ORDER_STATUSES,
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
   billingDataSchema,
@@ -3032,7 +3033,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
     const row = rows[0];
     return row ? parseOrder(row) : null;
   },
-  listPaidOrdersForMemberProduct: async (tenantId, memberId, productId) => {
+  listAccessRetainingOrdersForMemberProduct: async (tenantId, memberId, productId) => {
     const rows = await db
       .select()
       .from(orders)
@@ -3041,7 +3042,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
           eq(orders.tenantId, tenantId),
           eq(orders.memberId, memberId),
           eq(orders.productId, productId),
-          eq(orders.status, 'paid'),
+          inArray(orders.status, [...ACCESS_RETAINING_ORDER_STATUSES]),
         ),
       )
       .orderBy(desc(orders.createdAt), desc(orders.id));
@@ -3056,6 +3057,21 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
           eq(orders.tenantId, tenantId),
           eq(orders.id, orderId),
           sql`${orders.status} <> 'refunded'`,
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+  markOrderPartiallyRefunded: async (tenantId, orderId) => {
+    const rows = await db
+      .update(orders)
+      .set({ status: 'partially_refunded' })
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.id, orderId),
+          eq(orders.status, 'paid'),
         ),
       )
       .returning();

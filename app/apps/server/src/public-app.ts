@@ -654,6 +654,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         objectId,
         checkoutSession: {
           email: parsed.data.email ?? null,
+          paymentStatus: 'no_payment_required',
           subscriptionId:
             selection.value.price?.kind === 'recurring' ? `subscription_${objectId}` : null,
           paymentIntentId: null,

@@ -28,6 +28,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     pending: t.sales.pending,
     failed: t.sales.failed,
     refunded: t.sales.refunded,
+    partially_refunded: t.sales.partially_refunded,
   };
 
   if (detail.isPending) {

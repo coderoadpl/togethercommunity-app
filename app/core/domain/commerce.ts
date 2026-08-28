@@ -61,9 +61,11 @@ export const newProductPriceSchema = z
 
 export type NewProductPriceInput = z.input<typeof newProductPriceSchema>;
 
-const orderStatusSchema = z.enum(['paid', 'pending', 'failed', 'refunded']);
+const orderStatusSchema = z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']);
 
 export type OrderStatus = z.infer<typeof orderStatusSchema>;
+
+export const ACCESS_RETAINING_ORDER_STATUSES: readonly OrderStatus[] = ['paid', 'partially_refunded'];
 
 const orderProviderSchema = z.enum(['stripe', 'simulated']);
 

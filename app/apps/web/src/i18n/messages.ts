@@ -310,6 +310,7 @@ export interface Messages {
     pending: string;
     failed: string;
     refunded: string;
+    partially_refunded: string;
     date: string;
     member: string;
     amount: string;

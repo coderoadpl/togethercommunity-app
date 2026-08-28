@@ -81,6 +81,7 @@ export const SalesPanel = () => {
     pending: t.sales.pending,
     failed: t.sales.failed,
     refunded: t.sales.refunded,
+    partially_refunded: t.sales.partially_refunded,
   } as const;
 
   const statusColors = {
@@ -88,6 +89,7 @@ export const SalesPanel = () => {
     pending: 'warning',
     failed: 'error',
     refunded: 'default',
+    partially_refunded: 'default',
   } as const;
 
   return (
@@ -134,7 +136,7 @@ export const SalesPanel = () => {
                   value={status}
                   onChange={(event) => {
                     const value = event.target.value;
-                    setStatus(value === 'paid' || value === 'pending' || value === 'failed' || value === 'refunded' ? value : 'all');
+                    setStatus(value === 'paid' || value === 'pending' || value === 'failed' || value === 'refunded' || value === 'partially_refunded' ? value : 'all');
                     resetPage();
                   }}
                   data-testid="sales-status-filter"
@@ -144,6 +146,7 @@ export const SalesPanel = () => {
                   <MenuItem value="pending">{t.sales.pending}</MenuItem>
                   <MenuItem value="failed">{t.sales.failed}</MenuItem>
                   <MenuItem value="refunded">{t.sales.refunded}</MenuItem>
+                  <MenuItem value="partially_refunded">{t.sales.partially_refunded}</MenuItem>
                 </Select>
               </FormControl>
               <FormControl size="small" sx={{ minWidth: '9rem' }}>

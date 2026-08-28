@@ -1,4 +1,4 @@
-import type { MemberEventType } from '#core/domain/index.js';
+import type { ImportAuditAction, ImportAuditResourceType, MemberEventType } from '#core/domain/index.js';
 
 export type MessageParams = Record<string, string | number>;
 
@@ -102,6 +102,11 @@ export interface Messages {
     messageIntegrationAuth: string;
     messageEmailSendingNotConfigured: string;
     messagePlatformEmailPoolExhausted: string;
+    panelHintIntegrationNotConfigured: string;
+    panelHintIntegrationAuth: string;
+    panelHintEmailSendingNotConfigured: string;
+    panelHintPlatformEmailPoolExhausted: string;
+    panelHintInvoiceExemptionBasisMissing: string;
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
     messageSlugReservedGeneric: string;
@@ -305,6 +310,7 @@ export interface Messages {
     pending: string;
     failed: string;
     refunded: string;
+    partially_refunded: string;
     date: string;
     member: string;
     amount: string;
@@ -421,6 +427,7 @@ export interface Messages {
     loadMore: string;
     olderTruncated: string;
     unreadLabel: string;
+    unreadAria: (params: { count: number }) => string;
     threadReply: (params: { author: string; lesson: string }) => string;
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
@@ -434,6 +441,7 @@ export interface Messages {
     loading: string;
     emptyList: string;
     emptyListHint: string;
+    browseSpaces: string;
     emptyConversation: string;
     conversationEyebrow: string;
     backToList: string;
@@ -642,6 +650,8 @@ export interface Messages {
     importKeysAudit: string;
     importKeysAuditLoading: string;
     importKeysAuditEmpty: string;
+    importKeysAuditKinds: Record<ImportAuditResourceType, string>;
+    importKeysAuditActions: Record<ImportAuditAction, string>;
     importKeysAuditEvent: (params: {
       kind: string;
       importKey: string;
@@ -876,6 +886,7 @@ export interface Messages {
     newModule: string;
     addModule: string;
     prefixLabel: string;
+    prefixHint: string;
     creatingModule: string;
     createModule: string;
     attachExisting: string;
@@ -1665,16 +1676,8 @@ export interface Messages {
     omnibusLowest: (params: { price: string }) => string;
     couponFirstInvoice: string;
     couponForever: string;
-    couponInvalid: string;
-    couponInactive: string;
-    couponNotStarted: string;
-    couponExpired: string;
-    couponWrongScope: string;
-    couponWrongPrice: string;
-    couponLimit: string;
-    couponMemberLimit: string;
+    couponUnavailable: string;
     couponEmailRequired: string;
-    couponNoReduction: string;
     marketingConsentsLabel: string;
     marketingConsentDocument: string;
     marketingConsentDoiHint: string;

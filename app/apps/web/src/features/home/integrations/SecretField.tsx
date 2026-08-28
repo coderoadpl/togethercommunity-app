@@ -7,7 +7,7 @@ import type { TenantSecretKey } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ConfirmDialog } from '../../../components/layout/index.js';
 import { SecretField as SecretFieldView } from '../../../components/ui/SecretField.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 
 export const SecretField = ({
   secretKey,
@@ -64,15 +64,15 @@ export const SecretField = ({
         onSave={() => setSecret.mutate({ key: secretKey, value })}
         onRemove={() => setConfirmingRemove(true)}
       />
-      {setSecret.isError ? <Alert severity="error">{localizeError(setSecret.error, t)}</Alert> : null}
-      {removeSecret.isError ? <Alert severity="error">{localizeError(removeSecret.error, t)}</Alert> : null}
+      {setSecret.isError ? <Alert severity="error">{localizePanelError(setSecret.error, t)}</Alert> : null}
+      {removeSecret.isError ? <Alert severity="error">{localizePanelError(removeSecret.error, t)}</Alert> : null}
       <ConfirmDialog
         open={confirmingRemove}
         title={t.integrations.removeSecretConfirmTitle}
         body={(
           <>
             <Typography>{t.integrations.removeSecretConfirmBody({ label })}</Typography>
-            {removeSecret.isError ? <Alert severity="error">{localizeError(removeSecret.error, t)}</Alert> : null}
+            {removeSecret.isError ? <Alert severity="error">{localizePanelError(removeSecret.error, t)}</Alert> : null}
           </>
         )}
         confirmLabel={removeSecret.isPending ? t.integrations.removing : t.integrations.remove}

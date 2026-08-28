@@ -24,6 +24,7 @@ const publicServerImports = publicApp
   .sort();
 
 const APPROVED_PUBLIC_SERVER_IMPORTS = [
+  'authLinkBaseUrl',
   'enforceTermsConsent',
   'fulfillStripeWebhook',
   'getPaymentConfig',
@@ -41,7 +42,7 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'resolveTenant',
   'startCheckoutSession',
   'type PaymentWebhookEvent',
-  'type TenantSource',
+  'type ResolvedTenant',
   'validateCheckoutSelection',
   'validateCouponForCheckout',
   'validateTermsConsent',

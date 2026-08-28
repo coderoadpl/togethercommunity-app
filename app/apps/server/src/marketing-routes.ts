@@ -36,6 +36,7 @@ import {
   addManualSuppression,
   applyVerifiedSesEvent,
   authenticateApiKey,
+  authLinkBaseUrl,
   claimIdempotencyKey,
   completeIdempotentRequest,
   confirmMarketingConsent,
@@ -47,6 +48,7 @@ import {
   sendM2mTransactionalMessage,
   sendMarketingMessages,
   getM2mTransactionalMessage,
+  tenantUrl,
   unsubscribeAllMarketing,
   unsubscribeOneClick,
   type Ctx,
@@ -61,6 +63,7 @@ import {
   renderPreferencesPage,
   type PublicBrand,
 } from './public-marketing-pages.js';
+import { secretEquals } from './secret-equals.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 
@@ -385,7 +388,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     return response(await recordMarketingConsent(authenticated.value.ctx, {
       email, memberId, definitionId, source,
       evidence: { collectedAt, proofRef, ...(ip === undefined ? {} : { ip }), ...(userAgent === undefined ? {} : { userAgent }) },
-      confirmationBaseUrl: `${new URL(c.req.url).origin}/marketing/confirm`,
+      confirmationBaseUrl: tenantUrl(authenticated.value.tenant.slug, '/marketing/confirm', deps),
     }, {
       definitions: marketing.value.definitions, consents: marketing.value.marketingConsents,
       confirmations: marketing.value.confirmations, outbox: deps.emailOutbox, ids: deps.ids,
@@ -500,7 +503,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.post('/api/internal/marketing/tick', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    if (c.req.header('x-marketing-tick-secret') !== marketing.value.tickSecret) return response(err(unauthorized('Invalid marketing tick secret')));
+    if (!secretEquals(c.req.header('x-marketing-tick-secret'), marketing.value.tickSecret)) return response(err(unauthorized('Invalid marketing tick secret')));
     const parsed = z.object({ tenantId: z.string().min(1), campaignId: z.string().min(1) }).safeParse(await readJson(c.req.raw));
     return parsed.success
       ? response(await marketing.value.dispatchCampaign(parsed.data.tenantId, parsed.data.campaignId, 'manual'))
@@ -510,10 +513,13 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/internal/marketing/tick', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const bearer = c.req.header('authorization');
-    const authenticated = c.req.header('x-marketing-tick-secret') === marketing.value.tickSecret
-      || bearer === `Bearer ${marketing.value.cronSecret}`;
-    const trigger = bearer === `Bearer ${marketing.value.cronSecret}` ? 'cron' : 'manual';
+    const cronAuthenticated = secretEquals(
+      c.req.header('authorization'),
+      `Bearer ${marketing.value.cronSecret}`,
+    );
+    const authenticated = cronAuthenticated
+      || secretEquals(c.req.header('x-marketing-tick-secret'), marketing.value.tickSecret);
+    const trigger = cronAuthenticated ? 'cron' : 'manual';
     return authenticated
       ? response(await marketing.value.dispatchScheduledMarketing(trigger))
       : response(err(unauthorized('Invalid marketing tick secret')));
@@ -686,7 +692,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
         proofRef: `preference:${token}`,
         ...(c.req.header('user-agent') === undefined ? {} : { userAgent: c.req.header('user-agent') }),
       },
-      confirmationBaseUrl: `${new URL(c.req.url).origin}/marketing/confirm`,
+      confirmationBaseUrl: `${authLinkBaseUrl(resolved.value, deps)}/marketing/confirm`,
     }, {
       ...unsubscribeDeps(deps, marketing.value),
       confirmations: marketing.value.confirmations,

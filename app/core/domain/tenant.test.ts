@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  deletedMemberDisplay,
   isReservedTenantSlug,
   resolveInvoiceVat,
   resolveTenantSocial,
@@ -243,5 +244,12 @@ describe('tenantSettingsSchema', () => {
       privacyUrl: null,
       defaultHomeSpaceId: null,
     });
+  });
+});
+
+describe('deletedMemberDisplay', () => {
+  it('names an erased account in both languages', () => {
+    expect(deletedMemberDisplay()).toBe('Konto usunięte');
+    expect(deletedMemberDisplay('en')).toBe('Deleted account');
   });
 });

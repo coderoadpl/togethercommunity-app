@@ -19,7 +19,7 @@ import type { SpaceVisibility } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 
 export interface SpaceFormValues {
   name: string;
@@ -211,7 +211,7 @@ export const SpaceForm = ({
         </FormHelperText>
       </FormControl>
 
-      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
+      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
 
       {mode === 'edit' ? (
         <FormControl sx={{ maxWidth: '10rem' }}>
@@ -226,7 +226,7 @@ export const SpaceForm = ({
         </FormControl>
       ) : null}
 
-      {error !== undefined && error !== null ? <Alert severity="error">{localizeError(error, t)}</Alert> : null}
+      {error !== undefined && error !== null ? <Alert severity="error">{localizePanelError(error, t)}</Alert> : null}
     </SectionCard>
   );
 };

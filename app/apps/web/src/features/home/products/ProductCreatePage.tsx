@@ -21,7 +21,7 @@ import {
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
-import { errorCodeOf, localizeError, useTranslations } from '../../../i18n/index.js';
+import { errorCodeOf, localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import { productTypeLabel } from './product-type.js';
@@ -50,7 +50,7 @@ export const ProductCreatePage = () => {
     },
   });
   const slugError = createProduct.isError && errorCodeOf(createProduct.error) === 'slug_reserved'
-    ? localizeError(createProduct.error, t)
+    ? localizePanelError(createProduct.error, t)
     : null;
 
   const submit = (event: FormEvent) => {
@@ -134,7 +134,7 @@ export const ProductCreatePage = () => {
           {createProduct.isPending ? t.products.creating : t.products.create}
         </Button>
         {createProduct.isError && slugError === null
-          ? <Alert severity="error">{localizeError(createProduct.error, t)}</Alert>
+          ? <Alert severity="error">{localizePanelError(createProduct.error, t)}</Alert>
           : null}
       </SectionCard>
     </PanelPage>

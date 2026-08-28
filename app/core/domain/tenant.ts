@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { staffRoleSchema } from './identity.js';
+import { DEFAULT_LANGUAGE, type Language } from './language.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
 const tenantStatusSchema = z.enum(['active', 'suspended']);
@@ -296,7 +297,13 @@ export const memberSchema = z.object({
 
 export type Member = z.infer<typeof memberSchema>;
 
-export const DELETED_MEMBER_DISPLAY = 'Konto usunięte';
+const DELETED_MEMBER_DISPLAY: Record<Language, string> = {
+  pl: 'Konto usunięte',
+  en: 'Deleted account',
+};
+
+export const deletedMemberDisplay = (language: Language = DEFAULT_LANGUAGE): string =>
+  DELETED_MEMBER_DISPLAY[language];
 
 /**
  * A ban is a reversible moderation state: the person keeps their account, their

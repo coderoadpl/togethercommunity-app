@@ -19,6 +19,8 @@ const importAuditActionSchema = z.enum([
   'credential_created',
 ]);
 
+export type ImportAuditAction = z.output<typeof importAuditActionSchema>;
+
 export const importAuditEventSchema = z.object({
   id: z.string(),
   tenantId: z.string(),

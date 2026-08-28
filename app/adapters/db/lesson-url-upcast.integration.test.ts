@@ -12,7 +12,7 @@ const { join } = process.getBuiltinModule('node:path');
 
 const databaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
-const migrationPath = join(process.cwd(), 'drizzle/0087_upcast_lesson_document_urls.sql');
+const migrationPath = join(process.cwd(), 'drizzle/0088_upcast_lesson_document_urls.sql');
 
 const jsWhitespace = Array.from({ length: 0x10000 }, (_, code) => String.fromCodePoint(code)).filter(
   (character) => /\s/u.test(character),
@@ -68,7 +68,7 @@ interface UpcastRow {
   link: string;
 }
 
-describe('0087 lesson URL upcast', () => {
+describe('0088 lesson URL upcast', () => {
   let client: pg.Client;
   let upcast: Map<string, UpcastRow>;
 

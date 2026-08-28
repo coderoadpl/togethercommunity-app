@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeCourseModuleName,
   POST_RATE_LIMIT,
+  renderPost,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -1254,5 +1255,29 @@ describe('community guard and error branches', () => {
     await expect(
       createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'restored' }, d),
     ).resolves.toMatchObject({ ok: true });
+  });
+});
+
+describe('renderPost', () => {
+  const softDeleted = (): Post => ({
+    id: 'p1',
+    tenantId: 't1',
+    contextKind: 'lesson',
+    contextId: 'l1',
+    parentPostId: null,
+    rootPostId: 'p1',
+    authorUserId: 'u1',
+    authorDisplay: 'Ala',
+    authorIsStaff: false,
+    body: 'sekret',
+    createdAt: NOW,
+    editedAt: null,
+    deletedAt: NOW,
+    pinnedAt: null,
+  });
+
+  it('replaces the body with the placeholder in both languages', () => {
+    expect(renderPost(softDeleted()).body).toBe('Wpis usunięty');
+    expect(renderPost(softDeleted(), 'en').body).toBe('Deleted post');
   });
 });

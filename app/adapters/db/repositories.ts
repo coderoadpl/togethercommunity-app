@@ -4,6 +4,7 @@ import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'js
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
 
 import {
+  ACCESS_RETAINING_ORDER_STATUSES,
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
   billingDataSchema,
@@ -104,6 +105,7 @@ import type {
   PurchaseRepository,
   ProductGrantRepository,
   ProductMetadataRepository,
+  PaymentEventClaim,
   ProcessedPaymentEventRepository,
   ProductRepository,
   ProductBatchReader,
@@ -3032,7 +3034,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
     const row = rows[0];
     return row ? parseOrder(row) : null;
   },
-  listPaidOrdersForMemberProduct: async (tenantId, memberId, productId) => {
+  listAccessRetainingOrdersForMemberProduct: async (tenantId, memberId, productId) => {
     const rows = await db
       .select()
       .from(orders)
@@ -3041,7 +3043,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
           eq(orders.tenantId, tenantId),
           eq(orders.memberId, memberId),
           eq(orders.productId, productId),
-          eq(orders.status, 'paid'),
+          inArray(orders.status, [...ACCESS_RETAINING_ORDER_STATUSES]),
         ),
       )
       .orderBy(desc(orders.createdAt), desc(orders.id));
@@ -3056,6 +3058,21 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
           eq(orders.tenantId, tenantId),
           eq(orders.id, orderId),
           sql`${orders.status} <> 'refunded'`,
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+  markOrderPartiallyRefunded: async (tenantId, orderId) => {
+    const rows = await db
+      .update(orders)
+      .set({ status: 'partially_refunded' })
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.id, orderId),
+          eq(orders.status, 'paid'),
         ),
       )
       .returning();
@@ -3337,64 +3354,85 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
   },
 });
 
-export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentEventRepository => ({
-  claim: async (tenantId, event, lease) => {
-    try {
-      const rows = await db
-        .insert(processedPaymentEvents)
-        .values({
-          ...event,
-          tenantId,
-          status: 'processing',
-          workerId: lease.workerId,
-          claimedAt: lease.now,
-          leaseExpiresAt: lease.leaseExpiresAt,
-        })
-        .onConflictDoUpdate({
-          target: processedPaymentEvents.id,
-          set: {
+export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentEventRepository => {
+  const settledOutcome = async (
+    where: ReturnType<typeof and>,
+  ): Promise<Exclude<PaymentEventClaim, 'claimed'>> => {
+    const rows = await db
+      .select({ status: processedPaymentEvents.status })
+      .from(processedPaymentEvents)
+      .where(where)
+      .limit(1);
+    return rows[0]?.status === 'processed' ? 'processed' : 'in_progress';
+  };
+
+  return {
+    claim: async (tenantId, event, lease) => {
+      try {
+        const rows = await db
+          .insert(processedPaymentEvents)
+          .values({
+            ...event,
+            tenantId,
             status: 'processing',
             workerId: lease.workerId,
             claimedAt: lease.now,
             leaseExpiresAt: lease.leaseExpiresAt,
-          },
-          setWhere: sql`${processedPaymentEvents.status} = 'processing'
-            and ${processedPaymentEvents.leaseExpiresAt} <= ${lease.now}`,
+          })
+          .onConflictDoUpdate({
+            target: processedPaymentEvents.id,
+            set: {
+              status: 'processing',
+              workerId: lease.workerId,
+              claimedAt: lease.now,
+              leaseExpiresAt: lease.leaseExpiresAt,
+            },
+            setWhere: sql`${processedPaymentEvents.status} = 'processing'
+              and ${processedPaymentEvents.leaseExpiresAt} <= ${lease.now}`,
+          })
+          .returning({ id: processedPaymentEvents.id });
+        if (rows.length > 0) return 'claimed';
+        return await settledOutcome(and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.id, event.id),
+        ));
+      } catch (cause) {
+        if (!uniqueViolation(cause)) throw cause;
+        return await settledOutcome(and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.objectId, event.objectId),
+          eq(processedPaymentEvents.type, event.type),
+        ));
+      }
+    },
+    finalize: async (tenantId, eventId, workerId, processedAt) => {
+      await db
+        .update(processedPaymentEvents)
+        .set({
+          status: 'processed',
+          processedAt,
+          workerId: null,
+          claimedAt: null,
+          leaseExpiresAt: null,
         })
-        .returning({ id: processedPaymentEvents.id });
-      return rows.length > 0 ? 'claimed' : 'duplicate';
-    } catch (cause) {
-      if (uniqueViolation(cause)) return 'duplicate';
-      throw cause;
-    }
-  },
-  finalize: async (tenantId, eventId, workerId, processedAt) => {
-    await db
-      .update(processedPaymentEvents)
-      .set({
-        status: 'processed',
-        processedAt,
-        workerId: null,
-        claimedAt: null,
-        leaseExpiresAt: null,
-      })
-      .where(and(
-        eq(processedPaymentEvents.tenantId, tenantId),
-        eq(processedPaymentEvents.id, eventId),
-        eq(processedPaymentEvents.workerId, workerId),
-        eq(processedPaymentEvents.status, 'processing'),
-      ));
-  },
-  release: async (tenantId, eventId, workerId) => {
-    await db
-      .delete(processedPaymentEvents)
-      .where(and(
-        eq(processedPaymentEvents.tenantId, tenantId),
-        eq(processedPaymentEvents.id, eventId),
-        eq(processedPaymentEvents.workerId, workerId),
-      ));
-  },
-});
+        .where(and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.id, eventId),
+          eq(processedPaymentEvents.workerId, workerId),
+          eq(processedPaymentEvents.status, 'processing'),
+        ));
+    },
+    release: async (tenantId, eventId, workerId) => {
+      await db
+        .delete(processedPaymentEvents)
+        .where(and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.id, eventId),
+          eq(processedPaymentEvents.workerId, workerId),
+        ));
+    },
+  };
+};
 
 export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
   createMemberGrant: async (input) =>

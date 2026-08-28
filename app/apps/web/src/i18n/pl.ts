@@ -472,6 +472,7 @@ export const pl: Messages = {
     loadMore: 'Wczytaj więcej',
     olderTruncated: 'Wyświetlamy tylko 100 najnowszych powiadomień.',
     unreadLabel: 'Nieprzeczytane',
+    unreadAria: ({ count }) => format('Nieprzeczytane powiadomienia: {count}', { count }),
     threadReply: ({ author, lesson }) =>
       lesson.length > 0
         ? format('{author} odpowiedział(a) w dyskusji „{lesson}”', { author, lesson })
@@ -497,6 +498,7 @@ export const pl: Messages = {
     loading: 'Wczytywanie wiadomości…',
     emptyList: 'Nie masz jeszcze żadnych wiadomości',
     emptyListHint: 'Znajdź autora wpisu i napisz do niego wiadomość',
+    browseSpaces: 'Przejdź do przestrzeni',
     emptyConversation: 'To dopiero początek tej rozmowy. Napisz pierwszą wiadomość.',
     conversationEyebrow: 'Rozmowa',
     backToList: 'Wróć do wiadomości',

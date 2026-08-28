@@ -6,7 +6,7 @@ import { Link } from '@tanstack/react-router';
 import type { SpaceVisibility } from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
-import { CourseCardRoot, EmberCtaButton, UnreadDot } from '../../theme.js';
+import { CourseCardRoot, EmberCtaButton, LockedSpaceMark, UnreadDot } from '../../theme.js';
 import { LockClosed } from './tree-icons.js';
 
 const EmberCtaLink = styled(EmberCtaButton)<{ component?: ElementType; to?: string }>({});
@@ -79,25 +79,53 @@ export const LockedSpaceCard = ({ space }: { space: LockedSpaceCardSpace }) => {
   const productId = space.productIds[0];
   return (
     <CourseCardRoot data-testid={`locked-space-card-${space.id}`}>
-      <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', height: '100%' }}>
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem' }}>
+      <Box
+        sx={{
+          p: '1rem 1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          columnGap: '0.75rem',
+          rowGap: '0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <LockedSpaceMark>
           <LockClosed />
-          <Typography variant="h2" component="h3" color="text.secondary" sx={{ flex: 1, minWidth: 0 }}>
+        </LockedSpaceMark>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="h3" component="h3" color="text.primary">
             {space.name}
           </Typography>
-        </Stack>
-        {space.description ? (
-          <Typography variant="body2" color="text.secondary">
-            {space.description}
-          </Typography>
-        ) : null}
-        <Box sx={{ flex: 1 }} />
+          {space.description ? (
+            <Typography
+              variant="caption"
+              component="p"
+              color="text.secondary"
+              sx={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {space.description}
+            </Typography>
+          ) : null}
+        </Box>
         {productId === undefined ? null : (
           <EmberCtaLink
             component={Link}
             to={`/checkout/${encodeURIComponent(productId)}`}
+            size="small"
             variant="contained"
             data-testid={`locked-space-cta-${space.id}`}
+            sx={{
+              flexShrink: 0,
+              alignSelf: 'center',
+              px: '0.7rem',
+              py: '0.32rem',
+              ml: { xs: 'auto', sm: 0 },
+            }}
           >
             {t.courseTree.unlockAccess}
           </EmberCtaLink>

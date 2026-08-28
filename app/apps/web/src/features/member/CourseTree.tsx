@@ -26,7 +26,9 @@ import { useTranslations } from '../../i18n/index.js';
 import {
   LessonDurationText,
   TreeChapterTitle,
+  TreeLessonTitle,
   TreeModuleTitle,
+  TreeProgressCount,
   VisuallyHidden,
 } from '../../theme.js';
 import { Highlighted } from './highlight.js';
@@ -74,11 +76,33 @@ const CompletionMark = ({ status }: { status: CompletionStatus }) => {
   return null;
 };
 
+const ProgressMark = ({ lessons }: { lessons: CourseStructureLesson[] }) => {
+  const t = useTranslations();
+  const done = lessons.filter((lesson) => lesson.completionStatus === 'fully-completed').length;
+  const total = lessons.length;
+  if (done === total && total > 0) {
+    return (
+      <>
+        <CompletionFull />
+        <VisuallyHidden>{t.courseTree.completionComplete}</VisuallyHidden>
+      </>
+    );
+  }
+  return (
+    <TreeProgressCount variant="caption" component="span">
+      {`${done}/${total}`}
+    </TreeProgressCount>
+  );
+};
+
 const matchesLesson = (lesson: CourseStructureLesson, needle: string) =>
   needle === '' || lesson.name.toLowerCase().includes(needle);
 
-type VisibleChapter = CourseStructureChapter & { lessons: CourseStructureLesson[] };
-type VisibleModule = CourseStructureModule & { chapters: VisibleChapter[] };
+type VisibleChapter = CourseStructureChapter & { allLessons: CourseStructureLesson[] };
+type VisibleModule = Omit<CourseStructureModule, 'chapters'> & {
+  chapters: VisibleChapter[];
+  allLessons: CourseStructureLesson[];
+};
 
 const filterModules = (
   modules: CourseStructureModule[],
@@ -87,9 +111,11 @@ const filterModules = (
   modules
     .map((module) => ({
       ...module,
+      allLessons: module.chapters.flatMap((chapter) => chapter.lessons),
       chapters: module.chapters
         .map((chapter) => ({
           ...chapter,
+          allLessons: chapter.lessons,
           lessons: chapter.lessons.filter((lesson) => matchesLesson(lesson, needle)),
         }))
         .filter((chapter) => chapter.lessons.length > 0),
@@ -112,7 +138,11 @@ const LessonRow = ({
   const prefetch = () => {
     void queryClient.prefetchQuery(actions.studentLesson(lesson.lessonId));
   };
-  const label = <Highlighted text={lesson.name} query={search} />;
+  const label = (
+    <TreeLessonTitle component="span" noWrap sx={{ display: 'block', minWidth: 0, flex: 1 }}>
+      <Highlighted text={lesson.name} query={search} />
+    </TreeLessonTitle>
+  );
   const marks = (
     <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.35rem', ml: '0.5rem' }}>
       {lesson.durationMinutes !== undefined && (
@@ -133,15 +163,15 @@ const LessonRow = ({
             <ListItemButton
               disabled
               data-testid={`lesson-button-${lesson.lessonId}`}
-              sx={{ pl: '3.4rem', pr: '0.75rem', opacity: 0.6 }}
+              sx={{ pl: '1.65rem', pr: '0.75rem', py: '0.3rem', opacity: 0.6 }}
             >
-              <Box sx={{ flex: 1, minWidth: 0 }}>{label}</Box>
+              {label}
               {marks}
             </ListItemButton>
           </Box>
         </Tooltip>
         {lesson.unlockProductId !== undefined && (
-          <Box sx={{ pl: '3.4rem', pr: '0.75rem', pb: '0.5rem', mt: '-0.25rem' }}>
+          <Box sx={{ pl: '1.65rem', pr: '0.75rem', pb: '0.5rem', mt: '-0.25rem' }}>
             <MuiLink
               component={Link}
               to={`/checkout/${encodeURIComponent(lesson.unlockProductId)}`}
@@ -164,9 +194,9 @@ const LessonRow = ({
       data-testid={`lesson-button-${lesson.lessonId}`}
       onMouseEnter={prefetch}
       onFocus={prefetch}
-      sx={{ pl: '3.4rem', pr: '0.75rem' }}
+      sx={{ pl: '1.65rem', pr: '0.75rem', py: '0.3rem' }}
     >
-      <Box sx={{ flex: 1, minWidth: 0 }}>{label}</Box>
+      {label}
       {marks}
     </ListItemButton>
   );
@@ -197,12 +227,12 @@ const ChapterNode = ({
         aria-expanded={open}
         aria-controls={contentId}
         data-testid={`chapter-toggle-${chapter.id}`}
-        sx={{ pl: '2rem', pr: '0.75rem', columnGap: '0.4rem' }}
+        sx={{ pl: '1.4rem', pr: '0.75rem', columnGap: '0.4rem' }}
       >
         <Caret open={open} />
         <TreeChapterTitle sx={{ flex: 1, minWidth: 0 }}>{chapter.name}</TreeChapterTitle>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.35rem' }}>
-          <CompletionMark status={chapter.completionStatus} />
+          <ProgressMark lessons={chapter.allLessons} />
           <AccessMark status={chapter.accessStatus} />
         </Stack>
       </ListItemButton>
@@ -250,12 +280,12 @@ const ModuleNode = ({
         aria-expanded={open}
         aria-controls={contentId}
         data-testid={`module-toggle-${module.id}`}
-        sx={{ pl: '0.75rem', pr: '0.75rem', columnGap: '0.4rem' }}
+        sx={{ pl: '0.75rem', pr: '0.75rem', py: '0.4rem', columnGap: '0.4rem' }}
       >
         <Caret open={open} />
         <TreeModuleTitle sx={{ flex: 1, minWidth: 0 }}>{module.name}</TreeModuleTitle>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.35rem' }}>
-          <CompletionMark status={module.completionStatus} />
+          <ProgressMark lessons={module.allLessons} />
           <AccessMark status={module.accessStatus} />
         </Stack>
       </ListItemButton>

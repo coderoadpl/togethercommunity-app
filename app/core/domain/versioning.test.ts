@@ -91,6 +91,32 @@ describe('upcaster chain runner', () => {
     ]);
   });
 
+  it('parks unsafe legacy document and link URLs on an invalid host', () => {
+    const result = readSnapshot('course_lesson', {
+      schemaVersion: 5,
+      payload: {
+        id: 'lesson-legacy',
+        tenantId: 'tenant-fixture',
+        name: 'Legacy materials',
+        isPreview: false,
+        contents: [
+          { type: 'pdf', pdfUrl: 'javascript:alert(1)' },
+          { type: 'link', url: 'https://docs.example.test/guide' },
+        ],
+        legacyId: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const lesson = SNAPSHOT_CURRENT_SCHEMAS.course_lesson.parse(result.value.payload);
+    expect(lesson.contents).toEqual([
+      { type: 'pdf', pdfUrl: 'https://legacy-document.invalid/?url=javascript%3Aalert(1)' },
+      { type: 'link', url: 'https://docs.example.test/guide' },
+    ]);
+  });
+
   it('composes multiple registered upcasters in order (synthetic registry)', () => {
     type Step = (payload: unknown) => unknown;
     const registry: Record<number, Step> = {

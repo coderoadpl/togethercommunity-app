@@ -10,7 +10,11 @@ import { TenantLogo } from '../../../branding.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
-import { streamlessPollInterval } from '../../../notifications-stream.js';
+import {
+  streamlessPollInterval,
+  UNREAD_BADGE_POLL_INTERVAL_MS,
+} from '../../../notifications-stream.js';
+import { useNotificationsTransport } from '../../../notifications-transport.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
@@ -35,9 +39,10 @@ import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-row
 
 const MessagesRow = ({ active }: { active: boolean }) => {
   const t = useTranslations();
+  const { streamless } = useNotificationsTransport();
   const unread = useQuery({
     ...actions.unreadMessages,
-    refetchInterval: streamlessPollInterval(),
+    refetchInterval: streamlessPollInterval(streamless, UNREAD_BADGE_POLL_INTERVAL_MS),
   });
   const count = unread.data?.unread ?? 0;
 

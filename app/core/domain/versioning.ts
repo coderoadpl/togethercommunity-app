@@ -8,6 +8,11 @@ import { courseSnapshotV4Schema } from './snapshots/course/v4.js';
 import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
 import { upcastLegacyVideoEmbedUrlV4 } from './snapshots/course_lesson/v4.js';
 import { courseLessonSnapshotV5Schema } from './snapshots/course_lesson/v5.js';
+import {
+  courseLessonSnapshotV6Schema,
+  upcastLegacyDocumentUrlV6,
+  upcastLegacyLinkUrlV6,
+} from './snapshots/course_lesson/v6.js';
 import { courseModuleSnapshotV1Schema } from './snapshots/course_module/v1.js';
 import { productSnapshotV4Schema } from './snapshots/product/v4.js';
 
@@ -28,7 +33,7 @@ export type EntityKind = z.infer<typeof entityKindSchema>;
 const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSnapshotV4Schema,
   course_module: courseModuleSnapshotV1Schema,
-  course_lesson: courseLessonSnapshotV5Schema,
+  course_lesson: courseLessonSnapshotV6Schema,
   product: productSnapshotV4Schema,
 };
 
@@ -43,7 +48,7 @@ const liveEntitySchemas: Record<EntityKind, z.ZodTypeAny> = {
 export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
   course: 4,
   course_module: 1,
-  course_lesson: 5,
+  course_lesson: 6,
   product: 4,
 };
 
@@ -56,6 +61,18 @@ const upcastCourseLessonV3 = (payload: unknown): unknown => {
     contents: lesson.contents.map((block) =>
       block.type === 'embed' ? { ...block, embedUrl: upcastLegacyVideoEmbedUrlV4(block.embedUrl) } : block,
     ),
+  };
+};
+
+const upcastCourseLessonV5 = (payload: unknown): unknown => {
+  const lesson = courseLessonSnapshotV5Schema.parse(payload);
+  return {
+    ...lesson,
+    contents: lesson.contents.map((block) => {
+      if (block.type === 'pdf') return { ...block, pdfUrl: upcastLegacyDocumentUrlV6(block.pdfUrl) };
+      if (block.type === 'link') return { ...block, url: upcastLegacyLinkUrlV6(block.url) };
+      return block;
+    }),
   };
 };
 
@@ -80,6 +97,7 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
     2: (payload) => payload,
     3: upcastCourseLessonV3,
     4: (payload) => ({ ...z.object({}).passthrough().parse(payload), isPreview: false }),
+    5: upcastCourseLessonV5,
   },
   product: {
     1: (payload) => ({
@@ -247,7 +265,7 @@ export const SNAPSHOT_CURRENT_SCHEMAS: Record<EntityKind, z.ZodTypeAny> = curren
 export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
   course: 'a493edb5',
   course_module: 'db069353',
-  course_lesson: '458d6e37',
+  course_lesson: '9d4466ec',
   product: 'ff78c86b',
 };
 

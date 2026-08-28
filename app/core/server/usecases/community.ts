@@ -60,6 +60,7 @@ import {
   accessibleLessonIds,
   lessonContextAccess,
   listAccessibleSpaces,
+  notificationRecipient,
   requireActor,
   requireMemberOrStaff,
   requireUnbannedMember,
@@ -239,13 +240,13 @@ const notifySubscribers = async (
   const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
   for (const subscriber of subscribers) {
     if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
-    const [staffGrant, member] = await Promise.all([
-      deps.tenantAccess.findStaffGrant(subscriber.userId, { tenantId }),
-      deps.tenantAccess.findMember(tenantId, subscriber.userId),
-    ]);
-    const memberCanAccess =
-      member !== null && (await subscriberCanAccessContext(tenantId, member.id, post, deps));
-    if (staffGrant === null && !memberCanAccess) continue;
+    const recipient = await notificationRecipient(tenantId, subscriber.userId, deps);
+    if (recipient === null) continue;
+    const canAccess =
+      recipient.isStaff ||
+      (recipient.memberId !== null &&
+        (await subscriberCanAccessContext(tenantId, recipient.memberId, post, deps)));
+    if (!canAccess) continue;
     const notification: Notification = {
       id: deps.ids.nextId(),
       tenantId,
@@ -267,7 +268,7 @@ const notifySubscribers = async (
       createdAt: deps.clock.nowIso(),
     };
     const inserted = await deps.notifications.insert(tenantId, notification);
-    const recipientEmail = member?.email ?? null;
+    const recipientEmail = recipient.email;
     for (const channel of deps.notificationChannels) {
       const delivered = await channel.deliver(inserted, {
         recipientEmail,
@@ -344,6 +345,20 @@ const resolvePostAuthorDisplay = async (ctx: Ctx, deps: CommunityDeps): Promise<
   return resolveAuthorDisplay(ctx.identity);
 };
 
+const postRateLimitExceeded = async (
+  ctx: Ctx,
+  author: { tenantId: string; userId: string },
+  now: string,
+  deps: Pick<CommunityDeps, 'posts'>,
+): Promise<boolean> => {
+  if (ctx.identity.staffRole !== null) return false;
+  const recentCount = await deps.posts.countByAuthorSince(author.tenantId, {
+    authorUserId: author.userId,
+    since: minutesBefore(now, POST_RATE_LIMIT.windowMinutes),
+  });
+  return recentCount >= POST_RATE_LIMIT.maxPosts;
+};
+
 export const createPost = async (
   ctx: Ctx,
   input: unknown,
@@ -367,15 +382,8 @@ export const createPost = async (
     rootPostId = parentPost.rootPostId;
   }
   const now = deps.clock.nowIso();
-  if (ctx.identity.staffRole === null) {
-    const rateWindowStart = minutesBefore(now, POST_RATE_LIMIT.windowMinutes);
-    const recentCount = await deps.posts.countByAuthorSince(actor.value.tenantId, {
-      authorUserId: actor.value.userId,
-      since: rateWindowStart,
-    });
-    if (recentCount >= POST_RATE_LIMIT.maxPosts) {
-      return err(rateLimited('You are posting too quickly — take a short break'));
-    }
+  if (await postRateLimitExceeded(ctx, actor.value, now, deps)) {
+    return err(rateLimited('You are posting too quickly — take a short break'));
   }
   const duplicateWindowStart = minutesBefore(now, DUPLICATE_BODY_WINDOW_MINUTES);
   const recentBodies = await deps.posts.listRecentBodiesByAuthor(actor.value.tenantId, {
@@ -493,15 +501,26 @@ export const editPost = async (
   if (!parsed.success) return err(validation('Invalid post update payload', parsed.error.flatten()));
   const post = await deps.posts.findById(actor.value.tenantId, parsed.data.id);
   if (!post) return err(validation('Post not found'));
+  const access = await contextAccess(ctx, post, deps);
+  if (!access.ok) return access;
   if (post.authorUserId !== actor.value.userId) return err(forbidden('Only the author can edit this post'));
   const body = sanitizeBody(parsed.data.body);
   if (body.length === 0) return err(validation('Post body is required after sanitization'));
+  const now = deps.clock.nowIso();
+  if (await postRateLimitExceeded(ctx, actor.value, now, deps)) {
+    return err(rateLimited('You are posting too quickly — take a short break'));
+  }
   const updated = await deps.posts.updateBody(actor.value.tenantId, {
     id: post.id,
     body,
-    editedAt: deps.clock.nowIso(),
+    editedAt: now,
   });
-  return updated ? ok(toPublicPost(updated, actor.value.userId)) : err(validation('Post not found'));
+  if (updated === null) return err(validation('Post not found'));
+  const signals = heuristicSignalsFor({ body: updated.body, recentBodies: [] });
+  if (signals.length > 0) {
+    await openHeuristicReport(actor.value.tenantId, updated, signals, deps).catch(() => undefined);
+  }
+  return ok(toPublicPost(updated, actor.value.userId));
 };
 
 export const deletePost = async (
@@ -530,7 +549,7 @@ export const subscribeThread = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<{ rootPostId: string }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'community:write');
+  const actor = requireUnbannedMember(ctx, 'community:write');
   if (!actor.ok) return actor;
   const parsed = subscribeThreadInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid thread subscription payload', parsed.error.flatten()));

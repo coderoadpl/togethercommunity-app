@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   courseSchema,
+  DOCUMENT_URL_MESSAGE,
   lessonBlockSchema,
   newCourseSchema,
   updateCourseInputSchema,
@@ -96,5 +97,43 @@ describe('lesson video embed URLs', () => {
       type: 'embed',
       embedUrl: 'https://codesandbox.io/embed/example',
     });
+  });
+});
+
+describe('lesson document and link URLs', () => {
+  it.each([
+    ['javascript:alert(1)', false],
+    ['data:text/html,alert', false],
+    ['vbscript:msgbox(1)', false],
+    ['//evil.test/doc.pdf', false],
+    ['/\\evil.test/doc.pdf', false],
+    ['/uploads\\doc.pdf', false],
+    ['mailto:teacher@example.test', false],
+    ['ftp://files.test/doc.pdf', false],
+    ['/Zadanie 1.pdf', false],
+    ['https://ok.test/doc.pdf', true],
+    ['/local.pdf', true],
+  ])('accepts %s as a pdf block URL: %s', (pdfUrl, accepted) => {
+    expect(lessonBlockSchema.safeParse({ type: 'pdf', pdfUrl }).success).toBe(accepted);
+  });
+
+  it('explains why a pdf block URL was rejected', () => {
+    const parsed = lessonBlockSchema.safeParse({ type: 'pdf', pdfUrl: 'ftp://files.test/doc.pdf' });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]?.message).toBe(DOCUMENT_URL_MESSAGE);
+  });
+
+  it.each([
+    ['javascript:alert(1)', false],
+    ['data:text/html,alert', false],
+    ['vbscript:msgbox(1)', false],
+    ['//evil.test', false],
+    ['/local.pdf', false],
+    ['tel:+48123456789', false],
+    ['https://ok.test', true],
+    ['mailto:teacher@example.test', true],
+  ])('accepts %s as a link block URL: %s', (url, accepted) => {
+    expect(lessonBlockSchema.safeParse({ type: 'link', url }).success).toBe(accepted);
   });
 });

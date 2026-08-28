@@ -369,7 +369,7 @@ const deps = (input: {
 };
 
 const entitledToModuleM1 = {
-  products: [pModuleM1],
+  products: [pModuleM1, pCourseC2],
   grants: [grant('g1', 'p-module-m1')],
 };
 
@@ -530,6 +530,17 @@ describe('getMemberNavigation', () => {
       ok: true,
       value: { spaces: [{ id: 's-open', unread: true }, { id: 's-module', unread: false }] },
     });
+  });
+
+  it('hides a locked space that only an unpublished product would unlock', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({
+        ...entitledToModuleM1,
+        products: [pModuleM1, { ...pCourseC2, published: false }],
+      }),
+    );
+    expect(result).toMatchObject({ ok: true, value: { lockedSpaces: [] } });
   });
 
   it('never flags a locked space', async () => {

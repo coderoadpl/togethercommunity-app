@@ -190,21 +190,41 @@ export interface SpaceNotificationRecipientDeps extends Pick<SpaceAccessDeps, 'g
   tenantAccess: TenantAccessReader;
 }
 
-/** Staff keep their fan-out; a ban takes it away, mirroring the write gate in `requireUnbannedMember`. */
+export interface NotificationRecipient {
+  email: string | null;
+  isStaff: boolean;
+  memberId: string | null;
+}
+
+/** Staff keep their fan-out; a ban, deletion or lost membership takes it away, mirroring the write gate in `requireUnbannedMember`. */
+export const notificationRecipient = async (
+  tenantId: string,
+  userId: string,
+  deps: Pick<SpaceNotificationRecipientDeps, 'tenantAccess'>,
+): Promise<NotificationRecipient | null> => {
+  const [staffGrant, member] = await Promise.all([
+    deps.tenantAccess.findStaffGrant(userId, { tenantId }),
+    deps.tenantAccess.findMember(tenantId, userId),
+  ]);
+  if (staffGrant !== null) {
+    return { email: member?.email ?? null, isStaff: true, memberId: member?.id ?? null };
+  }
+  if (member === null || member.bannedAt !== null || member.deletedAt !== null) return null;
+  return { email: member.email, isStaff: false, memberId: member.id };
+};
+
 export const spaceNotificationRecipient = async (
   tenantId: string,
   userId: string,
   space: Space,
   deps: SpaceNotificationRecipientDeps,
 ): Promise<{ email: string | null } | null> => {
-  const [staffGrant, member] = await Promise.all([
-    deps.tenantAccess.findStaffGrant(userId, { tenantId }),
-    deps.tenantAccess.findMember(tenantId, userId),
-  ]);
-  if (staffGrant !== null) return { email: member?.email ?? null };
-  if (member === null || member.bannedAt !== null) return null;
-  return (await spaceVisibleToMemberScope({ tenantId, memberId: member.id }, space, deps))
-    ? { email: member.email }
+  const recipient = await notificationRecipient(tenantId, userId, deps);
+  if (recipient === null) return null;
+  if (recipient.isStaff) return { email: recipient.email };
+  return recipient.memberId !== null &&
+    (await spaceVisibleToMemberScope({ tenantId, memberId: recipient.memberId }, space, deps))
+    ? { email: recipient.email }
     : null;
 };
 

@@ -15,7 +15,8 @@ import {
   notificationTitle,
   useNotificationNavigation,
 } from './notification-links.js';
-import { connectNotificationsStream } from './notifications-stream.js';
+import { connectNotificationsStream, streamlessPollInterval } from './notifications-stream.js';
+import { useNotificationsTransport } from './notifications-transport.js';
 import {
   Eyebrow,
   FinePrint,
@@ -27,8 +28,6 @@ import {
   SHELL_SNACKBAR_ANCHOR,
   UnreadDot,
 } from './theme.js';
-
-const POLL_INTERVAL_MS = 30_000;
 
 const CountBadge = styled(Badge)(({ theme }) => ({
   '& .MuiBadge-badge': {
@@ -73,7 +72,7 @@ export const NotificationBell = ({
   const navigateToTarget = useNotificationNavigation();
   const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const [polling, setPolling] = useState(false);
+  const { streamless, reportStreamless, reportStreaming } = useNotificationsTransport();
   const open = Boolean(anchorEl);
 
   useEffect(() => {
@@ -83,15 +82,16 @@ export const NotificationBell = ({
         void queryClient.invalidateQueries(actions.notificationsInvalidates());
         void queryClient.invalidateQueries(actions.messagesInvalidates());
       },
-      onFallback: () => setPolling(true),
+      onFallback: reportStreamless,
+      onStreaming: reportStreaming,
     });
     return () => stream.close();
-  }, [live, queryClient]);
+  }, [live, queryClient, reportStreamless, reportStreaming]);
 
   const unread = useQuery({
     ...actions.unreadNotifications,
     enabled: live,
-    refetchInterval: polling ? POLL_INTERVAL_MS : false,
+    refetchInterval: streamlessPollInterval(streamless),
   });
   const list = useQuery({ ...actions.notifications, enabled: live && open });
 

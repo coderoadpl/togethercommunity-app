@@ -120,7 +120,13 @@ const runPasswordResetPath = async (
         new URL(`${API_PATHS.devEmail}?to=${encodeURIComponent(email)}`, transport.connectUrl),
       );
       const parsed = devEmailSchema.parse(await response.json());
-      actionUrl = parsed.data.email?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+      const candidateUrl = parsed.data.email?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+      if (
+        candidateUrl !== '' &&
+        /^\/api\/auth\/reset-password\/[^/]+$/.test(new URL(candidateUrl).pathname)
+      ) {
+        actionUrl = candidateUrl;
+      }
       if (actionUrl === '') await delay(100);
     }
     assert(actionUrl !== '', 'reset email did not reach the dev sink');

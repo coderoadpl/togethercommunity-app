@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -7,6 +8,32 @@ import { z } from 'zod';
 
 const appRoot = join(import.meta.dirname, '..');
 const read = (path: string): string => readFileSync(join(appRoot, path), 'utf8');
+
+const globalOptions = (caddyfile: string): string =>
+  /^\{$\n(?<body>[\s\S]*?)^\}$/mu.exec(caddyfile)?.groups?.body ?? '';
+
+const dockerAvailable = ((): boolean => {
+  try {
+    execFileSync('docker', ['version'], { stdio: 'ignore', timeout: 30_000 });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+const execFailureSchema = z.object({ stderr: z.string() });
+
+const docker = (args: string[]): string => {
+  try {
+    return execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    const failure = execFailureSchema.safeParse(error);
+    throw new Error(
+      `docker ${args.join(' ')} failed:\n${failure.success ? failure.data.stderr : String(error)}`,
+      { cause: error },
+    );
+  }
+};
 
 const dependencySchema = z.object({ condition: z.string() });
 const portSchema = z.union([
@@ -79,6 +106,8 @@ describe('production self-host stack', () => {
     expect(caddyfile).toContain('on_demand_tls');
     expect(caddyfile).toContain('ask http://app:48732/internal/domain-check');
     expect(caddyfile).toContain('on_demand');
+    expect(globalOptions(caddyfile)).toMatch(/servers\s*\{[^{}]*\bstrict_sni_host on\b[^{}]*\}/u);
+    expect([...caddyfile.matchAll(/strict_sni_host/gu)]).toHaveLength(1);
     expect(caddyfile).toContain('@local host localhost 127.0.0.1');
     expect(caddyfile).toContain('redir https://{host}{uri} permanent');
     const publishedPorts = Object.values(compose.services).flatMap((service) => service.ports ?? []);
@@ -89,6 +118,18 @@ describe('production self-host stack', () => {
     });
     expect(targets).not.toContain(48732);
   });
+
+  it.skipIf(!dockerAvailable)('adapts the Caddyfile with the image the stack ships', () => {
+    const compose = composeSchema.parse(parse(read('docker-compose.yml')));
+    const output = docker([
+      'run', '--rm', '--network', 'none',
+      '--volume', `${join(appRoot, 'Caddyfile')}:/etc/caddy/Caddyfile:ro`,
+      compose.services.caddy.image,
+      'caddy', 'validate', '--adapter', 'caddyfile', '--config', '/etc/caddy/Caddyfile',
+    ]);
+
+    expect(output).toContain('Valid configuration');
+  }, 300_000);
 
   it('runs the executable clone-to-panel probe in CI', () => {
     const workflowSchema = z.object({

@@ -2,6 +2,9 @@
 	on_demand_tls {
 		ask http://app:48732/internal/domain-check
 	}
+	servers {
+		strict_sni_host on
+	}
 }
 
 https:// {

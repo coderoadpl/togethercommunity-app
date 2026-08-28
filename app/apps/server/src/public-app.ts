@@ -1,4 +1,4 @@
-import { type Hono } from 'hono';
+import { type Context, type Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
 
@@ -36,12 +36,14 @@ import {
   unauthorized,
   unavailable,
   validation,
+  type AppError,
   type EmailBranding,
   type Identity,
-  type Result,
-  type AppError
+  type Language,
+  type Result
 } from '#core/domain/index.js';
 import {
+  authLinkBaseUrl,
   enforceTermsConsent,
   fulfillStripeWebhook,
   getPaymentConfig,
@@ -62,11 +64,11 @@ import {
   validateCouponForCheckout,
   validateTermsConsent,
   type PaymentWebhookEvent,
-  type TenantSource
+  type ResolvedTenant
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
-import { trustedAuthRequest } from './auth-network.js';
+import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
 import {
@@ -128,22 +130,6 @@ const respondPublic = <T>(result: Result<T, AppError>, etag?: string): Response 
   });
 };
 
-/**
- * Sessions live in per-domain cookie worlds, so tenant-host requests must
- * verify on the same host. Only X-Tenant and hostless internal flows use the
- * configured base URL.
- */
-const magicLinkBaseUrl = (
-  hostHeader: string,
-  forwardedProto: string | null,
-  source: TenantSource,
-  appBaseUrl: string,
-): string => {
-  if (source === 'tenant-header' || hostHeader === '') return appBaseUrl;
-  const proto = forwardedProto ?? new URL(appBaseUrl).protocol.replace(':', '');
-  return `${proto}://${hostHeader}`;
-};
-
 const emailBranding = async (
   deps: AppDeps,
   tenantId: string,
@@ -153,7 +139,55 @@ const emailBranding = async (
   return settings === null ? undefined : emailBrandingFrom(settings, baseUrl);
 };
 
-const magicLinkRequestBodySchema = z.object({ email: z.string().email() });
+const EMAIL_MAX_LENGTH = 254;
+
+const authEmailBodySchema = z.object({ email: z.string().email().max(EMAIL_MAX_LENGTH) });
+
+const withAuthDeliveryContext = async (
+  c: Context,
+  deps: AppDeps,
+  setContext: (input: {
+    email: string;
+    resolved: ResolvedTenant | null;
+    baseUrl: string;
+    language: Language;
+  }) => Promise<void> | void,
+  clearContext: (email: string) => void,
+): Promise<Response> => {
+  const rawBody = await c.req.text();
+  let payload: unknown = null;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    payload = null;
+  }
+  const parsedBody = authEmailBodySchema.safeParse(payload);
+  const email = parsedBody.success ? parsedBody.data.email : null;
+  if (email !== null) {
+    const tenant = await resolveTenant(
+      c.req.header('host') ?? '',
+      c.req.header(TENANT_HEADER) ?? null,
+      deps,
+    );
+    const resolved = tenant.ok ? tenant.value : null;
+    const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
+    await setContext({
+      email,
+      resolved,
+      baseUrl: authLinkBaseUrl(resolved, deps),
+      language: headerLanguage.success ? headerLanguage.data : 'pl',
+    });
+  }
+  try {
+    return await deps.auth.handler(trustedAuthRequest(
+      c,
+      new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
+      deps.authTrustedProxyHeader,
+    ));
+  } finally {
+    if (email !== null) clearContext(email);
+  }
+};
 
 const anonymousIdentity = (
   actor: 'Checkout' | 'Preview',
@@ -173,15 +207,6 @@ const anonymousIdentity = (
   memberBannedAt: null,
   memberDmOptOutAt: null,
 });
-
-const checkoutConsentEvidence = (headers: Headers) => {
-  const ip = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  const userAgent = headers.get('user-agent') ?? undefined;
-  return {
-    ...(ip === undefined || ip === '' ? {} : { ip }),
-    ...(userAgent === undefined ? {} : { userAgent }),
-  };
-};
 
 const recordCheckoutConsents = async (
   deps: AppDeps,
@@ -613,12 +638,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
       deps.tenants,
     );
     if (!consent.ok) return respondPublic(consent);
-    const baseUrl = magicLinkBaseUrl(
-      c.req.header('host') ?? '',
-      c.req.header('x-forwarded-proto') ?? null,
-      tenant.value.source,
-      deps.appBaseUrl,
-    );
+    const baseUrl = authLinkBaseUrl(tenant.value, deps);
     const checkoutConsent = {
       termsAccepted: parsed.data.termsAccepted === true,
       selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
@@ -626,7 +646,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
       collectedAt: deps.clock.nowIso(),
       confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
       ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
-      ...checkoutConsentEvidence(c.req.raw.headers),
+      ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
     };
     const checkoutConsentCaptureId = deps.ids.nextId();
     await deps.checkoutConsentCaptures.create(tenant.value.tenant.id, {
@@ -695,92 +715,44 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     ),
   );
 
-  app.post(BETTER_AUTH_MAGIC_LINK_PATH, async (c) => {
-    const rawBody = await c.req.text();
-    let payload: unknown = null;
-    try {
-      payload = JSON.parse(rawBody);
-    } catch {
-      payload = null;
-    }
-    const parsedBody = magicLinkRequestBodySchema.safeParse(payload);
-    if (parsedBody.success) {
-      const host = c.req.header('host') ?? '';
-      const forwardedProto = c.req.header('x-forwarded-proto') ?? null;
-      const tenant = await resolveTenant(host, c.req.header(TENANT_HEADER) ?? null, deps);
-      const resolved = tenant.ok ? tenant.value : null;
-      const source: TenantSource = resolved?.source ?? 'subdomain';
-      const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
-      const baseUrl = magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl);
-      const branding = resolved ? await emailBranding(deps, resolved.tenant.id, baseUrl) : undefined;
-      deps.auth.setMagicLinkDeliveryContext(parsedBody.data.email, {
-        ...(resolved ? { tenantName: resolved.tenant.name } : {}),
-        language: headerLanguage.success ? headerLanguage.data : 'pl',
-        mode: 'email',
-        baseUrl,
-        ...(branding === undefined ? {} : { branding }),
-      });
-    }
-    return deps.auth.handler(trustedAuthRequest(
+  app.post(BETTER_AUTH_MAGIC_LINK_PATH, (c) =>
+    withAuthDeliveryContext(
       c,
-      new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
-      deps.authTrustedProxyHeader,
+      deps,
+      async ({ email, resolved, baseUrl, language }) => {
+        const branding = resolved
+          ? await emailBranding(deps, resolved.tenant.id, baseUrl)
+          : undefined;
+        deps.auth.setMagicLinkDeliveryContext(email, {
+          ...(resolved ? { tenantName: resolved.tenant.name } : {}),
+          language,
+          mode: 'email',
+          baseUrl,
+          ...(branding === undefined ? {} : { branding }),
+        });
+      },
+      (email) => { deps.auth.clearMagicLinkDeliveryContext(email); },
     ));
-  });
 
-  app.post(BETTER_AUTH_PASSWORD_RESET_PATH, async (c) => {
-    const rawBody = await c.req.text();
-    let payload: unknown = null;
-    try {
-      payload = JSON.parse(rawBody);
-    } catch {
-      payload = null;
-    }
-    const parsedBody = magicLinkRequestBodySchema.safeParse(payload);
-    if (parsedBody.success) {
-      const host = c.req.header('host') ?? '';
-      const forwardedProto = c.req.header('x-forwarded-proto') ?? null;
-      const tenant = await resolveTenant(host, c.req.header(TENANT_HEADER) ?? null, deps);
-      const source: TenantSource = tenant.ok && tenant.value ? tenant.value.source : 'subdomain';
-      const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
-      deps.auth.setResetPasswordDeliveryContext(parsedBody.data.email, {
-        language: headerLanguage.success ? headerLanguage.data : 'pl',
-        baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
-      });
-    }
-    return deps.auth.handler(trustedAuthRequest(
+  app.post(BETTER_AUTH_PASSWORD_RESET_PATH, (c) =>
+    withAuthDeliveryContext(
       c,
-      new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
-      deps.authTrustedProxyHeader,
+      deps,
+      ({ email, baseUrl, language }) => {
+        deps.auth.setResetPasswordDeliveryContext(email, { language, baseUrl });
+      },
+      (email) => { deps.auth.clearResetPasswordDeliveryContext(email); },
     ));
-  });
 
-  app.on('POST', [BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH], async (c) => {
-    const rawBody = await c.req.text();
-    let payload: unknown = null;
-    try {
-      payload = JSON.parse(rawBody);
-    } catch {
-      payload = null;
-    }
-    const parsedBody = magicLinkRequestBodySchema.safeParse(payload);
-    if (parsedBody.success) {
-      const host = c.req.header('host') ?? '';
-      const forwardedProto = c.req.header('x-forwarded-proto') ?? null;
-      const tenant = await resolveTenant(host, c.req.header(TENANT_HEADER) ?? null, deps);
-      const source: TenantSource = tenant.ok && tenant.value ? tenant.value.source : 'subdomain';
-      const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
-      deps.auth.setEmailVerificationDeliveryContext(parsedBody.data.email, {
-        language: headerLanguage.success ? headerLanguage.data : 'pl',
-        baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
-      });
-    }
-    return deps.auth.handler(trustedAuthRequest(
+  app.on('POST', [BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH], (c) =>
+    withAuthDeliveryContext(
       c,
-      new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
-      deps.authTrustedProxyHeader,
+      deps,
+      ({ email, baseUrl, language }) => {
+        deps.auth.setEmailVerificationDeliveryContext(email, { language, baseUrl });
+      },
+      (email) => { deps.auth.clearEmailVerificationDeliveryContext(email); },
     ));
-  });
 
   app.on(['GET', 'POST'], BETTER_AUTH_API_PATH_PATTERN, (c) =>
     deps.auth.handler(trustedAuthRequest(c, c.req.raw, deps.authTrustedProxyHeader)),

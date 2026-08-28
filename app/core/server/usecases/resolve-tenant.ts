@@ -5,9 +5,11 @@ import {
   type AppError,
   type Result,
   type Tenant,
+  type TenantDomain,
 } from '#core/domain/index.js';
 
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
+import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 
 export interface ResolveTenantDeps {
   tenantDomains: TenantDomainRepository;
@@ -17,21 +19,45 @@ export interface ResolveTenantDeps {
   singleTenantMode: boolean;
 }
 
-export type TenantSource = 'custom-domain' | 'subdomain' | 'tenant-header' | 'single-tenant';
+type TenantSource = 'custom-domain' | 'subdomain' | 'tenant-header' | 'single-tenant';
 
 export interface ResolvedTenant {
   tenant: Tenant;
   source: TenantSource;
+  domain?: TenantDomain;
 }
+
+const customDomainOrigin = (domain: string, routing: TenantUrlDeps): string => {
+  const configured = new URL(routing.appBaseUrl);
+  const origin = new URL(`https://${domain}`);
+  if (configured.protocol === 'https:') origin.port = configured.port;
+  return origin.origin;
+};
+
+export const authLinkBaseUrl = (
+  resolved: ResolvedTenant | null,
+  routing: TenantUrlDeps,
+): string => {
+  if (resolved === null) return routing.appBaseUrl;
+  const { domain } = resolved;
+  if (domain?.kind === 'custom') {
+    return domain.verified ? customDomainOrigin(domain.domain, routing) : routing.appBaseUrl;
+  }
+  if (resolved.source === 'subdomain' || domain?.kind === 'subdomain') {
+    return new URL(tenantUrl(resolved.tenant.slug, '/', routing)).origin;
+  }
+  return routing.appBaseUrl;
+};
 
 const stripPort = (host: string): string => host.split(':')[0] ?? host;
 
 const resolvedIfActive = (
   tenant: Tenant,
   source: TenantSource,
+  domain?: TenantDomain,
 ): Result<ResolvedTenant, AppError> =>
   tenant.status === 'active'
-    ? ok({ tenant, source })
+    ? ok({ tenant, source, ...(domain === undefined ? {} : { domain }) })
     : err(tenantNotFound());
 
 const tenantNotFoundMessage = (slug: string): string =>
@@ -49,7 +75,7 @@ export const resolveTenant = async (
   if (customDomain) {
     const tenant = await deps.tenants.findById(customDomain.tenantId);
     return tenant
-      ? resolvedIfActive(tenant, 'custom-domain')
+      ? resolvedIfActive(tenant, 'custom-domain', customDomain)
       : err(tenantNotFound('Tenant domain is not attached'));
   }
 

@@ -20,8 +20,17 @@ import type { PostReportReason } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { postButtonFor, type PostButtonPlacement } from '../../theme.js';
 
-export const ReportPostButton = ({ postId, disabled = false }: { postId: string; disabled?: boolean }) => {
+export const ReportPostButton = ({
+  postId,
+  disabled = false,
+  placement = 'toolbar',
+}: {
+  postId: string;
+  disabled?: boolean;
+  placement?: PostButtonPlacement;
+}) => {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<PostReportReason>('spam');
@@ -38,12 +47,13 @@ export const ReportPostButton = ({ postId, disabled = false }: { postId: string;
     : report.isError
       ? localizeError(report.error, t)
       : null;
+  const Trigger = postButtonFor(placement);
 
   return (
     <>
-      <Button size="small" variant="text" disabled={unavailable} onClick={() => setOpen(true)}>
+      <Trigger size="small" variant="text" disabled={unavailable} onClick={() => setOpen(true)}>
         {t.community.report}
-      </Button>
+      </Trigger>
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{t.community.reportTitle}</DialogTitle>
         <DialogContent>

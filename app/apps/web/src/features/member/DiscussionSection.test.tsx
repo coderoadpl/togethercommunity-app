@@ -171,6 +171,8 @@ describe('DiscussionSection', () => {
     expect(screen.getByTestId('reply-button-r1')).toBeInTheDocument();
     expect(screen.getByTestId('reply-button-c1')).toBeInTheDocument();
     expect(screen.getByTestId('reply-button-c2')).toBeInTheDocument();
+    expect(screen.getByTestId('reply-button-r1')).not.toHaveStyle({ padding: '0px' });
+    expect(screen.getByTestId('start-message-r1')).not.toHaveStyle({ padding: '0px' });
 
     expect(screen.getByTestId('reply-count-r1')).toHaveTextContent(
       pl.discussion.replyCount({ count: 2 }),

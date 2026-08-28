@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { Box, Breadcrumbs, Container, Stack, Typography } from '@mui/material';
+import { Box, Container, Stack, Typography, useMediaQuery } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 
-import { Eyebrow, LedgerHeader } from '../../theme.js';
+import { Eyebrow, LedgerBreadcrumbs, LedgerHeader, LedgerTitle } from '../../theme.js';
 import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
@@ -26,10 +27,18 @@ export interface MemberPageProps {
    * 'split' (leading rail content, main content, trailing rail content).
    */
   mobileRail?: 'before' | 'after' | 'split';
+  /** Tighter head rhythm and a smaller h1 below md, for reading-first pages. */
+  dense?: boolean;
   state?: PageState;
   children?: ReactNode;
   'data-testid'?: string;
 }
+
+const crumbTrailToParent = (items: BreadcrumbItem[]): BreadcrumbItem[] => {
+  const parentIndex = items.reduce((deepest, item, index) => (item.link === undefined ? deepest : index), 0);
+  const parent = items[parentIndex];
+  return parentIndex === 0 || parent === undefined ? items.slice(0, 1) : [...items.slice(0, 1), parent];
+};
 
 const Crumb = ({ item, isCurrent }: { item: BreadcrumbItem; isCurrent: boolean }) => {
   if (item.link !== undefined) return item.link;
@@ -49,10 +58,14 @@ export const MemberPage = ({
   rail,
   railLeading,
   mobileRail = 'before',
+  dense = false,
   state,
   children,
   'data-testid': testId,
 }: MemberPageProps) => {
+  const theme = useTheme();
+  const compactCrumbs = useMediaQuery(theme.breakpoints.down('sm'));
+  const crumbs = breadcrumbs === undefined || !compactCrumbs ? breadcrumbs : crumbTrailToParent(breadcrumbs);
   const statusOnly = state !== undefined && state.kind !== 'ready';
   const body = state?.kind === 'loading'
     ? <BrandLoader scope="container" caption={state.label} />
@@ -61,6 +74,10 @@ export const MemberPage = ({
       : children;
   const hasRail = rail !== undefined || railLeading !== undefined;
   const splitRail = mobileRail === 'split' && railLeading !== undefined;
+  const bodyOffset = {
+    xs: dense ? '1rem' : '1.5rem',
+    md: dense ? '1.25rem' : '2.5rem',
+  };
 
   return (
     <Container
@@ -68,15 +85,19 @@ export const MemberPage = ({
       sx={{ maxWidth: `${PAGE_WIDTH[width]} !important`, pb: '3rem' }}
       data-testid={testId}
     >
-      <LedgerHeader component="header" sx={{ pb: '21px' }}>
-        {breadcrumbs !== undefined && breadcrumbs.length > 0 && (
-          <Breadcrumbs aria-label={breadcrumbLabel} data-testid="member-breadcrumbs" sx={{ mb: '0.75rem' }}>
-            {breadcrumbs.map((item, index) => (
-              <Crumb key={index} item={item} isCurrent={index === breadcrumbs.length - 1} />
+      <LedgerHeader component="header" sx={{ pb: { xs: '14px', md: '21px' } }}>
+        {crumbs !== undefined && crumbs.length > 0 && (
+          <LedgerBreadcrumbs
+            aria-label={breadcrumbLabel}
+            data-testid="member-breadcrumbs"
+            sx={{ mb: '0.75rem' }}
+          >
+            {crumbs.map((item, index) => (
+              <Crumb key={index} item={item} isCurrent={index === crumbs.length - 1} />
             ))}
-          </Breadcrumbs>
+          </LedgerBreadcrumbs>
         )}
-        <Typography variant="h1">{title}</Typography>
+        <LedgerTitle variant="h1" dense={dense}>{title}</LedgerTitle>
         <Eyebrow variant="overline" component="p">
           {eyebrow}
         </Eyebrow>
@@ -85,7 +106,7 @@ export const MemberPage = ({
       {hasRail && !statusOnly ? (
         <Box
           sx={{
-            mt: '2.5rem',
+            mt: bodyOffset,
             display: 'grid',
             gap: '1.5rem',
             alignItems: 'start',
@@ -139,7 +160,7 @@ export const MemberPage = ({
           </Stack>
         </Box>
       ) : (
-        <Box component="main" sx={{ mt: '2.5rem' }}>
+        <Box component="main" sx={{ mt: bodyOffset }}>
           {body}
         </Box>
       )}

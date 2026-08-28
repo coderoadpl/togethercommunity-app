@@ -148,6 +148,7 @@ import {
   beginProductCoverUpload,
   beginProductDownloadUpload,
   authenticateApiKey,
+  authLinkBaseUrl,
   autoIssueOnPayment,
   authorizeRequiredTenant,
   authorizeTenant,
@@ -352,6 +353,7 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
+import { checkoutConsentEvidence } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
@@ -365,24 +367,12 @@ import {
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
 
-const magicLinkBaseUrl = (
-  hostHeader: string,
-  forwardedProto: string | null,
-  fromTenantHeader: boolean,
-  appBaseUrl: string,
-): string => {
-  if (fromTenantHeader || hostHeader === '') return appBaseUrl;
-  const proto = forwardedProto ?? new URL(appBaseUrl).protocol.replace(':', '');
-  return `${proto}://${hostHeader}`;
+const requestOrigin = (req: HonoRequest, appBaseUrl: string): string => {
+  const host = req.header('host') ?? '';
+  if (host === '' || req.header(TENANT_HEADER) !== undefined) return new URL(appBaseUrl).origin;
+  const proto = req.header('x-forwarded-proto') ?? new URL(appBaseUrl).protocol.replace(':', '');
+  return new URL(`${proto}://${host}`).origin;
 };
-
-const requestOrigin = (req: HonoRequest, appBaseUrl: string): string =>
-  new URL(magicLinkBaseUrl(
-    req.header('host') ?? '',
-    req.header('x-forwarded-proto') ?? null,
-    req.header(TENANT_HEADER) !== undefined,
-    appBaseUrl,
-  )).origin;
 
 const probeCorsOrigins = (req: HonoRequest, appBaseUrl: string): string[] =>
   [...new Set([requestOrigin(req, appBaseUrl), new URL(appBaseUrl).origin])];
@@ -518,15 +508,6 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberBannedAt: null,
   memberDmOptOutAt: null,
 });
-
-const checkoutConsentEvidence = (headers: Headers) => {
-  const ip = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  const userAgent = headers.get('user-agent') ?? undefined;
-  return {
-    ...(ip === undefined || ip === '' ? {} : { ip }),
-    ...(userAgent === undefined ? {} : { userAgent }),
-  };
-};
 
 const recordCheckoutConsents = async (
   deps: AppDeps,
@@ -849,13 +830,8 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
           productId: selection.value.product.id,
           orderId: result.value.orderId,
           collectedAt: deps.clock.nowIso(),
-          confirmationBaseUrl: `${magicLinkBaseUrl(
-            c.req.header('host') ?? '',
-            c.req.header('x-forwarded-proto') ?? null,
-            tenant.value.source === 'tenant-header',
-            deps.appBaseUrl,
-          )}/marketing/confirm`,
-          ...checkoutConsentEvidence(c.req.raw.headers),
+          confirmationBaseUrl: `${authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
+          ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
         });
         const orderDetails = deps.orderDetails;
         const paidOrder = orderDetails === undefined
@@ -875,12 +851,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         }
       }
 
-      const baseUrl = magicLinkBaseUrl(
-        c.req.header('host') ?? '',
-        c.req.header('x-forwarded-proto') ?? null,
-        tenant.value.source === 'tenant-header',
-        deps.appBaseUrl,
-      );
+      const baseUrl = authLinkBaseUrl(tenant.value, deps);
       const issuedMagicLink = await issueMagicLink(deps, {
         email: parsed.data.email,
         tenantId: tenant.value.tenant.id,

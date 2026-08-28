@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
-  DELETED_MEMBER_DISPLAY,
+  deletedMemberDisplay,
   err,
   invoiceVatTreatmentsEqual,
   memberTombstone,
@@ -1300,6 +1300,39 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
   });
 
+  it('dedupes fulfillment events by object and lets later subscription updates through', async () => {
+    const repo = createProcessedPaymentEventRepository(db);
+    const lease = {
+      workerId: 'worker-index',
+      now: NOW,
+      leaseExpiresAt: '1998-07-14T10:05:00.000Z',
+    };
+    const completed: ProcessedPaymentEvent = {
+      id: 'evt-cs-1',
+      tenantId: ACME,
+      type: 'checkout.session.completed',
+      objectId: 'cs-index',
+      processedAt: NOW,
+    };
+    const updated: ProcessedPaymentEvent = {
+      id: 'evt-sub-1',
+      tenantId: ACME,
+      type: 'customer.subscription.updated',
+      objectId: 'sub-index',
+      processedAt: NOW,
+    };
+
+    expect(await repo.claim(ACME, completed, lease)).toBe('claimed');
+    expect(await repo.claim(ACME, { ...completed, id: 'evt-cs-2' }, lease)).toBe('in_progress');
+    await repo.finalize(ACME, completed.id, lease.workerId, NOW);
+    expect(await repo.claim(ACME, { ...completed, id: 'evt-cs-2' }, lease)).toBe('processed');
+    expect(
+      await repo.claim(GLOBEX, { ...completed, id: 'evt-cs-3', tenantId: GLOBEX }, lease),
+    ).toBe('claimed');
+    expect(await repo.claim(ACME, updated, lease)).toBe('claimed');
+    expect(await repo.claim(ACME, { ...updated, id: 'evt-sub-2' }, lease)).toBe('claimed');
+  });
+
   it('rolls back payment repository writes when the branch fails', async () => {
     const transaction = createPaymentTransactionPort(db);
     const rolledBackOrder = order({
@@ -2483,7 +2516,7 @@ describe('member erasure repository', () => {
     deletedAt: REMOVAL_AT,
     tombstoneEmail: memberTombstone(memberId).email,
     severedUserId: memberTombstone(memberId).userId,
-    postAuthorDisplay: DELETED_MEMBER_DISPLAY,
+    postAuthorDisplay: deletedMemberDisplay(),
   });
 
   beforeAll(async () => {
@@ -2782,12 +2815,12 @@ describe('member erasure repository', () => {
     expect(await subs.findById(RODO, 'sub-rodo')).toMatchObject({ status: 'canceled', cancelAtPeriodEnd: true });
 
     const postRows = await db.select().from(posts).where(eq(posts.id, 'post-rodo'));
-    expect(postRows[0]).toMatchObject({ authorDisplay: DELETED_MEMBER_DISPLAY, body: 'Świetny kurs!', deletedAt: null });
+    expect(postRows[0]).toMatchObject({ authorDisplay: deletedMemberDisplay(), body: 'Świetny kurs!', deletedAt: null });
 
     const reportRows = await db.select().from(postReports).where(eq(postReports.id, 'report-rodo'));
     expect(reportRows[0]).toMatchObject({
       reporterUserId: 'user-rodo-buyer',
-      reporterDisplay: DELETED_MEMBER_DISPLAY,
+      reporterDisplay: deletedMemberDisplay(),
     });
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));

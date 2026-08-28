@@ -778,8 +778,10 @@ export interface PaymentWebhookEvent {
   id: string;
   type: string;
   objectId: string | null;
+  createdAt?: string | null;
   checkoutSession: {
     email: string | null;
+    paymentStatus?: 'paid' | 'unpaid' | 'no_payment_required' | null;
     subscriptionId: string | null;
     paymentIntentId?: string | null;
     invoiceId?: string | null;
@@ -807,6 +809,11 @@ export interface PaymentWebhookEvent {
     chargeId: string | null;
     paymentIntentId: string | null;
     invoiceId: string | null;
+    refund?: {
+      full: boolean;
+      amountRefundedCents: number | null;
+      amountCents: number | null;
+    } | null;
   } | null;
   subscription?: {
     id: string;
@@ -1286,8 +1293,13 @@ export interface PaymentRefundRepository {
     providerObjectIds: Record<string, string>,
   ): Promise<Order | null>;
   findLatestSubscriptionOrder(tenantId: string, providerSubscriptionId: string): Promise<Order | null>;
-  listPaidOrdersForMemberProduct(tenantId: string, memberId: string, productId: string): Promise<Order[]>;
+  listAccessRetainingOrdersForMemberProduct(
+    tenantId: string,
+    memberId: string,
+    productId: string,
+  ): Promise<Order[]>;
   markOrderRefunded(tenantId: string, orderId: string): Promise<Order | null>;
+  markOrderPartiallyRefunded(tenantId: string, orderId: string): Promise<Order | null>;
 }
 
 export interface MemberSubscriptionRepository {

@@ -11,6 +11,7 @@ import {
 import {
   BETTER_AUTH_EMAIL_VERIFICATION_PATH,
   BETTER_AUTH_MAGIC_LINK_PATH,
+  BETTER_AUTH_PASSWORD_RESET_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
@@ -141,8 +142,11 @@ const deps = (input: {
     auth: {
       handler: async () => new Response(null, { status: 404 }),
       setMagicLinkDeliveryContext: () => undefined,
+      clearMagicLinkDeliveryContext: () => undefined,
       setResetPasswordDeliveryContext: () => undefined,
+      clearResetPasswordDeliveryContext: () => undefined,
       setEmailVerificationDeliveryContext: () => undefined,
+      clearEmailVerificationDeliveryContext: () => undefined,
     },
     authPort: {
       getAuthenticatedUser: input.getAuthenticatedUser ?? (async () => {
@@ -222,8 +226,9 @@ const deps = (input: {
     paymentRefunds: input.paymentRefunds ?? {
       findOrderByProviderObjectIds: async () => null,
       findLatestSubscriptionOrder: async () => null,
-      listPaidOrdersForMemberProduct: async () => [],
+      listAccessRetainingOrdersForMemberProduct: async () => [],
       markOrderRefunded: async () => null,
+      markOrderPartiallyRefunded: async () => null,
     },
     subscriptions: {
       findById: async () => null,
@@ -716,7 +721,7 @@ const deps = (input: {
     tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
-    logger: input.logger ?? { error: () => undefined },
+    logger: input.logger ?? { error: () => undefined, warn: () => undefined },
     baseDomain: 'localhost',
     platformHost: 'start.localhost',
     singleTenantMode: false,
@@ -4018,18 +4023,25 @@ describe('tenant creation verdict route', () => {
 
 type RequestMagicLinkInput = Parameters<AppDeps['authPort']['requestMagicLink']>[0];
 type DeliveryContext = Parameters<AppDeps['auth']['setMagicLinkDeliveryContext']>[1];
+type ResetDeliveryContext = Parameters<AppDeps['auth']['setResetPasswordDeliveryContext']>[1];
 type VerificationDeliveryContext = Parameters<AppDeps['auth']['setEmailVerificationDeliveryContext']>[1];
 
 interface Captured {
   request: RequestMagicLinkInput | null;
   context: { email: string; context: DeliveryContext } | null;
+  resetContext: { email: string; context: ResetDeliveryContext } | null;
   verificationContext: { email: string; context: VerificationDeliveryContext } | null;
 }
 
 const capturingApp = (
   input: Parameters<typeof deps>[0] = {},
 ): { app: ReturnType<typeof buildApp>; captured: Captured } => {
-  const captured: Captured = { request: null, context: null, verificationContext: null };
+  const captured: Captured = {
+    request: null,
+    context: null,
+    resetContext: null,
+    verificationContext: null,
+  };
   const base = deps(input);
   const app = buildApp({
     ...base,
@@ -4043,6 +4055,9 @@ const capturingApp = (
       ...base.auth,
       setMagicLinkDeliveryContext: (email, context) => {
         captured.context = { email, context };
+      },
+      setResetPasswordDeliveryContext: (email, context) => {
+        captured.resetContext = { email, context };
       },
       setEmailVerificationDeliveryContext: (email, context) => {
         captured.verificationContext = { email, context };
@@ -4074,7 +4089,7 @@ const purchase = (
     body: JSON.stringify(body),
   });
 
-const consentApp = (simulatedPayments: boolean) => {
+const consentApp = (simulatedPayments: boolean, authTrustedProxyHeader: string | null = null) => {
   const recorded: TermsConsent[] = [];
   const captures = new Map<
     string,
@@ -4142,9 +4157,50 @@ const consentApp = (simulatedPayments: boolean) => {
       }),
     },
     devEndpoints: { simulatedPayments, exposeMagicLinks: false },
+    authTrustedProxyHeader,
   });
   return { app, captures, checkoutSessions, recorded };
 };
+
+describe('checkout consent evidence attribution', () => {
+  const startCheckout = (
+    app: ReturnType<typeof buildApp>,
+    headers: Record<string, string>,
+  ) =>
+    app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'acme.localhost:48730',
+        'user-agent': 'Checkout Browser/1.0',
+        ...headers,
+      },
+      body: JSON.stringify({
+        email: 'buyer@together.dev',
+        productId: 'acme-published',
+        termsAccepted: true,
+      }),
+    });
+
+  it('takes the client IP from the configured trusted proxy header', async () => {
+    const { app, captures } = consentApp(false, 'x-forwarded-for');
+
+    expect((await startCheckout(app, { 'x-forwarded-for': '203.0.113.8' })).status).toBe(200);
+    expect(captures.get('id-1')?.capture).toMatchObject({
+      ip: '203.0.113.8',
+      userAgent: 'Checkout Browser/1.0',
+    });
+  });
+
+  it('drops a spoofed forwarding header when no proxy header is trusted', async () => {
+    const { app, captures } = consentApp(false);
+
+    expect((await startCheckout(app, { 'x-forwarded-for': '203.0.113.8' })).status).toBe(200);
+    const capture = captures.get('id-1')?.capture;
+    expect(capture).toMatchObject({ userAgent: 'Checkout Browser/1.0' });
+    expect(capture).not.toHaveProperty('ip');
+  });
+});
 
 describe('checkout consent ordering', () => {
   it('does not record consent when a real checkout session is only started', async () => {
@@ -4328,15 +4384,16 @@ describe('checkout consent ordering', () => {
     const claimedEvents = new Set<string>();
     let orderResult: Order | null = order;
     const orderLookups: Record<string, string>[] = [];
-    const logger = { error: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn() };
     const base = deps({
       products: [attached],
       autoInvoiceJobs,
       paymentRefunds: {
         findOrderByProviderObjectIds: async () => orderResult,
         findLatestSubscriptionOrder: async () => null,
-        listPaidOrdersForMemberProduct: async () => [],
+        listAccessRetainingOrdersForMemberProduct: async () => [],
         markOrderRefunded: async () => null,
+        markOrderPartiallyRefunded: async () => null,
       },
     });
     let invoiceRequests = 0;
@@ -4555,7 +4612,7 @@ describe('checkout consent ordering', () => {
   });
 
   it('acknowledges a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
-    const logger = { error: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn() };
     const verifyWebhookEvent = vi.fn();
     const base = deps({ tenants: [{ ...acme, status: 'suspended' }] });
     const app = buildApp({
@@ -4656,7 +4713,7 @@ describe('checkout consent ordering', () => {
       createdAt: '1998-07-12T00:00:00.000Z',
       createdBy: null,
     });
-    const logger = { error: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn() };
     const base = deps({ products: [attached, secondAttached], logger });
     const queued: string[] = [];
     let failEnqueue = false;
@@ -4685,6 +4742,7 @@ describe('checkout consent ordering', () => {
         },
       },
       devEndpoints: { simulatedPayments: true, exposeMagicLinks: false },
+      authTrustedProxyHeader: 'x-forwarded-for',
     });
     const checkoutBody = (email: string, productId = attached.id) => ({
         email,
@@ -4696,7 +4754,7 @@ describe('checkout consent ordering', () => {
       'content-type': 'application/json',
       host: 'acme.localhost:48730',
       'user-agent': 'Checkout Browser/1.0',
-      'x-forwarded-for': '203.0.113.8, 10.0.0.1',
+      'x-forwarded-for': '203.0.113.8',
     };
     const startCheckout = (email: string) => app.request(API_PATHS.checkoutSession, {
       method: 'POST',
@@ -4878,6 +4936,172 @@ describe('tenant-host email verification', () => {
       });
     },
   );
+});
+
+describe('auth link host trust', () => {
+  const attackerHeaders = {
+    'content-type': 'application/json',
+    host: 'attacker.example',
+    'x-forwarded-proto': 'https',
+    origin: 'http://acme.localhost:48730',
+  };
+
+  it('keeps the magic-link base on APP_BASE_URL for an unknown host', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: attackerHeaders,
+      body: JSON.stringify({ email: 'login@together.dev' }),
+    });
+
+    expect(captured.context?.context.baseUrl).toBe('http://localhost:48730');
+  });
+
+  it('keeps the reset base on APP_BASE_URL for an unknown host', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
+      method: 'POST',
+      headers: attackerHeaders,
+      body: JSON.stringify({ email: 'login@together.dev' }),
+    });
+
+    expect(captured.resetContext?.context.baseUrl).toBe('http://localhost:48730');
+  });
+
+  it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
+    'keeps %s delivery on APP_BASE_URL for an unknown host',
+    async (path) => {
+      const { app, captured } = capturingApp();
+
+      await app.request(path, {
+        method: 'POST',
+        headers: attackerHeaders,
+        body: JSON.stringify({ email: 'account@together.dev' }),
+      });
+
+      expect(captured.verificationContext?.context.baseUrl).toBe('http://localhost:48730');
+    },
+  );
+
+  it('keeps the magic-link base on APP_BASE_URL for an unknown slug under the base domain', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'missing.localhost:48730' },
+      body: JSON.stringify({ email: 'login@together.dev' }),
+    });
+
+    expect(captured.context?.context.baseUrl).toBe('http://localhost:48730');
+    expect(captured.context?.context.tenantName).toBeUndefined();
+  });
+
+  it('keeps the reset base on APP_BASE_URL for tenant-header routing', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'localhost:48730',
+        [TENANT_HEADER]: 'globex',
+      },
+      body: JSON.stringify({ email: 'login@together.dev' }),
+    });
+
+    expect(captured.resetContext?.context.baseUrl).toBe('http://localhost:48730');
+  });
+
+  it('still builds the reset base on the requesting tenant subdomain', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      body: JSON.stringify({ email: 'login@together.dev' }),
+    });
+
+    expect(captured.resetContext?.context.baseUrl).toBe('http://acme.localhost:48730');
+  });
+
+  it('keeps the scheme and port of the seeded subdomain domain row', async () => {
+    const { app, captured } = capturingApp({
+      domains: [
+        { id: 'domain-acme', tenantId: acme.id, domain: 'acme.localhost', kind: 'subdomain', verified: true },
+      ],
+    });
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      body: JSON.stringify({ email: 'login@together.dev' }),
+    });
+
+    expect(captured.context?.context.baseUrl).toBe('http://acme.localhost:48730');
+  });
+
+  it('builds the magic-link base on a verified custom domain over HTTPS', async () => {
+    const { app, captured } = capturingApp({
+      domains: [
+        { id: 'domain-learn', tenantId: acme.id, domain: 'learn.acme.example', kind: 'custom', verified: true },
+      ],
+    });
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'learn.acme.example' },
+      body: JSON.stringify({ email: 'login@together.dev' }),
+    });
+
+    expect(captured.context?.context.baseUrl).toBe('https://learn.acme.example');
+  });
+
+  it('leaves no delivery-context residue when Better Auth rejects the request', async () => {
+    const contexts = new Map<string, DeliveryContext>();
+    const base = deps();
+    const app = buildApp({
+      ...base,
+      auth: {
+        ...base.auth,
+        setMagicLinkDeliveryContext: (email, context) => { contexts.set(email, context); },
+        clearMagicLinkDeliveryContext: (email) => { contexts.delete(email); },
+      },
+    });
+
+    const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      body: JSON.stringify({ email: 'login@together.dev' }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(contexts.size).toBe(0);
+  });
+
+  it('rejects an over-long e-mail before resolving the tenant', async () => {
+    const base = deps();
+    let resolvedTenants = 0;
+    const app = buildApp({
+      ...base,
+      tenants: {
+        ...base.tenants,
+        findBySlug: async (slug) => {
+          resolvedTenants += 1;
+          return base.tenants.findBySlug(slug);
+        },
+      },
+    });
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      body: JSON.stringify({ email: `${'a'.repeat(250)}@together.dev` }),
+    });
+
+    expect(resolvedTenants).toBe(0);
+  });
 });
 
 describe('scheduler operator routes', () => {

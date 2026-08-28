@@ -144,7 +144,7 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('button', { name: /^Odbierz za darmo/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^Odbierz bezpłatnie/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Zapłać/ })).not.toBeInTheDocument();
     expect(screen.getByText(pl.common.free)).toBeInTheDocument();
   });

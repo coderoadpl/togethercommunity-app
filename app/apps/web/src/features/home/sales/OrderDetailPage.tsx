@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 
@@ -28,6 +28,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     pending: t.sales.pending,
     failed: t.sales.failed,
     refunded: t.sales.refunded,
+    partially_refunded: t.sales.partially_refunded,
   };
 
   if (detail.isPending) {
@@ -37,7 +38,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     return (
       <PanelPage
         title={t.sections.sales}
-        state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }}
+        state={{ kind: 'error', message: localizePanelError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }}
       />
     );
   }
@@ -178,8 +179,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             </Button>
           ) : null}
         </Stack>
-        {issueInvoice.isError ? <Alert severity="error">{localizeError(issueInvoice.error, t)}</Alert> : null}
-        {refreshInvoice.isError ? <Alert severity="error">{localizeError(refreshInvoice.error, t)}</Alert> : null}
+        {issueInvoice.isError ? <Alert severity="error">{localizePanelError(issueInvoice.error, t)}</Alert> : null}
+        {refreshInvoice.isError ? <Alert severity="error">{localizePanelError(refreshInvoice.error, t)}</Alert> : null}
       </SectionCard>
     </PanelPage>
   );

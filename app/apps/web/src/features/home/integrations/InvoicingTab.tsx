@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { SecretField } from './SecretField.js';
 import { previewFor } from './secret-preview.js';
 
@@ -33,7 +33,7 @@ const IfirmaTestConnection = ({ ready }: { ready: boolean }) => {
         </Typography>
       ) : null}
       {testConnection.isError ? (
-        <Alert severity="error" data-testid="ifirma-test-error">{localizeError(testConnection.error, t)}</Alert>
+        <Alert severity="error" data-testid="ifirma-test-error">{localizePanelError(testConnection.error, t)}</Alert>
       ) : null}
     </Box>
   );
@@ -65,7 +65,7 @@ const KsefTestConnection = ({ ready }: { ready: boolean }) => {
         </Typography>
       ) : null}
       {testConnection.isError ? (
-        <Alert severity="error" data-testid="ksef-test-error">{localizeError(testConnection.error, t)}</Alert>
+        <Alert severity="error" data-testid="ksef-test-error">{localizePanelError(testConnection.error, t)}</Alert>
       ) : null}
     </Box>
   );
@@ -93,7 +93,7 @@ export const InvoicingTab = () => {
         {secrets.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
         ) : secrets.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1.25rem">
             <SecretField
@@ -118,7 +118,7 @@ export const InvoicingTab = () => {
         {secrets.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
         ) : secrets.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1.25rem">
             <Typography variant="body2">{t.integrations.ksefTokenHelp}</Typography>

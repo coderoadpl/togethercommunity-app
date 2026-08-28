@@ -29,7 +29,7 @@ import type {
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { EmailEventTimeline } from '../email/index.js';
@@ -132,7 +132,7 @@ export const SendsPanel = () => {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setExportError(localizeError(error, t));
+      setExportError(localizePanelError(error, t));
     } finally {
       setExporting(false);
     }
@@ -142,7 +142,7 @@ export const SendsPanel = () => {
 
   return (
     <PanelPage title={t.marketing.sendsTitle} description={t.marketing.sendsDescription}>
-      {campaigns.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(campaigns.error, t), retry: { label: t.common.retry, onRetry: () => void campaigns.refetch() } }} /> : null}
+      {campaigns.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(campaigns.error, t), retry: { label: t.common.retry, onRetry: () => void campaigns.refetch() } }} /> : null}
       <ListSection
         data-testid="email-sends-list"
         isEmpty={sends.isSuccess && rows.length === 0 && !filtered && cursor === undefined}
@@ -341,7 +341,7 @@ export const SendsPanel = () => {
         {sends.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.marketing.sendsLoading }} />
         ) : sends.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(sends.error, t), retry: { label: t.common.retry, onRetry: () => void sends.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(sends.error, t), retry: { label: t.common.retry, onRetry: () => void sends.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table size="small" aria-label={t.marketing.sendsTitle}>
@@ -419,7 +419,7 @@ export const SendDetailPage = () => {
 
   if (kind === null || sendId === undefined) return <Navigate to="/panel/marketing/sends" />;
   if (detail.isPending) return <PanelPage title={t.marketing.sendDetails} state={{ kind: 'loading', label: t.marketing.sendsLoading }} />;
-  if (detail.isError) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
+  if (detail.isError) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'error', message: localizePanelError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
 
   const send = detail.data.send;
   return (

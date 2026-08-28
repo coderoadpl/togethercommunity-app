@@ -21,6 +21,7 @@ import {
   isAdditionalTwoFactorPath,
   isSensitivePasskeyPath,
   isSuccessfulPasswordVerification,
+  MAGIC_LINK_CONTEXT_MAX_ENTRIES,
   MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS,
   PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS,
   passwordResetOriginMatches,
@@ -493,7 +494,12 @@ describe('auth cookie scope', () => {
 const signUp = (
   auth: ReturnType<typeof buildAuth>['auth'],
   email: string,
-  options: { termsAccepted?: unknown; password?: string; callbackURL?: string } = {},
+  options: {
+    termsAccepted?: unknown;
+    password?: string;
+    callbackURL?: string;
+    image?: string;
+  } = {},
 ) =>
   auth.handler(
     new Request('http://studio.localhost:48730/api/auth/sign-up/email', {
@@ -510,6 +516,7 @@ const signUp = (
         password: options.password ?? SIGN_UP_PASSWORD,
         callbackURL: options.callbackURL ?? 'http://studio.localhost:48730/login?verification=verified',
         ...(options.termsAccepted === undefined ? {} : { termsAccepted: options.termsAccepted }),
+        ...(options.image === undefined ? {} : { image: options.image }),
       }),
     }),
   );
@@ -790,6 +797,94 @@ describe('createAuthPort.requestMagicLink', () => {
 
     expect(response.status).toBe(302);
     expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
+  });
+});
+
+describe('magic-link delivery contexts', () => {
+  it('caps pending magic-link delivery contexts created by address enumeration', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    const email = `magic-context-cap-${Date.now()}@together.dev`;
+    auth.setMagicLinkDeliveryContext(email, {
+      language: 'en',
+      mode: 'email',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    for (let index = 0; index < MAGIC_LINK_CONTEXT_MAX_ENTRIES; index += 1) {
+      auth.setMagicLinkDeliveryContext(`enumerated-magic-${index}@together.dev`, {
+        language: 'en',
+        mode: 'email',
+        baseUrl: 'http://studio.localhost:48730',
+      });
+    }
+
+    await authPort.requestMagicLink({ email, callbackURL: 'http://localhost:48730/my' });
+
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    expect(new URL(link?.url ?? '').host).toBe('localhost:48730');
+  });
+
+  it('clears a delivery context that the send callback never consumed', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    const email = `magic-context-clear-${Date.now()}@together.dev`;
+    auth.setMagicLinkDeliveryContext(email, {
+      language: 'en',
+      mode: 'email',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    auth.clearMagicLinkDeliveryContext(email);
+
+    await authPort.requestMagicLink({ email, callbackURL: 'http://localhost:48730/my' });
+
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    expect(new URL(link?.url ?? '').host).toBe('localhost:48730');
+  });
+
+  it('keeps email send callbacks awaited so request-scoped contexts outlive them', async () => {
+    const { auth } = buildAuth();
+
+    expect(Object.keys((await auth.$context).options.advanced ?? {})).not.toContain('backgroundTasks');
+  });
+});
+
+describe('provider-managed avatars', () => {
+  const updateUser = async (body: Record<string, unknown>) => {
+    const { auth } = buildAuth();
+    const email = `update-user-${Date.now()}-${Math.random()}@together.dev`;
+    const signedUp = await signUp(auth, email);
+    const token = signedUp.headers.get('set-auth-token') ?? '';
+    return auth.handler(new Request('http://studio.localhost:48730/api/auth/update-user', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://studio.localhost:48730',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    }));
+  };
+
+  it('rejects an update that carries an image', async () => {
+    expect((await updateUser({ name: 'Ada', image: 'https://attacker.example/beacon.png' })).status)
+      .toBe(400);
+  });
+
+  it('accepts a name-only update', async () => {
+    expect((await updateUser({ name: 'Ada Lovelace' })).status).toBe(200);
+  });
+
+  const signUpEmail = () => `sign-up-image-${Date.now()}-${Math.random()}@together.dev`;
+
+  it('rejects a sign-up that carries an image', async () => {
+    const { auth } = buildAuth();
+    const response = await signUp(auth, signUpEmail(), {
+      image: 'https://attacker.example/beacon.png',
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it('accepts a sign-up without an image', async () => {
+    const { auth } = buildAuth();
+    expect((await signUp(auth, signUpEmail())).status).toBe(200);
   });
 });
 

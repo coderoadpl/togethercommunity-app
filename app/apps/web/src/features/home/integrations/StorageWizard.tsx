@@ -24,7 +24,7 @@ import {
 
 import { actions } from '../../../api.js';
 import {
-  localizeError,
+  localizePanelError,
   providerCodeOf,
   rejectedCorsOriginOf,
   useTranslations,
@@ -83,7 +83,7 @@ const localizedProbeError = (error: unknown, t: Messages): string => {
     'storage.unavailable': t.integrations.storageProbeUnavailable,
   };
   const code = providerCodeOf(error);
-  return code !== null && isProbeErrorCode(code) ? messages[code] : localizeError(error, t);
+  return code !== null && isProbeErrorCode(code) ? messages[code] : localizePanelError(error, t);
 };
 
 export const StorageWizard = ({ configured }: { configured: boolean }) => {

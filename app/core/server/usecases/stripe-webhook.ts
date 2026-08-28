@@ -1,4 +1,5 @@
 import {
+  ACCESS_RETAINING_ORDER_STATUSES,
   appError,
   DEFAULT_LANGUAGE,
   emailBrandingFrom,
@@ -57,9 +58,21 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
   checkoutConsentCaptures?: CheckoutConsentCaptureRepository;
   payment: Pick<PaymentProvider, 'cancelSubscription'>;
   paymentTransaction: PaymentTransactionPort;
+  logger: { warn(message: string): void };
 }
 
 const WEBHOOK_CLAIM_LEASE_MS = 5 * 60 * 1000;
+
+export const CHECKOUT_SESSION_EVENT_TYPES = new Set<string>([
+  'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
+]);
+
+interface EventApplication {
+  processed: boolean;
+  consumed?: boolean;
+}
 
 const enqueueAutoInvoice = async (
   tenantId: string,
@@ -68,10 +81,14 @@ const enqueueAutoInvoice = async (
   transactionDeps: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
 ): Promise<void> => {
   if (event.objectId === null) return;
-  if (event.type !== 'checkout.session.completed' && event.type !== 'invoice.paid') return;
-  const providerObjectIds = event.type === 'invoice.paid'
-    ? { invoice: event.objectId }
-    : { checkoutSession: event.objectId };
+  const providerObjectIds =
+    event.type === 'invoice.paid'
+      ? { invoice: event.objectId }
+      : event.type === 'checkout.session.completed' ||
+          event.type === 'checkout.session.async_payment_succeeded'
+        ? { checkoutSession: event.objectId }
+        : null;
+  if (providerObjectIds === null) return;
   const order = await transactionDeps.paymentRefunds.findOrderByProviderObjectIds(
     tenantId,
     providerObjectIds,
@@ -142,6 +159,8 @@ const enqueueSubscriptionNotice = async (
 
 export const STRIPE_WEBHOOK_EVENT_TYPES = [
   'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
   'invoice.paid',
   'invoice.payment_failed',
   'customer.subscription.updated',
@@ -321,7 +340,7 @@ const applyCheckoutCompleted = async (
   event: PaymentWebhookEvent,
   provider: 'stripe' | 'simulated',
   deps: StripeWebhookDeps,
-): Promise<Result<{ processed: boolean }, AppError>> => {
+): Promise<Result<EventApplication, AppError>> => {
   if (!event.objectId || !event.checkoutSession) {
     return err(validation('Stripe checkout event is missing session data'));
   }
@@ -336,6 +355,9 @@ const applyCheckoutCompleted = async (
   const price = metadata.priceId ? await deps.prices.findById(tenant.id, metadata.priceId) : null;
   if (metadata.priceId && (!price || price.productId !== metadata.productId)) {
     return err(validation('Stripe checkout metadata references an unknown price'));
+  }
+  if (event.checkoutSession.paymentStatus === 'unpaid') {
+    return ok({ processed: false, consumed: true });
   }
   const periodEnd =
     price?.kind === 'recurring'
@@ -447,7 +469,7 @@ const applyInvoiceEvent = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
-): Promise<Result<{ processed: boolean }, AppError>> => {
+): Promise<Result<EventApplication, AppError>> => {
   const providerSubscriptionId = event.invoice?.subscriptionId ?? null;
   if (!providerSubscriptionId || !event.objectId) return ok({ processed: false });
   const subscription = await deps.subscriptions.findByProviderSubscriptionId(
@@ -542,7 +564,7 @@ const applyPaymentAdjustment = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
-): Promise<Result<{ processed: boolean }, AppError>> => {
+): Promise<Result<EventApplication, AppError>> => {
   const adjustment = event.adjustment;
   if (!adjustment) return ok({ processed: false });
   const providerObjectIds = {
@@ -552,6 +574,13 @@ const applyPaymentAdjustment = async (
   };
   const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, providerObjectIds);
   if (!order) return ok({ processed: false });
+
+  if (adjustment.refund != null && !adjustment.refund.full) {
+    if (order.status === 'paid') {
+      await deps.paymentRefunds.markOrderPartiallyRefunded(tenant.id, order.id);
+    }
+    return ok({ processed: true });
+  }
 
   const providerSubscriptionId = order.providerObjectIds['subscription'];
   const invoiceId = order.providerObjectIds['invoice'];
@@ -581,15 +610,15 @@ const applyPaymentAdjustment = async (
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
     if (!refunded) return ok({ processed: false });
   }
-  const remainingPaidOrders = await deps.paymentRefunds.listPaidOrdersForMemberProduct(
+  const remainingOrders = await deps.paymentRefunds.listAccessRetainingOrdersForMemberProduct(
     tenant.id,
     order.memberId,
     order.productId,
   );
-  let remainingPaidAccess = remainingPaidOrders.some((candidate) => candidate.kind === 'one_time');
-  if (!remainingPaidAccess) {
+  let remainingAccess = remainingOrders.some((candidate) => candidate.kind === 'one_time');
+  if (!remainingAccess) {
     const providerSubscriptionIds = new Set(
-      remainingPaidOrders
+      remainingOrders
         .map((candidate) => candidate.providerObjectIds['subscription'])
         .filter((id): id is string => id !== undefined),
     );
@@ -599,16 +628,17 @@ const applyPaymentAdjustment = async (
         deps.subscriptions.findByProviderSubscriptionId(tenant.id, providerSubscriptionId),
       ]);
       if (
-        latest?.status === 'paid' &&
+        latest !== null &&
+        ACCESS_RETAINING_ORDER_STATUSES.includes(latest.status) &&
         subscription?.productId === order.productId &&
         subscription.currentPeriodEnd >= deps.clock.nowIso()
       ) {
-        remainingPaidAccess = true;
+        remainingAccess = true;
         break;
       }
     }
   }
-  if (!remainingPaidAccess) {
+  if (!remainingAccess) {
     const grant = await deps.grants.findGrant(tenant.id, order.memberId, order.productId);
     if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
   }
@@ -623,24 +653,38 @@ const applyPaymentAdjustment = async (
   return ok({ processed: true });
 };
 
+const asyncPaymentFailed = (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+): Result<EventApplication, AppError> => {
+  deps.logger.warn(
+    `[stripe-webhook] tenant=${tenant.id} event=${event.id} checkout=${event.objectId ?? 'unknown'} async payment failed`,
+  );
+  return ok({ processed: true });
+};
+
 const applySubscriptionEvent = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
-): Promise<Result<{ processed: boolean }, AppError>> => {
+): Promise<Result<EventApplication, AppError>> => {
   if (!event.objectId) return ok({ processed: false });
   const subscription = await deps.subscriptions.findByProviderSubscriptionId(tenant.id, event.objectId);
   if (!subscription) return ok({ processed: false });
+  const deleted = event.type === 'customer.subscription.deleted';
+  const providerEventAt = event.createdAt ?? null;
+  if (!deleted && providerEventAt !== null && providerEventAt < subscription.updatedAt) {
+    return ok({ processed: false, consumed: true });
+  }
 
-  const canceled =
-    event.type === 'customer.subscription.deleted' || event.subscription?.status === 'canceled';
+  const canceled = deleted || event.subscription?.status === 'canceled';
   const periodEnd = event.subscription?.currentPeriodEnd ?? subscription.currentPeriodEnd;
   const endedAt = event.subscription?.endedAt ?? null;
   const paidThrough = canceled && endedAt !== null && endedAt < periodEnd ? endedAt : periodEnd;
-  const grantBefore =
-    event.type === 'customer.subscription.deleted'
-      ? await deps.grants.findGrant(tenant.id, subscription.memberId, subscription.productId)
-      : null;
+  const grantBefore = deleted
+    ? await deps.grants.findGrant(tenant.id, subscription.memberId, subscription.productId)
+    : null;
   const updated = await updateSubscriptionFromProvider(
     tenant.id,
     {
@@ -648,14 +692,14 @@ const applySubscriptionEvent = async (
       cancelAtPeriodEnd: event.subscription?.cancelAtPeriodEnd ?? subscription.cancelAtPeriodEnd,
       currentPeriodEnd: canceled ? paidThrough : periodEnd,
       canceled,
+      ...(providerEventAt !== null && providerEventAt > subscription.updatedAt
+        ? { updatedAt: providerEventAt }
+        : {}),
     },
     deps,
   );
   const accessEndsAt = await syncGrantToSubscription(tenant.id, updated, paidThrough, deps);
-  if (
-    event.type === 'customer.subscription.deleted' &&
-    (grantBefore === null || grantBefore.expiresAt !== null)
-  ) {
+  if (deleted && (grantBefore === null || grantBefore.expiresAt !== null)) {
     const notified = await enqueueSubscriptionNotice(
       tenant,
       updated,
@@ -696,20 +740,22 @@ export const fulfillStripeWebhook = async (
     return err(appError('conflict', 'Payment event is being processed'));
   }
 
-  let applied: Result<{ processed: boolean }, AppError>;
+  let applied: Result<EventApplication, AppError>;
   try {
     applied = await deps.paymentTransaction.run(async (transactionDeps) => {
       const branchDeps = { ...deps, ...transactionDeps };
-      const result =
-        event.type === 'checkout.session.completed'
-          ? await applyCheckoutCompleted(tenant, event, provider, branchDeps)
-          : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
-            ? await applyInvoiceEvent(tenant, event, branchDeps)
-            : event.type === 'charge.refunded' || event.type === 'charge.dispute.created'
-              ? await applyPaymentAdjustment(tenant, event, branchDeps)
-              : await applySubscriptionEvent(tenant, event, branchDeps);
-      if (result.ok && result.value.processed) {
-        await enqueueAutoInvoice(tenant.id, event, deps, transactionDeps);
+      const result: Result<EventApplication, AppError> =
+        event.type === 'checkout.session.async_payment_failed'
+          ? asyncPaymentFailed(tenant, event, deps)
+          : CHECKOUT_SESSION_EVENT_TYPES.has(event.type)
+            ? await applyCheckoutCompleted(tenant, event, provider, branchDeps)
+            : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
+              ? await applyInvoiceEvent(tenant, event, branchDeps)
+              : event.type === 'charge.refunded' || event.type === 'charge.dispute.created'
+                ? await applyPaymentAdjustment(tenant, event, branchDeps)
+                : await applySubscriptionEvent(tenant, event, branchDeps);
+      if (result.ok && (result.value.processed || result.value.consumed === true)) {
+        if (result.value.processed) await enqueueAutoInvoice(tenant.id, event, deps, transactionDeps);
         await transactionDeps.processedPaymentEvents.finalize(
           tenant.id,
           event.id,
@@ -724,9 +770,12 @@ export const fulfillStripeWebhook = async (
     return err(internal('Payment fulfillment failed'));
   }
 
-  if (!applied.ok || !applied.value.processed) {
+  if (!applied.ok) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
-    return applied.ok ? ok({ processed: false }) : applied;
+    return applied;
   }
-  return ok({ processed: true });
+  if (!applied.value.processed && applied.value.consumed !== true) {
+    await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
+  }
+  return ok({ processed: applied.value.processed });
 };

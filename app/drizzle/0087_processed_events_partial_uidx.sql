@@ -1,0 +1,2 @@
+DROP INDEX "processed_events_object_type_uidx";--> statement-breakpoint
+CREATE UNIQUE INDEX "processed_events_fulfillment_uidx" ON "processed_events" USING btree ("tenant_id","object_id","type") WHERE "processed_events"."type" in ('checkout.session.completed', 'invoice.paid');

@@ -3,7 +3,7 @@ import { Alert, Box } from '@mui/material';
 
 import { ApiError } from '#core/client/index.js';
 
-import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations, type Messages } from '../../../i18n/index.js';
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -41,7 +41,7 @@ const detailMessages = (details: unknown, t: Messages, fields: ValidationField[]
   return [...new Set(messages)];
 };
 
-export const errorMessage = (error: unknown, t: Messages): string => localizeError(error, t);
+export const errorMessage = (error: unknown, t: Messages): string => localizePanelError(error, t);
 
 export const MutationError = ({ error, id, fields = [] }: { error: Error; id?: string; fields?: ValidationField[] }) => {
   const t = useTranslations();
@@ -58,7 +58,7 @@ export const MutationError = ({ error, id, fields = [] }: { error: Error; id?: s
 
   return (
     <Alert severity="error" id={id}>
-      {localizeError(error, t)}
+      {localizePanelError(error, t)}
       {details.length > 0 ? (
         <Box component="ul" sx={{ m: 0, pl: '1.2rem' }}>
           {details.map((message) => (

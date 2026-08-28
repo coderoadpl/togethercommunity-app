@@ -15,7 +15,7 @@ import type { StripeMode } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { usePanelContext } from '../panel-context.js';
 import { ProviderTest } from './ProviderTest.js';
 import { previewFor } from './secret-preview.js';
@@ -111,15 +111,15 @@ const StripeConfiguration = ({
           {t.integrations.stripeConfigured}
         </Typography>
       ) : null}
-      {configure.isError ? <Alert severity="error">{localizeError(configure.error, t)}</Alert> : null}
-      {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
+      {configure.isError ? <Alert severity="error">{localizePanelError(configure.error, t)}</Alert> : null}
+      {remove.isError ? <Alert severity="error">{localizePanelError(remove.error, t)}</Alert> : null}
       <ConfirmDialog
         open={confirmingRemove}
         title={t.integrations.stripeDisconnectConfirmTitle}
         body={(
           <>
             <Typography>{t.integrations.stripeDisconnectConfirmBody}</Typography>
-            {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
+            {remove.isError ? <Alert severity="error">{localizePanelError(remove.error, t)}</Alert> : null}
           </>
         )}
         confirmLabel={remove.isPending ? t.integrations.removing : t.integrations.remove}
@@ -175,7 +175,7 @@ const BillingPortalField = ({ canEdit }: { canEdit: boolean }) => {
         )}
       </FormControl>
       {settings.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
+        <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
       {canEdit ? (
         <Box>
@@ -194,7 +194,7 @@ const BillingPortalField = ({ canEdit }: { canEdit: boolean }) => {
           {t.billing.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -217,7 +217,7 @@ export const StripeTab = () => {
         {secrets.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
         ) : secrets.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
         ) : (
           <StripeConfiguration
             maskedPreview={previewFor(secrets.data.secrets, 'stripe.restrictedKey')}

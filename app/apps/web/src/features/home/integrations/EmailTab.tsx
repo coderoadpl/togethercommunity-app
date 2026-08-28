@@ -21,7 +21,7 @@ import { sesIdentityFreshness } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { MarketingReadiness } from './MarketingReadiness.js';
 import { ProviderTest } from './ProviderTest.js';
@@ -145,7 +145,7 @@ const SesOnboardingWizard = ({
         {t.marketing.wizardSimulator}
       </Button>
       {simulator.data?.waitingForWebhook === true ? <Alert severity="info">{t.marketing.wizardWaitingWebhook}</Alert> : null}
-      {error === null || error === undefined ? null : <Alert severity="error">{localizeError(error, t)}</Alert>}
+      {error === null || error === undefined ? null : <Alert severity="error">{localizePanelError(error, t)}</Alert>}
       <Link
         href="https://github.com/coderoadpl/togethercommunity-app/blob/main/docs/ses-onboarding.md"
         target="_blank"
@@ -207,8 +207,8 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
         <FormLabel htmlFor="marketing-ses-region">{t.marketing.regionLabel}</FormLabel>
         <OutlinedInput id="marketing-ses-region" value={region} onChange={(event) => setRegion(event.target.value)} />
       </FormControl>
-      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
-      {test.isError ? <Alert severity="error">{localizeError(test.error, t)}</Alert> : null}
+      {save.isError ? <Alert severity="error">{localizePanelError(save.error, t)}</Alert> : null}
+      {test.isError ? <Alert severity="error">{localizePanelError(test.error, t)}</Alert> : null}
       {test.isSuccess ? <Alert severity="success">{t.marketing.testEmailSent}</Alert> : null}
     </SectionCard>
   );
@@ -274,8 +274,8 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
         <OutlinedInput id="marketing-smtp-password" type="password" autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} />
       </FormControl>
       <FormControlLabel control={<Switch checked={secure} onChange={(event) => setSecure(event.target.checked)} />} label={t.marketing.smtpSecureLabel} />
-      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
-      {test.isError ? <Alert severity="error">{localizeError(test.error, t)}</Alert> : null}
+      {save.isError ? <Alert severity="error">{localizePanelError(save.error, t)}</Alert> : null}
+      {test.isError ? <Alert severity="error">{localizePanelError(test.error, t)}</Alert> : null}
       {test.isSuccess ? <Alert severity="success">{t.marketing.testEmailSent}</Alert> : null}
     </SectionCard>
   );
@@ -318,8 +318,8 @@ const ResendForm = ({ configured }: { configured: boolean }) => {
         <OutlinedInput id="marketing-resend-api-key" type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
       </FormControl>
       <Alert severity="info">{t.marketing.resendDomainHint}</Alert>
-      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
-      {test.isError ? <Alert severity="error">{localizeError(test.error, t)}</Alert> : null}
+      {save.isError ? <Alert severity="error">{localizePanelError(save.error, t)}</Alert> : null}
+      {test.isError ? <Alert severity="error">{localizePanelError(test.error, t)}</Alert> : null}
       {test.isSuccess ? <Alert severity="success">{t.marketing.testEmailSent}</Alert> : null}
     </SectionCard>
   );
@@ -403,7 +403,7 @@ export const EmailTab = () => {
         <StatusView
           state={{
             kind: 'error',
-            message: localizeError(result.error, t),
+            message: localizePanelError(result.error, t),
             retry: { label: t.common.retry, onRetry: () => void result.refetch() },
           }}
         />
@@ -498,7 +498,7 @@ export const EmailTab = () => {
             {t.marketing.trackingDocsLink}
           </Link>
         </Alert>
-        {senderUpdate.isError ? <Alert severity="error">{localizeError(senderUpdate.error, t)}</Alert> : null}
+        {senderUpdate.isError ? <Alert severity="error">{localizePanelError(senderUpdate.error, t)}</Alert> : null}
       </SectionCard>
       <SesOnboardingWizard enabled={credentialsConfigured && settings !== null} onChecklist={setLiveChecklist} />
       <SmtpForm configured={result.data.smtpConfigured} />
@@ -510,14 +510,14 @@ export const EmailTab = () => {
         actions={<Button type="submit" variant="contained" disabled={settings === null || reputationUpdate.isPending}>{reputationUpdate.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}
       >
         {reputation.isPending ? <Typography variant="body2">{t.marketing.reputationLoading}</Typography> : null}
-        {reputation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(reputation.error, t), retry: { label: t.common.retry, onRetry: () => void reputation.refetch() } }} /> : null}
+        {reputation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(reputation.error, t), retry: { label: t.common.retry, onRetry: () => void reputation.refetch() } }} /> : null}
         {reputation.isSuccess ? <ReputationSummary reputation={reputation.data} /> : null}
         <FormControlLabel
           control={<Switch checked={values.autoPauseOnCritical} disabled={settings === null} onChange={(event) => setAutoPauseOnCritical(event.target.checked)} />}
           label={t.marketing.autoPauseOnCriticalLabel}
         />
         <Typography variant="body2">{t.marketing.autoPauseOnCriticalHint}</Typography>
-        {reputationUpdate.isError ? <Alert severity="error">{localizeError(reputationUpdate.error, t)}</Alert> : null}
+        {reputationUpdate.isError ? <Alert severity="error">{localizePanelError(reputationUpdate.error, t)}</Alert> : null}
       </SectionCard>
       <SectionCard title={t.marketing.footer} description={t.marketing.footerRequiredHint} onSubmit={submitFooter} actions={<Button type="submit" variant="contained" disabled={footerUpdate.isPending}>{footerUpdate.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}>
         <FormControl fullWidth>
@@ -528,7 +528,7 @@ export const EmailTab = () => {
           <FormLabel htmlFor="marketing-footer-address">{t.marketing.footerAddressLabel}</FormLabel>
           <OutlinedInput id="marketing-footer-address" value={values.footerAddress} onChange={(event) => setFooterAddress(event.target.value)} multiline minRows={2} />
         </FormControl>
-        {footerUpdate.isError ? <Alert severity="error">{localizeError(footerUpdate.error, t)}</Alert> : null}
+        {footerUpdate.isError ? <Alert severity="error">{localizePanelError(footerUpdate.error, t)}</Alert> : null}
       </SectionCard>
       <SectionCard title={t.marketing.webhookUrl} description={t.marketing.webhookHint}>
         <Typography variant="body2" data-testid="marketing-webhook-url">{result.data.webhookUrl ?? t.marketing.blocked}</Typography>

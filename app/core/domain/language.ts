@@ -8,5 +8,10 @@ export const LANGUAGES = languageSchema.options;
 
 export const DEFAULT_LANGUAGE: Language = 'pl';
 
+export const languageOrDefault = (language: string): Language => {
+  const parsed = languageSchema.safeParse(language);
+  return parsed.success ? parsed.data : DEFAULT_LANGUAGE;
+};
+
 /** HTTP header carrying the UI language for transactional magic-link emails. */
 export const MAGIC_LINK_LANGUAGE_HEADER = 'x-together-language';

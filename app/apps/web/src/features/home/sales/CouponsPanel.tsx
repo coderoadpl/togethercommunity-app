@@ -42,7 +42,7 @@ import {
   StatusView,
 } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 
@@ -103,7 +103,7 @@ export const CouponsPanel = () => {
       const file = await queryClient.fetchQuery(actions.couponStatsExport({ ...filterQuery, format }));
       downloadFile(file);
     } catch (error) {
-      setExportError(localizeError(error, t));
+      setExportError(localizePanelError(error, t));
     } finally {
       setExporting(null);
     }
@@ -171,7 +171,7 @@ export const CouponsPanel = () => {
         {coupons.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.coupons.loading }} />
         ) : coupons.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table>
@@ -314,7 +314,7 @@ export const CouponCreatePage = () => {
       title={t.coupons.createTitle}
       backTo={<PanelBackLink to="/panel/sales/coupons">{t.coupons.allCoupons}</PanelBackLink>}
     >
-      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
+      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
       <SectionCard title={t.coupons.createTitle} onSubmit={submit}>
         <FormControl fullWidth>
           <FormLabel htmlFor="coupon-code">{t.coupons.code}</FormLabel>
@@ -499,7 +499,7 @@ export const CouponCreatePage = () => {
         </Button>
         {invalidValue ? <Alert severity="error">{t.coupons.invalidValue}</Alert> : null}
         {invalidDates ? <Alert severity="error">{t.coupons.invalidDateRange}</Alert> : null}
-        {create.isError ? <Alert severity="error">{localizeError(create.error, t)}</Alert> : null}
+        {create.isError ? <Alert severity="error">{localizePanelError(create.error, t)}</Alert> : null}
       </SectionCard>
     </PanelPage>
   );
@@ -524,7 +524,7 @@ export const CouponDetailPage = ({ couponId }: { couponId: string }) => {
     return (
       <PanelPage
         title={t.coupons.title}
-        state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }}
+        state={{ kind: 'error', message: localizePanelError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }}
       />
     );
   }
@@ -589,7 +589,7 @@ export const CouponDetailPage = ({ couponId }: { couponId: string }) => {
           </Stack>
         )}
       </SectionCard>
-      {archive.isError ? <Alert severity="error">{localizeError(archive.error, t)}</Alert> : null}
+      {archive.isError ? <Alert severity="error">{localizePanelError(archive.error, t)}</Alert> : null}
     </PanelPage>
   );
 };

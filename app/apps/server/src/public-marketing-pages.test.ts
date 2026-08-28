@@ -78,7 +78,7 @@ describe('public marketing pages', () => {
       brand, language: 'pl', path: '/legal/privacy/v/2', title: 'Prywatność', content: 'Treść',
       immutableVersion: { version: 2, publishedAt: '2026-07-22T10:00:00.000Z' },
     });
-    expect(html).toContain('niezmienna wersja 2');
+    expect(html).toContain('Wersja 2, opublikowana');
     expect(html).toContain('22 lipca 2026');
   });
 

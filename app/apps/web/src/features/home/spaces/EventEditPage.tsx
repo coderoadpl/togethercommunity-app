@@ -7,7 +7,7 @@ import { inspectVideoEmbedUrl, type PublicSpaceEvent } from '#core/domain/index.
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 
 interface EventFormValues {
@@ -194,7 +194,7 @@ const EventForm = ({
         </FormHelperText>
       </FormControl>
 
-      {error !== undefined && error !== null ? <Alert severity="error">{localizeError(error, t)}</Alert> : null}
+      {error !== undefined && error !== null ? <Alert severity="error">{localizePanelError(error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -325,7 +325,7 @@ export const EventEditPage = ({ spaceId, eventId }: { spaceId: string; eventId: 
         backTo={backTo}
         state={{
           kind: 'error',
-          message: localizeError(event.error, t),
+          message: localizePanelError(event.error, t),
           retry: { label: t.common.retry, onRetry: () => void event.refetch() },
         }}
       />

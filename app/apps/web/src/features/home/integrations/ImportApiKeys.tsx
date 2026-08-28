@@ -25,7 +25,7 @@ import {
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 
 const dateInputValue = (date: Date): string => {
   const year = String(date.getFullYear());
@@ -178,13 +178,13 @@ export const ImportApiKeys = () => {
             />
           </Alert>
         ) : null}
-        {create.isError ? <Alert severity="error">{localizeError(create.error, t)}</Alert> : null}
+        {create.isError ? <Alert severity="error">{localizePanelError(create.error, t)}</Alert> : null}
       </Box>
 
       {keys.isPending ? (
         <StatusView surface={false} state={{ kind: 'loading', label: t.integrations.importKeysLoading }} />
       ) : keys.isError ? (
-        <StatusView surface={false} state={{ kind: 'error', message: localizeError(keys.error, t), retry: { label: t.common.retry, onRetry: () => void keys.refetch() } }} />
+        <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(keys.error, t), retry: { label: t.common.retry, onRetry: () => void keys.refetch() } }} />
       ) : importKeys.length === 0 ? (
         <Typography color="text.secondary">{t.integrations.importKeysEmpty}</Typography>
       ) : (
@@ -261,7 +261,7 @@ export const ImportApiKeys = () => {
                     audit.isPending ? (
                       <StatusView surface={false} state={{ kind: 'loading', label: t.integrations.importKeysAuditLoading }} />
                     ) : audit.isError ? (
-                      <Alert severity="error">{localizeError(audit.error, t)}</Alert>
+                      <Alert severity="error">{localizePanelError(audit.error, t)}</Alert>
                     ) : audit.data.events.length === 0 ? (
                       <Typography color="text.secondary">{t.integrations.importKeysAuditEmpty}</Typography>
                     ) : (
@@ -269,9 +269,9 @@ export const ImportApiKeys = () => {
                         {audit.data.events.map((event) => (
                           <Typography component="li" variant="body2" key={event.id}>
                             {t.integrations.importKeysAuditEvent({
-                              kind: event.kind,
+                              kind: t.integrations.importKeysAuditKinds[event.kind],
                               importKey: event.importKey,
-                              action: event.action,
+                              action: t.integrations.importKeysAuditActions[event.action],
                               at: formatDate(event.at),
                             })}
                           </Typography>
@@ -285,7 +285,7 @@ export const ImportApiKeys = () => {
           })}
         </Stack>
       )}
-      {revoke.isError ? <Alert severity="error">{localizeError(revoke.error, t)}</Alert> : null}
+      {revoke.isError ? <Alert severity="error">{localizePanelError(revoke.error, t)}</Alert> : null}
       <ConfirmDialog
         open={confirmingRevoke !== null}
         title={t.integrations.importKeysRevokeConfirmTitle}

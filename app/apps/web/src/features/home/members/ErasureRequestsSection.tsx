@@ -11,7 +11,7 @@ import {
   SectionCard,
   StatusView,
 } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 
 export const ErasureRequestsSection = () => {
   const t = useTranslations();
@@ -53,7 +53,7 @@ export const ErasureRequestsSection = () => {
           <StatusView state={{ kind: 'loading', label: t.common.loading }} />
         ) : requests.isError ? (
           <StatusView
-            state={{ kind: 'error', message: localizeError(requests.error, t), retry: { label: t.common.retry, onRetry: () => void requests.refetch() } }}
+            state={{ kind: 'error', message: localizePanelError(requests.error, t), retry: { label: t.common.retry, onRetry: () => void requests.refetch() } }}
           />
         ) : (
           <Stack useFlexGap spacing="1rem">
@@ -110,7 +110,7 @@ export const ErasureRequestsSection = () => {
             })}
           </Stack>
         )}
-        {reject.isError ? <Alert severity="error">{localizeError(reject.error, t)}</Alert> : null}
+        {reject.isError ? <Alert severity="error">{localizePanelError(reject.error, t)}</Alert> : null}
       </SectionCard>
       <ConfirmDialog
         open={removing !== null}
@@ -120,7 +120,7 @@ export const ErasureRequestsSection = () => {
             <Typography>
               {t.members.removeConfirmIntro({ email: removing?.member.email ?? '' })}
             </Typography>
-            {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
+            {remove.isError ? <Alert severity="error">{localizePanelError(remove.error, t)}</Alert> : null}
           </>
         }
         confirmLabel={remove.isPending ? t.members.removing : t.members.remove}

@@ -466,6 +466,7 @@ export const en: Messages = {
     loadMore: 'Load more',
     olderTruncated: 'Only the latest 100 notifications are shown.',
     unreadLabel: 'Unread',
+    unreadAria: ({ count }) => format('Unread notifications: {count}', { count }),
     threadReply: ({ author, lesson }) =>
       lesson.length > 0
         ? format('{author} replied in the "{lesson}" discussion', { author, lesson })
@@ -491,6 +492,7 @@ export const en: Messages = {
     loading: 'Loading messages…',
     emptyList: 'You have no messages yet',
     emptyListHint: 'Find the author of a post and send them a message',
+    browseSpaces: 'Browse spaces',
     emptyConversation: 'This is the beginning of the conversation. Send the first message.',
     conversationEyebrow: 'Conversation',
     backToList: 'Back to messages',

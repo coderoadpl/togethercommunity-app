@@ -11,6 +11,7 @@ import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { streamlessPollInterval } from '../../../notifications-stream.js';
+import { SidebarProgressPercent } from '../../../theme.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
@@ -99,14 +100,16 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
               <ListItemIcon>
                 <ProgressRing value={percent} done={done} />
               </ListItemIcon>
-              <ListItemText
-                primary={course.courseName}
-                slotProps={{ primary: { noWrap: true } }}
-              />
+              <Tooltip title={course.courseName} enterDelay={600} describeChild>
+                <ListItemText
+                  primary={course.courseName}
+                  slotProps={{ primary: { noWrap: true } }}
+                />
+              </Tooltip>
               {done ? null : (
-                <Typography variant="caption" color="text.secondary" component="span">
+                <SidebarProgressPercent variant="caption" component="span" sx={{ flexShrink: 0 }}>
                   {`${percent}%`}
-                </Typography>
+                </SidebarProgressPercent>
               )}
             </NavRow>
             {(spacesByCourse.get(course.courseId) ?? []).map((space) => (

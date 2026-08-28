@@ -446,7 +446,7 @@ const SCREENS: ScreenSpec[] = [
     name: 'panel-marketing-consents',
     auth: 'creator',
     path: '/panel/marketing/consents',
-    ready: (page) => page.getByRole('heading', { name: 'Kreator zgód' }).waitFor(visible),
+    ready: (page) => page.getByRole('heading', { name: 'Zgody marketingowe' }).waitFor(visible),
   },
   {
     name: 'panel-marketing-documents',

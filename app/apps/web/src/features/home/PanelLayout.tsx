@@ -34,7 +34,7 @@ import { NotificationBell } from '../../NotificationBell.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
 import { AppShell, BrandLoader, StatusView } from '../../components/layout/index.js';
-import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
+import { localizePanelError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
 import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
@@ -380,7 +380,7 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
         grouped={false}
       />
       {openReports.isError ? (
-        <StatusView surface={false} state={{ kind: 'error', message: localizeError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />
+        <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />
       ) : null}
     </List>
   );
@@ -560,7 +560,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
       <Outlet />
     </AppShell>
     <Snackbar open={signOut.isError} autoHideDuration={6000} onClose={() => signOut.reset()}>
-      <Alert severity="error" onClose={() => signOut.reset()}>{signOut.isError ? localizeError(signOut.error, t) : ''}</Alert>
+      <Alert severity="error" onClose={() => signOut.reset()}>{signOut.isError ? localizePanelError(signOut.error, t) : ''}</Alert>
     </Snackbar>
     </>
   );
@@ -654,7 +654,7 @@ export const PanelLayout = () => {
   if (me.isError) {
     return (
       <ThemeProvider theme={theme}>
-        <PanelErrorShell message={localizeError(me.error, t)} onRetry={() => void me.refetch()} />
+        <PanelErrorShell message={localizePanelError(me.error, t)} onRetry={() => void me.refetch()} />
       </ThemeProvider>
     );
   }

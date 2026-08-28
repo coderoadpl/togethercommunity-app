@@ -1,4 +1,4 @@
-import type { MemberEventType } from '#core/domain/index.js';
+import type { ImportAuditAction, ImportAuditResourceType, MemberEventType } from '#core/domain/index.js';
 
 export type MessageParams = Record<string, string | number>;
 
@@ -102,6 +102,11 @@ export interface Messages {
     messageIntegrationAuth: string;
     messageEmailSendingNotConfigured: string;
     messagePlatformEmailPoolExhausted: string;
+    panelHintIntegrationNotConfigured: string;
+    panelHintIntegrationAuth: string;
+    panelHintEmailSendingNotConfigured: string;
+    panelHintPlatformEmailPoolExhausted: string;
+    panelHintInvoiceExemptionBasisMissing: string;
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
     messageSlugReservedGeneric: string;
@@ -645,6 +650,8 @@ export interface Messages {
     importKeysAudit: string;
     importKeysAuditLoading: string;
     importKeysAuditEmpty: string;
+    importKeysAuditKinds: Record<ImportAuditResourceType, string>;
+    importKeysAuditActions: Record<ImportAuditAction, string>;
     importKeysAuditEvent: (params: {
       kind: string;
       importKey: string;
@@ -879,6 +886,7 @@ export interface Messages {
     newModule: string;
     addModule: string;
     prefixLabel: string;
+    prefixHint: string;
     creatingModule: string;
     createModule: string;
     attachExisting: string;

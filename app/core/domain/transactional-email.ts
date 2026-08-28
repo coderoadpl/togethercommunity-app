@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
-import { languageSchema, type Language } from './language.js';
+import { languageOrDefault, languageSchema, type Language } from './language.js';
 
 export const transactionalLanguageSchema = languageSchema;
 
@@ -15,9 +15,6 @@ export const emailMessageSchema = z.object({
 });
 
 export type EmailMessage = z.output<typeof emailMessageSchema>;
-
-const languageOrDefault = (language: string): TransactionalLanguage =>
-  transactionalLanguageSchema.safeParse(language).success && language === 'en' ? 'en' : 'pl';
 
 const escapeHtmlCharacter = (character: string): string => {
   switch (character) {
@@ -37,6 +34,13 @@ const escapeHtmlCharacter = (character: string): string => {
 };
 
 const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, escapeHtmlCharacter);
+
+const polishDateFormatter = new Intl.DateTimeFormat('pl-PL', {
+  dateStyle: 'long',
+  timeZone: 'Europe/Warsaw',
+});
+
+const polishDate = (isoDateTime: string): string => polishDateFormatter.format(new Date(isoDateTime));
 
 const link = (href: string, label: string): string =>
   `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
@@ -128,7 +132,7 @@ export const welcomeSignIn = (
   }
 
   return emailMessageSchema.parse({
-    subject: `Cześć, Twoje konto ${input.tenantName} jest gotowe`,
+    subject: `Twoje konto na platformie ${input.tenantName} jest gotowe`,
     html: `${header}<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.</p><p>${actionLink}</p>${socialLinks.html}`,
     text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.\n\nZaloguj się i otwórz kurs: ${input.actionUrl}${socialLinks.text}`,
   });
@@ -171,8 +175,8 @@ export const verifyEmail = (
 
   return emailMessageSchema.parse({
     subject: 'Potwierdź swój adres e-mail',
-    html: `<p>Cześć!</p><p>Potwierdź, że ten adres e-mail należy do Ciebie:</p><p>${actionLink}</p><p>Możesz logować się i korzystać z Together przed potwierdzeniem adresu. Weryfikacja jest wymagana tylko do utworzenia nowej przestrzeni.</p><p>Link jest ważny przez godzinę.</p>`,
-    text: `Cześć!\n\nPotwierdź, że ten adres e-mail należy do Ciebie:\n${input.actionUrl}\n\nMożesz logować się i korzystać z Together przed potwierdzeniem adresu. Weryfikacja jest wymagana tylko do utworzenia nowej przestrzeni.\n\nLink jest ważny przez godzinę.`,
+    html: `<p>Cześć!</p><p>Potwierdź, że ten adres e-mail należy do Ciebie:</p><p>${actionLink}</p><p>Możesz logować się i korzystać z Together przed potwierdzeniem adresu. Weryfikacja jest potrzebna tylko do założenia własnej platformy twórcy.</p><p>Link jest ważny przez godzinę.</p>`,
+    text: `Cześć!\n\nPotwierdź, że ten adres e-mail należy do Ciebie:\n${input.actionUrl}\n\nMożesz logować się i korzystać z Together przed potwierdzeniem adresu. Weryfikacja jest potrzebna tylko do założenia własnej platformy twórcy.\n\nLink jest ważny przez godzinę.`,
   });
 };
 
@@ -185,7 +189,7 @@ export const threadReply = (
   const author = escapeHtml(input.authorDisplay);
   const snippet = escapeHtml(input.snippet);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'w dyskusji możesz wyciszyć ten wątek',
+    pl: 'możesz wyciszyć ten wątek w dyskusji',
     en: 'you can mute this thread in the discussion',
   });
 
@@ -215,7 +219,7 @@ export const lessonQuestion = (
   const author = escapeHtml(input.authorDisplay);
   const snippet = escapeHtml(input.snippet);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'w dyskusji możesz wyciszyć ten wątek',
+    pl: 'możesz wyciszyć ten wątek w dyskusji',
     en: 'you can mute this thread in the discussion',
   });
 
@@ -245,7 +249,7 @@ export const spacePost = (
   const author = escapeHtml(input.authorDisplay);
   const snippet = escapeHtml(input.snippet);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'w przestrzeni możesz przestać ją obserwować',
+    pl: 'możesz przestać obserwować tę przestrzeń',
     en: 'you can unfollow the space there',
   });
 
@@ -261,8 +265,8 @@ export const spacePost = (
   const actionLink = link(input.url, 'Otwórz przestrzeń');
   return emailMessageSchema.parse({
     subject: `Nowy wpis w przestrzeni „${input.spaceName}”`,
-    html: `<p>Cześć!</p><p>${author} opublikował(a) wpis w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} opublikował(a) wpis w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz przestrzeń: ${input.url}${footer.text}`,
+    html: `<p>Cześć!</p><p>${author} dodał(a) nowy wpis w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+    text: `Cześć!\n\n${input.authorDisplay} dodał(a) nowy wpis w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz przestrzeń: ${input.url}${footer.text}`,
   });
 };
 
@@ -275,7 +279,7 @@ export const spaceEvent = (
   const author = escapeHtml(input.authorDisplay);
   const snippet = escapeHtml(input.snippet);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'w przestrzeni możesz przestać ją obserwować',
+    pl: 'możesz przestać obserwować tę przestrzeń',
     en: 'you can unfollow the space there',
   });
 
@@ -304,7 +308,7 @@ export const directMessage = (
   const sender = escapeHtml(input.senderDisplay);
   const snippet = escapeHtml(input.snippet);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'w ustawieniach konta możesz wyłączyć wiadomości od członków społeczności',
+    pl: 'w ustawieniach konta możesz wyłączyć wiadomości od innych uczestników',
     en: 'you can turn off messages from community members in your account settings',
   });
 
@@ -362,12 +366,13 @@ export const subscriptionPaymentFailed = (
   const tenantName = escapeHtml(input.tenantName);
   const productTitle = escapeHtml(input.productTitle);
   const accessEndsAt = escapeHtml(input.accessEndsAt);
+  const accessEndsAtPl = escapeHtml(polishDate(input.accessEndsAt));
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
   const portal =
     input.billingPortalUrl === null
       ? ''
-      : `<p>${link(input.billingPortalUrl, languageOrDefault(language) === 'en' ? 'Update billing details' : 'Zaktualizuj płatność')}</p>`;
+      : `<p>${link(input.billingPortalUrl, languageOrDefault(language) === 'en' ? 'Update billing details' : 'Zaktualizuj dane płatności')}</p>`;
 
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
@@ -378,9 +383,9 @@ export const subscriptionPaymentFailed = (
   }
 
   return emailMessageSchema.parse({
-    subject: `Nie udało się pobrać płatności za ${input.productTitle}`,
-    html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za ${productTitle} na platformie ${tenantName}.</p><p>Twój dostęp wygaśnie ${accessEndsAt}.</p>${portal}${socialLinks.html}`,
-    text: `Cześć!\n\nNie udało się pobrać płatności za ${input.productTitle} na platformie ${input.tenantName}.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.${input.billingPortalUrl === null ? '' : `\n\nZaktualizuj płatność: ${input.billingPortalUrl}`}${socialLinks.text}`,
+    subject: `Nie udało się pobrać płatności za „${input.productTitle}”`,
+    html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za „${productTitle}” na platformie ${tenantName}.</p><p>Bez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtPl}.</p>${portal}${socialLinks.html}`,
+    text: `Cześć!\n\nNie udało się pobrać płatności za „${input.productTitle}” na platformie ${input.tenantName}.\n\nBez opłacenia subskrypcji dostęp wygaśnie ${polishDate(input.accessEndsAt)}.${input.billingPortalUrl === null ? '' : `\n\nZaktualizuj dane płatności: ${input.billingPortalUrl}`}${socialLinks.text}`,
   });
 };
 
@@ -397,6 +402,7 @@ export const subscriptionEnded = (
   const tenantName = escapeHtml(input.tenantName);
   const productTitle = escapeHtml(input.productTitle);
   const accessEndsAt = escapeHtml(input.accessEndsAt);
+  const accessEndsAtPl = escapeHtml(polishDate(input.accessEndsAt));
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
 
@@ -409,9 +415,9 @@ export const subscriptionEnded = (
   }
 
   return emailMessageSchema.parse({
-    subject: `Twoja subskrypcja ${input.productTitle} zakończyła się`,
-    html: `${header}<p>Cześć!</p><p>Twoja subskrypcja ${productTitle} na platformie ${tenantName} zakończyła się.</p><p>Twój dostęp wygaśnie ${accessEndsAt}.</p><p>${link(input.offerUrl, 'Zobacz ofertę')}</p>${socialLinks.html}`,
-    text: `Cześć!\n\nTwoja subskrypcja ${input.productTitle} na platformie ${input.tenantName} zakończyła się.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.\n\nZobacz ofertę: ${input.offerUrl}${socialLinks.text}`,
+    subject: `Subskrypcja „${input.productTitle}” została zakończona`,
+    html: `${header}<p>Cześć!</p><p>Twoja subskrypcja „${productTitle}” na platformie ${tenantName} została zakończona.</p><p>Dostęp do materiałów zachowasz do ${accessEndsAtPl}.</p><p>${link(input.offerUrl, 'Zobacz ofertę')}</p>${socialLinks.html}`,
+    text: `Cześć!\n\nTwoja subskrypcja „${input.productTitle}” na platformie ${input.tenantName} została zakończona.\n\nDostęp do materiałów zachowasz do ${polishDate(input.accessEndsAt)}.\n\nZobacz ofertę: ${input.offerUrl}${socialLinks.text}`,
   });
 };
 
@@ -441,8 +447,8 @@ export const supportMessage = (
   }
   return emailMessageSchema.parse({
     subject: `[${input.tenantName}] ${input.subject}`,
-    html: `${header}<p>Wiadomość do wsparcia od ${memberDisplay} na platformie ${tenantName}.</p><p>Odpowiedz do: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
-    text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
+    html: `${header}<p>Nowa wiadomość od uczestnika ${memberDisplay} (platforma ${tenantName}).</p><p>Odpowiedz na adres: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
+    text: `Nowa wiadomość od uczestnika ${input.memberDisplay} (platforma ${input.tenantName}).\n\nOdpowiedz na adres: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
   });
 };
 
@@ -467,8 +473,8 @@ export const memberErasureRequestEmail = (
   }
   return emailMessageSchema.parse({
     subject: `[${input.tenantName}] Wniosek o usunięcie danych`,
-    html: `<p>${memberEmail} wysłał(a) wniosek o usunięcie danych.</p><p>Złożono: ${input.requestedAt}<br>Termin: ${input.dueAt}</p><p><a href="${panelUrl}">Sprawdź wniosek</a></p>`,
-    text: `${input.memberEmail} wysłał(a) wniosek o usunięcie danych.\nZłożono: ${input.requestedAt}\nTermin: ${input.dueAt}\n${input.panelUrl}`,
+    html: `<p>${memberEmail} złożył(a) wniosek o usunięcie konta i danych.</p><p>Złożono: ${polishDate(input.requestedAt)}<br>Termin realizacji: ${polishDate(input.dueAt)}</p><p><a href="${panelUrl}">Otwórz wniosek w panelu</a></p>`,
+    text: `${input.memberEmail} złożył(a) wniosek o usunięcie konta i danych.\nZłożono: ${polishDate(input.requestedAt)}\nTermin realizacji: ${polishDate(input.dueAt)}\n${input.panelUrl}`,
   });
 };
 
@@ -489,6 +495,11 @@ export const emailTransportTest = (
     html: `<p>Transport ${transport} jest poprawnie skonfigurowany.</p><p>Ta wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.</p>`,
     text: `Transport ${input.transport} jest poprawnie skonfigurowany.\n\nTa wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.`,
   });
+};
+
+const REPUTATION_STATUS_PL: Record<'warn' | 'critical', string> = {
+  warn: 'ostrzeżenie',
+  critical: 'stan krytyczny',
 };
 
 export const reputationAlertEmail = (
@@ -520,9 +531,12 @@ export const reputationAlertEmail = (
       text: `E-mail reputation for ${input.tenantName} is ${input.status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${input.windowStart} – ${input.windowEnd}\n${input.dashboardUrl}`,
     });
   }
+  const statusPl = REPUTATION_STATUS_PL[input.status];
+  const hardBounceRatePl = input.hardBounceRate === null ? 'brak danych' : hardBounceRate;
+  const complaintRatePl = input.complaintRate === null ? 'brak danych' : complaintRate;
   return emailMessageSchema.parse({
-    subject: `[${input.tenantName}] Reputacja e-mail: ${input.status}`,
-    html: `<p>Reputacja e-mail dla ${tenantName} ma status <strong>${input.status}</strong>.</p><p>Współczynnik trwałych odbić: ${hardBounceRate}<br>Współczynnik skarg: ${complaintRate}<br>Okres: ${input.windowStart} – ${input.windowEnd}</p><p><a href="${dashboardUrl}">Sprawdź reputację</a></p>`,
-    text: `Reputacja e-mail dla ${input.tenantName} ma status ${input.status}.\nWspółczynnik trwałych odbić: ${hardBounceRate}\nWspółczynnik skarg: ${complaintRate}\nOkres: ${input.windowStart} – ${input.windowEnd}\n${input.dashboardUrl}`,
+    subject: `[${input.tenantName}] Reputacja nadawcy: ${statusPl}`,
+    html: `<p>Reputacja nadawcy e-mail platformy ${tenantName}: <strong>${statusPl}</strong>.</p><p>Odsetek twardych odbić (hard bounce): ${hardBounceRatePl}<br>Odsetek zgłoszeń spamu: ${complaintRatePl}<br>Okres: ${polishDate(input.windowStart)} – ${polishDate(input.windowEnd)}</p><p><a href="${dashboardUrl}">Sprawdź reputację</a></p>`,
+    text: `Reputacja nadawcy e-mail platformy ${input.tenantName}: ${statusPl}.\nOdsetek twardych odbić (hard bounce): ${hardBounceRatePl}\nOdsetek zgłoszeń spamu: ${complaintRatePl}\nOkres: ${polishDate(input.windowStart)} – ${polishDate(input.windowEnd)}\n${input.dashboardUrl}`,
   });
 };

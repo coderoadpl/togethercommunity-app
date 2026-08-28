@@ -28,11 +28,13 @@ here first, then use it.
 | subscription | **subskrypcja** | **subscription** | Never „abonament". Statuses: aktywna/active, zaległa płatność/payment past due, anulowana/canceled. |
 | order | **zamówienie** | **order** | Statuses: opłacone/paid, oczekujące/pending, nieudane/failed, zwrócone/refunded (lowercase in tables). |
 | grant (an access entitlement) | **dostęp** (long: **przyznany dostęp**) | **grant** | Verb: **przyznać** / **grant** — ALWAYS „przyznać", never „nadać" (fixed: checkout success copy). States: aktywny/active, wygasły/expired, bezterminowo/perpetual. |
-| to revoke a grant | **cofnąć dostęp** | **revoke** | DECIDED: „cofnij", not „odbierz" — „odbierz" collides with the claim-CTA „Odbierz za darmo" (opposite directions of the same verb). |
-| to claim for free | **odbierz za darmo** | **get it for free** | Checkout CTA; unambiguous now that revoke = „cofnij". |
-| checkout (page/flow) | **płatność** | **checkout** | Page eyebrow „płatność", loading „Ładowanie płatności…". |
+| to revoke a grant | **cofnąć dostęp** | **revoke** | DECIDED: „cofnij", not „odbierz" — „odbierz" collides with the claim-CTA „Odbierz bezpłatnie" (opposite directions of the same verb). |
+| to claim for free | **odbierz bezpłatnie** | **get it for free** | Checkout CTA; unambiguous now that revoke = „cofnij". |
+| checkout (the purchase surface) | **strona zakupu** | **checkout** | DECIDED: creator-facing copy names the surface „strona zakupu" (was mixed with „checkout"/„formularz zakupu"/„płatność"). The buyer-facing page keeps „Płatność" as its eyebrow and „Ładowanie płatności…" while loading — that copy names the payment step, not the surface. |
 | checkout link | **link do zakupu** | **checkout link** | DECIDED: one PL term (was mixed with „link do płatności") and one EN term (was mixed with "purchase link"). |
 | billing portal | **portal płatności** | **billing portal** | Student-side section heading: „Płatności" / "Payments"; CTA „Zarządzaj płatnościami" / "Manage payments". |
+| payment provider | **dostawca płatności** | **payment provider** | One name in orders, the member subscription table and Integrations — never „operator płatności" or a bare „Operator". |
+| free trial lesson | **bezpłatna lekcja próbna** | **free preview lesson** | One name for the free sample everywhere — never „lekcja podglądowa", „darmowy podgląd" or „za darmo". |
 
 ## Content structure
 
@@ -56,19 +58,24 @@ here first, then use it.
 | thread | **wątek** | **thread** | |
 | post (a message in a thread) | **wpis** | **post** | Verb: „Opublikuj" / "Post". Reply = „odpowiedź" / "reply", verb „Odpowiedz" / "Reply". |
 | follow a thread | **obserwuj wątek** | **follow thread** | Muted = „wyciszono" / "muted". |
-| community space (feed area inside a tenant) | **strefa** | **space** | DECIDED (2026-07-20, spaces core): „przestrzeń" is taken by tenant, so community spaces are „strefy" („strefa Społeczność", „wpis w strefie"). EN keeps "space" — tenant copy avoids the bare noun there, so no collision in practice. „Strefa" inflects normally: „w strefie", „obserwuj strefę". |
+| community space (feed area inside a tenant) | **przestrzeń** | **space** | DECIDED: the tenant is „platforma", so „przestrzeń" belongs to community spaces only („Przestrzenie", „wpis w przestrzeni „X""). Supersedes the earlier „strefa" proposal. Never use „przestrzeń" for a tenant. |
 | reaction (emoji on a post) | **reakcja** | **reaction** | Closed emoji set: 👍 ❤️ 🎉 💡 😂. Verb: „zareaguj" / "react". |
-| follow a space | **obserwuj strefę** | **follow space** | Same verb as thread follow; unfollow = „przestań obserwować" / "unfollow". |
+| follow a space | **obserwuj przestrzeń** | **follow space** | Same verb as thread follow; unfollow = „przestań obserwować" / "unfollow". |
+| ban a member | **ban** (verb: **zbanuj** / **zdejmij bana**) | **ban** | DECIDED: the colloquial noun is intentional and reaches the confirmation dialogs too („Zbanować {e-mail}?", „Zdjąć bana z {e-mail}?") — never „blokada"/„zablokuj" for this action. Badge „Zbanowany" / "Banned". |
 
 ## Platform
 
 | Concept | PL | EN | Decision notes |
 |---|---|---|---|
-| tenant (user-facing) | **przestrzeń** | **space** | DECIDED: users NEVER see „tenant". EN is "space" everywhere — "workspace" is forbidden (was mixed). „Przestrzeń" takes normal inflection: „adres przestrzeni", „Nieznana przestrzeń". |
+| tenant (user-facing) | **platforma** | **workspace** | DECIDED: users NEVER see „tenant". PL says „platforma" („Nieznana platforma", „adres platformy", „Twoja platforma") so „przestrzeń" stays reserved for community spaces. EN still says "workspace"; unifying EN is a separate pass. |
 | account | **konto** | **account** | |
 | magic link | **magiczny link** | **magic link** | DECIDED word order: adjective first — „magiczny link", „zaloguj się magicznym linkiem" (was mixed with „link magiczny"). |
 | passkey | **klucz dostępu** | **passkey** | |
-| two-factor authentication | **uwierzytelnianie dwuskładnikowe** | **two-factor authentication** | EN buttons spell it out ("Enable two-factor authentication"). |
+| two-factor authentication | **weryfikacja dwuetapowa** | **two-factor authentication** | DECIDED: one name on the login screen and in security settings — never „uwierzytelnianie dwuskładnikowe". EN buttons spell it out ("Enable two-factor authentication"). |
+| file storage (S3) | **magazyn plików** | **file storage** | The service. Its container is **bucket** in both languages (vendor term, kept untranslated): „nazwa bucketu" / "bucket name". Never „pamięć plików", „storage" or „zasobnik". |
+| import key (short-lived migration key) | **klucz importu** | **import key** | Section heading „Klucze importu" / "Import keys" — never „klucz API migracji" / "migration API key". |
+| configured / not configured (status pair) | **Skonfigurowane / Nieskonfigurowane** | **Configured / Not configured** | One adjectival pair in the setup checklist and in Integrations — never „Skonfigurowano", „Nie ustawiono", „Brak konfiguracji" or "Not set". |
+| iFirma (invoicing vendor) | **iFirma** | **iFirma** | Trademark casing: lowercase „i", capital „F" — in every heading, label and provider option, both languages. |
 | notification | **powiadomienie** | **notification** | Kinds so far: thread reply = „odpowiedź w dyskusji" / "reply in the discussion". |
 | manage notifications (e-mail footer) | **zarządzaj powiadomieniami** | **manage notifications** | Opt-out footer in community notification e-mails; links the thread/space surface that owns the mute/unfollow toggle. |
 | terms of service | **regulamin** | **terms of service** | Tenant-configured BYO URL (panel Settings). Consent copy: „Akceptuję regulamin i politykę prywatności" / "I accept the terms of service and privacy policy". |
@@ -89,6 +96,7 @@ here first, then use it.
 | renew | **Odnów** | **Renew** | |
 | publish | **Opublikuj** | **Publish** | |
 | manage | **Zarządzaj** | **Manage** | |
+| upload a file | **Dodaj …** / progress **Przesyłanie…** | **Add …** / progress **Uploading…** | One PL pair for image assets, product downloads and lesson attachments — never „Wgraj"/„Wgrywanie…" or „Wysyłanie…". EN is not unified yet ("Upload file" still appears in image assets). |
 | irreversibility notice | **Tej operacji nie można cofnąć.** | **This cannot be undone.** | One canonical sentence (was mixed with „Ta operacja jest nieodwracalna."). |
 
 ## Error-message tone
@@ -150,7 +158,7 @@ key, PDF, HTML, CSV, JSON) — gloss in parentheses when a PL label exists
 4. grant = dostęp/grant; verb **przyznać** (fixed „nadany" →
    „przyznany" in checkout success copy).
 5. revoke = **cofnij dostęp** (was „odbierz") to free „odbierz" for the
-   claim-CTA „Odbierz za darmo".
+   claim-CTA „Odbierz bezpłatnie".
 6. checkout link = **link do zakupu** / **checkout link** (fixed „link do
    płatności" in `checkout.unavailableBody`, "purchase link" in
    `products.copyCheckoutLink` + `checkoutLinkCopied`).
@@ -190,3 +198,23 @@ key, PDF, HTML, CSV, JSON) — gloss in parentheses when a PL label exists
 22. community space = **strefa** / **space** (rejected: „przestrzeń" — tenant,
     „kanał" — chat-like, „grupa" — collides with FB groups). New notification
     kind copy: space post = „nowy wpis w strefie" / "new post in the space".
+23. PL tenant = **platforma**, superseding 2 and 22: „przestrzeń" now names the
+    community space and „strefa" is dropped. Applied to auth eyebrows, boot
+    splash, tenant chooser, branding, support, e-mail settings and transactional
+    e-mails. Where a sentence also names the shared product-level pool, that pool
+    is „Together", not „platforma".
+24. 2FA = **weryfikacja dwuetapowa** on the login screen and in security
+    settings (was „uwierzytelnianie dwuskładnikowe" in settings).
+25. checkout surface = **strona zakupu** in creator copy; the buyer-facing
+    checkout page keeps „Płatność"/„Ładowanie płatności…" for the payment step.
+26. storage = **magazyn plików** (service) + **bucket** (container); payment
+    provider = **dostawca płatności**; migration keys = **klucze importu**;
+    status pair = **Skonfigurowane/Nieskonfigurowane**; free sample =
+    **bezpłatna lekcja próbna**; upload pair = **Dodaj …/Przesyłanie…**.
+27. Moderation keeps the colloquial **ban** in confirmations too („Zbanować…?",
+    „Zdjąć bana z…?"), replacing „blokada".
+28. **iFirma** trademark casing in both languages (was „IFirma" in the
+    invoicing heading, username label and provider option).
+29. Setup errors are member-safe by default; the creator panel appends its own
+    hint (`errors.panelHint*`, `localizeErrorCodeForPanel`) so „Integracje →
+    E-mail" reaches the creator without leaking into member surfaces.

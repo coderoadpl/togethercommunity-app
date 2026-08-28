@@ -21,7 +21,7 @@ import type { SchedulerRunKind, SchedulerRunStatus } from '#core/domain/index.js
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { SchedulerActivitySummary, SchedulerRunStatusChip } from './SchedulerActivitySummary.js';
@@ -162,7 +162,7 @@ export const SchedulerActivityPanel = () => {
         {activity.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.marketing.activity.loading }} />
         ) : activity.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(activity.error, t), retry: { label: t.common.retry, onRetry: () => void activity.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(activity.error, t), retry: { label: t.common.retry, onRetry: () => void activity.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table size="small" aria-label={t.marketing.activity.title}>
@@ -218,7 +218,7 @@ export const SchedulerActivityDetailPage = () => {
     return <PanelPage title={t.marketing.activity.details} state={{ kind: 'loading', label: t.marketing.activity.loading }} />;
   }
   if (detail.isError) {
-    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
+    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'error', message: localizePanelError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
   }
 
   const { run, tenant } = detail.data;

@@ -170,6 +170,8 @@ export default tseslint.config(
       globals: {
         console: 'readonly',
         document: 'readonly',
+        localStorage: 'readonly',
+        matchMedia: 'readonly',
         process: 'readonly',
       },
     },

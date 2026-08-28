@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type SyntheticEvent } from 'react';
+import { useState, type FormEvent, type SyntheticEvent } from 'react';
 import {
   Alert,
   Box,
@@ -17,7 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, Navigate } from '@tanstack/react-router';
+import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-router';
 
 import {
   accentColorSchema,
@@ -927,22 +927,12 @@ const EmailVerificationPanel = () => {
 export const SettingsPanel = () => {
   const { tenant } = usePanelContext();
   const t = useTranslations();
-  const [hash, setHash] = useState(() => window.location.hash);
+  const navigate = useNavigate();
+  const hash = useRouterState({ select: (state) => state.location.hash });
   const canEdit = tenant.staffRole === 'owner';
 
-  useEffect(() => {
-    const syncHash = () => setHash(window.location.hash);
-    window.addEventListener('hashchange', syncHash);
-    return () => window.removeEventListener('hashchange', syncHash);
-  }, []);
-
   const changeSection = (_event: SyntheticEvent, value: SettingsSection) => {
-    setHash(`#${value}`);
-    window.history.replaceState(
-      null,
-      '',
-      `${window.location.pathname}${window.location.search}#${value}`,
-    );
+    void navigate({ hash: value, replace: true });
   };
 
   if (isRetiredBillingHash(hash)) {

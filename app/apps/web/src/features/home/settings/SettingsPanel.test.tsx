@@ -115,27 +115,13 @@ const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = [
 const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true, spaces: StubSpace[] = []) => {
   const { updates } = installSettingsBackend(initial, spaces);
 
-  const { queryClient } = renderWithProviders(
-    <PanelContextProvider
-      value={{ tenant: PANEL_TENANT, email: 'creator3@together.dev', emailVerified }}
-    >
-      <SettingsPanel />
-    </PanelContextProvider>,
-  );
-
-  return { queryClient, updates };
-};
-
-const renderPanelInRouter = (initial: StoredSettings = EMPTY_SETTINGS) => {
-  installSettingsBackend(initial);
-
   const rootRoute = createRootRoute();
   const settingsRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/panel/settings',
     component: () => (
       <PanelContextProvider
-        value={{ tenant: PANEL_TENANT, email: 'creator3@together.dev', emailVerified: true }}
+        value={{ tenant: PANEL_TENANT, email: 'creator3@together.dev', emailVerified }}
       >
         <SettingsPanel />
       </PanelContextProvider>
@@ -148,12 +134,14 @@ const renderPanelInRouter = (initial: StoredSettings = EMPTY_SETTINGS) => {
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([settingsRoute, integrationsRoute]),
-    history: createMemoryHistory({ initialEntries: ['/panel/settings'] }),
+    history: createMemoryHistory({
+      initialEntries: [`/panel/settings${window.location.hash}`],
+    }),
   });
 
-  renderWithProviders(<RouterProvider router={router} />);
+  const { queryClient } = renderWithProviders(<RouterProvider router={router} />);
 
-  return { router };
+  return { queryClient, router, updates };
 };
 
 const openSettingsSection = async (label: string) => {
@@ -184,7 +172,7 @@ describe('SettingsPanel information architecture', () => {
   it('sends the retired billing deep link to the integrations stripe tab', async () => {
     window.history.replaceState(null, '', '/panel/settings#billing');
 
-    const { router } = renderPanelInRouter();
+    const { router } = renderPanel();
 
     expect(await screen.findByTestId('integrations-route')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/panel/integrations');
@@ -214,6 +202,26 @@ describe('SettingsPanel information architecture', () => {
     );
     expect(await screen.findByTestId('security-reset-password')).toBeInTheDocument();
     expect(screen.getByTestId('passkey-name')).toBeInTheDocument();
+  });
+
+  it('follows a router-driven hash change while the panel stays mounted', async () => {
+    const { router } = renderPanel();
+    await screen.findByRole('tab', { name: pl.settingsNavigation.company });
+
+    await router.navigate({ to: '/panel/settings', hash: 'branding' });
+
+    expect(await screen.findByRole('tab', { name: pl.settingsNavigation.brand })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('records the active tab in the router hash', async () => {
+    const { router } = renderPanel();
+
+    await openSettingsSection(pl.settingsNavigation.legal);
+
+    expect(router.state.location.hash).toBe('legal');
   });
 });
 
@@ -410,7 +418,7 @@ describe('SettingsPanel public access', () => {
 
 describe('SettingsPanel direct KSeF', () => {
   it('points the KSeF credentials at the invoicing integration instead of duplicating them', async () => {
-    renderPanelInRouter({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
+    renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
 
     expect(await screen.findByText(pl.billing.ksefConfiguredInIntegrations)).toBeInTheDocument();
     expect(screen.getByTestId('ksef-integrations-link')).toHaveAttribute(

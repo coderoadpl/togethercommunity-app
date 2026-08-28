@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -242,8 +249,11 @@ const renderPanel = (
     })),
   );
 
-  return {
-    ...renderWithProviders(
+  const rootRoute = createRootRoute();
+  const integrationsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/integrations',
+    component: () => (
       <PanelContextProvider
         value={{
           tenant: { id: 'tenant-123', slug: 'akademia', name: 'Akademia', staffRole, memberId: null },
@@ -252,8 +262,19 @@ const renderPanel = (
         }}
       >
         <IntegrationsPanel />
-      </PanelContextProvider>,
+      </PanelContextProvider>
     ),
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([integrationsRoute]),
+    history: createMemoryHistory({
+      initialEntries: [`${window.location.pathname}${window.location.hash}`],
+    }),
+  });
+
+  return {
+    ...renderWithProviders(<RouterProvider router={router} />),
+    router,
     storageSubmissions,
     stripeConfigurations,
     testedProviders,
@@ -283,7 +304,7 @@ describe('IntegrationsPanel', () => {
   });
 
   it('opens the Stripe tab by default and keeps the other services one tab away', async () => {
-    renderPanel();
+    const { router } = renderPanel();
 
     expect(await screen.findByRole('tab', { name: pl.integrations.tabStripe })).toHaveAttribute(
       'aria-selected',
@@ -296,7 +317,7 @@ describe('IntegrationsPanel', () => {
 
     expect(await screen.findByTestId('bunny-test-connection')).toBeInTheDocument();
     expect(screen.queryByTestId('stripe-webhook-url')).not.toBeInTheDocument();
-    expect(window.location.hash).toBe('#video');
+    expect(router.state.location.hash).toBe('video');
   });
 
   it.each([
@@ -317,13 +338,25 @@ describe('IntegrationsPanel', () => {
     expect(await screen.findByRole('tab', { name: label })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('follows a hash change while the panel stays mounted', async () => {
-    renderPanel();
+  it('follows a router-driven hash change while the panel stays mounted', async () => {
+    const { router } = renderPanel();
     await screen.findByTestId('stripe-webhook-url');
 
-    window.location.hash = '#storage';
+    await router.navigate({ to: '/panel/integrations', hash: 'storage' });
 
     expect(await screen.findByTestId('storage-test-connection')).toBeInTheDocument();
+  });
+
+  it('follows a router-driven hash alias change while the panel stays mounted', async () => {
+    const { router } = renderPanel();
+    await screen.findByTestId('stripe-webhook-url');
+
+    await router.navigate({ to: '/panel/integrations', hash: 'ksef' });
+
+    expect(await screen.findByRole('tab', { name: pl.integrations.tabInvoicing })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 
   it('gathers the whole sending configuration under the e-mail tab', async () => {

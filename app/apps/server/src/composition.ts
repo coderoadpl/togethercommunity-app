@@ -381,7 +381,7 @@ export interface AppDeps {
   tenantCreationMode: TenantCreationMode;
   ids: IdGenerator;
   clock: Clock;
-  logger: { error(message: string): void };
+  logger: { error(message: string): void; warn(message: string): void };
   baseDomain: string;
   platformHost: string | null;
   singleTenantMode: boolean;
@@ -714,7 +714,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     ? { read: (credentials) => readSesQuota(credentials) }
     : undefined;
   const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
-  const logger = { error: (message: string) => process.stderr.write(`${message}\n`) };
+  const writeLog = (message: string): void => {
+    process.stderr.write(`${message}\n`);
+  };
+  const logger = { error: writeLog, warn: writeLog };
   const dispatchDeps = {
     emailOutbox,
     events: emailEvents,

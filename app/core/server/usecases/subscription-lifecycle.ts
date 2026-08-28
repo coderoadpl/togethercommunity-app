@@ -235,6 +235,7 @@ export const updateSubscriptionFromProvider = async (
     cancelAtPeriodEnd: boolean;
     currentPeriodEnd?: string | null;
     canceled?: boolean;
+    updatedAt?: string;
   },
   deps: Pick<SubscriptionLifecycleDeps, 'subscriptions' | 'clock'>,
 ): Promise<MemberSubscription> => {
@@ -243,7 +244,7 @@ export const updateSubscriptionFromProvider = async (
     cancelAtPeriodEnd: input.cancelAtPeriodEnd,
     status: input.canceled === true ? 'canceled' : input.subscription.status,
     currentPeriodEnd: input.currentPeriodEnd ?? input.subscription.currentPeriodEnd,
-    updatedAt: deps.clock.nowIso(),
+    updatedAt: input.updatedAt ?? deps.clock.nowIso(),
   };
   await deps.subscriptions.update(tenantId, subscription);
   return subscription;

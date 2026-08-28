@@ -147,6 +147,8 @@ describe('configureWebhook', () => {
 
   it('keeps the registered event list equal to the fulfillment handler set', () => {
     expect([...HANDLED_EVENT_TYPES]).toEqual([...STRIPE_WEBHOOK_EVENTS]);
+    expect(STRIPE_WEBHOOK_EVENTS).toContain('checkout.session.async_payment_succeeded');
+    expect(STRIPE_WEBHOOK_EVENTS).toContain('checkout.session.async_payment_failed');
   });
 
   it('deletes a newly registered endpoint during persistence cleanup', async () => {
@@ -464,6 +466,59 @@ describe('verifyWebhookEvent', () => {
     await expect(verify(payload)).resolves.toMatchObject({
       ok: true,
       value: { type, objectId: object.id, checkoutSession: null, ...expected },
+    });
+  });
+
+  it.each([
+    ['checkout.session.completed', 'unpaid'],
+    ['checkout.session.async_payment_succeeded', 'paid'],
+    ['checkout.session.async_payment_failed', 'unpaid'],
+  ] as const)('maps %s with payment status %s', async (type, paymentStatus) => {
+    const payload = JSON.stringify({
+      id: `evt_${type}`,
+      type,
+      data: {
+        object: {
+          id: 'cs_async',
+          payment_status: paymentStatus,
+          amount_total: 4900,
+          metadata: { tenantId: 'tenant-a', productId: 'product-1' },
+        },
+      },
+    });
+    await expect(verify(payload)).resolves.toMatchObject({
+      ok: true,
+      value: { type, objectId: 'cs_async', checkoutSession: { paymentStatus } },
+    });
+  });
+
+  it.each([
+    [{ refunded: true, amount: 4900, amount_refunded: 4900 }, true],
+    [{ refunded: false, amount: 4900, amount_refunded: 1000 }, false],
+    [{ refunded: false, amount: 4900, amount_refunded: 4900 }, true],
+    [{}, true],
+  ])('maps refund coverage %j', async (refundFields, full) => {
+    const payload = JSON.stringify({
+      id: 'evt_refund_coverage',
+      type: 'charge.refunded',
+      data: { object: { id: 'ch_1', payment_intent: 'pi_1', invoice: 'in_1', ...refundFields } },
+    });
+    await expect(verify(payload)).resolves.toMatchObject({
+      ok: true,
+      value: { adjustment: { refund: { full } } },
+    });
+  });
+
+  it('carries the event creation time on subscription events', async () => {
+    const payload = JSON.stringify({
+      id: 'evt_sub_created',
+      type: 'customer.subscription.updated',
+      created: 916_387_200,
+      data: { object: { id: 'sub_1', status: 'active', cancel_at_period_end: false } },
+    });
+    await expect(verify(payload)).resolves.toMatchObject({
+      ok: true,
+      value: { createdAt: '1999-01-15T08:00:00.000Z' },
     });
   });
 

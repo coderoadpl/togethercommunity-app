@@ -4418,7 +4418,7 @@ describe('checkout consent ordering', () => {
       },
       processedPaymentEvents: {
         claim: async (_tenantId, paymentEvent) => {
-          if (claimedEvents.has(paymentEvent.id)) return 'duplicate';
+          if (claimedEvents.has(paymentEvent.id)) return 'processed';
           claimedEvents.add(paymentEvent.id);
           return 'claimed';
         },
@@ -4552,6 +4552,76 @@ describe('checkout consent ordering', () => {
     expect(
       await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
     ).toEqual(grantedBefore);
+  });
+
+  it('acknowledges a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
+    const logger = { error: vi.fn() };
+    const verifyWebhookEvent = vi.fn();
+    const base = deps({ tenants: [{ ...acme, status: 'suspended' }] });
+    const app = buildApp({
+      ...base,
+      logger,
+      payment: { ...base.payment, verifyWebhookEvent },
+    } satisfies AppDeps);
+
+    const response = await app.request('/api/webhooks/stripe/t-acme', {
+      method: 'POST',
+      headers: { 'stripe-signature': 'test-signature' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { received: true, processed: false },
+    });
+    expect(verifyWebhookEvent).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      '[stripe-webhook] ignored tenant=t-acme status=suspended',
+    );
+  });
+
+  it('asks stripe to retry while another worker holds the payment event lease', async () => {
+    const base = deps({ tenants: [acme] });
+    const app = buildApp({
+      ...base,
+      payment: {
+        ...base.payment,
+        verifyWebhookEvent: async () => ok({
+          id: 'evt_leased',
+          type: 'checkout.session.completed',
+          objectId: 'cs_leased',
+          checkoutSession: {
+            email: 'buyer@together.dev',
+            subscriptionId: null,
+            paymentIntentId: null,
+            metadata: {
+              tenantId: acme.id,
+              productId: 'product-1',
+              priceId: null,
+              memberEmail: null,
+              language: 'pl',
+            },
+          },
+        }),
+      },
+      processedPaymentEvents: {
+        ...base.processedPaymentEvents,
+        claim: async () => 'in_progress',
+      },
+    } satisfies AppDeps);
+
+    const response = await app.request('/api/webhooks/stripe/t-acme', {
+      method: 'POST',
+      headers: { 'stripe-signature': 'test-signature' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    });
   });
 
   it('captures checkout consent evidence, suppresses repeated DOI mail, and logs non-blocking failures', async () => {

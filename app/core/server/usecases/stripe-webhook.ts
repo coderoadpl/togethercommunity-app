@@ -1,4 +1,5 @@
 import {
+  appError,
   DEFAULT_LANGUAGE,
   emailBrandingFrom,
   err,
@@ -342,6 +343,8 @@ const applyCheckoutCompleted = async (
       : null;
   const couponContext = await couponPaymentContext(tenant, event, deps);
   const billing = await billingForCheckout(tenant.id, event, deps);
+  const couponCoversFullPrice =
+    couponContext !== null && (event.checkoutSession.amountTotalCents ?? 0) === 0;
 
   const fulfilled = await fulfillEnrollment(
     tenant,
@@ -369,6 +372,9 @@ const applyCheckoutCompleted = async (
           billing,
           deps,
         );
+  if (couponCoversFullPrice && discounted === null) {
+    return err(validation('Coupon redemption limit reached'));
+  }
   const product = await deps.products.findById(tenant.id, metadata.productId);
   const paidOrder =
     discounted?.order ??
@@ -685,7 +691,10 @@ export const fulfillStripeWebhook = async (
     now: claimedAt,
     leaseExpiresAt: new Date(Date.parse(claimedAt) + WEBHOOK_CLAIM_LEASE_MS).toISOString(),
   });
-  if (claimed === 'duplicate') return ok({ processed: false });
+  if (claimed === 'processed') return ok({ processed: false });
+  if (claimed === 'in_progress') {
+    return err(appError('conflict', 'Payment event is being processed'));
+  }
 
   let applied: Result<{ processed: boolean }, AppError>;
   try {

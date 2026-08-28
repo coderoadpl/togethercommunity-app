@@ -292,7 +292,7 @@ describe('CheckoutPage', () => {
     expect(await screen.findByText(pl.checkout.couponForever)).toBeInTheDocument();
   });
 
-  it('shows a specific inline reason for an expired code', async () => {
+  it('shows a uniform inline reason for a rejected code', async () => {
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
       http.get('/api/public/payment-config', () =>
@@ -305,7 +305,7 @@ describe('CheckoutPage', () => {
         HttpResponse.json(
           {
             ok: false,
-            error: { code: 'validation', message: 'This coupon has expired' },
+            error: { code: 'validation', message: 'Coupon cannot be applied' },
           },
           { status: 400 },
         ),
@@ -316,7 +316,7 @@ describe('CheckoutPage', () => {
     await userEvent.click(await screen.findByTestId('checkout-coupon-reveal'));
     await userEvent.type(screen.getByLabelText(pl.checkout.couponLabel), 'OLD20');
     await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
-    expect(await screen.findByText(pl.checkout.couponExpired)).toBeInTheDocument();
+    expect(await screen.findByText(pl.checkout.couponUnavailable)).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-error')).toBeInTheDocument();
   });
 

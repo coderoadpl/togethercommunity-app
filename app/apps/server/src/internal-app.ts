@@ -357,6 +357,7 @@ import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
 import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { respond } from './respond.js';
+import { secretEquals } from './secret-equals.js';
 import {
   assertSelfAuthenticatingRouteManifest,
   SELF_AUTHENTICATING_ROUTE_MANIFEST,
@@ -580,28 +581,28 @@ const recordCheckoutConsents = async (
 export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   app.post(API_PATHS.emailDispatch, async (c) => {
-    if (c.req.header(EMAIL_DISPATCH_SECRET_HEADER) !== deps.emailDispatchSecret) {
+    if (!secretEquals(c.req.header(EMAIL_DISPATCH_SECRET_HEADER), deps.emailDispatchSecret)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     return respond(await deps.dispatchEmails('manual'));
   });
 
   app.get(API_PATHS.emailDispatch, async (c) => {
-    if (c.req.header('authorization') !== `Bearer ${deps.emailDispatchCronSecret}`) {
+    if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.emailDispatchCronSecret}`)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     return respond(await deps.dispatchEmails('cron'));
   });
 
   app.post(API_PATHS.autoInvoiceDispatch, async (c) => {
-    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.autoInvoiceDispatchSecret) {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.autoInvoiceDispatchSecret)) {
       return respond(err(unauthorized('Invalid automatic invoice dispatch secret')));
     }
     return respond(await deps.dispatchAutoInvoices());
   });
 
   app.get(API_PATHS.autoInvoiceDispatch, async (c) => {
-    if (c.req.header('authorization') !== `Bearer ${deps.autoInvoiceDispatchSecret}`) {
+    if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.autoInvoiceDispatchSecret}`)) {
       return respond(err(unauthorized('Invalid automatic invoice dispatch secret')));
     }
     return respond(await deps.dispatchAutoInvoices());
@@ -609,7 +610,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
 
   app.post(API_PATHS.ksefDispatch, async (c) => {
     if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
-    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.ksef.dispatchSecret) {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.ksef.dispatchSecret)) {
       return respond(err(unauthorized('Invalid KSeF dispatch secret')));
     }
     return respond(await deps.ksef.dispatch());
@@ -617,7 +618,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
 
   app.get(API_PATHS.ksefDispatch, async (c) => {
     if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
-    if (c.req.header('authorization') !== `Bearer ${deps.ksef.dispatchSecret}`) {
+    if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.ksef.dispatchSecret}`)) {
       return respond(err(unauthorized('Invalid KSeF dispatch secret')));
     }
     return respond(await deps.ksef.dispatch());
@@ -625,7 +626,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
 
   app.get(API_PATHS.globalSchedulerRuns, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.marketing.cronSecret) {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.marketing.cronSecret)) {
       return respond(err(unauthorized('Invalid scheduler operator secret')));
     }
     const parsed = schedulerRunsQuerySchema.safeParse({
@@ -642,7 +643,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
 
   app.get(API_PATHS.globalSchedulerRun, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.marketing.cronSecret) {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.marketing.cronSecret)) {
       return respond(err(unauthorized('Invalid scheduler operator secret')));
     }
     return respond(await getGlobalSchedulerRun({ runId: c.req.param('id') }, { runs: deps.marketing.runs }));

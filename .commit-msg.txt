@@ -1,0 +1,9 @@
+fix: claim coupon redemptions before fulfilment and harden webhook claim handling
+
+Adds a claim step for coupon redemptions ahead of order fulfilment so a
+redemption cannot be applied twice, and strengthens the webhook handling
+path (secret comparison, checkout, and permission surfaces) around that
+claim. Updates related server, web, and adapter code plus tests and docs
+to match.
+
+Claude-Session: https://claude.ai/code/session_013bdnTVuMPxwDDGkbRgWduh

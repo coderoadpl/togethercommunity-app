@@ -3,6 +3,7 @@ import {
   buildEmailHeaders,
   campaignCanTransition,
   classifySesEvent,
+  DEFAULT_LANGUAGE,
   deriveConsentState,
   deriveEmailReputation,
   deriveMarketingEligibility,
@@ -176,7 +177,7 @@ export const recordMarketingConsent = async (
   const queued = await deps.outbox.enqueue({
     id: deps.ids.nextId(), tenantId: tenantId.value, to: consent.email, now,
     payload: {
-      kind: 'marketing-consent-confirmation', wording: consent.wordingSnapshot,
+      kind: 'marketing-consent-confirmation', language: DEFAULT_LANGUAGE, wording: consent.wordingSnapshot,
       confirmationUrl: `${input.confirmationBaseUrl}/${tokenValue}`,
     },
   });

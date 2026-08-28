@@ -35,7 +35,7 @@ import { PanelPage, SectionCard, StatusView } from '../../../components/layout/i
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
 import { EmailVerificationStatus } from '../../../components/ui/EmailVerificationStatus.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import {
   BUILD_SHA,
   BUILD_VERSION,
@@ -131,7 +131,7 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           {t.support.save}
         </Button>
       ) : null}
-      {update.isError ? <Alert severity="error">{localizeError(update.error, t)}</Alert> : null}
+      {update.isError ? <Alert severity="error">{localizePanelError(update.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -337,7 +337,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         {t.billing.saveSeller}
       </Button>
       {provider === 'ksef' ? <KsefCredentialsPointer /> : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -402,7 +402,7 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         </>
       )}
       {settings.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
+        <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
       {canEdit ? (
         <Box>
@@ -421,7 +421,7 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           {t.legal.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -467,9 +467,9 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
         </Typography>
       </FormControl>
       {spaces.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
+        <StatusView state={{ kind: 'error', message: localizePanelError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -729,7 +729,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         </>
       )}
       {settings.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
+        <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
       {canEdit ? (
         <Box>
@@ -748,7 +748,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           {t.branding.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -814,7 +814,7 @@ const SecurityPanel = () => {
               </Typography>
             ) : null}
             {requestPasswordReset.isError ? (
-              <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert>
+              <Alert severity="error">{localizePanelError(requestPasswordReset.error, t)}</Alert>
             ) : null}
           </Box>
         </Box>
@@ -891,7 +891,7 @@ const BuildInfoPanel = () => {
           </>
         )}
       </Stack>
-      {health.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(health.error, t), retry: { label: t.common.retry, onRetry: () => void health.refetch() } }} /> : null}
+      {health.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(health.error, t), retry: { label: t.common.retry, onRetry: () => void health.refetch() } }} /> : null}
       {mismatch ? (
         <Alert severity="warning" data-testid="build-mismatch-warning">
           {t.buildInfo.mismatch}

@@ -13,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { SecretField } from './SecretField.js';
 import { previewFor } from './secret-preview.js';
 
@@ -68,8 +68,8 @@ const BunnyLibraryIdField = () => {
           {t.integrations.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
-      {settings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} /> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
+      {settings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} /> : null}
     </Box>
   );
 };
@@ -126,8 +126,8 @@ const BunnyCdnHostnameField = () => {
           {t.integrations.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
-      {settings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} /> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
+      {settings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} /> : null}
     </Box>
   );
 };
@@ -158,7 +158,7 @@ const BunnyTestConnection = ({ ready }: { ready: boolean }) => {
         </Typography>
       ) : null}
       {testConnection.isError ? (
-        <Alert severity="error" data-testid="bunny-test-error">{localizeError(testConnection.error, t)}</Alert>
+        <Alert severity="error" data-testid="bunny-test-error">{localizePanelError(testConnection.error, t)}</Alert>
       ) : null}
     </Box>
   );
@@ -179,7 +179,7 @@ export const VideoTab = () => {
       {secrets.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
       ) : secrets.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
+        <StatusView state={{ kind: 'error', message: localizePanelError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
       ) : (
         <Stack useFlexGap spacing="1.25rem">
           <SecretField

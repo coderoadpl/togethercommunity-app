@@ -463,7 +463,7 @@ describe('IntegrationsPanel', () => {
     await openTab(pl.integrations.tabApiKeys);
     await userEvent.click(await screen.findByTestId('import-api-key-audit-audited-key'));
 
-    expect(await screen.findByText(/member member-source/)).toBeInTheDocument();
+    expect(await screen.findByText(/Uczestnik member-source/)).toBeInTheDocument();
   });
 
   it.each(['pending', 'error'] as const)('does not claim credentials are missing while secrets are %s', async (state) => {

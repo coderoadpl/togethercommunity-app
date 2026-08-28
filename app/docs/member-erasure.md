@@ -33,7 +33,7 @@ reconciliation must therefore finish before the next billing cycle.
 
 - records the erasure in `erasedMemberImports`;
 - end-dates product grants and marks member subscriptions canceled locally;
-- replaces post author labels with `DELETED_MEMBER_DISPLAY`;
+- replaces post author labels with `deletedMemberDisplay()`;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, and ban state (`bannedAt`,
@@ -135,7 +135,7 @@ erasure. The UI hides ban controls for members whose `deletedAt` is set, and
 
 Report rows retain `post_reports.reporter_user_id` after erasure, matching the
 existing retention of `posts.author_user_id`. The pseudonymization transaction
-relabels `reporter_display` to `DELETED_MEMBER_DISPLAY`. A full redesign around
+relabels `reporter_display` to `deletedMemberDisplay()`. A full redesign around
 non-identifying subject references remains backlog item B1.
 
 Self-service data-subject export and deletion remain backlog item B1.

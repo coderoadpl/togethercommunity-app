@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
-  DELETED_MEMBER_DISPLAY,
+  deletedMemberDisplay,
   err,
   invoiceVatTreatmentsEqual,
   memberTombstone,
@@ -2482,7 +2482,7 @@ describe('member erasure repository', () => {
     deletedAt: REMOVAL_AT,
     tombstoneEmail: memberTombstone(memberId).email,
     severedUserId: memberTombstone(memberId).userId,
-    postAuthorDisplay: DELETED_MEMBER_DISPLAY,
+    postAuthorDisplay: deletedMemberDisplay(),
   });
 
   beforeAll(async () => {
@@ -2781,12 +2781,12 @@ describe('member erasure repository', () => {
     expect(await subs.findById(RODO, 'sub-rodo')).toMatchObject({ status: 'canceled', cancelAtPeriodEnd: true });
 
     const postRows = await db.select().from(posts).where(eq(posts.id, 'post-rodo'));
-    expect(postRows[0]).toMatchObject({ authorDisplay: DELETED_MEMBER_DISPLAY, body: 'Świetny kurs!', deletedAt: null });
+    expect(postRows[0]).toMatchObject({ authorDisplay: deletedMemberDisplay(), body: 'Świetny kurs!', deletedAt: null });
 
     const reportRows = await db.select().from(postReports).where(eq(postReports.id, 'report-rodo'));
     expect(reportRows[0]).toMatchObject({
       reporterUserId: 'user-rodo-buyer',
-      reporterDisplay: DELETED_MEMBER_DISPLAY,
+      reporterDisplay: deletedMemberDisplay(),
     });
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));

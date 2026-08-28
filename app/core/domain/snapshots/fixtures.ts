@@ -138,6 +138,20 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
       legacyId: null,
       createdAt: '2026-01-01T00:00:00.000Z',
     },
+    6: {
+      id: 'lesson-fixture-6',
+      tenantId: 'tenant-fixture',
+      name: 'Materials lesson',
+      isPreview: false,
+      contents: [
+        { type: 'pdf', pdfUrl: '/assets/sample-lekcja.pdf', name: 'Cheatsheet' },
+        { type: 'link', url: 'https://docs.example.test/guide', description: 'Guide' },
+        { type: 'link', url: 'mailto:teacher@example.test', description: 'Ask the teacher' },
+      ],
+      durationMinutes: 8,
+      legacyId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
   },
   product: {
     1: {

@@ -8,8 +8,8 @@ import {
   publicSpaceEventRefSchema,
   publicSpaceThreadInputSchema,
   renderPost,
+  toAnonymousSpaceEvent,
   toPublicPost,
-  toPublicSpaceEvent,
   validation,
   type AppError,
   type CourseLesson,
@@ -238,7 +238,7 @@ const projectPublicEvents = async (
   );
   const now = deps.clock.nowIso();
   return events.map((event) =>
-    toPublicSpaceEvent(event, {
+    toAnonymousSpaceEvent(event, {
       goingCount: counts.get(event.id)?.going ?? 0,
       notGoingCount: counts.get(event.id)?.notGoing ?? 0,
       viewerRsvp: null,

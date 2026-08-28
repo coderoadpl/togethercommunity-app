@@ -86,11 +86,17 @@ export const getMemberNavigation = async (
     new Set(courses.map((course) => course.id)),
   );
 
+  const publishedProductIds = new Set(
+    products.filter((product) => product.published).map((product) => product.id),
+  );
   const accessibleSpaces: Space[] = [];
   const lockedSpaces: Space[] = [];
   for (const space of spaces) {
     const accessible = scope === null || (await spaceVisibleToMemberScope(scope, space, deps));
-    (accessible ? accessibleSpaces : lockedSpaces).push(space);
+    if (accessible) accessibleSpaces.push(space);
+    else if (space.productIds.some((productId) => publishedProductIds.has(productId))) {
+      lockedSpaces.push(space);
+    }
   }
 
   const accessibleSpaceIds = accessibleSpaces.map((space) => space.id);

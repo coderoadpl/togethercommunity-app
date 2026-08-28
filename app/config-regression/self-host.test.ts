@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -12,27 +12,21 @@ const read = (path: string): string => readFileSync(join(appRoot, path), 'utf8')
 const globalOptions = (caddyfile: string): string =>
   /^\{$\n(?<body>[\s\S]*?)^\}$/mu.exec(caddyfile)?.groups?.body ?? '';
 
-const dockerAvailable = ((): boolean => {
-  try {
-    execFileSync('docker', ['version'], { stdio: 'ignore', timeout: 30_000 });
-    return true;
-  } catch {
-    return false;
-  }
-})();
+const runDocker = (args: string[], timeoutMs: number): { output: string; ok: boolean; } => {
+  const result = spawnSync('docker', args, { encoding: 'utf8', timeout: timeoutMs });
+  const failure = result.error === undefined ? '' : String(result.error);
+  return {
+    output: `${result.stdout ?? ''}${result.stderr ?? ''}${failure}`,
+    ok: result.error === undefined && result.status === 0,
+  };
+};
 
-const execFailureSchema = z.object({ stderr: z.string() });
+const dockerAvailable = runDocker(['version'], 30_000).ok;
 
 const docker = (args: string[]): string => {
-  try {
-    return execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (error) {
-    const failure = execFailureSchema.safeParse(error);
-    throw new Error(
-      `docker ${args.join(' ')} failed:\n${failure.success ? failure.data.stderr : String(error)}`,
-      { cause: error },
-    );
-  }
+  const { output, ok } = runDocker(args, 290_000);
+  if (!ok) throw new Error(`docker ${args.join(' ')} failed:\n${output}`);
+  return output;
 };
 
 const dependencySchema = z.object({ condition: z.string() });

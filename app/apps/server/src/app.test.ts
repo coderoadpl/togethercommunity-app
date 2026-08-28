@@ -1776,6 +1776,40 @@ describe('marketing HTTP surfaces', () => {
     });
   });
 
+  it('builds unsubscribe links from the API key tenant instead of the request host', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const sender = new FakeSesMarketingSender();
+    marketing.marketingSes = sender;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityCheckError: null, configurationSet: 'marketing',
+      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
+      webhookVerifiedAt: '1998-07-22T00:00:00.000Z', footerLegalName: 'Acme',
+      footerAddress: 'Warsaw', broadcastsEnabled: true,
+      reputationAlertStatus: null, reputationAlertedAt: null,
+    }]);
+
+    const response = await marketingApp(marketing).request('/api/m2m/marketing/messages', {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:9999',
+        'x-api-key': 'marketing-key',
+        'content-type': 'application/json',
+        'x-forwarded-proto': 'https',
+      },
+      body: JSON.stringify({ messages: [
+        { to: 'member@example.test', consentDefinitionId: 'definition-news', subject: 'News', bodyHtml: '<p>News</p>' },
+      ] }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(JSON.stringify(sender.sent)).toContain('http://acme.localhost:48730/u/');
+    expect(JSON.stringify(sender.sent)).not.toContain('acme.localhost:9999');
+  });
+
   it('returns 429 with Retry-After when the tenant SES throttle is under pressure', async () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
@@ -3007,6 +3041,47 @@ describe('new route authorization', () => {
     });
     expect(JSON.stringify(payload)).not.toContain('minio-access');
     expect(JSON.stringify(payload)).not.toContain('minio-secret');
+  });
+
+  it('probes storage CORS on the resolved tenant origin instead of the request host', async () => {
+    const base = deps();
+    const probedOrigins: string[][] = [];
+    const overrides: Partial<AppDeps> = {
+      storage: {
+        ...base.storage,
+        probe: async (_configuration, corsOrigins) => {
+          probedOrigins.push(corsOrigins ?? []);
+          return ok({ code: 'storage.available', message: 'Storage is available.' });
+        },
+      },
+    };
+    const request = {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'minio',
+        endpoint: 'http://127.0.0.1:19000',
+        region: 'us-east-1',
+        bucket: 'together-test',
+        accessKeyId: 'minio-access',
+        secretAccessKey: 'minio-secret',
+      }),
+    };
+
+    const spoofed = await scopedApp('owner', { overrides }).request(API_PATHS.storageProbe, {
+      ...request,
+      headers: { ...headers, host: 'acme.localhost:9999', 'x-forwarded-proto': 'https' },
+    });
+    const routed = await scopedApp('owner', { overrides }).request(API_PATHS.storageProbe, {
+      ...request,
+      headers: { ...headers, host: 'localhost:48730', [TENANT_HEADER]: 'acme' },
+    });
+
+    expect(spoofed.status).toBe(200);
+    expect(routed.status).toBe(200);
+    expect(probedOrigins).toEqual([
+      ['http://acme.localhost:48730', 'http://localhost:48730'],
+      ['http://localhost:48730'],
+    ]);
   });
 });
 

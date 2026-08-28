@@ -174,7 +174,7 @@ const priceAddOptionsSchema = z.object({
   currency: currencySchema.optional(),
 });
 const ordersListOptionsSchema = z.object({
-  status: z.enum(['paid', 'pending', 'failed', 'refunded']).optional(),
+  status: z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']).optional(),
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
   coupon: z.string().min(1).optional(),
@@ -192,7 +192,7 @@ const ordersListOptionsSchema = z.object({
 });
 const ordersExportOptionsSchema = z.object({
   format: z.enum(['csv', 'json']),
-  status: z.enum(['paid', 'pending', 'failed', 'refunded']).optional(),
+  status: z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']).optional(),
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
   coupon: z.string().min(1).optional(),
@@ -1166,7 +1166,7 @@ const ordersCommand = program.command('orders').description('Sales ledger of the
 ordersCommand
   .command('list')
   .description('List orders with filters, search and paging')
-  .option('--status <status>', 'paid, pending, failed or refunded')
+  .option('--status <status>', 'paid, pending, failed, refunded or partially_refunded')
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
@@ -1204,7 +1204,7 @@ ordersCommand
   .command('export')
   .description('Export orders as CSV or JSON, mirroring the web sales export')
   .requiredOption('--format <format>', 'csv or json')
-  .option('--status <status>', 'paid, pending, failed or refunded')
+  .option('--status <status>', 'paid, pending, failed, refunded or partially_refunded')
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')

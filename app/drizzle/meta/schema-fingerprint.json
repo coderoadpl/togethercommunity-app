@@ -1,6 +1,6 @@
 {
-  "hash": "c087b16a6bb69244f2a1c6978f33f761df1252dda9a931908888d23dc6b9d10a",
-  "shortId": "c087b16a6bb6",
+  "hash": "890d38c607ebd2964cd3049cd8bc3cfed516e31eeca465995a2ec253a8f30777",
+  "shortId": "890d38c607eb",
   "schema": {
     "constraints": [
       {
@@ -1818,8 +1818,8 @@
         "table": "post_reports"
       },
       {
-        "definition": "CREATE UNIQUE INDEX processed_events_object_type_uidx ON processed_events USING btree (object_id, type)",
-        "name": "processed_events_object_type_uidx",
+        "definition": "CREATE UNIQUE INDEX processed_events_fulfillment_uidx ON processed_events USING btree (tenant_id, object_id, type) WHERE (type = ANY (ARRAY['checkout.session.completed'::text, 'invoice.paid'::text]))",
+        "name": "processed_events_fulfillment_uidx",
         "table": "processed_events"
       },
       {

@@ -360,14 +360,12 @@ const harness = (
     processedPaymentEvents: {
       claim: async (tenantId, event, lease) => {
         const existingClaim = eventClaims.get(event.id);
+        if (existingClaim?.status === 'processed') return 'processed';
         if (
           existingClaim !== undefined
-          && (
-            existingClaim.status === 'processed'
-            || Date.parse(existingClaim.leaseExpiresAt) > Date.parse(lease.now)
-          )
+          && Date.parse(existingClaim.leaseExpiresAt) > Date.parse(lease.now)
         ) {
-          return 'duplicate';
+          return 'in_progress';
         }
         for (const existing of events.values()) {
           if (
@@ -377,7 +375,9 @@ const harness = (
             && existing.type === event.type
             && FULFILLMENT_EVENT_TYPES.has(event.type)
           ) {
-            return 'duplicate';
+            return eventClaims.get(existing.id)?.status === 'processed'
+              ? 'processed'
+              : 'in_progress';
           }
         }
         events.set(event.id, { ...event, tenantId });
@@ -438,7 +438,7 @@ const harness = (
           processedPaymentEvents: deps.processedPaymentEvents,
           enrollmentTransaction: deps.enrollmentTransaction,
         });
-        if (!options.rejectPaymentCommit) return result;
+        if (result.ok && !options.rejectPaymentCommit) return result;
         members.clear();
         memberSnapshot.forEach((value, key) => members.set(key, value));
         grants.clear();
@@ -454,7 +454,7 @@ const harness = (
         queued.splice(0, queued.length, ...queuedSnapshot);
         autoInvoiceJobs.splice(0, autoInvoiceJobs.length, ...autoInvoiceJobsSnapshot);
         refundTransitions = refundSnapshot;
-        return err(internal('commit rejected'));
+        return options.rejectPaymentCommit ? err(internal('commit rejected')) : result;
       },
     },
     enrollmentTransaction: {
@@ -576,7 +576,10 @@ const couponHarness = (
       id: 'coupon-session-1',
       tenantId: tenantA.id,
       couponId: coupon.id,
-      providerSessionId: options.session?.providerSessionId ?? 'cs-coupon',
+      providerSessionId:
+        options.session?.providerSessionId === undefined
+          ? 'cs-coupon'
+          : options.session.providerSessionId,
       memberEmail: 'buyer@example.com',
       productId: 'product-1',
       priceId: price?.id ?? null,
@@ -597,6 +600,15 @@ const couponHarness = (
     }),
     createOrderAndClaim: async (_tenantId, input) => {
       if (options.claim === false) return false;
+      const claimed = redemptions.filter((row) => row.couponId === input.redemption.couponId);
+      if (input.maxRedemptions !== null && claimed.length >= input.maxRedemptions) return false;
+      const perMember = claimed.filter((row) => row.email === input.redemption.email).length;
+      if (
+        input.maxRedemptionsPerMember !== null
+        && perMember >= input.maxRedemptionsPerMember
+      ) {
+        return false;
+      }
       h.orders.push(input.order);
       redemptions.push(input.redemption);
       return true;
@@ -834,6 +846,62 @@ describe('fulfillStripeWebhook', () => {
     expect(h.redemptions).toHaveLength(0);
   });
 
+  it('refuses a free coupon checkout once the redemption limit is consumed', async () => {
+    const h = couponHarness({
+      coupon: { maxRedemptions: 1 },
+      session: {
+        providerSessionId: null,
+        originalCents: 4900,
+        discountCents: 4900,
+        finalCents: 0,
+      },
+    });
+    const freeEvent = (id: string, email: string) => completedEvent({
+      id,
+      objectId: `cs-${id}`,
+      email,
+      couponCheckoutSessionId: 'coupon-session-1',
+      amountTotalCents: 0,
+      discountTotalCents: 4900,
+    });
+
+    expect(await fulfillStripeWebhook(tenantA, freeEvent('evt-free-1', 'first@example.com'), h.deps))
+      .toEqual({ ok: true, value: { processed: true } });
+    expect(h.grants.size).toBe(1);
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(1);
+
+    expect(await fulfillStripeWebhook(tenantA, freeEvent('evt-free-2', 'second@example.com'), h.deps))
+      .toEqual({
+        ok: false,
+        error: { code: 'validation', message: 'Coupon redemption limit reached' },
+      });
+    expect(h.grants.size).toBe(1);
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(1);
+  });
+
+  it.each([
+    { claim: 'processed' as const, expected: { ok: true, value: { processed: false } } },
+    {
+      claim: 'in_progress' as const,
+      expected: {
+        ok: false,
+        error: { code: 'conflict', message: 'Payment event is being processed' },
+      },
+    },
+  ])('maps a $claim claim to its own outcome', async (scenario) => {
+    const h = harness();
+    h.deps.processedPaymentEvents = {
+      ...h.deps.processedPaymentEvents,
+      claim: async () => scenario.claim,
+    };
+
+    expect(await fulfillStripeWebhook(tenantA, completedEvent(), h.deps)).toEqual(scenario.expected);
+    expect(h.orders).toEqual([]);
+    expect(h.grants.size).toBe(0);
+  });
+
   it('records the provider charged total and discount without poisoning fulfillment', async () => {
     const h = couponHarness();
     const event = completedEvent({
@@ -968,7 +1036,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders).toHaveLength(1);
   });
 
-  it('appends exactly one order when two duplicate deliveries race the same event', async () => {
+  it('appends exactly one order and asks the loser to retry when two deliveries race', async () => {
     const h = harness();
     const [first, second] = await Promise.all([
       fulfillStripeWebhook(tenantA, completedEvent(), h.deps),
@@ -977,7 +1045,10 @@ describe('fulfillStripeWebhook', () => {
 
     const outcomes = [first, second];
     expect(outcomes).toContainEqual({ ok: true, value: { processed: true } });
-    expect(outcomes).toContainEqual({ ok: true, value: { processed: false } });
+    expect(outcomes).toContainEqual({
+      ok: false,
+      error: { code: 'conflict', message: 'Payment event is being processed' },
+    });
     expect(h.orders).toHaveLength(1);
     expect(h.members.size).toBe(1);
     expect(h.grants.size).toBe(1);

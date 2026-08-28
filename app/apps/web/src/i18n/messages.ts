@@ -1676,16 +1676,8 @@ export interface Messages {
     omnibusLowest: (params: { price: string }) => string;
     couponFirstInvoice: string;
     couponForever: string;
-    couponInvalid: string;
-    couponInactive: string;
-    couponNotStarted: string;
-    couponExpired: string;
-    couponWrongScope: string;
-    couponWrongPrice: string;
-    couponLimit: string;
-    couponMemberLimit: string;
+    couponUnavailable: string;
     couponEmailRequired: string;
-    couponNoReduction: string;
     marketingConsentsLabel: string;
     marketingConsentDocument: string;
     marketingConsentDoiHint: string;

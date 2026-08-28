@@ -763,7 +763,12 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   app.post(STRIPE_WEBHOOK_PATH_PATTERN, async (c) => {
     const tenantId = c.req.param('tenantId');
     const tenant = await deps.tenants.findById(tenantId);
-    if (!tenant) return respond(err(tenantNotFound()));
+    if (!tenant || tenant.status !== 'active') {
+      deps.logger.error(
+        `[stripe-webhook] ignored tenant=${tenantId} status=${tenant?.status ?? 'unknown'}`,
+      );
+      return respond(ok({ received: true as const, processed: false }));
+    }
     const webhookSecret = await deps.secretResolver.resolve(tenantId, 'stripe.webhookSecret');
     if (!webhookSecret.ok) return respond(webhookSecret);
     const payloadRaw = await c.req.text();

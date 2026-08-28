@@ -63,6 +63,7 @@ import {
   renderPreferencesPage,
   type PublicBrand,
 } from './public-marketing-pages.js';
+import { secretEquals } from './secret-equals.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 
@@ -502,7 +503,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.post('/api/internal/marketing/tick', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    if (c.req.header('x-marketing-tick-secret') !== marketing.value.tickSecret) return response(err(unauthorized('Invalid marketing tick secret')));
+    if (!secretEquals(c.req.header('x-marketing-tick-secret'), marketing.value.tickSecret)) return response(err(unauthorized('Invalid marketing tick secret')));
     const parsed = z.object({ tenantId: z.string().min(1), campaignId: z.string().min(1) }).safeParse(await readJson(c.req.raw));
     return parsed.success
       ? response(await marketing.value.dispatchCampaign(parsed.data.tenantId, parsed.data.campaignId, 'manual'))
@@ -512,10 +513,13 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/internal/marketing/tick', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const bearer = c.req.header('authorization');
-    const authenticated = c.req.header('x-marketing-tick-secret') === marketing.value.tickSecret
-      || bearer === `Bearer ${marketing.value.cronSecret}`;
-    const trigger = bearer === `Bearer ${marketing.value.cronSecret}` ? 'cron' : 'manual';
+    const cronAuthenticated = secretEquals(
+      c.req.header('authorization'),
+      `Bearer ${marketing.value.cronSecret}`,
+    );
+    const authenticated = cronAuthenticated
+      || secretEquals(c.req.header('x-marketing-tick-secret'), marketing.value.tickSecret);
+    const trigger = cronAuthenticated ? 'cron' : 'manual';
     return authenticated
       ? response(await marketing.value.dispatchScheduledMarketing(trigger))
       : response(err(unauthorized('Invalid marketing tick secret')));

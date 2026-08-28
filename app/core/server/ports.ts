@@ -1314,16 +1314,20 @@ export interface MemberSubscriptionRepository {
   countActive(tenantId: string, now: string): Promise<number>;
 }
 
+export type PaymentEventClaim = 'claimed' | 'processed' | 'in_progress';
+
 export interface ProcessedPaymentEventRepository {
   /**
-   * Wins the event for this worker, or reports a duplicate. An expired processing lease can be
-   * reclaimed so a worker that dies mid-effect does not strand the event.
+   * Wins the event for this worker, or reports why it could not: another worker still holds the
+   * lease (`in_progress`, so the sender should retry) or the effects already committed
+   * (`processed`). An expired processing lease can be reclaimed so a worker that dies mid-effect
+   * does not strand the event.
    */
   claim(
     tenantId: string,
     event: ProcessedPaymentEvent,
     lease: { workerId: string; now: string; leaseExpiresAt: string },
-  ): Promise<'claimed' | 'duplicate'>;
+  ): Promise<PaymentEventClaim>;
   /** Marks the claim terminal after its effects committed. */
   finalize(
     tenantId: string,

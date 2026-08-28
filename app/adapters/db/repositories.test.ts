@@ -1273,8 +1273,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       leaseExpiresAt: '1998-07-14T10:05:00.000Z',
     };
     expect(await repo.claim(ACME, event, lease)).toBe('claimed');
-    expect(await repo.claim(ACME, event, lease)).toBe('duplicate');
-    expect(await repo.claim(ACME, { ...event, id: 'evt-2' }, lease)).toBe('duplicate');
+    expect(await repo.claim(ACME, event, lease)).toBe('in_progress');
+    expect(await repo.claim(ACME, { ...event, id: 'evt-2' }, lease)).toBe('in_progress');
     const reclaimed = {
       workerId: 'worker-2',
       now: '1998-07-14T10:06:00.000Z',
@@ -1283,7 +1283,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.claim(ACME, event, reclaimed)).toBe('claimed');
     await repo.finalize(ACME, event.id, lease.workerId, reclaimed.now);
     await repo.release(ACME, event.id, lease.workerId);
-    expect(await repo.claim(ACME, event, reclaimed)).toBe('duplicate');
+    expect(await repo.claim(ACME, event, reclaimed)).toBe('in_progress');
     await repo.finalize(ACME, event.id, reclaimed.workerId, reclaimed.now);
     expect(
       await repo.claim(ACME, event, {
@@ -1291,7 +1291,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
         now: '1998-07-14T10:12:00.000Z',
         leaseExpiresAt: '1998-07-14T10:17:00.000Z',
       }),
-    ).toBe('duplicate');
+    ).toBe('processed');
+    expect(await repo.claim(ACME, { ...event, id: 'evt-2' }, reclaimed)).toBe('processed');
 
     const releasable = { ...event, id: 'evt-3', objectId: 'in-3' };
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
@@ -1322,7 +1323,9 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     };
 
     expect(await repo.claim(ACME, completed, lease)).toBe('claimed');
-    expect(await repo.claim(ACME, { ...completed, id: 'evt-cs-2' }, lease)).toBe('duplicate');
+    expect(await repo.claim(ACME, { ...completed, id: 'evt-cs-2' }, lease)).toBe('in_progress');
+    await repo.finalize(ACME, completed.id, lease.workerId, NOW);
+    expect(await repo.claim(ACME, { ...completed, id: 'evt-cs-2' }, lease)).toBe('processed');
     expect(
       await repo.claim(GLOBEX, { ...completed, id: 'evt-cs-3', tenantId: GLOBEX }, lease),
     ).toBe('claimed');

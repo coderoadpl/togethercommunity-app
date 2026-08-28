@@ -287,7 +287,16 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
-  auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext' | 'setEmailVerificationDeliveryContext'>;
+  auth: Pick<
+    Auth,
+    | 'handler'
+    | 'setMagicLinkDeliveryContext'
+    | 'clearMagicLinkDeliveryContext'
+    | 'setResetPasswordDeliveryContext'
+    | 'clearResetPasswordDeliveryContext'
+    | 'setEmailVerificationDeliveryContext'
+    | 'clearEmailVerificationDeliveryContext'
+  >;
   authPort: AuthPort;
   products: ProductRepository & ProductBatchReader & ProductMetadataRepository;
   courses: CourseRepository;

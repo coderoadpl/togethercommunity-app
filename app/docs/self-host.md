@@ -49,6 +49,13 @@ Compose network. Set `APP_BASE_DOMAIN` only when running subdomain-based
 multi-tenancy. TLS for unrelated custom tenant domains remains unavailable
 until the domain-management package provides a verification flow.
 
+`strict_sni_host on` makes Caddy reject a TLS request whose `Host` header does
+not match the certificate name it served, so only admitted hostnames reach the
+app. A static host matcher is not used in front of `reverse_proxy` because
+on-demand TLS admits tenant custom domains that the Caddyfile cannot enumerate;
+the approval endpoint stays the single admission gate. A different proxy must
+provide the equivalent host allow-list.
+
 Persistent data lives in the `postgres_data`, `caddy_data`, and `caddy_config`
 volumes. Back up PostgreSQL before upgrades. To upgrade, check out the intended
 release and run `docker compose up -d --build` again. Inspect health and logs

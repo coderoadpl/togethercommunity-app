@@ -36,6 +36,7 @@ import {
   addManualSuppression,
   applyVerifiedSesEvent,
   authenticateApiKey,
+  authLinkBaseUrl,
   claimIdempotencyKey,
   completeIdempotentRequest,
   confirmMarketingConsent,
@@ -47,6 +48,7 @@ import {
   sendM2mTransactionalMessage,
   sendMarketingMessages,
   getM2mTransactionalMessage,
+  tenantUrl,
   unsubscribeAllMarketing,
   unsubscribeOneClick,
   type Ctx,
@@ -385,7 +387,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     return response(await recordMarketingConsent(authenticated.value.ctx, {
       email, memberId, definitionId, source,
       evidence: { collectedAt, proofRef, ...(ip === undefined ? {} : { ip }), ...(userAgent === undefined ? {} : { userAgent }) },
-      confirmationBaseUrl: `${new URL(c.req.url).origin}/marketing/confirm`,
+      confirmationBaseUrl: tenantUrl(authenticated.value.tenant.slug, '/marketing/confirm', deps),
     }, {
       definitions: marketing.value.definitions, consents: marketing.value.marketingConsents,
       confirmations: marketing.value.confirmations, outbox: deps.emailOutbox, ids: deps.ids,
@@ -686,7 +688,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
         proofRef: `preference:${token}`,
         ...(c.req.header('user-agent') === undefined ? {} : { userAgent: c.req.header('user-agent') }),
       },
-      confirmationBaseUrl: `${new URL(c.req.url).origin}/marketing/confirm`,
+      confirmationBaseUrl: `${authLinkBaseUrl(resolved.value, deps)}/marketing/confirm`,
     }, {
       ...unsubscribeDeps(deps, marketing.value),
       confirmations: marketing.value.confirmations,

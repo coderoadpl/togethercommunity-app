@@ -38,7 +38,7 @@ export const storageFileName = (fileName: string, fallback: string): string => {
     .replace(/[^A-Za-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(-120);
-  return normalized.length > 0 ? normalized : fallback;
+  return normalized.length > 0 && !/^\.+$/.test(normalized) ? normalized : fallback;
 };
 
 export const storageAssetExpiresAt = (nowIso: string, ttlSeconds: number): string =>

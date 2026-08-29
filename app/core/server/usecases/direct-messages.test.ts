@@ -578,6 +578,26 @@ describe('startDmConversation', () => {
     expect(blocked.ok ? null : blocked.error.code).toBe('forbidden');
   });
 
+  it('gives a banned and an opted-out recipient the same error payload', async () => {
+    const bannedRecipient = await startDmConversation(
+      ctx(),
+      { recipient: { kind: 'member', memberId: 'm2' } },
+      fixture({
+        members: [member({ id: 'm1', userId: 'u1' }), member({ id: 'm2', userId: 'u2', bannedAt: NOW })],
+      }).deps,
+    );
+    const optedOutRecipient = await startDmConversation(
+      ctx(),
+      { recipient: { kind: 'member', memberId: 'm2' } },
+      fixture({
+        members: [member({ id: 'm1', userId: 'u1' }), member({ id: 'm2', userId: 'u2', dmOptOutAt: NOW })],
+      }).deps,
+    );
+
+    expect(bannedRecipient.ok).toBe(false);
+    expect(bannedRecipient).toEqual(optedOutRecipient);
+  });
+
   it('reports not found for a member of another tenant', async () => {
     const fx = fixture({
       members: [member({ id: 'm1', userId: 'u1' }), member({ id: 'm9', userId: 'u9', tenantId: 't2' })],

@@ -696,20 +696,8 @@ describe('sendDmMessage', () => {
     await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Dwa' }, fx.deps);
 
     expect(fx.published).toEqual([
-      {
-        kind: 'dm',
-        tenantId: 't1',
-        recipientUserId: 'u2',
-        conversationId: conversation.id,
-        createdAt: '2026-08-17T10:00:01.000Z',
-      },
-      {
-        kind: 'dm',
-        tenantId: 't1',
-        recipientUserId: 'u2',
-        conversationId: conversation.id,
-        createdAt: '2026-08-17T10:00:03.000Z',
-      },
+      { kind: 'dm', tenantId: 't1', recipientUserId: 'u2', conversationId: conversation.id },
+      { kind: 'dm', tenantId: 't1', recipientUserId: 'u2', conversationId: conversation.id },
     ]);
   });
 

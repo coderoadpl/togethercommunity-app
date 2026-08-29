@@ -1,14 +1,22 @@
 import { ok } from '#core/domain/index.js';
-import { createScopedSubscribers } from '#core/server/index.js';
-import type { NotificationChannelPort, RealtimeBusPort } from '#core/server/index.js';
+import type {
+  NotificationChannelPort,
+  RealtimeBusPort,
+  RealtimeEvent,
+} from '#core/server/index.js';
 
 export const createRealtimeBus = (): RealtimeBusPort => {
-  const subscribers = createScopedSubscribers();
+  const listeners = new Set<(event: RealtimeEvent) => void>();
   return {
     publish: (event) => {
-      subscribers.deliver(event);
+      for (const listener of listeners) listener(event);
     },
-    subscribe: (scope, listener) => subscribers.add(scope, listener),
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
   };
 };
 
@@ -19,8 +27,7 @@ export const createInAppNotificationChannel = (bus: RealtimeBusPort): Notificati
       kind: 'notification',
       tenantId: notification.tenantId,
       recipientUserId: notification.recipientUserId,
-      notificationId: notification.id,
-      createdAt: notification.createdAt,
+      notification,
     });
     return ok(undefined);
   },

@@ -26,8 +26,8 @@ export interface NotificationsStreamOptions {
 
 const MAX_STREAM_ERRORS = 2;
 
-/** The server rotates the stream well above this, so a shorter connection is a host cut. */
-const MIN_HEALTHY_CONNECTION_MS = 5_000;
+/** Serverless hosts cap a response well below this, so such a connection is a cut, not a drop. */
+const SHORT_CONNECTION_MS = 60_000;
 
 const MAX_SHORT_CONNECTIONS = 2;
 
@@ -74,7 +74,7 @@ export const connectNotificationsStream = (
   source.addEventListener('error', () => {
     errors += 1;
     if (openedAt !== null) {
-      shortConnections = now() - openedAt < MIN_HEALTHY_CONNECTION_MS ? shortConnections + 1 : 0;
+      shortConnections = now() - openedAt < SHORT_CONNECTION_MS ? shortConnections + 1 : 0;
       openedAt = null;
     }
     if (errors < MAX_STREAM_ERRORS && shortConnections < MAX_SHORT_CONNECTIONS) return;

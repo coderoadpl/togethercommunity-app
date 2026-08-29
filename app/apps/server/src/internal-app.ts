@@ -367,15 +367,11 @@ import {
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
 
-const requestOrigin = (req: HonoRequest, appBaseUrl: string): string => {
-  const host = req.header('host') ?? '';
-  if (host === '' || req.header(TENANT_HEADER) !== undefined) return new URL(appBaseUrl).origin;
-  const proto = req.header('x-forwarded-proto') ?? new URL(appBaseUrl).protocol.replace(':', '');
-  return new URL(`${proto}://${host}`).origin;
+const probeCorsOrigins = async (req: HonoRequest, deps: AppDeps): Promise<string[]> => {
+  const resolved = await resolveTenant(req.header('host') ?? '', req.header(TENANT_HEADER) ?? null, deps);
+  const tenantOrigin = authLinkBaseUrl(resolved.ok ? resolved.value : null, deps);
+  return [...new Set([new URL(tenantOrigin).origin, new URL(deps.appBaseUrl).origin])];
 };
-
-const probeCorsOrigins = (req: HonoRequest, appBaseUrl: string): string[] =>
-  [...new Set([requestOrigin(req, appBaseUrl), new URL(appBaseUrl).origin])];
 
 const emailBranding = async (
   deps: AppDeps,
@@ -1837,7 +1833,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
-        corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl),
+        corsOrigins: await probeCorsOrigins(c.req, deps),
         email: deps.email,
         emailSender: deps.emailSender,
         emailTransports: deps.emailTransports,
@@ -1854,7 +1850,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await probeStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { storage: deps.storage, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
+      { storage: deps.storage, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
 
@@ -1865,7 +1861,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await configureStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { ...deps, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
+      { ...deps, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
 

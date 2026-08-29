@@ -19,6 +19,7 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { ActiveSessions } from '../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
@@ -76,6 +77,19 @@ export const MemberAccountPage = () => {
     onSuccess: () => {
       setSupportSubject('');
       setSupportBody('');
+    },
+  });
+  const accountSessions = useQuery(actions.accountSessions);
+  const revokeAccountSession = useMutation({
+    ...actions.revokeAccountSession,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.accountSessionsInvalidates());
+    },
+  });
+  const revokeOtherAccountSessions = useMutation({
+    ...actions.revokeOtherAccountSessions,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.accountSessionsInvalidates());
     },
   });
   const passkeys = useQuery(actions.passkeys);
@@ -423,6 +437,26 @@ export const MemberAccountPage = () => {
               success: regenerateBackupCodes.isSuccess,
               error: regenerateBackupCodes.error,
               run: regenerateBackupCodes.mutate,
+            }}
+          />
+          <ActiveSessions
+            sessions={{
+              data: accountSessions.data?.sessions,
+              pending: accountSessions.isPending,
+              error: accountSessions.error,
+              retry: () => void accountSessions.refetch(),
+            }}
+            revokeSession={{
+              pending: revokeAccountSession.isPending,
+              success: revokeAccountSession.isSuccess,
+              error: revokeAccountSession.error,
+              run: revokeAccountSession.mutate,
+            }}
+            revokeOtherSessions={{
+              pending: revokeOtherAccountSessions.isPending,
+              success: revokeOtherAccountSessions.isSuccess,
+              error: revokeOtherAccountSessions.error,
+              run: () => revokeOtherAccountSessions.mutate(undefined),
             }}
           />
         </SectionCard>

@@ -257,6 +257,23 @@ export const meProfileUpdateOutputSchema = z.object({
   dmOptOut: z.boolean().default(false),
 });
 
+export const accountSessionsOutputSchema = z.object({
+  sessions: z.array(z.object({
+    id: z.string(),
+    createdAt: z.string().datetime(),
+    lastActiveAt: z.string().datetime(),
+    userAgent: z.string().nullable(),
+    current: z.boolean(),
+  })),
+});
+
+export const accountSessionRevokeInputSchema = z.object({ sessionId: z.string().min(1) });
+export type AccountSessionRevokeInput = z.infer<typeof accountSessionRevokeInputSchema>;
+
+export const accountSessionRevokeOutputSchema = z.object({
+  revoked: z.number().int().nonnegative(),
+});
+
 export const memberBillingOrdersQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(25),
@@ -1579,6 +1596,9 @@ export const API_ROUTES = {
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
   meProfile: { method: 'POST', path: '/api/me/profile' },
+  accountSessions: { method: 'GET', path: '/api/me/sessions' },
+  accountSessionRevoke: { method: 'POST', path: '/api/me/sessions/revoke' },
+  accountSessionsRevokeOthers: { method: 'POST', path: '/api/me/sessions/revoke-others' },
   memberBillingOrders: { method: 'GET', path: '/api/me/billing-orders' },
   memberDataExport: { method: 'GET', path: '/api/me/data-export' },
   memberErasureRequest: { method: 'GET', path: '/api/me/erasure-request' },
@@ -1826,6 +1846,9 @@ export const API_PATHS = {
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
   meProfile: API_ROUTES.meProfile.path,
+  accountSessions: API_ROUTES.accountSessions.path,
+  accountSessionRevoke: API_ROUTES.accountSessionRevoke.path,
+  accountSessionsRevokeOthers: API_ROUTES.accountSessionsRevokeOthers.path,
   memberBillingOrders: API_ROUTES.memberBillingOrders.path,
   memberDataExport: API_ROUTES.memberDataExport.path,
   memberErasureRequest: API_ROUTES.memberErasureRequest.path,

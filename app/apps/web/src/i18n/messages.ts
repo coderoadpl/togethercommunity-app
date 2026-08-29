@@ -576,6 +576,20 @@ export interface Messages {
     regenerateBackupCodes: string;
     regeneratingBackupCodes: string;
     backupCodesRegenerated: string;
+    sessionsHeading: string;
+    sessionsIntro: string;
+    sessionsLoading: string;
+    sessionsEmpty: string;
+    sessionCurrent: string;
+    sessionUnknownDevice: string;
+    sessionSignedInAt: (params: { date: string }) => string;
+    sessionLastActiveAt: (params: { date: string }) => string;
+    sessionRevoke: string;
+    sessionRevoking: string;
+    sessionRevoked: string;
+    sessionsRevokeOthers: string;
+    sessionsRevokingOthers: string;
+    sessionsOthersRevoked: string;
   };
   integrations: {
     heading: string;

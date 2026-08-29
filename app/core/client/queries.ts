@@ -10,6 +10,7 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  AccountSessionRevokeInput,
   CourseCreateInput,
   ApiKeyCreateInput,
   ApiKeyImportAuditQuery,
@@ -838,6 +839,28 @@ export const myDataExportQuery = (api: ApiClient) =>
     staleTime: 0,
     gcTime: 0,
     call: ({ signal }) => api.exportMyData(signal),
+  });
+
+const accountSessionsKey = ['account-sessions'];
+
+export const accountSessionsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: accountSessionsKey,
+    call: ({ signal }) => api.listAccountSessions(signal),
+  });
+
+export const accountSessionsInvalidates = () => ({ queryKey: accountSessionsKey });
+
+export const revokeAccountSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...accountSessionsKey, 'revoke'],
+    call: (input: AccountSessionRevokeInput) => api.revokeAccountSession(input),
+  });
+
+export const revokeOtherAccountSessionsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...accountSessionsKey, 'revoke-others'],
+    call: () => api.revokeOtherAccountSessions(),
   });
 
 export const myErasureRequestQuery = (api: ApiClient) =>

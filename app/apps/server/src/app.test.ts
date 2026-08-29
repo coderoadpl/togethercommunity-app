@@ -153,6 +153,8 @@ const deps = (input: {
         if (!input.authenticated) throw new Error('Public route must not authenticate');
         return null;
       }),
+      listSessions: async () => [],
+      revokeSessions: async () => undefined,
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -779,6 +781,7 @@ const scopedApp = (
     authPort: {
       ...base.authPort,
       getAuthenticatedUser: async () => ({
+        sessionId: 'session-1',
         userId: 'user-1',
         email: 'user@acme.test',
         name: 'User',
@@ -2877,6 +2880,54 @@ describe('new route authorization', () => {
     expect(response.status).toBe(409);
   });
 
+  it('serves and revokes only the caller own account sessions', async () => {
+    const base = deps();
+    const revokeSessions = vi.fn(async () => undefined);
+    const authPort: AppDeps['authPort'] = {
+      ...base.authPort,
+      getAuthenticatedUser: async () => ({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        email: 'user@acme.test',
+        name: 'User',
+        emailVerified: true,
+        image: null,
+      }),
+      listSessions: async () => [
+        {
+          id: 'session-1',
+          createdAt: '1998-07-12T00:00:00.000Z',
+          lastActiveAt: '1998-07-12T00:00:00.000Z',
+          userAgent: 'Chrome/140',
+        },
+        {
+          id: 'session-2',
+          createdAt: '1998-07-11T00:00:00.000Z',
+          lastActiveAt: '1998-07-11T00:00:00.000Z',
+          userAgent: null,
+        },
+      ],
+      revokeSessions,
+    };
+
+    const listed = await scopedApp('member', { overrides: { authPort } })
+      .request(API_PATHS.accountSessions, { headers });
+    expect(listed.status).toBe(200);
+    await expect(listed.json()).resolves.toMatchObject({
+      data: { sessions: [{ id: 'session-1', current: true }, { id: 'session-2', current: false }] },
+    });
+
+    const revoked = await scopedApp('staff', { overrides: { authPort } })
+      .request(API_PATHS.accountSessionsRevokeOthers, { method: 'POST', headers });
+    expect(revoked.status).toBe(200);
+    expect(revokeSessions).toHaveBeenCalledExactlyOnceWith('user-1', ['session-2']);
+
+    expect(
+      (await scopedApp('none', { overrides: { authPort } })
+        .request(API_PATHS.accountSessions, { headers })).status,
+    ).toBe(403);
+  });
+
   it('allows only a member to export their own data', async () => {
     expect(
       (await scopedApp('member').request(API_PATHS.memberDataExport, { headers })).status,
@@ -3103,7 +3154,7 @@ describe('single-tenant mode', () => {
       singleTenantMode: true,
       authPort: {
         ...base.authPort,
-        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true, image: null }),
+        getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true, image: null }),
       },
       tenantAccess: {
         ...base.tenantAccess,
@@ -3396,6 +3447,7 @@ describe('free lesson preview route', () => {
       deps({
         lessons: [preview, paid],
         getAuthenticatedUser: async () => ({
+          sessionId: 'session-other',
           userId: 'other-tenant-user',
           email: 'other@example.com',
           name: 'Other Tenant User',

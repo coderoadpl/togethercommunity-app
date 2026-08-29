@@ -207,7 +207,8 @@ describe('CourseTree', () => {
     const toggle = screen.getByTestId('module-toggle-m1');
     expect(toggle.tagName).toBe('BUTTON');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle).toHaveAttribute('aria-controls', 'course-tree-module-m1');
+    const disclosure = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(disclosure).toContainElement(screen.getByText('Intro to Variables'));
     toggle.focus();
     await user.keyboard('{Enter}');
     await waitFor(() => expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument());

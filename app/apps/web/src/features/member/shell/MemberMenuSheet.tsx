@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
-import { Box, IconButton, Typography } from '@mui/material';
+import { Box, IconButton } from '@mui/material';
 
 import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { MemberSidebar } from './MemberSidebar.js';
-import { SheetDrawer, SheetHeader } from './shell-chrome.js';
+import { SheetDrawer, SheetHeader, SheetTitle } from './shell-chrome.js';
 import { CloseIcon } from './shell-icons.js';
 
 const ShellSheet = ({
@@ -29,9 +29,9 @@ const ShellSheet = ({
         sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}
       >
         <SheetHeader>
-          <Typography variant="h3" component="p" noWrap>
+          <SheetTitle variant="body1" component="p" noWrap>
             {title}
-          </Typography>
+          </SheetTitle>
           <Box sx={{ flex: 1 }} />
           <IconButton aria-label={t.shell.closeSheet} onClick={onClose} data-testid={`${testId}-close`}>
             <CloseIcon />

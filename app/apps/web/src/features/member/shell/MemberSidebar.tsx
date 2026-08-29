@@ -184,23 +184,29 @@ export const MemberSidebar = ({
         </BrandLink>
       ) : null}
       <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <List component="div" disablePadding>
-          <LinkRow
-            to={memberHomePath()}
-            label={t.shell.start}
-            icon={<StartIcon />}
-            active={active?.kind === 'start'}
-            testId="sidebar-start"
-          />
-          <LinkRow
-            to={memberSearchPath()}
-            label={t.shell.searchEntry}
-            icon={<SearchIcon />}
-            active={active?.kind === 'search'}
-            testId="sidebar-search"
-          />
-        </List>
-        <Typography variant="overline" component="p" sx={{ px: '0.6rem', pt: '0.75rem' }}>
+        {variant === 'drawer' ? (
+          <List component="div" disablePadding>
+            <LinkRow
+              to={memberHomePath()}
+              label={t.shell.start}
+              icon={<StartIcon />}
+              active={active?.kind === 'start'}
+              testId="sidebar-start"
+            />
+            <LinkRow
+              to={memberSearchPath()}
+              label={t.shell.searchEntry}
+              icon={<SearchIcon />}
+              active={active?.kind === 'search'}
+              testId="sidebar-search"
+            />
+          </List>
+        ) : null}
+        <Typography
+          variant="overline"
+          component="p"
+          sx={{ px: '0.6rem', pt: variant === 'drawer' ? '0.75rem' : 0 }}
+        >
           {t.shell.spacesSection}
         </Typography>
         <NavigationList active={active} />

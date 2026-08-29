@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Box, Button, Chip, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Button, Chip, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -7,6 +7,7 @@ import type { StaffSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { PanelListRow } from '../../../components/ui/PanelListRow.js';
 import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { DataValue } from '../../../theme.js';
 
@@ -27,74 +28,76 @@ const SpaceRow = ({ space }: { space: StaffSpace }) => {
   });
 
   return (
-    <Paper elevation={1} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }} data-testid="space-row">
-      <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <Typography variant="h2" component="h2">
-          {space.name}
-        </Typography>
-        <Chip
-          size="small"
-          variant="outlined"
-          label={space.visibility === 'members' ? t.spacesPanel.membersOnlyChip : t.spacesPanel.productGatedChip}
-        />
-        {isArchived ? (
-          <Chip size="small" color="warning" variant="outlined" label={t.spacesPanel.statusArchived} />
-        ) : null}
-        <Box sx={{ flex: 1 }} />
-        <Typography variant="body2" color="text.secondary" component="span">
-          {space.slug}
-        </Typography>
-      </Stack>
-
-      <Typography variant="body2" color="text.secondary" component="span">
-        <DataValue>{space.stats.posts}</DataValue> {t.spacesPanel.postsNoun({ count: space.stats.posts })} ·{' '}
-        <DataValue>{space.stats.followers}</DataValue> {t.spacesPanel.followersNoun({ count: space.stats.followers })}
-      </Typography>
-
-      <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
-        <Button
-          size="small"
-          variant="text"
-          component={Link}
-          to={`/panel/spaces/${encodeURIComponent(space.id)}`}
-          data-testid={`space-manage-${space.id}`}
-        >
-          {t.spacesPanel.manage}
-        </Button>
-        <Button
-          size="small"
-          variant="text"
-          component={Link}
-          to={`/panel/spaces/${encodeURIComponent(space.id)}/events`}
-          data-testid={`space-events-${space.id}`}
-        >
-          {t.events.manageEvents}
-        </Button>
-        {isArchived ? (
+    <PanelListRow
+      data-testid="space-row"
+      title={space.name}
+      badges={
+        <>
+          <Chip
+            size="small"
+            variant="outlined"
+            label={space.visibility === 'members' ? t.spacesPanel.membersOnlyChip : t.spacesPanel.productGatedChip}
+          />
+          {isArchived ? (
+            <Chip size="small" color="warning" variant="outlined" label={t.spacesPanel.statusArchived} />
+          ) : null}
+        </>
+      }
+      meta={
+        <>
+          <span>{space.slug}</span>
+          <span>
+            <DataValue>{space.stats.posts}</DataValue> {t.spacesPanel.postsNoun({ count: space.stats.posts })} ·{' '}
+            <DataValue>{space.stats.followers}</DataValue>{' '}
+            {t.spacesPanel.followersNoun({ count: space.stats.followers })}
+          </span>
+        </>
+      }
+      actions={
+        <>
           <Button
             size="small"
             variant="text"
-            disabled={setArchived.isPending}
-            onClick={() => setArchived.mutate({ id: space.id, archived: false })}
-            data-testid={`space-restore-${space.id}`}
+            component={Link}
+            to={`/panel/spaces/${encodeURIComponent(space.id)}`}
+            data-testid={`space-manage-${space.id}`}
           >
-            {t.spacesPanel.restore}
+            {t.spacesPanel.manage}
           </Button>
-        ) : (
           <Button
             size="small"
             variant="text"
-            color="error"
-            onClick={() => setConfirmArchive(true)}
-            data-testid={`space-archive-${space.id}`}
+            component={Link}
+            to={`/panel/spaces/${encodeURIComponent(space.id)}/events`}
+            data-testid={`space-events-${space.id}`}
           >
-            {t.spacesPanel.archive}
+            {t.events.manageEvents}
           </Button>
-        )}
-      </Stack>
-
+          {isArchived ? (
+            <Button
+              size="small"
+              variant="text"
+              disabled={setArchived.isPending}
+              onClick={() => setArchived.mutate({ id: space.id, archived: false })}
+              data-testid={`space-restore-${space.id}`}
+            >
+              {t.spacesPanel.restore}
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              variant="text"
+              color="error"
+              onClick={() => setConfirmArchive(true)}
+              data-testid={`space-archive-${space.id}`}
+            >
+              {t.spacesPanel.archive}
+            </Button>
+          )}
+        </>
+      }
+    >
       {setArchived.isError ? <Alert severity="error">{localizePanelError(setArchived.error, t)}</Alert> : null}
-
       <ConfirmDialog
         open={confirmArchive}
         title={t.spacesPanel.archiveConfirmTitle}
@@ -106,7 +109,7 @@ const SpaceRow = ({ space }: { space: StaffSpace }) => {
         onClose={() => setConfirmArchive(false)}
         confirmTestId={`space-archive-confirm-${space.id}`}
       />
-    </Paper>
+    </PanelListRow>
   );
 };
 

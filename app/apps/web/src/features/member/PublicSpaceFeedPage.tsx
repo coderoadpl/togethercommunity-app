@@ -6,6 +6,7 @@ import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { PostBody } from '../../theme.js';
+import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceEventsSection } from './events/PublicSpaceEventsSection.js';
 import { PublicFeedList } from './PublicFeed.js';
@@ -95,7 +96,13 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   );
 
   return (
-    <MemberSurface title={space.name} eyebrow={t.anon.eyebrow} width="wide" rail={rail}>
+    <MemberSurface
+      title={space.name}
+      eyebrow={t.anon.eyebrow}
+      width="wide"
+      rail={rail}
+      breadcrumbs={anonCrumbs(t, { label: space.name })}
+    >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
         {feed.isPending ? (
           <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />

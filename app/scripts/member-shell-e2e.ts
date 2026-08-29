@@ -145,8 +145,8 @@ const runMobileMenuJourney = async (page: Page): Promise<void> => {
   const sheet = page.getByTestId('member-menu-sheet');
   await sheet.waitFor(visible);
 
-  await assertHref(sheet.getByTestId('sidebar-start'), '/start', 'Menu Start row');
-  await assertHref(sheet.getByTestId('sidebar-search'), '/search', 'Menu Search row');
+  assert(await sheet.getByTestId('sidebar-start').count() === 0, 'Menu sheet repeated the Start tab-bar destination');
+  assert(await sheet.getByTestId('sidebar-search').count() === 0, 'Menu sheet repeated the Search tab-bar destination');
   await assertHref(
     sheet.getByTestId('sidebar-space-space-studio-spolecznosc'),
     '/community/space-studio-spolecznosc',
@@ -168,9 +168,13 @@ const runMobileMenuJourney = async (page: Page): Promise<void> => {
   await assertHref(sheet.getByTestId('member-identity'), '/account', 'Menu identity row');
   assert(await sheet.getByTestId('notification-nav').count() === 0, 'Menu sheet duplicated the notification row');
 
-  await sheet.getByTestId('sidebar-start').click();
-  await page.waitForURL('**/start');
+  await sheet.getByTestId('sidebar-products').click();
+  await page.waitForURL('**/my/products');
   await sheet.waitFor({ state: 'detached', timeout: 15000 });
+
+  await page.getByTestId('member-tab-start').click();
+  await page.waitForURL('**/start');
+  await page.getByTestId('start-continue').waitFor(visible);
   console.log('member-shell-e2e: unified mobile Menu sheet journey OK');
 };
 

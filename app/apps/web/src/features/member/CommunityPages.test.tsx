@@ -9,7 +9,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   createPostInputSchema,
@@ -165,6 +165,19 @@ const okDiscussion = (
     }),
   );
 
+const stubNarrowViewport = () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('max-width'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 const renderPage = async (component: () => ReactNode, path: string) => {
   const rootRoute = createRootRoute({ component });
   const router = createRouter({
@@ -264,6 +277,7 @@ describe('community pages', () => {
     expect(screen.getByTestId('post-body-p1')).toHaveTextContent('Cześć wszystkim');
     expect(screen.getByTestId('reply-count-p1')).toHaveTextContent(pl.discussion.replyCount({ count: 3 }));
     expect(screen.getByTestId('reaction-p1-👍')).toHaveTextContent('2');
+    expect(screen.queryByTestId('reaction-p1-🎉')).not.toBeInTheDocument();
     expect(screen.getByTestId('open-thread-p1')).toHaveAttribute('href', '/community/s1/posts/p1');
     expect(screen.getByTestId('feed-post-p2')).toBeInTheDocument();
     expect(within(screen.getByTestId('feed-post-p1')).getByTestId('member-avatar-image')).toHaveAttribute(
@@ -332,6 +346,121 @@ describe('community pages', () => {
     await waitFor(() => expect(reactCalls).toEqual([{ postId: 'p1', emoji: '👍' }]));
     await waitFor(() => expect(screen.getByTestId('reaction-p1-👍')).toHaveAttribute('aria-pressed', 'true'));
     expect(screen.getByTestId('reaction-p1-👍')).toHaveTextContent('2');
+  });
+
+  it('keeps the parent space link in the thread breadcrumbs on a narrow viewport', async () => {
+    stubNarrowViewport();
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okDiscussion([{ ...feedItem({ id: 'p1', body: 'Obserwowany wątek' }), replies: [] }]),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    const crumbs = await screen.findByTestId('member-breadcrumbs');
+    expect(within(crumbs).getByRole('link', { name: 'Ogólna' })).toHaveAttribute('href', '/community/s1');
+    expect(within(crumbs).getByRole('link', { name: pl.community.heading })).toBeVisible();
+    expect(within(crumbs).queryByText(pl.community.threadTitle)).toBeNull();
+  });
+
+  it('adds an unused reaction through the picker popover', async () => {
+    const reactCalls: unknown[] = [];
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', [feedItem({ id: 'p1', reactions: [{ emoji: '👍', count: 1, viewerReacted: false }] })]),
+      okSeen(),
+      http.post('/api/posts/react', async ({ request }) => {
+        const body = reactToPostInputSchema.parse(await request.json());
+        reactCalls.push(body);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            postId: body.postId,
+            reactions: [
+              { emoji: '👍', count: 1, viewerReacted: false },
+              { emoji: '🎉', count: 1, viewerReacted: true },
+            ],
+          },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await user.click(await screen.findByTestId('reaction-picker-p1'));
+    await user.click(await screen.findByTestId('reaction-option-p1-🎉'));
+
+    await waitFor(() => expect(reactCalls).toEqual([{ postId: 'p1', emoji: '🎉' }]));
+    await waitFor(() => expect(screen.getByTestId('reaction-p1-🎉')).toHaveTextContent('1'));
+  });
+
+  it('keeps the space composer on one line until it takes focus', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', []),
+      okSeen(),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const input = await screen.findByTestId('space-composer-input');
+    expect(screen.queryByTestId('space-composer-submit')).not.toBeInTheDocument();
+
+    await user.click(input);
+
+    expect(await screen.findByTestId('space-composer-submit')).toBeDisabled();
+
+    await user.tab();
+
+    await waitFor(() => expect(screen.queryByTestId('space-composer-submit')).not.toBeInTheDocument());
+  });
+
+  it('copies a post permalink from the feed overflow menu', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', [feedItem({ id: 'p1' })]),
+      okSeen(),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await user.click(await screen.findByTestId('post-menu-p1'));
+    await user.click(await screen.findByTestId('copy-link-p1'));
+
+    expect(await screen.findByText(pl.community.copyLinkDone)).toBeInTheDocument();
+    expect(await navigator.clipboard.readText()).toBe(
+      `${window.location.origin}/community/s1/posts/p1`,
+    );
+  });
+
+  it('opens the report dialog from the feed overflow menu', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', [feedItem({ id: 'p1' })]),
+      okSeen(),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await user.click(await screen.findByTestId('post-menu-p1'));
+    expect(screen.getByTestId('start-message-p1')).toBeInTheDocument();
+    await user.click(screen.getByTestId('report-post-p1'));
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent(pl.community.reportTitle);
   });
 
   it('mutes a followed thread from the space thread surface', async () => {

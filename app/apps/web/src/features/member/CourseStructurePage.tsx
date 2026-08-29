@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
+import { Box, Link as MuiLink, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
@@ -11,13 +12,14 @@ import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import {
   CourseCoverImage,
+  CourseStatTile,
   Eyebrow,
-  StatTile,
   StatTileLabel,
   StatTileValue,
 } from '../../theme.js';
 import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseRail.js';
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
+import { CourseTree } from './CourseTree.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyCourseIcon, StatCheckIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
 import { PublicCourseStructurePage } from './PublicCourseStructurePage.js';
@@ -64,17 +66,20 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
       sx={{
         display: 'grid',
         gap: '0.75rem',
-        gridTemplateColumns: { xs: '1fr', sm: `repeat(${tiles.length}, 1fr)` },
+        gridTemplateColumns: {
+          xs: 'repeat(auto-fit, minmax(9rem, 1fr))',
+          sm: `repeat(${tiles.length}, 1fr)`,
+        },
       }}
     >
       {tiles.map((tile) => (
-        <StatTile key={tile.key} data-testid={`stat-tile-${tile.key}`}>
+        <CourseStatTile key={tile.key} data-testid={`stat-tile-${tile.key}`}>
           {tile.icon}
           <Box sx={{ minWidth: 0 }}>
             <StatTileValue component="p">{tile.value}</StatTileValue>
             <StatTileLabel component="p">{tile.label}</StatTileLabel>
           </Box>
-        </StatTile>
+        </CourseStatTile>
       ))}
     </Box>
   );
@@ -88,7 +93,7 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
     return (
       <MemberSurface
         title={t.student.myCourses}
-        eyebrow={t.courseTree.courseSyllabus}
+        eyebrow={t.student.courseEyebrow}
         width="wide"
         state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
       />
@@ -108,6 +113,8 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const progress = useQuery(actions.studentProgress(courseId));
   const courses = useQuery(actions.studentCourses);
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isCompact = useMediaQuery(theme.breakpoints.down('md'));
   const unauthorized = isUnauthorized(structure.error);
 
   useEffect(() => {
@@ -118,7 +125,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
     return (
       <MemberSurface
         title={t.student.myCourses}
-        eyebrow={t.courseTree.courseSyllabus}
+        eyebrow={t.student.courseEyebrow}
         width="wide"
         state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
       />
@@ -132,7 +139,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
     return (
       <MemberSurface
         title={notFound ? t.courseTree.courseNotFound : t.student.myCourses}
-        eyebrow={t.courseTree.courseSyllabus}
+        eyebrow={t.student.courseEyebrow}
         width={notFound ? 'prose' : 'wide'}
         state={notFound
           ? {
@@ -157,15 +164,25 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   return (
     <MemberSurface
       title={course.name}
-      eyebrow={t.courseTree.courseSyllabus}
+      eyebrow={t.student.courseEyebrow}
       width="wide"
       mobileRail="split"
       railLeading={
-        <CourseProgressCard
-          courseId={courseId}
-          structure={course}
-          lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
-        />
+        <>
+          <CourseProgressCard
+            courseId={courseId}
+            structure={course}
+            lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
+          />
+          {hasModules && isCompact ? (
+            <Box data-testid="course-tree-inline">
+              <Typography variant="overline" component="h2">
+                {t.courseOverview.curriculum}
+              </Typography>
+              <CourseTree courseId={courseId} structure={course} initiallyCollapsed />
+            </Box>
+          ) : null}
+        </>
       }
       rail={hasModules ? <CourseDiscussionSearch courseId={courseId} structure={course} /> : undefined}
     >

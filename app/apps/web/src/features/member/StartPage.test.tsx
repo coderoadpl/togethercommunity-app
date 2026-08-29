@@ -161,6 +161,8 @@ describe('StartPage', () => {
     expect(card).toHaveTextContent('JavaScript od zera');
     expect(card).toHaveTextContent(pl.start.continueLabel({ lesson: 'Zmienne' }));
     expect(card).toHaveTextContent('33%');
+    expect(within(card).getAllByText('33%')).toHaveLength(1);
+    expect(within(card).queryByTestId('progress-ring')).not.toBeInTheDocument();
   });
 
   it('offers a review when the last active course is already finished', async () => {

@@ -220,6 +220,7 @@ describe('MemberShell', () => {
     expect(sidebar).toContainElement(space);
     expect(space).toHaveAttribute('href', '/community/s1');
     expect(space).toHaveTextContent('Ogólna');
+    expect(space.querySelector('svg')).not.toBeNull();
 
     const inProgress = within(sidebar).getByTestId('sidebar-course-c1');
     expect(inProgress).toHaveAttribute('href', '/my/courses/c1');
@@ -540,6 +541,23 @@ describe('MemberShell', () => {
     expect(within(sheet).getByTestId('member-identity')).toHaveTextContent('Jan Uczestnik');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
+    expect(within(sheet).queryByTestId('sidebar-start')).not.toBeInTheDocument();
+    expect(within(sheet).queryByTestId('sidebar-search')).not.toBeInTheDocument();
+  });
+
+  it('offers the program in both a compact and a wide app-bar control', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    const user = userEvent.setup();
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const compact = await screen.findByTestId('program-button');
+    expect(compact).toHaveAccessibleName(pl.shell.programButton);
+    expect(screen.getByTestId('program-button-wide')).toHaveTextContent(pl.shell.programButton);
+
+    await user.click(screen.getByTestId('program-button-wide'));
+    expect(await screen.findByTestId('course-program-sheet')).toBeInTheDocument();
   });
 
   it('carries the course program in a sheet opened from the app bar', async () => {
@@ -588,10 +606,9 @@ describe('MemberShell', () => {
 
     await renderShell('/my');
 
-    expect(await screen.findByRole('link', { name: pl.auth.signInLink })).toHaveAttribute(
-      'href',
-      '/login',
-    );
+    const sidebarSignIn = await screen.findByTestId('anon-sidebar-signin');
+    expect(sidebarSignIn).toHaveAttribute('href', '/login');
+    expect(sidebarSignIn).toHaveTextContent(pl.auth.signInLink);
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
     expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();

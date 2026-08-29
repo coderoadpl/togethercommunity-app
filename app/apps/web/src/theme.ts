@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, Button, ButtonBase, LinearProgress, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -32,6 +32,8 @@ declare module '@mui/material/styles' {
     };
     /** Focus-ring base color; themes that set it let applyBranding tint focus with the tenant accent. */
     focusRing?: string;
+    /** Link ink; themes that leave it unset follow the branding-tinted primary. */
+    linkColor?: string;
   }
   interface ThemeOptions {
     headerRule?: string;
@@ -46,8 +48,11 @@ declare module '@mui/material/styles' {
       contrastText: string;
     };
     focusRing?: string;
+    linkColor?: string;
   }
 }
+
+const linkInk = (theme: Theme): string => theme.linkColor ?? theme.palette.primary.dark;
 
 const PAPER = '#f6f2ea';
 const PAPER_RAISED = '#fdfbf6';
@@ -585,10 +590,10 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
         defaultProps: { underline: 'hover' },
         styleOverrides: {
           root: ({ theme }) => ({
-            color: theme.palette.primary.dark,
+            color: linkInk(theme),
             fontWeight: 500,
-            textDecorationColor: alpha(theme.palette.primary.dark, 0.35),
-            '&:hover': { textDecorationColor: theme.palette.primary.dark },
+            textDecorationColor: alpha(linkInk(theme), 0.35),
+            '&:hover': { textDecorationColor: linkInk(theme) },
             '&[aria-current="true"]': { fontWeight: 600 },
             '&:focus-visible': {
               outline: 'none',
@@ -867,6 +872,7 @@ const SIGNAL_DIVIDER = '#DCDCD8';
 const createSignalMonoTheme = (): Theme =>
   createTheme({
     headerRule: `1px solid ${SIGNAL_DIVIDER}`,
+    linkColor: SIGNAL_INK,
     numericFontFamily: SIGNAL_FONT_MONO,
     statusAccent: SIGNAL_ACCENT,
     palette: {
@@ -1083,7 +1089,7 @@ const createSignalMonoTheme = (): Theme =>
         defaultProps: { underline: 'none' },
         styleOverrides: {
           root: ({ theme }) => ({
-            color: SIGNAL_INK,
+            color: linkInk(theme),
             fontWeight: 600,
             borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
             '&[aria-current="true"]': { borderBottom: `2px solid ${SIGNAL_ACCENT}` },
@@ -1326,6 +1332,7 @@ const FRAME_PRIMARY_TINT = 'rgba(39, 76, 119, 0.1)';
 const createSteadyFrameTheme = (): Theme =>
   createTheme({
     headerRule: `1px solid ${FRAME_DIVIDER}`,
+    linkColor: FRAME_PRIMARY,
     numericFontFamily: FRAME_FONT_HEADING,
     statusAccent: FRAME_SUCCESS,
     moneyColor: FRAME_ACCENT,
@@ -1497,7 +1504,7 @@ const createSteadyFrameTheme = (): Theme =>
         defaultProps: { underline: 'hover' },
         styleOverrides: {
           root: ({ theme }) => ({
-            color: FRAME_PRIMARY,
+            color: linkInk(theme),
             fontWeight: 600,
             '&[aria-current="true"]': { fontWeight: 700 },
             '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
@@ -1695,6 +1702,7 @@ const SCORE_SHADOW = `3px 3px 0 ${SCORE_INK}`;
 const createScoreboardTheme = (): Theme =>
   createTheme({
     headerRule: `2px solid ${SCORE_DIVIDER}`,
+    linkColor: SCORE_INK,
     palette: {
       mode: 'light',
       contrastThreshold: CONTRAST_THRESHOLD,
@@ -1877,13 +1885,13 @@ const createScoreboardTheme = (): Theme =>
       MuiLink: {
         defaultProps: { underline: 'none' },
         styleOverrides: {
-          root: {
-            color: SCORE_INK,
+          root: ({ theme }) => ({
+            color: linkInk(theme),
             fontWeight: 600,
             borderBottom: `1.5px solid ${SCORE_INK}`,
             '&[aria-current="true"]': { borderBottomWidth: 3 },
             '&:hover': { borderBottomWidth: 3 },
-          },
+          }),
         },
       },
       MuiChip: {
@@ -2107,6 +2115,7 @@ const STUDIO_SHADOW_FLOAT = '0 12px 28px rgba(20, 18, 15, 0.08)';
 const createQuietStudioTheme = (): Theme =>
   createTheme({
     headerRule: `1px solid ${STUDIO_DIVIDER}`,
+    linkColor: STUDIO_PRIMARY,
     palette: {
       mode: 'light',
       contrastThreshold: CONTRAST_THRESHOLD,
@@ -2246,11 +2255,11 @@ const createQuietStudioTheme = (): Theme =>
       MuiLink: {
         defaultProps: { underline: 'hover' },
         styleOverrides: {
-          root: {
-            color: STUDIO_PRIMARY,
+          root: ({ theme }) => ({
+            color: linkInk(theme),
             fontWeight: 500,
             '&[aria-current="true"]': { fontWeight: 600 },
-          },
+          }),
         },
       },
       MuiChip: {
@@ -2398,6 +2407,7 @@ const createAppTheme = (accentHue = 24): Theme => {
   const accentWash = `hsl(${accentHue} 55% 50% / 0.09)`;
 
   return createTheme({
+    linkColor: INK,
     palette: {
       mode: 'light',
       contrastThreshold: CONTRAST_THRESHOLD,
@@ -2564,8 +2574,8 @@ const createAppTheme = (accentHue = 24): Theme => {
       MuiLink: {
         defaultProps: { underline: 'none' },
         styleOverrides: {
-          root: {
-            color: INK,
+          root: ({ theme }) => ({
+            color: linkInk(theme),
             borderBottom: `1px dashed ${LINE_STRONG}`,
             paddingBottom: 1,
             '&[aria-current="true"]': {
@@ -2574,7 +2584,7 @@ const createAppTheme = (accentHue = 24): Theme => {
               borderBottom: `2px solid ${accent}`,
             },
             '&:hover': { color: accentInk, borderBottomColor: accentInk },
-          },
+          }),
         },
       },
       MuiListItem: {
@@ -2672,11 +2682,16 @@ const createAppTheme = (accentHue = 24): Theme => {
   });
 };
 
-type AsElement = { component?: ElementType };
+export type AsElement = { component?: ElementType };
 
 export const CardTitle = styled(Typography)<AsElement>({ fontSize: '1.6rem' });
 
 export const Wordmark = styled(CardTitle)({ letterSpacing: 'normal' });
+
+export const ShellWordmark = styled(Wordmark)<AsElement>(({ theme }) => ({
+  fontSize: '1.25rem',
+  [theme.breakpoints.up('md')]: { fontSize: '1.6rem' },
+}));
 
 export const CompactWordmark = styled(Wordmark)(({ theme }) => ({
   color: theme.palette.text.primary,
@@ -2707,22 +2722,93 @@ export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
   color: theme.palette.text.primary,
 }));
 
-export const EmberCtaButton = styled(Button)(({ theme }) => ({
-  backgroundColor: theme.emberCta?.main ?? theme.palette.primary.main,
-  color: theme.emberCta?.contrastText ?? theme.palette.primary.contrastText,
-  '&:hover': {
-    backgroundColor: theme.emberCta?.hover ?? theme.palette.primary.light,
-  },
-  '&:active': {
-    backgroundColor: theme.emberCta?.active ?? theme.palette.primary.dark,
-  },
-  '&.Mui-disabled': {
-    backgroundColor: theme.palette.action.disabledBackground,
-    color: theme.palette.action.disabled,
-  },
+export const PostToolbarButton = styled(Button)({ whiteSpace: 'nowrap' });
+
+export const PostMetaButton = styled(Button)(({ theme }) => ({
+  whiteSpace: 'nowrap',
+  padding: 0,
+  minWidth: 0,
+  fontWeight: 500,
+  fontSize: 'inherit',
+  lineHeight: 'inherit',
+  color: linkInk(theme),
+  textUnderlineOffset: '0.15em',
+  '&:hover': { backgroundColor: 'transparent', textDecoration: 'underline' },
+}));
+
+export const EmberCtaButton = styled(Button)(({ theme }) => {
+  const surface = theme.emberCta?.main ?? theme.palette.primary.main;
+  const hover = theme.emberCta?.hover ?? theme.palette.primary.light;
+  const active = theme.emberCta?.active ?? theme.palette.primary.dark;
+  const ink = theme.emberCta?.contrastText ?? theme.palette.primary.contrastText;
+  const fill = {
+    backgroundColor: surface,
+    color: ink,
+    boxShadow: 'none',
+    '&:hover': { backgroundColor: hover, color: ink, boxShadow: 'none' },
+    '&:active': { backgroundColor: active, color: ink },
+  };
+  return {
+    ...fill,
+    // At equal specificity emotion's insertion order decides between this wrapper and
+    // the contained styleOverride, so the ember fill is pinned on the variant class too.
+    '&.MuiButton-contained': fill,
+    '&.Mui-disabled, &.MuiButton-contained.Mui-disabled': {
+      backgroundColor: theme.palette.action.disabledBackground,
+      color: theme.palette.action.disabled,
+      boxShadow: 'none',
+    },
+  };
+});
+
+export const EmberCtaLink = styled(EmberCtaButton)<{ component?: ElementType; to?: string }>({});
+
+export const QuietNotice = styled(Paper)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: '0.6rem',
+  padding: '0.6rem 0.9rem',
+  backgroundColor: theme.palette.action.hover,
+  color: theme.palette.text.secondary,
+  ...theme.typography.body2,
+  '& a': { marginLeft: 'auto', whiteSpace: 'nowrap' },
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
+
+export const ProgressPercentText = styled(Typography)<AsElement>(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  fontSize: '0.6875rem',
+  fontVariantNumeric: 'tabular-nums',
+}));
+
+export const LessonLinkButton = styled(Button)<AsElement & { href?: string; target?: string; rel?: string }>({
+  maxWidth: '100%',
+  whiteSpace: 'normal',
+  textAlign: 'left',
+  overflowWrap: 'anywhere',
+  '& .MuiButton-startIcon': { flexShrink: 0 },
+});
+
+export const LedgerBreadcrumbs = styled(Breadcrumbs)({
+  '& .MuiBreadcrumbs-li:first-of-type': {
+    minWidth: 0,
+    '& > *': {
+      display: 'block',
+      maxWidth: '100%',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+  },
+});
+
+export const LedgerTitle = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== 'dense',
+})<AsElement & { dense?: boolean }>(({ theme, dense }) =>
+  dense === true ? { [theme.breakpoints.down('md')]: { fontSize: '1.375rem' } } : {},
+);
 
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
 
@@ -3080,6 +3166,19 @@ export const StatTile = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
 }));
 
+export const CourseStatTile = styled(StatTile)(({ theme }) => ({
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: '0.4rem',
+  padding: '0.75rem',
+  [theme.breakpoints.up('sm')]: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: '0.75rem',
+    padding: '1rem',
+  },
+}));
+
 export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
   display: 'flex',
   alignItems: 'stretch',
@@ -3100,6 +3199,25 @@ export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
     outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`,
     outlineOffset: 2,
   },
+}));
+
+export const PanelRowMeta = styled(Stack)(({ theme }) => ({
+  ...theme.typography.body2,
+  color: theme.palette.text.secondary,
+}));
+
+export const DividedList = styled(List)(({ theme }) => ({
+  '& .MuiListItem-root': {
+    border: 'none',
+    borderRadius: 0,
+    marginBottom: 0,
+    paddingLeft: 0,
+    paddingRight: 0,
+    backgroundColor: 'transparent',
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  },
+  '& .MuiListItem-root:first-of-type': { borderTop: 'none' },
+  '& .MuiListItem-root:last-of-type': { borderBottom: 'none' },
 }));
 
 export const StatTileIcon = styled(SvgIcon)(({ theme }) => ({
@@ -3124,6 +3242,9 @@ export const StatTileLabel = styled(Typography)<AsElement>(({ theme }) => ({
 
 export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
   overflowX: 'auto',
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: 12,
   '& th:first-of-type, & td:first-of-type': {
     position: 'sticky',
     left: 0,
@@ -3133,6 +3254,7 @@ export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
     [theme.breakpoints.up('sm')]: {
       position: 'static',
       boxShadow: 'none',
+      backgroundColor: 'inherit',
     },
   },
   '& th:first-of-type': { zIndex: 2 },

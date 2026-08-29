@@ -85,19 +85,19 @@ describe('notifications stream wrapper', () => {
     });
 
     source.emit('open');
-    clock = 30_000;
+    clock = 1_000;
     source.emit('error');
     expect(onFallback).not.toHaveBeenCalled();
 
     source.emit('open');
-    clock = 60_000;
+    clock = 2_000;
     source.emit('error');
 
     expect(onFallback).toHaveBeenCalledTimes(1);
     expect(source.closed).toBe(true);
   });
 
-  it('keeps streaming when reconnects follow long-lived connections', () => {
+  it('keeps streaming across the planned stream rotation', () => {
     const source = new FakeEventSource();
     const onFallback = vi.fn();
     let clock = 0;
@@ -109,10 +109,10 @@ describe('notifications stream wrapper', () => {
     });
 
     source.emit('open');
-    clock = 600_000;
+    clock = 25_000;
     source.emit('error');
     source.emit('open');
-    clock = 1_200_000;
+    clock = 50_000;
     source.emit('error');
 
     expect(onFallback).not.toHaveBeenCalled();

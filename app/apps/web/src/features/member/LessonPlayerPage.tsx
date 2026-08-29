@@ -194,7 +194,7 @@ const LockedView = ({
     <MemberSurface
       title={lessonName ?? t.lesson.contentLocked}
       eyebrow={t.lesson.eyebrow}
-      width="wide"
+      width="lesson"
       {...(courseName === undefined
         ? {}
         : {
@@ -354,7 +354,7 @@ export const LessonPlayerPage = ({
       <MemberSurface
           title={t.lesson.loading}
         eyebrow={t.lesson.eyebrow}
-        width="wide"
+        width="lesson"
         state={{ kind: 'loading', label: t.lesson.loading }}
       />
     );
@@ -369,7 +369,7 @@ export const LessonPlayerPage = ({
           <MemberSurface
             title={t.lesson.unavailable}
             eyebrow={t.lesson.eyebrow}
-            width="wide"
+            width="lesson"
             state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }}
           />
         );
@@ -392,7 +392,7 @@ export const LessonPlayerPage = ({
       <MemberSurface
           title={t.lesson.unavailable}
         eyebrow={t.lesson.eyebrow}
-        width="wide"
+        width="lesson"
         state={{
           kind: 'error',
           message: localizeError(lesson.error, t),
@@ -425,7 +425,7 @@ export const LessonPlayerPage = ({
     <MemberSurface
       title={lessonName}
       eyebrow={t.lesson.eyebrow}
-      width="wide"
+      width="lesson"
       dense
       {...(location === null
         ? {}

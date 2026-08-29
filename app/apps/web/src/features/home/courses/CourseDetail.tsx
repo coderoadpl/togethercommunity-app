@@ -26,7 +26,7 @@ import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/i
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations, type Messages } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import {
@@ -43,8 +43,15 @@ import { MutationError, newId } from './feedback.js';
 type ModulesData = Awaited<ReturnType<typeof actions.modules.queryFn>>;
 type CoursesData = Awaited<ReturnType<typeof actions.courses.queryFn>>;
 
-const lessonName = (lessons: CourseLesson[], lessonId: string, t: Messages): string =>
-  lessons.find((lesson) => lesson.id === lessonId)?.name ?? t.courses.unknownLesson;
+const contentSourceLabel = (
+  lessons: CourseLesson[],
+  content: { name: string; lessonId: string },
+  t: Messages,
+): string | undefined => {
+  const source = lessons.find((lesson) => lesson.id === content.lessonId)?.name
+    ?? t.courses.unknownLesson;
+  return source === content.name ? undefined : t.courses.sourceLesson({ name: source });
+};
 
 const ChapterEditor = ({
   chapter,
@@ -199,7 +206,7 @@ const ChapterEditor = ({
             >
               <ListItemText
                 primary={content.name}
-                secondary={lessonName(lessons, content.lessonId, t)}
+                secondary={contentSourceLabel(lessons, content, t)}
                 sx={{ minWidth: 0 }}
               />
               <Stack
@@ -523,6 +530,7 @@ const ModuleCard = ({
             value={prefix}
             onChange={(event) => setPrefix(event.target.value)}
           />
+          <FormHelperText>{t.courses.prefixHint}</FormHelperText>
         </FormControl>
         <Button
           variant="text"
@@ -842,8 +850,8 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   if (modules.isPending || lessons.isPending) {
     return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
   }
-  if (modules.isError) return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} />;
-  if (lessons.isError) return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
+  if (modules.isError) return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'error', message: localizePanelError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} />;
+  if (lessons.isError) return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'error', message: localizePanelError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
 
   const attached = orderAttachedModules(
     course,

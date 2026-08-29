@@ -2741,19 +2741,43 @@ export type PostButtonPlacement = 'toolbar' | 'meta';
 export const postButtonFor = (placement: PostButtonPlacement) =>
   placement === 'meta' ? PostMetaButton : PostToolbarButton;
 
-export const EmberCtaButton = styled(Button)(({ theme }) => ({
-  backgroundColor: theme.emberCta?.main ?? theme.palette.primary.main,
-  color: theme.emberCta?.contrastText ?? theme.palette.primary.contrastText,
-  '&:hover': {
-    backgroundColor: theme.emberCta?.hover ?? theme.palette.primary.light,
-  },
-  '&:active': {
-    backgroundColor: theme.emberCta?.active ?? theme.palette.primary.dark,
-  },
-  '&.Mui-disabled': {
-    backgroundColor: theme.palette.action.disabledBackground,
-    color: theme.palette.action.disabled,
-  },
+export const EmberCtaButton = styled(Button)(({ theme }) => {
+  const surface = theme.emberCta?.main ?? theme.palette.primary.main;
+  const hover = theme.emberCta?.hover ?? theme.palette.primary.light;
+  const active = theme.emberCta?.active ?? theme.palette.primary.dark;
+  const ink = theme.emberCta?.contrastText ?? theme.palette.primary.contrastText;
+  const fill = {
+    backgroundColor: surface,
+    color: ink,
+    boxShadow: 'none',
+    '&:hover': { backgroundColor: hover, color: ink, boxShadow: 'none' },
+    '&:active': { backgroundColor: active, color: ink },
+  };
+  return {
+    ...fill,
+    // At equal specificity emotion's insertion order decides between this wrapper and
+    // the contained styleOverride, so the ember fill is pinned on the variant class too.
+    '&.MuiButton-contained': fill,
+    '&.Mui-disabled, &.MuiButton-contained.Mui-disabled': {
+      backgroundColor: theme.palette.action.disabledBackground,
+      color: theme.palette.action.disabled,
+      boxShadow: 'none',
+    },
+  };
+});
+
+export const EmberCtaLink = styled(EmberCtaButton)<{ component?: ElementType; to?: string }>({});
+
+export const QuietNotice = styled(Paper)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: '0.6rem',
+  padding: '0.6rem 0.9rem',
+  backgroundColor: theme.palette.action.hover,
+  color: theme.palette.text.secondary,
+  ...theme.typography.body2,
+  '& a': { marginLeft: 'auto', whiteSpace: 'nowrap' },
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
@@ -2842,6 +2866,10 @@ export const LedgerHeader = styled(Box)<AsElement>(({ theme }) => ({
   borderBottom: theme.headerRule ?? `3px double ${alpha(theme.palette.text.primary, 0.55)}`,
 }));
 
+export const MemberLedgerHeader = styled(LedgerHeader)<AsElement>(({ theme }) => ({
+  borderBottomColor: theme.palette.mode === 'dark' ? '#33363C' : '#D6D4D0',
+}));
+
 /** Live accent preview in the branding settings; transparent until a valid color is typed. */
 export const BrandSwatch = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'swatchColor',
@@ -2905,6 +2933,43 @@ export const NotificationTitle = styled(Typography, {
 export const NotificationSnippet = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.8rem',
   color: theme.palette.text.secondary,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+}));
+
+export const NotificationRowButton = styled(ButtonBase)({
+  display: 'flex',
+  width: '100%',
+  textAlign: 'left',
+  justifyContent: 'flex-start',
+  alignItems: 'stretch',
+});
+
+export const CountBadge = styled('span')(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: 18,
+  minWidth: 18,
+  padding: '0 6px',
+  borderRadius: 999,
+  backgroundColor: theme.palette.text.primary,
+  color: theme.palette.background.default,
+  fontSize: '0.6875rem',
+  fontWeight: 600,
+  flexShrink: 0,
+}));
+
+export const LockedSpaceMark = styled(Box)(({ theme }) => ({
+  width: 36,
+  height: 36,
+  flexShrink: 0,
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: '8px',
+  backgroundColor: theme.palette.action.hover,
 }));
 
 export const UnreadDot = styled('span')(({ theme }) => ({
@@ -2951,9 +3016,26 @@ export const SearchHighlight = styled('mark')(({ theme }) => ({
   padding: '0 1px',
 }));
 
-export const TreeModuleTitle = styled(Typography)<AsElement>({ fontSize: '1.02rem', fontWeight: 700 });
+export const TreeModuleTitle = styled(Typography)<AsElement>({
+  fontSize: '0.8125rem',
+  fontWeight: 600,
+  lineHeight: 1.3,
+});
 
-export const TreeChapterTitle = styled(Typography)<AsElement>({ fontSize: '0.92rem', fontWeight: 600 });
+export const TreeChapterTitle = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.8125rem',
+  fontWeight: 600,
+  color: theme.palette.text.secondary,
+}));
+
+export const TreeLessonTitle = styled(Typography)<AsElement>({ fontSize: '0.8125rem' });
+
+export const TreeProgressCount = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.6875rem',
+  color: theme.palette.text.secondary,
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+}));
 
 export const ReorderCard = styled(Paper, {
   shouldForwardProp: (prop) => prop !== 'dropTarget',
@@ -3146,6 +3228,9 @@ export const StatTileLabel = styled(Typography)<AsElement>(({ theme }) => ({
 
 export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
   overflowX: 'auto',
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: 12,
   '& th:first-of-type, & td:first-of-type': {
     position: 'sticky',
     left: 0,
@@ -3155,6 +3240,7 @@ export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
     [theme.breakpoints.up('sm')]: {
       position: 'static',
       boxShadow: 'none',
+      backgroundColor: 'inherit',
     },
   },
   '& th:first-of-type': { zIndex: 2 },
@@ -3172,7 +3258,15 @@ export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({
 
 export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
-  fontSize: '0.78rem',
+  flexShrink: 0,
+  fontSize: '0.6875rem',
+  color: theme.palette.text.disabled,
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+}));
+
+export const SidebarProgressPercent = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.6875rem',
   color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',

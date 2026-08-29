@@ -217,6 +217,8 @@ const spaceEvent = (input: {
   endsAt?: string;
   deletedAt?: string | null;
   liveEmbedUrl?: string | null;
+  url?: string | null;
+  replayUrl?: string | null;
 }): SpaceEvent => ({
   id: input.id,
   tenantId: tenant.id,
@@ -226,9 +228,9 @@ const spaceEvent = (input: {
   startsAt: input.startsAt ?? '2026-09-02T18:00:00.000Z',
   endsAt: input.endsAt ?? '2026-09-02T20:00:00.000Z',
   location: null,
-  url: null,
+  url: input.url ?? null,
   liveEmbedUrl: input.liveEmbedUrl ?? null,
-  replayUrl: null,
+  replayUrl: input.replayUrl ?? null,
   discussionRootPostId: null,
   createdByUserId: 'staff-user',
   createdAt: '1998-01-01T00:00:00.000Z',
@@ -341,6 +343,34 @@ describe('public space events', () => {
     );
 
     expect(result).toMatchObject({ ok: true, value: { liveNow: true, viewerRsvp: null } });
+  });
+
+  it('withholds join, live and replay links from anonymous viewers', async () => {
+    const deps = eventDeps({
+      spaces: [open],
+      events: [
+        spaceEvent({
+          id: 'e-live',
+          spaceId: open.id,
+          startsAt: '2026-09-01T09:00:00.000Z',
+          endsAt: '2026-09-01T11:00:00.000Z',
+          liveEmbedUrl: 'https://iframe.example/embed/1/2',
+          url: 'https://meet.example/join',
+          replayUrl: 'https://iframe.example/replay/1/2',
+        }),
+      ],
+    });
+
+    expect(
+      await getPublicSpaceEvent(tenant, { spaceId: open.id, eventId: 'e-live' }, deps),
+    ).toMatchObject({
+      ok: true,
+      value: { url: null, liveEmbedUrl: null, replayUrl: null, liveNow: true },
+    });
+    expect(await getPublicSpaceEvents(tenant, { spaceId: open.id }, deps)).toMatchObject({
+      ok: true,
+      value: { events: [{ url: null, liveEmbedUrl: null, replayUrl: null }] },
+    });
   });
 
   it('rejects a page above the clamped limit', async () => {

@@ -23,7 +23,7 @@ import type { Campaign, CampaignEngagementStats } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { useUnsavedChanges } from '../use-unsaved-changes.js';
@@ -282,7 +282,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
           surface={false}
           state={{
             kind: 'error',
-            message: localizeError(consents.error ?? products.error ?? layouts.error, t),
+            message: localizePanelError(consents.error ?? products.error ?? layouts.error, t),
             retry: {
               label: t.common.retry,
               onRetry: () => {
@@ -294,8 +294,8 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
           }}
         />
       ) : null}
-      {preview.isError ? <Alert severity="error">{localizeError(preview.error, t)}</Alert> : null}
-      {create.isError || update.isError ? <Alert severity="error">{localizeError(create.error ?? update.error, t)}</Alert> : null}
+      {preview.isError ? <Alert severity="error">{localizePanelError(preview.error, t)}</Alert> : null}
+      {create.isError || update.isError ? <Alert severity="error">{localizePanelError(create.error ?? update.error, t)}</Alert> : null}
       {dirty ? <Alert severity="warning">{t.common.unsavedChanges}</Alert> : null}
     </SectionCard>
   );
@@ -353,14 +353,14 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
         )}
       </Stack>
       {campaign.pausedReason === null ? null : <Alert severity="warning"><strong>{t.marketing.pausedReason}:</strong> {campaign.pausedReason}</Alert>}
-      {schedule.isError || action.isError || testSend.isError ? <Alert severity="error">{localizeError(schedule.error ?? action.error ?? testSend.error, t)}</Alert> : null}
+      {schedule.isError || action.isError || testSend.isError ? <Alert severity="error">{localizePanelError(schedule.error ?? action.error ?? testSend.error, t)}</Alert> : null}
       <ConfirmDialog
         open={confirmingCancel}
         title={t.marketing.cancelCampaignConfirmTitle}
         body={(
           <>
             <Typography>{t.marketing.cancelCampaignConfirmBody}</Typography>
-            {action.isError ? <Alert severity="error">{localizeError(action.error, t)}</Alert> : null}
+            {action.isError ? <Alert severity="error">{localizePanelError(action.error, t)}</Alert> : null}
           </>
         )}
         confirmLabel={t.marketing.cancelCampaign}
@@ -384,8 +384,8 @@ export const CampaignsPanel = () => {
 
   return (
     <PanelPage title={t.marketing.campaignsTitle} description={t.marketing.campaignsDescription} action={<Button component={Link} to="/panel/marketing/campaigns/new" variant="contained">+ {t.common.add}</Button>}>
-      {consents.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(consents.error, t), retry: { label: t.common.retry, onRetry: () => void consents.refetch() } }} /> : null}
-      {reputation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(reputation.error, t), retry: { label: t.common.retry, onRetry: () => void reputation.refetch() } }} /> : null}
+      {consents.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(consents.error, t), retry: { label: t.common.retry, onRetry: () => void consents.refetch() } }} /> : null}
+      {reputation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(reputation.error, t), retry: { label: t.common.retry, onRetry: () => void reputation.refetch() } }} /> : null}
       {reputation.data?.overallStatus === 'warn' ? (
         <Alert severity="warning">{t.marketing.campaignReputationWarnBanner}</Alert>
       ) : null}
@@ -397,7 +397,7 @@ export const CampaignsPanel = () => {
         empty={<StatusView state={{ kind: 'empty', title: t.marketing.campaignsEmpty, action: <Button component={Link} to="/panel/marketing/campaigns/new">+ {t.common.add}</Button> }} />}
       >
         {campaigns.isPending ? <StatusView state={{ kind: 'loading', label: t.marketing.campaignsLoading }} /> : campaigns.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(campaigns.error, t), retry: { label: t.common.retry, onRetry: () => void campaigns.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(campaigns.error, t), retry: { label: t.common.retry, onRetry: () => void campaigns.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1rem">
             {campaigns.data.campaigns.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)).map((campaign) => (
@@ -440,7 +440,7 @@ export const CampaignDetailPage = () => {
   const params = useParams({ strict: false });
   const campaign = useQuery(actions.marketingCampaign(params.campaignId ?? ''));
   if (campaign.isPending) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'loading', label: t.marketing.campaignsLoading }} />;
-  if (campaign.isError) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'error', message: localizeError(campaign.error, t), retry: { label: t.common.retry, onRetry: () => void campaign.refetch() } }} />;
+  if (campaign.isError) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'error', message: localizePanelError(campaign.error, t), retry: { label: t.common.retry, onRetry: () => void campaign.refetch() } }} />;
   if (params.campaignId === undefined) return <Navigate to="/panel/marketing/campaigns" />;
   return (
     <PanelPage title={campaign.data.campaign.name} backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}>

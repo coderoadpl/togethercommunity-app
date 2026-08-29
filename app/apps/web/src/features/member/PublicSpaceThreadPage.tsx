@@ -8,6 +8,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { ThreadHeadline } from '../../theme.js';
+import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicThreadView } from './PublicFeed.js';
 import { anonHomePath } from './shell/member-nav.js';
@@ -80,7 +81,8 @@ export const PublicSpaceThreadPage = ({
       title={<ThreadHeadline>{headline ?? t.community.threadTitle}</ThreadHeadline>}
       eyebrow={space.name}
       width="wide"
-      breadcrumbs={[
+      breadcrumbs={anonCrumbs(
+        t,
         {
           label: space.name,
           link: (
@@ -90,7 +92,7 @@ export const PublicSpaceThreadPage = ({
           ),
         },
         { label: t.community.threadTitle },
-      ]}
+      )}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
         {thread.isPending ? (

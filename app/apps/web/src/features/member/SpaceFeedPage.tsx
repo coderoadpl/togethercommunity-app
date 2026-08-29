@@ -25,6 +25,7 @@ import { SpaceEventsSection } from './events/SpaceEventsSection.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
+import { LockedSpaceCard } from './SpaceCards.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
@@ -194,6 +195,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const queryClient = useQueryClient();
 
   const spaces = useQuery(actions.spaces);
+  const navigation = useQuery(actions.memberNavigation);
   const me = useQuery(actions.me);
   const feed = useQuery(actions.spaceFeed({ spaceId }));
   const banned = me.data?.tenant?.banned === true;
@@ -264,10 +266,33 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   const space = spaces.data.spaces.find((candidate) => candidate.id === spaceId);
 
+  if (space === undefined && navigation.isPending) {
+    return (
+      <MemberSurface
+        title={t.community.heading}
+        eyebrow={t.community.feedEyebrow}
+        width="wide"
+        state={{ kind: 'loading', label: t.community.loadingFeed }}
+      />
+    );
+  }
+
+  const locked = navigation.data?.navigation.lockedSpaces.find((candidate) => candidate.id === spaceId);
+
+  if (space === undefined && locked !== undefined) {
+    return (
+      <MemberSurface title={locked.name} eyebrow={t.community.feedEyebrow} width="prose">
+        <Box data-testid="locked-space-view">
+          <LockedSpaceCard space={locked} />
+        </Box>
+      </MemberSurface>
+    );
+  }
+
   if (space === undefined) {
     return (
       <MemberSurface
-        title={t.community.spaceNotFoundTitle}
+        title={t.community.heading}
         eyebrow={t.community.feedEyebrow}
         width="wide"
         state={{

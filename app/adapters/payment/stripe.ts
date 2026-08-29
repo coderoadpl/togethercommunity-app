@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import {
   err,
   ok,
+  refundCoverage,
   stripeCancelErrorSchema,
   stripeChargeObjectSchema,
   stripeDisputeObjectSchema,
@@ -115,6 +116,34 @@ const idOrNull = (value: unknown): string | null => {
   return null;
 };
 
+const toCheckoutSessionEvent = (
+  eventId: string,
+  type: string,
+  session: Stripe.Checkout.Session,
+): PaymentWebhookEvent => ({
+  id: eventId,
+  type,
+  objectId: session.id,
+  checkoutSession: {
+    email: session.customer_details?.email ?? session.customer_email ?? null,
+    paymentStatus: session.payment_status,
+    subscriptionId: idOrNull(session.subscription),
+    paymentIntentId: idOrNull(session.payment_intent),
+    invoiceId: idOrNull(session.invoice),
+    amountTotalCents: session.amount_total,
+    discountTotalCents: session.total_details?.amount_discount ?? null,
+    metadata: {
+      tenantId: session.metadata?.tenantId ?? null,
+      productId: session.metadata?.productId ?? null,
+      priceId: session.metadata?.priceId || null,
+      memberEmail: session.metadata?.memberEmail || null,
+      language: session.metadata?.language || null,
+      checkoutConsentCaptureId: session.metadata?.checkoutConsentCaptureId || null,
+      couponCheckoutSessionId: session.metadata?.couponCheckoutSessionId || null,
+    },
+  },
+});
+
 const toInvoiceEvent = (eventId: string, type: string, object: unknown): PaymentWebhookEvent | null => {
   const invoice = stripeInvoiceObjectSchema.safeParse(object);
   if (!invoice.success) return null;
@@ -156,6 +185,11 @@ const toAdjustmentEvent = (
         chargeId: charge.data.id,
         paymentIntentId: idOrNull(charge.data.payment_intent),
         invoiceId: idOrNull(charge.data.invoice),
+        refund: refundCoverage({
+          refunded: charge.data.refunded ?? null,
+          amount: charge.data.amount ?? null,
+          amountRefunded: charge.data.amount_refunded ?? null,
+        }),
       },
     };
   }
@@ -174,7 +208,12 @@ const toAdjustmentEvent = (
   };
 };
 
-const toSubscriptionEvent = (eventId: string, type: string, object: unknown): PaymentWebhookEvent | null => {
+const toSubscriptionEvent = (
+  eventId: string,
+  type: string,
+  object: unknown,
+  createdAt: string | null,
+): PaymentWebhookEvent | null => {
   const subscription = stripeSubscriptionObjectSchema.safeParse(object);
   if (!subscription.success) return null;
   const periodEnd =
@@ -183,6 +222,7 @@ const toSubscriptionEvent = (eventId: string, type: string, object: unknown): Pa
     id: eventId,
     type,
     objectId: subscription.data.id,
+    createdAt,
     checkoutSession: null,
     subscription: {
       id: subscription.data.id,
@@ -331,39 +371,24 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           input.signatureHeader,
           input.webhookSecret,
         );
-        if (event.type === 'checkout.session.completed') {
-          const session = event.data.object;
-          return ok({
-            id: event.id,
-            type: event.type,
-            objectId: session.id,
-            checkoutSession: {
-              email: session.customer_details?.email ?? session.customer_email ?? null,
-              subscriptionId: idOrNull(session.subscription),
-              paymentIntentId: idOrNull(session.payment_intent),
-              invoiceId: idOrNull(session.invoice),
-              amountTotalCents: session.amount_total,
-              discountTotalCents: session.total_details?.amount_discount ?? null,
-              metadata: {
-                tenantId: session.metadata?.tenantId ?? null,
-                productId: session.metadata?.productId ?? null,
-                priceId: session.metadata?.priceId || null,
-                memberEmail: session.metadata?.memberEmail || null,
-                language: session.metadata?.language || null,
-                checkoutConsentCaptureId:
-                  session.metadata?.checkoutConsentCaptureId || null,
-                couponCheckoutSessionId:
-                  session.metadata?.couponCheckoutSessionId || null,
-              },
-            },
-          });
+        if (
+          event.type === 'checkout.session.completed' ||
+          event.type === 'checkout.session.async_payment_succeeded' ||
+          event.type === 'checkout.session.async_payment_failed'
+        ) {
+          return ok(toCheckoutSessionEvent(event.id, event.type, event.data.object));
         }
         if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
           const mapped = toInvoiceEvent(event.id, event.type, event.data.object);
           if (mapped) return ok(mapped);
         }
         if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-          const mapped = toSubscriptionEvent(event.id, event.type, event.data.object);
+          const mapped = toSubscriptionEvent(
+            event.id,
+            event.type,
+            event.data.object,
+            epochToIso(event.created),
+          );
           if (mapped) return ok(mapped);
         }
         if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {

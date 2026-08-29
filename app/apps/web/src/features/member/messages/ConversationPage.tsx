@@ -10,7 +10,11 @@ import { actions } from '../../../api.js';
 import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatRelativeTime } from '../../../lib/format.js';
-import { streamlessPollInterval } from '../../../notifications-stream.js';
+import {
+  CONVERSATION_POLL_INTERVAL_MS,
+  streamlessPollInterval,
+} from '../../../notifications-stream.js';
+import { useNotificationsTransport } from '../../../notifications-transport.js';
 import {
   AuthorChip,
   MessageBubble,
@@ -52,11 +56,12 @@ export const ConversationPage = ({ conversationId }: { conversationId: string })
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const { streamless } = useNotificationsTransport();
 
   const thread = useQuery({
     ...actions.conversation(conversationId, limit),
     placeholderData: (previous) => previous,
-    refetchInterval: streamlessPollInterval(),
+    refetchInterval: streamlessPollInterval(streamless, CONVERSATION_POLL_INTERVAL_MS),
   });
 
   const invalidate = async () => {

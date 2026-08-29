@@ -12,12 +12,13 @@ import { actions } from '../../api.js';
 import {
   ImageAssetField as ImageAssetFieldView,
 } from '../../components/ui/ImageAssetField.js';
-import { errorCodeOf, localizeError, useTranslations } from '../../i18n/index.js';
+import { errorCodeOf, localizePanelError, useTranslations } from '../../i18n/index.js';
 
 interface ImageAssetFieldProps {
   id: string;
   label: string;
   hint?: string;
+  placeholder?: string;
   value: string;
   onChange: (value: string) => void;
   kind: ImageAssetKind;
@@ -55,7 +56,7 @@ export const ImageAssetField = ({ onChange, kind, ...props }: ImageAssetFieldPro
       onChange={onChange}
       uploading={upload.isPending}
       storageMissing={storageMissing}
-      uploadError={upload.isError && !storageMissing ? localizeError(upload.error, t) : null}
+      uploadError={upload.isError && !storageMissing ? localizePanelError(upload.error, t) : null}
       onUpload={(file) => {
         upload.reset();
         const input = imageAssetUploadInputSchema.safeParse({

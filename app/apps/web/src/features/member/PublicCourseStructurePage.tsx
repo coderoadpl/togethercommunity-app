@@ -9,6 +9,7 @@ import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import {
   CourseCoverImage,
+  EmberCtaLink,
   Eyebrow,
   StatTile,
   StatTileLabel,
@@ -17,6 +18,7 @@ import {
 import { courseTotals, formatTotalDuration } from './CourseRail.js';
 import { CourseTree } from './CourseTree.js';
 import { MemberSurface } from './MemberSurface.js';
+import { anonCrumbs } from './anon-crumbs.js';
 import { EmptyCourseIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
 import { anonHomePath } from './shell/member-nav.js';
 
@@ -66,9 +68,32 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
   const catalogEntry = navigation.data?.navigation.courses.find((entry) => entry.id === courseId);
   const totals = courseTotals(course);
   const hasModules = course.modules.length > 0;
+  const unlockProductId = course.modules
+    .flatMap((module) => module.chapters)
+    .flatMap((chapter) => chapter.lessons)
+    .find((lesson) => lesson.unlockProductId !== undefined)?.unlockProductId;
+  const unlockCta = (testId: string) =>
+    unlockProductId === undefined ? null : (
+      <EmberCtaLink
+        variant="contained"
+        component={Link}
+        to={`/checkout/${encodeURIComponent(unlockProductId)}`}
+        data-testid={testId}
+      >
+        {t.anon.unlockCta}
+      </EmberCtaLink>
+    );
+
+  const programCta = unlockCta('public-course-unlock-cta-program');
 
   return (
-    <MemberSurface title={course.name} eyebrow={t.anon.eyebrow} width="wide">
+    <MemberSurface
+      title={course.name}
+      eyebrow={t.anon.eyebrow}
+      width="wide"
+      breadcrumbs={anonCrumbs(t, { label: course.name })}
+      actions={unlockCta('public-course-unlock-cta') ?? undefined}
+    >
       <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>
         <Box
           sx={{
@@ -103,6 +128,7 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
             src={catalogEntry.imageUrl}
             alt={t.courseOverview.coverAlt({ name: course.name })}
             data-testid="course-cover"
+            sx={{ maxHeight: 320 }}
           />
         )}
         {catalogEntry !== undefined && catalogEntry.description !== '' && (
@@ -121,6 +147,7 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
             <Typography variant="body2" color="text.secondary" sx={{ mb: '0.9rem' }}>
               {t.anon.lockedCourseHint}
             </Typography>
+            {programCta === null ? null : <Box sx={{ mb: '0.9rem' }}>{programCta}</Box>}
             <CourseTree courseId={courseId} structure={course} />
           </Box>
         ) : (

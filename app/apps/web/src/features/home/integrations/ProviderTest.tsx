@@ -5,7 +5,7 @@ import type { IntegrationTestInput } from '#core/contract/index.js';
 import type { ProviderDiagnostic, ProviderDiagnosticCode } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 
 export const ProviderTest = ({
   provider,
@@ -34,7 +34,7 @@ export const ProviderTest = ({
     <Box sx={{ display: 'grid', gap: '0.5rem' }}>
       <Button
         type="button"
-        variant="contained"
+        variant="outlined"
         data-testid={`${provider}-test-connection`}
         disabled={test.isPending || !ready}
         onClick={() => test.mutate({ provider, language })}
@@ -53,7 +53,7 @@ export const ProviderTest = ({
         </Typography>
       ) : null}
       {test.isError ? (
-        <Alert severity="error" data-testid={`${provider}-test-error`}>{localizeError(test.error, t)}</Alert>
+        <Alert severity="error" data-testid={`${provider}-test-error`}>{localizePanelError(test.error, t)}</Alert>
       ) : null}
     </Box>
   );

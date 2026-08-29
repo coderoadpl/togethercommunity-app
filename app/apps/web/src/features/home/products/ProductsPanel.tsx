@@ -28,7 +28,7 @@ import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
 import { productTypeLabel } from './product-type.js';
@@ -163,51 +163,79 @@ const ProductRow = ({
 
   return (
     <Paper elevation={1} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }} data-testid="product-row">
-      <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <Typography variant="h2" component="h2">
-          {product.title}
-        </Typography>
-        <Chip
-          size="small"
-          variant="outlined"
-          label={productTypeLabel(product.type, t)}
-          data-testid={`product-type-${product.id}`}
-        />
-        {issue ? (
-          <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
-        ) : null}
-        {accessIssuesUnknown ? (
-          <Chip size="small" color="default" variant="outlined" label={t.products.accessIssuesUnknownChip} />
-        ) : null}
-        <Box sx={{ flex: 1 }} />
-        <Tooltip title={t.products.copyCheckoutLink}>
-          <IconButton
+      <Stack
+        useFlexGap
+        sx={{
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'stretch', sm: 'flex-start' },
+          gap: '0.5rem',
+        }}
+      >
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', flex: 1, minWidth: 0 }}
+        >
+          <Typography variant="h2" component="h2">
+            {product.title}
+          </Typography>
+          <Chip
             size="small"
-            onClick={() => void copyCheckoutLink()}
-            aria-label={t.products.copyCheckoutLink}
-            data-testid={`copy-checkout-${product.id}`}
-          >
-            <CopyLinkGlyph />
-          </IconButton>
-        </Tooltip>
-        {product.published ? (
+            variant="outlined"
+            label={productTypeLabel(product.type, t)}
+            data-testid={`product-type-${product.id}`}
+          />
+          {issue ? (
+            <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
+          ) : null}
+          {accessIssuesUnknown ? (
+            <Chip size="small" color="default" variant="outlined" label={t.products.accessIssuesUnknownChip} />
+          ) : null}
+        </Stack>
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}
+        >
+          <Tooltip title={t.products.copyCheckoutLink}>
+            <IconButton
+              size="small"
+              onClick={() => void copyCheckoutLink()}
+              aria-label={t.products.copyCheckoutLink}
+              data-testid={`copy-checkout-${product.id}`}
+            >
+              <CopyLinkGlyph />
+            </IconButton>
+          </Tooltip>
           <Button
-            variant="text"
-            color="error"
-            disabled={unpublishProduct.isPending}
-            onClick={() => setConfirmation('unpublish')}
+            size="small"
+            variant="outlined"
+            component={Link}
+            to={`/panel/products/${encodeURIComponent(product.id)}`}
           >
-            {unpublishProduct.isPending ? t.products.unpublishing : t.products.unpublish}
+            {t.products.manage}
           </Button>
-        ) : (
-          <Button
-            variant="text"
-            disabled={publishProduct.isPending || publishBlockers.length > 0}
-            onClick={() => setConfirmation('publish')}
-          >
-            {publishProduct.isPending ? t.products.publishing : t.products.publish}
-          </Button>
-        )}
+          {product.published ? (
+            <Button
+              size="small"
+              variant="text"
+              color="error"
+              disabled={unpublishProduct.isPending}
+              onClick={() => setConfirmation('unpublish')}
+            >
+              {unpublishProduct.isPending ? t.products.unpublishing : t.products.unpublish}
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              variant="text"
+              disabled={publishProduct.isPending || publishBlockers.length > 0}
+              onClick={() => setConfirmation('publish')}
+            >
+              {publishProduct.isPending ? t.products.publishing : t.products.publish}
+            </Button>
+          )}
+        </Stack>
       </Stack>
       <Snackbar
         open={copied}
@@ -241,8 +269,8 @@ const ProductRow = ({
         </EntryDate>
       </Stack>
       {issue ? <AccessIssues issue={issue} /> : null}
-      {prices.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(prices.error, t), retry: { label: t.common.retry, onRetry: () => void prices.refetch() } }} /> : null}
-      {downloads.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(downloads.error, t), retry: { label: t.common.retry, onRetry: () => void downloads.refetch() } }} /> : null}
+      {prices.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(prices.error, t), retry: { label: t.common.retry, onRetry: () => void prices.refetch() } }} /> : null}
+      {downloads.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(downloads.error, t), retry: { label: t.common.retry, onRetry: () => void downloads.refetch() } }} /> : null}
       {!product.published && publishBlockers.length > 0 ? (
         <Stack useFlexGap spacing="0.25rem" data-testid={`publish-blockers-${product.id}`}>
           {publishBlockers.map((reason) => (
@@ -252,21 +280,11 @@ const ProductRow = ({
           ))}
         </Stack>
       ) : null}
-      <Box>
-        <Button
-          size="small"
-          variant="text"
-          component={Link}
-          to={`/panel/products/${encodeURIComponent(product.id)}`}
-        >
-          {t.products.manage}
-        </Button>
-      </Box>
       {publishProduct.isError ? (
-        <Alert severity="error">{localizeError(publishProduct.error, t)}</Alert>
+        <Alert severity="error">{localizePanelError(publishProduct.error, t)}</Alert>
       ) : null}
       {unpublishProduct.isError ? (
-        <Alert severity="error">{localizeError(unpublishProduct.error, t)}</Alert>
+        <Alert severity="error">{localizePanelError(unpublishProduct.error, t)}</Alert>
       ) : null}
       <ConfirmDialog
         open={confirmation === 'publish'}
@@ -336,8 +354,8 @@ export const ProductsPanel = () => {
       title={t.sections.products}
       action={<Button component={Link} to="/panel/products/new" variant="contained">+ {t.common.add}</Button>}
     >
-      {accessIssues.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(accessIssues.error, t), retry: { label: t.common.retry, onRetry: () => void accessIssues.refetch() } }} /> : null}
-      {spaces.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} /> : null}
+      {accessIssues.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(accessIssues.error, t), retry: { label: t.common.retry, onRetry: () => void accessIssues.refetch() } }} /> : null}
+      {spaces.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} /> : null}
       <Box id="product-actions" sx={{ scrollMarginTop: '1rem' }}>
       <ListSection
         toolbar={{
@@ -375,7 +393,7 @@ export const ProductsPanel = () => {
         {products.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.products.loading }} />
         ) : products.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1rem">
             {paged.pageItems.map((product) => (

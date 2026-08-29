@@ -7,7 +7,7 @@ import type { TenantDocument, TenantDocumentVersion } from '#core/domain/index.j
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { useUnsavedChanges } from '../use-unsaved-changes.js';
@@ -120,7 +120,7 @@ const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument |
           <FormLabel htmlFor="marketing-document-markdown">{t.marketing.markdownLabel}</FormLabel>
           <OutlinedInput id="marketing-document-markdown" value={content} onChange={(event) => setContent(event.target.value)} multiline minRows={12} required />
         </FormControl>
-        {create.isError || update.isError || publish.isError ? <Alert severity="error">{localizeError(create.error ?? update.error ?? publish.error, t)}</Alert> : null}
+        {create.isError || update.isError || publish.isError ? <Alert severity="error">{localizePanelError(create.error ?? update.error ?? publish.error, t)}</Alert> : null}
         {dirty ? <Alert severity="warning">{t.common.unsavedChanges}</Alert> : null}
       </SectionCard>
       {document === undefined || published.length === 0 ? null : (
@@ -158,7 +158,7 @@ export const DocumentsPanel = () => {
   return (
     <PanelPage title={t.marketing.documentsTitle} description={t.marketing.documentsDescription} action={<Button component={Link} to="/panel/marketing/documents/new" variant="contained">+ {t.common.add}</Button>}>
       <ListSection isEmpty={documents.isSuccess && documents.data.documents.length === 0} empty={<StatusView state={{ kind: 'empty', title: t.marketing.documentsEmpty, action: <Button component={Link} to="/panel/marketing/documents/new">+ {t.common.add}</Button> }} />}>
-        {documents.isPending ? <StatusView state={{ kind: 'loading', label: t.marketing.documentsLoading }} /> : documents.isError ? <StatusView state={{ kind: 'error', message: localizeError(documents.error, t), retry: { label: t.common.retry, onRetry: () => void documents.refetch() } }} /> : (
+        {documents.isPending ? <StatusView state={{ kind: 'loading', label: t.marketing.documentsLoading }} /> : documents.isError ? <StatusView state={{ kind: 'error', message: localizePanelError(documents.error, t), retry: { label: t.common.retry, onRetry: () => void documents.refetch() } }} /> : (
           <Stack spacing="1rem">
             {documents.data.documents.map((document) => (
               <MarketingSummaryRow
@@ -189,7 +189,7 @@ export const DocumentDetailPage = () => {
   const params = useParams({ strict: false });
   const document = useQuery(actions.marketingDocument(params.documentId ?? ''));
   if (document.isPending) return <PanelPage title={t.marketing.documentsTitle} state={{ kind: 'loading', label: t.marketing.documentsLoading }} />;
-  if (document.isError) return <PanelPage title={t.marketing.documentsTitle} state={{ kind: 'error', message: localizeError(document.error, t), retry: { label: t.common.retry, onRetry: () => void document.refetch() } }} />;
+  if (document.isError) return <PanelPage title={t.marketing.documentsTitle} state={{ kind: 'error', message: localizePanelError(document.error, t), retry: { label: t.common.retry, onRetry: () => void document.refetch() } }} />;
   if (params.documentId === undefined) return <Navigate to="/panel/marketing/documents" />;
   return (
     <PanelPage title={document.data.document.title} backTo={<PanelBackLink to="/panel/marketing/documents">{t.marketing.allDocuments}</PanelBackLink>}>

@@ -47,6 +47,7 @@ import { AppChromeProvider } from './components/ui/app-chrome.js';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { LanguageSwitcher } from './components/ui/LanguageSwitcher.js';
 import { LanguageProvider } from './i18n/index.js';
+import { NotificationsTransportProvider } from './notifications-transport.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
@@ -579,11 +580,13 @@ createRoot(container).render(
           <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
             <QueryClientProvider client={queryClient}>
               <RefreshSnackbar />
-              <TenantBrandingBoundary>
-                <TenantGate>
-                  <RouterProvider router={router} />
-                </TenantGate>
-              </TenantBrandingBoundary>
+              <NotificationsTransportProvider>
+                <TenantBrandingBoundary>
+                  <TenantGate>
+                    <RouterProvider router={router} />
+                  </TenantGate>
+                </TenantBrandingBoundary>
+              </NotificationsTransportProvider>
               {import.meta.env.DEV ? (
                 <Suspense fallback={null}>
                   <ReactQueryDevtools />

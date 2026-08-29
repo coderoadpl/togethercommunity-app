@@ -433,5 +433,9 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
+    for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-program']) {
+      expect(screen.getByTestId(testId)).toHaveAttribute('href', '/checkout/prod-advanced');
+    }
+    expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(pl.shell.start);
   });
 });

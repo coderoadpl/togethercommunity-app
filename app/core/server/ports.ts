@@ -778,8 +778,10 @@ export interface PaymentWebhookEvent {
   id: string;
   type: string;
   objectId: string | null;
+  createdAt?: string | null;
   checkoutSession: {
     email: string | null;
+    paymentStatus?: 'paid' | 'unpaid' | 'no_payment_required' | null;
     subscriptionId: string | null;
     paymentIntentId?: string | null;
     invoiceId?: string | null;
@@ -807,6 +809,11 @@ export interface PaymentWebhookEvent {
     chargeId: string | null;
     paymentIntentId: string | null;
     invoiceId: string | null;
+    refund?: {
+      full: boolean;
+      amountRefundedCents: number | null;
+      amountCents: number | null;
+    } | null;
   } | null;
   subscription?: {
     id: string;
@@ -1286,8 +1293,13 @@ export interface PaymentRefundRepository {
     providerObjectIds: Record<string, string>,
   ): Promise<Order | null>;
   findLatestSubscriptionOrder(tenantId: string, providerSubscriptionId: string): Promise<Order | null>;
-  listPaidOrdersForMemberProduct(tenantId: string, memberId: string, productId: string): Promise<Order[]>;
+  listAccessRetainingOrdersForMemberProduct(
+    tenantId: string,
+    memberId: string,
+    productId: string,
+  ): Promise<Order[]>;
   markOrderRefunded(tenantId: string, orderId: string): Promise<Order | null>;
+  markOrderPartiallyRefunded(tenantId: string, orderId: string): Promise<Order | null>;
 }
 
 export interface MemberSubscriptionRepository {
@@ -1302,16 +1314,20 @@ export interface MemberSubscriptionRepository {
   countActive(tenantId: string, now: string): Promise<number>;
 }
 
+export type PaymentEventClaim = 'claimed' | 'processed' | 'in_progress';
+
 export interface ProcessedPaymentEventRepository {
   /**
-   * Wins the event for this worker, or reports a duplicate. An expired processing lease can be
-   * reclaimed so a worker that dies mid-effect does not strand the event.
+   * Wins the event for this worker, or reports why it could not: another worker still holds the
+   * lease (`in_progress`, so the sender should retry) or the effects already committed
+   * (`processed`). An expired processing lease can be reclaimed so a worker that dies mid-effect
+   * does not strand the event.
    */
   claim(
     tenantId: string,
     event: ProcessedPaymentEvent,
     lease: { workerId: string; now: string; leaseExpiresAt: string },
-  ): Promise<'claimed' | 'duplicate'>;
+  ): Promise<PaymentEventClaim>;
   /** Marks the claim terminal after its effects committed. */
   finalize(
     tenantId: string,

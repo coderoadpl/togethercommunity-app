@@ -15,6 +15,7 @@ import {
   createPostInputSchema,
   reactToPostInputSchema,
   type DiscussionPost,
+  type MemberNavigation,
   type MemberSpace,
   type PublicNavigation,
   type SpaceFeedItem,
@@ -119,6 +120,14 @@ const feedItem = (input: Partial<SpaceFeedItem> & { id: string }): SpaceFeedItem
   ...input,
 });
 
+const okMemberNavigation = (lockedSpaces: MemberNavigation['lockedSpaces']) =>
+  http.get('/api/member/navigation', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { navigation: { spaces: [], courses: [], lockedSpaces } },
+    }),
+  );
+
 const okSpaces = (spaces: MemberSpace[]) =>
   http.get('/api/spaces', () => HttpResponse.json({ ok: true, data: { spaces } }));
 
@@ -128,6 +137,14 @@ const okFeed = (spaceId: string, items: SpaceFeedItem[], isFollowing = false) =>
       ok: true,
       data: { feed: { spaceId, items, nextCursor: null, isFollowing } },
     }),
+  );
+
+const forbiddenFeed = () =>
+  http.get('/api/spaces/:spaceId/feed', () =>
+    HttpResponse.json(
+      { ok: false, error: { code: 'forbidden', message: 'Brak dostępu' } },
+      { status: 403 },
+    ),
   );
 
 const okSeen = (calls: string[] = []) =>
@@ -409,6 +426,8 @@ describe('community pages', () => {
       okMe(),
       noNotifications(),
       okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      forbiddenFeed(),
+      okMemberNavigation([]),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
@@ -417,6 +436,26 @@ describe('community pages', () => {
     expect(screen.getByText(pl.community.spaceNotFoundBody)).toBeInTheDocument();
     expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
     expect(screen.queryByTestId('feed-post-p1')).not.toBeInTheDocument();
+  });
+
+  it('sells a gated space the member cannot access instead of a not-found dead end', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      forbiddenFeed(),
+      okMemberNavigation([
+        { id: 'gated', slug: 'premium', name: 'Premium', description: 'Tylko dla kursantów.', productIds: ['p1'] },
+      ]),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
+
+    expect(await screen.findByTestId('locked-space-view')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Premium' })).toBeInTheDocument();
+    expect(screen.getByTestId('locked-space-cta-gated')).toHaveAttribute('href', '/checkout/p1');
+    expect(screen.queryByText(pl.community.spaceNotFoundTitle)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-breadcrumbs')).not.toBeInTheDocument();
   });
 
   it('serves an anonymous visitor a read-only feed with a sign-in CTA and no composer', async () => {

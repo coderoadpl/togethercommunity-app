@@ -402,6 +402,24 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('notification-nav')).not.toBeInTheDocument();
   });
 
+  it('shows the unread notification count next to the sidebar bell label', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(),
+      okOffer(),
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 4 } })),
+    );
+
+    await renderShell(memberHomePath());
+
+    const bell = await screen.findByTestId('notification-nav');
+    expect(await within(bell).findByTestId('notification-bell-count')).toHaveTextContent('4');
+    await waitFor(() =>
+      expect(bell).toHaveAttribute('aria-label', pl.notifications.unreadAria({ count: 4 })));
+  });
+
   it('leaves the unauthenticated tier without a bell', async () => {
     stubViewport(false);
     server.use(okMe({ tenant: null }), okOffer());
@@ -588,10 +606,9 @@ describe('MemberShell', () => {
 
     await renderShell('/my');
 
-    expect(await screen.findByRole('link', { name: pl.auth.signInLink })).toHaveAttribute(
-      'href',
-      '/login',
-    );
+    const sidebarSignIn = await screen.findByTestId('anon-sidebar-signin');
+    expect(sidebarSignIn).toHaveAttribute('href', '/login');
+    expect(sidebarSignIn).toHaveTextContent(pl.auth.signInLink);
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
     expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();

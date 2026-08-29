@@ -182,6 +182,16 @@ describe('renderEmailOutboxPayload', () => {
       .toBe(false);
   });
 
+  it('renders a marketing consent confirmation in Polish when the payload carries no language', () => {
+    const rendered = renderEmailOutboxPayload({
+      kind: 'marketing-consent-confirmation',
+      wording: 'Newsletter',
+      confirmationUrl: 'https://studio.test/marketing/confirm?token=abc',
+    });
+    expect(rendered.success).toBe(true);
+    if (rendered.success) expect(rendered.data.subject).toBe('Potwierdź zgodę na wiadomości e-mail');
+  });
+
   it('fails on an unknown payload kind', () => {
     const rendered = renderEmailOutboxPayload({ kind: 'nonsense', language: 'pl' });
     expect(rendered.success).toBe(false);

@@ -197,6 +197,21 @@ export const toPublicSpaceEvent = (
   liveNow: isEventLive(event, viewer.now),
 });
 
+export const toAnonymousSpaceEvent = (
+  event: SpaceEvent,
+  viewer: {
+    goingCount: number;
+    notGoingCount: number;
+    viewerRsvp: SpaceEventRsvpStatus | null;
+    now: string;
+  },
+): PublicSpaceEvent => ({
+  ...toPublicSpaceEvent(event, viewer),
+  url: null,
+  liveEmbedUrl: null,
+  replayUrl: null,
+});
+
 const escapeIcsText = (value: string): string =>
   value
     .replaceAll('\\', '\\\\')

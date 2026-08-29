@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Tenant, TenantDomain } from '#core/domain/index.js';
 
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
-import { resolveTenant } from './resolve-tenant.js';
+import { authLinkBaseUrl, resolveTenant } from './resolve-tenant.js';
 
 const acme: Tenant = {
   id: 't-acme',
@@ -73,6 +73,26 @@ describe('resolveTenant', () => {
       ok: true,
       value: { tenant: { id: 't-acme' }, source: 'custom-domain' },
     });
+  });
+
+  it('exposes the matched custom domain so link generation can gate on verification', async () => {
+    const domain: TenantDomain = {
+      id: 'domain-acme',
+      tenantId: 't-acme',
+      domain: 'offer.example.com',
+      kind: 'custom',
+      verified: true,
+    };
+
+    const result = await resolveTenant('offer.example.com:48730', null, {
+      tenantDomains: fakeDomains([domain]),
+      tenants: fakeTenants([acme]),
+      baseDomain: 'localhost',
+      platformHost: 'start.localhost',
+      singleTenantMode: false,
+    });
+
+    expect(result).toEqual({ ok: true, value: { tenant: acme, source: 'custom-domain', domain } });
   });
 
   it('resolves subdomain and tenant header slugs', async () => {
@@ -235,5 +255,71 @@ describe('resolveTenant', () => {
     });
 
     expect(result).toEqual({ ok: true, value: null });
+  });
+});
+
+describe('authLinkBaseUrl', () => {
+  const routing = {
+    appBaseUrl: 'http://localhost:48730',
+    baseDomain: 'localhost',
+    singleTenantMode: false,
+  };
+  const customDomain: TenantDomain = {
+    id: 'domain-acme',
+    tenantId: acme.id,
+    domain: 'learn.acme.example',
+    kind: 'custom',
+    verified: true,
+  };
+
+  it('uses the tenant subdomain origin for subdomain routing', () => {
+    expect(authLinkBaseUrl({ tenant: acme, source: 'subdomain' }, routing))
+      .toBe('http://acme.localhost:48730');
+  });
+
+  it('uses the verified custom domain over HTTPS', () => {
+    expect(authLinkBaseUrl({ tenant: acme, source: 'custom-domain', domain: customDomain }, routing))
+      .toBe('https://learn.acme.example');
+  });
+
+  it('keeps the configured HTTPS port on the verified custom domain', () => {
+    expect(authLinkBaseUrl(
+      { tenant: acme, source: 'custom-domain', domain: customDomain },
+      { ...routing, appBaseUrl: 'https://start.example:8443', baseDomain: 'example' },
+    )).toBe('https://learn.acme.example:8443');
+  });
+
+  it('routes a subdomain domain row through the configured tenant URL', () => {
+    const subdomainRow: TenantDomain = {
+      ...customDomain,
+      domain: 'acme.localhost',
+      kind: 'subdomain',
+    };
+
+    expect(authLinkBaseUrl({ tenant: acme, source: 'custom-domain', domain: subdomainRow }, routing))
+      .toBe('http://acme.localhost:48730');
+  });
+
+  it.each([
+    ['an unresolved host', null],
+    ['tenant-header routing', { tenant: acme, source: 'tenant-header' as const }],
+    ['single-tenant routing', { tenant: acme, source: 'single-tenant' as const }],
+    [
+      'an unverified custom domain',
+      {
+        tenant: acme,
+        source: 'custom-domain' as const,
+        domain: { ...customDomain, verified: false },
+      },
+    ],
+  ])('falls back to the configured base URL for %s', (_case, resolved) => {
+    expect(authLinkBaseUrl(resolved, routing)).toBe('http://localhost:48730');
+  });
+
+  it('keeps the configured base URL in single-tenant mode', () => {
+    expect(authLinkBaseUrl(
+      { tenant: acme, source: 'subdomain' },
+      { ...routing, singleTenantMode: true },
+    )).toBe('http://localhost:48730');
   });
 });

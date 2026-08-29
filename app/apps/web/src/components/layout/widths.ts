@@ -6,6 +6,7 @@ export const PAGE_WIDTH = {
   focusNarrow: '28rem',
   focusWide: '32rem',
   prose: '44rem',
+  lesson: '52rem',
   panel: '60rem',
   wide: '72rem',
 } as const;

@@ -63,6 +63,8 @@ export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
 export const MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
+export const MAGIC_LINK_CONTEXT_MAX_ENTRIES = 512;
+
 export const RESET_PASSWORD_CONTEXT_MAX_ENTRIES = 512;
 
 export const EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES = 512;
@@ -251,6 +253,11 @@ const successfulSignUpSchema = z.object({
   user: z.object({ email: z.string().email() }),
 });
 
+const IMAGE_REJECTING_PATHS = new Set(['/update-user', '/sign-up/email']);
+
+const carriesImage = (body: unknown): boolean =>
+  typeof body === 'object' && body !== null && 'image' in body;
+
 const throwConsentError = (error: AppError): never => {
   throw APIError.from('BAD_REQUEST', {
     code: error.code,
@@ -263,7 +270,6 @@ export interface MagicLinkDeliveryContext {
   language: string;
   /** 'email' sends a magic-link email; 'capture' returns the URL without sending. */
   mode: 'email' | 'capture';
-  /** Host-derived base URL: the verify link is rebased onto this so it lands on the requesting domain. */
   baseUrl?: string;
   branding?: EmailBranding;
 }
@@ -282,7 +288,6 @@ const rebaseUrl = (rawUrl: string, base: string): string => {
 
 export interface ResetPasswordDeliveryContext {
   language: string;
-  /** Host-derived base URL: the provider callback is rebased onto this so it lands on the requesting domain. */
   baseUrl?: string;
 }
 
@@ -291,10 +296,33 @@ export interface EmailVerificationDeliveryContext {
   baseUrl: string;
 }
 
+const boundedContextMap = <T>(maxEntries: number) => {
+  const entries = new Map<string, T>();
+  return {
+    get: (email: string): T | undefined => entries.get(email),
+    set: (email: string, context: T): void => {
+      entries.delete(email);
+      while (entries.size >= maxEntries) {
+        const oldest = entries.keys().next();
+        if (oldest.done) break;
+        entries.delete(oldest.value);
+      }
+      entries.set(email, context);
+    },
+    delete: (email: string): void => { entries.delete(email); },
+  };
+};
+
 export const createAuth = (db: Db, settings: AuthSettings) => {
-  const deliveryContexts = new Map<string, MagicLinkDeliveryContext>();
-  const resetPasswordContexts = new Map<string, ResetPasswordDeliveryContext>();
-  const emailVerificationContexts = new Map<string, EmailVerificationDeliveryContext>();
+  const deliveryContexts = boundedContextMap<MagicLinkDeliveryContext>(
+    MAGIC_LINK_CONTEXT_MAX_ENTRIES,
+  );
+  const resetPasswordContexts = boundedContextMap<ResetPasswordDeliveryContext>(
+    RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
+  );
+  const emailVerificationContexts = boundedContextMap<EmailVerificationDeliveryContext>(
+    EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES,
+  );
   const capturedLinks = new Map<string, { url: string; token: string }>();
 
   const auth = betterAuth({
@@ -323,6 +351,12 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (IMAGE_REJECTING_PATHS.has(ctx.path) && carriesImage(ctx.body)) {
+          throw APIError.from('BAD_REQUEST', {
+            code: 'IMAGE_IS_PROVIDER_MANAGED',
+            message: 'user.image cannot be set through this endpoint',
+          });
+        }
         if (ctx.path !== '/sign-up/email') return;
         if (settings.validateSignUpConsent === undefined) return;
         const email = signUpEmailSchema.safeParse(ctx.body);
@@ -461,25 +495,20 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     setMagicLinkDeliveryContext: (email: string, context: MagicLinkDeliveryContext) => {
       deliveryContexts.set(normalizeEmail(email), context);
     },
+    clearMagicLinkDeliveryContext: (email: string) => {
+      deliveryContexts.delete(normalizeEmail(email));
+    },
     setResetPasswordDeliveryContext: (email: string, context: ResetPasswordDeliveryContext) => {
-      const normalizedEmail = normalizeEmail(email);
-      resetPasswordContexts.delete(normalizedEmail);
-      while (resetPasswordContexts.size >= RESET_PASSWORD_CONTEXT_MAX_ENTRIES) {
-        const oldest = resetPasswordContexts.keys().next();
-        if (oldest.done) break;
-        resetPasswordContexts.delete(oldest.value);
-      }
-      resetPasswordContexts.set(normalizedEmail, context);
+      resetPasswordContexts.set(normalizeEmail(email), context);
+    },
+    clearResetPasswordDeliveryContext: (email: string) => {
+      resetPasswordContexts.delete(normalizeEmail(email));
     },
     setEmailVerificationDeliveryContext: (email: string, context: EmailVerificationDeliveryContext) => {
-      const normalizedEmail = normalizeEmail(email);
-      emailVerificationContexts.delete(normalizedEmail);
-      while (emailVerificationContexts.size >= EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES) {
-        const oldest = emailVerificationContexts.keys().next();
-        if (oldest.done) break;
-        emailVerificationContexts.delete(oldest.value);
-      }
-      emailVerificationContexts.set(normalizedEmail, context);
+      emailVerificationContexts.set(normalizeEmail(email), context);
+    },
+    clearEmailVerificationDeliveryContext: (email: string) => {
+      emailVerificationContexts.delete(normalizeEmail(email));
     },
     consumeCapturedMagicLink: (email: string) => {
       const normalizedEmail = normalizeEmail(email);

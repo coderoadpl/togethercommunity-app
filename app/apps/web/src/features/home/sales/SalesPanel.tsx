@@ -25,7 +25,7 @@ import type { OrderExportFormat, OrderStatus, PriceKind } from '#core/domain/ind
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -70,7 +70,7 @@ export const SalesPanel = () => {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setExportError(localizeError(error, t));
+      setExportError(localizePanelError(error, t));
     } finally {
       setExporting(null);
     }
@@ -81,6 +81,7 @@ export const SalesPanel = () => {
     pending: t.sales.pending,
     failed: t.sales.failed,
     refunded: t.sales.refunded,
+    partially_refunded: t.sales.partially_refunded,
   } as const;
 
   const statusColors = {
@@ -88,13 +89,14 @@ export const SalesPanel = () => {
     pending: 'warning',
     failed: 'error',
     refunded: 'default',
+    partially_refunded: 'default',
   } as const;
 
   return (
     <PanelPage title={t.sections.sales}>
-      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
-      {coupons.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} /> : null}
-      {reconciliation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(reconciliation.error, t), retry: { label: t.common.retry, onRetry: () => void reconciliation.refetch() } }} /> : null}
+      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
+      {coupons.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} /> : null}
+      {reconciliation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(reconciliation.error, t), retry: { label: t.common.retry, onRetry: () => void reconciliation.refetch() } }} /> : null}
       {reconciliation.data !== undefined && reconciliation.data.rows.length > 0 ? (
         <Alert severity="warning" data-testid="order-reconciliation">
           <Typography variant="subtitle2">{t.sales.reconciliationHeading}</Typography>
@@ -134,7 +136,7 @@ export const SalesPanel = () => {
                   value={status}
                   onChange={(event) => {
                     const value = event.target.value;
-                    setStatus(value === 'paid' || value === 'pending' || value === 'failed' || value === 'refunded' ? value : 'all');
+                    setStatus(value === 'paid' || value === 'pending' || value === 'failed' || value === 'refunded' || value === 'partially_refunded' ? value : 'all');
                     resetPage();
                   }}
                   data-testid="sales-status-filter"
@@ -144,6 +146,7 @@ export const SalesPanel = () => {
                   <MenuItem value="pending">{t.sales.pending}</MenuItem>
                   <MenuItem value="failed">{t.sales.failed}</MenuItem>
                   <MenuItem value="refunded">{t.sales.refunded}</MenuItem>
+                  <MenuItem value="partially_refunded">{t.sales.partially_refunded}</MenuItem>
                 </Select>
               </FormControl>
               <FormControl size="small" sx={{ minWidth: '9rem' }}>
@@ -249,7 +252,7 @@ export const SalesPanel = () => {
         {orders.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.sales.loading }} />
         ) : orders.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(orders.error, t), retry: { label: t.common.retry, onRetry: () => void orders.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(orders.error, t), retry: { label: t.common.retry, onRetry: () => void orders.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table>

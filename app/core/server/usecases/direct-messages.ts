@@ -111,7 +111,8 @@ const loadCounterpart = async (
 /**
  * Recipients must be reachable people in this tenant; staff grants keep the
  * support channel open in both directions. Strangers and other tenants get the
- * same `not_found`, so the endpoint is no existence oracle.
+ * same `not_found`, and a ban is indistinguishable from an opt-out, so the
+ * endpoint is no existence or moderation-state oracle.
  */
 const requireReachableRecipient = (
   recipient: Counterpart,
@@ -121,11 +122,11 @@ const requireReachableRecipient = (
   if (member === null || member.deletedAt !== null) {
     return recipient.isStaff ? ok(recipient) : err(notFound('Recipient not found in this community'));
   }
-  if (!recipient.isStaff && member.bannedAt !== null) {
-    return err(forbidden('This member cannot receive messages'));
-  }
-  if (!recipient.isStaff && !senderIsStaff && member.dmOptOutAt !== null) {
-    return err(forbidden('This member does not accept direct messages'));
+  if (
+    !recipient.isStaff &&
+    (member.bannedAt !== null || (!senderIsStaff && member.dmOptOutAt !== null))
+  ) {
+    return err(forbidden('This member cannot be messaged right now'));
   }
   return ok(recipient);
 };

@@ -2,12 +2,12 @@ import type { ReactNode } from 'react';
 import { Box, Container, Stack, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 
-import { Eyebrow, LedgerBreadcrumbs, LedgerHeader, LedgerTitle } from '../../theme.js';
+import { Eyebrow, LedgerBreadcrumbs, LedgerTitle, MemberLedgerHeader } from '../../theme.js';
 import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
 
-interface BreadcrumbItem {
+export interface BreadcrumbItem {
   label: ReactNode;
   link?: ReactNode;
 }
@@ -15,9 +15,11 @@ interface BreadcrumbItem {
 export interface MemberPageProps {
   title: ReactNode;
   eyebrow: ReactNode;
-  width?: 'prose' | 'wide';
+  width?: 'prose' | 'wide' | 'lesson';
   breadcrumbs?: BreadcrumbItem[];
   breadcrumbLabel: string;
+  /** Page-level call to action, right-aligned in the header on sm+. */
+  actions?: ReactNode;
   /** Sticky right column (24rem) on md+. */
   rail?: ReactNode;
   railLeading?: ReactNode;
@@ -55,6 +57,7 @@ export const MemberPage = ({
   width = 'prose',
   breadcrumbs,
   breadcrumbLabel,
+  actions,
   rail,
   railLeading,
   mobileRail = 'before',
@@ -85,7 +88,7 @@ export const MemberPage = ({
       sx={{ maxWidth: `${PAGE_WIDTH[width]} !important`, pb: '3rem' }}
       data-testid={testId}
     >
-      <LedgerHeader component="header" sx={{ pb: { xs: '14px', md: '21px' } }}>
+      <MemberLedgerHeader component="header" sx={{ pb: { xs: '14px', md: '21px' } }}>
         {crumbs !== undefined && crumbs.length > 0 && (
           <LedgerBreadcrumbs
             aria-label={breadcrumbLabel}
@@ -97,11 +100,24 @@ export const MemberPage = ({
             ))}
           </LedgerBreadcrumbs>
         )}
-        <LedgerTitle variant="h1" dense={dense}>{title}</LedgerTitle>
-        <Eyebrow variant="overline" component="p">
-          {eyebrow}
-        </Eyebrow>
-      </LedgerHeader>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', sm: 'flex-end' },
+            gap: '1rem',
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <LedgerTitle variant="h1" dense={dense}>{title}</LedgerTitle>
+            <Eyebrow variant="overline" component="p">
+              {eyebrow}
+            </Eyebrow>
+          </Box>
+          {actions === undefined ? null : <Box sx={{ flexShrink: 0 }}>{actions}</Box>}
+        </Box>
+      </MemberLedgerHeader>
 
       {hasRail && !statusOnly ? (
         <Box

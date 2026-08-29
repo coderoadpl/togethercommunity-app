@@ -342,6 +342,8 @@ const runDirectMessageJourney = async (
   baseUrl: string,
 ): Promise<void> => {
   await memberAPage.goto(`${baseUrl}/community/${studioSpaceId}`, { waitUntil: 'domcontentloaded' });
+  await memberAPage.getByTestId(`post-menu-${freeMemberPostId}`).waitFor({ state: 'visible', timeout: 15000 });
+  await memberAPage.getByTestId(`post-menu-${freeMemberPostId}`).click();
   await memberAPage.getByTestId(`start-message-${freeMemberPostId}`).waitFor({ state: 'visible', timeout: 15000 });
   await memberAPage.getByTestId(`start-message-${freeMemberPostId}`).click();
   await memberAPage.getByTestId('conversation-page').waitFor({ state: 'visible', timeout: 15000 });

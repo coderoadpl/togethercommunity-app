@@ -1,6 +1,6 @@
 {
-  "hash": "890d38c607ebd2964cd3049cd8bc3cfed516e31eeca465995a2ec253a8f30777",
-  "shortId": "890d38c607eb",
+  "hash": "e4cc84cc9adb5e15a68fbb7987f4f0489614a63169de97162de991f52c92e81b",
+  "shortId": "e4cc84cc9adb",
   "schema": {
     "constraints": [
       {
@@ -1054,6 +1054,11 @@
         "table": "erased_member_imports"
       },
       {
+        "definition": "PRIMARY KEY (scope, key)",
+        "name": "rate_limit_buckets_scope_key_pk",
+        "table": "rate_limit_buckets"
+      },
+      {
         "definition": "PRIMARY KEY (sequence)",
         "name": "invoice_events_pkey",
         "table": "invoice_events"
@@ -1586,6 +1591,11 @@
         "definition": "CREATE INDEX product_prices_tenant_product_idx ON product_prices USING btree (tenant_id, product_id)",
         "name": "product_prices_tenant_product_idx",
         "table": "product_prices"
+      },
+      {
+        "definition": "CREATE INDEX rate_limit_buckets_expiry_idx ON rate_limit_buckets USING btree (expires_at)",
+        "name": "rate_limit_buckets_expiry_idx",
+        "table": "rate_limit_buckets"
       },
       {
         "definition": "CREATE INDEX scheduler_run_tenants_tenant_run_idx ON scheduler_run_tenants USING btree (tenant_id, run_id)",
@@ -6764,6 +6774,51 @@
           }
         ],
         "name": "dm_conversation_states"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "scope",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "window_started_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "rate_limit_buckets"
       },
       {
         "columns": [

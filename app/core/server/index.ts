@@ -52,6 +52,7 @@ export * from './usecases/support.js';
 export * from './usecases/invoices.js';
 export * from './usecases/ksef-submissions.js';
 export * from './usecases/dispatch-ksef-job.js';
+export * from './usecases/public-rate-limit.js';
 export * from './usecases/dispatch-auto-invoice-jobs.js';
 export * from './usecases/member-billing-orders.js';
 export * from './usecases/member-data-export.js';

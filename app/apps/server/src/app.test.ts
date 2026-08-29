@@ -17,6 +17,7 @@ import {
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
+import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
 import {
   err,
@@ -125,6 +126,7 @@ const deps = (input: {
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
   paymentRefunds?: AppDeps['paymentRefunds'];
+  rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
@@ -278,6 +280,11 @@ const deps = (input: {
       claim: async () => true,
       release: async () => undefined,
     },
+    rateLimitBuckets: input.rateLimitBuckets ?? {
+      claim: async () => true,
+      purgeExpired: async () => 0,
+    },
+    publicRateLimitPolicies: selectPublicRateLimitPolicies({}),
     m2mTransactionalRateLimits: { perMinute: 60, perDay: 5000 },
     apiKeyCrypto: {
       generateSecret: () => 'secret',
@@ -1044,8 +1051,9 @@ const importM2mApp = (options: {
 
 const ksefApp = (
   dispatch: NonNullable<AppDeps['ksef']>['dispatch'],
+  rateLimitBuckets?: AppDeps['rateLimitBuckets'],
 ): ReturnType<typeof buildApp> => {
-  const configured = deps();
+  const configured = deps(rateLimitBuckets === undefined ? {} : { rateLimitBuckets });
   configured.ksef = {
     environment: 'test',
     credentials: {
@@ -2046,6 +2054,106 @@ describe('KSeF HTTP surfaces', () => {
 
     expect(response.status).toBe(200);
     expect(dispatch).toHaveBeenCalledOnce();
+  });
+
+  it('purges expired rate-limit windows on the same hourly run', async () => {
+    const purgeExpired = vi.fn(async () => 3);
+    const app = ksefApp(
+      async () => ok({ processed: false, invoiceId: null, processedCount: 0 }),
+      { claim: async () => true, purgeExpired },
+    );
+
+    const response = await app.request(API_PATHS.ksefDispatch, {
+      headers: { authorization: 'Bearer test-ksef-cron-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(purgeExpired).toHaveBeenCalledOnce();
+  });
+});
+
+describe('public rate limiting', () => {
+  const exhausted: AppDeps['rateLimitBuckets'] = {
+    claim: async () => false,
+    purgeExpired: async () => 0,
+  };
+
+  it('answers a throttled checkout with 429 and Retry-After', async () => {
+    const app = buildApp(deps({ rateLimitBuckets: exhausted }));
+
+    const response = await app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@together.dev' }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'rate_limited', message: 'Too many requests' },
+    });
+  });
+
+  it('answers a throttled magic-link request with 429 without sending a link', async () => {
+    const configured = deps({ rateLimitBuckets: exhausted });
+    const handler = vi.fn(async () => new Response(null, { status: 200 }));
+    configured.auth = { ...configured.auth, handler };
+    const app = buildApp(configured);
+
+    const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'buyer@together.dev' }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('forwards an allowed magic-link request body to the auth handler', async () => {
+    const keys: string[] = [];
+    const configured = deps({
+      rateLimitBuckets: {
+        claim: async (input) => { keys.push(`${input.scope}:${input.key}`); return true; },
+        purgeExpired: async () => 0,
+      },
+    });
+    const handler = vi.fn(async (request: Request) => new Response(await request.text(), { status: 200 }));
+    configured.auth = { ...configured.auth, handler };
+    const app = buildApp(configured);
+
+    const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'Buyer@Together.dev' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ email: 'Buyer@Together.dev' });
+    expect(keys).toEqual(['public-write:ip:unattributed', 'auth-link:email:buyer@together.dev']);
+  });
+
+  it('leaves public reads and unthrottled writes alone', async () => {
+    const scopes: string[] = [];
+    const app = buildApp(deps({
+      rateLimitBuckets: {
+        claim: async (input) => { scopes.push(input.scope); return true; },
+        purgeExpired: async () => 0,
+      },
+    }));
+
+    expect((await app.request(API_PATHS.publicOffer, {
+      headers: { [TENANT_HEADER]: 'acme' },
+    })).status).toBe(200);
+    expect(scopes).toEqual([]);
+
+    expect((await app.request(API_PATHS.couponCheckoutValidation, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ productId: 'acme-published', couponCode: 'SAVE' }),
+    })).status).not.toBe(429);
+    expect(scopes).toEqual(['public-write:ip', 'public-write:tenant']);
   });
 });
 

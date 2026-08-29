@@ -47,6 +47,8 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'MarketingJobRepository.listRunnableCampaigns': 'A platform worker discovers runnable campaigns with their tenant IDs.',
   'MarketingJobRepository.listSesIdentityRefreshTenantIds': 'A platform worker discovers tenants due for identity refresh.',
   'MarketingJobRepository.listSesTenantIds': 'A platform worker discovers tenants due for SES polling.',
+  'PublicRateLimitRepository.claim': 'Public routes are throttled before a tenant is known; the bucket key carries the tenant when one is resolved.',
+  'PublicRateLimitRepository.purgeExpired': 'A platform worker removes expired rate-limit windows across all tenants.',
   'SchedulerRunRepository.failStale': 'A platform worker closes stale runs across all tenants.',
   'SchedulerRunRepository.finalize': 'A scheduler run is a platform aggregate containing per-tenant results.',
   'SchedulerRunRepository.getWithTenants': 'Operator diagnostics read a platform run and all of its tenant results.',

@@ -758,6 +758,17 @@ export interface ApiKeyRateLimitRepository {
   }): Promise<void>;
 }
 
+export interface PublicRateLimitRepository {
+  claim(input: {
+    scope: string;
+    key: string;
+    windowStartedAt: string;
+    expiresAt: string;
+    limit: number;
+  }): Promise<boolean>;
+  purgeExpired(before: string): Promise<number>;
+}
+
 export interface TenantSecretRepository {
   listByTenant(tenantId: string): Promise<TenantSecret[]>;
   findByKey(tenantId: string, key: TenantSecretKey): Promise<TenantSecret | null>;

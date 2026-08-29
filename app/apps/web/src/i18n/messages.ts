@@ -578,6 +578,20 @@ export interface Messages {
     regenerateBackupCodes: string;
     regeneratingBackupCodes: string;
     backupCodesRegenerated: string;
+    sessionsHeading: string;
+    sessionsIntro: string;
+    sessionsLoading: string;
+    sessionsEmpty: string;
+    sessionCurrent: string;
+    sessionUnknownDevice: string;
+    sessionSignedInAt: (params: { date: string }) => string;
+    sessionLastActiveAt: (params: { date: string }) => string;
+    sessionRevoke: string;
+    sessionRevoking: string;
+    sessionRevoked: string;
+    sessionsRevokeOthers: string;
+    sessionsRevokingOthers: string;
+    sessionsOthersRevoked: string;
   };
   integrations: {
     heading: string;
@@ -1294,6 +1308,9 @@ export interface Messages {
     unmarkCompleted: string;
     unmarkCompletedHint: string;
     completeContinue: string;
+    previousLesson: string;
+    firstLesson: string;
+    nextLocked: string;
     courseCompleted: string;
     lastLesson: string;
     next: (params: { name: string }) => string;
@@ -1377,6 +1394,11 @@ export interface Messages {
     emptyFeed: string;
     openThread: string;
     reactAria: (params: { emoji: string }) => string;
+    addReaction: string;
+    postMenu: string;
+    copyLink: string;
+    copyLinkDone: string;
+    copyLinkFailed: string;
     spaceNotFoundTitle: string;
     spaceNotFoundBody: string;
     backToSpaces: string;
@@ -1462,7 +1484,7 @@ export interface Messages {
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
-    avatarHint: (params: { email: string }) => string;
+    avatarHint: string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;

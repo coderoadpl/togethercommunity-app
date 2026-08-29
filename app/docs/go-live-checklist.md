@@ -230,10 +230,24 @@ socket peer is then authoritative. The shipped Caddy configuration overwrites
 production reverse proxies must overwrite the selected header. Vercel
 deployments use the platform-written `x-vercel-forwarded-for` header.
 
-Nothing else rate-limits requests. `rateLimited` exists but is unused
-(`core/domain/errors.ts:65`), while `marketing_throttle_buckets` is a per-tenant
-SES sending budget rather than a request limiter
-(`adapters/db/app-schema.ts:1387`).
+Unauthenticated write routes carry a second application limiter: fixed windows
+in `rate_limit_buckets`, keyed by scope and subject and claimed with one upsert
+per request (`core/server/usecases/public-rate-limit.ts`,
+`apps/server/src/public-rate-limit.ts`). Checkout session creation, coupon
+validation and the marketing consent forms allow 30 requests per minute per
+client address and 300 per minute per resolved tenant; magic-link,
+password-reset, sign-up and verification requests share that per-address budget
+and allow 5 per ten minutes per e-mail address. The three limits are
+configurable
+(`PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE`,
+`PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE`,
+`PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES`), relax outside
+production so the end-to-end suites are unaffected, and switch off per bucket
+at `0`. Rejections answer `429` with `Retry-After`, and the hourly KSeF
+dispatch run deletes expired windows.
+
+`marketing_throttle_buckets` remains a per-tenant SES sending budget rather
+than a request limiter (`adapters/db/app-schema.ts:1387`).
 
 Before launch, add an edge or WAF rule in front of `/api/auth/*`. The durable
 application limiter is defense in depth and does not replace the launch edge
@@ -556,3 +570,27 @@ command result together with the deployment URL, expected SHA, actual health
 SHA, and approving owner. Repeat the same mandatory-SHA check on staging before
 promotion and on production after promotion. This owner sign-off is a manual
 post-deployment attestation, not an automated CI or hosting gate.
+
+### 19. Realtime listener connection
+
+**STATUS:** pre-launch-verify
+
+`REALTIME_TRANSPORT` defaults to `pg`, so the realtime bus holds a dedicated
+`LISTEN` connection resolved from `REALTIME_DATABASE_URL`, then
+`DATABASE_URL_UNPOOLED`, then `DATABASE_URL`
+(`apps/server/src/realtime-transport.ts`). Transaction-mode poolers accept
+`LISTEN` and never deliver a notification, so a pooled URL degrades in-app
+notifications and direct messages to the 25 s stream rotation without any error.
+
+Confirm which URL the managed database integration injects into each deployed
+environment. If `DATABASE_URL` points at a pooler, set `REALTIME_DATABASE_URL`
+or `DATABASE_URL_UNPOOLED` to the direct connection for staging and production.
+The listener logs `[realtime] listener connection targets a pooled host` at boot
+when the hostname contains `pooler` or the port is 6543 or 6432; check the
+deployment log after the first request. That heuristic cannot see every pooler
+(RDS Proxy and PgBouncer on 5432 look like a direct host), so confirm the URL
+against the provider console rather than relying on the absence of the warning.
+
+Each warm instance holds one direct connection, which counts against the
+database `max_connections` budget. Verify that the compute size can carry the
+expected number of concurrent streams.

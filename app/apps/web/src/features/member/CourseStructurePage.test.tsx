@@ -7,7 +7,7 @@ import {
 import { screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
@@ -174,6 +174,19 @@ const mockPage = ({
   );
 };
 
+const stubViewport = (isCompact: boolean) => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: isCompact && query.includes('max-width'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 const renderPage = async (node: ReactNode) => {
   const rootRoute = createRootRoute({ component: () => node });
   const router = createRouter({
@@ -185,26 +198,56 @@ const renderPage = async (node: ReactNode) => {
 };
 
 describe('CourseStructurePage', () => {
-  it('leaves the program to the course bar and keeps progress plus discussion in the rail', async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps progress plus the small-screen program leading and discussion trailing', async () => {
+    stubViewport(true);
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const leading = await screen.findByTestId('member-rail-leading');
     const trailing = screen.getByTestId('member-rail-trailing');
+    const inlineProgram = within(leading).getByTestId('course-tree-inline');
 
     expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
     expect(screen.getAllByTestId('course-progress-card')).toHaveLength(1);
     expect(within(trailing).getByTestId('course-discussion-search')).toBeInTheDocument();
-    expect(screen.queryByTestId('course-tree')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(within(inlineProgram).getByTestId('course-tree')).toBeInTheDocument();
+    expect(screen.getAllByTestId('course-tree')).toHaveLength(1);
+    expect(within(inlineProgram).getByTestId('lesson-search')).toBeInTheDocument();
+    expect(within(inlineProgram).getByTestId('module-toggle-m1')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument();
   });
 
-  it('renders the course title and stat tiles without repeating the program', async () => {
+  it('drops the small-screen program for a course without modules', async () => {
+    stubViewport(true);
+    mockPage({ body: { ...structure, modules: [] } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    await screen.findByTestId('course-progress-card');
+    expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
+  });
+
+  it('leaves the program to the shell sidebar on desktop', async () => {
+    stubViewport(false);
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    expect(await screen.findByRole('heading', { name: 'JavaScript Foundations' })).toBeInTheDocument();
-    expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
+    await screen.findByTestId('course-progress-card');
+    expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-tree')).not.toBeInTheDocument();
+  });
+
+  it('renders the course title as the single page heading', async () => {
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'JavaScript Foundations' })).toBeInTheDocument();
   });
 
   it('summarizes lessons, total duration and completion in the stat tiles', async () => {

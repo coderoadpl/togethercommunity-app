@@ -510,12 +510,18 @@ export interface NotificationChannelPort {
   deliver(notification: Notification, context: NotificationDeliveryContext): Promise<Result<void, AppError>>;
 }
 
-/** @public */
+/**
+ * Cross-instance transports cap the payload, so events carry identifiers only
+ * and the client refetches the record it needs.
+ *
+ * @public
+ */
 export interface RealtimeNotificationEvent {
   kind: 'notification';
   tenantId: string;
   recipientUserId: string;
-  notification: Notification;
+  notificationId: string;
+  createdAt: string;
 }
 
 /**
@@ -528,13 +534,20 @@ export interface RealtimeDmEvent {
   tenantId: string;
   recipientUserId: string;
   conversationId: string;
+  createdAt: string;
 }
 
 export type RealtimeEvent = RealtimeNotificationEvent | RealtimeDmEvent;
 
+/** @public */
+export interface RealtimeScope {
+  tenantId: string;
+  recipientUserId: string;
+}
+
 export interface RealtimeBusPort {
   publish(event: RealtimeEvent): void;
-  subscribe(listener: (event: RealtimeEvent) => void): () => void;
+  subscribe(scope: RealtimeScope, listener: (event: RealtimeEvent) => void): () => void;
 }
 
 export interface DiscussionLinkPort {
@@ -783,6 +796,17 @@ export interface ApiKeyRateLimitRepository {
     windowStartedAt: string;
     cost?: number;
   }): Promise<void>;
+}
+
+export interface PublicRateLimitRepository {
+  claim(input: {
+    scope: string;
+    key: string;
+    windowStartedAt: string;
+    expiresAt: string;
+    limit: number;
+  }): Promise<boolean>;
+  purgeExpired(before: string): Promise<number>;
 }
 
 export interface TenantSecretRepository {
@@ -1893,6 +1917,7 @@ export interface TenantAccessReader {
 
 /** Established authenticated session, before tenant resolution. */
 export interface AuthenticatedUser {
+  sessionId: string;
   userId: string;
   email: string;
   name: string;
@@ -1900,9 +1925,21 @@ export interface AuthenticatedUser {
   image: string | null;
 }
 
+/** One live provider session of a single account, without its bearer token. */
+export interface AccountSession {
+  id: string;
+  createdAt: string;
+  lastActiveAt: string;
+  userAgent: string | null;
+}
+
 export interface AuthPort {
   /** Returns the authenticated user for a request, or null when anonymous. */
   getAuthenticatedUser(requestHeaders: Headers): Promise<AuthenticatedUser | null>;
+  /** Unexpired sessions of one account, in provider order. */
+  listSessions(userId: string): Promise<AccountSession[]>;
+  /** Deletes the named sessions; ids that do not belong to the account are ignored. */
+  revokeSessions(userId: string, sessionIds: readonly string[]): Promise<void>;
   /** Find-or-create a passwordless provider user for this email. Idempotent. */
   ensureUser(email: string): Promise<{ userId: string; created: boolean }>;
   /** Trigger a magic-link email through the configured EmailPort. */

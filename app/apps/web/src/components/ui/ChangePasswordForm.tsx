@@ -128,14 +128,16 @@ export const ChangePasswordForm = ({
       <Typography variant="caption" component="p">
         {t.changePassword.revokeOtherSessionsHelp}
       </Typography>
-      <Button
-        type="submit"
-        variant="outlined"
-        data-testid="change-password-submit"
-        disabled={pending}
-      >
-        {pending ? t.changePassword.submitPending : t.changePassword.submitIdle}
-      </Button>
+      <Box>
+        <Button
+          type="submit"
+          variant="outlined"
+          data-testid="change-password-submit"
+          disabled={pending}
+        >
+          {pending ? t.changePassword.submitPending : t.changePassword.submitIdle}
+        </Button>
+      </Box>
       {success ? (
         <Typography variant="caption" component="p" data-testid="change-password-success">
           {t.changePassword.success}

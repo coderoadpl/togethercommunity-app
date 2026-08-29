@@ -10,6 +10,8 @@ export const CAPABILITIES = [
   'tenant:onboarding:read',
   'tenant:onboarding:write',
   'terms:accept',
+  'account:session:self-read',
+  'account:session:self-revoke',
   'development:inspect',
   'development:mutate',
   'enrollment:create',
@@ -133,6 +135,8 @@ export const requiresVerifiedEmail = (capability: Capability): boolean =>
   VERIFIED_EMAIL_CAPABILITIES.includes(capability);
 
 const sharedStaffCapabilities = [
+  'account:session:self-read',
+  'account:session:self-revoke',
   'tenant:create',
   'tenant:list-own',
   'tenant:settings:read',
@@ -224,6 +228,8 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
   owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities],
   admin: sharedStaffCapabilities,
   member: [
+    'account:session:self-read',
+    'account:session:self-revoke',
     'tenant:create',
     'tenant:list-own',
     'tenant:settings:read',

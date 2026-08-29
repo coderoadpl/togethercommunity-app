@@ -327,6 +327,7 @@ const notifyDmRecipient = async (
     tenantId,
     recipientUserId: input.recipient.userId,
     conversationId: input.conversationId,
+    createdAt: input.message.createdAt,
   });
   const alreadyPending = await deps.notifications.hasUnreadDmNotification(
     tenantId,

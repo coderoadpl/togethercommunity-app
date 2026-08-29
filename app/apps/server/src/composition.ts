@@ -83,6 +83,7 @@ import {
   createTenantAccessReader,
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
+  createPublicRateLimitRepository,
   createTenantDomainRepository,
   createTenantRepository,
   createTenantSecretRepository,
@@ -109,7 +110,7 @@ import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
-import { createInAppNotificationChannel, createRealtimeBus } from '#adapters/notifications/in-app.js';
+import { createInAppNotificationChannel } from '#adapters/notifications/in-app.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
 import { createResendEmailPort } from '#adapters/email/resend.js';
@@ -222,6 +223,7 @@ import type {
   TenantAccessReader,
   TenantApiKeyRepository,
   ApiKeyRateLimitRepository,
+  PublicRateLimitRepository,
   TenantDomainRepository,
   TenantRepository,
   TermsConsentRepository,
@@ -253,6 +255,8 @@ import { capabilitiesForPrincipal, communityEventPath, communityPostPath, commun
 
 import { createCoalescedRunner } from './coalesced-runner.js';
 import { type Env, isProductionEnvironment } from './env.js';
+import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
+import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
 
 interface DevEndpoints {
@@ -348,6 +352,8 @@ export interface AppDeps {
   importUsers: ImportUsersRepository;
   contentHash: ContentHash;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
+  rateLimitBuckets: PublicRateLimitRepository;
+  publicRateLimitPolicies: PublicRateLimitPolicies;
   m2mTransactionalRateLimits: { perMinute: number; perDay: number };
   apiKeyCrypto: ApiKeyCrypto;
   tenantSecrets: TenantSecretRepository;
@@ -861,7 +867,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     if (!purged.ok) return purged;
     return marketing;
   };
-  const realtimeBus = createRealtimeBus();
+  const realtimeBus = createRealtimeTransport({ env, db, logger });
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const links: DiscussionLinkPort = {
     lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
@@ -988,6 +994,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     importUsers,
     contentHash,
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
+    rateLimitBuckets: createPublicRateLimitRepository(db),
+    publicRateLimitPolicies: selectPublicRateLimitPolicies(env),
     m2mTransactionalRateLimits: {
       perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,
       perDay: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY,

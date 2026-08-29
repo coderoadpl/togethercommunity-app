@@ -17,6 +17,7 @@ import {
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
+import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
 import {
   err,
@@ -32,6 +33,7 @@ import {
   type Member,
   type Membership,
   type LessonAttachment,
+  type Notification,
   type Order,
   type Post,
   type Product,
@@ -125,6 +127,7 @@ const deps = (input: {
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
   paymentRefunds?: AppDeps['paymentRefunds'];
+  rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
@@ -153,6 +156,8 @@ const deps = (input: {
         if (!input.authenticated) throw new Error('Public route must not authenticate');
         return null;
       }),
+      listSessions: async () => [],
+      revokeSessions: async () => undefined,
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -278,6 +283,11 @@ const deps = (input: {
       claim: async () => true,
       release: async () => undefined,
     },
+    rateLimitBuckets: input.rateLimitBuckets ?? {
+      claim: async () => true,
+      purgeExpired: async () => 0,
+    },
+    publicRateLimitPolicies: selectPublicRateLimitPolicies({}),
     m2mTransactionalRateLimits: { perMinute: 60, perDay: 5000 },
     apiKeyCrypto: {
       generateSecret: () => 'secret',
@@ -782,6 +792,7 @@ const scopedApp = (
     authPort: {
       ...base.authPort,
       getAuthenticatedUser: async () => ({
+        sessionId: 'session-1',
         userId: 'user-1',
         email: 'user@acme.test',
         name: 'User',
@@ -1047,8 +1058,9 @@ const importM2mApp = (options: {
 
 const ksefApp = (
   dispatch: NonNullable<AppDeps['ksef']>['dispatch'],
+  rateLimitBuckets?: AppDeps['rateLimitBuckets'],
 ): ReturnType<typeof buildApp> => {
-  const configured = deps();
+  const configured = deps(rateLimitBuckets === undefined ? {} : { rateLimitBuckets });
   configured.ksef = {
     environment: 'test',
     credentials: {
@@ -1779,6 +1791,40 @@ describe('marketing HTTP surfaces', () => {
     });
   });
 
+  it('builds unsubscribe links from the API key tenant instead of the request host', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const sender = new FakeSesMarketingSender();
+    marketing.marketingSes = sender;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityCheckError: null, configurationSet: 'marketing',
+      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
+      webhookVerifiedAt: '1998-07-22T00:00:00.000Z', footerLegalName: 'Acme',
+      footerAddress: 'Warsaw', broadcastsEnabled: true,
+      reputationAlertStatus: null, reputationAlertedAt: null,
+    }]);
+
+    const response = await marketingApp(marketing).request('/api/m2m/marketing/messages', {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:9999',
+        'x-api-key': 'marketing-key',
+        'content-type': 'application/json',
+        'x-forwarded-proto': 'https',
+      },
+      body: JSON.stringify({ messages: [
+        { to: 'member@example.test', consentDefinitionId: 'definition-news', subject: 'News', bodyHtml: '<p>News</p>' },
+      ] }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(JSON.stringify(sender.sent)).toContain('http://acme.localhost:48730/u/');
+    expect(JSON.stringify(sender.sent)).not.toContain('acme.localhost:9999');
+  });
+
   it('returns 429 with Retry-After when the tenant SES throttle is under pressure', async () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
@@ -2049,6 +2095,106 @@ describe('KSeF HTTP surfaces', () => {
 
     expect(response.status).toBe(200);
     expect(dispatch).toHaveBeenCalledOnce();
+  });
+
+  it('purges expired rate-limit windows on the same hourly run', async () => {
+    const purgeExpired = vi.fn(async () => 3);
+    const app = ksefApp(
+      async () => ok({ processed: false, invoiceId: null, processedCount: 0 }),
+      { claim: async () => true, purgeExpired },
+    );
+
+    const response = await app.request(API_PATHS.ksefDispatch, {
+      headers: { authorization: 'Bearer test-ksef-cron-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(purgeExpired).toHaveBeenCalledOnce();
+  });
+});
+
+describe('public rate limiting', () => {
+  const exhausted: AppDeps['rateLimitBuckets'] = {
+    claim: async () => false,
+    purgeExpired: async () => 0,
+  };
+
+  it('answers a throttled checkout with 429 and Retry-After', async () => {
+    const app = buildApp(deps({ rateLimitBuckets: exhausted }));
+
+    const response = await app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@together.dev' }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'rate_limited', message: 'Too many requests' },
+    });
+  });
+
+  it('answers a throttled magic-link request with 429 without sending a link', async () => {
+    const configured = deps({ rateLimitBuckets: exhausted });
+    const handler = vi.fn(async () => new Response(null, { status: 200 }));
+    configured.auth = { ...configured.auth, handler };
+    const app = buildApp(configured);
+
+    const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'buyer@together.dev' }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('forwards an allowed magic-link request body to the auth handler', async () => {
+    const keys: string[] = [];
+    const configured = deps({
+      rateLimitBuckets: {
+        claim: async (input) => { keys.push(`${input.scope}:${input.key}`); return true; },
+        purgeExpired: async () => 0,
+      },
+    });
+    const handler = vi.fn(async (request: Request) => new Response(await request.text(), { status: 200 }));
+    configured.auth = { ...configured.auth, handler };
+    const app = buildApp(configured);
+
+    const response = await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'Buyer@Together.dev' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ email: 'Buyer@Together.dev' });
+    expect(keys).toEqual(['public-write:ip:unattributed', 'auth-link:email:buyer@together.dev']);
+  });
+
+  it('leaves public reads and unthrottled writes alone', async () => {
+    const scopes: string[] = [];
+    const app = buildApp(deps({
+      rateLimitBuckets: {
+        claim: async (input) => { scopes.push(input.scope); return true; },
+        purgeExpired: async () => 0,
+      },
+    }));
+
+    expect((await app.request(API_PATHS.publicOffer, {
+      headers: { [TENANT_HEADER]: 'acme' },
+    })).status).toBe(200);
+    expect(scopes).toEqual([]);
+
+    expect((await app.request(API_PATHS.couponCheckoutValidation, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ productId: 'acme-published', couponCode: 'SAVE' }),
+    })).status).not.toBe(429);
+    expect(scopes).toEqual(['public-write:ip', 'public-write:tenant']);
   });
 });
 
@@ -2880,6 +3026,54 @@ describe('new route authorization', () => {
     expect(response.status).toBe(409);
   });
 
+  it('serves and revokes only the caller own account sessions', async () => {
+    const base = deps();
+    const revokeSessions = vi.fn(async () => undefined);
+    const authPort: AppDeps['authPort'] = {
+      ...base.authPort,
+      getAuthenticatedUser: async () => ({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        email: 'user@acme.test',
+        name: 'User',
+        emailVerified: true,
+        image: null,
+      }),
+      listSessions: async () => [
+        {
+          id: 'session-1',
+          createdAt: '1998-07-12T00:00:00.000Z',
+          lastActiveAt: '1998-07-12T00:00:00.000Z',
+          userAgent: 'Chrome/140',
+        },
+        {
+          id: 'session-2',
+          createdAt: '1998-07-11T00:00:00.000Z',
+          lastActiveAt: '1998-07-11T00:00:00.000Z',
+          userAgent: null,
+        },
+      ],
+      revokeSessions,
+    };
+
+    const listed = await scopedApp('member', { overrides: { authPort } })
+      .request(API_PATHS.accountSessions, { headers });
+    expect(listed.status).toBe(200);
+    await expect(listed.json()).resolves.toMatchObject({
+      data: { sessions: [{ id: 'session-1', current: true }, { id: 'session-2', current: false }] },
+    });
+
+    const revoked = await scopedApp('staff', { overrides: { authPort } })
+      .request(API_PATHS.accountSessionsRevokeOthers, { method: 'POST', headers });
+    expect(revoked.status).toBe(200);
+    expect(revokeSessions).toHaveBeenCalledExactlyOnceWith('user-1', ['session-2']);
+
+    expect(
+      (await scopedApp('none', { overrides: { authPort } })
+        .request(API_PATHS.accountSessions, { headers })).status,
+    ).toBe(403);
+  });
+
   it('allows only a member to export their own data', async () => {
     expect(
       (await scopedApp('member').request(API_PATHS.memberDataExport, { headers })).status,
@@ -3011,6 +3205,138 @@ describe('new route authorization', () => {
     expect(JSON.stringify(payload)).not.toContain('minio-access');
     expect(JSON.stringify(payload)).not.toContain('minio-secret');
   });
+
+  it('probes storage CORS on the resolved tenant origin instead of the request host', async () => {
+    const base = deps();
+    const probedOrigins: string[][] = [];
+    const overrides: Partial<AppDeps> = {
+      storage: {
+        ...base.storage,
+        probe: async (_configuration, corsOrigins) => {
+          probedOrigins.push(corsOrigins ?? []);
+          return ok({ code: 'storage.available', message: 'Storage is available.' });
+        },
+      },
+    };
+    const request = {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'minio',
+        endpoint: 'http://127.0.0.1:19000',
+        region: 'us-east-1',
+        bucket: 'together-test',
+        accessKeyId: 'minio-access',
+        secretAccessKey: 'minio-secret',
+      }),
+    };
+
+    const spoofed = await scopedApp('owner', { overrides }).request(API_PATHS.storageProbe, {
+      ...request,
+      headers: { ...headers, host: 'acme.localhost:9999', 'x-forwarded-proto': 'https' },
+    });
+    const routed = await scopedApp('owner', { overrides }).request(API_PATHS.storageProbe, {
+      ...request,
+      headers: { ...headers, host: 'localhost:48730', [TENANT_HEADER]: 'acme' },
+    });
+
+    expect(spoofed.status).toBe(200);
+    expect(routed.status).toBe(200);
+    expect(probedOrigins).toEqual([
+      ['http://acme.localhost:48730', 'http://localhost:48730'],
+      ['http://localhost:48730'],
+    ]);
+  });
+});
+
+describe('notifications stream route', () => {
+  const headers = { host: 'acme.localhost:48730' };
+
+  const missed: Notification = {
+    id: 'n-missed',
+    tenantId: acme.id,
+    recipientUserId: 'user-1',
+    kind: 'thread-reply',
+    payload: {
+      rootPostId: 'post-1',
+      postId: 'post-2',
+      contextKind: 'lesson',
+      contextId: 'lesson-1',
+      courseId: 'course-1',
+      eventId: null,
+      lessonName: 'Lesson',
+      authorDisplay: 'Author',
+      authorAvatarUrl: null,
+      snippet: 'hello',
+    },
+    sourceKey: null,
+    readAt: null,
+    createdAt: '1998-07-12T00:00:01.000Z',
+  };
+
+  interface ReplayScope {
+    tenantId: string;
+    recipientUserId: string;
+  }
+
+  const streamApp = (scopes: ReplayScope[]) => {
+    const base = deps();
+    return scopedApp('member', {
+      overrides: {
+        notifications: {
+          ...base.notifications,
+          listForRecipient: async (tenantId, query) => {
+            scopes.push({ tenantId, recipientUserId: query.recipientUserId });
+            return { notifications: [missed], nextCursor: null };
+          },
+        },
+      },
+    });
+  };
+
+  const readChunks = async (response: Response, count: number): Promise<string[]> => {
+    const body = response.body;
+    if (body === null) throw new Error('stream response had no body');
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+    while (chunks.length < count) {
+      const { value, done } = await reader.read();
+      if (done || value === undefined) break;
+      chunks.push(decoder.decode(value));
+    }
+    await reader.cancel();
+    return chunks;
+  };
+
+  it('replays from Last-Event-ID scoped to the authenticated identity', async () => {
+    const scopes: ReplayScope[] = [];
+
+    const response = await streamApp(scopes).request(API_PATHS.notificationsStream, {
+      headers: { ...headers, 'last-event-id': '1998-07-12T00:00:00.000Z|n-seen' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await readChunks(response, 3)).toEqual([
+      'retry: 1000\n\n',
+      'event: unread\ndata: {"unread":0}\n\n',
+      'id: 1998-07-12T00:00:01.000Z|n-missed\nevent: notification\ndata: {"id":"n-missed"}\n\n',
+    ]);
+    expect(scopes).toEqual([{ tenantId: acme.id, recipientUserId: 'user-1' }]);
+  });
+
+  it('ignores a malformed Last-Event-ID instead of replaying', async () => {
+    const scopes: ReplayScope[] = [];
+
+    const response = await streamApp(scopes).request(API_PATHS.notificationsStream, {
+      headers: { ...headers, 'last-event-id': 'n-seen' },
+    });
+
+    expect(await readChunks(response, 2)).toEqual([
+      'retry: 1000\n\n',
+      'event: unread\ndata: {"unread":0}\n\n',
+    ]);
+    expect(scopes).toEqual([]);
+  });
 });
 
 describe('post search route', () => {
@@ -3106,7 +3432,7 @@ describe('single-tenant mode', () => {
       singleTenantMode: true,
       authPort: {
         ...base.authPort,
-        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true, image: null }),
+        getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true, image: null }),
       },
       tenantAccess: {
         ...base.tenantAccess,
@@ -3399,6 +3725,7 @@ describe('free lesson preview route', () => {
       deps({
         lessons: [preview, paid],
         getAuthenticatedUser: async () => ({
+          sessionId: 'session-other',
           userId: 'other-tenant-user',
           email: 'other@example.com',
           name: 'Other Tenant User',

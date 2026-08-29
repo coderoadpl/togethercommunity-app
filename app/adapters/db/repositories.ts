@@ -125,6 +125,7 @@ import type {
   ThreadSubscriptionRepository,
   UserDisplayReader,
   ApiKeyRateLimitRepository,
+  PublicRateLimitRepository,
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -179,6 +180,7 @@ import {
   tenantAdmins,
   tenantApiKeys,
   apiKeyRateLimitBuckets,
+  rateLimitBuckets,
   tenantDomains,
   tenantSecrets,
   tenants,
@@ -3329,6 +3331,37 @@ export const createApiKeyRateLimitRepository = (db: Db): ApiKeyRateLimitReposito
         eq(apiKeyRateLimitBuckets.period, input.period),
         eq(apiKeyRateLimitBuckets.windowStartedAt, input.windowStartedAt),
       ));
+  },
+});
+
+export const createPublicRateLimitRepository = (db: Db): PublicRateLimitRepository => ({
+  claim: async (input) => {
+    const [row] = await db.insert(rateLimitBuckets).values({
+      scope: input.scope,
+      key: input.key,
+      windowStartedAt: input.windowStartedAt,
+      expiresAt: input.expiresAt,
+      count: 1,
+    }).onConflictDoUpdate({
+      target: [rateLimitBuckets.scope, rateLimitBuckets.key],
+      set: {
+        windowStartedAt: input.windowStartedAt,
+        expiresAt: input.expiresAt,
+        count: sql`case when ${rateLimitBuckets.windowStartedAt} = ${input.windowStartedAt}::timestamptz then ${rateLimitBuckets.count} + 1 else 1 end`,
+      },
+      setWhere: or(
+        ne(rateLimitBuckets.windowStartedAt, input.windowStartedAt),
+        sql`${rateLimitBuckets.count} + 1 <= ${input.limit}`,
+      ) ?? sql`false`,
+    }).returning({ count: rateLimitBuckets.count });
+    return row !== undefined;
+  },
+  purgeExpired: async (before) => {
+    const purged = await db
+      .delete(rateLimitBuckets)
+      .where(sql`${rateLimitBuckets.expiresAt} <= ${before}::timestamptz`)
+      .returning({ key: rateLimitBuckets.key });
+    return purged.length;
   },
 });
 

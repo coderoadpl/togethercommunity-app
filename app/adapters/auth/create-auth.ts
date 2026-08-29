@@ -537,12 +537,32 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
     const session = await auth.api.getSession({ headers: requestHeaders });
     if (!session) return null;
     return {
+      sessionId: session.session.id,
       userId: session.user.id,
       email: session.user.email,
       name: session.user.name,
       emailVerified: session.user.emailVerified,
       image: session.user.image ?? null,
     };
+  },
+  listSessions: async (userId) => {
+    const { internalAdapter } = await auth.$context;
+    const sessions = await internalAdapter.listSessions(userId, { onlyActiveSessions: true });
+    return sessions.map((session) => ({
+      id: session.id,
+      createdAt: new Date(session.createdAt).toISOString(),
+      lastActiveAt: new Date(session.updatedAt).toISOString(),
+      userAgent: session.userAgent ?? null,
+    }));
+  },
+  revokeSessions: async (userId, sessionIds) => {
+    const { internalAdapter } = await auth.$context;
+    const owned = new Set(sessionIds);
+    const sessions = await internalAdapter.listSessions(userId);
+    const tokens = sessions
+      .filter((session) => owned.has(session.id))
+      .map((session) => session.token);
+    if (tokens.length > 0) await internalAdapter.deleteSessions(tokens);
   },
   ensureUser: async (email) => {
     const normalizedEmail = normalizeEmail(email);

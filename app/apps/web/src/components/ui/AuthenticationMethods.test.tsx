@@ -121,4 +121,12 @@ describe('AuthenticationMethods', () => {
     expect(screen.queryByText('stale-code')).not.toBeInTheDocument();
     expect(screen.getByTestId('two-factor-disabled')).toBeInTheDocument();
   });
+  it('wraps the two-factor action row instead of stretching its buttons', () => {
+    renderMethods(propsWith());
+
+    const row = screen.getByTestId('enable-2fa').parentElement;
+    expect(row).toHaveStyle({ flexWrap: 'wrap' });
+    expect(screen.getByTestId('regenerate-backup-codes').parentElement).toBe(row);
+    expect(screen.getByTestId('disable-2fa').parentElement).toBe(row);
+  });
 });

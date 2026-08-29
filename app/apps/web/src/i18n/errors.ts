@@ -74,7 +74,52 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
   }
 };
 
+const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
+  switch (code) {
+    case 'integration_not_configured':
+      return t.errors.panelHintIntegrationNotConfigured;
+    case 'integration_auth':
+      return t.errors.panelHintIntegrationAuth;
+    case 'ses_not_configured':
+    case 'broadcasts_disabled':
+      return t.errors.panelHintEmailSendingNotConfigured;
+    case 'transactional_platform_cap_reached':
+      return t.errors.panelHintPlatformEmailPoolExhausted;
+    case 'invoice_exemption_basis_missing':
+      return t.errors.panelHintInvoiceExemptionBasisMissing;
+    case 'validation':
+    case 'unauthorized':
+    case 'invalid_credentials':
+    case 'forbidden':
+    case 'banned':
+    case 'not_found':
+    case 'conflict':
+    case 'tenant_not_found':
+    case 'integration_unavailable':
+    case 'unavailable':
+    case 'rate_limited':
+    case 'not_consented':
+    case 'suppressed':
+    case 'unsubscribed':
+    case 'pending_confirmation':
+    case 'slug_reserved':
+    case 'internal':
+      return null;
+  }
+};
+
+export const localizeErrorCodeForPanel = (code: ErrorCode, t: Messages): string => {
+  const hint = panelHintOf(code, t);
+  const message = localizeErrorCode(code, t);
+  return hint === null ? message : `${message} ${hint}`;
+};
+
 export const localizeError = (error: unknown, t: Messages): string => {
   const code = errorCodeOf(error);
   return code === null ? t.errors.messageUnknown : localizeErrorCode(code, t);
+};
+
+export const localizePanelError = (error: unknown, t: Messages): string => {
+  const code = errorCodeOf(error);
+  return code === null ? t.errors.messageUnknown : localizeErrorCodeForPanel(code, t);
 };

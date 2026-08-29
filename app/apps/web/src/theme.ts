@@ -2799,6 +2799,10 @@ export const LedgerHeader = styled(Box)<AsElement>(({ theme }) => ({
   borderBottom: theme.headerRule ?? `3px double ${alpha(theme.palette.text.primary, 0.55)}`,
 }));
 
+export const MemberLedgerHeader = styled(LedgerHeader)<AsElement>(({ theme }) => ({
+  borderBottomColor: theme.palette.mode === 'dark' ? '#33363C' : '#D6D4D0',
+}));
+
 /** Live accent preview in the branding settings; transparent until a valid color is typed. */
 export const BrandSwatch = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'swatchColor',
@@ -2862,6 +2866,43 @@ export const NotificationTitle = styled(Typography, {
 export const NotificationSnippet = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.8rem',
   color: theme.palette.text.secondary,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+}));
+
+export const NotificationRowButton = styled(ButtonBase)({
+  display: 'flex',
+  width: '100%',
+  textAlign: 'left',
+  justifyContent: 'flex-start',
+  alignItems: 'stretch',
+});
+
+export const CountBadge = styled('span')(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: 18,
+  minWidth: 18,
+  padding: '0 6px',
+  borderRadius: 999,
+  backgroundColor: theme.palette.text.primary,
+  color: theme.palette.background.default,
+  fontSize: '0.6875rem',
+  fontWeight: 600,
+  flexShrink: 0,
+}));
+
+export const LockedSpaceMark = styled(Box)(({ theme }) => ({
+  width: 36,
+  height: 36,
+  flexShrink: 0,
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: '8px',
+  backgroundColor: theme.palette.action.hover,
 }));
 
 export const UnreadDot = styled('span')(({ theme }) => ({
@@ -2908,9 +2949,26 @@ export const SearchHighlight = styled('mark')(({ theme }) => ({
   padding: '0 1px',
 }));
 
-export const TreeModuleTitle = styled(Typography)<AsElement>({ fontSize: '1.02rem', fontWeight: 700 });
+export const TreeModuleTitle = styled(Typography)<AsElement>({
+  fontSize: '0.8125rem',
+  fontWeight: 600,
+  lineHeight: 1.3,
+});
 
-export const TreeChapterTitle = styled(Typography)<AsElement>({ fontSize: '0.92rem', fontWeight: 600 });
+export const TreeChapterTitle = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.8125rem',
+  fontWeight: 600,
+  color: theme.palette.text.secondary,
+}));
+
+export const TreeLessonTitle = styled(Typography)<AsElement>({ fontSize: '0.8125rem' });
+
+export const TreeProgressCount = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.6875rem',
+  color: theme.palette.text.secondary,
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+}));
 
 export const ReorderCard = styled(Paper, {
   shouldForwardProp: (prop) => prop !== 'dropTarget',
@@ -3120,7 +3178,15 @@ export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({
 
 export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
-  fontSize: '0.78rem',
+  flexShrink: 0,
+  fontSize: '0.6875rem',
+  color: theme.palette.text.disabled,
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+}));
+
+export const SidebarProgressPercent = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.6875rem',
   color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',

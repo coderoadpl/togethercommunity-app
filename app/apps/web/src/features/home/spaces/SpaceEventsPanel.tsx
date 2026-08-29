@@ -7,7 +7,7 @@ import type { PublicSpaceEvent } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { DataValue } from '../../../theme.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -69,7 +69,7 @@ const EventRow = ({ spaceId, event }: { spaceId: string; event: PublicSpaceEvent
         </Button>
       </Stack>
 
-      {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
+      {remove.isError ? <Alert severity="error">{localizePanelError(remove.error, t)}</Alert> : null}
 
       <ConfirmDialog
         open={confirmDelete}
@@ -164,7 +164,7 @@ export const SpaceEventsPanel = ({ spaceId }: { spaceId: string }) => {
           <StatusView
             state={{
               kind: 'error',
-              message: localizeError(events.error, t),
+              message: localizePanelError(events.error, t),
               retry: { label: t.common.retry, onRetry: () => void events.refetch() },
             }}
           />

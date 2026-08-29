@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Box, Breadcrumbs, Container, Stack, Typography } from '@mui/material';
 
-import { Eyebrow, LedgerHeader } from '../../theme.js';
+import { Eyebrow, MemberLedgerHeader } from '../../theme.js';
 import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
@@ -14,7 +14,7 @@ export interface BreadcrumbItem {
 export interface MemberPageProps {
   title: ReactNode;
   eyebrow: ReactNode;
-  width?: 'prose' | 'wide';
+  width?: 'prose' | 'wide' | 'lesson';
   breadcrumbs?: BreadcrumbItem[];
   breadcrumbLabel: string;
   /** Page-level call to action, right-aligned in the header on sm+. */
@@ -71,7 +71,7 @@ export const MemberPage = ({
       sx={{ maxWidth: `${PAGE_WIDTH[width]} !important`, pb: '3rem' }}
       data-testid={testId}
     >
-      <LedgerHeader component="header" sx={{ pb: '21px' }}>
+      <MemberLedgerHeader component="header" sx={{ pb: '21px' }}>
         {breadcrumbs !== undefined && breadcrumbs.length > 0 && (
           <Breadcrumbs aria-label={breadcrumbLabel} data-testid="member-breadcrumbs" sx={{ mb: '0.75rem' }}>
             {breadcrumbs.map((item, index) => (
@@ -96,7 +96,7 @@ export const MemberPage = ({
           </Box>
           {actions === undefined ? null : <Box sx={{ flexShrink: 0 }}>{actions}</Box>}
         </Box>
-      </LedgerHeader>
+      </MemberLedgerHeader>
 
       {hasRail && !statusOnly ? (
         <Box

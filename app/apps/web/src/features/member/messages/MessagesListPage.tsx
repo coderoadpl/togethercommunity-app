@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Button, Stack, Typography } from '@mui/material';
+import { Box, Button, Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
@@ -8,7 +8,7 @@ import { conversationPath } from '#core/contract/index.js';
 import type { PublicDmConversation } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ListSection } from '../../../components/layout/index.js';
+import { ListSection, StatusView } from '../../../components/layout/index.js';
 import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatRelativeTime } from '../../../lib/format.js';
@@ -22,6 +22,7 @@ import {
   VisuallyHidden,
 } from '../../../theme.js';
 import { MemberSurface } from '../MemberSurface.js';
+import { MessagesIcon } from '../shell/shell-icons.js';
 
 const PAGE_SIZE = 20;
 const MAX_LIMIT = 100;
@@ -136,12 +137,19 @@ export const MessagesListPage = () => {
         data-testid="conversations-list"
         isEmpty={list.data.conversations.length === 0}
         empty={
-          <Stack useFlexGap sx={{ rowGap: '0.35rem' }}>
-            <Typography variant="body2" data-testid="conversations-empty">
-              {t.messages.emptyList}
-            </Typography>
-            <FinePrint component="p">{t.messages.emptyListHint}</FinePrint>
-          </Stack>
+          <StatusView
+            state={{
+              kind: 'empty',
+              icon: <MessagesIcon />,
+              title: <span data-testid="conversations-empty">{t.messages.emptyList}</span>,
+              body: t.messages.emptyListHint,
+              action: (
+                <MuiLink component={Link} to="/community">
+                  {t.messages.browseSpaces}
+                </MuiLink>
+              ),
+            }}
+          />
         }
         {...(pagination === null ? {} : { pagination })}
       >

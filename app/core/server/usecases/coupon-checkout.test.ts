@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { couponCheckoutBreakdownSchema, type Coupon } from '#core/domain/index.js';
 
 import {
+  COUPON_UNAVAILABLE_MESSAGE,
   validateCouponForCheckout,
   type CouponCheckoutDeps,
   type CouponCheckoutInput,
@@ -109,60 +110,27 @@ describe('validateCouponForCheckout', () => {
   });
 
   it.each([
-    [
-      { ...baseCoupon, status: 'archived' },
-      { total: 0, member: 0 },
-      validInput,
-      'This coupon is inactive',
-    ],
-    [
-      { ...baseCoupon, startsAt: '2026-08-01T00:00:00.000Z' },
-      { total: 0, member: 0 },
-      validInput,
-      'This coupon is not valid yet',
-    ],
-    [
-      { ...baseCoupon, endsAt: '2026-07-20T00:00:00.000Z' },
-      { total: 0, member: 0 },
-      validInput,
-      'This coupon has expired',
-    ],
+    [{ ...baseCoupon, status: 'archived' }, { total: 0, member: 0 }, validInput],
+    [{ ...baseCoupon, startsAt: '2026-08-01T00:00:00.000Z' }, { total: 0, member: 0 }, validInput],
+    [{ ...baseCoupon, endsAt: '2026-07-20T00:00:00.000Z' }, { total: 0, member: 0 }, validInput],
     [
       { ...baseCoupon, scope: { kind: 'products', productIds: ['other-product'] } },
       { total: 0, member: 0 },
       validInput,
-      'This coupon does not apply to this product',
     ],
-    [
-      { ...baseCoupon, appliesTo: 'recurring' },
-      { total: 0, member: 0 },
-      validInput,
-      'This coupon does not apply to this price',
-    ],
+    [{ ...baseCoupon, appliesTo: 'recurring' }, { total: 0, member: 0 }, validInput],
     [
       { ...baseCoupon, kind: 'amount', value: 500, currency: 'EUR' },
       { total: 0, member: 0 },
       validInput,
-      'This coupon does not apply to this currency',
     ],
-    [
-      { ...baseCoupon, maxRedemptions: 2 },
-      { total: 2, member: 0 },
-      validInput,
-      'This coupon has reached its redemption limit',
-    ],
-    [
-      { ...baseCoupon, maxRedemptionsPerMember: 1 },
-      { total: 0, member: 1 },
-      validInput,
-      'This coupon has reached its per-member redemption limit',
-    ],
+    [{ ...baseCoupon, maxRedemptions: 2 }, { total: 2, member: 0 }, validInput],
+    [{ ...baseCoupon, maxRedemptionsPerMember: 1 }, { total: 0, member: 1 }, validInput],
   ] satisfies Array<[
     Coupon,
     { total: number; member: number },
     CouponCheckoutInput,
-    string,
-  ]>)('maps coupon rejection to "%s"', async (coupon, counts, input, message) => {
+  ]>)('rejects coupon #%# without naming the reason', async (coupon, counts, input) => {
     let priceHistoryCalls = 0;
     const result = await validateCouponForCheckout(
       'tenant-1',
@@ -174,9 +142,26 @@ describe('validateCouponForCheckout', () => {
     );
     expect(result).toEqual({
       ok: false,
-      error: { code: 'validation', message },
+      error: { code: 'validation', message: COUPON_UNAVAILABLE_MESSAGE },
     });
     expect(priceHistoryCalls).toBe(0);
+  });
+
+  it('rejects an unknown code with the same payload as an exhausted one', async () => {
+    const unknown = await validateCouponForCheckout('tenant-1', validInput, {
+      ...deps(),
+      coupons: { ...deps().coupons, findByCode: async () => null },
+    });
+    const exhausted = await validateCouponForCheckout(
+      'tenant-1',
+      validInput,
+      deps({ ...baseCoupon, maxRedemptions: 1 }, { total: 1, member: 0 }),
+    );
+    expect(unknown).toEqual({
+      ok: false,
+      error: { code: 'validation', message: COUPON_UNAVAILABLE_MESSAGE },
+    });
+    expect(exhausted).toEqual(unknown);
   });
 
   it('rejects a coupon that rounds to zero discount before reading price history', async () => {
@@ -193,7 +178,7 @@ describe('validateCouponForCheckout', () => {
       ok: false,
       error: {
         code: 'validation',
-        message: 'This coupon does not reduce the selected price',
+        message: COUPON_UNAVAILABLE_MESSAGE,
       },
     });
     expect(priceHistoryCalls).toBe(0);

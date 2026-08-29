@@ -58,6 +58,7 @@ import {
   listAccessibleSpaces,
   requireActor,
   requireMemberOrStaff,
+  requireUnbannedMember,
   spaceContextAccess,
   spaceNotificationRecipient,
   type ActorScope,
@@ -343,7 +344,7 @@ export const followSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ spaceId: string; isFollowing: boolean }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  const actor = requireUnbannedMember(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = followSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space follow payload', parsed.error.flatten()));
@@ -409,7 +410,7 @@ const reactionOutcome = async (
     reaction: { postId: string; userId: string; emoji: ReactionEmoji },
   ) => Promise<unknown>,
 ): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  const actor = requireUnbannedMember(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = reactToPostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid reaction payload', parsed.error.flatten()));
@@ -434,7 +435,7 @@ export const reactToPost = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  const actor = requireUnbannedMember(ctx, 'space:interact');
   if (!actor.ok) return actor;
   return reactionOutcome(ctx, input, deps, (tenantId, reaction) =>
     deps.reactions.add(tenantId, { ...reaction, createdAt: deps.clock.nowIso() }),
@@ -446,7 +447,7 @@ export const unreactToPost = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  const actor = requireUnbannedMember(ctx, 'space:interact');
   if (!actor.ok) return actor;
   return reactionOutcome(ctx, input, deps, (tenantId, reaction) => deps.reactions.remove(tenantId, reaction));
 };

@@ -71,8 +71,10 @@ describe('fake Stripe webhook verification', () => {
         id: 'evt_123',
         type: 'checkout.session.completed',
         objectId: 'cs_123',
+        createdAt: null,
         checkoutSession: {
           email: 'buyer@example.com',
+          paymentStatus: 'paid',
           subscriptionId: null,
           paymentIntentId: null,
           invoiceId: 'in_123',

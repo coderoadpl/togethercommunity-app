@@ -8,7 +8,7 @@ import {
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
 import { DashboardPanel } from './DashboardPanel.js';
@@ -136,6 +136,10 @@ const renderPanelAt = async (
     ),
   };
 };
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

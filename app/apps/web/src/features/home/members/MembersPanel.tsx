@@ -22,13 +22,13 @@ import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { localizeErrorCodeForPanel, localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { ErasureRequestsSection } from './ErasureRequestsSection.js';
 
 const errorMessage = (error: unknown, t: Messages): string =>
-  error instanceof ApiError ? localizeErrorCode(error.appError.code, t) : t.members.exportFailed;
+  error instanceof ApiError ? localizeErrorCodeForPanel(error.appError.code, t) : t.members.exportFailed;
 
 type GrantFilter = 'all' | 'active' | 'expired';
 
@@ -183,7 +183,7 @@ export const MembersPanel = () => {
         {members.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.members.loading }} />
         ) : members.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(members.error, t), retry: { label: t.common.retry, onRetry: () => void members.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(members.error, t), retry: { label: t.common.retry, onRetry: () => void members.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <TableContainer>
@@ -266,7 +266,7 @@ export const MembersPanel = () => {
               <StatusView
                 state={{
                   kind: 'error',
-                  message: localizeError(removalGrants.error ?? removalProgress.error, t),
+                  message: localizePanelError(removalGrants.error ?? removalProgress.error, t),
                   retry: {
                     label: t.common.reload,
                     onRetry: () => {

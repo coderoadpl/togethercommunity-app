@@ -34,7 +34,7 @@ import {
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatFileSize, formatPrice } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
@@ -120,7 +120,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         testId="product-cover"
       />
       {save.isSuccess ? <Alert severity="success">{t.products.detailsSaved}</Alert> : null}
-      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
+      {save.isError ? <Alert severity="error">{localizePanelError(save.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -217,7 +217,7 @@ const PricesSection = ({ product }: { product: Product }) => {
         {prices.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.products.loading }} surface={false} />
         ) : prices.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(prices.error, t), retry: { label: t.common.retry, onRetry: () => void prices.refetch() } }} surface={false} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(prices.error, t), retry: { label: t.common.retry, onRetry: () => void prices.refetch() } }} surface={false} />
         ) : prices.data.prices.length === 0 ? (
           <Typography>{t.products.pricesEmpty}</Typography>
         ) : (
@@ -309,8 +309,8 @@ const PricesSection = ({ product }: { product: Product }) => {
             </Select>
           </FormControl>
         </Stack>
-        {createPrice.isError ? <Alert severity="error">{localizeError(createPrice.error, t)}</Alert> : null}
-        {deactivatePrice.isError ? <Alert severity="error">{localizeError(deactivatePrice.error, t)}</Alert> : null}
+        {createPrice.isError ? <Alert severity="error">{localizePanelError(createPrice.error, t)}</Alert> : null}
+        {deactivatePrice.isError ? <Alert severity="error">{localizePanelError(deactivatePrice.error, t)}</Alert> : null}
       </SectionCard>
 
       <ConfirmDialog
@@ -378,8 +378,8 @@ const CheckoutConsentsSection = ({ product }: { product: Product }) => {
           ))}
         </Select>
       </FormControl>
-      {definitions.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(definitions.error, t), retry: { label: t.common.retry, onRetry: () => void definitions.refetch() } }} /> : null}
-      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
+      {definitions.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(definitions.error, t), retry: { label: t.common.retry, onRetry: () => void definitions.refetch() } }} /> : null}
+      {save.isError ? <Alert severity="error">{localizePanelError(save.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -420,7 +420,7 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
       {assets.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.common.loading }} surface={false} />
       ) : assets.isError ? (
-        <StatusView surface={false} state={{ kind: 'error', message: localizeError(assets.error, t), retry: { label: t.common.retry, onRetry: () => void assets.refetch() } }} />
+        <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(assets.error, t), retry: { label: t.common.retry, onRetry: () => void assets.refetch() } }} />
       ) : assets.data.assets.length === 0 ? (
         <Typography variant="body2" color="text.secondary" data-testid="product-download-assets-empty">
           {t.products.downloadsEmpty}
@@ -468,8 +468,8 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
           />
         </Button>
       </Box>
-      {upload.isError ? <Alert severity="error">{localizeError(upload.error, t)}</Alert> : null}
-      {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
+      {upload.isError ? <Alert severity="error">{localizePanelError(upload.error, t)}</Alert> : null}
+      {remove.isError ? <Alert severity="error">{localizePanelError(remove.error, t)}</Alert> : null}
     </SectionCard>
   );
 };

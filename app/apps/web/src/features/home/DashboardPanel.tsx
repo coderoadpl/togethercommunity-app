@@ -5,7 +5,7 @@ import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { PanelPage, StatusView } from '../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatDate, formatPrice } from '../../lib/format.js';
 import { EntryDate, StatTileButton, StatTileIcon, StatTileLabel, StatTileValue } from '../../theme.js';
 import {
@@ -73,10 +73,10 @@ export const DashboardPanel = ({ topContent }: { topContent?: ReactNode } = {}) 
   if (products.isPending || courses.isPending || members.isPending || sales.isPending) {
     return <PanelPage title={t.dashboard.heading} state={{ kind: 'loading', label: t.dashboard.loading }} />;
   }
-  if (products.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} />;
-  if (courses.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />;
-  if (members.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(members.error, t), retry: { label: t.common.retry, onRetry: () => void members.refetch() } }} />;
-  if (sales.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(sales.error, t), retry: { label: t.common.retry, onRetry: () => void sales.refetch() } }} />;
+  if (products.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} />;
+  if (courses.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizePanelError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />;
+  if (members.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizePanelError(members.error, t), retry: { label: t.common.retry, onRetry: () => void members.refetch() } }} />;
+  if (sales.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizePanelError(sales.error, t), retry: { label: t.common.retry, onRetry: () => void sales.refetch() } }} />;
 
   const published = products.data.products.filter((product) => product.published).length;
   const draft = products.data.products.length - published;

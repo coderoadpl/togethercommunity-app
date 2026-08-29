@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Box, Button, ButtonBase, Snackbar, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Snackbar, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -18,6 +18,7 @@ import {
 import {
   DiscussionThread,
   FinePrint,
+  NotificationRowButton,
   NotificationSnippet,
   NotificationTitle,
   SHELL_SNACKBAR_ANCHOR,
@@ -38,7 +39,7 @@ const NotificationBody = ({ notification }: { notification: Notification }) => {
   const { language } = useLanguage();
   const unread = notification.readAt === null;
   return (
-    <Stack direction="row" useFlexGap sx={{ columnGap: '0.6rem', alignItems: 'flex-start' }}>
+    <Stack direction="row" useFlexGap sx={{ columnGap: '0.6rem', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
       {unread ? (
         <>
           <UnreadDot aria-hidden />
@@ -50,7 +51,7 @@ const NotificationBody = ({ notification }: { notification: Notification }) => {
         avatarUrl={notification.payload.authorAvatarUrl}
         size="sm"
       />
-      <Box sx={{ minWidth: 0 }}>
+      <Box sx={{ minWidth: 0, flex: 1 }}>
         <NotificationTitle component="p" unread={unread}>
           {notificationTitle(t, notification)}
         </NotificationTitle>
@@ -74,13 +75,9 @@ const NotificationRow = ({
     {notificationTarget(notification).kind === 'none' ? (
       <NotificationBody notification={notification} />
     ) : (
-      <ButtonBase
-        data-testid={`notification-open-${notification.id}`}
-        onClick={onOpen}
-        sx={{ display: 'block', width: '100%', justifyContent: 'flex-start' }}
-      >
+      <NotificationRowButton data-testid={`notification-open-${notification.id}`} onClick={onOpen}>
         <NotificationBody notification={notification} />
-      </ButtonBase>
+      </NotificationRowButton>
     )}
   </DiscussionThread>
 );

@@ -6,7 +6,7 @@ Use it when you are switching platforms or restoring a bulk export. Do not use i
 
 ## Import keys
 
-An owner creates import keys in the panel at `/panel/integrations`, under **Integrations → Migration API keys**. The secret is shown once at creation.
+An owner creates import keys in the panel at `/panel/integrations`, under **Integrations → Import keys**. The secret is shown once at creation.
 
 | Scope | Grants | Does not grant |
 |---|---|---|

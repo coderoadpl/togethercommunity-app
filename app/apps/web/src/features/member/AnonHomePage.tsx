@@ -72,6 +72,7 @@ export const AnonHomePage = () => {
 
   const { defaultHomeSpaceId, spaces, courses, lockedSpaces } = navigation.data.navigation;
   const homeSpace = spaces.find((space) => space.id === defaultHomeSpaceId);
+  const tileSpaces = spaces.filter((space) => space.id !== homeSpace?.id);
 
   if (spaces.length === 0 && courses.length === 0 && lockedSpaces.length === 0) {
     return (
@@ -96,9 +97,9 @@ export const AnonHomePage = () => {
         {homeSpace === undefined ? null : (
           <HomeSpaceFeed spaceId={homeSpace.id} name={homeSpace.name} />
         )}
-        {spaces.length === 0 ? null : (
+        {tileSpaces.length === 0 ? null : (
           <TileSection title={t.anon.spacesSection} testId="anon-spaces">
-            {spaces.map((space) => (
+            {tileSpaces.map((space) => (
               <SpaceCard key={space.id} space={space} />
             ))}
           </TileSection>

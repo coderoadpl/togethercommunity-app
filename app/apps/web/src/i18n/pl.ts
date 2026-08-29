@@ -1680,11 +1680,8 @@ export const pl: Messages = {
     displayNameHint: 'Widoczna przy Twoich wpisach i odpowiedziach w tej społeczności.',
     displayNameSave: 'Zapisz',
     displayNameSaved: 'Wyświetlana nazwa została zapisana.',
-    avatarHint: ({ email }) =>
-      format(
-        'Zdjęcie pobieramy z konta Google lub Gravatara dla adresu {email}; w przeciwnym razie pokazujemy inicjały. Wgrywanie własnego zdjęcia dodamy wkrótce.',
-        { email },
-      ),
+    avatarHint:
+      'Zdjęcie pobieramy z konta Google lub Gravatara dla powyższego adresu; w przeciwnym razie pokazujemy inicjały. Wgrywanie własnego zdjęcia dodamy wkrótce.',
     passwordHeading: 'Hasło',
     passwordIntro:
       'Aby zmienić hasło, podaj obecne. Jeśli nie masz jeszcze hasła, ustaw je linkiem wysłanym e-mailem (przycisk poniżej). Logowanie magicznym linkiem nadal będzie działać.',

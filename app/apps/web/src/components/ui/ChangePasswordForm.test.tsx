@@ -114,4 +114,10 @@ describe('ChangePasswordForm', () => {
       pl.changePassword.invalidCurrentPassword,
     );
   });
+  it('keeps the submit button at content width', () => {
+    renderForm();
+
+    expect(screen.getByTestId('change-password-submit').parentElement)
+      .toHaveStyle({ display: 'block' });
+  });
 });

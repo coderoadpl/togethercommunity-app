@@ -357,7 +357,12 @@ import { checkoutConsentEvidence } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
-import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
+import {
+  createNotificationEventStream,
+  parseLastEventId,
+  replayRealtimeEvents,
+  SSE_HEADERS,
+} from './notifications-sse.js';
 import { respond } from './respond.js';
 import { secretEquals } from './secret-equals.js';
 import {
@@ -2863,11 +2868,24 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const identity = c.get('identity');
     const tenant = authorizeTenant({ identity }, 'notification:read');
     if (!tenant.ok) return respond(tenant);
+    const since = parseLastEventId(c.req.header('last-event-id'));
     const stream = createNotificationEventStream({
       tenantId: tenant.value,
       recipientUserId: identity.userId,
       bus: deps.realtimeBus,
       unreadCount: () => deps.notifications.unreadCount(tenant.value, identity.userId),
+      ...(since === null
+        ? {}
+        : {
+            replay: () =>
+              replayRealtimeEvents({
+                tenantId: tenant.value,
+                recipientUserId: identity.userId,
+                since,
+                notifications: deps.notifications,
+                dmConversations: deps.dmConversations,
+              }),
+          }),
     });
     return new Response(stream, { headers: SSE_HEADERS });
   });

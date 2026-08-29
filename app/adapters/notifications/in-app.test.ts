@@ -34,22 +34,43 @@ const context: NotificationDeliveryContext = {
   language: 'pl',
 };
 
+const scope = { tenantId: 't1', recipientUserId: 'u2' };
+
 describe('in-app notification channel', () => {
-  it('publishes the notification onto the realtime bus', async () => {
+  it('publishes identifiers only onto the realtime bus', async () => {
     const bus = createRealtimeBus();
     const received: RealtimeEvent[] = [];
-    bus.subscribe((event) => received.push(event));
+    bus.subscribe(scope, (event) => received.push(event));
 
     const delivered = await createInAppNotificationChannel(bus).deliver(notification, context);
 
     expect(delivered.ok).toBe(true);
-    expect(received).toEqual([{ kind: 'notification', tenantId: 't1', recipientUserId: 'u2', notification }]);
+    expect(received).toEqual([
+      {
+        kind: 'notification',
+        tenantId: 't1',
+        recipientUserId: 'u2',
+        notificationId: 'n1',
+        createdAt: '2026-07-15T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('delivers only to listeners scoped to the tenant and recipient', async () => {
+    const bus = createRealtimeBus();
+    const received: RealtimeEvent[] = [];
+    bus.subscribe({ tenantId: 't1', recipientUserId: 'u3' }, (event) => received.push(event));
+    bus.subscribe({ tenantId: 't2', recipientUserId: 'u2' }, (event) => received.push(event));
+
+    await createInAppNotificationChannel(bus).deliver(notification, context);
+
+    expect(received).toEqual([]);
   });
 
   it('stops delivering to unsubscribed listeners', async () => {
     const bus = createRealtimeBus();
     const received: RealtimeEvent[] = [];
-    const unsubscribe = bus.subscribe((event) => received.push(event));
+    const unsubscribe = bus.subscribe(scope, (event) => received.push(event));
     unsubscribe();
 
     await createInAppNotificationChannel(bus).deliver(notification, context);

@@ -1470,7 +1470,7 @@ export interface Messages {
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
-    avatarHint: (params: { email: string }) => string;
+    avatarHint: string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;

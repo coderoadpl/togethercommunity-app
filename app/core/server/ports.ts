@@ -483,12 +483,18 @@ export interface NotificationChannelPort {
   deliver(notification: Notification, context: NotificationDeliveryContext): Promise<Result<void, AppError>>;
 }
 
-/** @public */
+/**
+ * Cross-instance transports cap the payload, so events carry identifiers only
+ * and the client refetches the record it needs.
+ *
+ * @public
+ */
 export interface RealtimeNotificationEvent {
   kind: 'notification';
   tenantId: string;
   recipientUserId: string;
-  notification: Notification;
+  notificationId: string;
+  createdAt: string;
 }
 
 /**
@@ -501,13 +507,20 @@ export interface RealtimeDmEvent {
   tenantId: string;
   recipientUserId: string;
   conversationId: string;
+  createdAt: string;
 }
 
 export type RealtimeEvent = RealtimeNotificationEvent | RealtimeDmEvent;
 
+/** @public */
+export interface RealtimeScope {
+  tenantId: string;
+  recipientUserId: string;
+}
+
 export interface RealtimeBusPort {
   publish(event: RealtimeEvent): void;
-  subscribe(listener: (event: RealtimeEvent) => void): () => void;
+  subscribe(scope: RealtimeScope, listener: (event: RealtimeEvent) => void): () => void;
 }
 
 export interface DiscussionLinkPort {

@@ -2736,11 +2736,6 @@ export const PostMetaButton = styled(Button)(({ theme }) => ({
   '&:hover': { backgroundColor: 'transparent', textDecoration: 'underline' },
 }));
 
-export type PostButtonPlacement = 'toolbar' | 'meta';
-
-export const postButtonFor = (placement: PostButtonPlacement) =>
-  placement === 'meta' ? PostMetaButton : PostToolbarButton;
-
 export const EmberCtaButton = styled(Button)(({ theme }) => {
   const surface = theme.emberCta?.main ?? theme.palette.primary.main;
   const hover = theme.emberCta?.hover ?? theme.palette.primary.light;

@@ -8,6 +8,7 @@ import {
   Paper,
   Skeleton,
   Stack,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { type SxProps, type Theme } from '@mui/material/styles';
@@ -35,6 +36,7 @@ import {
 } from '../../theme.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { CodeIcon, LinkIcon, LockedState } from './lesson-icons.js';
+import { lessonNeighbours, lessonPath, linearizeCourse } from './lesson-nav.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
 import { CompletionFull } from './tree-icons.js';
@@ -261,7 +263,6 @@ export const LessonPlayerPage = ({
     (lesson.isPending && cachedMe !== undefined);
   const structure = useQuery({ ...actions.courseStructure(courseId), enabled: authenticated });
   const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated });
-  const next = useQuery({ ...actions.nextLesson(lessonId), enabled: authenticated });
   const attachments = useQuery({
     ...actions.studentLessonAttachments(lessonId),
     enabled: authenticated && lesson.isSuccess,
@@ -282,6 +283,10 @@ export const LessonPlayerPage = ({
       }
     }
     return { courseName: tree.name, module: null, chapter: null, row: null };
+  }, [structure.data, lessonId]);
+  const neighbours = useMemo(() => {
+    const tree = structure.data?.structure;
+    return tree === undefined ? null : lessonNeighbours(linearizeCourse(tree), lessonId);
   }, [structure.data, lessonId]);
   const transitioning = lesson.isPlaceholderData;
 
@@ -342,10 +347,10 @@ export const LessonPlayerPage = ({
     if (unauthorized) void navigate({ to: '/login' });
   }, [navigate, unauthorized]);
 
-  const nextLesson = next.data?.next ?? null;
+  const nextLesson = neighbours?.nextUnlocked ?? null;
   useEffect(() => {
     if (nextLesson !== null) {
-      void queryClient.prefetchQuery(actions.studentLesson(nextLesson.id));
+      void queryClient.prefetchQuery(actions.studentLesson(nextLesson.lessonId));
     }
   }, [queryClient, nextLesson]);
 
@@ -403,9 +408,12 @@ export const LessonPlayerPage = ({
   }
 
   const blocks = lesson.data.lesson.contents;
-  const hasSideErrors = [structure, progress, next, attachments, lastViewed, complete, uncomplete]
+  const hasSideErrors = [structure, progress, attachments, lastViewed, complete, uncomplete]
     .some((query) => query.isError);
-  const nextHref = nextLesson === null ? null : `/my/courses/${courseId}/lessons/${nextLesson.id}`;
+  const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
+  const previousLesson = neighbours?.previous ?? null;
+  const lockedAhead = nextLesson === null && (neighbours?.next ?? null) !== null;
+  const atCourseEnd = neighbours !== null && neighbours.next === null;
   const lessonName = transitioning
     ? location?.row?.name ?? lesson.data.lesson.name
     : lesson.data.lesson.name;
@@ -453,7 +461,6 @@ export const LessonPlayerPage = ({
           <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
             {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
             {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
-            {next.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(next.error, t), retry: { label: t.common.retry, onRetry: () => void next.refetch() } }} /> : null}
             {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
             {lastViewed.isError ? <Alert severity="error">{localizeError(lastViewed.error, t)}</Alert> : null}
             {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
@@ -513,30 +520,52 @@ export const LessonPlayerPage = ({
             useFlexGap
             sx={{ alignItems: { sm: 'center' }, columnGap: '1rem', rowGap: '1rem' }}
           >
-            {progress.isSuccess && (
-              completed ? (
-                <Button
-                  variant="outlined"
-                  data-testid="unmark-complete"
-                  onClick={() => uncomplete.mutate({ lessonId })}
-                  disabled={uncomplete.isPending}
-                  startIcon={<CompletionFull />}
-                  title={t.lesson.unmarkCompletedHint}
-                >
-                  {t.lesson.unmarkCompleted}
-                </Button>
+            {neighbours !== null && (
+              previousLesson === null || previousLesson.locked ? (
+                <Tooltip title={previousLesson === null ? t.lesson.firstLesson : t.courseTree.lockedTooltip}>
+                  <Box component="span">
+                    <Button variant="text" data-testid="prev-lesson" disabled>
+                      {t.lesson.previousLesson}
+                    </Button>
+                  </Box>
+                </Tooltip>
               ) : (
                 <Button
-                  variant="outlined"
-                  data-testid="mark-complete"
-                  onClick={() => complete.mutate({ lessonId })}
-                  disabled={complete.isPending}
+                  component={Link}
+                  to={lessonPath(courseId, previousLesson.lessonId)}
+                  variant="text"
+                  data-testid="prev-lesson"
                 >
-                  {t.lesson.markCompleted}
+                  {t.lesson.previousLesson}
                 </Button>
               )
             )}
-            {nextHref !== null && (
+            <Box sx={{ flex: 1 }} />
+            {progress.isSuccess && completed && (
+              <Button
+                variant="text"
+                size="small"
+                data-testid="unmark-complete"
+                onClick={() => uncomplete.mutate({ lessonId })}
+                disabled={uncomplete.isPending}
+                startIcon={<CompletionFull />}
+                title={t.lesson.unmarkCompletedHint}
+              >
+                {t.lesson.unmarkCompleted}
+              </Button>
+            )}
+            {progress.isSuccess && !completed && (
+              <Button
+                variant={nextHref === null ? 'contained' : 'text'}
+                size={nextHref === null ? 'medium' : 'small'}
+                data-testid="mark-complete"
+                onClick={() => complete.mutate({ lessonId })}
+                disabled={complete.isPending}
+              >
+                {t.lesson.markCompleted}
+              </Button>
+            )}
+            {!completed && nextHref !== null && (
               <Button
                 variant="contained"
                 data-testid="complete-continue"
@@ -546,19 +575,32 @@ export const LessonPlayerPage = ({
                 {t.lesson.completeContinue}
               </Button>
             )}
-            <Box sx={{ flex: 1 }} />
-            {next.isSuccess &&
-              (nextLesson === null ? (
-                structure.data?.structure.completionStatus === 'fully-completed' ? (
-                  <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
-                ) : (
-                  <Chip variant="outlined" data-testid="course-end" label={t.lesson.lastLesson} />
-                )
+            {completed && nextLesson !== null && (
+              <Button
+                component={Link}
+                to={lessonPath(courseId, nextLesson.lessonId)}
+                variant="contained"
+                data-testid="next-lesson"
+              >
+                {t.lesson.next({ name: nextLesson.name })}
+              </Button>
+            )}
+            {lockedAhead && (
+              <Tooltip title={t.courseTree.lockedTooltip}>
+                <Box component="span">
+                  <Button variant="outlined" data-testid="next-locked" disabled>
+                    {t.lesson.nextLocked}
+                  </Button>
+                </Box>
+              </Tooltip>
+            )}
+            {atCourseEnd && (
+              structure.data?.structure.completionStatus === 'fully-completed' ? (
+                <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
               ) : (
-                <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(nextLesson.id)}`} data-testid="next-lesson">
-                  {t.lesson.next({ name: nextLesson.name })}
-                </MuiLink>
-              ))}
+                <Chip variant="outlined" data-testid="course-end" label={t.lesson.lastLesson} />
+              )
+            )}
           </Stack>
         </LessonFooterBar>}
 

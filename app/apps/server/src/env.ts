@@ -48,6 +48,10 @@ export const envSchema = z
         }),
       })
       .default('node-postgres'),
+    REALTIME_TRANSPORT: z.enum(['pg', 'in-process']).default('pg'),
+    /** `LISTEN` is unsupported on transaction-mode poolers, so the bus needs a direct connection. */
+    REALTIME_DATABASE_URL: optionalNonEmptyString,
+    DATABASE_URL_UNPOOLED: optionalNonEmptyString,
     APP_BASE_DOMAIN: optionalNonEmptyString,
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     APP_COMMIT_SHA: optionalNonEmptyString,

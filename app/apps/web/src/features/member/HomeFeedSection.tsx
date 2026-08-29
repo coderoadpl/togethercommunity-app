@@ -19,7 +19,8 @@ import {
   PostMetaText,
 } from '../../theme.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
-import { StartMessageButton } from './messages/StartMessageButton.js';
+import { FeedPostMenu } from './FeedPostMenu.js';
+import { ReactionBar } from './ReactionBar.js';
 
 const PAGE_SIZE = 10;
 
@@ -66,19 +67,7 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
           </PostBody>
         )}
 
-        {item.reactions.length === 0 ? null : (
-          <Stack direction="row" useFlexGap sx={{ columnGap: '0.5rem', flexWrap: 'wrap' }}>
-            {item.reactions.map((reaction) => (
-              <Chip
-                key={reaction.emoji}
-                size="small"
-                variant="outlined"
-                label={`${reaction.emoji} ${String(reaction.count)}`}
-                data-testid={`home-feed-reaction-${item.id}-${reaction.emoji}`}
-              />
-            ))}
-          </Stack>
-        )}
+        <ReactionBar postId={item.id} reactions={item.reactions} testIdPrefix="home-feed-reaction" />
 
         <Stack
           direction="row"
@@ -100,7 +89,11 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
           >
             {t.community.openThread}
           </MuiLink>
-          {!item.isOwn && !deleted ? <StartMessageButton postId={item.id} placement="meta" /> : null}
+          <FeedPostMenu
+            postId={item.id}
+            postPath={communityPostPath(item.spaceId, item.id)}
+            canContactAuthor={!item.isOwn && !deleted}
+          />
         </Stack>
       </Stack>
     </DiscussionThread>

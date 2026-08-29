@@ -357,7 +357,12 @@ import { checkoutConsentEvidence } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
-import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
+import {
+  createNotificationEventStream,
+  parseLastEventId,
+  replayRealtimeEvents,
+  SSE_HEADERS,
+} from './notifications-sse.js';
 import { respond } from './respond.js';
 import { secretEquals } from './secret-equals.js';
 import {
@@ -367,15 +372,11 @@ import {
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
 
-const requestOrigin = (req: HonoRequest, appBaseUrl: string): string => {
-  const host = req.header('host') ?? '';
-  if (host === '' || req.header(TENANT_HEADER) !== undefined) return new URL(appBaseUrl).origin;
-  const proto = req.header('x-forwarded-proto') ?? new URL(appBaseUrl).protocol.replace(':', '');
-  return new URL(`${proto}://${host}`).origin;
+const probeCorsOrigins = async (req: HonoRequest, deps: AppDeps): Promise<string[]> => {
+  const resolved = await resolveTenant(req.header('host') ?? '', req.header(TENANT_HEADER) ?? null, deps);
+  const tenantOrigin = authLinkBaseUrl(resolved.ok ? resolved.value : null, deps);
+  return [...new Set([new URL(tenantOrigin).origin, new URL(deps.appBaseUrl).origin])];
 };
-
-const probeCorsOrigins = (req: HonoRequest, appBaseUrl: string): string[] =>
-  [...new Set([requestOrigin(req, appBaseUrl), new URL(appBaseUrl).origin])];
 
 const emailBranding = async (
   deps: AppDeps,
@@ -1837,7 +1838,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
-        corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl),
+        corsOrigins: await probeCorsOrigins(c.req, deps),
         email: deps.email,
         emailSender: deps.emailSender,
         emailTransports: deps.emailTransports,
@@ -1854,7 +1855,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await probeStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { storage: deps.storage, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
+      { storage: deps.storage, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
 
@@ -1865,7 +1866,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await configureStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { ...deps, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
+      { ...deps, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
 
@@ -2867,11 +2868,24 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const identity = c.get('identity');
     const tenant = authorizeTenant({ identity }, 'notification:read');
     if (!tenant.ok) return respond(tenant);
+    const since = parseLastEventId(c.req.header('last-event-id'));
     const stream = createNotificationEventStream({
       tenantId: tenant.value,
       recipientUserId: identity.userId,
       bus: deps.realtimeBus,
       unreadCount: () => deps.notifications.unreadCount(tenant.value, identity.userId),
+      ...(since === null
+        ? {}
+        : {
+            replay: () =>
+              replayRealtimeEvents({
+                tenantId: tenant.value,
+                recipientUserId: identity.userId,
+                since,
+                notifications: deps.notifications,
+                dmConversations: deps.dmConversations,
+              }),
+          }),
     });
     return new Response(stream, { headers: SSE_HEADERS });
   });

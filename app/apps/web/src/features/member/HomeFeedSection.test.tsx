@@ -52,20 +52,6 @@ const okFeed = (
     return HttpResponse.json({ ok: true, data: { feed: page } });
   });
 
-const okMe = () =>
-  http.get('*/api/me', () =>
-    HttpResponse.json({
-      ok: true,
-      data: {
-        userId: 'u1',
-        email: 'user@example.com',
-        emailVerified: true,
-        name: 'Jan Uczestnik',
-        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
-      },
-    }),
-  );
-
 const renderSection = async () => {
   const rootRoute = createRootRoute();
   const startRoute = createRoute({
@@ -111,6 +97,8 @@ describe('HomeFeedSection', () => {
     expect(within(card).getByTestId('home-feed-space-p1')).toHaveTextContent('Ogólna');
     expect(within(card).getByTestId('home-feed-body-p1')).toHaveTextContent('Treść p1');
     expect(within(card).getByTestId('home-feed-reaction-p1-👍')).toHaveTextContent('👍 2');
+    expect(within(card).queryByTestId('reaction-picker-p1')).toBeNull();
+    expect(within(card).getByTestId('post-menu-p1')).toBeInTheDocument();
     expect(within(card).getByTestId('home-feed-reply-count-p1')).toHaveTextContent(
       pl.discussion.replyCount({ count: 3 }),
     );
@@ -155,14 +143,6 @@ describe('HomeFeedSection', () => {
     });
     expect(screen.getByTestId('home-feed-post-p1')).toBeInTheDocument();
     expect(screen.queryByTestId('start-feed-load-more')).not.toBeInTheDocument();
-  });
-
-  it('renders the message trigger as a meta link beside the thread link', async () => {
-    server.use(okMe(), okFeed({ '10': { items: [item('p1')], nextCursor: null } }));
-
-    await renderSection();
-
-    expect(await screen.findByTestId('start-message-p1')).toHaveStyle({ padding: '0px' });
   });
 
   it('states quietly that the accessible spaces have no posts yet', async () => {

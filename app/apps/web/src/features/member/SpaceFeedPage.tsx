@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
-import { REACTION_EMOJIS, type ReactionEmoji, type ReactionSummary, type SpaceFeedItem } from '#core/domain/index.js';
+import type { ReactionEmoji, ReactionSummary, SpaceFeedItem } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -27,52 +27,12 @@ import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { LockedSpaceCard } from './SpaceCards.js';
 import { PostComposer } from './ThreadDiscussion.js';
-import { ReportPostButton } from './ReportPostButton.js';
-import { StartMessageButton } from './messages/StartMessageButton.js';
+import { FeedPostMenu } from './FeedPostMenu.js';
+import { ReactionBar } from './ReactionBar.js';
 import { useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
-
-const reactionFor = (reactions: ReactionSummary[], emoji: ReactionEmoji): ReactionSummary | undefined =>
-  reactions.find((reaction) => reaction.emoji === emoji);
-
-const ReactionBar = ({
-  postId,
-  reactions,
-  onToggle,
-  busy,
-}: {
-  postId: string;
-  reactions: ReactionSummary[];
-  onToggle: (emoji: ReactionEmoji, reacted: boolean) => void;
-  busy: boolean;
-}) => {
-  const t = useTranslations();
-  return (
-    <Stack direction="row" useFlexGap sx={{ columnGap: '0.5rem', flexWrap: 'wrap' }}>
-      {REACTION_EMOJIS.map((emoji) => {
-        const summary = reactionFor(reactions, emoji);
-        const count = summary?.count ?? 0;
-        const reacted = summary?.viewerReacted ?? false;
-        return (
-          <Chip
-            key={emoji}
-            size="small"
-            variant={reacted ? 'filled' : 'outlined'}
-            color={reacted ? 'primary' : 'default'}
-            disabled={busy}
-            aria-pressed={reacted}
-            aria-label={t.community.reactAria({ emoji })}
-            data-testid={`reaction-${postId}-${emoji}`}
-            label={count > 0 ? `${emoji} ${count}` : emoji}
-            onClick={() => onToggle(emoji, reacted)}
-          />
-        );
-      })}
-    </Stack>
-  );
-};
 
 const FeedPost = ({
   spaceId,
@@ -96,6 +56,7 @@ const FeedPost = ({
   const t = useTranslations();
   const { language } = useLanguage();
   const deleted = item.deletedAt !== null;
+  const postPath = `/community/${encodeURIComponent(spaceId)}/posts/${encodeURIComponent(item.id)}`;
   return (
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`feed-post-${item.id}`}>
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
@@ -128,6 +89,7 @@ const FeedPost = ({
           <ReactionBar
             postId={item.id}
             reactions={reactions}
+            testIdPrefix="reaction"
             busy={busy}
             onToggle={(emoji, reacted) => onToggle(item.id, emoji, reacted)}
           />
@@ -146,7 +108,7 @@ const FeedPost = ({
           <PostMetaText component="span" data-testid={`reply-count-${item.id}`}>
             {t.discussion.replyCount({ count: item.replyCount })}
           </PostMetaText>
-          <MuiLink component={Link} to={`/community/${encodeURIComponent(spaceId)}/posts/${encodeURIComponent(item.id)}`} data-testid={`open-thread-${item.id}`}>
+          <MuiLink component={Link} to={postPath} data-testid={`open-thread-${item.id}`}>
             {t.community.openThread}
           </MuiLink>
           {canPin ? (
@@ -159,8 +121,11 @@ const FeedPost = ({
               {item.pinnedAt === null ? t.community.pin : t.community.unpin}
             </PostMetaButton>
           ) : null}
-          {!item.isOwn && !deleted ? <StartMessageButton postId={item.id} placement="meta" /> : null}
-          {!item.isOwn && !deleted ? <ReportPostButton postId={item.id} placement="meta" /> : null}
+          <FeedPostMenu
+            postId={item.id}
+            postPath={postPath}
+            canContactAuthor={!item.isOwn && !deleted}
+          />
         </Stack>
       </Stack>
     </DiscussionThread>
@@ -374,6 +339,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
             pendingLabel={t.community.posting}
             busy={create.isPending}
             disabled={banned}
+            collapsible
             onSubmit={(body, reset) =>
               create.mutate({ contextKind: 'space', contextId: spaceId, body }, { onSuccess: () => reset() })
             }

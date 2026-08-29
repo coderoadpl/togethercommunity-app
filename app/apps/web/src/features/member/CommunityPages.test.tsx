@@ -9,7 +9,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   createPostInputSchema,
@@ -164,6 +164,19 @@ const okDiscussion = (
       data: { discussion: { threads, nextCursor: null, viewerSubscriptions } },
     }),
   );
+
+const stubNarrowViewport = () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('max-width'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
 
 const renderPage = async (component: () => ReactNode, path: string) => {
   const rootRoute = createRootRoute({ component });
@@ -333,6 +346,23 @@ describe('community pages', () => {
     await waitFor(() => expect(reactCalls).toEqual([{ postId: 'p1', emoji: '👍' }]));
     await waitFor(() => expect(screen.getByTestId('reaction-p1-👍')).toHaveAttribute('aria-pressed', 'true'));
     expect(screen.getByTestId('reaction-p1-👍')).toHaveTextContent('2');
+  });
+
+  it('keeps the parent space link in the thread breadcrumbs on a narrow viewport', async () => {
+    stubNarrowViewport();
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okDiscussion([{ ...feedItem({ id: 'p1', body: 'Obserwowany wątek' }), replies: [] }]),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    const crumbs = await screen.findByTestId('member-breadcrumbs');
+    expect(within(crumbs).getByRole('link', { name: 'Ogólna' })).toHaveAttribute('href', '/community/s1');
+    expect(within(crumbs).getByRole('link', { name: pl.community.heading })).toBeVisible();
+    expect(within(crumbs).queryByText(pl.community.threadTitle)).toBeNull();
   });
 
   it('adds an unused reaction through the picker popover', async () => {

@@ -20,6 +20,7 @@ import type { PostReportReason } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { PostToolbarButton } from '../../theme.js';
 
 export const useReportUnavailable = (disabled = false): boolean => {
   const me = useQuery(actions.me);
@@ -103,9 +104,9 @@ export const ReportPostButton = ({ postId, disabled = false }: { postId: string;
 
   return (
     <>
-      <Button size="small" variant="text" disabled={unavailable} onClick={() => setOpen(true)}>
+      <PostToolbarButton size="small" variant="text" disabled={unavailable} onClick={() => setOpen(true)}>
         {t.community.report}
-      </Button>
+      </PostToolbarButton>
       <ReportPostDialog postId={postId} open={open} onClose={() => setOpen(false)} />
     </>
   );

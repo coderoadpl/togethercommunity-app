@@ -8,11 +8,10 @@ import type { MemberNavigationCourse } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
-import { ProgressRing } from '../../components/ui/ProgressRing.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { CourseCardRoot, RailProgressBar } from '../../theme.js';
+import { CourseCardRoot, ProgressPercentText, RailProgressBar } from '../../theme.js';
 import { CourseCard } from './CourseCards.js';
-import { coursePercent, isCourseDone, type CourseLessonCounts } from './course-progress.js';
+import { coursePercent, type CourseLessonCounts } from './course-progress.js';
 import { continueLessonId, flattenLessons } from './CourseRail.js';
 import { LiveNowBanner } from './events/LiveNowBanner.js';
 import { UpcomingEventsStrip } from './events/UpcomingEventsStrip.js';
@@ -58,34 +57,39 @@ const ContinueCard = ({ course }: { course: MemberNavigationCourse }) => {
   return (
     <CourseCardRoot data-testid="start-continue">
       <Stack useFlexGap sx={{ rowGap: '0.85rem', p: '1.25rem' }}>
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{ alignItems: 'center', columnGap: '0.9rem' }}
-        >
-          <ProgressRing value={percent} size={36} done={isCourseDone(course)} />
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="overline" component="p">
-              {t.start.continueHeading}
-            </Typography>
-            <Typography variant="h2" component="h2" noWrap>
-              {course.courseName}
-            </Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary" component="span">
-            {t.courseOverview.percentValue({ percent })}
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="overline" component="p">
+            {t.start.continueHeading}
           </Typography>
-        </Stack>
+          <Typography
+            variant="h2"
+            component="h2"
+            sx={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {course.courseName}
+          </Typography>
+        </Box>
         <Typography variant="body2" component="p">
           {isReview
             ? t.start.reviewLabel({ lesson: target.name })
             : t.start.continueLabel({ lesson: target.name })}
         </Typography>
-        <RailProgressBar
-          variant="determinate"
-          value={percent}
-          aria-label={t.courseOverview.progressTitle}
-        />
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'center' }}>
+          <RailProgressBar
+            variant="determinate"
+            value={percent}
+            aria-label={t.courseOverview.progressTitle}
+            sx={{ flex: 1 }}
+          />
+          <ProgressPercentText variant="caption" component="span" sx={{ ml: '0.5rem' }}>
+            {t.courseOverview.percentValue({ percent })}
+          </ProgressPercentText>
+        </Stack>
         <Box>
           <Button
             variant="contained"

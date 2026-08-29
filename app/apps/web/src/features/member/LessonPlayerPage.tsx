@@ -28,6 +28,7 @@ import {
   Eyebrow,
   LessonFooterBar,
   LessonHtmlContent,
+  LessonLinkButton,
   LessonMediaClip,
   LessonMediaFrame,
   LessonMediaIframe,
@@ -154,9 +155,9 @@ const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
 
   const github = /(^|\.)github\.com/i.test(new URL(block.url).hostname);
   return (
-    <Stack useFlexGap spacing="0.5rem">
-      <Box>
-        <Button
+    <Stack useFlexGap spacing="0.5rem" sx={{ minWidth: 0 }}>
+      <Box sx={{ minWidth: 0 }}>
+        <LessonLinkButton
           component="a"
           href={block.url}
           target="_blank"
@@ -165,10 +166,10 @@ const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
           startIcon={github ? <CodeIcon /> : <LinkIcon />}
         >
           {block.description ?? block.url}
-        </Button>
+        </LessonLinkButton>
       </Box>
       {block.description !== undefined && (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
           {block.url}
         </Typography>
       )}
@@ -407,6 +408,8 @@ export const LessonPlayerPage = ({
   }
 
   const blocks = lesson.data.lesson.contents;
+  const hasSideErrors = [structure, progress, attachments, lastViewed, complete, uncomplete]
+    .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
   const lockedAhead = nextLesson === null && (neighbours?.next ?? null) !== null;
@@ -431,6 +434,7 @@ export const LessonPlayerPage = ({
       title={lessonName}
       eyebrow={t.lesson.eyebrow}
       width="lesson"
+      dense
       {...(location === null
         ? {}
         : {
@@ -453,14 +457,16 @@ export const LessonPlayerPage = ({
           />
         ) : (
           <>
-        <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
-          {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
-          {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
-          {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
-          {lastViewed.isError ? <Alert severity="error">{localizeError(lastViewed.error, t)}</Alert> : null}
-          {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
-          {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
-        </Stack>
+        {hasSideErrors ? (
+          <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
+            {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
+            {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
+            {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
+            {lastViewed.isError ? <Alert severity="error">{localizeError(lastViewed.error, t)}</Alert> : null}
+            {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
+            {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
+          </Stack>
+        ) : null}
         <Stack component="section" useFlexGap spacing="1.5rem">
           {blocks.length === 0 ? (
             <StatusView

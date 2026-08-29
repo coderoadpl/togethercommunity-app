@@ -72,7 +72,12 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
         <Stack
           direction="row"
           useFlexGap
-          sx={{ alignItems: 'center', columnGap: '1rem', flexWrap: 'wrap' }}
+          sx={{
+            alignItems: 'baseline',
+            columnGap: '0.75rem',
+            rowGap: '0.25rem',
+            flexWrap: 'wrap',
+          }}
         >
           <PostMetaText component="span" data-testid={`home-feed-reply-count-${item.id}`}>
             {t.discussion.replyCount({ count: item.replyCount })}

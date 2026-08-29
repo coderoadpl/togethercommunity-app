@@ -16,6 +16,7 @@ import {
   DiscussionThread,
   PostAuthorName,
   PostBody,
+  PostMetaButton,
   PostMetaText,
 } from '../../theme.js';
 import { EmptyFeedIcon } from './community-icons.js';
@@ -94,7 +95,16 @@ const FeedPost = ({
           />
         )}
 
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '1rem', flexWrap: 'wrap' }}>
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{
+            alignItems: 'baseline',
+            columnGap: '0.75rem',
+            rowGap: '0.25rem',
+            flexWrap: 'wrap',
+          }}
+        >
           <PostMetaText component="span" data-testid={`reply-count-${item.id}`}>
             {t.discussion.replyCount({ count: item.replyCount })}
           </PostMetaText>
@@ -102,13 +112,14 @@ const FeedPost = ({
             {t.community.openThread}
           </MuiLink>
           {canPin ? (
-            <Button
+            <PostMetaButton
               size="small"
+              variant="text"
               disabled={pinBusy}
               onClick={() => onPin(item.id, item.pinnedAt === null)}
             >
               {item.pinnedAt === null ? t.community.pin : t.community.unpin}
-            </Button>
+            </PostMetaButton>
           ) : null}
           <FeedPostMenu
             postId={item.id}
@@ -311,7 +322,13 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
     me.data?.tenant?.staffRole !== null && me.data?.tenant?.staffRole !== undefined;
 
   return (
-    <MemberSurface title={space.name} eyebrow={t.community.feedEyebrow} width="wide" rail={rail}>
+    <MemberSurface
+      title={space.name}
+      eyebrow={t.community.feedEyebrow}
+      width="wide"
+      rail={rail}
+      mobileRail="after"
+    >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
         <LiveNowBanner spaceId={spaceId} />
         <Paper elevation={1} sx={{ p: '1.25rem' }}>

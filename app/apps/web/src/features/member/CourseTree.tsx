@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   Box,
   Collapse,
@@ -217,7 +217,7 @@ const ChapterNode = ({
   onToggle: () => void;
   currentLessonId?: string | undefined;
 }) => {
-  const contentId = `course-tree-chapter-${chapter.id}`;
+  const contentId = useId();
   return (
     <Box component="li" sx={{ listStyle: 'none' }}>
       <ListItemButton
@@ -270,7 +270,7 @@ const ModuleNode = ({
   currentLessonId?: string | undefined;
 }) => {
   const open = isOpen(module.id);
-  const contentId = `course-tree-module-${module.id}`;
+  const contentId = useId();
   return (
     <Box component="li" sx={{ listStyle: 'none' }}>
       <ListItemButton
@@ -312,15 +312,17 @@ export const CourseTree = ({
   courseId,
   structure,
   currentLessonId,
+  initiallyCollapsed = false,
 }: {
   courseId: string;
   structure: CourseStructureWithAccess;
   currentLessonId?: string | undefined;
+  initiallyCollapsed?: boolean;
 }) => {
   const t = useTranslations();
   const [rawSearch, setRawSearch] = useState('');
   const [search, setSearch] = useState('');
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(rawSearch.trim().toLowerCase()), 300);
@@ -328,9 +330,12 @@ export const CourseTree = ({
   }, [rawSearch]);
 
   const searchActive = search !== '';
-  const isOpen = (id: string) => searchActive || !collapsed.has(id);
+  const startsCollapsed = (id: string) =>
+    initiallyCollapsed && structure.modules.some((module) => module.id === id);
+  const isOpen = (id: string) =>
+    searchActive || (toggled.has(id) ? startsCollapsed(id) : !startsCollapsed(id));
   const toggle = (id: string) =>
-    setCollapsed((prev) => {
+    setToggled((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);

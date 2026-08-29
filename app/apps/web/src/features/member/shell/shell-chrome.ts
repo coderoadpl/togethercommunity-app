@@ -1,8 +1,8 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, Drawer } from '@mui/material';
+import { Box, ButtonBase, Drawer, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 
-import { PanelNavItem } from '../../../theme.js';
+import { PanelNavItem, type AsElement } from '../../../theme.js';
 
 export type ShellLinkProps = {
   component?: ElementType;
@@ -16,15 +16,20 @@ export const NavRow = styled(PanelNavItem)<ShellLinkProps>({});
 
 export const SubNavRow = styled(NavRow)({
   paddingLeft: 34,
+  '& .MuiListItemIcon-root': { minWidth: 24 },
+  '& .MuiSvgIcon-root': { fontSize: '1rem' },
   '& .MuiListItemText-primary': { fontSize: '0.8125rem' },
 });
 
 export const UnreadRowText = styled('span')({ fontWeight: 600 });
 
+export const SubUnreadRowText = styled(UnreadRowText)({ fontWeight: 500 });
+
 export const BrandLink = styled(Box)<ShellLinkProps>(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   minWidth: 0,
+  overflow: 'hidden',
   color: 'inherit',
   textDecoration: 'none',
   borderRadius: theme.shape.borderRadius,
@@ -107,6 +112,8 @@ export const SheetHeader = styled(Box)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   gap: '0.5rem',
-  padding: '0.6rem 0.6rem 0.6rem 1rem',
+  padding: '12px 10px 8px',
   borderBottom: `1px solid ${theme.palette.divider}`,
 }));
+
+export const SheetTitle = styled(Typography)<AsElement>({ fontWeight: 600 });

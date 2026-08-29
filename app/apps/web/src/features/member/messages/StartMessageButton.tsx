@@ -1,4 +1,4 @@
-import { Alert, Button, Snackbar } from '@mui/material';
+import { Alert, Snackbar } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -6,7 +6,7 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../../api.js';
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
-import { SHELL_SNACKBAR_ANCHOR } from '../../../theme.js';
+import { PostToolbarButton, SHELL_SNACKBAR_ANCHOR } from '../../../theme.js';
 
 const startErrorMessage = (error: Error, t: Messages): string =>
   error instanceof ApiError && (error.appError.code === 'forbidden' || error.appError.code === 'not_found')
@@ -69,7 +69,7 @@ export const StartMessageButton = ({ postId }: { postId: string }) => {
 
   return (
     <>
-      <Button
+      <PostToolbarButton
         size="small"
         variant="text"
         data-testid={`start-message-${postId}`}
@@ -77,7 +77,7 @@ export const StartMessageButton = ({ postId }: { postId: string }) => {
         onClick={conversation.start}
       >
         {conversation.pending ? t.messages.starting : t.messages.startFromAuthor}
-      </Button>
+      </PostToolbarButton>
       <StartMessageErrorSnackbar conversation={conversation} />
     </>
   );

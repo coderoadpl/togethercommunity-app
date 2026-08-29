@@ -117,7 +117,7 @@ export const AnonSidebar = ({ variant }: { variant: ShellVariant }) => {
       <List component="div" disablePadding>
         <LinkRow
           to="/login"
-          label={t.anon.signInCta}
+          label={t.auth.signInLink}
           icon={<AccountIcon />}
           active={false}
           testId="anon-sidebar-signin"

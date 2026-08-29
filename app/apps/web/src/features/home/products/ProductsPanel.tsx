@@ -163,51 +163,79 @@ const ProductRow = ({
 
   return (
     <Paper elevation={1} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }} data-testid="product-row">
-      <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <Typography variant="h2" component="h2">
-          {product.title}
-        </Typography>
-        <Chip
-          size="small"
-          variant="outlined"
-          label={productTypeLabel(product.type, t)}
-          data-testid={`product-type-${product.id}`}
-        />
-        {issue ? (
-          <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
-        ) : null}
-        {accessIssuesUnknown ? (
-          <Chip size="small" color="default" variant="outlined" label={t.products.accessIssuesUnknownChip} />
-        ) : null}
-        <Box sx={{ flex: 1 }} />
-        <Tooltip title={t.products.copyCheckoutLink}>
-          <IconButton
+      <Stack
+        useFlexGap
+        sx={{
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'stretch', sm: 'flex-start' },
+          gap: '0.5rem',
+        }}
+      >
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', flex: 1, minWidth: 0 }}
+        >
+          <Typography variant="h2" component="h2">
+            {product.title}
+          </Typography>
+          <Chip
             size="small"
-            onClick={() => void copyCheckoutLink()}
-            aria-label={t.products.copyCheckoutLink}
-            data-testid={`copy-checkout-${product.id}`}
-          >
-            <CopyLinkGlyph />
-          </IconButton>
-        </Tooltip>
-        {product.published ? (
+            variant="outlined"
+            label={productTypeLabel(product.type, t)}
+            data-testid={`product-type-${product.id}`}
+          />
+          {issue ? (
+            <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
+          ) : null}
+          {accessIssuesUnknown ? (
+            <Chip size="small" color="default" variant="outlined" label={t.products.accessIssuesUnknownChip} />
+          ) : null}
+        </Stack>
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}
+        >
+          <Tooltip title={t.products.copyCheckoutLink}>
+            <IconButton
+              size="small"
+              onClick={() => void copyCheckoutLink()}
+              aria-label={t.products.copyCheckoutLink}
+              data-testid={`copy-checkout-${product.id}`}
+            >
+              <CopyLinkGlyph />
+            </IconButton>
+          </Tooltip>
           <Button
-            variant="text"
-            color="error"
-            disabled={unpublishProduct.isPending}
-            onClick={() => setConfirmation('unpublish')}
+            size="small"
+            variant="outlined"
+            component={Link}
+            to={`/panel/products/${encodeURIComponent(product.id)}`}
           >
-            {unpublishProduct.isPending ? t.products.unpublishing : t.products.unpublish}
+            {t.products.manage}
           </Button>
-        ) : (
-          <Button
-            variant="text"
-            disabled={publishProduct.isPending || publishBlockers.length > 0}
-            onClick={() => setConfirmation('publish')}
-          >
-            {publishProduct.isPending ? t.products.publishing : t.products.publish}
-          </Button>
-        )}
+          {product.published ? (
+            <Button
+              size="small"
+              variant="text"
+              color="error"
+              disabled={unpublishProduct.isPending}
+              onClick={() => setConfirmation('unpublish')}
+            >
+              {unpublishProduct.isPending ? t.products.unpublishing : t.products.unpublish}
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              variant="text"
+              disabled={publishProduct.isPending || publishBlockers.length > 0}
+              onClick={() => setConfirmation('publish')}
+            >
+              {publishProduct.isPending ? t.products.publishing : t.products.publish}
+            </Button>
+          )}
+        </Stack>
       </Stack>
       <Snackbar
         open={copied}
@@ -252,16 +280,6 @@ const ProductRow = ({
           ))}
         </Stack>
       ) : null}
-      <Box>
-        <Button
-          size="small"
-          variant="text"
-          component={Link}
-          to={`/panel/products/${encodeURIComponent(product.id)}`}
-        >
-          {t.products.manage}
-        </Button>
-      </Box>
       {publishProduct.isError ? (
         <Alert severity="error">{localizePanelError(publishProduct.error, t)}</Alert>
       ) : null}

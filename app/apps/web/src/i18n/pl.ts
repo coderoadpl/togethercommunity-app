@@ -38,6 +38,8 @@ export const pl: Messages = {
     retry: 'Spróbuj ponownie',
     unsavedChanges: 'Niezapisane zmiany',
     unsavedChangesConfirm: 'Masz niezapisane zmiany. Opuścić stronę i je odrzucić?',
+    saving: 'Zapisywanie…',
+    saved: 'Zapisano.',
   },
   imageAssets: {
     upload: 'Dodaj plik',
@@ -1039,6 +1041,7 @@ export const pl: Messages = {
     chapterNameAria: ({ name }) => format('Nazwa rozdziału {name}', { name }),
     duplicateLessonWarning: 'Ta lekcja jest już dodana do tego rozdziału.',
     unknownLesson: 'Nieznana lekcja',
+    sourceLesson: ({ name }) => format('Lekcja: {name}', { name }),
     historyHeading: 'Historia zmian',
     historyLoading: 'Ładowanie historii…',
     historyEmpty: 'Brak zapisanych wersji',
@@ -1361,7 +1364,8 @@ export const pl: Messages = {
   anon: {
     eyebrow: 'Podgląd dla gości',
     homeTitle: 'Zajrzyj do środka',
-    signInCta: 'Zaloguj się, aby dołączyć',
+    coursesSection: 'Kursy',
+    spacesSection: 'Przestrzenie',
     joinDiscussionCta: 'Zaloguj się, aby dołączyć do dyskusji',
     readOnlyBanner:
       'Przeglądasz jako gość — możesz czytać, a żeby pisać i reagować, załóż konto.',
@@ -1749,6 +1753,9 @@ export const pl: Messages = {
     emailLabel: 'E-mail do kontaktu',
     urlLabel: 'Link do zewnętrznej pomocy (opcjonalnie)',
     save: 'Zapisz ustawienia kontaktu',
+    settingsHeading: 'Kontakt dla uczestników',
+    settingsIntro:
+      'Adres e-mail i link, które uczestnicy zobaczą w swoim koncie i w stopce wiadomości.',
   },
   billing: {
     heading: 'Portal płatności',

@@ -178,7 +178,7 @@ const runHomeJourney = async (page: Page, studioBaseUrl: string): Promise<void> 
   await page.goto(`${studioBaseUrl}/`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('anon-home-feed').waitFor({ state: 'visible', timeout: 15000 });
   await page.getByTestId('anon-sidebar').waitFor({ state: 'visible' });
-  await page.getByTestId(`space-card-${studioSpaceId}`).waitFor({ state: 'visible' });
+  await page.getByTestId(`anon-sidebar-space-${studioSpaceId}`).waitFor({ state: 'visible' });
   await page.getByTestId(`course-card-${publicCourseId}`).waitFor({ state: 'visible' });
   await page.getByTestId(`locked-space-card-${privateSpaceId}`).waitFor({ state: 'visible' });
   await page.getByTestId('locked-space-card-space-studio-klub-react').waitFor({ state: 'visible' });
@@ -187,7 +187,11 @@ const runHomeJourney = async (page: Page, studioBaseUrl: string): Promise<void> 
     await page.getByTestId(`course-card-${hiddenCourseId}`).count() === 0,
     'anonymous home exposed the hidden React course',
   );
-  await expectHref(page, `space-card-${studioSpaceId}`, `/community/${studioSpaceId}`);
+  assert(
+    await page.getByTestId(`space-card-${studioSpaceId}`).count() === 0,
+    'anonymous home tiled the home space alongside its own feed',
+  );
+  await expectHref(page, `anon-sidebar-space-${studioSpaceId}`, `/community/${studioSpaceId}`);
   await expectHref(page, `course-card-${publicCourseId}`, `/my/courses/${publicCourseId}`);
   await expectHref(page, `locked-space-cta-${privateSpaceId}`, '/checkout/product-js-full');
 

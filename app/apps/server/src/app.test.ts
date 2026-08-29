@@ -32,6 +32,7 @@ import {
   type Member,
   type Membership,
   type LessonAttachment,
+  type Notification,
   type Order,
   type Post,
   type Product,
@@ -3082,6 +3083,96 @@ describe('new route authorization', () => {
       ['http://acme.localhost:48730', 'http://localhost:48730'],
       ['http://localhost:48730'],
     ]);
+  });
+});
+
+describe('notifications stream route', () => {
+  const headers = { host: 'acme.localhost:48730' };
+
+  const missed: Notification = {
+    id: 'n-missed',
+    tenantId: acme.id,
+    recipientUserId: 'user-1',
+    kind: 'thread-reply',
+    payload: {
+      rootPostId: 'post-1',
+      postId: 'post-2',
+      contextKind: 'lesson',
+      contextId: 'lesson-1',
+      courseId: 'course-1',
+      eventId: null,
+      lessonName: 'Lesson',
+      authorDisplay: 'Author',
+      authorAvatarUrl: null,
+      snippet: 'hello',
+    },
+    readAt: null,
+    createdAt: '1998-07-12T00:00:01.000Z',
+  };
+
+  interface ReplayScope {
+    tenantId: string;
+    recipientUserId: string;
+  }
+
+  const streamApp = (scopes: ReplayScope[]) => {
+    const base = deps();
+    return scopedApp('member', {
+      overrides: {
+        notifications: {
+          ...base.notifications,
+          listForRecipient: async (tenantId, query) => {
+            scopes.push({ tenantId, recipientUserId: query.recipientUserId });
+            return { notifications: [missed], nextCursor: null };
+          },
+        },
+      },
+    });
+  };
+
+  const readChunks = async (response: Response, count: number): Promise<string[]> => {
+    const body = response.body;
+    if (body === null) throw new Error('stream response had no body');
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+    while (chunks.length < count) {
+      const { value, done } = await reader.read();
+      if (done || value === undefined) break;
+      chunks.push(decoder.decode(value));
+    }
+    await reader.cancel();
+    return chunks;
+  };
+
+  it('replays from Last-Event-ID scoped to the authenticated identity', async () => {
+    const scopes: ReplayScope[] = [];
+
+    const response = await streamApp(scopes).request(API_PATHS.notificationsStream, {
+      headers: { ...headers, 'last-event-id': '1998-07-12T00:00:00.000Z|n-seen' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await readChunks(response, 3)).toEqual([
+      'retry: 1000\n\n',
+      'event: unread\ndata: {"unread":0}\n\n',
+      'id: 1998-07-12T00:00:01.000Z|n-missed\nevent: notification\ndata: {"id":"n-missed"}\n\n',
+    ]);
+    expect(scopes).toEqual([{ tenantId: acme.id, recipientUserId: 'user-1' }]);
+  });
+
+  it('ignores a malformed Last-Event-ID instead of replaying', async () => {
+    const scopes: ReplayScope[] = [];
+
+    const response = await streamApp(scopes).request(API_PATHS.notificationsStream, {
+      headers: { ...headers, 'last-event-id': 'n-seen' },
+    });
+
+    expect(await readChunks(response, 2)).toEqual([
+      'retry: 1000\n\n',
+      'event: unread\ndata: {"unread":0}\n\n',
+    ]);
+    expect(scopes).toEqual([]);
   });
 });
 

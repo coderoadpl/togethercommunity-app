@@ -1943,3 +1943,18 @@ export const apiKeyRateLimitBuckets = pgTable(
   },
   (table) => [primaryKey({ columns: [table.apiKeyId, table.period] })],
 );
+
+export const rateLimitBuckets = pgTable(
+  'rate_limit_buckets',
+  {
+    scope: text('scope').notNull(),
+    key: text('key').notNull(),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'string' }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+    count: integer('count').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scope, table.key] }),
+    index('rate_limit_buckets_expiry_idx').on(table.expiresAt),
+  ],
+);

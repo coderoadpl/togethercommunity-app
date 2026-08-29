@@ -300,6 +300,7 @@ import {
   provisionSesInfrastructure,
   publishProduct,
   publishTenantDocument,
+  purgeExpiredRateLimitWindows,
   reactToPost,
   recordCheckoutMarketingConsents,
   refreshInvoiceStatus,
@@ -594,11 +595,22 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await deps.dispatchAutoInvoices());
   });
 
+  const purgeRateLimitWindows = async (): Promise<void> => {
+    const purged = await purgeExpiredRateLimitWindows({
+      buckets: deps.rateLimitBuckets,
+      clock: deps.clock,
+    });
+    if (!purged.ok) {
+      deps.logger.error(`[rate-limit-purge] ${purged.error.code}:${purged.error.message}`);
+    }
+  };
+
   app.post(API_PATHS.ksefDispatch, async (c) => {
     if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
     if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.ksef.dispatchSecret)) {
       return respond(err(unauthorized('Invalid KSeF dispatch secret')));
     }
+    await purgeRateLimitWindows();
     return respond(await deps.ksef.dispatch());
   });
 
@@ -607,6 +619,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.ksef.dispatchSecret}`)) {
       return respond(err(unauthorized('Invalid KSeF dispatch secret')));
     }
+    await purgeRateLimitWindows();
     return respond(await deps.ksef.dispatch());
   });
 

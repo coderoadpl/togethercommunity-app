@@ -64,6 +64,7 @@ import {
   createTenantAccessReader,
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
+  createPublicRateLimitRepository,
   createTenantRepository,
   createTenantSecretRepository,
   createUserDisplayReader,
@@ -1184,6 +1185,35 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await rateLimits.claim(ACME, { ...claim, windowStartedAt: '1998-07-22T00:01:00.000Z' })).toBe(true);
     await repo.revoke(ACME, 'key-acme', NOW);
     expect(await repo.findActiveByHash(ACME, 'hash-abc')).toBeNull();
+  });
+
+  it('counts public rate-limit windows and purges only the expired ones', async () => {
+    const buckets = createPublicRateLimitRepository(db);
+    const window = {
+      scope: 'public-write:ip',
+      key: '203.0.113.7',
+      windowStartedAt: NOW,
+      expiresAt: '1998-07-14T10:01:00.000Z',
+      limit: 2,
+    };
+
+    expect(await buckets.claim(window)).toBe(true);
+    expect(await buckets.claim(window)).toBe(true);
+    expect(await buckets.claim(window)).toBe(false);
+    expect(await buckets.claim({ ...window, key: '203.0.113.8' })).toBe(true);
+    expect(await buckets.claim({
+      ...window,
+      windowStartedAt: '1998-07-14T10:01:00.000Z',
+      expiresAt: '1998-07-14T10:02:00.000Z',
+    })).toBe(true);
+
+    expect(await buckets.purgeExpired('1998-07-14T10:01:30.000Z')).toBe(1);
+    expect(await buckets.claim({
+      ...window,
+      windowStartedAt: '1998-07-14T10:01:00.000Z',
+      expiresAt: '1998-07-14T10:02:00.000Z',
+    })).toBe(true);
+    expect(await buckets.purgeExpired('1998-07-14T11:00:00.000Z')).toBe(1);
   });
 
   it('appends and tenant-scopes import audit events', async () => {

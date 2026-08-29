@@ -97,6 +97,8 @@ describe('HomeFeedSection', () => {
     expect(within(card).getByTestId('home-feed-space-p1')).toHaveTextContent('Ogólna');
     expect(within(card).getByTestId('home-feed-body-p1')).toHaveTextContent('Treść p1');
     expect(within(card).getByTestId('home-feed-reaction-p1-👍')).toHaveTextContent('👍 2');
+    expect(within(card).queryByTestId('reaction-picker-p1')).toBeNull();
+    expect(within(card).getByTestId('post-menu-p1')).toBeInTheDocument();
     expect(within(card).getByTestId('home-feed-reply-count-p1')).toHaveTextContent(
       pl.discussion.replyCount({ count: 3 }),
     );

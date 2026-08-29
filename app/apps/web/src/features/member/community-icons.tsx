@@ -1,3 +1,5 @@
+import { SvgIcon } from '@mui/material';
+
 import { EmptyStateIcon } from '../../theme.js';
 
 const COMMUNITY_PATH =
@@ -13,4 +15,10 @@ export const EmptyFeedIcon = () => (
   <EmptyStateIcon aria-hidden data-testid="empty-feed-icon" viewBox="0 0 24 24">
     <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z" />
   </EmptyStateIcon>
+);
+
+export const PostMenuIcon = () => (
+  <SvgIcon aria-hidden viewBox="0 0 24 24" fontSize="small">
+    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+  </SvgIcon>
 );

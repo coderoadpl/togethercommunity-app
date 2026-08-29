@@ -351,6 +351,7 @@ const notifyDmRecipient = async (
       authorAvatarUrl: input.senderAvatarUrl,
       snippet: postSnippet(input.message.body),
     },
+    sourceKey: null,
     readAt: null,
     createdAt: deps.clock.nowIso(),
   };

@@ -1,5 +1,4 @@
 import {
-  DEFAULT_LANGUAGE,
   buildEventIcs,
   createEventInputSchema,
   err,
@@ -10,7 +9,6 @@ import {
   notFound,
   ok,
   postSchema,
-  postSnippet,
   rsvpEventInputSchema,
   spaceEventSchema,
   toPublicSpaceEvent,
@@ -19,7 +17,6 @@ import {
   validation,
   type AppError,
   type EventIcs,
-  type Notification,
   type PublicSpaceEvent,
   type Result,
   type Space,
@@ -35,6 +32,7 @@ import type {
   DiscussionLinkPort,
   IdGenerator,
   NotificationChannelPort,
+  NotificationFanoutJobRepository,
   NotificationRepository,
   PostRepository,
   ProductGrantRepository,
@@ -45,16 +43,15 @@ import type {
   TenantAccessReader,
   ThreadSubscriptionRepository,
 } from '../ports.js';
-import { avatarUrlForAuthor } from './avatar.js';
 import {
   listAccessibleSpaces,
   requireActor,
   requireMemberOrStaff,
   requireUnbannedMember,
   spaceContextAccess,
-  spaceNotificationRecipient,
 } from './community-access.js';
 import { resolveAuthorDisplay } from './community.js';
+import { buildNotificationFanoutJob, drainEventFanoutInline } from './notification-fanout.js';
 
 export interface EventsDeps {
   events: SpaceEventRepository;
@@ -65,6 +62,7 @@ export interface EventsDeps {
   spaceSubscriptions: SpaceSubscriptionRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
+  fanoutJobs: NotificationFanoutJobRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
   links: DiscussionLinkPort;
@@ -169,62 +167,6 @@ const createEventDiscussion = async (
   return ok(created.rootPostId);
 };
 
-const notifySpaceFollowersOfEvent = async (
-  tenantId: string,
-  event: SpaceEvent,
-  space: Space,
-  authorDisplay: string,
-  deps: EventsDeps,
-  tenant: { tenantName: string; tenantSlug: string | null },
-): Promise<Result<void, AppError>> => {
-  const followers = await deps.spaceSubscriptions.listFollowersForSpace(tenantId, space.id);
-  if (followers.length === 0) return ok(undefined);
-  const authorAvatarUrl = await avatarUrlForAuthor(tenantId, event.createdByUserId, deps);
-  const eventUrl = deps.links.eventUrl({
-    tenantSlug: tenant.tenantSlug,
-    spaceId: space.id,
-    eventId: event.id,
-  });
-  const reference = event.discussionRootPostId ?? event.id;
-  for (const follower of followers) {
-    if (follower.userId === event.createdByUserId) continue;
-    const recipient = await spaceNotificationRecipient(tenantId, follower.userId, space, deps);
-    if (recipient === null) continue;
-    const notification: Notification = {
-      id: deps.ids.nextId(),
-      tenantId,
-      recipientUserId: follower.userId,
-      kind: 'space-event',
-      payload: {
-        rootPostId: reference,
-        postId: reference,
-        contextKind: 'space',
-        contextId: space.id,
-        courseId: null,
-        eventId: event.id,
-        lessonName: space.name,
-        authorDisplay,
-        authorAvatarUrl,
-        snippet: postSnippet(`${event.title} · ${event.startsAt}`),
-      },
-      readAt: null,
-      createdAt: deps.clock.nowIso(),
-    };
-    const inserted = await deps.notifications.insert(tenantId, notification);
-    for (const channel of deps.notificationChannels) {
-      const delivered = await channel.deliver(inserted, {
-        recipientEmail: recipient.email,
-        tenantName: tenant.tenantName,
-        contextName: space.name,
-        contextUrl: eventUrl,
-        language: DEFAULT_LANGUAGE,
-      });
-      if (!delivered.ok) return delivered;
-    }
-  }
-  return ok(undefined);
-};
-
 export const createEvent = async (
   ctx: Ctx,
   input: unknown,
@@ -260,19 +202,21 @@ export const createEvent = async (
     deps,
   );
   if (!discussion.ok) return discussion;
+  const fanoutJob = buildNotificationFanoutJob({
+    id: deps.ids.nextId(),
+    tenantId: staff.value.tenantId,
+    kind: 'space-event',
+    sourceId: record.data.id,
+    tenantName: ctx.identity.tenantName ?? 'Together',
+    tenantSlug: ctx.identity.tenantSlug,
+    authorDisplay,
+    now: deps.clock.nowIso(),
+  });
   const created = await deps.events.insert(staff.value.tenantId, {
     ...record.data,
     discussionRootPostId: discussion.value,
-  });
-  const notified = await notifySpaceFollowersOfEvent(
-    staff.value.tenantId,
-    created,
-    space,
-    authorDisplay,
-    deps,
-    { tenantName: ctx.identity.tenantName ?? 'Together', tenantSlug: ctx.identity.tenantSlug },
-  );
-  if (!notified.ok) return notified;
+  }, fanoutJob);
+  await drainEventFanoutInline(fanoutJob, deps);
   return projectEvent(staff.value.tenantId, staff.value.userId, created, deps);
 };
 

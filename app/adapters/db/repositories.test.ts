@@ -108,6 +108,7 @@ import {
   suppressions,
   user,
 } from './schema.js';
+import { createNotificationFanoutJobRepository, insertFanoutJob } from './notification-fanout-jobs.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -2277,6 +2278,7 @@ describe('notification repository', () => {
         authorAvatarUrl: null,
         snippet: id,
       },
+      sourceKey: null,
       readAt: null,
       createdAt,
     });
@@ -2313,6 +2315,147 @@ describe('notification repository', () => {
     ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(third.nextCursor).toBeNull();
+  });
+
+  it('bulk insert skips rows already carrying the same fan-out source key', async () => {
+    const repository = createNotificationRepository(db);
+    const row = (id: string, recipientUserId: string, sourceKey: string | null): Notification => ({
+      id,
+      tenantId: ACME,
+      recipientUserId,
+      kind: 'space-post',
+      payload: {
+        rootPostId: 'root-bulk',
+        postId: 'post-bulk',
+        contextKind: 'space',
+        contextId: 'space-bulk',
+        courseId: null,
+        eventId: null,
+        lessonName: 'Bulk',
+        authorDisplay: 'Author',
+        authorAvatarUrl: null,
+        snippet: id,
+      },
+      sourceKey,
+      readAt: null,
+      createdAt: NOW,
+    });
+
+    const first = await repository.insertMany(ACME, [
+      row('bulk-1', 'user-acme-member', 'space-post:post-bulk'),
+      row('bulk-2', 'user-acme-owner', 'space-post:post-bulk'),
+    ]);
+    const retry = await repository.insertMany(ACME, [
+      row('bulk-1-retry', 'user-acme-member', 'space-post:post-bulk'),
+      row('bulk-2-retry', 'user-acme-owner', 'space-post:post-bulk'),
+      row('bulk-3', 'user-acme-member', 'space-post:post-bulk-other'),
+    ]);
+    const unkeyed = await repository.insertMany(ACME, [
+      row('bulk-null-1', 'user-acme-member', null),
+      row('bulk-null-2', 'user-acme-member', null),
+    ]);
+
+    expect(first.map((item) => item.id)).toEqual(['bulk-1', 'bulk-2']);
+    expect(retry.map((item) => item.id)).toEqual(['bulk-3']);
+    expect(unkeyed).toHaveLength(2);
+    expect(await repository.insertMany(ACME, [])).toEqual([]);
+  });
+
+  it('scopes the fan-out source key per tenant', async () => {
+    const repository = createNotificationRepository(db);
+    const row = (id: string, tenantId: string, recipientUserId: string): Notification => ({
+      id,
+      tenantId,
+      recipientUserId,
+      kind: 'space-post',
+      payload: {
+        rootPostId: 'root-scoped',
+        postId: 'post-scoped',
+        contextKind: 'space',
+        contextId: 'space-scoped',
+        courseId: null,
+        eventId: null,
+        lessonName: 'Scoped',
+        authorDisplay: 'Author',
+        authorAvatarUrl: null,
+        snippet: id,
+      },
+      sourceKey: 'space-post:post-scoped',
+      readAt: null,
+      createdAt: NOW,
+    });
+
+    await repository.insertMany(ACME, [row('scoped-acme', ACME, 'user-acme-member')]);
+    const other = await repository.insertMany(GLOBEX, [row('scoped-globex', GLOBEX, 'user-globex-member')]);
+
+    expect(other.map((item) => item.id)).toEqual(['scoped-globex']);
+  });
+});
+
+describe('notification fan-out job repository', () => {
+  const job = (id: string, sourceKey: string, nextAttemptAt: string) => ({
+    id,
+    tenantId: ACME,
+    kind: 'space-post' as const,
+    sourceKey,
+    payload: {
+      postId: 'post-fanout',
+      eventId: null,
+      tenantName: 'Acme',
+      tenantSlug: 'acme',
+      authorDisplay: null,
+    },
+    status: 'pending' as const,
+    attempts: 0,
+    cursorUserId: null,
+    nextAttemptAt,
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+
+  it('enqueues once per source key, leases due jobs and stops claiming completed ones', async () => {
+    const repository = createNotificationFanoutJobRepository(db);
+    await insertFanoutJob(db, ACME, job('fanout-1', 'space-post:fanout-1', NOW));
+    await insertFanoutJob(db, ACME, job('fanout-duplicate', 'space-post:fanout-1', NOW));
+
+    const claimed = await repository.claimDue({
+      now: NOW,
+      limit: 10,
+      leaseUntil: '1998-07-14T10:05:00.000Z',
+    });
+    const secondPass = await repository.claimDue({
+      now: NOW,
+      limit: 10,
+      leaseUntil: '1998-07-14T10:05:00.000Z',
+    });
+
+    expect(claimed.map((item) => item.id)).toEqual(['fanout-1']);
+    expect(claimed[0]?.attempts).toBe(1);
+    expect(secondPass).toEqual([]);
+
+    const afterLease = await repository.claimDue({
+      now: '1998-07-14T10:06:00.000Z',
+      limit: 10,
+      leaseUntil: '1998-07-14T10:11:00.000Z',
+    });
+    expect(afterLease.map((item) => item.id)).toEqual(['fanout-1']);
+
+    await repository.save(ACME, {
+      id: 'fanout-1',
+      status: 'completed',
+      attempts: 0,
+      cursorUserId: 'user-acme-member',
+      nextAttemptAt: '1998-07-14T10:06:00.000Z',
+      updatedAt: '1998-07-14T10:06:00.000Z',
+    });
+
+    expect(
+      await repository.claimDue({
+        now: '1998-07-14T11:00:00.000Z',
+        limit: 10,
+        leaseUntil: '1998-07-14T11:05:00.000Z',
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -2448,6 +2591,7 @@ describe('direct message repositories', () => {
         authorAvatarUrl: null,
         snippet: 'Body dm-message-1',
       },
+      sourceKey: null,
       readAt: null,
       createdAt: NOW,
     };

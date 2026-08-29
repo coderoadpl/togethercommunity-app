@@ -287,6 +287,11 @@ class FakeNotifications implements NotificationRepository {
     return notification;
   }
 
+  async insertMany(_tenantId: string, batch: Notification[]): Promise<Notification[]> {
+    this.rows.push(...batch);
+    return batch;
+  }
+
   async listForRecipient(): Promise<{ notifications: Notification[]; nextCursor: string | null }> {
     return { notifications: this.rows, nextCursor: null };
   }
@@ -406,18 +411,23 @@ const fixture = (input: {
         return row;
       },
       mute: async () => null,
-      listSubscribersForRoot: async () => [],
+      listSubscribersPage: async () => [],
       listForUser: async () => [],
     },
     spaceSubscriptions: {
       follow: async () => undefined,
       unfollow: async () => false,
-      listFollowersForSpace: async (tenantId, spaceId) =>
-        followers.filter((row) => row.tenantId === tenantId && row.spaceId === spaceId),
+      listFollowersPage: async (tenantId, query) =>
+        followers
+          .filter((row) => row.tenantId === tenantId && row.spaceId === query.spaceId)
+          .filter((row) => query.afterUserId === null || row.userId > query.afterUserId)
+          .sort((left, right) => left.userId.localeCompare(right.userId))
+          .slice(0, query.limit),
       listForUser: async () => [],
     },
     notifications,
     notificationChannels: [channel],
+    fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     grants: {
       findById: async () => null,
       findGrant: async () => null,

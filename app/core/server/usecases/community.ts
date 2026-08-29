@@ -45,6 +45,7 @@ import type {
   DiscussionLinkPort,
   IdGenerator,
   NotificationChannelPort,
+  NotificationFanoutJobRepository,
   NotificationRepository,
   PostRepository,
   PostReportRepository,
@@ -54,23 +55,23 @@ import type {
   TenantAccessReader,
   ThreadSubscriptionRepository,
 } from '../ports.js';
-import { isLessonAccessibleByLookup, locateLesson } from './access.js';
 import { avatarUrlForAuthor, avatarUrlsFor, type AvatarUrlMap } from './avatar.js';
 import {
   accessibleLessonIds,
   lessonContextAccess,
   listAccessibleSpaces,
-  notificationRecipient,
   requireActor,
   requireMemberOrStaff,
   requireUnbannedMember,
   requireTenant,
   spaceContextAccess,
-  spaceVisibleToMemberScope,
 } from './community-access.js';
-import { resolveMemberAccessLookup } from './entitlements.js';
 import { openHeuristicReport } from './moderation-heuristics.js';
-import { notifySpaceFollowers } from './spaces.js';
+import {
+  buildNotificationFanoutJob,
+  drainPostFanoutInline,
+} from './notification-fanout.js';
+import { threadContextInfo } from './thread-context.js';
 
 export interface CommunityDeps {
   posts: PostRepository;
@@ -80,6 +81,7 @@ export interface CommunityDeps {
   spaces: SpaceRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
+  fanoutJobs: NotificationFanoutJobRepository;
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
@@ -169,120 +171,6 @@ export const nestReplies = (
   return (byParent.get(rootId) ?? []).map(build);
 };
 
-interface ThreadContextInfo {
-  courseId: string | null;
-  contextName: string;
-  contextUrl: string;
-}
-
-const threadContextInfo = async (
-  tenantId: string,
-  post: Post,
-  deps: CommunityDeps,
-  tenantSlug: string | null,
-): Promise<ThreadContextInfo> => {
-  if (post.contextKind === 'space') {
-    const space = await deps.spaces.findById(tenantId, post.contextId);
-    return {
-      courseId: null,
-      contextName: space?.name ?? '',
-      contextUrl: deps.links.spaceUrl({
-        tenantSlug,
-        spaceId: post.contextId,
-        rootPostId: post.rootPostId,
-      }),
-    };
-  }
-  const [courses, modules, lesson] = await Promise.all([
-    deps.courses.list(tenantId),
-    deps.modules.list(tenantId),
-    deps.lessons.findById(tenantId, post.contextId),
-  ]);
-  const location = locateLesson(post.contextId, courses, modules);
-  const courseId = location?.course.id ?? null;
-  return {
-    courseId,
-    contextName: lesson?.name ?? '',
-    contextUrl: deps.links.lessonDiscussionUrl({ tenantSlug, courseId, lessonId: post.contextId }),
-  };
-};
-
-const subscriberCanAccessContext = async (
-  tenantId: string,
-  memberId: string,
-  post: Post,
-  deps: CommunityDeps,
-): Promise<boolean> => {
-  if (post.contextKind === 'space') {
-    const space = await deps.spaces.findById(tenantId, post.contextId);
-    return space !== null && (await spaceVisibleToMemberScope({ tenantId, memberId }, space, deps));
-  }
-  const [courses, modules] = await Promise.all([deps.courses.list(tenantId), deps.modules.list(tenantId)]);
-  const location = locateLesson(post.contextId, courses, modules);
-  if (!location) return false;
-  const lookup = await resolveMemberAccessLookup({ tenantId, memberId }, deps);
-  return isLessonAccessibleByLookup(lookup, {
-    courseId: location.course.id,
-    moduleId: location.moduleId,
-    lessonId: post.contextId,
-  });
-};
-
-const notifySubscribers = async (
-  tenantId: string,
-  post: Post,
-  deps: CommunityDeps,
-  tenant: { tenantName: string; tenantSlug: string | null },
-): Promise<Result<void, AppError>> => {
-  const subscribers = await deps.threadSubscriptions.listSubscribersForRoot(tenantId, post.rootPostId);
-  if (subscribers.length === 0) return ok(undefined);
-  const context = await threadContextInfo(tenantId, post, deps, tenant.tenantSlug);
-  const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
-  for (const subscriber of subscribers) {
-    if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
-    const recipient = await notificationRecipient(tenantId, subscriber.userId, deps);
-    if (recipient === null) continue;
-    const canAccess =
-      recipient.isStaff ||
-      (recipient.memberId !== null &&
-        (await subscriberCanAccessContext(tenantId, recipient.memberId, post, deps)));
-    if (!canAccess) continue;
-    const notification: Notification = {
-      id: deps.ids.nextId(),
-      tenantId,
-      recipientUserId: subscriber.userId,
-      kind: 'thread-reply',
-      payload: {
-        rootPostId: post.rootPostId,
-        postId: post.id,
-        contextKind: post.contextKind,
-        contextId: post.contextId,
-        courseId: context.courseId,
-        eventId: null,
-        lessonName: context.contextName,
-        authorDisplay: post.authorDisplay,
-        authorAvatarUrl,
-        snippet: postSnippet(post.body),
-      },
-      readAt: null,
-      createdAt: deps.clock.nowIso(),
-    };
-    const inserted = await deps.notifications.insert(tenantId, notification);
-    const recipientEmail = recipient.email;
-    for (const channel of deps.notificationChannels) {
-      const delivered = await channel.deliver(inserted, {
-        recipientEmail,
-        tenantName: tenant.tenantName,
-        contextName: context.contextName,
-        contextUrl: context.contextUrl,
-        language: DEFAULT_LANGUAGE,
-      });
-      if (!delivered.ok) return delivered;
-    }
-  }
-  return ok(undefined);
-};
-
 const notifyLessonQuestionStaff = async (
   tenantId: string,
   post: Post,
@@ -317,6 +205,7 @@ const notifyLessonQuestionStaff = async (
         authorAvatarUrl,
         snippet: postSnippet(post.body),
       },
+      sourceKey: null,
       readAt: null,
       createdAt: deps.clock.nowIso(),
     };
@@ -408,7 +297,26 @@ export const createPost = async (
   });
   if (!postRecord.success) return err(internal('Could not create a valid discussion post'));
   const post = postRecord.data;
-  const created = await deps.posts.createPost(actor.value.tenantId, post);
+  const fanoutKind = parentPost !== null
+    ? 'thread-reply'
+    : post.contextKind === 'space'
+      ? 'space-post'
+      : null;
+  const fanoutJob = fanoutKind === null
+    ? null
+    : buildNotificationFanoutJob({
+        id: deps.ids.nextId(),
+        tenantId: actor.value.tenantId,
+        kind: fanoutKind,
+        sourceId: post.id,
+        tenantName: ctx.identity.tenantName ?? 'Together',
+        tenantSlug: ctx.identity.tenantSlug,
+        authorDisplay: null,
+        now,
+      });
+  const created = fanoutJob === null
+    ? await deps.posts.createPost(actor.value.tenantId, post)
+    : await deps.posts.createPost(actor.value.tenantId, post, fanoutJob);
   const signals = heuristicSignalsFor({ body: created.body, recentBodies });
   if (signals.length > 0) {
     await openHeuristicReport(actor.value.tenantId, created, signals, deps).catch(() => undefined);
@@ -422,15 +330,8 @@ export const createPost = async (
     tenantName: ctx.identity.tenantName ?? 'Together',
     tenantSlug: ctx.identity.tenantSlug,
   };
-  if (parentPost !== null) {
-    const notified = await notifySubscribers(actor.value.tenantId, created, deps, tenant);
-    if (!notified.ok) return notified;
-  } else if (created.contextKind === 'space') {
-    const space = await deps.spaces.findById(actor.value.tenantId, created.contextId);
-    if (space !== null) {
-      const notified = await notifySpaceFollowers(actor.value.tenantId, created, space, deps, tenant);
-      if (!notified.ok) return notified;
-    }
+  if (fanoutJob !== null) {
+    await drainPostFanoutInline(fanoutJob, deps);
   } else {
     const notified = await notifyLessonQuestionStaff(actor.value.tenantId, created, deps, tenant);
     if (!notified.ok) return notified;

@@ -1447,6 +1447,7 @@ export const notifications = pgTable(
       enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'space-event'],
     }).notNull(),
     payload: jsonb('payload').notNull(),
+    sourceKey: text('source_key'),
     readAt: text('read_at'),
     createdAt: text('created_at').notNull(),
   },
@@ -1457,6 +1458,32 @@ export const notifications = pgTable(
       table.readAt,
       table.createdAt.desc(),
     ),
+    uniqueIndex('notifications_tenant_recipient_source_uidx')
+      .on(table.tenantId, table.recipientUserId, table.sourceKey)
+      .where(sql`${table.sourceKey} is not null`),
+  ],
+);
+
+export const notificationFanoutJobs = pgTable(
+  'notification_fanout_jobs',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['space-post', 'thread-reply', 'space-event'] }).notNull(),
+    sourceKey: text('source_key').notNull(),
+    payload: jsonb('payload').notNull(),
+    status: text('status', { enum: ['pending', 'completed', 'failed'] }).notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    cursorUserId: text('cursor_user_id'),
+    nextAttemptAt: text('next_attempt_at').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('notification_fanout_jobs_tenant_source_uidx').on(table.tenantId, table.sourceKey),
+    index('notification_fanout_jobs_due_idx').on(table.status, table.nextAttemptAt),
   ],
 );
 

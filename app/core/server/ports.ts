@@ -46,6 +46,8 @@ import type {
   StaffRole,
   StreamVideo,
   Notification,
+  NotificationFanoutJob,
+  NotificationFanoutStatus,
   Post,
   PostContextKind,
   PostReport,
@@ -233,7 +235,7 @@ export interface PostSearchRow {
 }
 
 export interface PostRepository {
-  createPost(tenantId: string, post: Post): Promise<Post>;
+  createPost(tenantId: string, post: Post, fanoutJob?: NotificationFanoutJob): Promise<Post>;
   findById(tenantId: string, id: string): Promise<Post | null>;
   findByIds(tenantId: string, ids: string[]): Promise<Post[]>;
   countByAuthorSince(
@@ -343,7 +345,11 @@ export interface SpaceSubscription {
 export interface SpaceSubscriptionRepository {
   follow(tenantId: string, input: { userId: string; spaceId: string; createdAt: string }): Promise<void>;
   unfollow(tenantId: string, input: { userId: string; spaceId: string }): Promise<boolean>;
-  listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]>;
+  /** Keyset page over followers ordered by user id; the fan-out drain resumes from `afterUserId`. */
+  listFollowersPage(
+    tenantId: string,
+    query: { spaceId: string; afterUserId: string | null; limit: number },
+  ): Promise<SpaceSubscription[]>;
   listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]>;
 }
 
@@ -366,13 +372,17 @@ export interface ThreadSubscription {
 export interface ThreadSubscriptionRepository {
   upsert(tenantId: string, input: { userId: string; rootPostId: string; createdAt: string }): Promise<ThreadSubscription>;
   mute(tenantId: string, input: { userId: string; rootPostId: string; mutedAt: string }): Promise<ThreadSubscription | null>;
-  listSubscribersForRoot(tenantId: string, rootPostId: string): Promise<ThreadSubscription[]>;
+  /** Keyset page over subscribers ordered by user id; the fan-out drain resumes from `afterUserId`. */
+  listSubscribersPage(
+    tenantId: string,
+    query: { rootPostId: string; afterUserId: string | null; limit: number },
+  ): Promise<ThreadSubscription[]>;
   listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]>;
 }
 
 export interface SpaceEventRepository {
   findById(tenantId: string, id: string): Promise<SpaceEvent | null>;
-  insert(tenantId: string, event: SpaceEvent): Promise<SpaceEvent>;
+  insert(tenantId: string, event: SpaceEvent, fanoutJob?: NotificationFanoutJob): Promise<SpaceEvent>;
   update(tenantId: string, event: SpaceEvent): Promise<SpaceEvent | null>;
   softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<SpaceEvent | null>;
   /** 'upcoming' returns events ending at or after `now` ascending, 'past' the rest descending. */
@@ -451,6 +461,8 @@ export interface DmConversationStateRepository {
 
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
+  /** Returns only the rows this call created, so a retried fan-out re-delivers nothing. */
+  insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;
   listForRecipient(
     tenantId: string,
     query: { recipientUserId: string; cursor?: string; limit: number },
@@ -468,6 +480,21 @@ export interface NotificationRepository {
     tenantId: string,
     input: { recipientUserId: string; conversationId: string; readAt: string },
   ): Promise<number>;
+}
+
+export interface NotificationFanoutJobRepository {
+  claimDue(input: { now: string; limit: number; leaseUntil: string }): Promise<NotificationFanoutJob[]>;
+  save(
+    tenantId: string,
+    input: {
+      id: string;
+      status: NotificationFanoutStatus;
+      attempts: number;
+      cursorUserId: string | null;
+      nextAttemptAt: string;
+      updatedAt: string;
+    },
+  ): Promise<void>;
 }
 
 export interface NotificationDeliveryContext {

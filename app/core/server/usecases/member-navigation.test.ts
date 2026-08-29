@@ -237,7 +237,7 @@ const deps = (input: {
   const spaceSubscriptionsRepo: SpaceSubscriptionRepository = {
     follow: async () => undefined,
     unfollow: async () => false,
-    listFollowersForSpace: async () => [],
+    listFollowersPage: async () => [],
     listForUser: async (tenantId, query) =>
       follows.filter(
         (row) =>

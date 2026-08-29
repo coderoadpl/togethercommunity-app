@@ -1,6 +1,6 @@
 {
-  "hash": "890d38c607ebd2964cd3049cd8bc3cfed516e31eeca465995a2ec253a8f30777",
-  "shortId": "890d38c607eb",
+  "hash": "4323a5449a6cfad9de062cf6c70b03dcb974ac3220f5056de7cb0870389daf1b",
+  "shortId": "4323a5449a6c",
   "schema": {
     "constraints": [
       {
@@ -475,6 +475,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "notification_fanout_jobs_tenant_id_tenants_id_fk",
+        "table": "notification_fanout_jobs"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "notifications_tenant_id_tenants_id_fk",
         "table": "notifications"
       },
@@ -902,6 +907,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "member_subscriptions_pkey",
         "table": "member_subscriptions"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "notification_fanout_jobs_pkey",
+        "table": "notification_fanout_jobs"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1508,6 +1518,11 @@
         "table": "members"
       },
       {
+        "definition": "CREATE INDEX notification_fanout_jobs_due_idx ON notification_fanout_jobs USING btree (status, next_attempt_at)",
+        "name": "notification_fanout_jobs_due_idx",
+        "table": "notification_fanout_jobs"
+      },
+      {
         "definition": "CREATE INDEX notifications_tenant_recipient_read_created_idx ON notifications USING btree (tenant_id, recipient_user_id, read_at, created_at DESC NULLS LAST)",
         "name": "notifications_tenant_recipient_read_created_idx",
         "table": "notifications"
@@ -1791,6 +1806,16 @@
         "definition": "CREATE UNIQUE INDEX members_tenant_user_uidx ON members USING btree (tenant_id, user_id)",
         "name": "members_tenant_user_uidx",
         "table": "members"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX notification_fanout_jobs_tenant_source_uidx ON notification_fanout_jobs USING btree (tenant_id, source_key)",
+        "name": "notification_fanout_jobs_tenant_source_uidx",
+        "table": "notification_fanout_jobs"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX notifications_tenant_recipient_source_uidx ON notifications USING btree (tenant_id, recipient_user_id, source_key) WHERE (source_key IS NOT NULL)",
+        "name": "notifications_tenant_recipient_source_uidx",
+        "table": "notifications"
       },
       {
         "definition": "CREATE UNIQUE INDEX orders_tenant_provider_checkout_uidx ON orders USING btree (tenant_id, provider, ((provider_object_ids ->> 'checkoutSession'::text))) WHERE (provider_object_ids ? 'checkoutSession'::text)",
@@ -4109,6 +4134,99 @@
           }
         ],
         "name": "orders"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "cursor_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_attempt_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payload",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "notification_fanout_jobs"
       },
       {
         "columns": [
@@ -7559,6 +7677,14 @@
             "identity": "",
             "name": "recipient_user_id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source_key",
+            "notNull": false,
             "type": "text"
           },
           {

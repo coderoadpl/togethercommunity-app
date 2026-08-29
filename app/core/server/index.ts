@@ -58,6 +58,7 @@ export * from './usecases/member-billing-orders.js';
 export * from './usecases/member-data-export.js';
 export * from './usecases/member-erasure-requests.js';
 export * from './usecases/member-profile.js';
+export * from './usecases/account-sessions.js';
 export * from './usecases/avatar.js';
 export * from './usecases/subscription-lifecycle.js';
 export * from './usecases/subscription-simulate.js';

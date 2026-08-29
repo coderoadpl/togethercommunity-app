@@ -192,6 +192,8 @@ const harness = (
   const deps: StripeWebhookDeps = {
     authPort: {
       getAuthenticatedUser: async () => null,
+      listSessions: async () => [],
+      revokeSessions: async () => undefined,
       ensureUser: async (email) => ({ userId: `user-${email}`, created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async (input) => ({ url: `https://alpha.example.com/magic/${input.email}` }),

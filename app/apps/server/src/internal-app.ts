@@ -47,6 +47,7 @@ import {
   marketingSesSettingsUpdateInputSchema,
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
+  accountSessionRevokeInputSchema,
   meProfileUpdateInputSchema,
   eventCreateInputSchema,
   eventRefInputSchema,
@@ -196,6 +197,9 @@ import {
   requestMyErasure,
   getMyErasureRequest,
   cancelMyErasureRequest,
+  listMyAccountSessions,
+  revokeMyAccountSession,
+  revokeMyOtherAccountSessions,
   updateMyProfile,
   listErasureRequests,
   rejectErasureRequest,
@@ -370,7 +374,7 @@ import {
   SELF_AUTHENTICATING_ROUTE_MANIFEST,
 } from './self-authenticating-route-manifest.js';
 
-type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
+type Vars = { Variables: { identity: Identity; sessionId?: string; secureHeadersNonce?: string; }; };
 
 const probeCorsOrigins = async (req: HonoRequest, deps: AppDeps): Promise<string[]> => {
   const resolved = await resolveTenant(req.header('host') ?? '', req.header(TENANT_HEADER) ?? null, deps);
@@ -957,6 +961,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     );
     if (!identity.ok) return respond(identity);
     c.set('identity', identity.value);
+    if (user !== null) c.set('sessionId', user.sessionId);
     await next();
   });
 
@@ -1391,6 +1396,32 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       { members: deps.members, clock: deps.clock },
     ));
   });
+
+  app.get(API_PATHS.accountSessions, async (c) => respond(await listMyAccountSessions(
+    { identity: c.get('identity') },
+    { currentSessionId: c.get('sessionId') ?? '' },
+    { auth: deps.authPort },
+  )));
+
+  app.post(API_PATHS.accountSessionRevoke, async (c) => {
+    const parsed = accountSessionRevokeInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return respond(err(validation('Invalid session payload', parsed.error.flatten())));
+    }
+    return respond(await revokeMyAccountSession(
+      { identity: c.get('identity') },
+      { sessionId: parsed.data.sessionId, currentSessionId: c.get('sessionId') ?? '' },
+      { auth: deps.authPort },
+    ));
+  });
+
+  app.post(API_PATHS.accountSessionsRevokeOthers, async (c) => respond(
+    await revokeMyOtherAccountSessions(
+      { identity: c.get('identity') },
+      { currentSessionId: c.get('sessionId') ?? '' },
+      { auth: deps.authPort },
+    ),
+  ));
 
   app.get(API_PATHS.memberBillingOrders, async (c) => {
     const parsed = memberBillingOrdersQuerySchema.safeParse({

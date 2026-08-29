@@ -108,6 +108,8 @@ const harness = (options: {
 
   const authPort: AuthPort = {
     getAuthenticatedUser: async () => null,
+    listSessions: async () => [],
+    revokeSessions: async () => undefined,
     ensureUser: async () => ({ userId: 'u-new', created: true }),
     requestMagicLink: async () => undefined,
     createEnrollmentMagicLink: async ({ email, callbackURL, baseUrl }) => {

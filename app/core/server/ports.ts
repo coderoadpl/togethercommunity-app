@@ -1879,6 +1879,7 @@ export interface TenantAccessReader {
 
 /** Established authenticated session, before tenant resolution. */
 export interface AuthenticatedUser {
+  sessionId: string;
   userId: string;
   email: string;
   name: string;
@@ -1886,9 +1887,21 @@ export interface AuthenticatedUser {
   image: string | null;
 }
 
+/** One live provider session of a single account, without its bearer token. */
+export interface AccountSession {
+  id: string;
+  createdAt: string;
+  lastActiveAt: string;
+  userAgent: string | null;
+}
+
 export interface AuthPort {
   /** Returns the authenticated user for a request, or null when anonymous. */
   getAuthenticatedUser(requestHeaders: Headers): Promise<AuthenticatedUser | null>;
+  /** Unexpired sessions of one account, in provider order. */
+  listSessions(userId: string): Promise<AccountSession[]>;
+  /** Deletes the named sessions; ids that do not belong to the account are ignored. */
+  revokeSessions(userId: string, sessionIds: readonly string[]): Promise<void>;
   /** Find-or-create a passwordless provider user for this email. Idempotent. */
   ensureUser(email: string): Promise<{ userId: string; created: boolean }>;
   /** Trigger a magic-link email through the configured EmailPort. */

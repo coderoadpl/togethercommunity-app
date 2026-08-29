@@ -29,6 +29,7 @@ const notification = (input: {
     authorAvatarUrl: null,
     snippet: 'Już odpowiadam',
   },
+  sourceKey: null,
   readAt: null,
   createdAt: '2026-08-15T08:00:00.000Z',
 });

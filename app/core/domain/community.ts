@@ -121,6 +121,8 @@ export const notificationSchema = z.object({
   recipientUserId: z.string().min(1),
   kind: notificationKindSchema,
   payload: notificationPayloadSchema,
+  /** Fan-out idempotency handle: unique per (tenant, recipient) so retries insert nothing. */
+  sourceKey: z.string().min(1).nullable().default(null),
   readAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
 });

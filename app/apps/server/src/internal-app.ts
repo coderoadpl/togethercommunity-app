@@ -571,6 +571,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!secretEquals(c.req.header(EMAIL_DISPATCH_SECRET_HEADER), deps.emailDispatchSecret)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
+    await deps.drainNotificationFanout();
     return respond(await deps.dispatchEmails('manual'));
   });
 
@@ -578,6 +579,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.emailDispatchCronSecret}`)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
+    await deps.drainNotificationFanout();
     return respond(await deps.dispatchEmails('cron'));
   });
 

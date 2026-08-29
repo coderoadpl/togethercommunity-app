@@ -42,6 +42,7 @@ const notification = (input: {
     authorAvatarUrl: input.authorAvatarUrl ?? null,
     snippet: `Treść ${input.id}`,
   },
+  sourceKey: null,
   readAt: input.read === true ? '2026-08-15T09:00:00.000Z' : null,
   createdAt: '2026-08-15T08:00:00.000Z',
 });

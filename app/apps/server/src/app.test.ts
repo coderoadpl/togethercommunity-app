@@ -465,6 +465,7 @@ const deps = (input: {
         }),
     },
     dispatchEmails: input.dispatchEmails ?? (async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 })),
+    drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,
@@ -589,7 +590,7 @@ const deps = (input: {
     spaceSubscriptions: {
       follow: async () => undefined,
       unfollow: async () => false,
-      listFollowersForSpace: async () => [],
+      listFollowersPage: async () => [],
       listForUser: async () => [],
     },
     spaceSeen: {
@@ -611,7 +612,7 @@ const deps = (input: {
         createdAt: subscription.mutedAt,
         mutedAt: subscription.mutedAt,
       }),
-      listSubscribersForRoot: async () => [],
+      listSubscribersPage: async () => [],
       listForUser: async () => [],
     },
     events: {
@@ -645,8 +646,10 @@ const deps = (input: {
       findForViewer: async () => [],
       markRead: async (tenantId, input) => ({ tenantId, ...input }),
     },
+    fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     notifications: {
       insert: async (_tenantId, notification) => notification,
+      insertMany: async (_tenantId, batch) => batch,
       listForRecipient: async () => ({ notifications: [], nextCursor: null }),
       markRead: async () => null,
       markAllRead: async () => 0,
@@ -3265,6 +3268,7 @@ describe('notifications stream route', () => {
       authorAvatarUrl: null,
       snippet: 'hello',
     },
+    sourceKey: null,
     readAt: null,
     createdAt: '1998-07-12T00:00:01.000Z',
   };

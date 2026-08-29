@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
@@ -131,6 +131,7 @@ import type {
 import type { Db } from './client.js';
 import { uniqueViolation } from './pg-errors.js';
 import { appendMemberEvent } from './member-events.js';
+import { insertFanoutJob } from './notification-fanout-jobs.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import { fingerprintHash, introspectSchema, shortFingerprint } from './schema-fingerprint.js';
 import {
@@ -1042,12 +1043,15 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
 });
 
 export const createPostRepository = (db: Db): PostRepository => ({
-  createPost: async (tenantId, post) => {
-    const rows = await db
-      .insert(posts)
-      .values({ ...post, tenantId })
-      .returning();
-    const row = rows[0];
+  createPost: async (tenantId, post, fanoutJob) => {
+    const row = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(posts)
+        .values({ ...post, tenantId })
+        .returning();
+      if (fanoutJob !== undefined) await insertFanoutJob(tx, tenantId, fanoutJob);
+      return inserted[0];
+    });
     if (!row) throw new Error('posts insert returned no row');
     return parsePost(row);
   },
@@ -1436,12 +1440,19 @@ export const createThreadSubscriptionRepository = (db: Db): ThreadSubscriptionRe
       .returning();
     return rows[0] ?? null;
   },
-  listSubscribersForRoot: async (tenantId, rootPostId) =>
+  listSubscribersPage: async (tenantId, query) =>
     db
       .select()
       .from(threadSubscriptions)
-      .where(and(eq(threadSubscriptions.tenantId, tenantId), eq(threadSubscriptions.rootPostId, rootPostId)))
-      .orderBy(asc(threadSubscriptions.createdAt)),
+      .where(
+        and(
+          eq(threadSubscriptions.tenantId, tenantId),
+          eq(threadSubscriptions.rootPostId, query.rootPostId),
+          ...(query.afterUserId === null ? [] : [gt(threadSubscriptions.userId, query.afterUserId)]),
+        ),
+      )
+      .orderBy(asc(threadSubscriptions.userId))
+      .limit(query.limit),
   listForUser: async (tenantId, input) =>
     input.rootPostIds.length === 0
       ? []
@@ -1578,12 +1589,15 @@ export const createSpaceEventRepository = (db: Db): SpaceEventRepository => ({
     const row = rows[0];
     return row ? parseSpaceEvent(row) : null;
   },
-  insert: async (tenantId, event) => {
-    const rows = await db
-      .insert(spaceEvents)
-      .values({ ...event, tenantId })
-      .returning();
-    const row = rows[0];
+  insert: async (tenantId, event, fanoutJob) => {
+    const row = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(spaceEvents)
+        .values({ ...event, tenantId })
+        .returning();
+      if (fanoutJob !== undefined) await insertFanoutJob(tx, tenantId, fanoutJob);
+      return inserted[0];
+    });
     if (!row) throw new Error('space_events insert returned no row');
     return parseSpaceEvent(row);
   },
@@ -1814,12 +1828,19 @@ export const createSpaceSubscriptionRepository = (db: Db): SpaceSubscriptionRepo
       .returning({ spaceId: spaceSubscriptions.spaceId });
     return rows.length > 0;
   },
-  listFollowersForSpace: async (tenantId, spaceId) =>
+  listFollowersPage: async (tenantId, query) =>
     db
       .select()
       .from(spaceSubscriptions)
-      .where(and(eq(spaceSubscriptions.tenantId, tenantId), eq(spaceSubscriptions.spaceId, spaceId)))
-      .orderBy(asc(spaceSubscriptions.createdAt)),
+      .where(
+        and(
+          eq(spaceSubscriptions.tenantId, tenantId),
+          eq(spaceSubscriptions.spaceId, query.spaceId),
+          ...(query.afterUserId === null ? [] : [gt(spaceSubscriptions.userId, query.afterUserId)]),
+        ),
+      )
+      .orderBy(asc(spaceSubscriptions.userId))
+      .limit(query.limit),
   listForUser: async (tenantId, input) =>
     input.spaceIds.length === 0
       ? []
@@ -2104,6 +2125,18 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
     const row = rows[0];
     if (!row) throw new Error('notifications insert returned no row');
     return parseNotification(row);
+  },
+  insertMany: async (tenantId, batch) => {
+    if (batch.length === 0) return [];
+    const rows = await db
+      .insert(notifications)
+      .values(batch.map((notification) => ({ ...notification, tenantId })))
+      .onConflictDoNothing({
+        target: [notifications.tenantId, notifications.recipientUserId, notifications.sourceKey],
+        where: sql`${notifications.sourceKey} is not null`,
+      })
+      .returning();
+    return rows.map(parseNotification);
   },
   listForRecipient: async (tenantId, query) => {
     const cursor = query.cursor === undefined ? null : parseNotificationCursor(query.cursor);

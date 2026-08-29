@@ -449,8 +449,15 @@ class FakeSpaceSubscriptions implements SpaceSubscriptionRepository {
     return true;
   }
 
-  async listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.spaceId === spaceId);
+  async listFollowersPage(
+    tenantId: string,
+    query: { spaceId: string; afterUserId: string | null; limit: number },
+  ): Promise<SpaceSubscription[]> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.spaceId === query.spaceId)
+      .filter((item) => query.afterUserId === null || item.userId > query.afterUserId)
+      .sort((left, right) => left.userId.localeCompare(right.userId))
+      .slice(0, query.limit);
   }
 
   async listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]> {
@@ -503,8 +510,15 @@ class FakeThreadSubscriptions implements ThreadSubscriptionRepository {
     return null;
   }
 
-  async listSubscribersForRoot(tenantId: string, rootPostId: string): Promise<ThreadSubscription[]> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.rootPostId === rootPostId);
+  async listSubscribersPage(
+    tenantId: string,
+    query: { rootPostId: string; afterUserId: string | null; limit: number },
+  ): Promise<ThreadSubscription[]> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.rootPostId === query.rootPostId)
+      .filter((item) => query.afterUserId === null || item.userId > query.afterUserId)
+      .sort((left, right) => left.userId.localeCompare(right.userId))
+      .slice(0, query.limit);
   }
 
   async listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]> {
@@ -520,6 +534,11 @@ class FakeNotifications implements NotificationRepository {
   async insert(_tenantId: string, notification: Notification): Promise<Notification> {
     this.rows.push(notification);
     return notification;
+  }
+
+  async insertMany(_tenantId: string, batch: Notification[]): Promise<Notification[]> {
+    this.rows.push(...batch);
+    return batch;
   }
 
   async listForRecipient(): Promise<{ notifications: Notification[]; nextCursor: string | null }> {
@@ -704,6 +723,7 @@ const fixture = (input: {
   const deps: SpacesDeps & CommunityDeps = {
     spaces: new FakeSpaces(input.spaces),
     posts,
+    fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     reports: {
       open: async () => null,
       findById: async () => null,

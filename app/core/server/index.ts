@@ -72,6 +72,8 @@ export * from './usecases/image-assets.js';
 export * from './usecases/progress.js';
 export * from './usecases/community-access.js';
 export * from './usecases/community.js';
+export * from './usecases/notification-fanout.js';
+export * from './usecases/thread-context.js';
 export * from './usecases/direct-messages.js';
 export * from './usecases/events.js';
 export * from './usecases/moderation.js';

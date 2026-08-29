@@ -299,6 +299,11 @@ class FakeNotifications implements NotificationRepository {
     return notification;
   }
 
+  async insertMany(_tenantId: string, batch: Notification[]): Promise<Notification[]> {
+    this.rows.push(...batch);
+    return batch;
+  }
+
   async listForRecipient(): Promise<{ notifications: Notification[]; nextCursor: string | null }> {
     return { notifications: this.rows, nextCursor: null };
   }

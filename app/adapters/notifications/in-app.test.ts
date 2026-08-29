@@ -22,6 +22,7 @@ const notification: Notification = {
     authorAvatarUrl: null,
     snippet: 'Hi there',
   },
+  sourceKey: null,
   readAt: null,
   createdAt: '2026-07-15T10:00:00.000Z',
 };

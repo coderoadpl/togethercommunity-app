@@ -28,6 +28,7 @@ import type {
   CourseRepository,
   IdGenerator,
   NotificationChannelPort,
+  NotificationFanoutJobRepository,
   NotificationRepository,
   PostRepository,
   PostReportRepository,
@@ -468,6 +469,11 @@ class FakeReports implements PostReportRepository {
   }
 }
 
+const fakeFanoutJobs = (): NotificationFanoutJobRepository => ({
+  claimDue: async () => [],
+  save: async () => undefined,
+});
+
 class FakeSubscriptions implements ThreadSubscriptionRepository {
   readonly rows: ThreadSubscription[] = [];
 
@@ -493,8 +499,15 @@ class FakeSubscriptions implements ThreadSubscriptionRepository {
     return existing;
   }
 
-  async listSubscribersForRoot(tenantId: string, rootPostId: string): Promise<ThreadSubscription[]> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.rootPostId === rootPostId);
+  async listSubscribersPage(
+    tenantId: string,
+    query: { rootPostId: string; afterUserId: string | null; limit: number },
+  ): Promise<ThreadSubscription[]> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.rootPostId === query.rootPostId)
+      .filter((item) => query.afterUserId === null || item.userId > query.afterUserId)
+      .sort((left, right) => left.userId.localeCompare(right.userId))
+      .slice(0, query.limit);
   }
 
   async listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]> {
@@ -510,6 +523,21 @@ class FakeNotifications implements NotificationRepository {
   async insert(_tenantId: string, notification: Notification): Promise<Notification> {
     this.rows.push(notification);
     return notification;
+  }
+
+  async insertMany(tenantId: string, batch: Notification[]): Promise<Notification[]> {
+    const inserted: Notification[] = [];
+    for (const notification of batch) {
+      const duplicate = notification.sourceKey !== null && this.rows.some(
+        (row) => row.tenantId === tenantId
+          && row.recipientUserId === notification.recipientUserId
+          && row.sourceKey === notification.sourceKey,
+      );
+      if (duplicate) continue;
+      this.rows.push(notification);
+      inserted.push(notification);
+    }
+    return inserted;
   }
 
   async listForRecipient(
@@ -582,8 +610,15 @@ class FakeSpaceSubscriptions implements SpaceSubscriptionRepository {
     return true;
   }
 
-  async listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.spaceId === spaceId);
+  async listFollowersPage(
+    tenantId: string,
+    query: { spaceId: string; afterUserId: string | null; limit: number },
+  ): Promise<SpaceSubscription[]> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.spaceId === query.spaceId)
+      .filter((item) => query.afterUserId === null || item.userId > query.afterUserId)
+      .sort((left, right) => left.userId.localeCompare(right.userId))
+      .slice(0, query.limit);
   }
 
   async listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]> {
@@ -653,6 +688,7 @@ const deps = (
     spaces: emptySpacesRepo,
     notifications: new FakeNotifications(),
     notificationChannels: [],
+    fanoutJobs: fakeFanoutJobs(),
     courses: coursesRepo,
     modules: modulesRepo,
     lessons: lessonsRepo,
@@ -883,7 +919,7 @@ describe('community use-cases', () => {
     );
     expect(reply.ok).toBe(true);
     expect(delivered).toEqual(['u1']);
-    expect(await d.threadSubscriptions.listSubscribersForRoot('t1', root.value.rootPostId)).toEqual(
+    expect(await d.threadSubscriptions.listSubscribersPage('t1', { rootPostId: root.value.rootPostId, afterUserId: null, limit: 50 })).toEqual(
       expect.arrayContaining([expect.objectContaining({ userId: 'u2', mutedAt: null })]),
     );
   });
@@ -916,7 +952,7 @@ describe('community use-cases', () => {
       { recipient: 'u2', email: 'u2@example.com' },
       { recipient: 'u3', email: 'u3@example.com' },
     ]);
-    expect(await d.threadSubscriptions.listSubscribersForRoot('t1', question.value.rootPostId)).toEqual(
+    expect(await d.threadSubscriptions.listSubscribersPage('t1', { rootPostId: question.value.rootPostId, afterUserId: null, limit: 50 })).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ userId: 'u1' }),
         expect.objectContaining({ userId: 'u2' }),

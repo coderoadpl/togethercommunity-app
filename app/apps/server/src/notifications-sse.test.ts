@@ -32,6 +32,7 @@ const notification = (overrides: Partial<Notification>): Notification => ({
     authorAvatarUrl: null,
     snippet: 'hello',
   },
+  sourceKey: null,
   readAt: null,
   createdAt: '2026-07-15T10:00:00.000Z',
   ...overrides,
@@ -75,6 +76,7 @@ const recordingBus = () => {
 
 const notificationsStub = (rows: Notification[]): NotificationRepository => ({
   insert: async (_tenantId, row) => row,
+  insertMany: async (_tenantId, inserted) => inserted,
   listForRecipient: async () => ({ notifications: rows, nextCursor: null }),
   markRead: async () => null,
   markAllRead: async () => 0,

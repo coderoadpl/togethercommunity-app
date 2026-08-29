@@ -2707,19 +2707,43 @@ export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
   color: theme.palette.text.primary,
 }));
 
-export const EmberCtaButton = styled(Button)(({ theme }) => ({
-  backgroundColor: theme.emberCta?.main ?? theme.palette.primary.main,
-  color: theme.emberCta?.contrastText ?? theme.palette.primary.contrastText,
-  '&:hover': {
-    backgroundColor: theme.emberCta?.hover ?? theme.palette.primary.light,
-  },
-  '&:active': {
-    backgroundColor: theme.emberCta?.active ?? theme.palette.primary.dark,
-  },
-  '&.Mui-disabled': {
-    backgroundColor: theme.palette.action.disabledBackground,
-    color: theme.palette.action.disabled,
-  },
+export const EmberCtaButton = styled(Button)(({ theme }) => {
+  const surface = theme.emberCta?.main ?? theme.palette.primary.main;
+  const hover = theme.emberCta?.hover ?? theme.palette.primary.light;
+  const active = theme.emberCta?.active ?? theme.palette.primary.dark;
+  const ink = theme.emberCta?.contrastText ?? theme.palette.primary.contrastText;
+  const fill = {
+    backgroundColor: surface,
+    color: ink,
+    boxShadow: 'none',
+    '&:hover': { backgroundColor: hover, color: ink, boxShadow: 'none' },
+    '&:active': { backgroundColor: active, color: ink },
+  };
+  return {
+    ...fill,
+    // At equal specificity emotion's insertion order decides between this wrapper and
+    // the contained styleOverride, so the ember fill is pinned on the variant class too.
+    '&.MuiButton-contained': fill,
+    '&.Mui-disabled, &.MuiButton-contained.Mui-disabled': {
+      backgroundColor: theme.palette.action.disabledBackground,
+      color: theme.palette.action.disabled,
+      boxShadow: 'none',
+    },
+  };
+});
+
+export const EmberCtaLink = styled(EmberCtaButton)<{ component?: ElementType; to?: string }>({});
+
+export const QuietNotice = styled(Paper)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: '0.6rem',
+  padding: '0.6rem 0.9rem',
+  backgroundColor: theme.palette.action.hover,
+  color: theme.palette.text.secondary,
+  ...theme.typography.body2,
+  '& a': { marginLeft: 'auto', whiteSpace: 'nowrap' },
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
@@ -3124,6 +3148,9 @@ export const StatTileLabel = styled(Typography)<AsElement>(({ theme }) => ({
 
 export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
   overflowX: 'auto',
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: 12,
   '& th:first-of-type, & td:first-of-type': {
     position: 'sticky',
     left: 0,
@@ -3133,6 +3160,7 @@ export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
     [theme.breakpoints.up('sm')]: {
       position: 'static',
       boxShadow: 'none',
+      backgroundColor: 'inherit',
     },
   },
   '& th:first-of-type': { zIndex: 2 },

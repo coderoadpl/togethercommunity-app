@@ -32,6 +32,8 @@ export const en: Messages = {
     retry: 'Try again',
     unsavedChanges: 'Unsaved changes',
     unsavedChangesConfirm: 'You have unsaved changes. Leave this page and discard them?',
+    saving: 'Saving…',
+    saved: 'Saved.',
   },
   imageAssets: {
     upload: 'Upload file',
@@ -1028,6 +1030,7 @@ export const en: Messages = {
     chapterNameAria: ({ name }) => format('Chapter name {name}', { name }),
     duplicateLessonWarning: 'This lesson is already in this chapter.',
     unknownLesson: 'Unknown lesson',
+    sourceLesson: ({ name }) => format('Lesson: {name}', { name }),
     historyHeading: 'Change history',
     historyLoading: 'Loading history…',
     historyEmpty: 'No saved versions yet',
@@ -1343,7 +1346,8 @@ export const en: Messages = {
   anon: {
     eyebrow: 'Visitor preview',
     homeTitle: 'Look inside',
-    signInCta: 'Sign in to join',
+    coursesSection: 'Courses',
+    spacesSection: 'Spaces',
     joinDiscussionCta: 'Sign in to join the discussion',
     readOnlyBanner:
       'You are browsing as a visitor: reading is open, posting and reactions need an account.',
@@ -1729,6 +1733,9 @@ export const en: Messages = {
     emailLabel: 'Support email',
     urlLabel: 'External support URL',
     save: 'Save support settings',
+    settingsHeading: 'Member support',
+    settingsIntro:
+      'The e-mail address and link members will see in their account and in message footers.',
   },
   billing: {
     heading: 'Billing portal',
@@ -1798,8 +1805,8 @@ export const en: Messages = {
     heading: 'Branding',
     intro:
       'Set the name and visual identity members see across your platform.',
-    nameLabel: 'Tenant name',
-    nameHint: 'The web address stays unchanged when you rename the tenant.',
+    nameLabel: 'Platform name',
+    nameHint: 'The web address stays unchanged when you rename the platform.',
     logoLabel: 'Logo URL',
     logoPlaceholder: 'https://example.com/logo.svg',
     accentLabel: 'Accent color',

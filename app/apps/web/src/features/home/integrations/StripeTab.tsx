@@ -88,7 +88,7 @@ const StripeConfiguration = ({
       <Box>
         <Button
           type="submit"
-          variant="outlined"
+          variant="contained"
           data-testid="stripe-configure"
           disabled={configure.isPending || restrictedKey.trim() === ''}
         >
@@ -154,7 +154,21 @@ const BillingPortalField = ({ canEdit }: { canEdit: boolean }) => {
   };
 
   return (
-    <SectionCard title={t.billing.heading} description={t.billing.intro} onSubmit={submit}>
+    <SectionCard
+      title={t.billing.heading}
+      description={t.billing.intro}
+      onSubmit={submit}
+      actions={canEdit ? (
+        <Button
+          type="submit"
+          variant="contained"
+          data-testid="billing-portal-save"
+          disabled={updateSettings.isPending || !settings.isSuccess}
+        >
+          {updateSettings.isPending ? t.billing.saving : t.billing.save}
+        </Button>
+      ) : undefined}
+    >
       <FormControl fullWidth>
         <FormLabel htmlFor="billing-portal-url">{t.billing.urlLabel}</FormLabel>
         {settings.isPending ? (
@@ -176,18 +190,6 @@ const BillingPortalField = ({ canEdit }: { canEdit: boolean }) => {
       </FormControl>
       {settings.isError ? (
         <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
-      ) : null}
-      {canEdit ? (
-        <Box>
-          <Button
-            type="submit"
-            variant="outlined"
-            data-testid="billing-portal-save"
-            disabled={updateSettings.isPending || !settings.isSuccess}
-          >
-            {updateSettings.isPending ? t.billing.saving : t.billing.save}
-          </Button>
-        </Box>
       ) : null}
       {updateSettings.isSuccess ? (
         <Typography variant="caption" component="p" data-testid="billing-portal-saved">

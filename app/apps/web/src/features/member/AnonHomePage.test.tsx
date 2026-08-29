@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
@@ -79,6 +79,21 @@ describe('AnonHomePage', () => {
     expect(screen.getByTestId('space-card-s1')).toHaveAttribute('href', '/community/s1');
     expect(screen.getByTestId('course-card-c1')).toHaveAttribute('href', '/my/courses/c1');
     expect(screen.getByTestId('locked-space-cta-s9')).toHaveAttribute('href', '/checkout/p1');
+  });
+
+  it('labels the public tile sections for a visitor and offers a sign-in link in the banner', async () => {
+    server.use(okNavigation(), okFeed([]));
+
+    await renderPage();
+
+    expect(await screen.findByTestId('anon-courses')).toHaveTextContent(pl.anon.coursesSection);
+    expect(screen.getByTestId('anon-spaces')).toHaveTextContent(pl.anon.spacesSection);
+    expect(screen.getByTestId('anon-courses')).not.toHaveTextContent(pl.start.coursesSection);
+    expect(
+      within(screen.getByTestId('anon-read-only-banner')).getByRole('link', {
+        name: pl.auth.signInLink,
+      }),
+    ).toHaveAttribute('href', '/login');
   });
 
   it('drops the feed section when no home space is configured', async () => {

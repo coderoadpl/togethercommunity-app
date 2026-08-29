@@ -55,14 +55,6 @@ const SetupGroup = ({ heading, items }: { heading: string; items: TenantSetupIte
               disableGutters
               disablePadding
               data-testid={`tenant-setup-item-${item.id}`}
-              secondaryAction={
-                <Chip
-                  size="small"
-                  color={item.configured ? 'success' : 'warning'}
-                  variant="outlined"
-                  label={item.configured ? t.tenantSetup.itemConfigured : t.tenantSetup.itemMissing}
-                />
-              }
             >
               <ListItemButton
                 component="a"
@@ -71,8 +63,21 @@ const SetupGroup = ({ heading, items }: { heading: string; items: TenantSetupIte
                   event.preventDefault();
                   void navigate({ to: item.route, hash: item.hash });
                 }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.75rem',
+                  flexDirection: { xs: 'column', sm: 'row' },
+                }}
               >
-                <ListItemText primary={copy.label} secondary={copy.impact} />
+                <ListItemText primary={copy.label} secondary={copy.impact} sx={{ flex: 1, minWidth: 0, m: 0 }} />
+                <Chip
+                  size="small"
+                  color={item.configured ? 'success' : 'warning'}
+                  variant="outlined"
+                  label={item.configured ? t.tenantSetup.itemConfigured : t.tenantSetup.itemMissing}
+                  sx={{ flexShrink: 0, alignSelf: 'flex-start', mt: { xs: '0.35rem', sm: '0.15rem' } }}
+                />
               </ListItemButton>
             </ListItem>
           );

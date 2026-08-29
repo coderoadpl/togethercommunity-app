@@ -6,7 +6,7 @@ import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
 
-interface BreadcrumbItem {
+export interface BreadcrumbItem {
   label: ReactNode;
   link?: ReactNode;
 }
@@ -17,6 +17,8 @@ export interface MemberPageProps {
   width?: 'prose' | 'wide' | 'lesson';
   breadcrumbs?: BreadcrumbItem[];
   breadcrumbLabel: string;
+  /** Page-level call to action, right-aligned in the header on sm+. */
+  actions?: ReactNode;
   /** Sticky right column (24rem) on md+. */
   rail?: ReactNode;
   railLeading?: ReactNode;
@@ -46,6 +48,7 @@ export const MemberPage = ({
   width = 'prose',
   breadcrumbs,
   breadcrumbLabel,
+  actions,
   rail,
   railLeading,
   mobileRail = 'before',
@@ -76,10 +79,23 @@ export const MemberPage = ({
             ))}
           </Breadcrumbs>
         )}
-        <Typography variant="h1">{title}</Typography>
-        <Eyebrow variant="overline" component="p">
-          {eyebrow}
-        </Eyebrow>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', sm: 'flex-end' },
+            gap: '1rem',
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h1">{title}</Typography>
+            <Eyebrow variant="overline" component="p">
+              {eyebrow}
+            </Eyebrow>
+          </Box>
+          {actions === undefined ? null : <Box sx={{ flexShrink: 0 }}>{actions}</Box>}
+        </Box>
       </MemberLedgerHeader>
 
       {hasRail && !statusOnly ? (

@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, Button, ButtonBase, LinearProgress, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, Button, ButtonBase, LinearProgress, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -3124,6 +3124,25 @@ export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
     outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`,
     outlineOffset: 2,
   },
+}));
+
+export const PanelRowMeta = styled(Stack)(({ theme }) => ({
+  ...theme.typography.body2,
+  color: theme.palette.text.secondary,
+}));
+
+export const DividedList = styled(List)(({ theme }) => ({
+  '& .MuiListItem-root': {
+    border: 'none',
+    borderRadius: 0,
+    marginBottom: 0,
+    paddingLeft: 0,
+    paddingRight: 0,
+    backgroundColor: 'transparent',
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  },
+  '& .MuiListItem-root:first-of-type': { borderTop: 'none' },
+  '& .MuiListItem-root:last-of-type': { borderBottom: 'none' },
 }));
 
 export const StatTileIcon = styled(SvgIcon)(({ theme }) => ({

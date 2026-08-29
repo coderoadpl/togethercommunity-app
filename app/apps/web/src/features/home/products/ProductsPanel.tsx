@@ -11,7 +11,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  Paper,
   OutlinedInput,
   Snackbar,
   Stack,
@@ -27,6 +26,7 @@ import type { Product, ProductAccessIssues, StaffSpace } from '#core/domain/inde
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
+import { PanelListRow } from '../../../components/ui/PanelListRow.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
@@ -162,23 +162,11 @@ const ProductRow = ({
   };
 
   return (
-    <Paper elevation={1} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }} data-testid="product-row">
-      <Stack
-        useFlexGap
-        sx={{
-          flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: { xs: 'stretch', sm: 'flex-start' },
-          gap: '0.5rem',
-        }}
-      >
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{ flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', flex: 1, minWidth: 0 }}
-        >
-          <Typography variant="h2" component="h2">
-            {product.title}
-          </Typography>
+    <PanelListRow
+      data-testid="product-row"
+      title={product.title}
+      badges={
+        <>
           <Chip
             size="small"
             variant="outlined"
@@ -191,12 +179,10 @@ const ProductRow = ({
           {accessIssuesUnknown ? (
             <Chip size="small" color="default" variant="outlined" label={t.products.accessIssuesUnknownChip} />
           ) : null}
-        </Stack>
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{ flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}
-        >
+        </>
+      }
+      actions={
+        <>
           <Tooltip title={t.products.copyCheckoutLink}>
             <IconButton
               size="small"
@@ -235,8 +221,20 @@ const ProductRow = ({
               {publishProduct.isPending ? t.products.publishing : t.products.publish}
             </Button>
           )}
-        </Stack>
-      </Stack>
+        </>
+      }
+      meta={
+        <>
+          <span>
+            {product.published ? <PublishedStatus>{t.products.published}</PublishedStatus> : t.products.draft} ·{' '}
+            <DataValue>{accessCount}</DataValue> {t.products.accessItemNoun({ count: accessCount })}
+          </span>
+          <EntryDate component="time" dateTime={product.createdAt}>
+            {formatDate(product.createdAt, language)}
+          </EntryDate>
+        </>
+      }
+    >
       <Snackbar
         open={copied}
         autoHideDuration={3000}
@@ -259,15 +257,6 @@ const ProductRow = ({
           </FormControl>
         </Stack>
       )}
-      <Stack useFlexGap spacing="0.2rem">
-        <span>
-          {product.published ? <PublishedStatus>{t.products.published}</PublishedStatus> : t.products.draft} ·{' '}
-          <DataValue>{accessCount}</DataValue> {t.products.accessItemNoun({ count: accessCount })}
-        </span>
-        <EntryDate component="time" dateTime={product.createdAt}>
-          {formatDate(product.createdAt, language)}
-        </EntryDate>
-      </Stack>
       {issue ? <AccessIssues issue={issue} /> : null}
       {prices.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(prices.error, t), retry: { label: t.common.retry, onRetry: () => void prices.refetch() } }} /> : null}
       {downloads.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(downloads.error, t), retry: { label: t.common.retry, onRetry: () => void downloads.refetch() } }} /> : null}
@@ -322,7 +311,7 @@ const ProductRow = ({
         onClose={() => setConfirmation(null)}
         onConfirm={() => unpublishProduct.mutate({ id: product.id })}
       />
-    </Paper>
+    </PanelListRow>
   );
 };
 

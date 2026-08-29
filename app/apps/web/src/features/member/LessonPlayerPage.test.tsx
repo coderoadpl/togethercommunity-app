@@ -14,11 +14,11 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
+  CourseStructureLesson,
   CourseStructureWithAccess,
   DiscussionPost,
   LessonBlock,
   MemberCourseProgress,
-  NextLesson,
   PlayableCourseLesson,
   PlayableLessonBlock,
 } from '#core/domain/index.js';
@@ -28,7 +28,19 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LessonPlayerPage } from './LessonPlayerPage.js';
 
-const structure: CourseStructureWithAccess = {
+const entry = (
+  lessonId: string,
+  name: string,
+  accessible = true,
+): CourseStructureLesson => ({
+  contentId: `ct-${lessonId}`,
+  lessonId,
+  name,
+  accessStatus: accessible ? 'fully-accessible' : 'not-accessible',
+  completionStatus: 'not-completed',
+});
+
+const structureOf = (lessons: CourseStructureLesson[]): CourseStructureWithAccess => ({
   courseId: 'course-1',
   name: 'JavaScript Foundations',
   accessStatus: 'fully-accessible',
@@ -45,27 +57,17 @@ const structure: CourseStructureWithAccess = {
           name: 'Getting started',
           accessStatus: 'fully-accessible',
           completionStatus: 'partially-completed',
-          lessons: [
-            {
-              contentId: 'ct1',
-              lessonId: 'l1',
-              name: 'Intro to Variables',
-              accessStatus: 'fully-accessible',
-              completionStatus: 'not-completed',
-            },
-            {
-              contentId: 'ct2',
-              lessonId: 'l2',
-              name: 'Advanced Variables',
-              accessStatus: 'fully-accessible',
-              completionStatus: 'not-completed',
-            },
-          ],
+          lessons,
         },
       ],
     },
   ],
-};
+});
+
+const structure = structureOf([
+  entry('l1', 'Intro to Variables'),
+  entry('l2', 'Advanced Variables'),
+]);
 
 const allBlocks: PlayableLessonBlock[] = [
   {
@@ -106,26 +108,20 @@ const okLesson = (contents: PlayableLessonBlock[]) =>
     HttpResponse.json({ ok: true, data: { lesson: lesson(contents), authenticated: true } }),
   );
 
-const okStructure = () =>
+const okStructureOf = (value: CourseStructureWithAccess) =>
   http.get('/api/student/courses/:courseId/structure', () =>
-    HttpResponse.json({ ok: true, data: { structure } }),
+    HttpResponse.json({ ok: true, data: { structure: value } }),
   );
 
+const okStructure = () => okStructureOf(structure);
+
 const okStructureFullyCompleted = () =>
-  http.get('/api/student/courses/:courseId/structure', () =>
-    HttpResponse.json({
-      ok: true,
-      data: { structure: { ...structure, completionStatus: 'fully-completed' } },
-    }),
-  );
+  okStructureOf({ ...structure, completionStatus: 'fully-completed' });
 
 const okProgress = (completedLessonIds: string[] = []) =>
   http.get('/api/student/progress', () =>
     HttpResponse.json({ ok: true, data: { progress: progress(completedLessonIds) } }),
   );
-
-const okNext = (next: NextLesson) =>
-  http.get('/api/student/lessons/next', () => HttpResponse.json({ ok: true, data: { next } }));
 
 const stubDesktopViewport = () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -182,7 +178,7 @@ describe('LessonPlayerPage', () => {
   });
 
   it('renders every typed block', async () => {
-    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
     const { container } = await renderPage(
       <LessonPlayerPage courseId="course-1" lessonId="l1" />,
     );
@@ -228,7 +224,7 @@ describe('LessonPlayerPage', () => {
       { type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' },
       { type: 'pdf', pdfUrl: 'https://example.com/notes.pdf' },
     ];
-    server.use(okNext(null), okStructure(), okProgress(), okLesson(savedOrder));
+    server.use(okStructure(), okProgress(), okLesson(savedOrder));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     await screen.findByTestId('lesson-video-placeholder');
@@ -260,7 +256,6 @@ describe('LessonPlayerPage', () => {
       http.get('/api/me', countMemberOnly),
       http.get('/api/student/courses/:courseId/structure', countMemberOnly),
       http.get('/api/student/progress', countMemberOnly),
-      http.get('/api/student/lessons/next', countMemberOnly),
       http.get('/api/discussion', countMemberOnly),
       http.post('/api/student/progress/last-viewed', countMemberOnly),
     );
@@ -279,7 +274,6 @@ describe('LessonPlayerPage', () => {
     const videoBlock = allBlocks[0];
     if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
     server.use(
-      okNext(null),
       okStructure(),
       okProgress(),
       okLesson([{ ...videoBlock, embedUrl }]),
@@ -291,7 +285,6 @@ describe('LessonPlayerPage', () => {
 
   it('strips a script tag from html content', async () => {
     server.use(
-      okNext(null),
       okStructure(),
       okProgress(),
       okLesson([{ type: 'html', html: '<p>Hello</p><script>alert(1)</script>' }]),
@@ -307,7 +300,6 @@ describe('LessonPlayerPage', () => {
 
   it('shows a placeholder when the video has no embed url', async () => {
     server.use(
-      okNext(null),
       okStructure(),
       okProgress(),
       okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
@@ -321,7 +313,7 @@ describe('LessonPlayerPage', () => {
   });
 
   it('renders breadcrumbs from the course structure', async () => {
-    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     const crumbs = await screen.findByLabelText(pl.common.breadcrumbs);
@@ -334,7 +326,6 @@ describe('LessonPlayerPage', () => {
     let completeCalls = 0;
     let progressReads = 0;
     server.use(
-      okNext({ id: 'l2', name: 'Next Lesson' }),
       okStructure(),
       okLesson(allBlocks),
       http.get('/api/student/progress', () => {
@@ -367,7 +358,6 @@ describe('LessonPlayerPage', () => {
   it('un-marks a completed lesson and restores the mark button', async () => {
     let uncompleteCalls = 0;
     server.use(
-      okNext(null),
       okStructure(),
       okLesson(allBlocks),
       http.get('/api/student/progress', () => {
@@ -390,39 +380,108 @@ describe('LessonPlayerPage', () => {
     expect(uncompleteCalls).toBe(1);
   });
 
-  it('links to the server-computed next lesson and shows completion at course end', async () => {
+  it('makes continue the primary action and demotes marking the lesson complete', async () => {
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const primary = await screen.findByTestId('complete-continue');
+    expect(primary).toHaveTextContent(pl.lesson.completeContinue);
+    expect(primary.className).toContain('MuiButton-contained');
+    expect(screen.getByTestId('mark-complete').className).toContain('MuiButton-text');
+    expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
+  });
+
+  it('promotes the next lesson and demotes the undo once the lesson is completed', async () => {
+    server.use(okStructure(), okProgress(['l1']), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const primary = await screen.findByTestId('next-lesson');
+    expect(primary).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(primary).toHaveTextContent('Advanced Variables');
+    expect(primary.className).toContain('MuiButton-contained');
+    expect(screen.getByTestId('unmark-complete').className).toContain('MuiButton-text');
+    expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
+  });
+
+  it('shows completion at course end', async () => {
+    server.use(okStructureFullyCompleted(), okProgress(['l1', 'l2']), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    expect(await screen.findByTestId('course-completed')).toHaveTextContent(pl.lesson.courseCompleted);
+    expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
+  });
+
+  it('shows a neutral end-of-course state at the last lesson when the course is not finished', async () => {
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    const markComplete = await screen.findByTestId('mark-complete');
+    expect(markComplete.className).toContain('MuiButton-contained');
+    expect(screen.queryByTestId('course-completed')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('course-end')).toHaveTextContent(pl.lesson.lastLesson);
+  });
+
+  it('links the previous lesson and disables that slot on the first one', async () => {
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    const { unmount } = await renderPage(
+      <LessonPlayerPage courseId="course-1" lessonId="l2" />,
+    );
+
+    const previous = await screen.findByTestId('prev-lesson');
+    expect(previous).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    expect(previous).toHaveTextContent(pl.lesson.previousLesson);
+    unmount();
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByTestId('prev-lesson')).toBeDisabled();
+  });
+
+  it('skips a locked lesson for the primary action and disables a locked previous one', async () => {
     server.use(
-      okNext({ id: 'l2', name: 'Advanced Variables' }),
-      okStructure(),
-      okProgress(),
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          entry('l2', 'Advanced Variables', false),
+          entry('l3', 'Scopes'),
+        ]),
+      ),
+      okProgress(['l1']),
       okLesson(allBlocks),
     );
     const { unmount } = await renderPage(
       <LessonPlayerPage courseId="course-1" lessonId="l1" />,
     );
 
-    const nextLink = await screen.findByTestId('next-lesson');
-    expect(nextLink).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
-    expect(nextLink).toHaveTextContent('Advanced Variables');
+    expect(await screen.findByTestId('next-lesson')).toHaveAttribute(
+      'href',
+      '/my/courses/course-1/lessons/l3',
+    );
+    expect(screen.queryByTestId('next-locked')).not.toBeInTheDocument();
     unmount();
 
-    server.use(okNext(null), okStructureFullyCompleted(), okProgress(), okLesson(allBlocks));
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-    expect(await screen.findByTestId('course-completed')).toHaveTextContent(pl.lesson.courseCompleted);
-    expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l3" />);
+    expect(await screen.findByTestId('prev-lesson')).toBeDisabled();
   });
 
-  it('shows a neutral end-of-course state at the last lesson when the course is not finished', async () => {
-    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+  it('disables the next slot when every remaining lesson is locked', async () => {
+    server.use(
+      okStructureOf(
+        structureOf([entry('l1', 'Intro to Variables'), entry('l2', 'Advanced Variables', false)]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-    await screen.findByTestId('mark-complete');
-    expect(screen.queryByTestId('course-completed')).not.toBeInTheDocument();
-    expect(await screen.findByTestId('course-end')).toHaveTextContent(pl.lesson.lastLesson);
+
+    expect(await screen.findByTestId('next-locked')).toBeDisabled();
+    expect(screen.getByTestId('mark-complete').className).toContain('MuiButton-contained');
+    expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
   });
 
   it('renders an entitlement-backed attachment download', async () => {
     server.use(
-      okNext(null),
       okStructure(),
       okProgress(),
       okLesson(allBlocks),
@@ -465,7 +524,6 @@ describe('LessonPlayerPage', () => {
       ),
       okStructure(),
       okProgress(),
-      okNext(null),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
@@ -525,7 +583,6 @@ describe('LessonPlayerPage', () => {
         }),
       ),
       okProgress(),
-      okNext(null),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
@@ -537,7 +594,7 @@ describe('LessonPlayerPage', () => {
   });
 
   it('leaves the program to the shell below md, where the program sheet carries it', async () => {
-    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-html')).toBeInTheDocument();
@@ -546,7 +603,7 @@ describe('LessonPlayerPage', () => {
 
   it('leaves the program to the shell sidebar from md up', async () => {
     stubDesktopViewport();
-    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-html')).toBeInTheDocument();
@@ -559,9 +616,8 @@ describe('LessonPlayerPage', () => {
       releaseLesson = resolve;
     });
     server.use(
-      okNext({ id: 'l2', name: 'Advanced Variables' }),
       okStructure(),
-      okProgress(),
+      okProgress(['l1']),
       http.get('/api/student/lessons/:lessonId', async ({ params }) => {
         const lessonId = String(params.lessonId);
         if (lessonId === 'l2') await lessonGate;
@@ -614,7 +670,7 @@ describe('LessonPlayerPage', () => {
   });
 
   it('shows a friendly empty state for a lesson without blocks', async () => {
-    server.use(okNext(null), okStructure(), okProgress(), okLesson([]));
+    server.use(okStructure(), okProgress(), okLesson([]));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     const empty = await screen.findByTestId('lesson-empty-state');
@@ -629,7 +685,6 @@ describe('LessonPlayerPage', () => {
       okLesson(allBlocks),
       okStructure(),
       okProgress(),
-      okNext(null),
       http.post('/api/student/progress/last-viewed', async ({ request }) => {
         lastViewedBody = await request.json();
         return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
@@ -672,7 +727,6 @@ describe('LessonPlayerPage', () => {
       okLesson(allBlocks),
       okStructure(),
       okProgress(),
-      okNext(null),
       http.get('/api/discussion', () =>
         HttpResponse.json({
           ok: true,

@@ -1294,6 +1294,9 @@ export interface Messages {
     unmarkCompleted: string;
     unmarkCompletedHint: string;
     completeContinue: string;
+    previousLesson: string;
+    firstLesson: string;
+    nextLocked: string;
     courseCompleted: string;
     lastLesson: string;
     next: (params: { name: string }) => string;

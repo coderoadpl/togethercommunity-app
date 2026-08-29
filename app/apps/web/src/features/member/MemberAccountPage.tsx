@@ -5,6 +5,7 @@ import {
   Button,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   OutlinedInput,
   Snackbar,
@@ -19,6 +20,7 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { ActiveSessions } from '../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
@@ -31,6 +33,31 @@ import { MemberSurface } from './MemberSurface.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
+
+const SignedInAddress = ({ email, variant }: { email: string; variant: 'card' | 'inline' }) => {
+  const t = useTranslations();
+
+  if (variant === 'card') {
+    return (
+      <SectionCard title={t.account.signedInAs}>
+        <BreakAllText variant="body1" data-testid="account-email">
+          {email}
+        </BreakAllText>
+      </SectionCard>
+    );
+  }
+
+  return (
+    <Stack component="dl" useFlexGap spacing="0.25rem" sx={{ m: 0 }}>
+      <Typography component="dt" variant="caption" color="text.secondary">
+        {t.account.signedInAs}
+      </Typography>
+      <BreakAllText component="dd" variant="body1" sx={{ m: 0 }} data-testid="account-email">
+        {email}
+      </BreakAllText>
+    </Stack>
+  );
+};
 
 export const MemberAccountPage = () => {
   const t = useTranslations();
@@ -76,6 +103,19 @@ export const MemberAccountPage = () => {
     onSuccess: () => {
       setSupportSubject('');
       setSupportBody('');
+    },
+  });
+  const accountSessions = useQuery(actions.accountSessions);
+  const revokeAccountSession = useMutation({
+    ...actions.revokeAccountSession,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.accountSessionsInvalidates());
+    },
+  });
+  const revokeOtherAccountSessions = useMutation({
+    ...actions.revokeOtherAccountSessions,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.accountSessionsInvalidates());
     },
   });
   const passkeys = useQuery(actions.passkeys);
@@ -155,11 +195,54 @@ export const MemberAccountPage = () => {
   return (
     <MemberSurface title={t.account.title} eyebrow={t.account.heading}>
       <Stack component="section" useFlexGap spacing="1.5rem">
-        <SectionCard title={t.account.signedInAs}>
-          <BreakAllText variant="body1" data-testid="account-email">
-            {email}
-          </BreakAllText>
-        </SectionCard>
+        {me.data.tenant?.memberId ? (
+          <SectionCard
+            title={t.account.profileHeading}
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              updateProfile.mutate({ displayName: displayName.trim() === '' ? null : displayName.trim() });
+            }}
+          >
+            <SignedInAddress email={email} variant="inline" />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <MemberAvatar
+                name={displayName.trim() === '' ? me.data.name : displayName}
+                avatarUrl={me.data.avatarUrl}
+                size="lg"
+              />
+              <Typography variant="caption" color="text.secondary">
+                {t.account.avatarHint}
+              </Typography>
+            </Box>
+            <FormControl fullWidth>
+              <FormLabel htmlFor="account-display-name">{t.account.displayNameLabel}</FormLabel>
+              <OutlinedInput
+                id="account-display-name"
+                inputProps={{ maxLength: 200, 'aria-describedby': 'account-display-name-helper' }}
+                value={displayName}
+                onChange={(event) => setDisplayNameDraft(event.target.value)}
+              />
+              <FormHelperText id="account-display-name-helper">
+                {t.account.displayNameHint}
+              </FormHelperText>
+            </FormControl>
+            <Box>
+              <Button
+                type="submit"
+                variant="contained"
+                data-testid="account-display-name-save"
+                disabled={updateProfile.isPending || displayName.trim() === savedDisplayName.trim()}
+              >
+                {t.account.displayNameSave}
+              </Button>
+            </Box>
+            {updateProfile.isError ? (
+              <Alert severity="error">{localizeError(updateProfile.error, t)}</Alert>
+            ) : null}
+          </SectionCard>
+        ) : (
+          <SignedInAddress email={email} variant="card" />
+        )}
 
         {billingOrders.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(billingOrders.error, t), retry: { label: t.common.retry, onRetry: () => void billingOrders.refetch() } }} />
@@ -182,168 +265,6 @@ export const MemberAccountPage = () => {
             })}
           />
         </SectionCard>
-
-        <SectionCard
-          title={t.account.dataExportHeading}
-          description={t.account.dataExportIntro}
-        >
-          <Box>
-            <Button
-              variant="outlined"
-              data-testid="account-data-export"
-              disabled={dataExport.isFetching}
-              onClick={() => void downloadDataExport()}
-            >
-              {dataExport.isFetching ? t.account.dataExportPreparing : t.account.dataExportButton}
-            </Button>
-          </Box>
-          {dataExport.isError ? (
-            <StatusView
-              state={{ kind: 'error', message: localizeError(dataExport.error, t), retry: { label: t.common.retry, onRetry: () => void downloadDataExport() } }}
-            />
-          ) : null}
-        </SectionCard>
-
-        <SectionCard
-          title={t.account.erasureHeading}
-          description={t.account.erasureIntro}
-        >
-          {erasureRequest.isPending ? (
-            <StatusView state={{ kind: 'loading', label: t.common.loading }} />
-          ) : erasureRequest.isError ? (
-            <StatusView state={{ kind: 'error', message: localizeError(erasureRequest.error, t), retry: { label: t.common.retry, onRetry: () => void erasureRequest.refetch() } }} />
-          ) : erasureRequest.data.request === null ? (
-            <>
-              <FormControl fullWidth>
-                <FormLabel htmlFor="erasure-confirm-email">
-                  {t.account.erasureConfirmLabel}
-                </FormLabel>
-                <OutlinedInput
-                  id="erasure-confirm-email"
-                  value={erasureConfirmEmail}
-                  onChange={(event) => setErasureConfirmEmail(event.target.value)}
-                />
-              </FormControl>
-              <Button
-                color="error"
-                variant="contained"
-                data-testid="account-erasure-create"
-                disabled={
-                  createErasureRequest.isPending ||
-                  erasureConfirmEmail.trim().toLowerCase() !== email.toLowerCase()
-                }
-                onClick={() =>
-                  createErasureRequest.mutate({ confirmEmail: erasureConfirmEmail })
-                }
-              >
-                {t.account.erasureRequestButton}
-              </Button>
-            </>
-          ) : erasureRequest.data.request.status === 'open' ? (
-            <>
-              <Typography>
-                {t.account.erasureOpen({
-                  dueAt: new Date(erasureRequest.data.request.dueAt).toLocaleDateString(
-                    language,
-                  ),
-                })}
-              </Typography>
-              <Button
-                variant="outlined"
-                data-testid="account-erasure-cancel"
-                disabled={cancelErasureRequest.isPending}
-                onClick={() => cancelErasureRequest.mutate(undefined)}
-              >
-                {t.account.erasureCancelButton}
-              </Button>
-            </>
-          ) : (
-            <Typography>
-              {t.account.erasureResolved({
-                status: t.account.erasureRequestStatus[
-                  erasureRequest.data.request.status
-                ],
-                resolvedAt:
-                  erasureRequest.data.request.resolvedAt === null
-                    ? '—'
-                    : new Date(
-                        erasureRequest.data.request.resolvedAt,
-                      ).toLocaleDateString(language),
-              })}
-            </Typography>
-          )}
-          {createErasureRequest.isError ? (
-            <Alert severity="error">{localizeError(createErasureRequest.error, t)}</Alert>
-          ) : null}
-          {cancelErasureRequest.isError ? <Alert severity="error">{localizeError(cancelErasureRequest.error, t)}</Alert> : null}
-        </SectionCard>
-
-        {me.data.tenant?.memberId ? (
-          <SectionCard
-            title={t.account.profileHeading}
-            description={t.account.displayNameHint}
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              updateProfile.mutate({ displayName: displayName.trim() === '' ? null : displayName.trim() });
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <MemberAvatar
-                name={displayName.trim() === '' ? me.data.name : displayName}
-                avatarUrl={me.data.avatarUrl}
-                size="lg"
-              />
-              <Typography variant="caption" color="text.secondary">
-                {t.account.avatarHint({ email })}
-              </Typography>
-            </Box>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="account-display-name">{t.account.displayNameLabel}</FormLabel>
-              <OutlinedInput
-                id="account-display-name"
-                inputProps={{ maxLength: 200 }}
-                value={displayName}
-                onChange={(event) => setDisplayNameDraft(event.target.value)}
-              />
-            </FormControl>
-            <Box>
-              <Button
-                type="submit"
-                variant="contained"
-                data-testid="account-display-name-save"
-                disabled={updateProfile.isPending || displayName.trim() === savedDisplayName.trim()}
-              >
-                {t.account.displayNameSave}
-              </Button>
-            </Box>
-            {updateProfile.isError ? (
-              <Alert severity="error">{localizeError(updateProfile.error, t)}</Alert>
-            ) : null}
-          </SectionCard>
-        ) : null}
-
-        {me.data.tenant?.memberId ? (
-          <SectionCard title={t.messages.privacyHeading} description={t.messages.optOutHint}>
-            <FormControlLabel
-              control={(
-                <Switch
-                  checked={dmOptOut}
-                  disabled={updatePrivacy.isPending}
-                  onChange={(event) =>
-                    updatePrivacy.mutate({
-                      displayName: savedDisplayName.trim() === '' ? null : savedDisplayName.trim(),
-                      dmOptOut: event.target.checked,
-                    })
-                  }
-                />
-              )}
-              label={t.messages.optOutLabel}
-            />
-            {updatePrivacy.isError ? (
-              <Alert severity="error">{localizeError(updatePrivacy.error, t)}</Alert>
-            ) : null}
-          </SectionCard>
-        ) : null}
 
         <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
             <ChangePasswordForm
@@ -425,6 +346,56 @@ export const MemberAccountPage = () => {
               run: regenerateBackupCodes.mutate,
             }}
           />
+          <ActiveSessions
+            sessions={{
+              data: accountSessions.data?.sessions,
+              pending: accountSessions.isPending,
+              error: accountSessions.error,
+              retry: () => void accountSessions.refetch(),
+            }}
+            revokeSession={{
+              pending: revokeAccountSession.isPending,
+              success: revokeAccountSession.isSuccess,
+              error: revokeAccountSession.error,
+              run: revokeAccountSession.mutate,
+            }}
+            revokeOtherSessions={{
+              pending: revokeOtherAccountSessions.isPending,
+              success: revokeOtherAccountSessions.isSuccess,
+              error: revokeOtherAccountSessions.error,
+              run: () => revokeOtherAccountSessions.mutate(undefined),
+            }}
+          />
+        </SectionCard>
+
+        {me.data.tenant?.memberId ? (
+          <SectionCard title={t.messages.privacyHeading} description={t.messages.optOutHint}>
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={dmOptOut}
+                  disabled={updatePrivacy.isPending}
+                  onChange={(event) =>
+                    updatePrivacy.mutate({
+                      displayName: savedDisplayName.trim() === '' ? null : savedDisplayName.trim(),
+                      dmOptOut: event.target.checked,
+                    })
+                  }
+                />
+              )}
+              label={t.messages.optOutLabel}
+            />
+            {updatePrivacy.isError ? (
+              <Alert severity="error">{localizeError(updatePrivacy.error, t)}</Alert>
+            ) : null}
+          </SectionCard>
+        ) : null}
+
+        <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
+            <LanguageSwitcher inline />
+            <ColorSchemeSwitcher />
+          </Stack>
         </SectionCard>
 
         {billingPortalUrl ? (
@@ -442,60 +413,6 @@ export const MemberAccountPage = () => {
                 </Button>
               </Box>
           </SectionCard>
-        ) : null}
-
-        {tenantSettings.data?.settings.supportConfigured === true ? (
-          <SectionCard
-            title={t.support.heading}
-            description={t.support.intro}
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              support.mutate({ subject: supportSubject, body: supportBody });
-            }}
-          >
-            <FormControl fullWidth>
-              <FormLabel htmlFor="support-subject">{t.support.subjectLabel}</FormLabel>
-              <OutlinedInput
-                id="support-subject"
-                value={supportSubject}
-                onChange={(event) => setSupportSubject(event.target.value)}
-                required
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="support-body">{t.support.bodyLabel}</FormLabel>
-              <OutlinedInput
-                id="support-body"
-                multiline
-                minRows={5}
-                value={supportBody}
-                onChange={(event) => setSupportBody(event.target.value)}
-                required
-              />
-            </FormControl>
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={support.isPending || supportSubject.trim() === '' || supportBody.trim() === ''}
-            >
-              {support.isPending ? t.support.sending : t.support.send}
-            </Button>
-            {support.isSuccess ? <Typography>{t.support.sent}</Typography> : null}
-            {support.isError ? (
-              <Alert severity="error">{localizeError(support.error, t)}</Alert>
-            ) : null}
-          </SectionCard>
-        ) : null}
-
-        {tenantSettings.data?.settings.supportUrl ? (
-          <Button
-            component="a"
-            href={tenantSettings.data.settings.supportUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {t.support.externalLink}
-          </Button>
         ) : null}
 
         {billedOrders.length > 0 ? (
@@ -536,11 +453,159 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
-            <LanguageSwitcher inline />
-            <ColorSchemeSwitcher />
-          </Stack>
+        {tenantSettings.data?.settings.supportConfigured === true ? (
+          <SectionCard
+            title={t.support.heading}
+            description={t.support.intro}
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              support.mutate({ subject: supportSubject, body: supportBody });
+            }}
+          >
+            <FormControl fullWidth>
+              <FormLabel htmlFor="support-subject">{t.support.subjectLabel}</FormLabel>
+              <OutlinedInput
+                id="support-subject"
+                value={supportSubject}
+                onChange={(event) => setSupportSubject(event.target.value)}
+                required
+              />
+            </FormControl>
+            <FormControl fullWidth>
+              <FormLabel htmlFor="support-body">{t.support.bodyLabel}</FormLabel>
+              <OutlinedInput
+                id="support-body"
+                multiline
+                minRows={5}
+                value={supportBody}
+                onChange={(event) => setSupportBody(event.target.value)}
+                required
+              />
+            </FormControl>
+            <Box>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={support.isPending || supportSubject.trim() === '' || supportBody.trim() === ''}
+              >
+                {support.isPending ? t.support.sending : t.support.send}
+              </Button>
+            </Box>
+            {support.isSuccess ? <Typography>{t.support.sent}</Typography> : null}
+            {support.isError ? (
+              <Alert severity="error">{localizeError(support.error, t)}</Alert>
+            ) : null}
+          </SectionCard>
+        ) : null}
+
+        {tenantSettings.data?.settings.supportUrl ? (
+          <Button
+            component="a"
+            href={tenantSettings.data.settings.supportUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t.support.externalLink}
+          </Button>
+        ) : null}
+
+        <SectionCard
+          title={t.account.dataExportHeading}
+          description={t.account.dataExportIntro}
+        >
+          <Box>
+            <Button
+              variant="outlined"
+              data-testid="account-data-export"
+              disabled={dataExport.isFetching}
+              onClick={() => void downloadDataExport()}
+            >
+              {dataExport.isFetching ? t.account.dataExportPreparing : t.account.dataExportButton}
+            </Button>
+          </Box>
+          {dataExport.isError ? (
+            <StatusView
+              state={{ kind: 'error', message: localizeError(dataExport.error, t), retry: { label: t.common.retry, onRetry: () => void downloadDataExport() } }}
+            />
+          ) : null}
+        </SectionCard>
+
+        <SectionCard
+          title={t.account.erasureHeading}
+          description={t.account.erasureIntro}
+        >
+          {erasureRequest.isPending ? (
+            <StatusView state={{ kind: 'loading', label: t.common.loading }} />
+          ) : erasureRequest.isError ? (
+            <StatusView state={{ kind: 'error', message: localizeError(erasureRequest.error, t), retry: { label: t.common.retry, onRetry: () => void erasureRequest.refetch() } }} />
+          ) : erasureRequest.data.request === null ? (
+            <>
+              <FormControl fullWidth>
+                <FormLabel htmlFor="erasure-confirm-email">
+                  {t.account.erasureConfirmLabel}
+                </FormLabel>
+                <OutlinedInput
+                  id="erasure-confirm-email"
+                  value={erasureConfirmEmail}
+                  onChange={(event) => setErasureConfirmEmail(event.target.value)}
+                />
+              </FormControl>
+              <Box>
+                <Button
+                  color="error"
+                  variant="contained"
+                  data-testid="account-erasure-create"
+                  disabled={
+                    createErasureRequest.isPending ||
+                    erasureConfirmEmail.trim().toLowerCase() !== email.toLowerCase()
+                  }
+                  onClick={() =>
+                    createErasureRequest.mutate({ confirmEmail: erasureConfirmEmail })
+                  }
+                >
+                  {t.account.erasureRequestButton}
+                </Button>
+              </Box>
+            </>
+          ) : erasureRequest.data.request.status === 'open' ? (
+            <>
+              <Typography>
+                {t.account.erasureOpen({
+                  dueAt: new Date(erasureRequest.data.request.dueAt).toLocaleDateString(
+                    language,
+                  ),
+                })}
+              </Typography>
+              <Box>
+                <Button
+                  variant="outlined"
+                  data-testid="account-erasure-cancel"
+                  disabled={cancelErasureRequest.isPending}
+                  onClick={() => cancelErasureRequest.mutate(undefined)}
+                >
+                  {t.account.erasureCancelButton}
+                </Button>
+              </Box>
+            </>
+          ) : (
+            <Typography>
+              {t.account.erasureResolved({
+                status: t.account.erasureRequestStatus[
+                  erasureRequest.data.request.status
+                ],
+                resolvedAt:
+                  erasureRequest.data.request.resolvedAt === null
+                    ? '—'
+                    : new Date(
+                        erasureRequest.data.request.resolvedAt,
+                      ).toLocaleDateString(language),
+              })}
+            </Typography>
+          )}
+          {createErasureRequest.isError ? (
+            <Alert severity="error">{localizeError(createErasureRequest.error, t)}</Alert>
+          ) : null}
+          {cancelErasureRequest.isError ? <Alert severity="error">{localizeError(cancelErasureRequest.error, t)}</Alert> : null}
         </SectionCard>
 
         <Snackbar

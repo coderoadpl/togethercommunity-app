@@ -570,3 +570,27 @@ command result together with the deployment URL, expected SHA, actual health
 SHA, and approving owner. Repeat the same mandatory-SHA check on staging before
 promotion and on production after promotion. This owner sign-off is a manual
 post-deployment attestation, not an automated CI or hosting gate.
+
+### 19. Realtime listener connection
+
+**STATUS:** pre-launch-verify
+
+`REALTIME_TRANSPORT` defaults to `pg`, so the realtime bus holds a dedicated
+`LISTEN` connection resolved from `REALTIME_DATABASE_URL`, then
+`DATABASE_URL_UNPOOLED`, then `DATABASE_URL`
+(`apps/server/src/realtime-transport.ts`). Transaction-mode poolers accept
+`LISTEN` and never deliver a notification, so a pooled URL degrades in-app
+notifications and direct messages to the 25 s stream rotation without any error.
+
+Confirm which URL the managed database integration injects into each deployed
+environment. If `DATABASE_URL` points at a pooler, set `REALTIME_DATABASE_URL`
+or `DATABASE_URL_UNPOOLED` to the direct connection for staging and production.
+The listener logs `[realtime] listener connection targets a pooled host` at boot
+when the hostname contains `pooler` or the port is 6543 or 6432; check the
+deployment log after the first request. That heuristic cannot see every pooler
+(RDS Proxy and PgBouncer on 5432 look like a direct host), so confirm the URL
+against the provider console rather than relying on the absence of the warning.
+
+Each warm instance holds one direct connection, which counts against the
+database `max_connections` budget. Verify that the compute size can carry the
+expected number of concurrent streams.

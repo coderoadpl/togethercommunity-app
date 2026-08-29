@@ -5,7 +5,8 @@ import { Link } from '@tanstack/react-router';
 import { StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { UnreadDot } from '../../../theme.js';
-import { NavRow, SubNavRow, UnreadRowText } from './shell-chrome.js';
+import { NavRow, SubNavRow, SubUnreadRowText, UnreadRowText } from './shell-chrome.js';
+import { SpaceIcon } from './shell-icons.js';
 
 export const LinkRow = ({
   to,
@@ -62,8 +63,11 @@ export const SubLinkRow = ({
     {...(unread === undefined ? {} : { 'aria-label': unread.label })}
     data-testid={testId}
   >
+    <ListItemIcon>
+      <SpaceIcon />
+    </ListItemIcon>
     <ListItemText
-      primary={unread === undefined ? label : <UnreadRowText>{label}</UnreadRowText>}
+      primary={unread === undefined ? label : <SubUnreadRowText>{label}</SubUnreadRowText>}
       slotProps={{ primary: { noWrap: true } }}
     />
     {unread === undefined ? null : <UnreadDot aria-hidden data-testid={`${testId}-unread`} />}

@@ -109,7 +109,7 @@ import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
-import { createInAppNotificationChannel, createRealtimeBus } from '#adapters/notifications/in-app.js';
+import { createInAppNotificationChannel } from '#adapters/notifications/in-app.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
 import { createResendEmailPort } from '#adapters/email/resend.js';
@@ -253,6 +253,7 @@ import { capabilitiesForPrincipal, communityEventPath, communityPostPath, commun
 
 import { type Env, isProductionEnvironment } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
+import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
 
 interface DevEndpoints {
@@ -862,7 +863,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     if (!purged.ok) return purged;
     return marketing;
   };
-  const realtimeBus = createRealtimeBus();
+  const realtimeBus = createRealtimeTransport({ env, db, logger });
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const links: DiscussionLinkPort = {
     lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>

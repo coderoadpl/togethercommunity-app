@@ -47,6 +47,7 @@ import {
   marketingSesSettingsUpdateInputSchema,
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
+  accountSessionRevokeInputSchema,
   meProfileUpdateInputSchema,
   eventCreateInputSchema,
   eventRefInputSchema,
@@ -196,6 +197,9 @@ import {
   requestMyErasure,
   getMyErasureRequest,
   cancelMyErasureRequest,
+  listMyAccountSessions,
+  revokeMyAccountSession,
+  revokeMyOtherAccountSessions,
   updateMyProfile,
   listErasureRequests,
   rejectErasureRequest,
@@ -358,7 +362,12 @@ import { checkoutConsentEvidence } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
-import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
+import {
+  createNotificationEventStream,
+  parseLastEventId,
+  replayRealtimeEvents,
+  SSE_HEADERS,
+} from './notifications-sse.js';
 import { respond } from './respond.js';
 import { secretEquals } from './secret-equals.js';
 import {
@@ -366,17 +375,13 @@ import {
   SELF_AUTHENTICATING_ROUTE_MANIFEST,
 } from './self-authenticating-route-manifest.js';
 
-type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
+type Vars = { Variables: { identity: Identity; sessionId?: string; secureHeadersNonce?: string; }; };
 
-const requestOrigin = (req: HonoRequest, appBaseUrl: string): string => {
-  const host = req.header('host') ?? '';
-  if (host === '' || req.header(TENANT_HEADER) !== undefined) return new URL(appBaseUrl).origin;
-  const proto = req.header('x-forwarded-proto') ?? new URL(appBaseUrl).protocol.replace(':', '');
-  return new URL(`${proto}://${host}`).origin;
+const probeCorsOrigins = async (req: HonoRequest, deps: AppDeps): Promise<string[]> => {
+  const resolved = await resolveTenant(req.header('host') ?? '', req.header(TENANT_HEADER) ?? null, deps);
+  const tenantOrigin = authLinkBaseUrl(resolved.ok ? resolved.value : null, deps);
+  return [...new Set([new URL(tenantOrigin).origin, new URL(deps.appBaseUrl).origin])];
 };
-
-const probeCorsOrigins = (req: HonoRequest, appBaseUrl: string): string[] =>
-  [...new Set([requestOrigin(req, appBaseUrl), new URL(appBaseUrl).origin])];
 
 const emailBranding = async (
   deps: AppDeps,
@@ -969,6 +974,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     );
     if (!identity.ok) return respond(identity);
     c.set('identity', identity.value);
+    if (user !== null) c.set('sessionId', user.sessionId);
     await next();
   });
 
@@ -1403,6 +1409,32 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       { members: deps.members, clock: deps.clock },
     ));
   });
+
+  app.get(API_PATHS.accountSessions, async (c) => respond(await listMyAccountSessions(
+    { identity: c.get('identity') },
+    { currentSessionId: c.get('sessionId') ?? '' },
+    { auth: deps.authPort },
+  )));
+
+  app.post(API_PATHS.accountSessionRevoke, async (c) => {
+    const parsed = accountSessionRevokeInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return respond(err(validation('Invalid session payload', parsed.error.flatten())));
+    }
+    return respond(await revokeMyAccountSession(
+      { identity: c.get('identity') },
+      { sessionId: parsed.data.sessionId, currentSessionId: c.get('sessionId') ?? '' },
+      { auth: deps.authPort },
+    ));
+  });
+
+  app.post(API_PATHS.accountSessionsRevokeOthers, async (c) => respond(
+    await revokeMyOtherAccountSessions(
+      { identity: c.get('identity') },
+      { currentSessionId: c.get('sessionId') ?? '' },
+      { auth: deps.authPort },
+    ),
+  ));
 
   app.get(API_PATHS.memberBillingOrders, async (c) => {
     const parsed = memberBillingOrdersQuerySchema.safeParse({
@@ -1850,7 +1882,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
-        corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl),
+        corsOrigins: await probeCorsOrigins(c.req, deps),
         email: deps.email,
         emailSender: deps.emailSender,
         emailTransports: deps.emailTransports,
@@ -1867,7 +1899,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await probeStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { storage: deps.storage, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
+      { storage: deps.storage, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
 
@@ -1878,7 +1910,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await configureStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { ...deps, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
+      { ...deps, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
 
@@ -2880,11 +2912,24 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const identity = c.get('identity');
     const tenant = authorizeTenant({ identity }, 'notification:read');
     if (!tenant.ok) return respond(tenant);
+    const since = parseLastEventId(c.req.header('last-event-id'));
     const stream = createNotificationEventStream({
       tenantId: tenant.value,
       recipientUserId: identity.userId,
       bus: deps.realtimeBus,
       unreadCount: () => deps.notifications.unreadCount(tenant.value, identity.userId),
+      ...(since === null
+        ? {}
+        : {
+            replay: () =>
+              replayRealtimeEvents({
+                tenantId: tenant.value,
+                recipientUserId: identity.userId,
+                since,
+                notifications: deps.notifications,
+                dmConversations: deps.dmConversations,
+              }),
+          }),
     });
     return new Response(stream, { headers: SSE_HEADERS });
   });

@@ -38,6 +38,8 @@ export const pl: Messages = {
     retry: 'Spróbuj ponownie',
     unsavedChanges: 'Niezapisane zmiany',
     unsavedChangesConfirm: 'Masz niezapisane zmiany. Opuścić stronę i je odrzucić?',
+    saving: 'Zapisywanie…',
+    saved: 'Zapisano.',
   },
   imageAssets: {
     upload: 'Dodaj plik',
@@ -638,6 +640,20 @@ export const pl: Messages = {
     regenerateBackupCodes: 'Wygeneruj nowe kody zapasowe',
     regeneratingBackupCodes: 'Generowanie…',
     backupCodesRegenerated: 'Wygenerowano nowe kody zapasowe. Poprzednie kody już nie działają.',
+    sessionsHeading: 'Aktywne sesje',
+    sessionsIntro: 'Urządzenia i przeglądarki zalogowane na Twoje konto. Jeśli którejś nie rozpoznajesz, wyloguj ją.',
+    sessionsLoading: 'Wczytywanie sesji…',
+    sessionsEmpty: 'Nie widzimy żadnej aktywnej sesji.',
+    sessionCurrent: 'Ta sesja',
+    sessionUnknownDevice: 'Nieznane urządzenie',
+    sessionSignedInAt: ({ date }) => format('Zalogowano {date}', { date }),
+    sessionLastActiveAt: ({ date }) => format('Ostatnia aktywność {date}', { date }),
+    sessionRevoke: 'Wyloguj to urządzenie',
+    sessionRevoking: 'Wylogowywanie…',
+    sessionRevoked: 'Urządzenie zostało wylogowane.',
+    sessionsRevokeOthers: 'Wyloguj wszystkie inne',
+    sessionsRevokingOthers: 'Wylogowywanie…',
+    sessionsOthersRevoked: 'Pozostałe sesje zostały wylogowane.',
   },
   integrations: {
     heading: 'Integracje',
@@ -1039,6 +1055,7 @@ export const pl: Messages = {
     chapterNameAria: ({ name }) => format('Nazwa rozdziału {name}', { name }),
     duplicateLessonWarning: 'Ta lekcja jest już dodana do tego rozdziału.',
     unknownLesson: 'Nieznana lekcja',
+    sourceLesson: ({ name }) => format('Lekcja: {name}', { name }),
     historyHeading: 'Historia zmian',
     historyLoading: 'Ładowanie historii…',
     historyEmpty: 'Brak zapisanych wersji',
@@ -1361,7 +1378,8 @@ export const pl: Messages = {
   anon: {
     eyebrow: 'Podgląd dla gości',
     homeTitle: 'Zajrzyj do środka',
-    signInCta: 'Zaloguj się, aby dołączyć',
+    coursesSection: 'Kursy',
+    spacesSection: 'Przestrzenie',
     joinDiscussionCta: 'Zaloguj się, aby dołączyć do dyskusji',
     readOnlyBanner:
       'Przeglądasz jako gość — możesz czytać, a żeby pisać i reagować, załóż konto.',
@@ -1473,6 +1491,9 @@ export const pl: Messages = {
     unmarkCompleted: 'Ukończona — cofnij oznaczenie',
     unmarkCompletedHint: 'Kliknij, aby cofnąć oznaczenie lekcji jako ukończonej',
     completeContinue: 'Ukończ i przejdź dalej',
+    previousLesson: 'Poprzednia lekcja',
+    firstLesson: 'To pierwsza lekcja',
+    nextLocked: 'Następna lekcja zablokowana',
     courseCompleted: 'Kurs ukończony',
     lastLesson: 'To ostatnia lekcja',
     next: ({ name }) => format('Następna: {name}', { name }),
@@ -1559,6 +1580,11 @@ export const pl: Messages = {
     emptyFeed: 'Nikt jeszcze nic nie napisał w tej przestrzeni. Zacznij rozmowę!',
     openThread: 'Otwórz wątek',
     reactAria: ({ emoji }) => format('Zareaguj: {emoji}', { emoji }),
+    addReaction: 'Dodaj reakcję',
+    postMenu: 'Więcej opcji wpisu',
+    copyLink: 'Kopiuj link',
+    copyLinkDone: 'Link do wpisu skopiowany.',
+    copyLinkFailed: 'Nie udało się skopiować linku.',
     spaceNotFoundTitle: 'Nie znaleziono przestrzeni',
     spaceNotFoundBody: 'Tej przestrzeni nie ma albo nie masz do niej dostępu.',
     backToSpaces: 'Wróć do listy przestrzeni',
@@ -1668,11 +1694,8 @@ export const pl: Messages = {
     displayNameHint: 'Widoczna przy Twoich wpisach i odpowiedziach w tej społeczności.',
     displayNameSave: 'Zapisz',
     displayNameSaved: 'Wyświetlana nazwa została zapisana.',
-    avatarHint: ({ email }) =>
-      format(
-        'Zdjęcie pobieramy z konta Google lub Gravatara dla adresu {email}; w przeciwnym razie pokazujemy inicjały. Wgrywanie własnego zdjęcia dodamy wkrótce.',
-        { email },
-      ),
+    avatarHint:
+      'Zdjęcie pobieramy z konta Google lub Gravatara dla powyższego adresu; w przeciwnym razie pokazujemy inicjały. Wgrywanie własnego zdjęcia dodamy wkrótce.',
     passwordHeading: 'Hasło',
     passwordIntro:
       'Aby zmienić hasło, podaj obecne. Jeśli nie masz jeszcze hasła, ustaw je linkiem wysłanym e-mailem (przycisk poniżej). Logowanie magicznym linkiem nadal będzie działać.',
@@ -1749,6 +1772,9 @@ export const pl: Messages = {
     emailLabel: 'E-mail do kontaktu',
     urlLabel: 'Link do zewnętrznej pomocy (opcjonalnie)',
     save: 'Zapisz ustawienia kontaktu',
+    settingsHeading: 'Kontakt dla uczestników',
+    settingsIntro:
+      'Adres e-mail i link, które uczestnicy zobaczą w swoim koncie i w stopce wiadomości.',
   },
   billing: {
     heading: 'Portal płatności',

@@ -1,6 +1,7 @@
 export * from './context.js';
 export * from './authorize.js';
 export * from './ports.js';
+export * from './realtime.js';
 export * from './tenant-url.js';
 export * from './usecases/resolve-identity.js';
 export * from './usecases/resolve-tenant.js';
@@ -58,6 +59,7 @@ export * from './usecases/member-billing-orders.js';
 export * from './usecases/member-data-export.js';
 export * from './usecases/member-erasure-requests.js';
 export * from './usecases/member-profile.js';
+export * from './usecases/account-sessions.js';
 export * from './usecases/avatar.js';
 export * from './usecases/subscription-lifecycle.js';
 export * from './usecases/subscription-simulate.js';

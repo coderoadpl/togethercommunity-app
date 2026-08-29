@@ -90,6 +90,8 @@ import {
   eventOutputSchema,
   eventsListOutputSchema,
   memberUpcomingEventsOutputSchema,
+  accountSessionsOutputSchema,
+  accountSessionRevokeOutputSchema,
   meOutputSchema,
   meProfileUpdateOutputSchema,
   messagesListOutputSchema,
@@ -228,6 +230,7 @@ import {
   type EventsBySpaceInput,
   type MemberUpcomingEventsInput,
   type PublicSpaceEventInput,
+  type AccountSessionRevokeInput,
   type MeProfileUpdateInput,
   type MessagesListInput,
   type MessagesReadInput,
@@ -762,6 +765,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.meProfile.path,
       meProfileUpdateOutputSchema,
       input,
+      signal,
+    ),
+  listAccountSessions: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.accountSessions.method,
+      API_ROUTES.accountSessions.path,
+      accountSessionsOutputSchema,
+      undefined,
+      signal,
+    ),
+  revokeAccountSession: (input: AccountSessionRevokeInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.accountSessionRevoke.method,
+      API_ROUTES.accountSessionRevoke.path,
+      accountSessionRevokeOutputSchema,
+      input,
+      signal,
+    ),
+  revokeOtherAccountSessions: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.accountSessionsRevokeOthers.method,
+      API_ROUTES.accountSessionsRevokeOthers.path,
+      accountSessionRevokeOutputSchema,
+      undefined,
       signal,
     ),
   listMemberBillingOrders: (page = 1, pageSize = 25, signal?: AbortSignal) => {

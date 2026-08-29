@@ -33,6 +33,7 @@ import {
   type Member,
   type Membership,
   type LessonAttachment,
+  type Notification,
   type Order,
   type Post,
   type Product,
@@ -155,6 +156,8 @@ const deps = (input: {
         if (!input.authenticated) throw new Error('Public route must not authenticate');
         return null;
       }),
+      listSessions: async () => [],
+      revokeSessions: async () => undefined,
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -786,6 +789,7 @@ const scopedApp = (
     authPort: {
       ...base.authPort,
       getAuthenticatedUser: async () => ({
+        sessionId: 'session-1',
         userId: 'user-1',
         email: 'user@acme.test',
         name: 'User',
@@ -1782,6 +1786,40 @@ describe('marketing HTTP surfaces', () => {
       ok: true,
       data: { id: 'send-1', events: [{ type: 'queued' }, { type: 'accepted' }] },
     });
+  });
+
+  it('builds unsubscribe links from the API key tenant instead of the request host', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const sender = new FakeSesMarketingSender();
+    marketing.marketingSes = sender;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityCheckError: null, configurationSet: 'marketing',
+      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
+      webhookVerifiedAt: '1998-07-22T00:00:00.000Z', footerLegalName: 'Acme',
+      footerAddress: 'Warsaw', broadcastsEnabled: true,
+      reputationAlertStatus: null, reputationAlertedAt: null,
+    }]);
+
+    const response = await marketingApp(marketing).request('/api/m2m/marketing/messages', {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:9999',
+        'x-api-key': 'marketing-key',
+        'content-type': 'application/json',
+        'x-forwarded-proto': 'https',
+      },
+      body: JSON.stringify({ messages: [
+        { to: 'member@example.test', consentDefinitionId: 'definition-news', subject: 'News', bodyHtml: '<p>News</p>' },
+      ] }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(JSON.stringify(sender.sent)).toContain('http://acme.localhost:48730/u/');
+    expect(JSON.stringify(sender.sent)).not.toContain('acme.localhost:9999');
   });
 
   it('returns 429 with Retry-After when the tenant SES throttle is under pressure', async () => {
@@ -2985,6 +3023,54 @@ describe('new route authorization', () => {
     expect(response.status).toBe(409);
   });
 
+  it('serves and revokes only the caller own account sessions', async () => {
+    const base = deps();
+    const revokeSessions = vi.fn(async () => undefined);
+    const authPort: AppDeps['authPort'] = {
+      ...base.authPort,
+      getAuthenticatedUser: async () => ({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        email: 'user@acme.test',
+        name: 'User',
+        emailVerified: true,
+        image: null,
+      }),
+      listSessions: async () => [
+        {
+          id: 'session-1',
+          createdAt: '1998-07-12T00:00:00.000Z',
+          lastActiveAt: '1998-07-12T00:00:00.000Z',
+          userAgent: 'Chrome/140',
+        },
+        {
+          id: 'session-2',
+          createdAt: '1998-07-11T00:00:00.000Z',
+          lastActiveAt: '1998-07-11T00:00:00.000Z',
+          userAgent: null,
+        },
+      ],
+      revokeSessions,
+    };
+
+    const listed = await scopedApp('member', { overrides: { authPort } })
+      .request(API_PATHS.accountSessions, { headers });
+    expect(listed.status).toBe(200);
+    await expect(listed.json()).resolves.toMatchObject({
+      data: { sessions: [{ id: 'session-1', current: true }, { id: 'session-2', current: false }] },
+    });
+
+    const revoked = await scopedApp('staff', { overrides: { authPort } })
+      .request(API_PATHS.accountSessionsRevokeOthers, { method: 'POST', headers });
+    expect(revoked.status).toBe(200);
+    expect(revokeSessions).toHaveBeenCalledExactlyOnceWith('user-1', ['session-2']);
+
+    expect(
+      (await scopedApp('none', { overrides: { authPort } })
+        .request(API_PATHS.accountSessions, { headers })).status,
+    ).toBe(403);
+  });
+
   it('allows only a member to export their own data', async () => {
     expect(
       (await scopedApp('member').request(API_PATHS.memberDataExport, { headers })).status,
@@ -3116,6 +3202,137 @@ describe('new route authorization', () => {
     expect(JSON.stringify(payload)).not.toContain('minio-access');
     expect(JSON.stringify(payload)).not.toContain('minio-secret');
   });
+
+  it('probes storage CORS on the resolved tenant origin instead of the request host', async () => {
+    const base = deps();
+    const probedOrigins: string[][] = [];
+    const overrides: Partial<AppDeps> = {
+      storage: {
+        ...base.storage,
+        probe: async (_configuration, corsOrigins) => {
+          probedOrigins.push(corsOrigins ?? []);
+          return ok({ code: 'storage.available', message: 'Storage is available.' });
+        },
+      },
+    };
+    const request = {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'minio',
+        endpoint: 'http://127.0.0.1:19000',
+        region: 'us-east-1',
+        bucket: 'together-test',
+        accessKeyId: 'minio-access',
+        secretAccessKey: 'minio-secret',
+      }),
+    };
+
+    const spoofed = await scopedApp('owner', { overrides }).request(API_PATHS.storageProbe, {
+      ...request,
+      headers: { ...headers, host: 'acme.localhost:9999', 'x-forwarded-proto': 'https' },
+    });
+    const routed = await scopedApp('owner', { overrides }).request(API_PATHS.storageProbe, {
+      ...request,
+      headers: { ...headers, host: 'localhost:48730', [TENANT_HEADER]: 'acme' },
+    });
+
+    expect(spoofed.status).toBe(200);
+    expect(routed.status).toBe(200);
+    expect(probedOrigins).toEqual([
+      ['http://acme.localhost:48730', 'http://localhost:48730'],
+      ['http://localhost:48730'],
+    ]);
+  });
+});
+
+describe('notifications stream route', () => {
+  const headers = { host: 'acme.localhost:48730' };
+
+  const missed: Notification = {
+    id: 'n-missed',
+    tenantId: acme.id,
+    recipientUserId: 'user-1',
+    kind: 'thread-reply',
+    payload: {
+      rootPostId: 'post-1',
+      postId: 'post-2',
+      contextKind: 'lesson',
+      contextId: 'lesson-1',
+      courseId: 'course-1',
+      eventId: null,
+      lessonName: 'Lesson',
+      authorDisplay: 'Author',
+      authorAvatarUrl: null,
+      snippet: 'hello',
+    },
+    readAt: null,
+    createdAt: '1998-07-12T00:00:01.000Z',
+  };
+
+  interface ReplayScope {
+    tenantId: string;
+    recipientUserId: string;
+  }
+
+  const streamApp = (scopes: ReplayScope[]) => {
+    const base = deps();
+    return scopedApp('member', {
+      overrides: {
+        notifications: {
+          ...base.notifications,
+          listForRecipient: async (tenantId, query) => {
+            scopes.push({ tenantId, recipientUserId: query.recipientUserId });
+            return { notifications: [missed], nextCursor: null };
+          },
+        },
+      },
+    });
+  };
+
+  const readChunks = async (response: Response, count: number): Promise<string[]> => {
+    const body = response.body;
+    if (body === null) throw new Error('stream response had no body');
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+    while (chunks.length < count) {
+      const { value, done } = await reader.read();
+      if (done || value === undefined) break;
+      chunks.push(decoder.decode(value));
+    }
+    await reader.cancel();
+    return chunks;
+  };
+
+  it('replays from Last-Event-ID scoped to the authenticated identity', async () => {
+    const scopes: ReplayScope[] = [];
+
+    const response = await streamApp(scopes).request(API_PATHS.notificationsStream, {
+      headers: { ...headers, 'last-event-id': '1998-07-12T00:00:00.000Z|n-seen' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await readChunks(response, 3)).toEqual([
+      'retry: 1000\n\n',
+      'event: unread\ndata: {"unread":0}\n\n',
+      'id: 1998-07-12T00:00:01.000Z|n-missed\nevent: notification\ndata: {"id":"n-missed"}\n\n',
+    ]);
+    expect(scopes).toEqual([{ tenantId: acme.id, recipientUserId: 'user-1' }]);
+  });
+
+  it('ignores a malformed Last-Event-ID instead of replaying', async () => {
+    const scopes: ReplayScope[] = [];
+
+    const response = await streamApp(scopes).request(API_PATHS.notificationsStream, {
+      headers: { ...headers, 'last-event-id': 'n-seen' },
+    });
+
+    expect(await readChunks(response, 2)).toEqual([
+      'retry: 1000\n\n',
+      'event: unread\ndata: {"unread":0}\n\n',
+    ]);
+    expect(scopes).toEqual([]);
+  });
 });
 
 describe('post search route', () => {
@@ -3211,7 +3428,7 @@ describe('single-tenant mode', () => {
       singleTenantMode: true,
       authPort: {
         ...base.authPort,
-        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true, image: null }),
+        getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true, image: null }),
       },
       tenantAccess: {
         ...base.tenantAccess,
@@ -3504,6 +3721,7 @@ describe('free lesson preview route', () => {
       deps({
         lessons: [preview, paid],
         getAuthenticatedUser: async () => ({
+          sessionId: 'session-other',
           userId: 'other-tenant-user',
           email: 'other@example.com',
           name: 'Other Tenant User',

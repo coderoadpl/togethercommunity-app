@@ -17,6 +17,7 @@ export interface ImageAssetFieldProps {
   id: string;
   label: string;
   hint?: string;
+  placeholder?: string;
   value: string;
   onChange: (value: string) => void;
   accept: string;
@@ -34,6 +35,7 @@ export const ImageAssetField = ({
   id,
   label,
   hint,
+  placeholder = 'https://…',
   value,
   onChange,
   accept,
@@ -78,7 +80,7 @@ export const ImageAssetField = ({
           value={value}
           disabled={disabled || uploading}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="https://…"
+          placeholder={placeholder}
           inputProps={{ inputMode: 'url', 'data-testid': testId }}
           sx={{ flex: 1 }}
         />

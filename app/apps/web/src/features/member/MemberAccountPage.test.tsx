@@ -80,6 +80,75 @@ describe('MemberAccountPage', () => {
     expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
   });
 
+  it('orders the sections from identity through security to the danger zone', async () => {
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings('https://billing.stripe.com/p/login/test_example', true),
+      stubBillingOrders([{ id: 'order-1', createdAt: '1998-07-27T10:00:00.000Z', billing: null }]),
+    );
+    await renderAccount();
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
+        .toEqual([
+          pl.account.profileHeading,
+          pl.emailVerification.heading,
+          pl.account.passwordHeading,
+          pl.security.heading,
+          pl.messages.privacyHeading,
+          pl.account.preferencesHeading,
+          pl.account.billingHeading,
+          pl.account.invoiceOrdersHeading,
+          pl.support.heading,
+          pl.account.dataExportHeading,
+          pl.account.erasureHeading,
+        ]));
+  });
+
+  it('keeps the identity card above page-level fetch errors', async () => {
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings(null),
+      http.get('*/api/me/billing-orders', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })),
+    );
+    await renderAccount();
+
+    const profile = await screen.findByRole('heading', { level: 2, name: pl.account.profileHeading });
+    const retry = await screen.findByRole('button', { name: pl.common.retry });
+    expect(profile.compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeGreaterThan(0);
+  });
+
+  it('shows the signed-in address inside the profile card', async () => {
+    server.use(stubMe(true, { displayName: 'Ada' }), stubSettings(null), stubBillingOrders());
+    await renderAccount();
+
+    const email = await screen.findByTestId('account-email');
+    expect(email).toHaveTextContent('member@together.dev');
+    expect(email.closest('form')).toContainElement(
+      screen.getByLabelText(pl.account.displayNameLabel),
+    );
+    const caption = screen.getByText(pl.account.signedInAs);
+    expect(caption.tagName).toBe('DT');
+    expect(email.tagName).toBe('DD');
+    expect(caption.parentElement).toBe(email.parentElement);
+    expect(screen.queryByRole('heading', { level: 2, name: pl.account.signedInAs }))
+      .not.toBeInTheDocument();
+    expect(screen.getAllByText('member@together.dev')).toHaveLength(1);
+  });
+
+  it('describes the display-name field with its hint instead of the card', async () => {
+    server.use(stubMe(true, { displayName: 'Ada' }), stubSettings(null), stubBillingOrders());
+    await renderAccount();
+
+    const field = await screen.findByLabelText(pl.account.displayNameLabel);
+    expect(field).toHaveAccessibleDescription(pl.account.displayNameHint);
+    const hint = screen.getByText(pl.account.displayNameHint);
+    expect(field.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeGreaterThan(0);
+  });
+
   it('shows the member verification state and resends without blocking the account', async () => {
     let body: unknown;
     server.use(
@@ -175,6 +244,8 @@ describe('MemberAccountPage', () => {
     await renderAccount();
 
     expect(await screen.findByTestId('account-email')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: pl.account.signedInAs }))
+      .toBeInTheDocument();
     expect(screen.queryByLabelText(pl.account.displayNameLabel)).not.toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: pl.messages.optOutLabel })).not.toBeInTheDocument();
   });
@@ -360,6 +431,7 @@ describe('MemberAccountPage', () => {
     await renderAccount();
     const button = await screen.findByTestId('account-erasure-create');
     expect(button).toBeDisabled();
+    expect(button.parentElement).toHaveStyle({ display: 'block' });
     await userEvent.type(
       screen.getByLabelText(pl.account.erasureConfirmLabel),
       'member@together.dev',

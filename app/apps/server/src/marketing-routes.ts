@@ -348,7 +348,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
         data: message.data,
         ...(idempotencyKey === undefined ? {} : { idempotencySource: idempotencyKey }),
       };
-    }), sendDeps(deps, marketingResult.value, `${new URL(c.req.url).origin}/u`));
+    }), sendDeps(deps, marketingResult.value, tenantUrl(authenticated.value.tenant.slug, '/u', deps)));
     const status = sent.ok ? 202 : HTTP_STATUS_BY_ERROR_CODE[sent.error.code];
     if (idempotencyKey !== undefined) await completeIdempotentRequest(authenticated.value.ctx, { key: idempotencyKey, status }, { repository: marketingResult.value.idempotency });
     if (!sent.ok) return sent.error.code === 'rate_limited'

@@ -39,16 +39,11 @@ export interface CouponCheckoutInput {
   sessionStartedAt?: string;
 }
 
-const validationMessage = {
-  inactive: 'This coupon is inactive',
-  not_started: 'This coupon is not valid yet',
-  expired: 'This coupon has expired',
-  scope: 'This coupon does not apply to this product',
-  purchase_kind: 'This coupon does not apply to this price',
-  currency: 'This coupon does not apply to this currency',
-  limit: 'This coupon has reached its redemption limit',
-  member_limit: 'This coupon has reached its per-member redemption limit',
-} as const;
+/**
+ * One message for every rejection so a probe cannot tell an unknown code from an existing one that
+ * is expired, out of scope or exhausted.
+ */
+export const COUPON_UNAVAILABLE_MESSAGE = 'Coupon cannot be applied';
 
 export const validateCouponForCheckout = async (
   tenantId: string,
@@ -56,7 +51,7 @@ export const validateCouponForCheckout = async (
   deps: CouponCheckoutDeps,
 ): Promise<Result<{ coupon: Coupon; breakdown: CouponCheckoutBreakdown }, AppError>> => {
   const coupon = await deps.coupons.findByCode(tenantId, normalizeCouponCode(input.code));
-  if (!coupon) return err(validation('Coupon code is invalid'));
+  if (!coupon) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
   if (coupon.maxRedemptionsPerMember !== null && input.email === undefined) {
     return err(validation('An email is required to validate this coupon'));
   }
@@ -71,10 +66,10 @@ export const validateCouponForCheckout = async (
     totalRedemptions: counts.total,
     memberRedemptions: counts.member,
   });
-  if (!validated.valid) return err(validation(validationMessage[validated.reason]));
+  if (!validated.valid) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
 
   const discountCents = calculateDiscount(input.amountCents, coupon);
-  if (discountCents === 0) return err(validation('This coupon does not reduce the selected price'));
+  if (discountCents === 0) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
   const now = deps.clock.nowIso();
   const since = new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString();
   const lowestPriceLast30DaysCents = await deps.priceHistory.lowestSince(tenantId, {

@@ -269,17 +269,18 @@ const makeDeps = (
     threadSubscriptions: {
       upsert: async (tenantId, input) => ({ tenantId, ...input, mutedAt: null }),
       mute: async () => null,
-      listSubscribersForRoot: async () => [],
+      listSubscribersPage: async () => [],
       listForUser: async () => [],
     },
     spaceSubscriptions: {
       follow: async () => undefined,
       unfollow: async () => false,
-      listFollowersForSpace: async () => [],
+      listFollowersPage: async () => [],
       listForUser: async () => [],
     },
     notifications: {
       insert: async (_tenantId, notification) => notification,
+      insertMany: async (_tenantId, batch) => batch,
       listForRecipient: async () => ({ notifications: [], nextCursor: null }),
       markRead: async () => null,
       markAllRead: async () => 0,
@@ -288,6 +289,7 @@ const makeDeps = (
       markDmConversationRead: async () => 0,
     },
     notificationChannels: [],
+    fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     courses: {
       list: async () => [],
       findById: async () => null,

@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
-  DELETED_MEMBER_DISPLAY,
+  deletedMemberDisplay,
   err,
   invoiceVatTreatmentsEqual,
   memberTombstone,
@@ -64,6 +64,7 @@ import {
   createTenantAccessReader,
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
+  createPublicRateLimitRepository,
   createTenantRepository,
   createTenantSecretRepository,
   createUserDisplayReader,
@@ -108,6 +109,7 @@ import {
   suppressions,
   user,
 } from './schema.js';
+import { createNotificationFanoutJobRepository, insertFanoutJob } from './notification-fanout-jobs.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -1186,6 +1188,35 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.findActiveByHash(ACME, 'hash-abc')).toBeNull();
   });
 
+  it('counts public rate-limit windows and purges only the expired ones', async () => {
+    const buckets = createPublicRateLimitRepository(db);
+    const window = {
+      scope: 'public-write:ip',
+      key: '203.0.113.7',
+      windowStartedAt: NOW,
+      expiresAt: '1998-07-14T10:01:00.000Z',
+      limit: 2,
+    };
+
+    expect(await buckets.claim(window)).toBe(true);
+    expect(await buckets.claim(window)).toBe(true);
+    expect(await buckets.claim(window)).toBe(false);
+    expect(await buckets.claim({ ...window, key: '203.0.113.8' })).toBe(true);
+    expect(await buckets.claim({
+      ...window,
+      windowStartedAt: '1998-07-14T10:01:00.000Z',
+      expiresAt: '1998-07-14T10:02:00.000Z',
+    })).toBe(true);
+
+    expect(await buckets.purgeExpired('1998-07-14T10:01:30.000Z')).toBe(1);
+    expect(await buckets.claim({
+      ...window,
+      windowStartedAt: '1998-07-14T10:01:00.000Z',
+      expiresAt: '1998-07-14T10:02:00.000Z',
+    })).toBe(true);
+    expect(await buckets.purgeExpired('1998-07-14T11:00:00.000Z')).toBe(1);
+  });
+
   it('appends and tenant-scopes import audit events', async () => {
     const apiKeys = createTenantApiKeyRepository(db);
     await apiKeys.create(ACME, {
@@ -1273,8 +1304,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       leaseExpiresAt: '1998-07-14T10:05:00.000Z',
     };
     expect(await repo.claim(ACME, event, lease)).toBe('claimed');
-    expect(await repo.claim(ACME, event, lease)).toBe('duplicate');
-    expect(await repo.claim(ACME, { ...event, id: 'evt-2' }, lease)).toBe('duplicate');
+    expect(await repo.claim(ACME, event, lease)).toBe('in_progress');
+    expect(await repo.claim(ACME, { ...event, id: 'evt-2' }, lease)).toBe('in_progress');
     const reclaimed = {
       workerId: 'worker-2',
       now: '1998-07-14T10:06:00.000Z',
@@ -1283,7 +1314,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.claim(ACME, event, reclaimed)).toBe('claimed');
     await repo.finalize(ACME, event.id, lease.workerId, reclaimed.now);
     await repo.release(ACME, event.id, lease.workerId);
-    expect(await repo.claim(ACME, event, reclaimed)).toBe('duplicate');
+    expect(await repo.claim(ACME, event, reclaimed)).toBe('in_progress');
     await repo.finalize(ACME, event.id, reclaimed.workerId, reclaimed.now);
     expect(
       await repo.claim(ACME, event, {
@@ -1291,12 +1322,46 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
         now: '1998-07-14T10:12:00.000Z',
         leaseExpiresAt: '1998-07-14T10:17:00.000Z',
       }),
-    ).toBe('duplicate');
+    ).toBe('processed');
+    expect(await repo.claim(ACME, { ...event, id: 'evt-2' }, reclaimed)).toBe('processed');
 
     const releasable = { ...event, id: 'evt-3', objectId: 'in-3' };
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
     await repo.release(ACME, releasable.id, lease.workerId);
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
+  });
+
+  it('dedupes fulfillment events by object and lets later subscription updates through', async () => {
+    const repo = createProcessedPaymentEventRepository(db);
+    const lease = {
+      workerId: 'worker-index',
+      now: NOW,
+      leaseExpiresAt: '1998-07-14T10:05:00.000Z',
+    };
+    const completed: ProcessedPaymentEvent = {
+      id: 'evt-cs-1',
+      tenantId: ACME,
+      type: 'checkout.session.completed',
+      objectId: 'cs-index',
+      processedAt: NOW,
+    };
+    const updated: ProcessedPaymentEvent = {
+      id: 'evt-sub-1',
+      tenantId: ACME,
+      type: 'customer.subscription.updated',
+      objectId: 'sub-index',
+      processedAt: NOW,
+    };
+
+    expect(await repo.claim(ACME, completed, lease)).toBe('claimed');
+    expect(await repo.claim(ACME, { ...completed, id: 'evt-cs-2' }, lease)).toBe('in_progress');
+    await repo.finalize(ACME, completed.id, lease.workerId, NOW);
+    expect(await repo.claim(ACME, { ...completed, id: 'evt-cs-2' }, lease)).toBe('processed');
+    expect(
+      await repo.claim(GLOBEX, { ...completed, id: 'evt-cs-3', tenantId: GLOBEX }, lease),
+    ).toBe('claimed');
+    expect(await repo.claim(ACME, updated, lease)).toBe('claimed');
+    expect(await repo.claim(ACME, { ...updated, id: 'evt-sub-2' }, lease)).toBe('claimed');
   });
 
   it('rolls back payment repository writes when the branch fails', async () => {
@@ -2243,6 +2308,7 @@ describe('notification repository', () => {
         authorAvatarUrl: null,
         snippet: id,
       },
+      sourceKey: null,
       readAt: null,
       createdAt,
     });
@@ -2279,6 +2345,147 @@ describe('notification repository', () => {
     ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(third.nextCursor).toBeNull();
+  });
+
+  it('bulk insert skips rows already carrying the same fan-out source key', async () => {
+    const repository = createNotificationRepository(db);
+    const row = (id: string, recipientUserId: string, sourceKey: string | null): Notification => ({
+      id,
+      tenantId: ACME,
+      recipientUserId,
+      kind: 'space-post',
+      payload: {
+        rootPostId: 'root-bulk',
+        postId: 'post-bulk',
+        contextKind: 'space',
+        contextId: 'space-bulk',
+        courseId: null,
+        eventId: null,
+        lessonName: 'Bulk',
+        authorDisplay: 'Author',
+        authorAvatarUrl: null,
+        snippet: id,
+      },
+      sourceKey,
+      readAt: null,
+      createdAt: NOW,
+    });
+
+    const first = await repository.insertMany(ACME, [
+      row('bulk-1', 'user-acme-member', 'space-post:post-bulk'),
+      row('bulk-2', 'user-acme-owner', 'space-post:post-bulk'),
+    ]);
+    const retry = await repository.insertMany(ACME, [
+      row('bulk-1-retry', 'user-acme-member', 'space-post:post-bulk'),
+      row('bulk-2-retry', 'user-acme-owner', 'space-post:post-bulk'),
+      row('bulk-3', 'user-acme-member', 'space-post:post-bulk-other'),
+    ]);
+    const unkeyed = await repository.insertMany(ACME, [
+      row('bulk-null-1', 'user-acme-member', null),
+      row('bulk-null-2', 'user-acme-member', null),
+    ]);
+
+    expect(first.map((item) => item.id)).toEqual(['bulk-1', 'bulk-2']);
+    expect(retry.map((item) => item.id)).toEqual(['bulk-3']);
+    expect(unkeyed).toHaveLength(2);
+    expect(await repository.insertMany(ACME, [])).toEqual([]);
+  });
+
+  it('scopes the fan-out source key per tenant', async () => {
+    const repository = createNotificationRepository(db);
+    const row = (id: string, tenantId: string, recipientUserId: string): Notification => ({
+      id,
+      tenantId,
+      recipientUserId,
+      kind: 'space-post',
+      payload: {
+        rootPostId: 'root-scoped',
+        postId: 'post-scoped',
+        contextKind: 'space',
+        contextId: 'space-scoped',
+        courseId: null,
+        eventId: null,
+        lessonName: 'Scoped',
+        authorDisplay: 'Author',
+        authorAvatarUrl: null,
+        snippet: id,
+      },
+      sourceKey: 'space-post:post-scoped',
+      readAt: null,
+      createdAt: NOW,
+    });
+
+    await repository.insertMany(ACME, [row('scoped-acme', ACME, 'user-acme-member')]);
+    const other = await repository.insertMany(GLOBEX, [row('scoped-globex', GLOBEX, 'user-globex-member')]);
+
+    expect(other.map((item) => item.id)).toEqual(['scoped-globex']);
+  });
+});
+
+describe('notification fan-out job repository', () => {
+  const job = (id: string, sourceKey: string, nextAttemptAt: string) => ({
+    id,
+    tenantId: ACME,
+    kind: 'space-post' as const,
+    sourceKey,
+    payload: {
+      postId: 'post-fanout',
+      eventId: null,
+      tenantName: 'Acme',
+      tenantSlug: 'acme',
+      authorDisplay: null,
+    },
+    status: 'pending' as const,
+    attempts: 0,
+    cursorUserId: null,
+    nextAttemptAt,
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+
+  it('enqueues once per source key, leases due jobs and stops claiming completed ones', async () => {
+    const repository = createNotificationFanoutJobRepository(db);
+    await insertFanoutJob(db, ACME, job('fanout-1', 'space-post:fanout-1', NOW));
+    await insertFanoutJob(db, ACME, job('fanout-duplicate', 'space-post:fanout-1', NOW));
+
+    const claimed = await repository.claimDue({
+      now: NOW,
+      limit: 10,
+      leaseUntil: '1998-07-14T10:05:00.000Z',
+    });
+    const secondPass = await repository.claimDue({
+      now: NOW,
+      limit: 10,
+      leaseUntil: '1998-07-14T10:05:00.000Z',
+    });
+
+    expect(claimed.map((item) => item.id)).toEqual(['fanout-1']);
+    expect(claimed[0]?.attempts).toBe(1);
+    expect(secondPass).toEqual([]);
+
+    const afterLease = await repository.claimDue({
+      now: '1998-07-14T10:06:00.000Z',
+      limit: 10,
+      leaseUntil: '1998-07-14T10:11:00.000Z',
+    });
+    expect(afterLease.map((item) => item.id)).toEqual(['fanout-1']);
+
+    await repository.save(ACME, {
+      id: 'fanout-1',
+      status: 'completed',
+      attempts: 0,
+      cursorUserId: 'user-acme-member',
+      nextAttemptAt: '1998-07-14T10:06:00.000Z',
+      updatedAt: '1998-07-14T10:06:00.000Z',
+    });
+
+    expect(
+      await repository.claimDue({
+        now: '1998-07-14T11:00:00.000Z',
+        limit: 10,
+        leaseUntil: '1998-07-14T11:05:00.000Z',
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -2414,6 +2621,7 @@ describe('direct message repositories', () => {
         authorAvatarUrl: null,
         snippet: 'Body dm-message-1',
       },
+      sourceKey: null,
       readAt: null,
       createdAt: NOW,
     };
@@ -2482,7 +2690,7 @@ describe('member erasure repository', () => {
     deletedAt: REMOVAL_AT,
     tombstoneEmail: memberTombstone(memberId).email,
     severedUserId: memberTombstone(memberId).userId,
-    postAuthorDisplay: DELETED_MEMBER_DISPLAY,
+    postAuthorDisplay: deletedMemberDisplay(),
   });
 
   beforeAll(async () => {
@@ -2781,12 +2989,12 @@ describe('member erasure repository', () => {
     expect(await subs.findById(RODO, 'sub-rodo')).toMatchObject({ status: 'canceled', cancelAtPeriodEnd: true });
 
     const postRows = await db.select().from(posts).where(eq(posts.id, 'post-rodo'));
-    expect(postRows[0]).toMatchObject({ authorDisplay: DELETED_MEMBER_DISPLAY, body: 'Świetny kurs!', deletedAt: null });
+    expect(postRows[0]).toMatchObject({ authorDisplay: deletedMemberDisplay(), body: 'Świetny kurs!', deletedAt: null });
 
     const reportRows = await db.select().from(postReports).where(eq(postReports.id, 'report-rodo'));
     expect(reportRows[0]).toMatchObject({
       reporterUserId: 'user-rodo-buyer',
-      reporterDisplay: DELETED_MEMBER_DISPLAY,
+      reporterDisplay: deletedMemberDisplay(),
     });
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));

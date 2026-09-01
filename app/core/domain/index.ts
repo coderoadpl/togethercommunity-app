@@ -24,6 +24,7 @@ export * from './lesson-attachment.js';
 export * from './product-download.js';
 export * from './image-asset.js';
 export * from './community.js';
+export * from './notification-fanout.js';
 export * from './dm.js';
 export * from './event.js';
 export * from './moderation.js';

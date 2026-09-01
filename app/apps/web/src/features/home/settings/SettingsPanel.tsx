@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type SyntheticEvent } from 'react';
+import { useState, type FormEvent, type SyntheticEvent } from 'react';
 import {
   Alert,
   Box,
@@ -6,6 +6,7 @@ import {
   Checkbox,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   MenuItem,
@@ -17,7 +18,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, Navigate } from '@tanstack/react-router';
+import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-router';
 
 import {
   accentColorSchema,
@@ -32,10 +33,11 @@ import type { ExemptionBasisKind, TenantSocialLink } from '#core/domain/index.js
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ActiveSessions } from '../../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
 import { EmailVerificationStatus } from '../../../components/ui/EmailVerificationStatus.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import {
   BUILD_SHA,
   BUILD_VERSION,
@@ -96,8 +98,13 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const urlValue = url ?? settings.data?.settings.supportUrl ?? '';
   return (
     <SectionCard
-      title={t.support.heading}
-      description={t.support.intro}
+      title={t.support.settingsHeading}
+      description={t.support.settingsIntro}
+      actions={canEdit ? (
+        <Button type="submit" variant="contained" disabled={update.isPending}>
+          {t.support.save}
+        </Button>
+      ) : undefined}
       onSubmit={(event) => {
         event.preventDefault();
         update.mutate({
@@ -126,12 +133,7 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setUrl(event.target.value)}
         />
       </FormControl>
-      {canEdit ? (
-        <Button type="submit" variant="outlined" disabled={update.isPending}>
-          {t.support.save}
-        </Button>
-      ) : null}
-      {update.isError ? <Alert severity="error">{localizeError(update.error, t)}</Alert> : null}
+      {update.isError ? <Alert severity="error">{localizePanelError(update.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -140,7 +142,7 @@ const KsefCredentialsPointer = () => {
   const t = useTranslations();
   return (
     <Stack useFlexGap spacing="0.5rem">
-      <Typography variant="h6" component="h3">{t.integrations.ksefHeading}</Typography>
+      <Typography variant="h3" component="h3">{t.integrations.ksefHeading}</Typography>
       <Typography variant="body2">{t.billing.ksefConfiguredInIntegrations}</Typography>
       <Box>
         <MuiLink
@@ -187,7 +189,29 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const [sellerAddress, setSellerAddress] = useState<string | null>(null);
 
   return (
-    <SectionCard title={t.billing.invoiceHeading} description={t.billing.invoiceIntro}>
+    <SectionCard
+      title={t.billing.invoiceHeading}
+      description={t.billing.invoiceIntro}
+      actions={(
+        <Button
+          variant="contained"
+          disabled={!canEdit || settings.isPending || updateSettings.isPending || basisInvalid}
+          onClick={() => updateSettings.mutate({
+            invoiceVatMode: treatment === 'exempt' ? 'exempt' : 'rate',
+            invoiceVatRatePercent:
+              treatment === 5 || treatment === 8 || treatment === 23 ? treatment : null,
+            invoiceExemptionBasisKind: treatment === 'exempt' && selectedBasisKind !== ''
+              ? selectedBasisKind
+              : null,
+            invoiceExemptionBasis: treatment === 'exempt' ? basisValue.trim() || null : null,
+            invoiceSellerName: sellerName ?? settings.data?.settings.invoiceSellerName ?? null,
+            invoiceSellerAddress: sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? null,
+          })}
+        >
+          {t.billing.saveSeller}
+        </Button>
+      )}
+    >
       <FormControlLabel
         control={(
           <Checkbox
@@ -319,25 +343,8 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setSellerAddress(event.target.value)}
         />
       </FormControl>
-      <Button
-        variant="contained"
-        disabled={!canEdit || settings.isPending || updateSettings.isPending || basisInvalid}
-        onClick={() => updateSettings.mutate({
-          invoiceVatMode: treatment === 'exempt' ? 'exempt' : 'rate',
-          invoiceVatRatePercent:
-            treatment === 5 || treatment === 8 || treatment === 23 ? treatment : null,
-          invoiceExemptionBasisKind: treatment === 'exempt' && selectedBasisKind !== ''
-            ? selectedBasisKind
-            : null,
-          invoiceExemptionBasis: treatment === 'exempt' ? basisValue.trim() || null : null,
-          invoiceSellerName: sellerName ?? settings.data?.settings.invoiceSellerName ?? null,
-          invoiceSellerAddress: sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? null,
-        })}
-      >
-        {t.billing.saveSeller}
-      </Button>
       {provider === 'ksef' ? <KsefCredentialsPointer /> : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -370,7 +377,21 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const disabled = !canEdit || !settings.isSuccess;
 
   return (
-    <SectionCard title={t.legal.heading} description={t.legal.intro} onSubmit={submit}>
+    <SectionCard
+      title={t.legal.heading}
+      description={t.legal.intro}
+      onSubmit={submit}
+      actions={canEdit ? (
+        <Button
+          type="submit"
+          variant="contained"
+          data-testid="legal-save"
+          disabled={updateSettings.isPending || !settings.isSuccess}
+        >
+          {updateSettings.isPending ? t.legal.saving : t.legal.save}
+        </Button>
+      ) : undefined}
+    >
       {settings.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.common.loading }} data-testid="legal-loading" />
       ) : (
@@ -402,26 +423,14 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         </>
       )}
       {settings.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
-      ) : null}
-      {canEdit ? (
-        <Box>
-          <Button
-            type="submit"
-            variant="outlined"
-            data-testid="legal-save"
-            disabled={updateSettings.isPending || !settings.isSuccess}
-          >
-            {updateSettings.isPending ? t.legal.saving : t.legal.save}
-          </Button>
-        </Box>
+        <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
       {updateSettings.isSuccess ? (
         <Typography variant="caption" component="p" data-testid="legal-saved">
           {t.legal.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -465,11 +474,14 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
         <Typography variant="caption" component="p">
           {t.publicAccess.homeSpaceHint}
         </Typography>
+        <FormHelperText data-testid="public-access-status">
+          {updateSettings.isPending ? t.common.saving : updateSettings.isSuccess ? t.common.saved : ' '}
+        </FormHelperText>
       </FormControl>
       {spaces.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
+        <StatusView state={{ kind: 'error', message: localizePanelError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -545,7 +557,21 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const disabled = !canEdit || !settings.isSuccess;
 
   return (
-    <SectionCard title={t.branding.heading} description={t.branding.intro} onSubmit={submit}>
+    <SectionCard
+      title={t.branding.heading}
+      description={t.branding.intro}
+      onSubmit={submit}
+      actions={canEdit ? (
+        <Button
+          type="submit"
+          variant="contained"
+          data-testid="branding-save"
+          disabled={updateSettings.isPending || !settings.isSuccess}
+        >
+          {updateSettings.isPending ? t.branding.saving : t.branding.save}
+        </Button>
+      ) : undefined}
+    >
       {settings.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.common.loading }} data-testid="branding-loading" />
       ) : (
@@ -565,7 +591,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <ImageAssetField
             id="branding-logo-url"
             label={t.branding.logoLabel}
-            hint={t.branding.logoPlaceholder}
+            placeholder={t.branding.logoPlaceholder}
             value={logoValue}
             onChange={setLogoUrl}
             kind="logo"
@@ -600,14 +626,14 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <ImageAssetField
             id="branding-favicon-url"
             label={t.branding.faviconLabel}
-            hint={t.branding.faviconPlaceholder}
+            placeholder={t.branding.faviconPlaceholder}
             value={faviconValue}
             onChange={setFaviconUrl}
             kind="favicon"
             disabled={disabled}
             testId="branding-favicon-url"
           />
-          <Typography variant="h6" component="h3">{t.branding.profileLinksHeading}</Typography>
+          <Typography variant="h3" component="h3">{t.branding.profileLinksHeading}</Typography>
           <Typography variant="body2">
             {t.branding.profileLinksIntro({ count: SOCIAL_LINKS_MAX_COUNT })}
           </Typography>
@@ -681,7 +707,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {t.branding.addSocialLink}
             </Button>
           </Box>
-          <Typography variant="h6" component="h3">{t.branding.socialHeading}</Typography>
+          <Typography variant="h3" component="h3">{t.branding.socialHeading}</Typography>
           <FormControl fullWidth>
             <FormLabel htmlFor="branding-og-title">{t.branding.ogTitleLabel}</FormLabel>
             <OutlinedInput
@@ -729,26 +755,14 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         </>
       )}
       {settings.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
-      ) : null}
-      {canEdit ? (
-        <Box>
-          <Button
-            type="submit"
-            variant="outlined"
-            data-testid="branding-save"
-            disabled={updateSettings.isPending || !settings.isSuccess}
-          >
-            {updateSettings.isPending ? t.branding.saving : t.branding.save}
-          </Button>
-        </Box>
+        <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
       {updateSettings.isSuccess ? (
         <Typography variant="caption" component="p" data-testid="branding-saved">
           {t.branding.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -759,6 +773,19 @@ const SecurityPanel = () => {
   const { email } = usePanelContext();
   const queryClient = useQueryClient();
   const passkeys = useQuery(actions.passkeys);
+  const accountSessions = useQuery(actions.accountSessions);
+  const revokeAccountSession = useMutation({
+    ...actions.revokeAccountSession,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.accountSessionsInvalidates());
+    },
+  });
+  const revokeOtherAccountSessions = useMutation({
+    ...actions.revokeOtherAccountSessions,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.accountSessionsInvalidates());
+    },
+  });
   const registerPasskey = useMutation({
     ...actions.registerPasskey,
     onSuccess: async () => {
@@ -814,7 +841,7 @@ const SecurityPanel = () => {
               </Typography>
             ) : null}
             {requestPasswordReset.isError ? (
-              <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert>
+              <Alert severity="error">{localizePanelError(requestPasswordReset.error, t)}</Alert>
             ) : null}
           </Box>
         </Box>
@@ -869,6 +896,26 @@ const SecurityPanel = () => {
             run: regenerateBackupCodes.mutate,
           }}
         />
+        <ActiveSessions
+          sessions={{
+            data: accountSessions.data?.sessions,
+            pending: accountSessions.isPending,
+            error: accountSessions.error,
+            retry: () => void accountSessions.refetch(),
+          }}
+          revokeSession={{
+            pending: revokeAccountSession.isPending,
+            success: revokeAccountSession.isSuccess,
+            error: revokeAccountSession.error,
+            run: revokeAccountSession.mutate,
+          }}
+          revokeOtherSessions={{
+            pending: revokeOtherAccountSessions.isPending,
+            success: revokeOtherAccountSessions.isSuccess,
+            error: revokeOtherAccountSessions.error,
+            run: () => revokeOtherAccountSessions.mutate(undefined),
+          }}
+        />
       </Stack>
     </SectionCard>
   );
@@ -891,7 +938,7 @@ const BuildInfoPanel = () => {
           </>
         )}
       </Stack>
-      {health.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(health.error, t), retry: { label: t.common.retry, onRetry: () => void health.refetch() } }} /> : null}
+      {health.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(health.error, t), retry: { label: t.common.retry, onRetry: () => void health.refetch() } }} /> : null}
       {mismatch ? (
         <Alert severity="warning" data-testid="build-mismatch-warning">
           {t.buildInfo.mismatch}
@@ -927,22 +974,12 @@ const EmailVerificationPanel = () => {
 export const SettingsPanel = () => {
   const { tenant } = usePanelContext();
   const t = useTranslations();
-  const [hash, setHash] = useState(() => window.location.hash);
+  const navigate = useNavigate();
+  const hash = useRouterState({ select: (state) => state.location.hash });
   const canEdit = tenant.staffRole === 'owner';
 
-  useEffect(() => {
-    const syncHash = () => setHash(window.location.hash);
-    window.addEventListener('hashchange', syncHash);
-    return () => window.removeEventListener('hashchange', syncHash);
-  }, []);
-
   const changeSection = (_event: SyntheticEvent, value: SettingsSection) => {
-    setHash(`#${value}`);
-    window.history.replaceState(
-      null,
-      '',
-      `${window.location.pathname}${window.location.search}#${value}`,
-    );
+    void navigate({ hash: value, replace: true });
   };
 
   if (isRetiredBillingHash(hash)) {
@@ -958,7 +995,9 @@ export const SettingsPanel = () => {
         onChange={changeSection}
         aria-label={t.settingsNavigation.aria}
         variant="scrollable"
+        scrollButtons="auto"
         allowScrollButtonsMobile
+        sx={{ '& .MuiTabs-scrollButtons.Mui-disabled': { width: 0, minWidth: 0, opacity: 0 } }}
       >
         <Tab id="settings-tab-company" aria-controls="settings-panel-company" value="company" label={t.settingsNavigation.company} />
         <Tab id="settings-tab-legal" aria-controls="settings-panel-legal" value="legal" label={t.settingsNavigation.legal} />

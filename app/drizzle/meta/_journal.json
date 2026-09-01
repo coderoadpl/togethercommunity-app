@@ -610,6 +610,34 @@
       "when": 1786997731896,
       "tag": "0086_space_events",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1787947378276,
+      "tag": "0087_processed_events_partial_uidx",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1787950000000,
+      "tag": "0088_upcast_lesson_document_urls",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1787958023912,
+      "tag": "0089_rate_limit_buckets",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1787982017610,
+      "tag": "0090_notification_fanout_jobs",
+      "breakpoints": true
     }
   ]
 }

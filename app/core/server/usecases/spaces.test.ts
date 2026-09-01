@@ -39,7 +39,7 @@ import type {
   ThreadSubscription,
   ThreadSubscriptionRepository,
 } from '../ports.js';
-import { createPost, deletePost, type CommunityDeps } from './community.js';
+import { createPost, deletePost, editPost, type CommunityDeps } from './community.js';
 import {
   createSpace,
   deleteSpace,
@@ -449,8 +449,15 @@ class FakeSpaceSubscriptions implements SpaceSubscriptionRepository {
     return true;
   }
 
-  async listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.spaceId === spaceId);
+  async listFollowersPage(
+    tenantId: string,
+    query: { spaceId: string; afterUserId: string | null; limit: number },
+  ): Promise<SpaceSubscription[]> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.spaceId === query.spaceId)
+      .filter((item) => query.afterUserId === null || item.userId > query.afterUserId)
+      .sort((left, right) => left.userId.localeCompare(right.userId))
+      .slice(0, query.limit);
   }
 
   async listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]> {
@@ -503,8 +510,15 @@ class FakeThreadSubscriptions implements ThreadSubscriptionRepository {
     return null;
   }
 
-  async listSubscribersForRoot(tenantId: string, rootPostId: string): Promise<ThreadSubscription[]> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.rootPostId === rootPostId);
+  async listSubscribersPage(
+    tenantId: string,
+    query: { rootPostId: string; afterUserId: string | null; limit: number },
+  ): Promise<ThreadSubscription[]> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.rootPostId === query.rootPostId)
+      .filter((item) => query.afterUserId === null || item.userId > query.afterUserId)
+      .sort((left, right) => left.userId.localeCompare(right.userId))
+      .slice(0, query.limit);
   }
 
   async listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]> {
@@ -520,6 +534,11 @@ class FakeNotifications implements NotificationRepository {
   async insert(_tenantId: string, notification: Notification): Promise<Notification> {
     this.rows.push(notification);
     return notification;
+  }
+
+  async insertMany(_tenantId: string, batch: Notification[]): Promise<Notification[]> {
+    this.rows.push(...batch);
+    return batch;
   }
 
   async listForRecipient(): Promise<{ notifications: Notification[]; nextCursor: string | null }> {
@@ -704,6 +723,7 @@ const fixture = (input: {
   const deps: SpacesDeps & CommunityDeps = {
     spaces: new FakeSpaces(input.spaces),
     posts,
+    fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     reports: {
       open: async () => null,
       findById: async () => null,
@@ -1321,6 +1341,56 @@ describe('space seen marks', () => {
     expect(unknown).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(invalid).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(f.spaceSeen.rows).toEqual([]);
+  });
+});
+
+describe('post edits inside a space', () => {
+  it('stops an author from editing once the space is archived', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const created = await createPost(
+      ctx(),
+      { contextKind: 'space', contextId: 's-open', body: 'post' },
+      f.deps,
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    await setSpaceArchived(
+      ctx({ staffRole: 'owner', memberId: null }),
+      { id: 's-open', archived: true },
+      f.deps,
+    );
+
+    expect(await editPost(ctx(), { id: created.value.id, body: 'edited body' }, f.deps)).toMatchObject(
+      { ok: false, error: { code: 'not_found' } },
+    );
+  });
+});
+
+describe('banned member interactions', () => {
+  it('blocks reactions and follows while unfollow and seen marks stay open', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const created = await createPost(
+      ctx(),
+      { contextKind: 'space', contextId: 's-open', body: 'post' },
+      f.deps,
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const banned = ctx({ memberBannedAt: NOW });
+
+    expect(
+      await reactToPost(banned, { postId: created.value.id, emoji: '👍' }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'banned' } });
+    expect(
+      await unreactToPost(banned, { postId: created.value.id, emoji: '👍' }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'banned' } });
+    expect(await followSpace(banned, { spaceId: 's-open' }, f.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'banned' },
+    });
+    expect(await unfollowSpace(banned, { spaceId: 's-open' }, f.deps)).toMatchObject({ ok: true });
+    expect(await markSpaceSeen(banned, { spaceId: 's-open' }, f.deps)).toMatchObject({ ok: true });
+    expect(f.reactions.rows).toEqual([]);
   });
 });
 

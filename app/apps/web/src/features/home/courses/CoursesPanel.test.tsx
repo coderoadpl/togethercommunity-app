@@ -266,7 +266,11 @@ describe('CoursesPanel courses tab', () => {
 
     expect(await screen.findByText('Watch this')).toBeInTheDocument();
     await waitFor(() => {
-      expect(within(screen.getByTestId('module-card')).getByText('Intro lesson')).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId('module-card')).getByText(
+          pl.courses.sourceLesson({ name: 'Intro lesson' }),
+        ),
+      ).toBeInTheDocument();
     });
   });
 
@@ -323,6 +327,37 @@ describe('CoursesPanel courses tab', () => {
     expect(screen.getByLabelText(pl.courses.displayName)).toHaveValue('Intro lesson');
     expect(screen.getByRole('button', { name: pl.courses.addLesson })).toBeEnabled();
     expect(screen.getByText(pl.courses.duplicateLessonWarning)).toBeInTheDocument();
+  });
+
+  it('names the source lesson only when the content name differs', async () => {
+    const chapters = [
+      {
+        id: 'ch1',
+        name: 'Chapter',
+        contents: [
+          { id: 'ct1', name: 'Intro lesson', lessonId: 'lesson-1' },
+          { id: 'ct2', name: 'Watch this', lessonId: 'lesson-1' },
+        ],
+      },
+    ];
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [course()] } })),
+      http.get('/api/modules', () =>
+        HttpResponse.json({ ok: true, data: { modules: [courseModule({ chapters })] } }),
+      ),
+      http.get('/api/lessons', () =>
+        HttpResponse.json({ ok: true, data: { lessons: [lesson({ id: 'lesson-1', name: 'Intro lesson' })] } }),
+      ),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+    );
+
+    await renderCoursesPanel();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+
+    const sourceLabel = pl.courses.sourceLesson({ name: 'Intro lesson' });
+    expect(await screen.findByTestId('lesson-content-ct1')).not.toHaveTextContent(sourceLabel);
+    expect(screen.getByTestId('lesson-content-ct2')).toHaveTextContent(sourceLabel);
   });
 
   it('reorders modules with the keyboard-accessible controls', async () => {

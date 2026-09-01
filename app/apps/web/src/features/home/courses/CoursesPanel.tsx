@@ -4,9 +4,6 @@ import {
   Chip,
   FormControl,
   FormLabel,
-  List,
-  ListItem,
-  ListItemText,
   OutlinedInput,
   Stack,
   Typography,
@@ -19,8 +16,9 @@ import type { Course } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
+import { PanelListRow } from '../../../components/ui/PanelListRow.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -130,7 +128,7 @@ export const CoursesListPanel = () => {
       title={t.sections.courses}
       action={<Button component={Link} to="/panel/courses/new" variant="contained">+ {t.common.add}</Button>}
     >
-      {modules.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} /> : null}
+      {modules.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} /> : null}
       <ListSection
         toolbar={{
           search: (
@@ -167,37 +165,33 @@ export const CoursesListPanel = () => {
         {courses.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.courses.loading }} />
         ) : courses.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />
+          <StatusView state={{ kind: 'error', message: localizePanelError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />
         ) : (
-          <List disablePadding>
+          <Stack useFlexGap spacing="1rem">
             {paged.pageItems.map((course) => (
-              <ListItem
+              <PanelListRow
                 key={course.id}
                 data-testid="course-row"
-                secondaryAction={
-                  <Button variant="text" onClick={() => openCourse(course.id)}>
+                title={course.name}
+                actions={
+                  <Button size="small" variant="text" onClick={() => openCourse(course.id)}>
                     {t.courses.manage}
                   </Button>
                 }
-              >
-                <ListItemText
-                  primary={course.name}
-                  slotProps={{ secondary: { component: 'div' } }}
-                  secondary={
-                    <Stack useFlexGap spacing="0.2rem">
-                      <span>
-                        <DataValue>{moduleCount(course)}</DataValue>{' '}
-                        {t.courses.moduleNoun({ count: moduleCount(course) })}
-                      </span>
-                      <EntryDate component="time" dateTime={course.createdAt}>
-                        {formatDate(course.createdAt, language)}
-                      </EntryDate>
-                    </Stack>
-                  }
-                />
-              </ListItem>
+                meta={
+                  <>
+                    <span>
+                      <DataValue>{moduleCount(course)}</DataValue>{' '}
+                      {t.courses.moduleNoun({ count: moduleCount(course) })}
+                    </span>
+                    <EntryDate component="time" dateTime={course.createdAt}>
+                      {formatDate(course.createdAt, language)}
+                    </EntryDate>
+                  </>
+                }
+              />
             ))}
-          </List>
+          </Stack>
         )}
       </ListSection>
     </PanelPage>

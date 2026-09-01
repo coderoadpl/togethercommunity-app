@@ -1,5 +1,7 @@
-import { useEffect, useState, type SyntheticEvent } from 'react';
 import { Stack, Tab, Tabs } from '@mui/material';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
+
+import type { SyntheticEvent } from 'react';
 
 import { PanelPage } from '../../../components/layout/index.js';
 import { useTranslations } from '../../../i18n/index.js';
@@ -41,23 +43,12 @@ const integrationsSectionFromHash = (hash: string): IntegrationsSection => {
 
 export const IntegrationsPanel = () => {
   const t = useTranslations();
-  const [section, setSection] = useState<IntegrationsSection>(() =>
-    integrationsSectionFromHash(window.location.hash),
-  );
-
-  useEffect(() => {
-    const syncSection = () => setSection(integrationsSectionFromHash(window.location.hash));
-    window.addEventListener('hashchange', syncSection);
-    return () => window.removeEventListener('hashchange', syncSection);
-  }, []);
+  const navigate = useNavigate();
+  const hash = useRouterState({ select: (state) => state.location.hash });
+  const section = integrationsSectionFromHash(hash);
 
   const changeSection = (_event: SyntheticEvent, value: IntegrationsSection) => {
-    setSection(value);
-    window.history.replaceState(
-      null,
-      '',
-      `${window.location.pathname}${window.location.search}#${value}`,
-    );
+    void navigate({ hash: value, replace: true });
   };
 
   return (

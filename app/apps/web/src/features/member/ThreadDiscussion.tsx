@@ -19,6 +19,7 @@ import {
   PostAuthorName,
   PostBody,
   PostMetaText,
+  PostToolbarButton,
   ReplyIndent,
 } from '../../theme.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
@@ -84,6 +85,7 @@ export const PostComposer = ({
   pendingLabel,
   initialValue = '',
   focusOnMount = false,
+  collapsible = false,
   busy,
   disabled = false,
   onSubmit,
@@ -96,6 +98,7 @@ export const PostComposer = ({
   pendingLabel: string;
   initialValue?: string;
   focusOnMount?: boolean;
+  collapsible?: boolean;
   busy: boolean;
   disabled?: boolean;
   onSubmit: (body: string, reset: () => void) => void;
@@ -104,7 +107,9 @@ export const PostComposer = ({
 }) => {
   const t = useTranslations();
   const [body, setBody] = useState(initialValue);
+  const [focusWithin, setFocusWithin] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const expanded = !collapsible || focusWithin || body.trim().length > 0;
 
   useEffect(() => {
     if (focusOnMount) inputRef.current?.focus();
@@ -118,33 +123,45 @@ export const PostComposer = ({
   };
 
   return (
-    <Stack component="form" useFlexGap spacing="0.75rem" onSubmit={handleSubmit} data-testid={testId}>
+    <Stack
+      component="form"
+      useFlexGap
+      spacing="0.75rem"
+      onSubmit={handleSubmit}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocusWithin(false);
+      }}
+      data-testid={testId}
+    >
       <TextField
         label={label}
         placeholder={placeholder}
         multiline
-        minRows={3}
+        minRows={expanded ? 3 : 1}
         value={body}
         disabled={disabled}
         inputRef={inputRef}
         onChange={(event) => setBody(event.target.value)}
         slotProps={{ htmlInput: { 'data-testid': `${testId}-input` } }}
       />
-      <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem' }}>
-        <Button
-          type="submit"
-          variant="contained"
-          disabled={disabled || busy || body.trim().length === 0}
-          data-testid={`${testId}-submit`}
-        >
-          {busy ? pendingLabel : submitLabel}
-        </Button>
-        {onCancel !== undefined && (
-          <Button variant="text" onClick={onCancel}>
-            {t.common.cancel}
+      {expanded && (
+        <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem' }}>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={disabled || busy || body.trim().length === 0}
+            data-testid={`${testId}-submit`}
+          >
+            {busy ? pendingLabel : submitLabel}
           </Button>
-        )}
-      </Stack>
+          {onCancel !== undefined && (
+            <Button variant="text" onClick={onCancel}>
+              {t.common.cancel}
+            </Button>
+          )}
+        </Stack>
+      )}
     </Stack>
   );
 };
@@ -225,9 +242,13 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
       )}
 
       {(canReply || canEdit || canDelete || (!own && !deleted)) && (
-        <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem', mt: '0.25rem' }}>
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ columnGap: '0.75rem', rowGap: '0.25rem', flexWrap: 'wrap', mt: '0.25rem' }}
+        >
           {canReply && (
-            <Button
+            <PostToolbarButton
               size="small"
               variant="text"
               data-testid={`reply-button-${post.id}`}
@@ -238,10 +259,10 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               }}
             >
               {t.discussion.reply}
-            </Button>
+            </PostToolbarButton>
           )}
           {canEdit && (
-            <Button
+            <PostToolbarButton
               size="small"
               variant="text"
               data-testid={`edit-button-${post.id}`}
@@ -252,17 +273,17 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               }}
             >
               {t.discussion.edit}
-            </Button>
+            </PostToolbarButton>
           )}
           {canDelete && (
-            <Button
+            <PostToolbarButton
               size="small"
               variant="text"
               data-testid={`delete-button-${post.id}`}
               onClick={() => a.requestDelete(post)}
             >
               {t.discussion.delete}
-            </Button>
+            </PostToolbarButton>
           )}
           {!own && !deleted ? <StartMessageButton postId={post.id} /> : null}
           {!own && !deleted ? <ReportPostButton postId={post.id} /> : null}
@@ -587,6 +608,7 @@ export const ThreadDiscussion = ({
                 pendingLabel={t.discussion.posting}
                 busy={create.isPending}
                 disabled={banned}
+                collapsible
                 onSubmit={(body, reset) => {
                   create.mutate(
                     { contextKind: context.contextKind, contextId: context.contextId, body },

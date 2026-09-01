@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ACCESS_RETAINING_ORDER_STATUSES,
   err,
   internal,
   ok,
@@ -21,6 +22,9 @@ import type { AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../po
 import { m2mEnroll } from './m2m-enroll.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
+
+/** Mirrors the partial unique index on processed_events: one fulfilment per object. */
+const FULFILLMENT_EVENT_TYPES = new Set<string>(['checkout.session.completed', 'invoice.paid']);
 
 const now = '1998-07-14T10:00:00.000Z';
 const tenantA = {
@@ -57,6 +61,8 @@ const monthlyPrice = (tenantId: string): ProductPrice => ({
 
 const completedEvent = (overrides?: {
   id?: string;
+  type?: string;
+  paymentStatus?: 'paid' | 'unpaid' | 'no_payment_required';
   objectId?: string;
   tenantId?: string;
   productId?: string;
@@ -71,10 +77,11 @@ const completedEvent = (overrides?: {
   checkoutConsentCaptureId?: string;
 }): PaymentWebhookEvent => ({
   id: overrides?.id ?? 'evt-1',
-  type: 'checkout.session.completed',
+  type: overrides?.type ?? 'checkout.session.completed',
   objectId: overrides?.objectId ?? 'cs-1',
   checkoutSession: {
     email: overrides?.email ?? 'buyer@example.com',
+    paymentStatus: overrides?.paymentStatus ?? 'paid',
     subscriptionId: overrides?.subscriptionId ?? null,
     paymentIntentId: overrides?.paymentIntentId ?? 'pi-1',
     invoiceId: overrides?.invoiceId ?? null,
@@ -121,6 +128,7 @@ const adjustmentEvent = (input: {
   id?: string;
   type?: 'charge.refunded' | 'charge.dispute.created';
   paymentIntentId?: string;
+  refund?: { full: boolean; amountRefundedCents: number | null; amountCents: number | null };
 } = {}): PaymentWebhookEvent => ({
   id: input.id ?? 'evt-refund',
   type: input.type ?? 'charge.refunded',
@@ -130,6 +138,7 @@ const adjustmentEvent = (input: {
     chargeId: 'ch-refund',
     paymentIntentId: input.paymentIntentId ?? 'pi-1',
     invoiceId: null,
+    ...(input.refund === undefined ? {} : { refund: input.refund }),
   },
 });
 
@@ -141,10 +150,12 @@ const subscriptionEvent = (input: {
   status?: string;
   currentPeriodEnd?: string | null;
   endedAt?: string | null;
+  createdAt?: string;
 }): PaymentWebhookEvent => ({
   id: input.id,
   type: input.type,
   objectId: input.subscriptionId,
+  ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
   checkoutSession: null,
   subscription: {
     id: input.subscriptionId,
@@ -167,6 +178,7 @@ const harness = (
     status: 'processing' | 'processed';
   }>();
   const orders: Order[] = [];
+  const warnings: string[] = [];
   const subscriptions = new Map<string, MemberSubscription>();
   const prices = options.prices ?? [];
   const sent: string[] = [];
@@ -180,6 +192,8 @@ const harness = (
   const deps: StripeWebhookDeps = {
     authPort: {
       getAuthenticatedUser: async () => null,
+      listSessions: async () => [],
+      revokeSessions: async () => undefined,
       ensureUser: async (email) => ({ userId: `user-${email}`, created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async (input) => ({ url: `https://alpha.example.com/magic/${input.email}` }),
@@ -255,13 +269,13 @@ const harness = (
               order.tenantId === tenantId &&
               order.providerObjectIds['subscription'] === providerSubscriptionId,
           ) ?? null,
-      listPaidOrdersForMemberProduct: async (tenantId, memberId, productId) =>
+      listAccessRetainingOrdersForMemberProduct: async (tenantId, memberId, productId) =>
         orders.filter(
           (order) =>
             order.tenantId === tenantId &&
             order.memberId === memberId &&
             order.productId === productId &&
-            order.status === 'paid',
+            ACCESS_RETAINING_ORDER_STATUSES.includes(order.status),
         ),
       markOrderRefunded: async (tenantId, orderId) => {
         const index = orders.findIndex(
@@ -274,6 +288,17 @@ const harness = (
         orders[index] = refunded;
         refundTransitions += 1;
         return refunded;
+      },
+      markOrderPartiallyRefunded: async (tenantId, orderId) => {
+        const index = orders.findIndex(
+          (order) => order.tenantId === tenantId && order.id === orderId && order.status === 'paid',
+        );
+        if (index < 0) return null;
+        const current = orders[index];
+        if (!current) return null;
+        const partiallyRefunded: Order = { ...current, status: 'partially_refunded' };
+        orders[index] = partiallyRefunded;
+        return partiallyRefunded;
       },
     },
     payment: {
@@ -337,14 +362,12 @@ const harness = (
     processedPaymentEvents: {
       claim: async (tenantId, event, lease) => {
         const existingClaim = eventClaims.get(event.id);
+        if (existingClaim?.status === 'processed') return 'processed';
         if (
           existingClaim !== undefined
-          && (
-            existingClaim.status === 'processed'
-            || Date.parse(existingClaim.leaseExpiresAt) > Date.parse(lease.now)
-          )
+          && Date.parse(existingClaim.leaseExpiresAt) > Date.parse(lease.now)
         ) {
-          return 'duplicate';
+          return 'in_progress';
         }
         for (const existing of events.values()) {
           if (
@@ -352,8 +375,11 @@ const harness = (
             && existing.tenantId === tenantId
             && existing.objectId === event.objectId
             && existing.type === event.type
+            && FULFILLMENT_EVENT_TYPES.has(event.type)
           ) {
-            return 'duplicate';
+            return eventClaims.get(existing.id)?.status === 'processed'
+              ? 'processed'
+              : 'in_progress';
           }
         }
         events.set(event.id, { ...event, tenantId });
@@ -414,7 +440,7 @@ const harness = (
           processedPaymentEvents: deps.processedPaymentEvents,
           enrollmentTransaction: deps.enrollmentTransaction,
         });
-        if (!options.rejectPaymentCommit) return result;
+        if (result.ok && !options.rejectPaymentCommit) return result;
         members.clear();
         memberSnapshot.forEach((value, key) => members.set(key, value));
         grants.clear();
@@ -430,7 +456,7 @@ const harness = (
         queued.splice(0, queued.length, ...queuedSnapshot);
         autoInvoiceJobs.splice(0, autoInvoiceJobs.length, ...autoInvoiceJobsSnapshot);
         refundTransitions = refundSnapshot;
-        return err(internal('commit rejected'));
+        return options.rejectPaymentCommit ? err(internal('commit rejected')) : result;
       },
     },
     enrollmentTransaction: {
@@ -465,6 +491,11 @@ const harness = (
     baseDomain: 'example.com',
     singleTenantMode: false,
     exposeMagicLinks: false,
+    logger: {
+      warn: (message: string) => {
+        warnings.push(message);
+      },
+    },
   };
 
   return {
@@ -478,6 +509,7 @@ const harness = (
     queued,
     autoInvoiceJobs,
     providerCancellations,
+    warnings,
     refundTransitions: () => refundTransitions,
     setNow: (iso: string) => {
       clockNow = iso;
@@ -546,7 +578,10 @@ const couponHarness = (
       id: 'coupon-session-1',
       tenantId: tenantA.id,
       couponId: coupon.id,
-      providerSessionId: options.session?.providerSessionId ?? 'cs-coupon',
+      providerSessionId:
+        options.session?.providerSessionId === undefined
+          ? 'cs-coupon'
+          : options.session.providerSessionId,
       memberEmail: 'buyer@example.com',
       productId: 'product-1',
       priceId: price?.id ?? null,
@@ -567,6 +602,15 @@ const couponHarness = (
     }),
     createOrderAndClaim: async (_tenantId, input) => {
       if (options.claim === false) return false;
+      const claimed = redemptions.filter((row) => row.couponId === input.redemption.couponId);
+      if (input.maxRedemptions !== null && claimed.length >= input.maxRedemptions) return false;
+      const perMember = claimed.filter((row) => row.email === input.redemption.email).length;
+      if (
+        input.maxRedemptionsPerMember !== null
+        && perMember >= input.maxRedemptionsPerMember
+      ) {
+        return false;
+      }
       h.orders.push(input.order);
       redemptions.push(input.redemption);
       return true;
@@ -609,6 +653,66 @@ describe('fulfillStripeWebhook', () => {
       ),
     ).toMatchObject({ ok: true, value: { processed: true } });
     expect(h.orders[0]?.billing).toEqual(billing);
+  });
+
+  it('waits for the async payment before granting access on an unpaid session', async () => {
+    const h = harness();
+
+    const unpaid = await fulfillStripeWebhook(
+      tenantA,
+      completedEvent({ paymentStatus: 'unpaid' }),
+      h.deps,
+    );
+
+    expect(unpaid).toEqual({ ok: true, value: { processed: false } });
+    expect(h.orders).toEqual([]);
+    expect(h.grants.size).toBe(0);
+    expect(h.autoInvoiceJobs).toEqual([]);
+
+    const succeeded = await fulfillStripeWebhook(
+      tenantA,
+      completedEvent({ id: 'evt-async', type: 'checkout.session.async_payment_succeeded' }),
+      h.deps,
+    );
+
+    expect(succeeded).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders).toMatchObject([{ status: 'paid' }]);
+    expect(h.grants.size).toBe(1);
+    expect(h.autoInvoiceJobs).toHaveLength(1);
+  });
+
+  it('leaves no trace of a failed async payment', async () => {
+    const h = harness();
+
+    const failed = await fulfillStripeWebhook(
+      tenantA,
+      completedEvent({
+        id: 'evt-async-failed',
+        type: 'checkout.session.async_payment_failed',
+        paymentStatus: 'unpaid',
+      }),
+      h.deps,
+    );
+
+    expect(failed).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders).toEqual([]);
+    expect(h.grants.size).toBe(0);
+    expect(h.autoInvoiceJobs).toEqual([]);
+    expect(h.warnings).toEqual([expect.stringContaining('evt-async-failed')]);
+  });
+
+  it('fulfills a session that required no payment', async () => {
+    const h = harness();
+
+    const fulfilled = await fulfillStripeWebhook(
+      tenantA,
+      completedEvent({ paymentStatus: 'no_payment_required', amountTotalCents: 0 }),
+      h.deps,
+    );
+
+    expect(fulfilled).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders).toMatchObject([{ status: 'paid', amountCents: 0 }]);
+    expect(h.grants.size).toBe(1);
   });
 
   it('honors checkout-time expiry, records one redemption, and stays idempotent', async () => {
@@ -742,6 +846,62 @@ describe('fulfillStripeWebhook', () => {
       { amountCents: 2450, discountCents: 2450, couponId: null },
     ]);
     expect(h.redemptions).toHaveLength(0);
+  });
+
+  it('refuses a free coupon checkout once the redemption limit is consumed', async () => {
+    const h = couponHarness({
+      coupon: { maxRedemptions: 1 },
+      session: {
+        providerSessionId: null,
+        originalCents: 4900,
+        discountCents: 4900,
+        finalCents: 0,
+      },
+    });
+    const freeEvent = (id: string, email: string) => completedEvent({
+      id,
+      objectId: `cs-${id}`,
+      email,
+      couponCheckoutSessionId: 'coupon-session-1',
+      amountTotalCents: 0,
+      discountTotalCents: 4900,
+    });
+
+    expect(await fulfillStripeWebhook(tenantA, freeEvent('evt-free-1', 'first@example.com'), h.deps))
+      .toEqual({ ok: true, value: { processed: true } });
+    expect(h.grants.size).toBe(1);
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(1);
+
+    expect(await fulfillStripeWebhook(tenantA, freeEvent('evt-free-2', 'second@example.com'), h.deps))
+      .toEqual({
+        ok: false,
+        error: { code: 'validation', message: 'Coupon redemption limit reached' },
+      });
+    expect(h.grants.size).toBe(1);
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(1);
+  });
+
+  it.each([
+    { claim: 'processed' as const, expected: { ok: true, value: { processed: false } } },
+    {
+      claim: 'in_progress' as const,
+      expected: {
+        ok: false,
+        error: { code: 'conflict', message: 'Payment event is being processed' },
+      },
+    },
+  ])('maps a $claim claim to its own outcome', async (scenario) => {
+    const h = harness();
+    h.deps.processedPaymentEvents = {
+      ...h.deps.processedPaymentEvents,
+      claim: async () => scenario.claim,
+    };
+
+    expect(await fulfillStripeWebhook(tenantA, completedEvent(), h.deps)).toEqual(scenario.expected);
+    expect(h.orders).toEqual([]);
+    expect(h.grants.size).toBe(0);
   });
 
   it('records the provider charged total and discount without poisoning fulfillment', async () => {
@@ -878,7 +1038,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders).toHaveLength(1);
   });
 
-  it('appends exactly one order when two duplicate deliveries race the same event', async () => {
+  it('appends exactly one order and asks the loser to retry when two deliveries race', async () => {
     const h = harness();
     const [first, second] = await Promise.all([
       fulfillStripeWebhook(tenantA, completedEvent(), h.deps),
@@ -887,7 +1047,10 @@ describe('fulfillStripeWebhook', () => {
 
     const outcomes = [first, second];
     expect(outcomes).toContainEqual({ ok: true, value: { processed: true } });
-    expect(outcomes).toContainEqual({ ok: true, value: { processed: false } });
+    expect(outcomes).toContainEqual({
+      ok: false,
+      error: { code: 'conflict', message: 'Payment event is being processed' },
+    });
     expect(h.orders).toHaveLength(1);
     expect(h.members.size).toBe(1);
     expect(h.grants.size).toBe(1);
@@ -1139,6 +1302,81 @@ describe('fulfillStripeWebhook', () => {
         }),
       },
     ]);
+  });
+
+  it('restores the grace window when a later update lifts the scheduled cancellation', async () => {
+    const h = await subscribedHarness();
+
+    const scheduled = await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-scheduled',
+        type: 'customer.subscription.updated',
+        subscriptionId: 'sub-1',
+        cancelAtPeriodEnd: true,
+        status: 'active',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+    const lifted = await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-lifted',
+        type: 'customer.subscription.updated',
+        subscriptionId: 'sub-1',
+        cancelAtPeriodEnd: false,
+        status: 'active',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+
+    expect(scheduled).toEqual({ ok: true, value: { processed: true } });
+    expect(lifted).toEqual({ ok: true, value: { processed: true } });
+    expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
+      status: 'active',
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+    });
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-23T10:00:00.000Z');
+  });
+
+  it('ignores a subscription update created before the last applied one', async () => {
+    const h = await subscribedHarness();
+
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-latest',
+        type: 'customer.subscription.updated',
+        subscriptionId: 'sub-1',
+        cancelAtPeriodEnd: true,
+        status: 'active',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        createdAt: '1998-07-14T10:05:00.000Z',
+      }),
+      h.deps,
+    );
+    const stale = await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-stale',
+        type: 'customer.subscription.updated',
+        subscriptionId: 'sub-1',
+        cancelAtPeriodEnd: false,
+        status: 'active',
+        currentPeriodEnd: '1998-09-20T10:00:00.000Z',
+        createdAt: '1998-07-14T09:00:00.000Z',
+      }),
+      h.deps,
+    );
+
+    expect(stale).toEqual({ ok: true, value: { processed: false } });
+    expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+    });
   });
 
   it('revokes the grant at ended_at for an immediate cancellation with a future period end', async () => {
@@ -1396,6 +1634,58 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders.map((order) => order.status)).toEqual(['paid', 'refunded']);
   });
 
+  it('applies a subscription deletion that lands after a refund-driven cancellation', async () => {
+    const h = await subscribedHarness();
+    await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-renew-before-deletion',
+        type: 'invoice.paid',
+        invoiceId: 'in-renew-before-deletion',
+        subscriptionId: 'sub-1',
+        periodEnd: '1998-09-14T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+    await fulfillStripeWebhook(
+      tenantA,
+      adjustmentEvent({
+        id: 'evt-refund-before-deletion',
+        paymentIntentId: 'pi-in-renew-before-deletion',
+      }),
+      h.deps,
+    );
+
+    const deleted = await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-deletion-after-refund',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-09-14T10:00:00.000Z',
+        endedAt: '1998-07-14T09:59:59.000Z',
+        createdAt: '1998-07-14T09:59:59.000Z',
+      }),
+      h.deps,
+    );
+
+    expect(deleted).toEqual({ ok: true, value: { processed: true } });
+    expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
+      status: 'canceled',
+      currentPeriodEnd: '1998-07-14T09:59:59.000Z',
+    });
+    expect(h.queued).toEqual([
+      {
+        to: 'buyer@example.com',
+        payload: expect.objectContaining({
+          kind: 'subscription-ended',
+          accessEndsAt: '1998-07-14T09:59:59.000Z',
+        }),
+      },
+    ]);
+  });
+
   it('keeps local recurring access intact when Stripe cancellation fails', async () => {
     const h = await subscribedHarness();
     await fulfillStripeWebhook(
@@ -1458,6 +1748,61 @@ describe('fulfillStripeWebhook', () => {
     expect(result).toEqual({ ok: true, value: { processed: true } });
     expect(h.orders.map((order) => order.status)).toEqual(['refunded', 'paid']);
     expect(Array.from(h.grants.values())[0]?.expiresAt).toBeNull();
+  });
+
+  it('keeps the grant and the subscription when only part of the charge is refunded', async () => {
+    const h = await subscribedHarness();
+    const grantBefore = Array.from(h.grants.values())[0]?.expiresAt;
+
+    const result = await fulfillStripeWebhook(
+      tenantA,
+      adjustmentEvent({
+        refund: { full: false, amountRefundedCents: 1000, amountCents: 2900 },
+      }),
+      h.deps,
+    );
+
+    expect(result).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders.map((order) => order.status)).toEqual(['partially_refunded']);
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(grantBefore);
+    expect(h.subscriptions.get(h.subscription.id)?.status).toBe('active');
+    expect(h.providerCancellations).toEqual([]);
+  });
+
+  it('keeps the grant when the remaining order of the subscription is partially refunded', async () => {
+    const h = await subscribedHarness();
+    await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-renew-before-partial',
+        type: 'invoice.paid',
+        invoiceId: 'in-renew-before-partial',
+        subscriptionId: 'sub-1',
+        periodEnd: '1998-09-14T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+    await fulfillStripeWebhook(
+      tenantA,
+      adjustmentEvent({
+        id: 'evt-partial-on-renewal',
+        paymentIntentId: 'pi-in-renew-before-partial',
+        refund: { full: false, amountRefundedCents: 1000, amountCents: 2900 },
+      }),
+      h.deps,
+    );
+    const grantBefore = Array.from(h.grants.values())[0]?.expiresAt;
+
+    const refunded = await fulfillStripeWebhook(
+      tenantA,
+      adjustmentEvent({ id: 'evt-full-on-first-order', paymentIntentId: 'pi-1' }),
+      h.deps,
+    );
+
+    expect(refunded).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders.map((order) => order.status)).toEqual(['refunded', 'partially_refunded']);
+    expect(h.subscriptions.get(h.subscription.id)?.status).toBe('active');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(grantBefore);
   });
 
   it.each(['charge.refunded', 'charge.dispute.created'] as const)(

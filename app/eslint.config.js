@@ -170,6 +170,8 @@ export default tseslint.config(
       globals: {
         console: 'readonly',
         document: 'readonly',
+        localStorage: 'readonly',
+        matchMedia: 'readonly',
         process: 'readonly',
       },
     },
@@ -246,6 +248,7 @@ export default tseslint.config(
             'apps/web/src/NotificationBell*',
             'apps/web/src/notification-links*',
             'apps/web/src/notifications-stream*',
+            'apps/web/src/notifications-transport*',
           ],
           mode: 'full',
         },

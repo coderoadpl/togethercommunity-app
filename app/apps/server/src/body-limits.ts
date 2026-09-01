@@ -20,7 +20,7 @@ const isWebhookPath = (path: string): boolean =>
   path.startsWith('/api/webhooks/stripe/')
   || path.startsWith('/api/webhooks/ses/');
 
-const isPublicFormPath = (path: string): boolean =>
+export const isPublicFormPath = (path: string): boolean =>
   /^\/u\/[^/]+(?:\/(?:confirm|all|preferences))?$/.test(path)
   || /^\/marketing\/confirm\/[^/]+$/.test(path);
 

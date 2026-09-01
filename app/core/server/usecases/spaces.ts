@@ -1,5 +1,4 @@
 import {
-  DEFAULT_LANGUAGE,
   appError,
   createSpaceInputSchema,
   deleteSpaceInputSchema,
@@ -10,7 +9,6 @@ import {
   MAX_PINNED_POSTS_PER_SPACE,
   notFound,
   ok,
-  postSnippet,
   pinPostInputSchema,
   reactToPostInputSchema,
   renderPost,
@@ -21,7 +19,6 @@ import {
   validation,
   type AppError,
   type MemberSpace,
-  type Notification,
   type Post,
   type ReactionEmoji,
   type ReactionSummary,
@@ -40,8 +37,6 @@ import type {
   CourseRepository,
   DiscussionLinkPort,
   IdGenerator,
-  NotificationChannelPort,
-  NotificationRepository,
   PostReactionRepository,
   PostRepository,
   ProductGrantRepository,
@@ -52,14 +47,14 @@ import type {
   TenantAccessReader,
   TenantRepository,
 } from '../ports.js';
-import { avatarUrlForAuthor, avatarUrlsFor } from './avatar.js';
+import { avatarUrlsFor } from './avatar.js';
 import {
   lessonContextAccess,
   listAccessibleSpaces,
   requireActor,
   requireMemberOrStaff,
+  requireUnbannedMember,
   spaceContextAccess,
-  spaceNotificationRecipient,
   type ActorScope,
 } from './community-access.js';
 
@@ -69,8 +64,6 @@ export interface SpacesDeps {
   reactions: PostReactionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
   spaceSeen: SpaceSeenRepository;
-  notifications: NotificationRepository;
-  notificationChannels: NotificationChannelPort[];
   courses: CourseRepository;
   modules: CourseModuleRepository;
   grants: ProductGrantRepository;
@@ -343,7 +336,7 @@ export const followSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ spaceId: string; isFollowing: boolean }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  const actor = requireUnbannedMember(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = followSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space follow payload', parsed.error.flatten()));
@@ -409,7 +402,7 @@ const reactionOutcome = async (
     reaction: { postId: string; userId: string; emoji: ReactionEmoji },
   ) => Promise<unknown>,
 ): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  const actor = requireUnbannedMember(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = reactToPostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid reaction payload', parsed.error.flatten()));
@@ -434,7 +427,7 @@ export const reactToPost = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  const actor = requireUnbannedMember(ctx, 'space:interact');
   if (!actor.ok) return actor;
   return reactionOutcome(ctx, input, deps, (tenantId, reaction) =>
     deps.reactions.add(tenantId, { ...reaction, createdAt: deps.clock.nowIso() }),
@@ -446,75 +439,7 @@ export const unreactToPost = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  const actor = requireUnbannedMember(ctx, 'space:interact');
   if (!actor.ok) return actor;
   return reactionOutcome(ctx, input, deps, (tenantId, reaction) => deps.reactions.remove(tenantId, reaction));
-};
-
-export interface SpaceNotifyDeps {
-  spaceSubscriptions: SpaceSubscriptionRepository;
-  notifications: NotificationRepository;
-  notificationChannels: NotificationChannelPort[];
-  grants: ProductGrantRepository;
-  tenantAccess: TenantAccessReader;
-  links: DiscussionLinkPort;
-  ids: IdGenerator;
-  clock: Clock;
-  avatarSources: AvatarSourceReader;
-  contentHash: ContentHash;
-}
-
-/** Fan-out for a new root post in a space: every follower except the author, entitlement-gated. */
-export const notifySpaceFollowers = async (
-  tenantId: string,
-  post: Post,
-  space: Space,
-  deps: SpaceNotifyDeps,
-  tenant: { tenantName: string; tenantSlug: string | null },
-): Promise<Result<void, AppError>> => {
-  const followers = await deps.spaceSubscriptions.listFollowersForSpace(tenantId, space.id);
-  if (followers.length === 0) return ok(undefined);
-  const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
-  const spaceUrl = deps.links.spaceUrl({
-    tenantSlug: tenant.tenantSlug,
-    spaceId: space.id,
-    rootPostId: post.rootPostId,
-  });
-  for (const follower of followers) {
-    if (follower.userId === post.authorUserId) continue;
-    const recipient = await spaceNotificationRecipient(tenantId, follower.userId, space, deps);
-    if (recipient === null) continue;
-    const notification: Notification = {
-      id: deps.ids.nextId(),
-      tenantId,
-      recipientUserId: follower.userId,
-      kind: 'space-post',
-      payload: {
-        rootPostId: post.rootPostId,
-        postId: post.id,
-        contextKind: 'space',
-        contextId: space.id,
-        courseId: null,
-        eventId: null,
-        lessonName: space.name,
-        authorDisplay: post.authorDisplay,
-        authorAvatarUrl,
-        snippet: postSnippet(post.body),
-      },
-      readAt: null,
-      createdAt: deps.clock.nowIso(),
-    };
-    const inserted = await deps.notifications.insert(tenantId, notification);
-    for (const channel of deps.notificationChannels) {
-      const delivered = await channel.deliver(inserted, {
-        recipientEmail: recipient.email,
-        tenantName: tenant.tenantName,
-        contextName: space.name,
-        contextUrl: spaceUrl,
-        language: DEFAULT_LANGUAGE,
-      });
-      if (!delivered.ok) return delivered;
-    }
-  }
-  return ok(undefined);
 };

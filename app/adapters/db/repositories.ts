@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
 
 import {
+  ACCESS_RETAINING_ORDER_STATUSES,
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
   billingDataSchema,
@@ -104,6 +105,7 @@ import type {
   PurchaseRepository,
   ProductGrantRepository,
   ProductMetadataRepository,
+  PaymentEventClaim,
   ProcessedPaymentEventRepository,
   ProductRepository,
   ProductBatchReader,
@@ -123,11 +125,13 @@ import type {
   ThreadSubscriptionRepository,
   UserDisplayReader,
   ApiKeyRateLimitRepository,
+  PublicRateLimitRepository,
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { uniqueViolation } from './pg-errors.js';
 import { appendMemberEvent } from './member-events.js';
+import { insertFanoutJob } from './notification-fanout-jobs.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import { fingerprintHash, introspectSchema, shortFingerprint } from './schema-fingerprint.js';
 import {
@@ -176,6 +180,7 @@ import {
   tenantAdmins,
   tenantApiKeys,
   apiKeyRateLimitBuckets,
+  rateLimitBuckets,
   tenantDomains,
   tenantSecrets,
   tenants,
@@ -1038,12 +1043,15 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
 });
 
 export const createPostRepository = (db: Db): PostRepository => ({
-  createPost: async (tenantId, post) => {
-    const rows = await db
-      .insert(posts)
-      .values({ ...post, tenantId })
-      .returning();
-    const row = rows[0];
+  createPost: async (tenantId, post, fanoutJob) => {
+    const row = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(posts)
+        .values({ ...post, tenantId })
+        .returning();
+      if (fanoutJob !== undefined) await insertFanoutJob(tx, tenantId, fanoutJob);
+      return inserted[0];
+    });
     if (!row) throw new Error('posts insert returned no row');
     return parsePost(row);
   },
@@ -1432,12 +1440,19 @@ export const createThreadSubscriptionRepository = (db: Db): ThreadSubscriptionRe
       .returning();
     return rows[0] ?? null;
   },
-  listSubscribersForRoot: async (tenantId, rootPostId) =>
+  listSubscribersPage: async (tenantId, query) =>
     db
       .select()
       .from(threadSubscriptions)
-      .where(and(eq(threadSubscriptions.tenantId, tenantId), eq(threadSubscriptions.rootPostId, rootPostId)))
-      .orderBy(asc(threadSubscriptions.createdAt)),
+      .where(
+        and(
+          eq(threadSubscriptions.tenantId, tenantId),
+          eq(threadSubscriptions.rootPostId, query.rootPostId),
+          ...(query.afterUserId === null ? [] : [gt(threadSubscriptions.userId, query.afterUserId)]),
+        ),
+      )
+      .orderBy(asc(threadSubscriptions.userId))
+      .limit(query.limit),
   listForUser: async (tenantId, input) =>
     input.rootPostIds.length === 0
       ? []
@@ -1574,12 +1589,15 @@ export const createSpaceEventRepository = (db: Db): SpaceEventRepository => ({
     const row = rows[0];
     return row ? parseSpaceEvent(row) : null;
   },
-  insert: async (tenantId, event) => {
-    const rows = await db
-      .insert(spaceEvents)
-      .values({ ...event, tenantId })
-      .returning();
-    const row = rows[0];
+  insert: async (tenantId, event, fanoutJob) => {
+    const row = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(spaceEvents)
+        .values({ ...event, tenantId })
+        .returning();
+      if (fanoutJob !== undefined) await insertFanoutJob(tx, tenantId, fanoutJob);
+      return inserted[0];
+    });
     if (!row) throw new Error('space_events insert returned no row');
     return parseSpaceEvent(row);
   },
@@ -1810,12 +1828,19 @@ export const createSpaceSubscriptionRepository = (db: Db): SpaceSubscriptionRepo
       .returning({ spaceId: spaceSubscriptions.spaceId });
     return rows.length > 0;
   },
-  listFollowersForSpace: async (tenantId, spaceId) =>
+  listFollowersPage: async (tenantId, query) =>
     db
       .select()
       .from(spaceSubscriptions)
-      .where(and(eq(spaceSubscriptions.tenantId, tenantId), eq(spaceSubscriptions.spaceId, spaceId)))
-      .orderBy(asc(spaceSubscriptions.createdAt)),
+      .where(
+        and(
+          eq(spaceSubscriptions.tenantId, tenantId),
+          eq(spaceSubscriptions.spaceId, query.spaceId),
+          ...(query.afterUserId === null ? [] : [gt(spaceSubscriptions.userId, query.afterUserId)]),
+        ),
+      )
+      .orderBy(asc(spaceSubscriptions.userId))
+      .limit(query.limit),
   listForUser: async (tenantId, input) =>
     input.spaceIds.length === 0
       ? []
@@ -2100,6 +2125,18 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
     const row = rows[0];
     if (!row) throw new Error('notifications insert returned no row');
     return parseNotification(row);
+  },
+  insertMany: async (tenantId, batch) => {
+    if (batch.length === 0) return [];
+    const rows = await db
+      .insert(notifications)
+      .values(batch.map((notification) => ({ ...notification, tenantId })))
+      .onConflictDoNothing({
+        target: [notifications.tenantId, notifications.recipientUserId, notifications.sourceKey],
+        where: sql`${notifications.sourceKey} is not null`,
+      })
+      .returning();
+    return rows.map(parseNotification);
   },
   listForRecipient: async (tenantId, query) => {
     const cursor = query.cursor === undefined ? null : parseNotificationCursor(query.cursor);
@@ -3032,7 +3069,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
     const row = rows[0];
     return row ? parseOrder(row) : null;
   },
-  listPaidOrdersForMemberProduct: async (tenantId, memberId, productId) => {
+  listAccessRetainingOrdersForMemberProduct: async (tenantId, memberId, productId) => {
     const rows = await db
       .select()
       .from(orders)
@@ -3041,7 +3078,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
           eq(orders.tenantId, tenantId),
           eq(orders.memberId, memberId),
           eq(orders.productId, productId),
-          eq(orders.status, 'paid'),
+          inArray(orders.status, [...ACCESS_RETAINING_ORDER_STATUSES]),
         ),
       )
       .orderBy(desc(orders.createdAt), desc(orders.id));
@@ -3056,6 +3093,21 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
           eq(orders.tenantId, tenantId),
           eq(orders.id, orderId),
           sql`${orders.status} <> 'refunded'`,
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+  markOrderPartiallyRefunded: async (tenantId, orderId) => {
+    const rows = await db
+      .update(orders)
+      .set({ status: 'partially_refunded' })
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.id, orderId),
+          eq(orders.status, 'paid'),
         ),
       )
       .returning();
@@ -3282,6 +3334,37 @@ export const createApiKeyRateLimitRepository = (db: Db): ApiKeyRateLimitReposito
   },
 });
 
+export const createPublicRateLimitRepository = (db: Db): PublicRateLimitRepository => ({
+  claim: async (input) => {
+    const [row] = await db.insert(rateLimitBuckets).values({
+      scope: input.scope,
+      key: input.key,
+      windowStartedAt: input.windowStartedAt,
+      expiresAt: input.expiresAt,
+      count: 1,
+    }).onConflictDoUpdate({
+      target: [rateLimitBuckets.scope, rateLimitBuckets.key],
+      set: {
+        windowStartedAt: input.windowStartedAt,
+        expiresAt: input.expiresAt,
+        count: sql`case when ${rateLimitBuckets.windowStartedAt} = ${input.windowStartedAt}::timestamptz then ${rateLimitBuckets.count} + 1 else 1 end`,
+      },
+      setWhere: or(
+        ne(rateLimitBuckets.windowStartedAt, input.windowStartedAt),
+        sql`${rateLimitBuckets.count} + 1 <= ${input.limit}`,
+      ) ?? sql`false`,
+    }).returning({ count: rateLimitBuckets.count });
+    return row !== undefined;
+  },
+  purgeExpired: async (before) => {
+    const purged = await db
+      .delete(rateLimitBuckets)
+      .where(sql`${rateLimitBuckets.expiresAt} <= ${before}::timestamptz`)
+      .returning({ key: rateLimitBuckets.key });
+    return purged.length;
+  },
+});
+
 export const createTenantSecretRepository = (db: Db): TenantSecretRepository => ({
   listByTenant: async (tenantId) =>
     (
@@ -3337,64 +3420,85 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
   },
 });
 
-export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentEventRepository => ({
-  claim: async (tenantId, event, lease) => {
-    try {
-      const rows = await db
-        .insert(processedPaymentEvents)
-        .values({
-          ...event,
-          tenantId,
-          status: 'processing',
-          workerId: lease.workerId,
-          claimedAt: lease.now,
-          leaseExpiresAt: lease.leaseExpiresAt,
-        })
-        .onConflictDoUpdate({
-          target: processedPaymentEvents.id,
-          set: {
+export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentEventRepository => {
+  const settledOutcome = async (
+    where: ReturnType<typeof and>,
+  ): Promise<Exclude<PaymentEventClaim, 'claimed'>> => {
+    const rows = await db
+      .select({ status: processedPaymentEvents.status })
+      .from(processedPaymentEvents)
+      .where(where)
+      .limit(1);
+    return rows[0]?.status === 'processed' ? 'processed' : 'in_progress';
+  };
+
+  return {
+    claim: async (tenantId, event, lease) => {
+      try {
+        const rows = await db
+          .insert(processedPaymentEvents)
+          .values({
+            ...event,
+            tenantId,
             status: 'processing',
             workerId: lease.workerId,
             claimedAt: lease.now,
             leaseExpiresAt: lease.leaseExpiresAt,
-          },
-          setWhere: sql`${processedPaymentEvents.status} = 'processing'
-            and ${processedPaymentEvents.leaseExpiresAt} <= ${lease.now}`,
+          })
+          .onConflictDoUpdate({
+            target: processedPaymentEvents.id,
+            set: {
+              status: 'processing',
+              workerId: lease.workerId,
+              claimedAt: lease.now,
+              leaseExpiresAt: lease.leaseExpiresAt,
+            },
+            setWhere: sql`${processedPaymentEvents.status} = 'processing'
+              and ${processedPaymentEvents.leaseExpiresAt} <= ${lease.now}`,
+          })
+          .returning({ id: processedPaymentEvents.id });
+        if (rows.length > 0) return 'claimed';
+        return await settledOutcome(and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.id, event.id),
+        ));
+      } catch (cause) {
+        if (!uniqueViolation(cause)) throw cause;
+        return await settledOutcome(and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.objectId, event.objectId),
+          eq(processedPaymentEvents.type, event.type),
+        ));
+      }
+    },
+    finalize: async (tenantId, eventId, workerId, processedAt) => {
+      await db
+        .update(processedPaymentEvents)
+        .set({
+          status: 'processed',
+          processedAt,
+          workerId: null,
+          claimedAt: null,
+          leaseExpiresAt: null,
         })
-        .returning({ id: processedPaymentEvents.id });
-      return rows.length > 0 ? 'claimed' : 'duplicate';
-    } catch (cause) {
-      if (uniqueViolation(cause)) return 'duplicate';
-      throw cause;
-    }
-  },
-  finalize: async (tenantId, eventId, workerId, processedAt) => {
-    await db
-      .update(processedPaymentEvents)
-      .set({
-        status: 'processed',
-        processedAt,
-        workerId: null,
-        claimedAt: null,
-        leaseExpiresAt: null,
-      })
-      .where(and(
-        eq(processedPaymentEvents.tenantId, tenantId),
-        eq(processedPaymentEvents.id, eventId),
-        eq(processedPaymentEvents.workerId, workerId),
-        eq(processedPaymentEvents.status, 'processing'),
-      ));
-  },
-  release: async (tenantId, eventId, workerId) => {
-    await db
-      .delete(processedPaymentEvents)
-      .where(and(
-        eq(processedPaymentEvents.tenantId, tenantId),
-        eq(processedPaymentEvents.id, eventId),
-        eq(processedPaymentEvents.workerId, workerId),
-      ));
-  },
-});
+        .where(and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.id, eventId),
+          eq(processedPaymentEvents.workerId, workerId),
+          eq(processedPaymentEvents.status, 'processing'),
+        ));
+    },
+    release: async (tenantId, eventId, workerId) => {
+      await db
+        .delete(processedPaymentEvents)
+        .where(and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.id, eventId),
+          eq(processedPaymentEvents.workerId, workerId),
+        ));
+    },
+  };
+};
 
 export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
   createMemberGrant: async (input) =>

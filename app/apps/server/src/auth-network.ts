@@ -49,6 +49,15 @@ const remoteAddress = (context: Context): string | undefined => {
   }
 };
 
+const trustedAuthContextHeaders = (
+  context: Context,
+  trustedProxyHeader: string | null,
+): Headers => trustedAuthHeaders(
+  context.req.raw.headers,
+  trustedProxyHeader,
+  remoteAddress(context),
+);
+
 export const trustedAuthRequest = (
   context: Context,
   request: Request,
@@ -56,3 +65,20 @@ export const trustedAuthRequest = (
 ): Request => new Request(request, {
   headers: trustedAuthHeaders(request.headers, trustedProxyHeader, remoteAddress(context)),
 });
+
+export const trustedClientIp = (
+  context: Context,
+  trustedProxyHeader: string | null,
+): string | null => trustedAuthContextHeaders(context, trustedProxyHeader).get('x-forwarded-for');
+
+export const checkoutConsentEvidence = (
+  context: Context,
+  trustedProxyHeader: string | null,
+): { ip?: string; userAgent?: string; } => {
+  const ip = trustedClientIp(context, trustedProxyHeader) ?? undefined;
+  const userAgent = context.req.raw.headers.get('user-agent') ?? undefined;
+  return {
+    ...(ip === undefined ? {} : { ip }),
+    ...(userAgent === undefined ? {} : { userAgent }),
+  };
+};

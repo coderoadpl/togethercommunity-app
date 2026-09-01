@@ -6,7 +6,7 @@ import type { PostReportReason, PostReportStatus } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 
 type PendingAction = { reportId: string; action: 'dismiss' | 'delete-post' };
 
@@ -30,7 +30,7 @@ export const ReportsPanel = () => {
     return <PanelPage title={t.reports.heading} state={{ kind: 'loading', label: t.reports.loading }} />;
   }
   if (reports.isError) {
-    return <PanelPage title={t.reports.heading} state={{ kind: 'error', message: localizeError(reports.error, t), retry: { label: t.common.retry, onRetry: () => void reports.refetch() } }} />;
+    return <PanelPage title={t.reports.heading} state={{ kind: 'error', message: localizePanelError(reports.error, t), retry: { label: t.common.retry, onRetry: () => void reports.refetch() } }} />;
   }
 
   const statusLabel = (value: PostReportStatus): string =>
@@ -116,7 +116,7 @@ export const ReportsPanel = () => {
           </Stack>
         </Card>
       ))}
-      {resolve.isError ? <Alert severity="error">{localizeError(resolve.error, t)}</Alert> : null}
+      {resolve.isError ? <Alert severity="error">{localizePanelError(resolve.error, t)}</Alert> : null}
       <ConfirmDialog
         open={pending !== null}
         title={pending?.action === 'delete-post' ? t.reports.deletePost : t.reports.dismiss}

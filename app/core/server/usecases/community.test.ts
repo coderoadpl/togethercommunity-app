@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeCourseModuleName,
   POST_RATE_LIMIT,
+  renderPost,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -27,6 +28,7 @@ import type {
   CourseRepository,
   IdGenerator,
   NotificationChannelPort,
+  NotificationFanoutJobRepository,
   NotificationRepository,
   PostRepository,
   PostReportRepository,
@@ -467,6 +469,11 @@ class FakeReports implements PostReportRepository {
   }
 }
 
+const fakeFanoutJobs = (): NotificationFanoutJobRepository => ({
+  claimDue: async () => [],
+  save: async () => undefined,
+});
+
 class FakeSubscriptions implements ThreadSubscriptionRepository {
   readonly rows: ThreadSubscription[] = [];
 
@@ -492,8 +499,15 @@ class FakeSubscriptions implements ThreadSubscriptionRepository {
     return existing;
   }
 
-  async listSubscribersForRoot(tenantId: string, rootPostId: string): Promise<ThreadSubscription[]> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.rootPostId === rootPostId);
+  async listSubscribersPage(
+    tenantId: string,
+    query: { rootPostId: string; afterUserId: string | null; limit: number },
+  ): Promise<ThreadSubscription[]> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.rootPostId === query.rootPostId)
+      .filter((item) => query.afterUserId === null || item.userId > query.afterUserId)
+      .sort((left, right) => left.userId.localeCompare(right.userId))
+      .slice(0, query.limit);
   }
 
   async listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]> {
@@ -509,6 +523,21 @@ class FakeNotifications implements NotificationRepository {
   async insert(_tenantId: string, notification: Notification): Promise<Notification> {
     this.rows.push(notification);
     return notification;
+  }
+
+  async insertMany(tenantId: string, batch: Notification[]): Promise<Notification[]> {
+    const inserted: Notification[] = [];
+    for (const notification of batch) {
+      const duplicate = notification.sourceKey !== null && this.rows.some(
+        (row) => row.tenantId === tenantId
+          && row.recipientUserId === notification.recipientUserId
+          && row.sourceKey === notification.sourceKey,
+      );
+      if (duplicate) continue;
+      this.rows.push(notification);
+      inserted.push(notification);
+    }
+    return inserted;
   }
 
   async listForRecipient(
@@ -581,8 +610,15 @@ class FakeSpaceSubscriptions implements SpaceSubscriptionRepository {
     return true;
   }
 
-  async listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.spaceId === spaceId);
+  async listFollowersPage(
+    tenantId: string,
+    query: { spaceId: string; afterUserId: string | null; limit: number },
+  ): Promise<SpaceSubscription[]> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.spaceId === query.spaceId)
+      .filter((item) => query.afterUserId === null || item.userId > query.afterUserId)
+      .sort((left, right) => left.userId.localeCompare(right.userId))
+      .slice(0, query.limit);
   }
 
   async listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]> {
@@ -607,13 +643,17 @@ const deps = (
   accessProducts: Product[],
   accessGrants: ProductGrant[] = [],
   staffUserIds: string[] = [],
+  bannedUserIds: string[] = [],
 ): CommunityDeps => {
-  const members: Member[] = [
+  const allMembers: Member[] = [
     { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
     { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
     { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
     { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
   ];
+  const members: Member[] = allMembers.map((member) =>
+    bannedUserIds.includes(member.userId) ? { ...member, bannedAt: NOW } : member,
+  );
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
     listStaffForTenant: async (tenantId) =>
@@ -648,6 +688,7 @@ const deps = (
     spaces: emptySpacesRepo,
     notifications: new FakeNotifications(),
     notificationChannels: [],
+    fanoutJobs: fakeFanoutJobs(),
     courses: coursesRepo,
     modules: modulesRepo,
     lessons: lessonsRepo,
@@ -878,7 +919,7 @@ describe('community use-cases', () => {
     );
     expect(reply.ok).toBe(true);
     expect(delivered).toEqual(['u1']);
-    expect(await d.threadSubscriptions.listSubscribersForRoot('t1', root.value.rootPostId)).toEqual(
+    expect(await d.threadSubscriptions.listSubscribersPage('t1', { rootPostId: root.value.rootPostId, afterUserId: null, limit: 50 })).toEqual(
       expect.arrayContaining([expect.objectContaining({ userId: 'u2', mutedAt: null })]),
     );
   });
@@ -911,7 +952,7 @@ describe('community use-cases', () => {
       { recipient: 'u2', email: 'u2@example.com' },
       { recipient: 'u3', email: 'u3@example.com' },
     ]);
-    expect(await d.threadSubscriptions.listSubscribersForRoot('t1', question.value.rootPostId)).toEqual(
+    expect(await d.threadSubscriptions.listSubscribersPage('t1', { rootPostId: question.value.rootPostId, afterUserId: null, limit: 50 })).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ userId: 'u1' }),
         expect.objectContaining({ userId: 'u2' }),
@@ -1149,6 +1190,86 @@ describe('community guard and error branches', () => {
     expect(await searchPosts(memberCtx, { query: 'anything' }, d)).toMatchObject({ ok: true, value: [] });
   });
 
+  it('blocks a banned member from subscribing while muting stays open', async () => {
+    const d = access();
+    const rootPostId = await seedPost(d);
+    const bannedMember = ctx({ memberBannedAt: NOW });
+    expect(await subscribeThread(bannedMember, { rootPostId }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'banned' },
+    });
+    expect(await muteThread(bannedMember, { rootPostId }, d)).toMatchObject({ ok: true });
+  });
+
+  it('drops a banned subscriber from the thread-reply fan-out', async () => {
+    const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')], [], ['u2']);
+    const delivered: string[] = [];
+    d.notificationChannels.push({
+      deliver: async (notification) => {
+        delivered.push(notification.recipientUserId);
+        return { ok: true, value: undefined };
+      },
+    });
+    const root = await createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    if (!root.ok) throw new Error('root failed');
+    await d.threadSubscriptions.upsert('t1', {
+      userId: 'u2',
+      rootPostId: root.value.rootPostId,
+      createdAt: NOW,
+    });
+
+    const reply = await createPost(
+      memberCtx,
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' },
+      d,
+    );
+
+    expect(reply).toMatchObject({ ok: true });
+    expect(delivered).toEqual([]);
+    expect(d.notifications).toBeInstanceOf(FakeNotifications);
+    if (!(d.notifications instanceof FakeNotifications)) return;
+    expect(d.notifications.rows).toEqual([]);
+  });
+
+  it('rejects an edit once the author lost access to the lesson', async () => {
+    const grants = [grant('m1', 'all')];
+    const d = deps([allAccess], grants);
+    const id = await seedPost(d);
+    grants.splice(0);
+    expect(await editPost(memberCtx, { id, body: 'edited body text' }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('counts an edit against the member post rate limit', async () => {
+    const d = access();
+    const id = await seedPost(d);
+    for (let index = 1; index < POST_RATE_LIMIT.maxPosts; index += 1) {
+      await expect(
+        createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: `post ${index}` }, d),
+      ).resolves.toMatchObject({ ok: true });
+    }
+    expect(await editPost(memberCtx, { id, body: 'edited body text' }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'rate_limited' },
+    });
+  });
+
+  it('opens a heuristic report when an edit turns a post into a link flood', async () => {
+    const d = access();
+    const id = await seedPost(d);
+    const edited = await editPost(
+      memberCtx,
+      { id, body: 'https://one.test https://two.test https://three.test' },
+      d,
+    );
+    expect(edited).toMatchObject({ ok: true });
+    expect(d.reports).toBeInstanceOf(FakeReports);
+    if (!(d.reports instanceof FakeReports)) return;
+    expect(d.reports.rows).toMatchObject([{ postId: id, source: 'heuristic', signals: ['link-flood'] }]);
+  });
+
   it('blocks banned member writes while staff remain unaffected', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const postId = await seedPost(d);
@@ -1170,5 +1291,29 @@ describe('community guard and error branches', () => {
     await expect(
       createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'restored' }, d),
     ).resolves.toMatchObject({ ok: true });
+  });
+});
+
+describe('renderPost', () => {
+  const softDeleted = (): Post => ({
+    id: 'p1',
+    tenantId: 't1',
+    contextKind: 'lesson',
+    contextId: 'l1',
+    parentPostId: null,
+    rootPostId: 'p1',
+    authorUserId: 'u1',
+    authorDisplay: 'Ala',
+    authorIsStaff: false,
+    body: 'sekret',
+    createdAt: NOW,
+    editedAt: null,
+    deletedAt: NOW,
+    pinnedAt: null,
+  });
+
+  it('replaces the body with the placeholder in both languages', () => {
+    expect(renderPost(softDeleted()).body).toBe('Wpis usunięty');
+    expect(renderPost(softDeleted(), 'en').body).toBe('Deleted post');
   });
 });

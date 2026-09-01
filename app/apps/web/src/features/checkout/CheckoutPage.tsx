@@ -72,26 +72,10 @@ const couponError = (
 ): string => {
   if (!(error instanceof ApiError)) return localizeError(error, t);
   switch (error.appError.message) {
-    case 'Coupon code is invalid':
-      return t.checkout.couponInvalid;
-    case 'This coupon is inactive':
-      return t.checkout.couponInactive;
-    case 'This coupon is not valid yet':
-      return t.checkout.couponNotStarted;
-    case 'This coupon has expired':
-      return t.checkout.couponExpired;
-    case 'This coupon does not apply to this product':
-      return t.checkout.couponWrongScope;
-    case 'This coupon does not apply to this price':
-      return t.checkout.couponWrongPrice;
-    case 'This coupon has reached its redemption limit':
-      return t.checkout.couponLimit;
-    case 'This coupon has reached its per-member redemption limit':
-      return t.checkout.couponMemberLimit;
+    case 'Coupon cannot be applied':
+      return t.checkout.couponUnavailable;
     case 'An email is required to validate this coupon':
       return t.checkout.couponEmailRequired;
-    case 'This coupon does not reduce the selected price':
-      return t.checkout.couponNoReduction;
     default:
       return localizeError(error, t);
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Alert, AppBar, Box, Button, Toolbar, useMediaQuery } from '@mui/material';
+import { Alert, AppBar, Box, Button, IconButton, Toolbar, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useRouterState } from '@tanstack/react-router';
@@ -132,20 +132,37 @@ export const MemberShell = () => {
         <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
           <AppBar position="sticky">
             <Toolbar variant="dense" sx={{ minHeight: '52px', px: '1.25rem', gap: '0.75rem' }}>
-              <Box sx={{ display: { xs: 'flex', md: 'none' }, minWidth: 0 }}>{brand}</Box>
-              <Box sx={{ flex: 1 }} />
+              <Box sx={{ display: { xs: 'flex', md: 'none' }, flex: '1 1 auto', minWidth: 0 }}>
+                {brand}
+              </Box>
+              <Box sx={{ flex: { xs: 0, md: 1 } }} />
               {hasMobileNavigation && courseContext !== null ? (
-                <Button
-                  color="inherit"
-                  size="small"
-                  startIcon={<ProgramIcon />}
-                  aria-haspopup="dialog"
-                  aria-expanded={openSheet === 'program' ? true : undefined}
-                  onClick={() => setOpenSheet('program')}
-                  data-testid="program-button"
-                >
-                  {t.shell.programButton}
-                </Button>
+                <>
+                  <IconButton
+                    color="inherit"
+                    size="small"
+                    aria-label={t.shell.programButton}
+                    aria-haspopup="dialog"
+                    aria-expanded={openSheet === 'program' ? true : undefined}
+                    onClick={() => setOpenSheet('program')}
+                    data-testid="program-button"
+                    sx={{ display: { xs: 'inline-flex', sm: 'none' }, flexShrink: 0 }}
+                  >
+                    <ProgramIcon />
+                  </IconButton>
+                  <Button
+                    color="inherit"
+                    size="small"
+                    startIcon={<ProgramIcon />}
+                    aria-haspopup="dialog"
+                    aria-expanded={openSheet === 'program' ? true : undefined}
+                    onClick={() => setOpenSheet('program')}
+                    data-testid="program-button-wide"
+                    sx={{ display: { xs: 'none', sm: 'inline-flex' }, flexShrink: 0 }}
+                  >
+                    {t.shell.programButton}
+                  </Button>
+                </>
               ) : null}
               {hasMobileNavigation ? <NotificationBell /> : null}
               <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
@@ -162,7 +179,7 @@ export const MemberShell = () => {
               flexGrow: 1,
               minWidth: 0,
               px: { xs: '1.25rem', md: '1.5rem' },
-              pt: '2rem',
+              pt: { xs: '1.25rem', md: '2rem' },
               pb: hasMobileNavigation ? 'calc(4.5rem + env(safe-area-inset-bottom))' : '2rem',
             }}
           >

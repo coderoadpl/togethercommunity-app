@@ -9,7 +9,7 @@ import { actions } from './api.js';
 import { useTranslations } from './i18n/index.js';
 import { isConfiguredBaseDomainHost } from './lib/tenant.js';
 import { applyBranding } from './theme-branding.js';
-import { CompactWordmark, Wordmark } from './theme.js';
+import { CompactWordmark, ShellWordmark, Wordmark } from './theme.js';
 
 /**
  * Branding rides on the public offer the SPA already fetches at boot
@@ -64,9 +64,9 @@ export const TenantLogo = () => {
   if (tenant === null) return null;
   if (tenant.branding.logoUrl === null) {
     return (
-      <Wordmark component="p" variant="h3" data-testid="tenant-name-mark">
+      <ShellWordmark component="p" variant="h3" noWrap data-testid="tenant-name-mark">
         {tenant.name}
-      </Wordmark>
+      </ShellWordmark>
     );
   }
   return (

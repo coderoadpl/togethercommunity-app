@@ -299,6 +299,11 @@ class FakeNotifications implements NotificationRepository {
     return notification;
   }
 
+  async insertMany(_tenantId: string, batch: Notification[]): Promise<Notification[]> {
+    this.rows.push(...batch);
+    return batch;
+  }
+
   async listForRecipient(): Promise<{ notifications: Notification[]; nextCursor: string | null }> {
     return { notifications: this.rows, nextCursor: null };
   }
@@ -578,6 +583,26 @@ describe('startDmConversation', () => {
     expect(blocked.ok ? null : blocked.error.code).toBe('forbidden');
   });
 
+  it('gives a banned and an opted-out recipient the same error payload', async () => {
+    const bannedRecipient = await startDmConversation(
+      ctx(),
+      { recipient: { kind: 'member', memberId: 'm2' } },
+      fixture({
+        members: [member({ id: 'm1', userId: 'u1' }), member({ id: 'm2', userId: 'u2', bannedAt: NOW })],
+      }).deps,
+    );
+    const optedOutRecipient = await startDmConversation(
+      ctx(),
+      { recipient: { kind: 'member', memberId: 'm2' } },
+      fixture({
+        members: [member({ id: 'm1', userId: 'u1' }), member({ id: 'm2', userId: 'u2', dmOptOutAt: NOW })],
+      }).deps,
+    );
+
+    expect(bannedRecipient.ok).toBe(false);
+    expect(bannedRecipient).toEqual(optedOutRecipient);
+  });
+
   it('reports not found for a member of another tenant', async () => {
     const fx = fixture({
       members: [member({ id: 'm1', userId: 'u1' }), member({ id: 'm9', userId: 'u9', tenantId: 't2' })],
@@ -671,8 +696,20 @@ describe('sendDmMessage', () => {
     await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Dwa' }, fx.deps);
 
     expect(fx.published).toEqual([
-      { kind: 'dm', tenantId: 't1', recipientUserId: 'u2', conversationId: conversation.id },
-      { kind: 'dm', tenantId: 't1', recipientUserId: 'u2', conversationId: conversation.id },
+      {
+        kind: 'dm',
+        tenantId: 't1',
+        recipientUserId: 'u2',
+        conversationId: conversation.id,
+        createdAt: '2026-08-17T10:00:01.000Z',
+      },
+      {
+        kind: 'dm',
+        tenantId: 't1',
+        recipientUserId: 'u2',
+        conversationId: conversation.id,
+        createdAt: '2026-08-17T10:00:03.000Z',
+      },
     ]);
   });
 

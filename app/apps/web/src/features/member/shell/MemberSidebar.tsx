@@ -10,7 +10,12 @@ import { TenantLogo } from '../../../branding.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
-import { streamlessPollInterval } from '../../../notifications-stream.js';
+import {
+  streamlessPollInterval,
+  UNREAD_BADGE_POLL_INTERVAL_MS,
+} from '../../../notifications-stream.js';
+import { useNotificationsTransport } from '../../../notifications-transport.js';
+import { SidebarProgressPercent } from '../../../theme.js';
 import { AccountIcon } from '../account-icons.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
@@ -35,9 +40,10 @@ import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-row
 
 const MessagesRow = ({ active }: { active: boolean }) => {
   const t = useTranslations();
+  const { streamless } = useNotificationsTransport();
   const unread = useQuery({
     ...actions.unreadMessages,
-    refetchInterval: streamlessPollInterval(),
+    refetchInterval: streamlessPollInterval(streamless, UNREAD_BADGE_POLL_INTERVAL_MS),
   });
   const count = unread.data?.unread ?? 0;
 
@@ -99,14 +105,16 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
               <ListItemIcon>
                 <ProgressRing value={percent} done={done} />
               </ListItemIcon>
-              <ListItemText
-                primary={course.courseName}
-                slotProps={{ primary: { noWrap: true } }}
-              />
+              <Tooltip title={course.courseName} enterDelay={600} describeChild>
+                <ListItemText
+                  primary={course.courseName}
+                  slotProps={{ primary: { noWrap: true } }}
+                />
+              </Tooltip>
               {done ? null : (
-                <Typography variant="caption" color="text.secondary" component="span">
+                <SidebarProgressPercent variant="caption" component="span" sx={{ flexShrink: 0 }}>
                   {`${percent}%`}
-                </Typography>
+                </SidebarProgressPercent>
               )}
             </NavRow>
             {(spacesByCourse.get(course.courseId) ?? []).map((space) => (
@@ -176,23 +184,29 @@ export const MemberSidebar = ({
         </BrandLink>
       ) : null}
       <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <List component="div" disablePadding>
-          <LinkRow
-            to={memberHomePath()}
-            label={t.shell.start}
-            icon={<StartIcon />}
-            active={active?.kind === 'start'}
-            testId="sidebar-start"
-          />
-          <LinkRow
-            to={memberSearchPath()}
-            label={t.shell.searchEntry}
-            icon={<SearchIcon />}
-            active={active?.kind === 'search'}
-            testId="sidebar-search"
-          />
-        </List>
-        <Typography variant="overline" component="p" sx={{ px: '0.6rem', pt: '0.75rem' }}>
+        {variant === 'drawer' ? (
+          <List component="div" disablePadding>
+            <LinkRow
+              to={memberHomePath()}
+              label={t.shell.start}
+              icon={<StartIcon />}
+              active={active?.kind === 'start'}
+              testId="sidebar-start"
+            />
+            <LinkRow
+              to={memberSearchPath()}
+              label={t.shell.searchEntry}
+              icon={<SearchIcon />}
+              active={active?.kind === 'search'}
+              testId="sidebar-search"
+            />
+          </List>
+        ) : null}
+        <Typography
+          variant="overline"
+          component="p"
+          sx={{ px: '0.6rem', pt: variant === 'drawer' ? '0.75rem' : 0 }}
+        >
           {t.shell.spacesSection}
         </Typography>
         <NavigationList active={active} />

@@ -263,7 +263,12 @@ export const AuthenticationMethods = ({
               autoComplete="current-password"
             />
           </FormControl>
-          <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.6rem">
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            useFlexGap
+            spacing="0.6rem"
+            sx={{ flexWrap: 'wrap', alignItems: { sm: 'flex-start' } }}
+          >
             <Button
               type="submit"
               variant="outlined"

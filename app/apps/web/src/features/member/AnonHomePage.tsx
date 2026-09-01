@@ -1,9 +1,11 @@
-import { Alert, Box, Stack, Typography } from '@mui/material';
+import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { QuietNotice } from '../../theme.js';
 import { CourseCard } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
@@ -70,6 +72,7 @@ export const AnonHomePage = () => {
 
   const { defaultHomeSpaceId, spaces, courses, lockedSpaces } = navigation.data.navigation;
   const homeSpace = spaces.find((space) => space.id === defaultHomeSpaceId);
+  const tileSpaces = spaces.filter((space) => space.id !== homeSpace?.id);
 
   if (spaces.length === 0 && courses.length === 0 && lockedSpaces.length === 0) {
     return (
@@ -85,19 +88,24 @@ export const AnonHomePage = () => {
   return (
     <MemberSurface title={t.anon.homeTitle} eyebrow={t.anon.eyebrow} width="wide">
       <Stack useFlexGap sx={{ rowGap: '2rem' }}>
-        <Alert severity="info" data-testid="anon-read-only-banner">{t.anon.readOnlyBanner}</Alert>
+        <QuietNotice variant="outlined" data-testid="anon-read-only-banner">
+          <span>{t.anon.readOnlyBanner}</span>
+          <MuiLink component={Link} to="/login">
+            {t.auth.signInLink}
+          </MuiLink>
+        </QuietNotice>
         {homeSpace === undefined ? null : (
           <HomeSpaceFeed spaceId={homeSpace.id} name={homeSpace.name} />
         )}
-        {spaces.length === 0 ? null : (
-          <TileSection title={t.start.spacesSection} testId="anon-spaces">
-            {spaces.map((space) => (
+        {tileSpaces.length === 0 ? null : (
+          <TileSection title={t.anon.spacesSection} testId="anon-spaces">
+            {tileSpaces.map((space) => (
               <SpaceCard key={space.id} space={space} />
             ))}
           </TileSection>
         )}
         {courses.length === 0 ? null : (
-          <TileSection title={t.start.coursesSection} testId="anon-courses">
+          <TileSection title={t.anon.coursesSection} testId="anon-courses">
             {courses.map((course) => (
               <CourseCard key={course.id} course={course} />
             ))}

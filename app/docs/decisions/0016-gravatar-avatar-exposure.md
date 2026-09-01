@@ -55,6 +55,9 @@ Binding mitigations:
    their hashes are meaningless and their Gravatar lookups always 404.
 5. Seeded and visual-test environments use addresses with no Gravatar, so the
    rendered result is deterministic initials with no outbound image fetch.
+6. `user.image` is provider-populated only: Better Auth rejects an
+   `/update-user` or `/sign-up/email` request carrying `image`, so a member
+   cannot point their avatar at an arbitrary URL.
 
 Out of scope, noted for the roadmap: a per-member "hide my avatar" toggle on
 the existing `member:profile:self-write` route, the avatar proxy above, and

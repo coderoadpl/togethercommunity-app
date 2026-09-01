@@ -42,6 +42,7 @@ import {
   createCouponStatsRepository,
   createProductPriceHistoryRepository,
 } from '#adapters/db/coupon-repositories.js';
+import { createNotificationFanoutJobRepository } from '#adapters/db/notification-fanout-jobs.js';
 import {
   createAvatarSourceReader,
   createCourseLessonRepository,
@@ -82,6 +83,7 @@ import {
   createTenantAccessReader,
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
+  createPublicRateLimitRepository,
   createTenantDomainRepository,
   createTenantRepository,
   createTenantSecretRepository,
@@ -108,7 +110,7 @@ import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
-import { createInAppNotificationChannel, createRealtimeBus } from '#adapters/notifications/in-app.js';
+import { createInAppNotificationChannel } from '#adapters/notifications/in-app.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
 import { createResendEmailPort } from '#adapters/email/resend.js';
@@ -195,6 +197,7 @@ import type {
   MarketingSesCredentialResolver,
   MemberOrderListReader,
   NotificationChannelPort,
+  NotificationFanoutJobRepository,
   NotificationRepository,
   OrderRepository,
   OrderDetailRepository,
@@ -220,6 +223,7 @@ import type {
   TenantAccessReader,
   TenantApiKeyRepository,
   ApiKeyRateLimitRepository,
+  PublicRateLimitRepository,
   TenantDomainRepository,
   TenantRepository,
   TermsConsentRepository,
@@ -239,7 +243,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
 import {
   ok,
   type AppError,
@@ -249,7 +253,10 @@ import {
 } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
+import { createCoalescedRunner } from './coalesced-runner.js';
 import { type Env, isProductionEnvironment } from './env.js';
+import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
+import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
 
 interface DevEndpoints {
@@ -287,7 +294,16 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
-  auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext' | 'setEmailVerificationDeliveryContext'>;
+  auth: Pick<
+    Auth,
+    | 'handler'
+    | 'setMagicLinkDeliveryContext'
+    | 'clearMagicLinkDeliveryContext'
+    | 'setResetPasswordDeliveryContext'
+    | 'clearResetPasswordDeliveryContext'
+    | 'setEmailVerificationDeliveryContext'
+    | 'clearEmailVerificationDeliveryContext'
+  >;
   authPort: AuthPort;
   products: ProductRepository & ProductBatchReader & ProductMetadataRepository;
   courses: CourseRepository;
@@ -317,6 +333,7 @@ export interface AppDeps {
   dmConversationStates: DmConversationStateRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
+  fanoutJobs: NotificationFanoutJobRepository;
   realtimeBus: RealtimeBusPort;
   links: DiscussionLinkPort;
   progress: MemberCourseProgressRepository;
@@ -335,6 +352,8 @@ export interface AppDeps {
   importUsers: ImportUsersRepository;
   contentHash: ContentHash;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
+  rateLimitBuckets: PublicRateLimitRepository;
+  publicRateLimitPolicies: PublicRateLimitPolicies;
   m2mTransactionalRateLimits: { perMinute: number; perDay: number };
   apiKeyCrypto: ApiKeyCrypto;
   tenantSecrets: TenantSecretRepository;
@@ -361,6 +380,7 @@ export interface AppDeps {
   enrollmentTransaction: EnrollmentTransactionPort;
   paymentTransaction: PaymentTransactionPort;
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
+  drainNotificationFanout(): Promise<Result<NotificationFanoutDrainResult, AppError>>;
   dispatchAutoInvoices(): Promise<Result<DispatchAutoInvoiceJobsResult, AppError>>;
   dispatchEmail(): void;
   emailDispatchSecret: string;
@@ -381,7 +401,7 @@ export interface AppDeps {
   tenantCreationMode: TenantCreationMode;
   ids: IdGenerator;
   clock: Clock;
-  logger: { error(message: string): void };
+  logger: { error(message: string): void; warn(message: string): void };
   baseDomain: string;
   platformHost: string | null;
   singleTenantMode: boolean;
@@ -714,7 +734,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     ? { read: (credentials) => readSesQuota(credentials) }
     : undefined;
   const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
-  const logger = { error: (message: string) => process.stderr.write(`${message}\n`) };
+  const writeLog = (message: string): void => {
+    process.stderr.write(`${message}\n`);
+  };
+  const logger = { error: writeLog, warn: writeLog };
   const dispatchDeps = {
     emailOutbox,
     events: emailEvents,
@@ -729,11 +752,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     runs: schedulerRuns,
   };
   const dispatchEmails = (trigger: 'cron' | 'dev' | 'manual') => dispatchEmailBatch({ ...dispatchDeps, trigger });
-  const dispatchEmail = (): void => {
-    void dispatchEmails('dev').then((result) => {
-      if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
-    });
-  };
+  const dispatchEmail = createCoalescedRunner(async () => {
+    const result = await dispatchEmails('dev');
+    if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
+  });
   const dispatchCampaign = async (tenantId: string, campaignId: string, trigger: 'cron' | 'dev' | 'manual') => {
     const settings = await sesSettings.findByTenant(tenantId);
     if (production && settings !== null && (settings.quotaRefreshedAt === null
@@ -845,7 +867,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     if (!purged.ok) return purged;
     return marketing;
   };
-  const realtimeBus = createRealtimeBus();
+  const realtimeBus = createRealtimeTransport({ env, db, logger });
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const links: DiscussionLinkPort = {
     lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
@@ -919,7 +941,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     },
   });
 
-  return {
+  const deps: AppDeps = {
     auth,
     authPort: createAuthPort(auth),
     products: createProductRepository(db),
@@ -949,6 +971,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dmMessages: createDmMessageRepository(db),
     dmConversationStates: createDmConversationStateRepository(db),
     notifications: createNotificationRepository(db),
+    fanoutJobs: createNotificationFanoutJobRepository(db),
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),
       ...(env.NOTIFY_EMAIL ? [createEmailNotificationChannel(emailOutbox, ids, clock, dispatchEmail)] : []),
@@ -971,6 +994,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     importUsers,
     contentHash,
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
+    rateLimitBuckets: createPublicRateLimitRepository(db),
+    publicRateLimitPolicies: selectPublicRateLimitPolicies(env),
     m2mTransactionalRateLimits: {
       perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,
       perDay: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY,
@@ -1015,6 +1040,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     enrollmentTransaction: createEnrollmentTransactionPort(db),
     paymentTransaction: createPaymentTransactionPort(db),
     dispatchEmails,
+    drainNotificationFanout: async () => drainNotificationFanoutJobs(deps),
     dispatchAutoInvoices,
     dispatchEmail,
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
@@ -1080,4 +1106,5 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       dispatchScheduledMarketing,
     },
   };
+  return deps;
 };

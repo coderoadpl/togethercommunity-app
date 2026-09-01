@@ -126,6 +126,20 @@ describe('DiscussionSection', () => {
     expect(screen.getByTestId('discussion-empty')).toHaveTextContent(pl.discussion.empty);
   });
 
+  it('keeps the lesson composer collapsed until it takes focus', async () => {
+    server.use(okMe(), okDiscussion([]));
+
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    const input = await screen.findByTestId('discussion-composer-input');
+    expect(screen.queryByTestId('discussion-composer-submit')).not.toBeInTheDocument();
+
+    await user.click(input);
+
+    expect(await screen.findByTestId('discussion-composer-submit')).toBeInTheDocument();
+  });
+
   it('renders three nesting levels with indentation, author chip and deleted placeholder', async () => {
     const level3 = asThread(
       post({ id: 'c2', parentPostId: 'c1', rootPostId: 'r1', body: 'Trzeci poziom' }),
@@ -171,6 +185,8 @@ describe('DiscussionSection', () => {
     expect(screen.getByTestId('reply-button-r1')).toBeInTheDocument();
     expect(screen.getByTestId('reply-button-c1')).toBeInTheDocument();
     expect(screen.getByTestId('reply-button-c2')).toBeInTheDocument();
+    expect(screen.getByTestId('reply-button-r1')).not.toHaveStyle({ padding: '0px' });
+    expect(screen.getByTestId('start-message-r1')).not.toHaveStyle({ padding: '0px' });
 
     expect(screen.getByTestId('reply-count-r1')).toHaveTextContent(
       pl.discussion.replyCount({ count: 2 }),

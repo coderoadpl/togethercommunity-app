@@ -181,7 +181,7 @@ describe('CourseTree', () => {
     expect(within(locked).getByText(pl.courseTree.accessLocked)).toBeInTheDocument();
   });
 
-  it('shows completion checkmarks per lesson, chapter and module', async () => {
+  it('shows a completion checkmark per lesson and a done/total count per chapter and module', async () => {
     await renderTree();
 
     const completedLesson = await screen.findByTestId('lesson-button-l1');
@@ -189,11 +189,14 @@ describe('CourseTree', () => {
     expect(within(completedLesson).getByText(pl.courseTree.completionComplete)).toBeInTheDocument();
 
     const module = screen.getByTestId('module-toggle-m1');
-    expect(within(module).getByTestId('completion-partial')).toBeInTheDocument();
-    expect(within(module).getByText(pl.courseTree.completionPartial)).toBeInTheDocument();
+    expect(within(module).getByText('1/3')).toBeInTheDocument();
+    expect(within(module).queryByTestId('completion-partial')).not.toBeInTheDocument();
 
     const chapter = screen.getByTestId('chapter-toggle-c1');
-    expect(within(chapter).getByTestId('completion-partial')).toBeInTheDocument();
+    expect(within(chapter).getByText('1/2')).toBeInTheDocument();
+
+    const untouchedChapter = screen.getByTestId('chapter-toggle-c3');
+    expect(within(untouchedChapter).getByText('0/2')).toBeInTheDocument();
   });
 
   it('exposes module disclosure state and toggles it from the keyboard', async () => {
@@ -204,7 +207,8 @@ describe('CourseTree', () => {
     const toggle = screen.getByTestId('module-toggle-m1');
     expect(toggle.tagName).toBe('BUTTON');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle).toHaveAttribute('aria-controls', 'course-tree-module-m1');
+    const disclosure = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(disclosure).toContainElement(screen.getByText('Intro to Variables'));
     toggle.focus();
     await user.keyboard('{Enter}');
     await waitFor(() => expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument());
@@ -228,6 +232,25 @@ describe('CourseTree', () => {
     const mark = container.querySelector('mark');
     expect(mark).not.toBeNull();
     expect(mark?.textContent).toBe('Scope');
+  });
+
+  it('keeps module and chapter counts on the full structure while filtering', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'Intro');
+
+    await waitFor(() =>
+      expect(screen.queryByText('Advanced Variables')).not.toBeInTheDocument());
+
+    const module = screen.getByTestId('module-toggle-m1');
+    expect(within(module).getByText('1/3')).toBeInTheDocument();
+    expect(within(module).queryByTestId('completion-full')).not.toBeInTheDocument();
+
+    const chapter = screen.getByTestId('chapter-toggle-c1');
+    expect(within(chapter).getByText('1/2')).toBeInTheDocument();
+    expect(within(chapter).queryByTestId('completion-full')).not.toBeInTheDocument();
   });
 
   it('shows per-lesson durations only when present', async () => {

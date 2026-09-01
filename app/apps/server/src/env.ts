@@ -10,6 +10,11 @@ const optionalHeaderName = z.preprocess(
   z.string().regex(/^[a-z0-9-]+$/).optional(),
 );
 
+const optionalCount = z.preprocess(
+  (value) => value === '' ? undefined : value,
+  z.coerce.number().int().min(0).optional(),
+);
+
 const isLocalHostname = (hostname: string): boolean =>
   hostname === 'localhost'
   || hostname.endsWith('.localhost')
@@ -48,6 +53,10 @@ export const envSchema = z
         }),
       })
       .default('node-postgres'),
+    REALTIME_TRANSPORT: z.enum(['pg', 'in-process']).default('pg'),
+    /** `LISTEN` is unsupported on transaction-mode poolers, so the bus needs a direct connection. */
+    REALTIME_DATABASE_URL: optionalNonEmptyString,
+    DATABASE_URL_UNPOOLED: optionalNonEmptyString,
     APP_BASE_DOMAIN: optionalNonEmptyString,
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     APP_COMMIT_SHA: optionalNonEmptyString,
@@ -104,6 +113,9 @@ export const envSchema = z
     EMAIL_DISPATCH_ATTEMPTS_CAP: z.coerce.number().int().positive().default(5),
     EMAIL_DISPATCH_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(1000),
     EMAIL_DISPATCH_BACKOFF_CAP_MS: z.coerce.number().int().positive().default(900000),
+    PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES: optionalCount,
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: z.coerce.number().int().positive().default(60),
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY: z.coerce.number().int().positive().default(5000),
     NOTIFY_EMAIL: z

@@ -34,7 +34,7 @@ import type {
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate, formatDateTime, formatPrice, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
@@ -71,7 +71,7 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
 
   return (
     <SectionCard title={t.members.grantProduct} onSubmit={submit}>
-      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
+      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }} size="small">
           <FormLabel htmlFor="grant-product">{t.members.productLabel}</FormLabel>
@@ -153,7 +153,7 @@ const CommerceSummary = ({ memberId }: { memberId: string }) => {
     return <StatusView state={{ kind: 'loading', label: t.members.commerceLoading }} />;
   }
   if (commerce.isError) {
-    return <StatusView state={{ kind: 'error', message: localizeError(commerce.error, t), retry: { label: t.common.retry, onRetry: () => void commerce.refetch() } }} />;
+    return <StatusView state={{ kind: 'error', message: localizePanelError(commerce.error, t), retry: { label: t.common.retry, onRetry: () => void commerce.refetch() } }} />;
   }
 
   return (
@@ -292,7 +292,7 @@ const MemberTimeline = ({ memberId }: { memberId: string }) => {
       {timeline.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.members.timelineLoading }} />
       ) : timeline.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(timeline.error, t), retry: { label: t.common.retry, onRetry: () => void timeline.refetch() } }} />
+        <StatusView state={{ kind: 'error', message: localizePanelError(timeline.error, t), retry: { label: t.common.retry, onRetry: () => void timeline.refetch() } }} />
       ) : timeline.data.events.length === 0 ? (
         <StatusView state={{ kind: 'empty', title: t.members.timelineEmpty }} />
       ) : (
@@ -343,7 +343,7 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
       {summary.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.members.loadingLearning }} />
       ) : summary.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(summary.error, t), retry: { label: t.common.retry, onRetry: () => void summary.refetch() } }} />
+        <StatusView state={{ kind: 'error', message: localizePanelError(summary.error, t), retry: { label: t.common.retry, onRetry: () => void summary.refetch() } }} />
       ) : (
         <Stack useFlexGap spacing="1rem">
           <Typography variant="body2">
@@ -564,7 +564,7 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
           {emails.isPending ? (
             <StatusView state={{ kind: 'loading', label: t.members.emailsLoading }} />
           ) : emails.isError ? (
-            <StatusView state={{ kind: 'error', message: localizeError(emails.error, t), retry: { label: t.common.retry, onRetry: () => void emails.refetch() } }} />
+            <StatusView state={{ kind: 'error', message: localizePanelError(emails.error, t), retry: { label: t.common.retry, onRetry: () => void emails.refetch() } }} />
           ) : emails.data.sends.length === 0 ? (
             <StatusView state={{ kind: 'empty', title: t.members.emailsEmpty }} />
           ) : (
@@ -624,7 +624,7 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
             {grants.isPending ? (
               <StatusView state={{ kind: 'loading', label: t.members.loadingGrants }} />
             ) : grants.isError ? (
-              <StatusView state={{ kind: 'error', message: localizeError(grants.error, t), retry: { label: t.common.retry, onRetry: () => void grants.refetch() } }} />
+              <StatusView state={{ kind: 'error', message: localizePanelError(grants.error, t), retry: { label: t.common.retry, onRetry: () => void grants.refetch() } }} />
             ) : grants.data.grants.length === 0 ? (
               <StatusView state={{ kind: 'empty', title: t.members.noGrants }} />
             ) : (

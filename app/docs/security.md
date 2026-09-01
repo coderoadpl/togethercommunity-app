@@ -12,6 +12,18 @@ Non-local authentication origins are HTTPS-only. HTTP origins are composed only
 for `localhost`, and boot rejects an HTTP `APP_BASE_URL` outside local
 development.
 
+Magic-link, password-reset, e-mail-verification and marketing-confirmation
+links are built from the resolved tenant, never from the request `Host` or a
+client `x-forwarded-proto`. A tenant resolved by subdomain — including one
+matched through a `subdomain` domain row — gets its own subdomain origin on
+the scheme and port of `APP_BASE_URL`, a tenant resolved through a verified
+custom domain gets `https://<domain>` on the HTTPS port of `APP_BASE_URL`, and
+every other case — `X-Tenant` routing, single-tenant mode, an unknown host, or
+a failed tenant lookup — gets `APP_BASE_URL`. Delivery contexts for the three
+authentication flows are keyed by e-mail address, capped at 512 entries per
+flow, and cleared once the request finishes, so a rejected request leaves no
+residue for the next legitimate one.
+
 Better Auth stores rate-limit windows in PostgreSQL so deployments, process
 restarts, and serverless isolates share one bucket. Production boot requires an
 explicit client-address mode. Set `AUTH_TRUSTED_PROXY_HEADER=direct` when Node
@@ -20,6 +32,17 @@ Caddy proxy overwrites `X-Forwarded-For` and uses `x-forwarded-for`; other
 proxies must overwrite the selected header. Vercel uses the platform-written
 `x-vercel-forwarded-for` header. Missing, malformed, and multi-hop configured
 values are not treated as client addresses and emit one diagnostic per process.
+
+Unauthenticated write routes carry their own PostgreSQL fixed-window limiter in
+`rate_limit_buckets`: checkout session creation, coupon validation and the
+marketing consent forms are limited per client address and per resolved tenant,
+and magic-link, password-reset, sign-up and verification requests are limited
+per client address and per e-mail address. The client address comes from the
+same trusted forwarding resolution as authentication, never from a raw
+`x-forwarded-for`, and a request whose address cannot be attributed falls back
+to one shared bucket. Rejections
+answer `429` with `Retry-After` and a message that does not reveal which bucket
+was exhausted. Expired windows are deleted by the hourly KSeF dispatch run.
 
 New passwords require at least 15 characters, with no character-class rules.
 The 15-character floor is required because MFA remains optional; it applies to

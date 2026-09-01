@@ -150,7 +150,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->297<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->312<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -204,16 +204,26 @@ pnpm --silent run cli --tenant studio notifications list
 ## Realtime
 
 In-app notifications stream over Server-Sent Events: an authenticated,
-tenant-scoped `GET /api/notifications/stream` sends the unread count on
-connect, then pushes each new notification for that recipient as it is
-delivered (with a heartbeat comment every 25 s). The web app keeps its
-TanStack Query caches fresh from this stream and never renders stream
-payloads directly.
+tenant-scoped `GET /api/notifications/stream` opens with `retry: 1000` and the
+unread count, then pushes each new notification or direct message for that
+recipient as it is delivered, with a heartbeat comment every 10 s. Every
+realtime chunk carries an `id:` of `createdAt|entityId`. The stream closes
+itself after 25 s, below the 30 s serverless function cap, and the browser
+reconnects with `Last-Event-ID`; the server replays what the client missed
+from the persisted notification and conversation tables (up to 20 of each).
+The web app keeps its TanStack Query caches fresh from this stream and never
+renders stream payloads directly.
 
-The stream requires a long-lived Node process. On serverless deployments
-(function duration limits cut idle connections), the browser wrapper detects
-the failing stream and transparently falls back to 30-second polling of the
-same notification endpoints — no server-side configuration needed.
+`REALTIME_TRANSPORT` selects the bus behind the stream: `pg` (default) fans
+events out across instances over Postgres `LISTEN`/`NOTIFY` with
+identifier-only payloads, `in-process` keeps them inside a single process. The
+`pg` listener needs a direct, non-pooled connection — see
+`REALTIME_DATABASE_URL` in `.env.example`.
+
+When the stream itself is unusable — no `EventSource`, repeated errors, or
+connections the host keeps cutting short of the rotation — the browser wrapper
+falls back to 30-second polling of the same notification endpoints, with no
+server-side configuration needed.
 
 E-mail delivery of thread replies rides the same notification-channel port and
 is toggled with `NOTIFY_EMAIL` (see `.env.example`).

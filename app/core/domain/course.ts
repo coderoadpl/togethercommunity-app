@@ -170,12 +170,20 @@ const embedLessonBlockSchema = z
   })
   .strict();
 
-/** An absolute URL, or a same-origin root-relative path (e.g. an asset our own server hosts). */
+export const DOCUMENT_URL_MESSAGE =
+  'Must be an absolute http(s) URL or a same-origin path starting with "/"';
+
+const absoluteHttpUrlSchema = z.string().url().regex(/^https?:\/\//iu);
+
+/** Browsers normalize `\` to `/` in http(s) URLs, so a path holding one can resolve cross-origin. */
+const sameOriginPathPattern = /^\/(?![/\\])[^\s\\]+$/u;
+
 const documentUrlSchema = z
   .string()
+  .trim()
   .refine(
-    (value) => value.startsWith('/') || z.string().url().safeParse(value).success,
-    'Must be an absolute URL or a same-origin path starting with "/"',
+    (value) => absoluteHttpUrlSchema.safeParse(value).success || sameOriginPathPattern.test(value),
+    DOCUMENT_URL_MESSAGE,
   );
 
 const pdfLessonBlockSchema = z
@@ -189,7 +197,11 @@ const pdfLessonBlockSchema = z
 const linkLessonBlockSchema = z
   .object({
     type: z.literal('link'),
-    url: z.string().url(),
+    url: z
+      .string()
+      .trim()
+      .url()
+      .regex(/^(?:https?:\/\/|mailto:)/iu, 'Link URL must use HTTP, HTTPS or mailto'),
     description: z.string().min(1).optional(),
   })
   .strict();

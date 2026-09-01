@@ -116,9 +116,12 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
 // shot can land before the async count arrives.
 const waitForUnreadBadge = async (page: Page): Promise<void> => {
   const width = page.viewportSize()?.width ?? 0;
-  const badgeTestId = width < 900 ? 'notification-badge' : 'notification-nav-badge';
+  if (width >= 900) {
+    await page.getByTestId('notification-bell-count').waitFor(visible);
+    return;
+  }
   await page
-    .locator(`[data-testid="${badgeTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
+    .locator('[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)')
     .waitFor(visible);
 };
 
@@ -443,7 +446,7 @@ const SCREENS: ScreenSpec[] = [
     name: 'panel-marketing-consents',
     auth: 'creator',
     path: '/panel/marketing/consents',
-    ready: (page) => page.getByRole('heading', { name: 'Kreator zgód' }).waitFor(visible),
+    ready: (page) => page.getByRole('heading', { name: 'Zgody marketingowe' }).waitFor(visible),
   },
   {
     name: 'panel-marketing-documents',

@@ -47,6 +47,7 @@ import {
   marketingSesSettingsUpdateInputSchema,
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
+  accountSessionRevokeInputSchema,
   meProfileUpdateInputSchema,
   eventCreateInputSchema,
   eventRefInputSchema,
@@ -148,6 +149,7 @@ import {
   beginProductCoverUpload,
   beginProductDownloadUpload,
   authenticateApiKey,
+  authLinkBaseUrl,
   autoIssueOnPayment,
   authorizeRequiredTenant,
   authorizeTenant,
@@ -195,6 +197,9 @@ import {
   requestMyErasure,
   getMyErasureRequest,
   cancelMyErasureRequest,
+  listMyAccountSessions,
+  revokeMyAccountSession,
+  revokeMyOtherAccountSessions,
   updateMyProfile,
   listErasureRequests,
   rejectErasureRequest,
@@ -295,6 +300,7 @@ import {
   provisionSesInfrastructure,
   publishProduct,
   publishTenantDocument,
+  purgeExpiredRateLimitWindows,
   reactToPost,
   recordCheckoutMarketingConsents,
   refreshInvoiceStatus,
@@ -352,39 +358,30 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
+import { checkoutConsentEvidence } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
-import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
+import {
+  createNotificationEventStream,
+  parseLastEventId,
+  replayRealtimeEvents,
+  SSE_HEADERS,
+} from './notifications-sse.js';
 import { respond } from './respond.js';
+import { secretEquals } from './secret-equals.js';
 import {
   assertSelfAuthenticatingRouteManifest,
   SELF_AUTHENTICATING_ROUTE_MANIFEST,
 } from './self-authenticating-route-manifest.js';
 
-type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
+type Vars = { Variables: { identity: Identity; sessionId?: string; secureHeadersNonce?: string; }; };
 
-const magicLinkBaseUrl = (
-  hostHeader: string,
-  forwardedProto: string | null,
-  fromTenantHeader: boolean,
-  appBaseUrl: string,
-): string => {
-  if (fromTenantHeader || hostHeader === '') return appBaseUrl;
-  const proto = forwardedProto ?? new URL(appBaseUrl).protocol.replace(':', '');
-  return `${proto}://${hostHeader}`;
+const probeCorsOrigins = async (req: HonoRequest, deps: AppDeps): Promise<string[]> => {
+  const resolved = await resolveTenant(req.header('host') ?? '', req.header(TENANT_HEADER) ?? null, deps);
+  const tenantOrigin = authLinkBaseUrl(resolved.ok ? resolved.value : null, deps);
+  return [...new Set([new URL(tenantOrigin).origin, new URL(deps.appBaseUrl).origin])];
 };
-
-const requestOrigin = (req: HonoRequest, appBaseUrl: string): string =>
-  new URL(magicLinkBaseUrl(
-    req.header('host') ?? '',
-    req.header('x-forwarded-proto') ?? null,
-    req.header(TENANT_HEADER) !== undefined,
-    appBaseUrl,
-  )).origin;
-
-const probeCorsOrigins = (req: HonoRequest, appBaseUrl: string): string[] =>
-  [...new Set([requestOrigin(req, appBaseUrl), new URL(appBaseUrl).origin])];
 
 const emailBranding = async (
   deps: AppDeps,
@@ -518,15 +515,6 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberDmOptOutAt: null,
 });
 
-const checkoutConsentEvidence = (headers: Headers) => {
-  const ip = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  const userAgent = headers.get('user-agent') ?? undefined;
-  return {
-    ...(ip === undefined || ip === '' ? {} : { ip }),
-    ...(userAgent === undefined ? {} : { userAgent }),
-  };
-};
-
 const recordCheckoutConsents = async (
   deps: AppDeps,
   input: {
@@ -580,52 +568,66 @@ const recordCheckoutConsents = async (
 export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   app.post(API_PATHS.emailDispatch, async (c) => {
-    if (c.req.header(EMAIL_DISPATCH_SECRET_HEADER) !== deps.emailDispatchSecret) {
+    if (!secretEquals(c.req.header(EMAIL_DISPATCH_SECRET_HEADER), deps.emailDispatchSecret)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
+    await deps.drainNotificationFanout();
     return respond(await deps.dispatchEmails('manual'));
   });
 
   app.get(API_PATHS.emailDispatch, async (c) => {
-    if (c.req.header('authorization') !== `Bearer ${deps.emailDispatchCronSecret}`) {
+    if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.emailDispatchCronSecret}`)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
+    await deps.drainNotificationFanout();
     return respond(await deps.dispatchEmails('cron'));
   });
 
   app.post(API_PATHS.autoInvoiceDispatch, async (c) => {
-    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.autoInvoiceDispatchSecret) {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.autoInvoiceDispatchSecret)) {
       return respond(err(unauthorized('Invalid automatic invoice dispatch secret')));
     }
     return respond(await deps.dispatchAutoInvoices());
   });
 
   app.get(API_PATHS.autoInvoiceDispatch, async (c) => {
-    if (c.req.header('authorization') !== `Bearer ${deps.autoInvoiceDispatchSecret}`) {
+    if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.autoInvoiceDispatchSecret}`)) {
       return respond(err(unauthorized('Invalid automatic invoice dispatch secret')));
     }
     return respond(await deps.dispatchAutoInvoices());
   });
 
+  const purgeRateLimitWindows = async (): Promise<void> => {
+    const purged = await purgeExpiredRateLimitWindows({
+      buckets: deps.rateLimitBuckets,
+      clock: deps.clock,
+    });
+    if (!purged.ok) {
+      deps.logger.error(`[rate-limit-purge] ${purged.error.code}:${purged.error.message}`);
+    }
+  };
+
   app.post(API_PATHS.ksefDispatch, async (c) => {
     if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
-    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.ksef.dispatchSecret) {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.ksef.dispatchSecret)) {
       return respond(err(unauthorized('Invalid KSeF dispatch secret')));
     }
+    await purgeRateLimitWindows();
     return respond(await deps.ksef.dispatch());
   });
 
   app.get(API_PATHS.ksefDispatch, async (c) => {
     if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
-    if (c.req.header('authorization') !== `Bearer ${deps.ksef.dispatchSecret}`) {
+    if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.ksef.dispatchSecret}`)) {
       return respond(err(unauthorized('Invalid KSeF dispatch secret')));
     }
+    await purgeRateLimitWindows();
     return respond(await deps.ksef.dispatch());
   });
 
   app.get(API_PATHS.globalSchedulerRuns, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.marketing.cronSecret) {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.marketing.cronSecret)) {
       return respond(err(unauthorized('Invalid scheduler operator secret')));
     }
     const parsed = schedulerRunsQuerySchema.safeParse({
@@ -642,7 +644,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
 
   app.get(API_PATHS.globalSchedulerRun, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.marketing.cronSecret) {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.marketing.cronSecret)) {
       return respond(err(unauthorized('Invalid scheduler operator secret')));
     }
     return respond(await getGlobalSchedulerRun({ runId: c.req.param('id') }, { runs: deps.marketing.runs }));
@@ -848,13 +850,8 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
           productId: selection.value.product.id,
           orderId: result.value.orderId,
           collectedAt: deps.clock.nowIso(),
-          confirmationBaseUrl: `${magicLinkBaseUrl(
-            c.req.header('host') ?? '',
-            c.req.header('x-forwarded-proto') ?? null,
-            tenant.value.source === 'tenant-header',
-            deps.appBaseUrl,
-          )}/marketing/confirm`,
-          ...checkoutConsentEvidence(c.req.raw.headers),
+          confirmationBaseUrl: `${authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
+          ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
         });
         const orderDetails = deps.orderDetails;
         const paidOrder = orderDetails === undefined
@@ -874,12 +871,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         }
       }
 
-      const baseUrl = magicLinkBaseUrl(
-        c.req.header('host') ?? '',
-        c.req.header('x-forwarded-proto') ?? null,
-        tenant.value.source === 'tenant-header',
-        deps.appBaseUrl,
-      );
+      const baseUrl = authLinkBaseUrl(tenant.value, deps);
       const issuedMagicLink = await issueMagicLink(deps, {
         email: parsed.data.email,
         tenantId: tenant.value.tenant.id,
@@ -984,6 +976,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     );
     if (!identity.ok) return respond(identity);
     c.set('identity', identity.value);
+    if (user !== null) c.set('sessionId', user.sessionId);
     await next();
   });
 
@@ -1418,6 +1411,32 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       { members: deps.members, clock: deps.clock },
     ));
   });
+
+  app.get(API_PATHS.accountSessions, async (c) => respond(await listMyAccountSessions(
+    { identity: c.get('identity') },
+    { currentSessionId: c.get('sessionId') ?? '' },
+    { auth: deps.authPort },
+  )));
+
+  app.post(API_PATHS.accountSessionRevoke, async (c) => {
+    const parsed = accountSessionRevokeInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return respond(err(validation('Invalid session payload', parsed.error.flatten())));
+    }
+    return respond(await revokeMyAccountSession(
+      { identity: c.get('identity') },
+      { sessionId: parsed.data.sessionId, currentSessionId: c.get('sessionId') ?? '' },
+      { auth: deps.authPort },
+    ));
+  });
+
+  app.post(API_PATHS.accountSessionsRevokeOthers, async (c) => respond(
+    await revokeMyOtherAccountSessions(
+      { identity: c.get('identity') },
+      { currentSessionId: c.get('sessionId') ?? '' },
+      { auth: deps.authPort },
+    ),
+  ));
 
   app.get(API_PATHS.memberBillingOrders, async (c) => {
     const parsed = memberBillingOrdersQuerySchema.safeParse({
@@ -1865,7 +1884,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
-        corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl),
+        corsOrigins: await probeCorsOrigins(c.req, deps),
         email: deps.email,
         emailSender: deps.emailSender,
         emailTransports: deps.emailTransports,
@@ -1882,7 +1901,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await probeStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { storage: deps.storage, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
+      { storage: deps.storage, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
 
@@ -1893,7 +1912,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await configureStorageConnection(
       { identity: c.get('identity') },
       parsed.data,
-      { ...deps, corsOrigins: probeCorsOrigins(c.req, deps.appBaseUrl) },
+      { ...deps, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
 
@@ -2895,11 +2914,24 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const identity = c.get('identity');
     const tenant = authorizeTenant({ identity }, 'notification:read');
     if (!tenant.ok) return respond(tenant);
+    const since = parseLastEventId(c.req.header('last-event-id'));
     const stream = createNotificationEventStream({
       tenantId: tenant.value,
       recipientUserId: identity.userId,
       bus: deps.realtimeBus,
       unreadCount: () => deps.notifications.unreadCount(tenant.value, identity.userId),
+      ...(since === null
+        ? {}
+        : {
+            replay: () =>
+              replayRealtimeEvents({
+                tenantId: tenant.value,
+                recipientUserId: identity.userId,
+                since,
+                notifications: deps.notifications,
+                dmConversations: deps.dmConversations,
+              }),
+          }),
     });
     return new Response(stream, { headers: SSE_HEADERS });
   });

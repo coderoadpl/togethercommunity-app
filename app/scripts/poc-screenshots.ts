@@ -8,6 +8,8 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { API_PATHS, TENANT_HEADER, looseEnvelopeSchema, publicOfferOutputSchema } from '#core/contract/index.js';
 
+import { signInWithPassword } from './login-flow.js';
+
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
@@ -166,9 +168,7 @@ const captureCreatorPanel = async (context: BrowserContext, studioBaseUrl: strin
   await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '01-login.png');
 
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo-password-15');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
 
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
   assert(

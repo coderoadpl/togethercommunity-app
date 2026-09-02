@@ -39,6 +39,7 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'getPublicSpaceThread',
   'recordCheckoutMarketingConsents',
   'resolveIdentity',
+  'resolveSignInMethods',
   'resolveTenant',
   'startCheckoutSession',
   'type PaymentWebhookEvent',

@@ -11,6 +11,8 @@ import { z } from 'zod';
 
 import { API_PATHS, looseEnvelopeSchema } from '#core/contract/index.js';
 
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
+
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
@@ -388,12 +390,11 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
 };
 
 interface MagicLinkLabels {
-  send: string;
   open: string;
 }
 
-const ENGLISH_MAGIC_LINK: MagicLinkLabels = { send: 'Send me a magic link', open: 'Open magic link' };
-const POLISH_MAGIC_LINK: MagicLinkLabels = { send: 'Wyślij mi magiczny link', open: 'Otwórz magiczny link' };
+const ENGLISH_MAGIC_LINK: MagicLinkLabels = { open: 'Open magic link' };
+const POLISH_MAGIC_LINK: MagicLinkLabels = { open: 'Otwórz magiczny link' };
 
 const signInStudent = async (
   page: Page,
@@ -402,9 +403,7 @@ const signInStudent = async (
   labels: MagicLinkLabels = ENGLISH_MAGIC_LINK,
 ): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.locator('#magic-link-email').waitFor({ state: 'visible', timeout: 20000 });
-  await page.locator('#magic-link-email').fill(email);
-  await page.getByRole('button', { name: labels.send }).click();
+  await requestMagicLink(page, email);
   const magicLink = page.getByRole('link', { name: labels.open });
   await magicLink.waitFor({ state: 'visible', timeout: 20000 });
   const href = await magicLink.getAttribute('href');
@@ -530,10 +529,7 @@ const captureStudentJourney = async (
 
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo-password-15');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 };
 

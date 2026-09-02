@@ -131,6 +131,12 @@ export interface Messages {
     nameLabel: string;
     signInIdle: string;
     signInPending: string;
+    identifierContinue: string;
+    identifierPending: string;
+    signingInAs: (params: { email: string }) => string;
+    changeIdentifier: string;
+    signInMethodsUnavailable: string;
+    usePasswordInstead: string;
     passkeyIdle: string;
     passkeyPending: string;
     twoFactorTitle: string;
@@ -142,7 +148,7 @@ export interface Messages {
     continueWithGoogle: string;
     forgotPassword: string;
     forgotPasswordLink: string;
-    magicLinkEmailLabel: string;
+    magicLinkStepBody: string;
     magicLinkIdle: string;
     magicLinkPending: string;
     magicLinkExpired: string;

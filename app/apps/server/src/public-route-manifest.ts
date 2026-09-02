@@ -36,6 +36,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/api/public/checkout/session', methods: ['OPTIONS'], mutating: false, why: 'Checkout session start preflight' },
   { path: '/api/public/checkout/session', methods: ['POST'], mutating: true, why: 'Checkout session start' },
   { path: '/api/public/auth-config', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Login capability discovery' },
+  { path: '/api/public/auth-resolve', methods: ['POST', 'OPTIONS'], mutating: false, why: 'Sign-in method discovery for a typed identifier' },
   { path: BETTER_AUTH_MAGIC_LINK_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
   { path: BETTER_AUTH_PASSWORD_RESET_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
   { path: BETTER_AUTH_SIGN_UP_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },

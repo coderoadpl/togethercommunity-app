@@ -11,6 +11,8 @@ import { z } from 'zod';
 
 import { API_PATHS } from '#core/contract/index.js';
 
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
+
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const webDistDir = join(rootDir, 'dist/web');
@@ -124,8 +126,7 @@ const shoot = async (page: Page, name: string): Promise<void> => {
 
 const signInMember = async (page: Page, baseUrl: string, email: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'load' });
-  await page.locator('#magic-link-email').fill(email);
-  await page.getByRole('button', { name: 'Wyślij mi magiczny link' }).click();
+  await requestMagicLink(page, email);
   const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
   await magicLink.waitFor({ state: 'visible', timeout: 15000 });
   const href = await magicLink.getAttribute('href');
@@ -136,9 +137,7 @@ const signInMember = async (page: Page, baseUrl: string, email: string): Promise
 
 const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'load' });
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo-password-15');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
 };
 

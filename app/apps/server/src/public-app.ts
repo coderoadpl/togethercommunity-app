@@ -11,6 +11,7 @@ import {
 } from '#adapters/auth/create-auth.js';
 import {
   API_PATHS,
+  authResolveRequestSchema,
   checkoutSessionRequestSchema,
   couponCheckoutValidationRequestSchema,
   courseStructureOutputSchema,
@@ -58,6 +59,7 @@ import {
   getPublicSpaceThread,
   recordCheckoutMarketingConsents,
   resolveIdentity,
+  resolveSignInMethods,
   resolveTenant,
   startCheckoutSession,
   validateCheckoutSelection,
@@ -351,6 +353,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
   registerOpenCors(app, API_PATHS.authConfig, 'GET');
+  registerOpenCors(app, API_PATHS.authResolve, 'POST');
 
   app.get(API_PATHS.publicImageAsset, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
@@ -714,6 +717,19 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
       }),
     ),
   );
+
+  app.post(API_PATHS.authResolve, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = authResolveRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return respondPublic(err(validation('Invalid sign-in lookup payload', parsed.error.flatten())));
+    }
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    return respondPublic(
+      await resolveSignInMethods(tenant.value?.tenant.id ?? null, parsed.data, deps),
+    );
+  });
 
   app.post(BETTER_AUTH_MAGIC_LINK_PATH, (c) =>
     withAuthDeliveryContext(

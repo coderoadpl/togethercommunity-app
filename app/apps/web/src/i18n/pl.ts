@@ -143,6 +143,7 @@ export const pl: Messages = {
     changeIdentifier: 'Zmień e-mail',
     signInMethodsUnavailable: 'Nie udało się sprawdzić, jak logujesz się na to konto. Wyślemy Ci magiczny link — możesz też przejść do logowania hasłem.',
     usePasswordInstead: 'Zaloguj się hasłem',
+    useMagicLinkInstead: 'Zaloguj się magicznym linkiem',
     passkeyIdle: 'Zaloguj się kluczem dostępu',
     passkeyPending: 'Logowanie…',
     twoFactorTitle: 'Weryfikacja dwuetapowa',
@@ -157,7 +158,7 @@ export const pl: Messages = {
     magicLinkStepBody: 'Wyślemy Ci magiczny link. Otwórz go na tym urządzeniu, a zalogujemy Cię bez hasła.',
     magicLinkIdle: 'Wyślij mi magiczny link',
     magicLinkPending: 'Wysyłanie magicznego linku…',
-    magicLinkExpired: 'Ten magiczny link wygasł lub został już użyty. Wpisz e-mail poniżej — wyślemy Ci nowy.',
+    magicLinkExpired: 'Ten magiczny link wygasł lub został już użyty. Wpisz e-mail i poproś o nowy link.',
     magicLinkRequested: 'Magiczny link został wysłany.',
     magicLinkRequestedBody: ({ email }) =>
       format('Sprawdź skrzynkę {email}. Link zaloguje Cię bez wpisywania hasła.', { email }),

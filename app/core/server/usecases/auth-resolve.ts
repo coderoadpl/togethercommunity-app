@@ -1,4 +1,4 @@
-import { normalizeEmail, ok, type AppError, type Result, type SignInMethod } from '#core/domain/index.js';
+import { ok, type AppError, type Result, type SignInMethod } from '#core/domain/index.js';
 
 import type { SignInMethodReader } from '../ports.js';
 
@@ -18,6 +18,6 @@ export const resolveSignInMethods = async (
 ): Promise<Result<{ methods: SignInMethod[] }, AppError>> => {
   const password = tenantId === null
     ? false
-    : await deps.signInMethods.hasCredentialAccount(tenantId, normalizeEmail(input.email));
+    : await deps.signInMethods.hasCredentialAccount(tenantId, input.email);
   return ok({ methods: password ? ['password', 'magic-link'] : ['magic-link'] });
 };

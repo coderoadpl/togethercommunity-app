@@ -3871,7 +3871,7 @@ export const createSignInMethodReader = (db: Db): SignInMethodReader => ({
         isNotNull(account.password),
       ))
       .where(and(
-        sql`lower(btrim(${user.email})) = ${normalizeEmail(email)}`,
+        eq(user.email, normalizeEmail(email)),
         or(isNotNull(members.id), isNotNull(tenantAdmins.id)),
       ))
       .limit(1);

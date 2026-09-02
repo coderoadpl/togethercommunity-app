@@ -2141,7 +2141,7 @@ describe('public rate limiting', () => {
     });
   });
 
-  it('answers a throttled sign-in method lookup with 429', async () => {
+  it('answers a throttled sign-in method lookup with 429 and Retry-After', async () => {
     const app = buildApp(deps({ rateLimitBuckets: exhausted }));
 
     const response = await app.request(API_PATHS.authResolve, {
@@ -2151,7 +2151,51 @@ describe('public rate limiting', () => {
     });
 
     expect(response.status).toBe(429);
+    expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+  });
+
+  it('spends dedicated lookup buckets so checkout keeps its own budget', async () => {
+    const scopes: string[] = [];
+    const app = buildApp(deps({
+      rateLimitBuckets: {
+        claim: async (input) => { scopes.push(input.scope); return true; },
+        purgeExpired: async () => 0,
+      },
+    }));
+
+    expect((await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'buyer@together.dev' }),
+    })).status).toBe(200);
+
+    expect(scopes).toEqual(['auth-resolve:ip', 'auth-resolve:tenant']);
+  });
+
+  it('keeps an exhausted lookup budget away from checkout and the other way round', async () => {
+    const drained = (exhaustedScopes: readonly string[]): AppDeps['rateLimitBuckets'] => ({
+      claim: async (input) => !exhaustedScopes.includes(input.scope),
+      purgeExpired: async () => 0,
+    });
+    const lookup = (app: ReturnType<typeof buildApp>) => app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'buyer@together.dev' }),
+    });
+    const checkout = (app: ReturnType<typeof buildApp>) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@together.dev' }),
+    });
+
+    const lookupDrained = buildApp(deps({ rateLimitBuckets: drained(['auth-resolve:ip']) }));
+    expect((await lookup(lookupDrained)).status).toBe(429);
+    expect((await checkout(lookupDrained)).status).not.toBe(429);
+
+    const writesDrained = buildApp(deps({ rateLimitBuckets: drained(['public-write:ip']) }));
+    expect((await checkout(writesDrained)).status).toBe(429);
+    expect((await lookup(writesDrained)).status).toBe(200);
   });
 
   it('answers a throttled magic-link request with 429 without sending a link', async () => {

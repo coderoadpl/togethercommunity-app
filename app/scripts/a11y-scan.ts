@@ -20,6 +20,7 @@ import {
   runSemanticChecksInDocument,
   type SemanticOutcome,
 } from './a11y-checks.js';
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
@@ -366,18 +367,13 @@ const applyChrome = async (context: BrowserContext): Promise<void> => {
 
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.getByTestId('login-email').waitFor(visible);
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo-password-15');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
   await page.getByTestId('tenant-name').waitFor(visible);
 };
 
 const signInMagicLink = (email: string) => async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.locator('#magic-link-email').waitFor(visible);
-  await page.locator('#magic-link-email').fill(email);
-  await page.getByRole('button', { name: 'Wyślij mi magiczny link' }).click();
+  await requestMagicLink(page, email);
   const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
   await magicLink.waitFor(visible);
   const href = await magicLink.getAttribute('href');

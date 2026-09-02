@@ -1915,6 +1915,10 @@ export interface TenantAccessReader {
   findMember(tenantId: string, userId: string): Promise<Member | null>;
 }
 
+export interface SignInMethodReader {
+  hasCredentialAccount(tenantId: string, email: string): Promise<boolean>;
+}
+
 /** Established authenticated session, before tenant resolution. */
 export interface AuthenticatedUser {
   sessionId: string;

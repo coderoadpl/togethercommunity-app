@@ -4,6 +4,10 @@ export const staffRoleSchema = z.enum(['owner', 'admin']);
 
 export type StaffRole = z.infer<typeof staffRoleSchema>;
 
+export const signInMethodSchema = z.enum(['password', 'magic-link']);
+
+export type SignInMethod = z.infer<typeof signInMethodSchema>;
+
 export interface Identity {
   userId: string;
   email: string;

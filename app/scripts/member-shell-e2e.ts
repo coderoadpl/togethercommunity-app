@@ -6,6 +6,7 @@ import pg from 'pg';
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 
 import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { requestMagicLink } from './login-flow.js';
 import {
   bootServer,
   ephemeralPort,
@@ -76,10 +77,7 @@ const setEnglish = async (context: BrowserContext): Promise<void> => {
 
 const signInMember = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  const input = page.locator('#magic-link-email');
-  await input.waitFor(visible);
-  await input.fill('kursant.aktywny@together.dev');
-  await input.press('Enter');
+  await requestMagicLink(page, 'kursant.aktywny@together.dev');
   const sent = page.getByTestId('magic-link-sent');
   await sent.waitFor(visible);
   const link = sent.locator('a[href]').first();

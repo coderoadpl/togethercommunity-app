@@ -129,6 +129,7 @@ const deps = (input: {
   paymentRefunds?: AppDeps['paymentRefunds'];
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
+  passwordAccounts?: readonly string[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
   const domains = input.domains ?? [];
@@ -712,6 +713,10 @@ const deps = (input: {
       findStaffGrant: async () => null,
       findMember: async (tenantId) =>
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
+    },
+    signInMethods: {
+      hasCredentialAccount: async (_tenantId, email) =>
+        (input.passwordAccounts ?? []).includes(email),
     },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
@@ -2134,6 +2139,19 @@ describe('public rate limiting', () => {
       ok: false,
       error: { code: 'rate_limited', message: 'Too many requests' },
     });
+  });
+
+  it('answers a throttled sign-in method lookup with 429', async () => {
+    const app = buildApp(deps({ rateLimitBuckets: exhausted }));
+
+    const response = await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'buyer@together.dev' }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
   });
 
   it('answers a throttled magic-link request with 429 without sending a link', async () => {
@@ -4331,6 +4349,59 @@ describe('public auth-config route', () => {
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
   });
 
+});
+
+describe('public auth-resolve route', () => {
+  const resolve = (app: ReturnType<typeof buildApp>, email: string) =>
+    app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'content-type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+
+  it('offers the password step to an account holding a credential', async () => {
+    const app = buildApp(deps({ passwordAccounts: ['creator@together.dev'] }));
+
+    const response = await resolve(app, 'creator@together.dev');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { methods: ['password', 'magic-link'] },
+    });
+  });
+
+  it('answers a passwordless member and an unknown address identically', async () => {
+    const app = buildApp(deps({ passwordAccounts: ['creator@together.dev'] }));
+
+    const passwordless = await resolve(app, 'kursant@together.dev');
+    const unknown = await resolve(app, 'nobody@example.com');
+
+    expect(await passwordless.json()).toEqual({ ok: true, data: { methods: ['magic-link'] } });
+    expect(await unknown.json()).toEqual({ ok: true, data: { methods: ['magic-link'] } });
+  });
+
+  it('rejects a payload without a usable identifier', async () => {
+    const app = buildApp(deps());
+
+    const response = await resolve(app, 'not-an-email');
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('handles auth-resolve preflight before auth middleware', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.authResolve, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://creator.example',
+        'access-control-request-method': 'POST',
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+  });
 });
 
 describe('tenant creation verdict route', () => {

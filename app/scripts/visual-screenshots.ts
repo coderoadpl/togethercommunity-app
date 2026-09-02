@@ -16,6 +16,7 @@ import {
 import { API_PATHS } from '#core/contract/index.js';
 
 import type { ThemeMode } from '../apps/web/src/theme.js';
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
 import { comparePng, type PngComparisonFailure } from './visual-png-compare.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -707,18 +708,13 @@ const settlePage = async (page: Page, waitForNetworkIdle = true): Promise<void> 
 
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.getByTestId('login-email').waitFor(visible);
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo-password-15');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
   await page.getByTestId('tenant-name').waitFor(visible);
 };
 
 const signInMember = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.locator('#magic-link-email').waitFor(visible);
-  await page.locator('#magic-link-email').fill('kursant.aktywny@together.dev');
-  await page.getByRole('button', { name: 'Wyślij mi magiczny link' }).click();
+  await requestMagicLink(page, 'kursant.aktywny@together.dev');
   const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
   await magicLink.waitFor(visible);
   const href = await magicLink.getAttribute('href');
@@ -729,9 +725,7 @@ const signInMember = async (page: Page, studioBaseUrl: string): Promise<void> =>
 
 const signInFreeMember = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.locator('#magic-link-email').waitFor(visible);
-  await page.locator('#magic-link-email').fill('free@together.dev');
-  await page.getByRole('button', { name: 'Wyślij mi magiczny link' }).click();
+  await requestMagicLink(page, 'free@together.dev');
   const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
   await magicLink.waitFor(visible);
   const href = await magicLink.getAttribute('href');

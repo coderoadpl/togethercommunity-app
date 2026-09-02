@@ -19,6 +19,7 @@ import {
 } from '#core/contract/index.js';
 
 import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
 import {
   bootServer,
   delay,
@@ -181,18 +182,13 @@ const setEnglish = async (context: BrowserContext): Promise<void> => {
 
 const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo-password-15');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
 };
 
 const signInMember = async (page: Page, baseUrl: string, email: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  const input = page.locator('#magic-link-email');
-  await input.waitFor({ state: 'visible', timeout: 15000 });
-  await input.fill(email);
-  await input.press('Enter');
+  await requestMagicLink(page, email);
   const sent = page.getByTestId('magic-link-sent');
   await sent.waitFor({ state: 'visible', timeout: 15000 });
   const link = sent.locator('a[href]').first();

@@ -8,6 +8,7 @@ import {
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
   authConfigOutputSchema,
+  authResolveOutputSchema,
   bunnyTestConnectionOutputSchema,
   bunnyVideosOutputSchema,
   courseOutputSchema,
@@ -180,6 +181,7 @@ import {
   type ApiKeyCreateInput,
   type ApiKeyImportAuditQuery,
   type ApiKeyRevokeInput,
+  type AuthResolveRequest,
   type CourseCreateInput,
   type CheckoutSessionRequest,
   type CouponCheckoutValidationRequest,
@@ -754,6 +756,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.authConfig.path,
       authConfigOutputSchema,
       undefined,
+      signal,
+    ),
+  resolveSignInMethods: (input: AuthResolveRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.authResolve.method,
+      API_ROUTES.authResolve.path,
+      authResolveOutputSchema,
+      input,
       signal,
     ),
   me: (signal?: AbortSignal) =>

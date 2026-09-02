@@ -87,7 +87,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/image-assets/branding/upload' || path === '/api/image-assets/branding/complete') return 'tenant:settings:write';
   if (path === '/api/public/payment-config' || path === '/api/public/checkout/coupon') return 'checkout:read';
   if (path === '/api/public/checkout/session') return 'checkout:start';
-  if (path === '/api/public/auth-config') return 'auth:use';
+  if (path === '/api/public/auth-config' || path === '/api/public/auth-resolve') return 'auth:use';
   if (path.startsWith('/api/webhooks/')) return 'webhook:process';
   if (path.startsWith('/u/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/marketing/confirm/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';

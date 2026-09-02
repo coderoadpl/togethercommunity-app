@@ -20,6 +20,7 @@ import {
   memberEventSchema,
   memberGrantSchema,
   memberSubscriptionSchema,
+  normalizeEmail,
   notificationSchema,
   orderSchema,
   orderListItemSchema,
@@ -116,6 +117,7 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
+  SignInMethodReader,
   TenantAccessReader,
   TenantApiKeyRepository,
   TenantDomainRepository,
@@ -135,6 +137,7 @@ import { insertFanoutJob } from './notification-fanout-jobs.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import { fingerprintHash, introspectSchema, shortFingerprint } from './schema-fingerprint.js';
 import {
+  account,
   consents,
   campaignSends,
   checkoutConsentCaptures,
@@ -3845,6 +3848,34 @@ export const createOnboardingStateRepository = (db: Db): OnboardingStateReposito
       .update(tenants)
       .set({ onboardingDismissedAt: dismissedAt })
       .where(eq(tenants.id, tenantId));
+  },
+});
+
+export const createSignInMethodReader = (db: Db): SignInMethodReader => ({
+  hasCredentialAccount: async (tenantId, email) => {
+    const rows = await db
+      .select({ credentialId: account.id })
+      .from(user)
+      .leftJoin(members, and(
+        eq(members.userId, user.id),
+        eq(members.tenantId, tenantId),
+        isNull(members.deletedAt),
+      ))
+      .leftJoin(tenantAdmins, and(
+        eq(tenantAdmins.userId, user.id),
+        eq(tenantAdmins.tenantId, tenantId),
+      ))
+      .leftJoin(account, and(
+        eq(account.userId, user.id),
+        eq(account.providerId, 'credential'),
+        isNotNull(account.password),
+      ))
+      .where(and(
+        sql`lower(btrim(${user.email})) = ${normalizeEmail(email)}`,
+        or(isNotNull(members.id), isNotNull(tenantAdmins.id)),
+      ))
+      .limit(1);
+    return (rows[0]?.credentialId ?? null) !== null;
   },
 });
 

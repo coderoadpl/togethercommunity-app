@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
   Button,
   Divider,
   FormControl,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   OutlinedInput,
@@ -25,9 +26,13 @@ import { EmailVerificationResult } from '../../components/ui/EmailVerificationSt
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
-import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
+import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
 
 const MAGIC_LINK_BODY_ID = 'login-magic-link-body';
+const IDENTITY_ID = 'login-identity';
+const EMAIL_ERROR_ID = 'login-email-error';
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const RESEND_COOLDOWN_SECONDS = 30;
 
 const invalidTokenFromLocation = (): boolean =>
   new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
@@ -37,13 +42,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const { language } = useLanguage();
   const magicLinkExpired = invalidTokenFromLocation();
   const [email, setEmail] = useState(rememberedLoginIdentifier);
+  const [identifierInvalid, setIdentifierInvalid] = useState(false);
   const [method, setMethod] = useState<SignInMethod | null>(null);
   const [password, setPassword] = useState('');
   const [requestedMagicEmail, setRequestedMagicEmail] = useState('');
+  const [magicLinkResent, setMagicLinkResent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [twoFactorRequired, setTwoFactorRequired] = useState(
     () => new URLSearchParams(window.location.search).get('twoFactor') === 'required',
   );
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const twoFactorCodeRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -53,6 +62,12 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const eyebrow = usesPlatformAuthSurface(hostname)
     ? t.auth.signInPlatformEyebrow
     : t.auth.signInEyebrow({ host: hostname });
+
+  useEffect(() => {
+    if (resendCooldown === 0) return undefined;
+    const timer = window.setTimeout(() => setResendCooldown((seconds) => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
 
   const resolveSignInMethods = useMutation({
     ...actions.resolveSignInMethods,
@@ -119,7 +134,13 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const submitIdentifier = (event: FormEvent) => {
     event.preventDefault();
+    if (resolveSignInMethods.isPending) return;
     const identifier = email.trim();
+    if (!EMAIL_PATTERN.test(identifier)) {
+      setIdentifierInvalid(true);
+      return;
+    }
+    setIdentifierInvalid(false);
     setEmail(identifier);
     rememberLoginIdentifier(identifier);
     resolveSignInMethods.mutate({ email: identifier });
@@ -128,9 +149,19 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const editIdentifier = () => {
     setMethod(null);
     setPassword('');
+    setRequestedMagicEmail('');
+    setMagicLinkResent(false);
+    setResendCooldown(0);
     resolveSignInMethods.reset();
     signIn.reset();
     requestMagicLink.reset();
+  };
+
+  const switchMethod = (next: SignInMethod) => {
+    signIn.reset();
+    requestMagicLink.reset();
+    setPassword('');
+    setMethod(next);
   };
 
   const submitPassword = (event: FormEvent) => {
@@ -141,7 +172,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const submitMagicLink = (event: FormEvent) => {
     event.preventDefault();
     setRequestedMagicEmail('');
+    setMagicLinkResent(false);
     requestMagicLink.mutate({ email, callbackURL: `${window.location.origin}/my`, language });
+  };
+
+  const resendMagicLink = () => {
+    setMagicLinkResent(false);
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    requestMagicLink.mutate(
+      { email: requestedMagicEmail, callbackURL: `${window.location.origin}/my`, language },
+      { onSuccess: () => setMagicLinkResent(true) },
+    );
   };
 
   const submitTwoFactor = (event: FormEvent) => {
@@ -149,15 +190,80 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     verifyTotp.mutate({ code: twoFactorCode.trim() });
   };
 
+  const cancelTwoFactor = () => {
+    setTwoFactorRequired(false);
+    setTwoFactorCode('');
+    verifyTotp.reset();
+    verifyBackupCode.reset();
+    editIdentifier();
+    window.history.replaceState(null, '', '/login');
+  };
+
+  const changeIdentifierLink = (
+    <MuiLink
+      component="button"
+      type="button"
+      color="text.secondary"
+      data-testid="login-change-email"
+      onClick={editIdentifier}
+      sx={{
+        textUnderlineOffset: '0.15em',
+        minHeight: 44,
+        display: 'inline-flex',
+        alignItems: 'center',
+      }}
+    >
+      {t.auth.changeIdentifier}
+    </MuiLink>
+  );
+
+  const signingInAs = (
+    <FinePrint
+      variant="caption"
+      component="p"
+      id={IDENTITY_ID}
+      data-testid={IDENTITY_ID}
+      sx={{ overflowWrap: 'anywhere' }}
+    >
+      {t.auth.signingInAs({ email })} · {changeIdentifierLink}
+    </FinePrint>
+  );
+
+  const showDemoAccount =
+    authConfig.data?.exposeMagicLinks === true &&
+    usesPlatformAuthSurface(hostname) &&
+    method === null &&
+    !twoFactorRequired &&
+    requestedMagicEmail === '';
+
+  const footerNotices =
+    authConfig.isError || publicOffer.isError ? (
+      <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1.25rem' }}>
+        {authConfig.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(authConfig.error, t), retry: { label: t.common.retry, onRetry: () => void authConfig.refetch() } }} /> : null}
+        {publicOffer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(publicOffer.error, t), retry: { label: t.common.retry, onRetry: () => void publicOffer.refetch() } }} /> : null}
+      </Stack>
+    ) : null;
+
+  const footerContact = (
+    <>
+      {publicOffer.data?.tenant.support.url ? (
+        <FinePrint variant="caption" component="p">
+          <MuiLink href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</MuiLink>
+        </FinePrint>
+      ) : null}
+      {publicOffer.data?.tenant.socialLinks.length ? (
+        <TenantSocialLinks links={publicOffer.data.tenant.socialLinks} />
+      ) : null}
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: '1.2rem' }}>
+        <BuildStamp />
+      </Box>
+    </>
+  );
+
   const footer = (
     <>
-      {authConfig.isError || publicOffer.isError ? (
-        <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1.25rem' }}>
-          {authConfig.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(authConfig.error, t), retry: { label: t.common.retry, onRetry: () => void authConfig.refetch() } }} /> : null}
-          {publicOffer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(publicOffer.error, t), retry: { label: t.common.retry, onRetry: () => void publicOffer.refetch() } }} /> : null}
-        </Stack>
-      ) : null}
-      {authConfig.data?.exposeMagicLinks ? (
+      {footerNotices}
+      {showDemoAccount ? (
         <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
           {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
           <DemoValue>demo-password-15</DemoValue>
@@ -180,17 +286,14 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           </Stack>
         </Box>
       ) : null}
-      {publicOffer.data?.tenant.support.url ? (
-        <FinePrint variant="caption" component="p">
-          <MuiLink href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</MuiLink>
-        </FinePrint>
-      ) : null}
-      {publicOffer.data?.tenant.socialLinks.length ? (
-        <TenantSocialLinks links={publicOffer.data.tenant.socialLinks} />
-      ) : null}
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: '1.2rem' }}>
-        <BuildStamp />
-      </Box>
+      {footerContact}
+    </>
+  );
+
+  const compactFooter = (
+    <>
+      {footerNotices}
+      {footerContact}
     </>
   );
 
@@ -198,17 +301,46 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     return (
       <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
         <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
-          <CardTitle variant="h1">{t.auth.magicLinkRequested}</CardTitle>
+          <Typography variant="h2" component="h2">{t.auth.magicLinkRequested}</Typography>
           <Typography variant="body1">
             {t.auth.magicLinkRequestedBody({ email: requestedMagicEmail })}
           </Typography>
+          {magicLinkResent ? (
+            <FinePrint variant="caption" component="p" role="status">
+              {t.auth.magicLinkResent}
+            </FinePrint>
+          ) : null}
+          <FinePrint variant="caption" component="p">
+            <MuiLink
+              component="button"
+              type="button"
+              data-testid="resend-magic-link"
+              color={resendCooldown > 0 ? 'text.disabled' : undefined}
+              disabled={resendCooldown > 0 || requestMagicLink.isPending}
+              onClick={resendMagicLink}
+            >
+              {resendCooldown > 0
+                ? t.auth.magicLinkResendCooldown({ seconds: resendCooldown })
+                : t.auth.magicLinkResend}
+            </MuiLink>
+          </FinePrint>
+          <FinePrint variant="caption" component="p">{changeIdentifierLink}</FinePrint>
+          {requestMagicLink.isError ? (
+            <Alert severity="error">{localizeError(requestMagicLink.error, t)}</Alert>
+          ) : null}
           {devMagicLink.isLoading ? (
             <FinePrint variant="caption" component="p">
               {t.auth.magicLinkFetching}
             </FinePrint>
           ) : null}
           {devMagicLink.data?.magicLink ? (
-            <Button component="a" href={devMagicLink.data.magicLink.url} variant="contained" fullWidth>
+            <Button
+              component="a"
+              href={devMagicLink.data.magicLink.url}
+              variant="outlined"
+              size="small"
+              sx={{ alignSelf: 'flex-start' }}
+            >
               {t.auth.openMagicLink}
             </Button>
           ) : null}
@@ -219,9 +351,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   if (twoFactorRequired) {
     return (
-      <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
+      <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={compactFooter}>
         <Stack component="form" onSubmit={submitTwoFactor} useFlexGap spacing="1rem" data-testid="two-factor-challenge">
-          <CardTitle variant="h1">{t.auth.twoFactorTitle}</CardTitle>
+          <Typography variant="h2" component="h2">{t.auth.twoFactorTitle}</Typography>
           <Typography variant="body1">{t.auth.twoFactorIntro}</Typography>
           <FormControl fullWidth>
             <FormLabel htmlFor="two-factor-code">{t.auth.twoFactorCodeLabel}</FormLabel>
@@ -230,7 +362,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               value={twoFactorCode}
               onChange={(event) => setTwoFactorCode(event.target.value)}
               autoComplete="one-time-code"
-              inputProps={{ 'data-testid': 'two-factor-code' }}
+              autoFocus
+              inputRef={twoFactorCodeRef}
+              inputProps={{ 'data-testid': 'two-factor-code', autoCapitalize: 'off', spellCheck: false }}
               required
             />
           </FormControl>
@@ -245,16 +379,34 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           </Button>
           <Button
             type="button"
-            variant="outlined"
-            fullWidth
-            disabled={verifyTotp.isPending || verifyBackupCode.isPending || twoFactorCode.trim().length === 0}
+            variant="text"
+            size="small"
+            sx={{ px: 0, alignSelf: 'flex-start', minHeight: 44 }}
+            disabled={verifyTotp.isPending || verifyBackupCode.isPending}
             data-testid="verify-login-backup-code"
-            onClick={() => verifyBackupCode.mutate({ code: twoFactorCode.trim() })}
+            onClick={() => {
+              const code = twoFactorCode.trim();
+              if (code.length === 0) {
+                twoFactorCodeRef.current?.focus();
+                return;
+              }
+              verifyBackupCode.mutate({ code });
+            }}
           >
             {verifyBackupCode.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorUseBackupCode}
           </Button>
           {verifyTotp.isError ? <Alert severity="error">{localizeError(verifyTotp.error, t)}</Alert> : null}
           {verifyBackupCode.isError ? <Alert severity="error">{localizeError(verifyBackupCode.error, t)}</Alert> : null}
+          <FinePrint variant="caption" component="p">
+            <MuiLink
+              component="button"
+              type="button"
+              data-testid="two-factor-cancel"
+              onClick={cancelTwoFactor}
+            >
+              {t.auth.twoFactorBackToLogin}
+            </MuiLink>
+          </FinePrint>
         </Stack>
       </FocusCard>
     );
@@ -270,42 +422,57 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         ) : (
           <EmailVerificationResult />
         )}
-        <Stack component="form" onSubmit={submitIdentifier} useFlexGap spacing="1rem">
-          <FormControl fullWidth>
+        <Stack component="form" noValidate onSubmit={submitIdentifier} useFlexGap spacing="1rem">
+          <FormControl fullWidth error={identifierInvalid}>
             <FormLabel htmlFor="login-email">{t.auth.emailLabel}</FormLabel>
             <OutlinedInput
               id="login-email"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setIdentifierInvalid(false);
+              }}
               autoComplete="email"
               autoFocus
-              disabled={resolveSignInMethods.isPending}
+              readOnly={resolveSignInMethods.isPending}
+              aria-busy={resolveSignInMethods.isPending}
+              aria-invalid={identifierInvalid}
+              aria-describedby={identifierInvalid ? EMAIL_ERROR_ID : undefined}
               inputProps={{ 'data-testid': 'login-email' }}
               required
             />
+            {identifierInvalid ? (
+              <FormHelperText id={EMAIL_ERROR_ID}>{t.auth.emailInvalid}</FormHelperText>
+            ) : null}
           </FormControl>
           <Button
             type="submit"
             variant="contained"
             fullWidth
-            disabled={resolveSignInMethods.isPending}
+            aria-busy={resolveSignInMethods.isPending}
             data-testid="login-continue"
             sx={{ mt: '0.4rem' }}
           >
             {resolveSignInMethods.isPending ? t.auth.identifierPending : t.auth.identifierContinue}
           </Button>
+          <VisuallyHidden role="status" aria-live="polite">
+            {resolveSignInMethods.isPending ? t.auth.identifierPending : ''}
+          </VisuallyHidden>
         </Stack>
         <Stack useFlexGap spacing="0.6rem" sx={{ mt: '0.9rem' }}>
-          <Button
-            data-testid="signin-passkey"
-            variant="outlined"
-            fullWidth
-            disabled={signInWithPasskey.isPending}
-            onClick={() => signInWithPasskey.mutate()}
-          >
-            {signInWithPasskey.isPending ? t.auth.passkeyPending : t.auth.passkeyIdle}
-          </Button>
+          <FinePrint variant="caption" component="p">
+            {t.auth.passkeyPrompt}{' '}
+            <MuiLink
+              component="button"
+              type="button"
+              data-testid="signin-passkey"
+              disabled={signInWithPasskey.isPending}
+              onClick={() => signInWithPasskey.mutate()}
+            >
+              {signInWithPasskey.isPending ? t.auth.passkeyPending : t.auth.passkeyLink}
+            </MuiLink>
+          </FinePrint>
           {authConfig.data?.googleEnabled ? (
             <Button
               data-testid="continue-google"
@@ -328,38 +495,23 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     );
   }
 
-  const changeIdentifierButton = (
-    <Box>
-      <Button
-        type="button"
-        variant="text"
-        size="small"
-        sx={{ px: 0 }}
-        data-testid="login-change-email"
-        onClick={editIdentifier}
-      >
-        {t.auth.changeIdentifier}
-      </Button>
-    </Box>
-  );
-
   return (
     <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
       {method === 'password' ? (
         <>
+          <Box sx={{ mb: '1rem' }}>{signingInAs}</Box>
           <Stack component="form" onSubmit={submitPassword} useFlexGap spacing="1rem">
-            <FormControl fullWidth>
-              <FormLabel htmlFor="login-identity-email">{t.auth.emailLabel}</FormLabel>
-              <OutlinedInput
-                id="login-identity-email"
+            <VisuallyHidden aria-hidden>
+              <input
                 type="email"
+                name="username"
+                autoComplete="username"
                 value={email}
                 readOnly
-                autoComplete="username"
-                inputProps={{ 'data-testid': 'login-identity-email' }}
+                tabIndex={-1}
+                data-testid="login-identity-email"
               />
-            </FormControl>
-            {changeIdentifierButton}
+            </VisuallyHidden>
             <FormControl fullWidth>
               <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
               <OutlinedInput
@@ -393,27 +545,43 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           <FinePrint variant="caption" component="p" sx={{ mb: '0.6rem' }} data-testid="forgot-password">
             {t.auth.forgotPassword} <MuiLink component={Link} to="/forgot-password">{t.auth.forgotPasswordLink}</MuiLink>
           </FinePrint>
-          <Button
-            type="button"
-            variant="text"
-            fullWidth
-            data-testid="use-magic-link"
-            onClick={() => setMethod('magic-link')}
-          >
-            {t.auth.useMagicLinkInstead}
-          </Button>
+          <FinePrint variant="caption" component="p">
+            {t.auth.useMagicLinkPrompt}{' '}
+            <MuiLink
+              component="button"
+              type="button"
+              data-testid="use-magic-link"
+              onClick={() => switchMethod('magic-link')}
+            >
+              {t.auth.useMagicLinkInstead}
+            </MuiLink>
+          </FinePrint>
         </>
       ) : (
         <>
-          <Stack useFlexGap spacing="0.2rem" sx={{ mb: '1rem' }}>
-            <FinePrint variant="caption" component="p" data-testid="login-identity">
-              {t.auth.signingInAs({ email })}
-            </FinePrint>
-            {changeIdentifierButton}
-          </Stack>
+          <Box sx={{ mb: '1rem' }}>{signingInAs}</Box>
           {resolveSignInMethods.isError ? (
-            <Alert severity="warning" sx={{ mb: '1rem' }} data-testid="sign-in-methods-unavailable">
+            <Alert
+              severity="warning"
+              sx={{ mb: '1rem' }}
+              data-testid="sign-in-methods-unavailable"
+              action={
+                <Button
+                  size="small"
+                  color="inherit"
+                  data-testid="sign-in-methods-retry"
+                  onClick={() => resolveSignInMethods.mutate({ email })}
+                >
+                  {t.common.retry}
+                </Button>
+              }
+            >
               {t.auth.signInMethodsUnavailable}
+            </Alert>
+          ) : null}
+          {magicLinkExpired ? (
+            <Alert severity="info" sx={{ mb: '1rem' }} data-testid="magic-link-expired-step">
+              {t.auth.magicLinkExpiredOnStep}
             </Alert>
           ) : null}
           <Stack component="form" onSubmit={submitMagicLink} useFlexGap spacing="1rem">
@@ -423,7 +591,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               variant="contained"
               fullWidth
               autoFocus
-              aria-describedby={MAGIC_LINK_BODY_ID}
+              aria-describedby={`${IDENTITY_ID} ${MAGIC_LINK_BODY_ID}`}
               disabled={requestMagicLink.isPending}
               data-testid="send-magic-link"
             >
@@ -435,16 +603,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               {localizeError(requestMagicLink.error, t)}
             </Alert>
           ) : null}
-          <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
-          <Button
-            type="button"
-            variant="text"
-            fullWidth
-            data-testid="use-password"
-            onClick={() => setMethod('password')}
-          >
-            {t.auth.usePasswordInstead}
-          </Button>
+          <FinePrint variant="caption" component="p" sx={{ mt: '1.4rem' }}>
+            {t.auth.usePasswordPrompt}{' '}
+            <MuiLink
+              component="button"
+              type="button"
+              data-testid="use-password"
+              onClick={() => switchMethod('password')}
+            >
+              {t.auth.usePasswordInstead}
+            </MuiLink>
+          </FinePrint>
         </>
       )}
     </FocusCard>

@@ -126,6 +126,7 @@ export interface Messages {
     createAccountPlatformEyebrow: string;
     createAccountEyebrow: (params: { host: string }) => string;
     emailLabel: string;
+    emailInvalid: string;
     passwordLabel: string;
     passwordTooShort: (params: { min: number }) => string;
     nameLabel: string;
@@ -136,9 +137,12 @@ export interface Messages {
     signingInAs: (params: { email: string }) => string;
     changeIdentifier: string;
     signInMethodsUnavailable: string;
+    usePasswordPrompt: string;
     usePasswordInstead: string;
+    useMagicLinkPrompt: string;
     useMagicLinkInstead: string;
-    passkeyIdle: string;
+    passkeyPrompt: string;
+    passkeyLink: string;
     passkeyPending: string;
     twoFactorTitle: string;
     twoFactorIntro: string;
@@ -146,6 +150,7 @@ export interface Messages {
     twoFactorVerifying: string;
     twoFactorVerifyTotp: string;
     twoFactorUseBackupCode: string;
+    twoFactorBackToLogin: string;
     continueWithGoogle: string;
     forgotPassword: string;
     forgotPasswordLink: string;
@@ -153,8 +158,12 @@ export interface Messages {
     magicLinkIdle: string;
     magicLinkPending: string;
     magicLinkExpired: string;
+    magicLinkExpiredOnStep: string;
     magicLinkRequested: string;
     magicLinkRequestedBody: (params: { email: string }) => string;
+    magicLinkResend: string;
+    magicLinkResendCooldown: (params: { seconds: number }) => string;
+    magicLinkResent: string;
     magicLinkFetching: string;
     openMagicLink: string;
     demoAccount: string;

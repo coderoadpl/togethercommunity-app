@@ -35,6 +35,7 @@ import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
 import { AppShell, BrandLoader, StatusView } from '../../components/layout/index.js';
 import { localizePanelError, useTranslations, type Messages } from '../../i18n/index.js';
+import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
 import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
@@ -473,6 +474,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
   const signOut = useMutation({
     ...actions.signOut,
     onSuccess: async () => {
+      forgetLoginIdentifier();
       queryClient.clear();
       await navigate({ to: '/login' });
     },

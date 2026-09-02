@@ -136,6 +136,7 @@ export const en: Messages = {
     changeIdentifier: 'Change email',
     signInMethodsUnavailable: 'We could not check how you sign in to this account. We will email you a magic link — you can also switch to a password.',
     usePasswordInstead: 'Sign in with a password',
+    useMagicLinkInstead: 'Sign in with a magic link',
     passkeyIdle: 'Sign in with passkey',
     passkeyPending: 'Signing in…',
     twoFactorTitle: 'Two-factor verification',
@@ -150,7 +151,7 @@ export const en: Messages = {
     magicLinkStepBody: 'We will email you a magic link. Open it on this device and we will sign you in without a password.',
     magicLinkIdle: 'Send me a magic link',
     magicLinkPending: 'Sending magic link…',
-    magicLinkExpired: 'This magic link has expired or was already used. Enter your email below and we will send you a new one.',
+    magicLinkExpired: 'This magic link has expired or was already used. Enter your email and request a new link.',
     magicLinkRequested: 'Magic link sent.',
     magicLinkRequestedBody: ({ email }) =>
       format('Check {email}. The link will sign you in without a password.', { email }),

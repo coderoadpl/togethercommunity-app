@@ -47,16 +47,16 @@ describe('resolveSignInMethods', () => {
     expect(calls).toEqual(['t-acme:creator@together.dev', 't-acme:nobody@example.com']);
   });
 
-  it('normalizes the identifier before the lookup', async () => {
+  it('hands the identifier to the reader untouched so normalisation happens once', async () => {
     const calls: string[] = [];
 
     const result = await resolveSignInMethods(
       't-acme',
       { email: '  Creator@Together.dev ' },
-      { signInMethods: reader(withPassword, calls) },
+      { signInMethods: reader(['  Creator@Together.dev '], calls) },
     );
 
-    expect(calls).toEqual(['t-acme:creator@together.dev']);
+    expect(calls).toEqual(['t-acme:  Creator@Together.dev ']);
     expect(result).toEqual({ ok: true, value: { methods: ['password', 'magic-link'] } });
   });
 

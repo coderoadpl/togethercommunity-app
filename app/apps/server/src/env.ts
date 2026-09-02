@@ -116,6 +116,8 @@ export const envSchema = z
     PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES: optionalCount,
+    PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE: optionalCount,
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: z.coerce.number().int().positive().default(60),
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY: z.coerce.number().int().positive().default(5000),
     NOTIFY_EMAIL: z

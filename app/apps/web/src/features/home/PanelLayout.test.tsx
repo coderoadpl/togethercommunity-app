@@ -417,12 +417,18 @@ describe('Creator panel routing', () => {
   it('signs out from the account menu in the app bar', async () => {
     stubViewport(true);
     commonHandlers();
+    server.use(http.post('*', () => HttpResponse.json({ success: true })));
+    window.sessionStorage.setItem('together-login-identifier', 'creator@together.dev');
 
     await renderPanelAt('/panel/products');
 
     await userEvent.click(await screen.findByTestId('user-menu'));
     expect(await screen.findByTestId('user-menu-email')).toHaveTextContent('creator@together.dev');
     expect(screen.getByText(pl.tenant.roleOwner)).toHaveClass('MuiChip-label');
-    expect(screen.getByTestId('sign-out')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('sign-out'));
+
+    await waitFor(() =>
+      expect(window.sessionStorage.getItem('together-login-identifier')).toBeNull());
   });
 });

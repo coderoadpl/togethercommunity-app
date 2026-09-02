@@ -137,6 +137,7 @@ export interface Messages {
     changeIdentifier: string;
     signInMethodsUnavailable: string;
     usePasswordInstead: string;
+    useMagicLinkInstead: string;
     passkeyIdle: string;
     passkeyPending: string;
     twoFactorTitle: string;

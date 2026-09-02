@@ -6,6 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
 import { BreakAllText, Eyebrow } from '../../theme.js';
 import { AccountIcon, ManageAccountIcon, SignOutIcon } from './account-icons.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
@@ -21,6 +22,7 @@ export const MemberAccountMenu = () => {
   const signOut = useMutation({
     ...actions.signOut,
     onSuccess: async () => {
+      forgetLoginIdentifier();
       queryClient.clear();
       await navigate({ to: '/login' });
     },

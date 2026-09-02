@@ -23,22 +23,20 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
 
-const IDENTIFIER_STORAGE_KEY = 'together-login-identifier';
+const MAGIC_LINK_BODY_ID = 'login-magic-link-body';
 
 const invalidTokenFromLocation = (): boolean =>
   new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
-
-const rememberedIdentifier = (): string =>
-  window.sessionStorage.getItem(IDENTIFIER_STORAGE_KEY) ?? '';
 
 export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const magicLinkExpired = invalidTokenFromLocation();
-  const [email, setEmail] = useState(rememberedIdentifier);
+  const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [method, setMethod] = useState<SignInMethod | null>(null);
   const [password, setPassword] = useState('');
   const [requestedMagicEmail, setRequestedMagicEmail] = useState('');
@@ -59,7 +57,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const resolveSignInMethods = useMutation({
     ...actions.resolveSignInMethods,
     onSuccess: (result) => {
-      setMethod(result.methods.includes('password') ? 'password' : 'magic-link');
+      const offersPassword = result.methods.includes('password') && !magicLinkExpired;
+      setMethod(offersPassword ? 'password' : 'magic-link');
     },
     onError: () => {
       setMethod('magic-link');
@@ -122,7 +121,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     event.preventDefault();
     const identifier = email.trim();
     setEmail(identifier);
-    window.sessionStorage.setItem(IDENTIFIER_STORAGE_KEY, identifier);
+    rememberLoginIdentifier(identifier);
     resolveSignInMethods.mutate({ email: identifier });
   };
 
@@ -281,6 +280,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               onChange={(event) => setEmail(event.target.value)}
               autoComplete="email"
               autoFocus
+              disabled={resolveSignInMethods.isPending}
               inputProps={{ 'data-testid': 'login-email' }}
               required
             />
@@ -328,33 +328,38 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     );
   }
 
+  const changeIdentifierButton = (
+    <Box>
+      <Button
+        type="button"
+        variant="text"
+        size="small"
+        sx={{ px: 0 }}
+        data-testid="login-change-email"
+        onClick={editIdentifier}
+      >
+        {t.auth.changeIdentifier}
+      </Button>
+    </Box>
+  );
+
   return (
     <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
-      <Stack useFlexGap spacing="0.2rem" sx={{ mb: '1rem' }}>
-        <FinePrint variant="caption" component="p" data-testid="login-identity">
-          {t.auth.signingInAs({ email })}
-        </FinePrint>
-        <Box>
-          <Button
-            type="button"
-            variant="text"
-            size="small"
-            sx={{ px: 0 }}
-            data-testid="login-change-email"
-            onClick={editIdentifier}
-          >
-            {t.auth.changeIdentifier}
-          </Button>
-        </Box>
-      </Stack>
-      {resolveSignInMethods.isError ? (
-        <Alert severity="warning" sx={{ mb: '1rem' }} data-testid="sign-in-methods-unavailable">
-          {t.auth.signInMethodsUnavailable}
-        </Alert>
-      ) : null}
       {method === 'password' ? (
         <>
           <Stack component="form" onSubmit={submitPassword} useFlexGap spacing="1rem">
+            <FormControl fullWidth>
+              <FormLabel htmlFor="login-identity-email">{t.auth.emailLabel}</FormLabel>
+              <OutlinedInput
+                id="login-identity-email"
+                type="email"
+                value={email}
+                readOnly
+                autoComplete="username"
+                inputProps={{ 'data-testid': 'login-identity-email' }}
+              />
+            </FormControl>
+            {changeIdentifierButton}
             <FormControl fullWidth>
               <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
               <OutlinedInput
@@ -395,18 +400,30 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             data-testid="use-magic-link"
             onClick={() => setMethod('magic-link')}
           >
-            {t.auth.magicLinkIdle}
+            {t.auth.useMagicLinkInstead}
           </Button>
         </>
       ) : (
         <>
+          <Stack useFlexGap spacing="0.2rem" sx={{ mb: '1rem' }}>
+            <FinePrint variant="caption" component="p" data-testid="login-identity">
+              {t.auth.signingInAs({ email })}
+            </FinePrint>
+            {changeIdentifierButton}
+          </Stack>
+          {resolveSignInMethods.isError ? (
+            <Alert severity="warning" sx={{ mb: '1rem' }} data-testid="sign-in-methods-unavailable">
+              {t.auth.signInMethodsUnavailable}
+            </Alert>
+          ) : null}
           <Stack component="form" onSubmit={submitMagicLink} useFlexGap spacing="1rem">
-            <Typography variant="body1">{t.auth.magicLinkStepBody}</Typography>
+            <Typography variant="body1" id={MAGIC_LINK_BODY_ID}>{t.auth.magicLinkStepBody}</Typography>
             <Button
               type="submit"
               variant="contained"
               fullWidth
               autoFocus
+              aria-describedby={MAGIC_LINK_BODY_ID}
               disabled={requestMagicLink.isPending}
               data-testid="send-magic-link"
             >

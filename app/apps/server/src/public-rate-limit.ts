@@ -27,6 +27,8 @@ export interface PublicRateLimitPolicies {
   writesPerIp: RateLimitWindow;
   writesPerTenant: RateLimitWindow;
   authLinksPerEmail: RateLimitWindow;
+  authResolvesPerIp: RateLimitWindow;
+  authResolvesPerTenant: RateLimitWindow;
 }
 
 export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
@@ -39,8 +41,20 @@ export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
 const MINUTE_MS = 60_000;
 const TEN_MINUTES_MS = 10 * MINUTE_MS;
 
-const PRODUCTION_LIMITS = { writesPerIp: 30, writesPerTenant: 300, authLinksPerEmail: 5 };
-const DEVELOPMENT_LIMITS = { writesPerIp: 3_000, writesPerTenant: 30_000, authLinksPerEmail: 500 };
+const PRODUCTION_LIMITS = {
+  writesPerIp: 30,
+  writesPerTenant: 300,
+  authLinksPerEmail: 5,
+  authResolvesPerIp: 20,
+  authResolvesPerTenant: 200,
+};
+const DEVELOPMENT_LIMITS = {
+  writesPerIp: 3_000,
+  writesPerTenant: 30_000,
+  authLinksPerEmail: 500,
+  authResolvesPerIp: 2_000,
+  authResolvesPerTenant: 20_000,
+};
 
 export type PublicRateLimitEnv = Pick<
   Env,
@@ -49,6 +63,8 @@ export type PublicRateLimitEnv = Pick<
   | 'PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES'
+  | 'PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE'
+  | 'PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE'
 >;
 
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {
@@ -65,6 +81,14 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
     authLinksPerEmail: {
       limit: env.PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES ?? fallback.authLinksPerEmail,
       windowMs: TEN_MINUTES_MS,
+    },
+    authResolvesPerIp: {
+      limit: env.PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE ?? fallback.authResolvesPerIp,
+      windowMs: MINUTE_MS,
+    },
+    authResolvesPerTenant: {
+      limit: env.PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE ?? fallback.authResolvesPerTenant,
+      windowMs: MINUTE_MS,
     },
   };
 };
@@ -83,8 +107,26 @@ const emailBodySchema = z.object({ email: z.string().email().max(254) });
 const isPublicWritePath = (path: string): boolean =>
   path === API_PATHS.checkoutSession
   || path === API_PATHS.couponCheckoutValidation
-  || path === API_PATHS.authResolve
   || isPublicFormPath(path);
+
+type PublicRateLimitKind = 'auth-link' | 'auth-resolve' | 'write';
+
+const publicRateLimitKind = (path: string): PublicRateLimitKind | null => {
+  if (AUTH_LINK_PATHS.has(path)) return 'auth-link';
+  if (path === API_PATHS.authResolve) return 'auth-resolve';
+  return isPublicWritePath(path) ? 'write' : null;
+};
+
+const bucketsFor = (kind: PublicRateLimitKind, policies: PublicRateLimitPolicies) =>
+  kind === 'auth-resolve'
+    ? {
+        ip: { scope: 'auth-resolve:ip', window: policies.authResolvesPerIp },
+        tenant: { scope: 'auth-resolve:tenant', window: policies.authResolvesPerTenant },
+      }
+    : {
+        ip: { scope: 'public-write:ip', window: policies.writesPerIp },
+        tenant: { scope: 'public-write:tenant', window: policies.writesPerTenant },
+      };
 
 const requestEmail = async (c: Context): Promise<string | null> => {
   let payload: unknown = null;
@@ -106,20 +148,20 @@ const rateLimitedResponse = (error: AppError): Response => {
 
 const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareDeps): Promise<Response | null> => {
   if (c.req.method !== 'POST') return null;
-  const isAuthLink = AUTH_LINK_PATHS.has(c.req.path);
-  if (!isAuthLink && !isPublicWritePath(c.req.path)) return null;
+  const kind = publicRateLimitKind(c.req.path);
+  if (kind === null) return null;
   const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
   const policies = deps.publicRateLimitPolicies;
+  const buckets = bucketsFor(kind, policies);
   const perIp = await claimRateLimitWindow(
     {
-      scope: 'public-write:ip',
+      ...buckets.ip,
       key: trustedClientIp(c, deps.authTrustedProxyHeader) ?? UNATTRIBUTED_IP_KEY,
-      window: policies.writesPerIp,
     },
     limiter,
   );
   if (!perIp.ok) return rateLimitedResponse(perIp.error);
-  if (isAuthLink) {
+  if (kind === 'auth-link') {
     const email = await requestEmail(c);
     if (email === null) return null;
     const claimed = await claimRateLimitWindow(
@@ -135,7 +177,7 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
   );
   if (!tenant.ok || tenant.value === null) return null;
   const perTenant = await claimRateLimitWindow(
-    { scope: 'public-write:tenant', key: tenant.value.tenant.id, window: policies.writesPerTenant },
+    { ...buckets.tenant, key: tenant.value.tenant.id },
     limiter,
   );
   return perTenant.ok ? null : rateLimitedResponse(perTenant.error);

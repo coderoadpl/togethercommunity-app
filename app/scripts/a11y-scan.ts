@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 
-import { API_PATHS } from '#core/contract/index.js';
+import { API_PATHS, toEnvelope } from '#core/contract/index.js';
+import { err, rateLimited } from '#core/domain/index.js';
 
 import type { ThemeMode } from '../apps/web/src/theme.js';
 import {
@@ -20,7 +21,7 @@ import {
   runSemanticChecksInDocument,
   type SemanticOutcome,
 } from './a11y-checks.js';
-import { requestMagicLink, signInWithPassword } from './login-flow.js';
+import { continueWithIdentifier, requestMagicLink, signInWithPassword } from './login-flow.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
@@ -69,6 +70,9 @@ const READY_TIMEOUT_MS = 20000;
 const visible = { state: 'visible', timeout: READY_TIMEOUT_MS } as const;
 const memberViewports: ViewportName[] = ['desktop', 'mobile'];
 const desktopOnly: ViewportName[] = ['desktop'];
+const PASSWORD_OWNER_EMAIL = 'creator@together.dev';
+const PASSWORDLESS_MEMBER_EMAIL = 'kursant.aktywny@together.dev';
+const AUTH_RESOLVE_PATTERN = `**${API_PATHS.authResolve}`;
 
 const SCREENS: ScreenSpec[] = [
   {
@@ -77,6 +81,44 @@ const SCREENS: ScreenSpec[] = [
     path: '/login',
     viewports: memberViewports,
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
+  },
+  {
+    name: 'login-password',
+    auth: 'public',
+    path: '/login',
+    viewports: memberViewports,
+    ready: async (page) => {
+      await continueWithIdentifier(page, PASSWORD_OWNER_EMAIL);
+      await page.getByTestId('login-password').waitFor(visible);
+    },
+  },
+  {
+    name: 'login-magic-link',
+    auth: 'public',
+    path: '/login',
+    viewports: memberViewports,
+    ready: async (page) => {
+      await continueWithIdentifier(page, PASSWORDLESS_MEMBER_EMAIL);
+      await page.getByTestId('send-magic-link').waitFor(visible);
+    },
+  },
+  {
+    name: 'login-resolve-unavailable',
+    auth: 'public',
+    path: '/login',
+    viewports: memberViewports,
+    ready: async (page) => {
+      await page.route(AUTH_RESOLVE_PATTERN, (route) =>
+        route.fulfill({
+          status: 429,
+          contentType: 'application/json',
+          body: JSON.stringify(toEnvelope(err(rateLimited()))),
+        }),
+      );
+      await continueWithIdentifier(page, PASSWORD_OWNER_EMAIL);
+      await page.getByTestId('sign-in-methods-unavailable').waitFor(visible);
+      await page.unroute(AUTH_RESOLVE_PATTERN);
+    },
   },
   {
     name: 'checkout-multiprice',
@@ -367,7 +409,7 @@ const applyChrome = async (context: BrowserContext): Promise<void> => {
 
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await signInWithPassword(page, PASSWORD_OWNER_EMAIL, 'demo-password-15');
   await page.getByTestId('tenant-name').waitFor(visible);
 };
 
@@ -447,7 +489,7 @@ try {
   const memberState = await bootstrapAuthState(
     browser,
     studioBaseUrl,
-    signInMagicLink('kursant.aktywny@together.dev'),
+    signInMagicLink(PASSWORDLESS_MEMBER_EMAIL),
   );
   const freeMemberState = await bootstrapAuthState(
     browser,

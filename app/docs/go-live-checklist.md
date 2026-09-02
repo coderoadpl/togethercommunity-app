@@ -254,9 +254,9 @@ dispatch run deletes expired windows.
 `marketing_throttle_buckets` remains a per-tenant SES sending budget rather
 than a request limiter (`adapters/db/app-schema.ts:1387`).
 
-Before launch, add an edge or WAF rule in front of `/api/auth/*`. The durable
-application limiter is defense in depth and does not replace the launch edge
-control.
+Before launch, add an edge or WAF rule in front of `/api/auth/*` and
+`POST /api/public/auth-resolve`. The durable application limiter is defense in
+depth and does not replace the launch edge control.
 
 ### 11. Real Stripe verification runbook
 

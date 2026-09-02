@@ -3340,6 +3340,7 @@ export const LessonPlaceholder = styled(Box)(({ theme }) => ({
 
 export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   overflowWrap: 'anywhere',
+  maxWidth: '44rem',
   '& img': { maxWidth: '100%', height: 'auto' },
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },

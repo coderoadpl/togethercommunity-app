@@ -22,6 +22,10 @@ export type LessonLinkItem = { url: string; label: string; host: string };
 
 const isGithub = (host: string): boolean => host === 'github.com' || host.endsWith('.github.com');
 
+const isMailto = (url: string): boolean => url.toLowerCase().startsWith('mailto:');
+
+const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
+
 export const LessonLinkList = ({ links }: { links: readonly LessonLinkItem[] }) => {
   const t = useTranslations();
   return (
@@ -46,11 +50,10 @@ export const LessonLinkList = ({ links }: { links: readonly LessonLinkItem[] }) 
           <LessonLinkButton
             component="a"
             href={link.url}
-            target="_blank"
-            rel="noopener noreferrer"
+            {...(isMailto(link.url) ? {} : NEW_TAB)}
             variant="outlined"
             title={link.url}
-            aria-label={`${link.label} ${t.lesson.newTabHint}`}
+            aria-label={`${link.label} ${isMailto(link.url) ? t.lesson.mailHint : t.lesson.newTabHint}`}
             startIcon={isGithub(link.host) ? <GithubIcon /> : <ExternalLinkIcon />}
           >
             {link.label}
@@ -59,6 +62,21 @@ export const LessonLinkList = ({ links }: { links: readonly LessonLinkItem[] }) 
       ))}
     </Stack>
   );
+};
+
+const lastPathSegment = (value: string): string | null => {
+  try {
+    const segments = new URL(value).pathname.split('/').filter((segment) => segment.length > 0);
+    return segments.at(-1) ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const sandboxTitle = (providerName: string, canonicalUrl: string, caption: string | null): string => {
+  if (caption !== null) return caption;
+  const segment = lastPathSegment(canonicalUrl);
+  return segment === null ? providerName : `${providerName} / ${segment}`;
 };
 
 export const LessonSandboxEmbed = ({
@@ -73,7 +91,7 @@ export const LessonSandboxEmbed = ({
   caption: string | null;
 }) => {
   const t = useTranslations();
-  const title = caption ?? providerName;
+  const title = sandboxTitle(providerName, canonicalUrl, caption);
   return (
     <Stack useFlexGap spacing="0.5rem" sx={{ minWidth: 0 }}>
       {caption === null ? null : (

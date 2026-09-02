@@ -259,6 +259,47 @@ describe('LessonPlayerPage', () => {
     expect(
       screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — Zadanie 1 — flexbox` }),
     ).toHaveAttribute('href', 'https://codesandbox.io/s/github/coderoadpl/task-1?autoresize=1');
+    expect(screen.getByTestId('lesson-block-0')).toHaveTextContent(
+      pl.lesson.labelSandbox({ provider: 'CodeSandbox' }),
+    );
+  });
+
+  it('tells two captionless sandboxes apart by their frame title and link name', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'embed', embedUrl: 'https://codesandbox.io/s/flexbox-task-1' },
+        { type: 'embed', embedUrl: 'https://codesandbox.io/s/grid-task-2' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findAllByTestId('lesson-sandbox');
+    expect(screen.getAllByTestId('lesson-sandbox').map((frame) => frame.getAttribute('title'))).toEqual([
+      'CodeSandbox / flexbox-task-1',
+      'CodeSandbox / grid-task-2',
+    ]);
+    expect(screen.queryByTestId('lesson-sandbox-caption')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — CodeSandbox / grid-task-2` }),
+    ).toHaveAttribute('href', 'https://codesandbox.io/s/grid-task-2');
+  });
+
+  it('opens a mailto link in the mail app rather than a new tab', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([{ type: 'link', url: 'mailto:teacher@example.com', description: 'Napisz do prowadzącej' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const mailLink = await screen.findByRole('link', {
+      name: `Napisz do prowadzącej ${pl.lesson.mailHint}`,
+    });
+    expect(mailLink).toHaveAttribute('href', 'mailto:teacher@example.com');
+    expect(mailLink).not.toHaveAttribute('target');
+    expect(mailLink).not.toHaveAttribute('rel');
   });
 
   it('renders one iframe when a link and an html anchor point at the same sandbox', async () => {

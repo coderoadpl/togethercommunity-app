@@ -63,7 +63,7 @@ const groupLabel = (t: Messages, group: LessonContentGroup): string => {
     case 'block':
       return blockLabel(t, group.block.type);
     case 'sandbox':
-      return t.lesson.labelEmbed;
+      return t.lesson.labelSandbox({ provider: group.providerName });
     case 'links':
       return t.lesson.linksHeading;
   }

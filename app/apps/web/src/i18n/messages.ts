@@ -1006,6 +1006,9 @@ export interface Messages {
     htmlLinkFoldNote: string;
     htmlSandboxFoldNote: string;
     technicalFieldHint: (params: { field: string }) => string;
+    blockPreviewLabel: string;
+    showSandboxPreview: string;
+    hideSandboxPreview: string;
     addBlock: string;
     saving: string;
     saveLesson: string;
@@ -1336,9 +1339,11 @@ export interface Messages {
     labelDocument: string;
     labelEmbed: string;
     labelReading: string;
+    labelSandbox: (params: { provider: string }) => string;
     linksHeading: string;
     openInNewTab: string;
     newTabHint: string;
+    mailHint: string;
     videoTitle: string;
     embedTitle: string;
     pdfTitle: string;

@@ -142,9 +142,15 @@ const withoutTrailingSlashes = (value: string): string => {
   return value.slice(0, end);
 };
 
-const mailtoAddress = (value: string): string | null => {
+type MailtoParts = { address: string; query: string };
+
+const mailtoParts = (value: string): MailtoParts | null => {
   const trimmed = value.trim();
-  return /^mailto:/iu.test(trimmed) ? trimmed.slice('mailto:'.length).split('?')[0] ?? '' : null;
+  if (!/^mailto:/iu.test(trimmed)) return null;
+  const rest = trimmed.slice('mailto:'.length);
+  const queryStart = rest.indexOf('?');
+  if (queryStart < 0) return { address: rest, query: '' };
+  return { address: rest.slice(0, queryStart), query: rest.slice(queryStart) };
 };
 
 const decodeSegment = (value: string): string => {
@@ -162,17 +168,26 @@ const derivedLabel = (host: string, url: URL): string => {
 };
 
 const linkTarget = (value: string): LinkTarget => {
-  const address = mailtoAddress(value);
-  if (address !== null)
-    return { host: address, key: `mailto:${address.toLowerCase()}`, fallbackLabel: address };
+  const mail = mailtoParts(value);
+  if (mail !== null)
+    return {
+      host: mail.address,
+      key: `mailto:${mail.address.toLowerCase()}${mail.query}`,
+      fallbackLabel: mail.address,
+    };
   const url = parseHttpUrl(value);
   if (url === null) {
     const trimmed = value.trim();
     return { host: trimmed, key: trimmed.toLowerCase(), fallbackLabel: trimmed };
   }
   const host = withoutWww(url.hostname.toLowerCase());
+  const authority = url.port === '' ? host : `${host}:${url.port}`;
   const path = withoutTrailingSlashes(url.pathname);
-  return { host, key: `${host}${path}${url.search}${url.hash}`, fallbackLabel: derivedLabel(host, url) };
+  return {
+    host,
+    key: `${url.protocol}//${authority}${path}${url.search}${url.hash}`,
+    fallbackLabel: derivedLabel(host, url),
+  };
 };
 
 const withoutUrlChrome = (value: string): string =>
@@ -189,36 +204,80 @@ const isDottedHost = (value: string): boolean => {
 const isPort = (value: string): boolean =>
   value.length > 0 && everyChar(value, (char) => /[0-9]/u.test(char));
 
-const isHostWithPath = (value: string): boolean => {
+const schemelessAuthority = (value: string): string | null => {
   const authorityWithPath = withoutScheme(value.trim().toLowerCase());
   const pathStart = authorityWithPath.indexOf('/');
-  if (pathStart < 0 || /\s/u.test(authorityWithPath.slice(pathStart + 1))) return false;
+  if (pathStart < 0 || /\s/u.test(authorityWithPath.slice(pathStart + 1))) return null;
   const authority = authorityWithPath.slice(0, pathStart);
   const portStart = authority.indexOf(':');
-  if (portStart < 0) return isDottedHost(authority);
-  return isDottedHost(authority.slice(0, portStart)) && isPort(authority.slice(portStart + 1));
+  if (portStart < 0) return isDottedHost(authority) ? authority : null;
+  const name = authority.slice(0, portStart);
+  return isDottedHost(name) && isPort(authority.slice(portStart + 1)) ? authority : null;
+};
+
+const matchesHrefAuthority = (authority: string, href: string, host: string): boolean => {
+  if (authority === host) return true;
+  const port = parseHttpUrl(href)?.port ?? '';
+  return port !== '' && authority === `${host}:${port}`;
 };
 
 const isUrlText = (text: string, href: string): boolean => {
-  if (parseHttpUrl(text) !== null || mailtoAddress(text) !== null) return true;
-  if (isHostWithPath(text)) return true;
+  if (parseHttpUrl(text) !== null || mailtoParts(text) !== null) return true;
+  const { host } = linkTarget(href);
   const bare = withoutUrlChrome(text);
-  if (bare === withoutUrlChrome(href)) return true;
-  return bare === linkTarget(href).host;
+  if (bare === withoutUrlChrome(href) || bare === host) return true;
+  const authority = schemelessAuthority(text);
+  if (authority !== null && matchesHrefAuthority(withoutWww(authority), href, host)) return true;
+  return host.length > 0 && bare.startsWith(`${host}/`);
 };
 
-const HTML_ENTITIES: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  '#39': "'",
-  apos: "'",
-  nbsp: ' ',
+const HTML_ENTITIES = new Map<string, string>([
+  ['amp', '&'],
+  ['lt', '<'],
+  ['gt', '>'],
+  ['quot', '"'],
+  ['apos', "'"],
+  ['nbsp', ' '],
+  ['ndash', '–'],
+  ['mdash', '—'],
+  ['rsquo', '’'],
+  ['lsquo', '‘'],
+  ['rdquo', '”'],
+  ['ldquo', '“'],
+  ['hellip', '…'],
+  ['laquo', '«'],
+  ['raquo', '»'],
+  ['bull', '•'],
+  ['middot', '·'],
+]);
+
+const NUMERIC_ENTITY = /^#(?:x([0-9a-f]+)|([0-9]+))$/iu;
+
+const isScalarCodePoint = (code: number): boolean =>
+  Number.isInteger(code) && code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
+
+const decodeNumericEntity = (body: string): string | null => {
+  const match = NUMERIC_ENTITY.exec(body);
+  if (match === null) return null;
+  const [, hex, decimal] = match;
+  const code = hex === undefined ? Number.parseInt(decimal ?? '', 10) : Number.parseInt(hex, 16);
+  return isScalarCodePoint(code) ? String.fromCodePoint(code) : null;
 };
 
-const decodeEntities = (value: string): string =>
-  value.replace(/&(#39|amp|lt|gt|quot|apos|nbsp);/gu, (match, name: string) => HTML_ENTITIES[name] ?? match);
+const ENTITY = /&([a-z0-9#]+);/giu;
+
+const decodeEntity = (body: string): string | null =>
+  HTML_ENTITIES.get(body.toLowerCase()) ?? decodeNumericEntity(body);
+
+const decodeEntities = (value: string): string | null => {
+  let unrecognised = false;
+  const decoded = value.replace(ENTITY, (match, body: string) => {
+    const entity = decodeEntity(body);
+    if (entity === null) unrecognised = true;
+    return entity ?? match;
+  });
+  return unrecognised ? null : decoded;
+};
 
 const PARAGRAPH_OPEN = '<p';
 const PARAGRAPH_CLOSE = '</p>';
@@ -298,9 +357,12 @@ const singleAnchor = (html: string): { href: string; text: string } | null => {
 const anchorLink = (html: string): { url: string; label: LinkLabel | null } | null => {
   const anchor = singleAnchor(html.trim());
   if (anchor === null) return null;
-  const href = decodeEntities(anchor.href).trim();
+  const decodedHref = decodeEntities(anchor.href);
+  const decodedText = decodeEntities(anchor.text);
+  if (decodedHref === null || decodedText === null) return null;
+  const href = decodedHref.trim();
   if (!/^(?:https?:\/\/|mailto:)/iu.test(href)) return null;
-  const text = decodeEntities(anchor.text).trim();
+  const text = decodedText.trim();
   const describes = text.length > 0 && !isUrlText(text, href);
   return { url: href, label: describes ? { text, source: 'anchorText' } : null };
 };

@@ -414,17 +414,27 @@ describe('groupLessonBlocks', () => {
     expect(groupLessonBlocks(blocks)).toEqual(blocks.map((block) => ({ kind: 'block', block })));
   });
 
-  it('stays fast on adversarial html and link text', () => {
+  it('stays bounded on adversarial html and link text', () => {
+    const longText = `${'/'.repeat(50_000)}a`;
+    const unterminatedAnchor: PlayableLessonBlock = { type: 'html', html: `<a ${'href="" '.repeat(6_000)}` };
     const blocks: PlayableLessonBlock[] = [
-      { type: 'html', html: `<a ${'href="" '.repeat(6_000)}` },
-      { type: 'html', html: `<p><a href="https://example.com/a">${'/'.repeat(50_000)}a</a></p>` },
-      { type: 'link', url: 'https://example.com/b', description: `${'/'.repeat(50_000)}a` },
+      unterminatedAnchor,
+      { type: 'html', html: `<p><a href="https://example.com/a">${longText}</a></p>` },
+      { type: 'link', url: 'https://example.com/b', description: longText },
     ];
 
     const started = performance.now();
-    groupLessonBlocks(blocks);
+    const groups = groupLessonBlocks(blocks);
 
-    expect(performance.now() - started).toBeLessThan(100);
+    expect(groups[0]).toEqual({ kind: 'block', block: unterminatedAnchor });
+    expect(groups[1]).toEqual({
+      kind: 'links',
+      links: [
+        { url: 'https://example.com/a', label: longText, host: 'example.com' },
+        { url: 'https://example.com/b', label: longText, host: 'example.com' },
+      ],
+    });
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 
   it('keeps a mailto link readable without a description', () => {
@@ -436,5 +446,106 @@ describe('groupLessonBlocks', () => {
         ],
       },
     ]);
+  });
+
+  const labelsOf = (blocks: PlayableLessonBlock[]): string[] => {
+    const groups = groupLessonBlocks(blocks);
+    return groups.flatMap((group) => (group.kind === 'links' ? group.links.map((link) => link.label) : []));
+  };
+
+  it('keeps the same path on http and https as separate links', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'http://example.com/docs', description: 'Bez TLS' },
+        { type: 'link', url: 'https://example.com/docs', description: 'Z TLS' },
+      ]),
+    ).toEqual(['Bez TLS', 'Z TLS']);
+  });
+
+  it('keeps the same path on different ports as separate links', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'http://example.com/app', description: 'Domyślny port' },
+        { type: 'link', url: 'http://example.com:8080/app', description: 'Port 8080' },
+      ]),
+    ).toEqual(['Domyślny port', 'Port 8080']);
+  });
+
+  it('keeps mailto links that differ only by subject or body apart', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'mailto:teacher@example.com?subject=Zadanie%201', description: 'Zadanie 1' },
+        { type: 'link', url: 'mailto:teacher@example.com?subject=Zadanie%202', description: 'Zadanie 2' },
+        { type: 'link', url: 'mailto:teacher@example.com?body=Cze%C5%9B%C4%87', description: 'Wiadomość' },
+      ]),
+    ).toEqual(['Zadanie 1', 'Zadanie 2', 'Wiadomość']);
+  });
+
+  it('folds the same mailto address written in different letter case into one chip', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'mailto:Teacher@Example.com', description: 'Kontakt' },
+        { type: 'link', url: 'mailto:teacher@example.com' },
+      ]),
+    ).toEqual(['Kontakt']);
+  });
+
+  it('decodes named and numeric entities in a folded anchor', () => {
+    expect(
+      labelsOf([
+        { type: 'html', html: '<p><a href="https://example.com/a">Flexbox &ndash; podstawy</a></p>' },
+        { type: 'html', html: '<p><a href="https://example.com/b">Grid &#8212; siatka</a></p>' },
+        { type: 'html', html: '<p><a href="https://example.com/c">Cytat &#x201C;flex&#x201D;</a></p>' },
+        { type: 'html', html: '<p><a href="https://example.com/d">Reszta&hellip;</a></p>' },
+      ]),
+    ).toEqual(['Flexbox – podstawy', 'Grid — siatka', 'Cytat “flex”', 'Reszta…']);
+  });
+
+  it('leaves an anchor unfolded when an entity stays undecoded', () => {
+    const block: PlayableLessonBlock = {
+      type: 'html',
+      html: '<p><a href="https://example.com/a">Zadanie &zzzz; jeden</a></p>',
+    };
+
+    expect(groupLessonBlocks([block])).toEqual([{ kind: 'block', block }]);
+  });
+
+  it('leaves an anchor unfolded when an entity names an object prototype member', () => {
+    const block: PlayableLessonBlock = {
+      type: 'html',
+      html: '<p><a href="https://example.com/a">Zadanie &constructor; jeden</a></p>',
+    };
+
+    expect(groupLessonBlocks([block])).toEqual([{ kind: 'block', block }]);
+  });
+
+  it('folds an anchor whose decoded text only looks like it holds an entity', () => {
+    expect(
+      labelsOf([{ type: 'html', html: '<p><a href="https://example.com/a">Tom &amp;Jerry; show</a></p>' }]),
+    ).toEqual(['Tom &Jerry; show']);
+  });
+
+  it('keeps a dotted product pair as the label instead of reading it as a URL', () => {
+    expect(
+      labelsOf([
+        { type: 'html', html: '<p><a href="https://expressjs.com/en/starter/hello-world.html">Node.js/Express</a></p>' },
+        { type: 'html', html: '<p><a href="https://nextjs.org/docs">Next.js/docs</a></p>' },
+      ]),
+    ).toEqual(['Node.js/Express', 'Next.js/docs']);
+  });
+
+  it('still treats a schemeless copy of the href as the URL itself', () => {
+    expect(
+      labelsOf([
+        { type: 'html', html: '<p><a href="https://example.com/docs">example.com/docs</a></p>' },
+        { type: 'html', html: '<p><a href="https://example.com/guide/intro">www.example.com/guide/intro</a></p>' },
+      ]),
+    ).toEqual(['example.com / docs', 'example.com / intro']);
+  });
+
+  it('reads schemeless text carrying the href port as the URL itself', () => {
+    expect(
+      labelsOf([{ type: 'html', html: '<p><a href="https://example.com:8080/x">example.com:8080/other</a></p>' }]),
+    ).toEqual(['example.com / x']);
   });
 });

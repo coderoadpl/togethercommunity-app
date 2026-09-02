@@ -993,6 +993,8 @@ export interface Messages {
     fileNameLabel: string;
     linkUrlLabel: string;
     linkDescriptionLabel: string;
+    htmlLinkFoldNote: string;
+    htmlSandboxFoldNote: string;
     technicalFieldHint: (params: { field: string }) => string;
     addBlock: string;
     saving: string;
@@ -1324,7 +1326,9 @@ export interface Messages {
     labelDocument: string;
     labelEmbed: string;
     labelReading: string;
-    labelLink: string;
+    linksHeading: string;
+    openInNewTab: string;
+    newTabHint: string;
     videoTitle: string;
     embedTitle: string;
     pdfTitle: string;

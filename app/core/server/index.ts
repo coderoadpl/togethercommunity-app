@@ -3,6 +3,7 @@ export * from './authorize.js';
 export * from './ports.js';
 export * from './realtime.js';
 export * from './tenant-url.js';
+export * from './usecases/auth-resolve.js';
 export * from './usecases/resolve-identity.js';
 export * from './usecases/resolve-tenant.js';
 export * from './usecases/public-offer.js';

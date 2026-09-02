@@ -15,6 +15,7 @@ import type {
   ApiKeyCreateInput,
   ApiKeyImportAuditQuery,
   ApiKeyRevokeInput,
+  AuthResolveRequest,
   CheckoutSessionRequest,
   CouponCheckoutValidationRequest,
   CouponArchiveRequest,
@@ -608,6 +609,12 @@ export const authConfigQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: authConfigScopes.all(),
     call: ({ signal }) => api.authConfig(signal),
+  });
+
+export const resolveSignInMethodsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['sign-in-methods'] as const,
+    call: (input: AuthResolveRequest) => api.resolveSignInMethods(input),
   });
 
 export const createTenantMutation = (api: ApiClient) =>

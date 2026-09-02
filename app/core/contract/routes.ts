@@ -37,6 +37,7 @@ import {
   reactionSummarySchema,
   rsvpEventInputSchema,
   sendDmMessageInputSchema,
+  signInMethodSchema,
   startDmConversationInputSchema,
   setSpaceArchivedInputSchema,
   spaceFeedSchema,
@@ -224,6 +225,16 @@ export const authConfigOutputSchema = z.object({
   passkeysEnabled: z.boolean(),
   totpEnabled: z.boolean(),
   exposeMagicLinks: z.boolean(),
+});
+
+export const authResolveRequestSchema = z.object({
+  email: z.string().email().max(254),
+});
+
+export type AuthResolveRequest = z.input<typeof authResolveRequestSchema>;
+
+export const authResolveOutputSchema = z.object({
+  methods: z.array(signInMethodSchema).min(1),
 });
 
 export const meOutputSchema = z.object({
@@ -1594,6 +1605,7 @@ export const API_ROUTES = {
   couponCheckoutValidation: { method: 'POST', path: '/api/public/checkout/coupon' },
   termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
+  authResolve: { method: 'POST', path: '/api/public/auth-resolve' },
   me: { method: 'GET', path: '/api/me' },
   meProfile: { method: 'POST', path: '/api/me/profile' },
   accountSessions: { method: 'GET', path: '/api/me/sessions' },
@@ -1844,6 +1856,7 @@ export const API_PATHS = {
   couponCheckoutValidation: API_ROUTES.couponCheckoutValidation.path,
   termsConsent: API_ROUTES.termsConsent.path,
   authConfig: API_ROUTES.authConfig.path,
+  authResolve: API_ROUTES.authResolve.path,
   me: API_ROUTES.me.path,
   meProfile: API_ROUTES.meProfile.path,
   accountSessions: API_ROUTES.accountSessions.path,

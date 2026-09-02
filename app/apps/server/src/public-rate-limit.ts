@@ -83,6 +83,7 @@ const emailBodySchema = z.object({ email: z.string().email().max(254) });
 const isPublicWritePath = (path: string): boolean =>
   path === API_PATHS.checkoutSession
   || path === API_PATHS.couponCheckoutValidation
+  || path === API_PATHS.authResolve
   || isPublicFormPath(path);
 
 const requestEmail = async (c: Context): Promise<string | null> => {

@@ -912,7 +912,7 @@ invoices can be checked locally.
 - [punycode@2.3.1](https://mths.be/punycode) - MIT
 - [pvtsutils@1.3.6](https://github.com/PeculiarVentures/pvtsutils#readme) - MIT
 - [pvutils@1.1.5](https://github.com/PeculiarVentures/pvutils#readme) - MIT
-- [qs@6.15.3](https://github.com/ljharb/qs) - BSD-3-Clause
+- [qs@6.16.0](https://github.com/ljharb/qs) - BSD-3-Clause
 - [react-docgen-typescript@2.4.0](https://github.com/styleguidist/react-docgen-typescript/) - MIT
 - [react-docgen@8.0.3](https://github.com/reactjs/react-docgen#readme) - MIT
 - [react-dom@19.2.8](https://react.dev/) - MIT

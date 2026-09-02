@@ -1,0 +1,10 @@
+feat: embed allow-listed code sandboxes and group lesson links
+
+Adds inline embedding of code sandboxes from an allow-listed set of
+providers directly in lesson content, alongside a dedicated component
+for grouping and rendering lesson links. Extends the domain layer with
+lesson-link parsing/validation and covers it with unit tests. Updates
+translations and lesson player UI to surface the new link and embed
+rendering.
+
+Claude-Session: https://claude.ai/code/session_013bdnTVuMPxwDDGkbRgWduh

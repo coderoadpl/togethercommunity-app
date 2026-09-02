@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -6,21 +6,21 @@ import {
   Chip,
   Link as MuiLink,
   Paper,
-  Skeleton,
   Stack,
   Tooltip,
   Typography,
 } from '@mui/material';
-import { type SxProps, type Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
 import { ApiError } from '#core/client/index.js';
-import type { LessonBlock, PlayableLessonBlock } from '#core/domain/index.js';
+import { groupLessonBlocks, type LessonContentGroup, type RenderableLessonBlock } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
+import { LessonMediaEmbed } from '../../components/ui/LessonMedia.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { formatOfferPrice } from '../../lib/format.js';
 import {
@@ -28,14 +28,10 @@ import {
   Eyebrow,
   LessonFooterBar,
   LessonHtmlContent,
-  LessonLinkButton,
-  LessonMediaClip,
-  LessonMediaFrame,
-  LessonMediaIframe,
   LessonPlaceholder,
 } from '../../theme.js';
 import { DiscussionSection } from './DiscussionSection.js';
-import { CodeIcon, LinkIcon, LockedState } from './lesson-icons.js';
+import { LinkIcon, LockedState } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse } from './lesson-nav.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
@@ -49,7 +45,7 @@ const isForbidden = (error: Error | null) =>
 
 const VIDEO_ALLOW = 'accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture;';
 
-const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
+const blockLabel = (t: Messages, type: RenderableLessonBlock['type']): string => {
   switch (type) {
     case 'video':
       return t.lesson.labelVideo;
@@ -59,33 +55,21 @@ const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
       return t.lesson.labelEmbed;
     case 'html':
       return t.lesson.labelReading;
-    case 'link':
-      return t.lesson.labelLink;
   }
 };
 
-const MediaIframe = ({
-  frameSx,
-  ...iframeProps
-}: { frameSx: SxProps<Theme> } & ComponentProps<typeof LessonMediaIframe>) => {
-  const [loaded, setLoaded] = useState(false);
-  return (
-    <LessonMediaFrame sx={frameSx}>
-      <LessonMediaClip>
-        {loaded ? null : (
-          <Skeleton
-            variant="rectangular"
-            data-testid="lesson-media-skeleton"
-            sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-          />
-        )}
-        <LessonMediaIframe {...iframeProps} onLoad={() => setLoaded(true)} />
-      </LessonMediaClip>
-    </LessonMediaFrame>
-  );
+const groupLabel = (t: Messages, group: LessonContentGroup): string => {
+  switch (group.kind) {
+    case 'block':
+      return blockLabel(t, group.block.type);
+    case 'sandbox':
+      return t.lesson.labelEmbed;
+    case 'links':
+      return t.lesson.linksHeading;
+  }
 };
 
-const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
+const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
   const t = useTranslations();
   if (block.type === 'video') {
     if (block.embedUrl === undefined) {
@@ -96,7 +80,7 @@ const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
       );
     }
     return (
-      <MediaIframe
+      <LessonMediaEmbed
         frameSx={{ aspectRatio: '16 / 9' }}
         data-testid="lesson-video"
         src={block.embedUrl}
@@ -110,7 +94,7 @@ const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
   if (block.type === 'pdf') {
     return (
       <Stack useFlexGap spacing="0.75rem">
-        <MediaIframe
+        <LessonMediaEmbed
           frameSx={{ aspectRatio: '10 / 7', minHeight: '24rem' }}
           data-testid="lesson-pdf"
           src={block.pdfUrl}
@@ -133,7 +117,7 @@ const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
 
   if (block.type === 'embed') {
     return (
-      <MediaIframe
+      <LessonMediaEmbed
         frameSx={{ aspectRatio: '16 / 9' }}
         data-testid="lesson-embed"
         src={block.embedUrl}
@@ -144,37 +128,30 @@ const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
     );
   }
 
-  if (block.type === 'html') {
-    return (
-      <LessonHtmlContent
-        data-testid="lesson-html"
-        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
-      />
-    );
-  }
-
-  const github = /(^|\.)github\.com/i.test(new URL(block.url).hostname);
   return (
-    <Stack useFlexGap spacing="0.5rem" sx={{ minWidth: 0 }}>
-      <Box sx={{ minWidth: 0 }}>
-        <LessonLinkButton
-          component="a"
-          href={block.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="outlined"
-          startIcon={github ? <CodeIcon /> : <LinkIcon />}
-        >
-          {block.description ?? block.url}
-        </LessonLinkButton>
-      </Box>
-      {block.description !== undefined && (
-        <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-          {block.url}
-        </Typography>
-      )}
-    </Stack>
+    <LessonHtmlContent
+      data-testid="lesson-html"
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+    />
   );
+};
+
+const GroupBody = ({ group }: { group: LessonContentGroup }) => {
+  switch (group.kind) {
+    case 'block':
+      return <BlockBody block={group.block} />;
+    case 'sandbox':
+      return (
+        <LessonSandboxEmbed
+          embedUrl={group.embedUrl}
+          canonicalUrl={group.canonicalUrl}
+          providerName={group.providerName}
+          caption={group.caption}
+        />
+      );
+    case 'links':
+      return <LessonLinkList links={group.links} />;
+  }
 };
 
 const LockedView = ({
@@ -407,7 +384,7 @@ export const LessonPlayerPage = ({
     );
   }
 
-  const blocks = lesson.data.lesson.contents;
+  const groups = groupLessonBlocks(lesson.data.lesson.contents);
   const hasSideErrors = [structure, progress, attachments, lastViewed, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
@@ -468,7 +445,7 @@ export const LessonPlayerPage = ({
           </Stack>
         ) : null}
         <Stack component="section" useFlexGap spacing="1.5rem">
-          {blocks.length === 0 ? (
+          {groups.length === 0 ? (
             <StatusView
               state={{
                 kind: 'empty',
@@ -479,18 +456,18 @@ export const LessonPlayerPage = ({
               data-testid="lesson-empty-state"
             />
           ) : (
-            blocks.map((block, index) => (
+            groups.map((group, index) => (
               <Paper
                 key={index}
                 elevation={1}
                 sx={{ p: '1.5rem' }}
                 data-testid={`lesson-block-${index}`}
-                data-block-type={block.type}
+                data-block-type={group.kind === 'block' ? group.block.type : group.kind}
               >
                 <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
-                  {blockLabel(t, block.type)}
+                  {groupLabel(t, group)}
                 </Eyebrow>
-                <BlockBody block={block} />
+                <GroupBody group={group} />
               </Paper>
             ))
           )}

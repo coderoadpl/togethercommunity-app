@@ -24,16 +24,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
 import {
+  groupLessonBlocks,
   inspectVideoEmbedUrl,
   lessonBlockSchema,
   type CourseLesson,
   type LessonBlock,
+  type LessonContentGroup,
   type VideoEmbedUrlInspection,
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
+import { LessonLinkList, LessonSandboxEmbed } from '../../../components/ui/LessonLinks.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -166,6 +169,47 @@ const parseBlocks = (
   return { ok: true, blocks };
 };
 
+const memberGroupOf = (block: LessonBlock): LessonContentGroup | null => {
+  const parsed = lessonBlockSchema.safeParse(block);
+  if (!parsed.success) return null;
+  return groupLessonBlocks([parsed.data])[0] ?? null;
+};
+
+const MemberGroupPreview = ({ group }: { group: LessonContentGroup }) => {
+  if (group.kind === 'sandbox') {
+    return (
+      <LessonSandboxEmbed
+        embedUrl={group.embedUrl}
+        canonicalUrl={group.canonicalUrl}
+        providerName={group.providerName}
+        caption={group.caption}
+      />
+    );
+  }
+  return group.kind === 'links' ? <LessonLinkList links={group.links} /> : null;
+};
+
+const MemberLinkPreview = ({ block }: { block: Extract<LessonBlock, { type: 'link' | 'embed' }> }) => {
+  const url = useDebouncedValue(block.type === 'link' ? block.url : block.embedUrl);
+  const group = memberGroupOf(block.type === 'link' ? { ...block, url } : { ...block, embedUrl: url });
+  return group === null ? null : <MemberGroupPreview group={group} />;
+};
+
+const HtmlBlockPreview = ({ html: typedHtml }: { html: string }) => {
+  const t = useTranslations();
+  const html = useDebouncedValue(typedHtml);
+  const group = memberGroupOf({ type: 'html', html });
+  if (group === null || group.kind === 'block') return null;
+  return (
+    <Stack useFlexGap spacing="0.4rem">
+      <Typography variant="caption" color="text.secondary" role="note">
+        {t.lessons.htmlLinkFoldNote}
+      </Typography>
+      <MemberGroupPreview group={group} />
+    </Stack>
+  );
+};
+
 const VideoBlockFields = ({
   draft,
   index,
@@ -250,6 +294,7 @@ const EmbedBlockFields = ({
         />
         {error === null ? null : <FormHelperText>{error}</FormHelperText>}
       </FormControl>
+      <MemberLinkPreview block={{ type: 'embed', embedUrl: draft.embedUrl }} />
       {inspection.kind === 'supported' ? (
         <LessonMediaFrame sx={{ aspectRatio: '16 / 9' }}>
           <LessonMediaClip>
@@ -323,17 +368,27 @@ const BlockFields = ({
         <Stack useFlexGap spacing="0.6rem">
           {field(`${t.lessons.linkUrlLabel} — ${t.lessons.technicalFieldHint({ field: 'url' })}`, 'url', draft.url, (url) => onChange({ ...draft, url }))}
           {field(`${t.lessons.linkDescriptionLabel} — ${t.lessons.technicalFieldHint({ field: 'description' })}`, 'description', draft.description, (description) => onChange({ ...draft, description }))}
+          <MemberLinkPreview
+            block={{
+              type: 'link',
+              url: draft.url,
+              ...(draft.description.trim().length > 0 ? { description: draft.description.trim() } : {}),
+            }}
+          />
         </Stack>
       );
     case 'html':
       return (
-        <HtmlEditor
-          id={`block-${index}-html`}
-          value={draft.html}
-          onChange={(html) => onChange({ ...draft, html })}
-          fieldLabel={t.lessons.htmlLabel}
-          size="small"
-        />
+        <Stack useFlexGap spacing="0.6rem">
+          <HtmlEditor
+            id={`block-${index}-html`}
+            value={draft.html}
+            onChange={(html) => onChange({ ...draft, html })}
+            fieldLabel={t.lessons.htmlLabel}
+            size="small"
+          />
+          <HtmlBlockPreview html={draft.html} />
+        </Stack>
       );
   }
 };

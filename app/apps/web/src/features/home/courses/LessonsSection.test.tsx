@@ -502,7 +502,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     expect(screen.queryByText('window.__xss=1')).not.toBeInTheDocument();
   });
 
-  it('warns that a single-anchor html block will be shown as a link chip', async () => {
+  it('tells how a single-anchor html block will be shown to members', async () => {
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
 
     await renderLessonsAt('/panel/lessons/new');
@@ -522,6 +522,11 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
       'href',
       'https://github.com/coderoadpl/task-1',
     );
+
+    await userEvent.clear(editor);
+    await userEvent.type(editor, '<p><a href="https://codesandbox.io/s/abc123">zadanie</a></p>');
+    expect(await screen.findByText(pl.lessons.htmlSandboxFoldNote)).toBeInTheDocument();
+    expect(screen.queryByText(pl.lessons.htmlLinkFoldNote)).not.toBeInTheDocument();
   });
 
   it('previews a link block only once its URL passes the block schema', async () => {

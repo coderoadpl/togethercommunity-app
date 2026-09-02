@@ -1097,6 +1097,7 @@ export const en: Messages = {
     linkUrlLabel: 'Link address',
     linkDescriptionLabel: 'Link description',
     htmlLinkFoldNote: 'Members will see this block as a link in the Links section.',
+    htmlSandboxFoldNote: 'Members will see this block as an embedded editor.',
     technicalFieldHint: ({ field }) => format('Provider field: {field}', { field }),
     addBlock: 'Add block',
     saving: 'Saving…',

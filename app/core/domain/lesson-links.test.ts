@@ -414,6 +414,19 @@ describe('groupLessonBlocks', () => {
     expect(groupLessonBlocks(blocks)).toEqual(blocks.map((block) => ({ kind: 'block', block })));
   });
 
+  it('stays fast on adversarial html and link text', () => {
+    const blocks: PlayableLessonBlock[] = [
+      { type: 'html', html: `<a ${'href="" '.repeat(6_000)}` },
+      { type: 'html', html: `<p><a href="https://example.com/a">${'/'.repeat(50_000)}a</a></p>` },
+      { type: 'link', url: 'https://example.com/b', description: `${'/'.repeat(50_000)}a` },
+    ];
+
+    const started = performance.now();
+    groupLessonBlocks(blocks);
+
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
   it('keeps a mailto link readable without a description', () => {
     expect(groupLessonBlocks([{ type: 'link', url: 'mailto:teacher@example.com' }])).toEqual([
       {

@@ -1108,6 +1108,7 @@ export const pl: Messages = {
     linkUrlLabel: 'Adres linku',
     linkDescriptionLabel: 'Opis linku',
     htmlLinkFoldNote: 'Ten blok pokaże się uczestnikom jako link w sekcji „Linki”.',
+    htmlSandboxFoldNote: 'Ten blok pokaże się uczestnikom jako osadzony edytor.',
     technicalFieldHint: ({ field }) => format('pole techniczne: {field}', { field }),
     addBlock: 'Dodaj blok',
     saving: 'Zapisywanie…',

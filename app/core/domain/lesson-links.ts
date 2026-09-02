@@ -120,6 +120,28 @@ const labelRank = (label: LinkLabel | null): number => (label === null ? 0 : LAB
 
 type LinkTarget = { host: string; key: string; fallbackLabel: string };
 
+const isSpace = (char: string): boolean => /\s/u.test(char);
+
+const everyChar = (value: string, allowed: (char: string) => boolean): boolean =>
+  [...value].every(allowed);
+
+const isSchemeName = (value: string): boolean =>
+  /[a-z]/u.test(value.charAt(0)) && everyChar(value, (char) => /[a-z0-9+.-]/u.test(char));
+
+const withoutScheme = (value: string): string => {
+  const separator = value.indexOf('://');
+  if (separator <= 0) return value;
+  return isSchemeName(value.slice(0, separator)) ? value.slice(separator + 3) : value;
+};
+
+const withoutWww = (value: string): string => (value.startsWith('www.') ? value.slice(4) : value);
+
+const withoutTrailingSlashes = (value: string): string => {
+  let end = value.length;
+  while (end > 0 && value.charAt(end - 1) === '/') end -= 1;
+  return value.slice(0, end);
+};
+
 const mailtoAddress = (value: string): string | null => {
   const trimmed = value.trim();
   return /^mailto:/iu.test(trimmed) ? trimmed.slice('mailto:'.length).split('?')[0] ?? '' : null;
@@ -148,24 +170,38 @@ const linkTarget = (value: string): LinkTarget => {
     const trimmed = value.trim();
     return { host: trimmed, key: trimmed.toLowerCase(), fallbackLabel: trimmed };
   }
-  const host = url.hostname.toLowerCase().replace(/^www\./u, '');
-  const path = url.pathname.replace(/\/+$/u, '');
+  const host = withoutWww(url.hostname.toLowerCase());
+  const path = withoutTrailingSlashes(url.pathname);
   return { host, key: `${host}${path}${url.search}${url.hash}`, fallbackLabel: derivedLabel(host, url) };
 };
 
 const withoutUrlChrome = (value: string): string =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/^[a-z][a-z0-9+.-]*:\/\//u, '')
-    .replace(/^www\./u, '')
-    .replace(/\/+$/u, '');
+  withoutTrailingSlashes(withoutWww(withoutScheme(value.trim().toLowerCase())));
 
-const hostWithPathPattern = /^(?:[a-z][a-z0-9+.-]*:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?\/\S*$/iu;
+const isHostLabel = (value: string): boolean =>
+  value.length > 0 && everyChar(value, (char) => /[a-z0-9-]/u.test(char));
+
+const isDottedHost = (value: string): boolean => {
+  const labels = value.split('.');
+  return labels.length >= 2 && labels.every(isHostLabel);
+};
+
+const isPort = (value: string): boolean =>
+  value.length > 0 && everyChar(value, (char) => /[0-9]/u.test(char));
+
+const isHostWithPath = (value: string): boolean => {
+  const authorityWithPath = withoutScheme(value.trim().toLowerCase());
+  const pathStart = authorityWithPath.indexOf('/');
+  if (pathStart < 0 || /\s/u.test(authorityWithPath.slice(pathStart + 1))) return false;
+  const authority = authorityWithPath.slice(0, pathStart);
+  const portStart = authority.indexOf(':');
+  if (portStart < 0) return isDottedHost(authority);
+  return isDottedHost(authority.slice(0, portStart)) && isPort(authority.slice(portStart + 1));
+};
 
 const isUrlText = (text: string, href: string): boolean => {
   if (parseHttpUrl(text) !== null || mailtoAddress(text) !== null) return true;
-  if (hostWithPathPattern.test(text.trim())) return true;
+  if (isHostWithPath(text)) return true;
   const bare = withoutUrlChrome(text);
   if (bare === withoutUrlChrome(href)) return true;
   return bare === linkTarget(href).host;
@@ -184,15 +220,87 @@ const HTML_ENTITIES: Record<string, string> = {
 const decodeEntities = (value: string): string =>
   value.replace(/&(#39|amp|lt|gt|quot|apos|nbsp);/gu, (match, name: string) => HTML_ENTITIES[name] ?? match);
 
-const singleAnchorPattern =
-  /^(?:<p(?:\s[^>]*)?>\s*)?<a\s[^>]*href\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>([^<]*)<\/a>(?:\s*<\/p>)?$/iu;
+const PARAGRAPH_OPEN = '<p';
+const PARAGRAPH_CLOSE = '</p>';
+const ANCHOR_OPEN = '<a';
+const ANCHOR_CLOSE = '</a>';
+
+const matchesTagAt = (html: string, index: number, tag: string): boolean =>
+  html.slice(index, index + tag.length).toLowerCase() === tag;
+
+const scanUntil = (html: string, from: number, stops: (char: string) => boolean): number => {
+  let index = from;
+  while (index < html.length && !stops(html.charAt(index))) index += 1;
+  return index;
+};
+
+const skipSpaces = (html: string, from: number): number => scanUntil(html, from, (char) => !isSpace(char));
+
+const endsAttributeName = (char: string): boolean => isSpace(char) || char === '=' || char === '>';
+
+const endsUnquotedValue = (char: string): boolean => isSpace(char) || char === '>';
+
+const readQuotedValue = (html: string, from: number): { value: string; end: number } | null => {
+  const quote = html.charAt(from);
+  if (quote !== '"' && quote !== "'") return null;
+  const close = html.indexOf(quote, from + 1);
+  return close < 0 ? null : { value: html.slice(from + 1, close), end: close + 1 };
+};
+
+const readAnchorTag = (html: string, from: number): { href: string | null; end: number } | null => {
+  let index = from;
+  let href: string | null = null;
+  while (index < html.length) {
+    index = skipSpaces(html, index);
+    if (html.charAt(index) === '>') return { href, end: index + 1 };
+    const nameEnd = scanUntil(html, index, endsAttributeName);
+    if (nameEnd === index) return null;
+    const name = html.slice(index, nameEnd).toLowerCase();
+    const equals = skipSpaces(html, nameEnd);
+    if (html.charAt(equals) !== '=') {
+      index = nameEnd;
+      continue;
+    }
+    const valueStart = skipSpaces(html, equals + 1);
+    const quoted = readQuotedValue(html, valueStart);
+    if (quoted === null) {
+      index = scanUntil(html, valueStart, endsUnquotedValue);
+      continue;
+    }
+    if (name === 'href' && href === null) href = quoted.value;
+    index = quoted.end;
+  }
+  return null;
+};
+
+const afterParagraphOpen = (html: string): number => {
+  if (!matchesTagAt(html, 0, PARAGRAPH_OPEN)) return 0;
+  const next = html.charAt(PARAGRAPH_OPEN.length);
+  if (next !== '>' && !isSpace(next)) return 0;
+  const close = html.indexOf('>', PARAGRAPH_OPEN.length);
+  return close < 0 ? 0 : close + 1;
+};
+
+const singleAnchor = (html: string): { href: string; text: string } | null => {
+  const start = skipSpaces(html, afterParagraphOpen(html));
+  if (!matchesTagAt(html, start, ANCHOR_OPEN)) return null;
+  const attributes = start + ANCHOR_OPEN.length;
+  if (!isSpace(html.charAt(attributes))) return null;
+  const tag = readAnchorTag(html, attributes + 1);
+  if (tag === null || tag.href === null) return null;
+  const textEnd = html.indexOf('<', tag.end);
+  if (textEnd < 0 || !matchesTagAt(html, textEnd, ANCHOR_CLOSE)) return null;
+  const tail = html.slice(textEnd + ANCHOR_CLOSE.length);
+  if (tail !== '' && tail.trimStart().toLowerCase() !== PARAGRAPH_CLOSE) return null;
+  return { href: tag.href, text: html.slice(tag.end, textEnd) };
+};
 
 const anchorLink = (html: string): { url: string; label: LinkLabel | null } | null => {
-  const match = singleAnchorPattern.exec(html.trim());
-  if (match === null) return null;
-  const href = decodeEntities(match[1] ?? match[2] ?? '').trim();
+  const anchor = singleAnchor(html.trim());
+  if (anchor === null) return null;
+  const href = decodeEntities(anchor.href).trim();
   if (!/^(?:https?:\/\/|mailto:)/iu.test(href)) return null;
-  const text = decodeEntities(match[3] ?? '').trim();
+  const text = decodeEntities(anchor.text).trim();
   const describes = text.length > 0 && !isUrlText(text, href);
   return { url: href, label: describes ? { text, source: 'anchorText' } : null };
 };

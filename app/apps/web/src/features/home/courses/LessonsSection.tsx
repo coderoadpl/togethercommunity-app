@@ -203,7 +203,7 @@ const HtmlBlockPreview = ({ html: typedHtml }: { html: string }) => {
   return (
     <Stack useFlexGap spacing="0.4rem">
       <Typography variant="caption" color="text.secondary" role="note">
-        {t.lessons.htmlLinkFoldNote}
+        {group.kind === 'links' ? t.lessons.htmlLinkFoldNote : t.lessons.htmlSandboxFoldNote}
       </Typography>
       <MemberGroupPreview group={group} />
     </Stack>

@@ -994,6 +994,7 @@ export interface Messages {
     linkUrlLabel: string;
     linkDescriptionLabel: string;
     htmlLinkFoldNote: string;
+    htmlSandboxFoldNote: string;
     technicalFieldHint: (params: { field: string }) => string;
     addBlock: string;
     saving: string;

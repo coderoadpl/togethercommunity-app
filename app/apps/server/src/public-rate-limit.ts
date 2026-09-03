@@ -8,7 +8,7 @@ import {
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
-import { err, type AppError } from '#core/domain/index.js';
+import { err, isProductionEnvironment, type AppError } from '#core/domain/index.js';
 import {
   claimRateLimitWindow,
   resolveTenant,
@@ -20,7 +20,7 @@ import {
 
 import { trustedClientIp } from './auth-network.js';
 import { isPublicFormPath } from './body-limits.js';
-import { isProductionEnvironment, type Env } from './env.js';
+import { type Env } from './env.js';
 import { respond } from './respond.js';
 
 export interface PublicRateLimitPolicies {

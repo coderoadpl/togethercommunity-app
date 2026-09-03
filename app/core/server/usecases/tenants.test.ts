@@ -54,7 +54,7 @@ describe('listMyTenants', () => {
     const result = await listMyTenants({ identity }, deps(hasAny, mode));
     expect(result).toEqual({
       ok: true,
-      value: { tenants: [membership], canCreateTenant: allowed },
+      value: { tenants: [membership], canCreateTenant: allowed, dataResetEnvironment: null },
     });
   });
 
@@ -65,7 +65,7 @@ describe('listMyTenants', () => {
     );
     expect(result).toEqual({
       ok: true,
-      value: { tenants: [membership], canCreateTenant: true },
+      value: { tenants: [membership], canCreateTenant: true, dataResetEnvironment: null },
     });
   });
 
@@ -76,7 +76,7 @@ describe('listMyTenants', () => {
     );
     expect(result).toEqual({
       ok: true,
-      value: { tenants: [membership], canCreateTenant: false },
+      value: { tenants: [membership], canCreateTenant: false, dataResetEnvironment: null },
     });
   });
 
@@ -90,6 +90,29 @@ describe('listMyTenants', () => {
       },
     );
 
-    expect(result).toEqual({ ok: true, value: { tenants: [], canCreateTenant: false } });
+    expect(result).toEqual({
+      ok: true,
+      value: { tenants: [], canCreateTenant: false, dataResetEnvironment: null },
+    });
+  });
+
+  it('offers the reset environment only to a listed platform owner', async () => {
+    const platformReset = { environment: 'staging', ownerEmails: ['creator@example.test'] };
+
+    await expect(listMyTenants({ identity }, { ...deps(true, 'open'), platformReset }))
+      .resolves.toMatchObject({ ok: true, value: { dataResetEnvironment: 'staging' } });
+    await expect(listMyTenants(
+      { identity: { ...identity, email: 'someone@example.test' } },
+      { ...deps(true, 'open'), platformReset },
+    )).resolves.toMatchObject({ ok: true, value: { dataResetEnvironment: null } });
+  });
+
+  it('withholds the reset environment from an owner whose e-mail is unverified', async () => {
+    const platformReset = { environment: 'staging', ownerEmails: ['creator@example.test'] };
+
+    await expect(listMyTenants(
+      { identity: { ...identity, emailVerified: false } },
+      { ...deps(true, 'open'), platformReset },
+    )).resolves.toMatchObject({ ok: true, value: { dataResetEnvironment: null } });
   });
 });

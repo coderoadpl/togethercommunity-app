@@ -74,6 +74,30 @@ production migrations are forward-only and use expand then contract across
 separate releases. A production release containing a constraint or destructive
 migration requires a recorded Neon restore point before promotion.
 
+Staging and preview data is seeded from the deployed code rather than copied
+from production. A platform owner listed in `PLATFORM_OWNER_EMAILS` gets a
+"Reset data" action on the platform host that wipes the demo tenants and
+re-seeds them inside the request; `POST /api/platform/data-reset` is registered
+only when `APP_ENV` is `staging` or `preview`, so every other deployment answers
+404 for every caller and role. The route has its own Vercel function,
+`api/platform-reset.ts`, whose exported `maxDuration` of 300 s covers the
+reseed without raising the 30 s ceiling of the shared `api/index.ts` function.
+The action is offered and the capability granted only to a platform owner whose
+e-mail address is verified. Every attempt that reaches the reseed is recorded in
+`platform_audit_events`, a platform-scoped table the wipe never touches.
+
+The reseed itself refuses to run when the deployment identity reports production
+or when the fingerprint of the `DATABASE_URL` host equals
+`PRODUCTION_DATABASE_FINGERPRINT`. That refusal lives in the reseed entry point,
+so it covers the in-request use-case, `pnpm run db:reseed` and the build-time
+reseed that `STAGING_RESEED_ON_DEPLOY=true` adds after migrating, instead of
+migrating only. The wipe and the seed share one transaction and an advisory lock,
+so overlapping resets queue instead of interleaving.
+
+A successful reset reports through a snackbar. A failure keeps the confirmation
+dialog open and shows the refusal inline rather than as a toast, so the owner can
+correct the confirmation and retry without reopening the dialog.
+
 The function runs in Vercel `fra1`; the Neon project must remain in
 `aws-eu-central-1`. Moving either side requires moving both. Deployed tenant
 resolution uses `X-Tenant` until a wildcard base domain is attached.

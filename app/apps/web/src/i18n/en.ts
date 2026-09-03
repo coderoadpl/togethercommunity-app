@@ -210,6 +210,24 @@ export const en: Messages = {
     openingWorkspace: 'Opening your workspace…',
     openingProducts: 'Opening your products…',
   },
+  platformReset: {
+    title: 'Environment data',
+    description: ({ environment }) => format(
+      'Wipe the {environment} demo data and seed it again from the deployed code.',
+      { environment },
+    ),
+    action: 'Reset data',
+    confirmTitle: 'Reset the data?',
+    confirmBody: ({ environment }) => format(
+      'Every demo workspace is deleted and rebuilt. Type {environment} to confirm. '
+      + 'This cannot be undone.',
+      { environment },
+    ),
+    confirmLabel: 'Environment name',
+    confirmButton: 'Reset data',
+    running: 'Resetting data…',
+    success: ({ environment }) => format('The {environment} data has been reset.', { environment }),
+  },
   sections: {
     dashboard: 'Overview',
     products: 'Products',

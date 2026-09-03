@@ -27,6 +27,7 @@ import { EmailVerificationStatus } from '../../components/ui/EmailVerificationSt
 import { localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { hostHasTenantSubdomain, tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
+import { PlatformDataReset } from './PlatformDataReset.js';
 
 /**
  * `anonymousHome` is injected by the route: the anonymous surface lives in the
@@ -143,6 +144,9 @@ const PickTenant = ({ account }: { account: { email: string; emailVerified: bool
             />
           </Box>
         ) : null}
+        {tenants.data?.dataResetEnvironment == null ? null : (
+          <PlatformDataReset environment={tenants.data.dataResetEnvironment} />
+        )}
         {tenants.data?.canCreateTenant ? (
           <Box component="form" onSubmit={submit} sx={{ mt: '1.5rem', display: 'grid', gap: '1rem' }}>
           <Typography variant="h2" component="h2">

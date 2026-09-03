@@ -36,6 +36,7 @@ import type {
   OrderListItem,
   PaidWithoutGrantRow,
   OrderStatus,
+  PlatformAuditEvent,
   PriceKind,
   Product,
   ProductDownloadAsset,
@@ -106,6 +107,7 @@ import type {
   FiscalArtifact,
   KsefEnvironment,
   KsefStatus,
+  WipedTable,
 } from '#core/domain/index.js';
 
 /**
@@ -1999,6 +2001,14 @@ export interface HealthPort {
     schemaFingerprint: string | null;
     schemaFingerprintMatch: boolean | null;
   }>;
+}
+
+export interface PlatformDataResetPort {
+  run(): Promise<{ wiped: WipedTable[] }>;
+}
+
+export interface PlatformAuditRepository {
+  record(event: PlatformAuditEvent): Promise<void>;
 }
 
 export interface IdGenerator {

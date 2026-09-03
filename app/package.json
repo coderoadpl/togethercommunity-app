@@ -21,7 +21,7 @@
     "dev:server": "tsx scripts/ensure-web-bundle.ts && tsx watch --env-file-if-exists=.env apps/server/src/entry.node.ts",
     "dev:web": "vite --config apps/web/vite.config.ts",
     "build": "pnpm run build:web && pnpm run typecheck",
-    "vercel-build": "pnpm run db:migrate && pnpm run build",
+    "vercel-build": "tsx scripts/vercel-build.ts",
     "build:web": "vite build --config apps/web/vite.config.ts",
     "sdk:build": "tsc -p packages/client-sdk/tsconfig.build.json",
     "test": "vitest run config-regression/gates.test.ts --maxWorkers=1 && vitest run adapters/db/seed.integration.test.ts --maxWorkers=1 && vitest run --exclude config-regression/gates.test.ts --exclude adapters/db/seed.integration.test.ts",

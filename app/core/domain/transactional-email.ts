@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
+import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
 
 export const transactionalLanguageSchema = languageSchema;
 
@@ -71,16 +72,17 @@ export interface EmailBranding {
   socialLinks?: Array<{ label: string; url: string }> | undefined;
 }
 
-/** Branding assets may be stored as app-relative paths; mail clients need absolute URLs. */
+/** Mail renders on a white background, so it always takes the light-background logo variant. */
 export const emailBrandingFrom = (
   settings: {
     logoUrl: string | null;
+    logoDarkUrl?: string | null | undefined;
     accentColor: string | null;
     socialLinks?: Array<{ label: string; url: string }> | undefined;
   },
   baseUrl: string,
 ): EmailBranding => ({
-  logoUrl: settings.logoUrl === null ? null : new URL(settings.logoUrl, baseUrl).toString(),
+  logoUrl: absoluteBrandingAssetUrl(resolveTenantLogo(settings, 'light'), baseUrl),
   accentColor: settings.accentColor,
   socialLinks: settings.socialLinks,
 });

@@ -638,6 +638,13 @@
       "when": 1787982017610,
       "tag": "0090_notification_fanout_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1788465020410,
+      "tag": "0091_tenant_logo_dark_url",
+      "breakpoints": true
     }
   ]
 }

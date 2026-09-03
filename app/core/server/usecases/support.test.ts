@@ -38,6 +38,7 @@ const harness = (supportEmail: string | null) => {
         bunnyStreamLibraryId: null,
         bunnyStreamCdnHostname: null,
         logoUrl: null,
+        logoDarkUrl: null,
         accentColor: null,
         faviconUrl: null,
         ogTitle: null,

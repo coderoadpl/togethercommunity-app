@@ -3128,7 +3128,17 @@ export const CourseCoverImage = styled('img')(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
 }));
 
-export const CoverPreviewSurface = styled(Box)(({ theme }) => ({
+/** Fixed page backgrounds a logo has to sit on, so a preview shows its real contrast. */
+const PREVIEW_SWATCH = {
+  light: { surface: '#FFFFFF', ink: '#71717A' },
+  dark: { surface: '#101113', ink: '#A1A1AA' },
+} as const;
+
+export type PreviewBackground = keyof typeof PREVIEW_SWATCH;
+
+export const CoverPreviewSurface = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'swatch',
+})<{ swatch?: PreviewBackground | undefined }>(({ theme, swatch }) => ({
   position: 'relative',
   display: 'flex',
   alignItems: 'center',
@@ -3139,22 +3149,25 @@ export const CoverPreviewSurface = styled(Box)(({ theme }) => ({
   overflow: 'hidden',
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,
-  backgroundColor: theme.palette.action.hover,
-  color: theme.palette.text.secondary,
+  backgroundColor: swatch === undefined ? theme.palette.action.hover : PREVIEW_SWATCH[swatch].surface,
+  color: swatch === undefined ? theme.palette.text.secondary : PREVIEW_SWATCH[swatch].ink,
 }));
 
 export const CoverPreviewIcon = styled(SvgIcon)({
   fontSize: '2.5rem',
 });
 
-export const CoverPreviewImage = styled('img')({
+export const CoverPreviewImage = styled('img', {
+  shouldForwardProp: (prop) => prop !== 'swatch',
+})<{ swatch?: PreviewBackground | undefined }>(({ swatch }) => ({
   position: 'absolute',
   inset: 0,
   display: 'block',
   width: '100%',
   height: '100%',
-  objectFit: 'cover',
-});
+  objectFit: swatch === undefined ? 'cover' : 'contain',
+  padding: swatch === undefined ? 0 : '1.5rem',
+}));
 
 export const StatTile = styled(Box)(({ theme }) => ({
   display: 'flex',

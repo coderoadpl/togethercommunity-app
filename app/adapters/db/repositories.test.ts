@@ -1063,6 +1063,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
       logoUrl: null,
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: null,

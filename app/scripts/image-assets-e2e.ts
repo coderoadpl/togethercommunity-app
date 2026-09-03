@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import pg from 'pg';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import { z } from 'zod';
 import type { ZodTypeAny, output } from 'zod';
 
 import {
@@ -459,10 +460,10 @@ const uploadFromBrowser = async (page: Page, url: string, headers: Record<string
 const runAssetRoundtrip = async (
   page: Page,
   label: string,
-  kind: 'product-cover' | 'logo',
+  kind: 'product-cover' | 'logo' | 'logo-dark' | 'share-image',
   beginPath: string,
   completePath: string,
-): Promise<string> => {
+): Promise<{ key: string; servePath: string }> => {
   const begin = okData(
     await browserRequest(page, beginPath, {
       method: 'POST',
@@ -480,7 +481,58 @@ const runAssetRoundtrip = async (
     imageAssetCompleteOutputSchema,
   );
   assert(completed.url === begin.servePath, `${label}: completion returned ${completed.url} instead of ${begin.servePath}`);
-  return begin.key;
+  return { key: begin.key, servePath: begin.servePath };
+};
+
+const publicOfferBrandingSchema = z.object({
+  tenant: z.object({
+    branding: z.object({
+      logoUrl: z.string().nullable(),
+      logoDarkUrl: z.string().nullable(),
+    }),
+  }),
+});
+
+const expectServedImage = async (baseUrl: string, servePath: string, label: string): Promise<void> => {
+  const response = await fetch(new URL(servePath, baseUrl));
+  const contentType = response.headers.get('content-type') ?? '';
+  assert(response.status === 200, `${label}: serving ${servePath} returned HTTP ${String(response.status)}`);
+  assert(contentType.startsWith('image/'), `${label}: serving ${servePath} answered with ${contentType}`);
+};
+
+const verifyBrandingVariantsAndSocialPreview = async (
+  page: Page,
+  baseUrl: string,
+  darkLogoPath: string,
+  shareImagePath: string,
+): Promise<void> => {
+  const saved = await browserRequest(page, API_PATHS.tenantSettingsUpdate, {
+    method: 'POST',
+    body: JSON.stringify({ logoDarkUrl: darkLogoPath, ogImageUrl: shareImagePath }),
+  });
+  assert(saved.status === 200, `branding settings save returned HTTP ${String(saved.status)}.\n${saved.raw}`);
+
+  const offer = okData(
+    await browserRequest(page, API_PATHS.publicOffer),
+    'public offer branding',
+    publicOfferBrandingSchema,
+  );
+  assert(
+    offer.tenant.branding.logoDarkUrl === darkLogoPath,
+    `public offer exposed logoDarkUrl ${String(offer.tenant.branding.logoDarkUrl)} instead of ${darkLogoPath}`,
+  );
+
+  const preview = await fetch(baseUrl, {
+    headers: { 'user-agent': 'Slackbot-LinkExpanding 1.0' },
+  });
+  const html = await preview.text();
+  const ogImage = /<meta property="og:image" content="([^"]+)">/.exec(html)?.[1];
+  assert(ogImage !== undefined, `social preview carried no og:image tag.\n${html}`);
+  assert(
+    ogImage === new URL(shareImagePath, baseUrl).toString(),
+    `og:image was ${ogImage} instead of the absolute ${new URL(shareImagePath, baseUrl).toString()}`,
+  );
+  console.log('image-assets-e2e: dark logo, share image serving, and absolute og:image OK');
 };
 
 const verifyPrivateAndTenantBoundaries = async (
@@ -527,6 +579,8 @@ const verifyAuthorization = async (
     { label: 'course cover', path: API_PATHS.courseCoverUpload, kind: 'course-cover' },
     { label: 'product cover', path: API_PATHS.productCoverUpload, kind: 'product-cover' },
     { label: 'branding logo', path: API_PATHS.brandingAssetUpload, kind: 'logo' },
+    { label: 'branding dark logo', path: API_PATHS.brandingAssetUpload, kind: 'logo-dark' },
+    { label: 'share image', path: API_PATHS.brandingAssetUpload, kind: 'share-image' },
   ];
   const privateValues = [endpoint, bucket, accessKeyId, secretAccessKey, 'X-Amz-Signature', '"upload"'];
   for (const testCase of cases) {
@@ -620,21 +674,43 @@ try {
     courseAssetPath,
     minioEndpoint,
   );
-  const productKey = await runAssetRoundtrip(
+  const productCover = await runAssetRoundtrip(
     creatorPage,
     'product cover',
     'product-cover',
     API_PATHS.productCoverUpload,
     API_PATHS.productCoverComplete,
   );
-  const logoKey = await runAssetRoundtrip(
+  const logo = await runAssetRoundtrip(
     creatorPage,
     'branding logo',
     'logo',
     API_PATHS.brandingAssetUpload,
     API_PATHS.brandingAssetComplete,
   );
-  console.log(`image-assets-e2e: product and logo begin/PUT/complete round trips OK (${productKey}, ${logoKey})`);
+  const darkLogo = await runAssetRoundtrip(
+    creatorPage,
+    'branding dark logo',
+    'logo-dark',
+    API_PATHS.brandingAssetUpload,
+    API_PATHS.brandingAssetComplete,
+  );
+  const shareImage = await runAssetRoundtrip(
+    creatorPage,
+    'share image',
+    'share-image',
+    API_PATHS.brandingAssetUpload,
+    API_PATHS.brandingAssetComplete,
+  );
+  console.log(`image-assets-e2e: product, logo, dark logo and share image round trips OK (${productCover.key}, ${logo.key}, ${darkLogo.key}, ${shareImage.key})`);
+  await expectServedImage(studioBaseUrl, darkLogo.servePath, 'dark logo');
+  await expectServedImage(studioBaseUrl, shareImage.servePath, 'share image');
+  await verifyBrandingVariantsAndSocialPreview(
+    creatorPage,
+    studioBaseUrl,
+    darkLogo.servePath,
+    shareImage.servePath,
+  );
   await verifyPrivateAndTenantBoundaries(
     creatorPage,
     studioBaseUrl,

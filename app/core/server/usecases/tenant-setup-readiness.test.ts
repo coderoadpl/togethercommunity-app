@@ -44,6 +44,7 @@ const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
   ogTitle: null,
@@ -208,6 +209,7 @@ describe('getTenantSetupReadiness', () => {
         termsUrl: 'https://acme.test/terms',
         billingPortalUrl: 'https://billing.acme.test',
         logoUrl: '/assets/logo.png',
+        logoDarkUrl: null,
         accentColor: '#112233',
       }),
     });

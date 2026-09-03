@@ -208,6 +208,7 @@ const tenantSettings: TenantSettings = {
   bunnyStreamLibraryId: 'lib-77',
   bunnyStreamCdnHostname: null,
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
   ogTitle: null,

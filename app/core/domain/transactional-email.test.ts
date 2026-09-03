@@ -427,4 +427,19 @@ describe('emailBrandingFrom', () => {
     ).toBe('https://cdn.test/logo.svg');
     expect(emailBrandingFrom({ logoUrl: null, accentColor: null }, baseUrl).logoUrl).toBeNull();
   });
+
+  it('takes the light-background variant and ignores a dark one beside it', () => {
+    expect(
+      emailBrandingFrom(
+        { logoUrl: '/light.svg', logoDarkUrl: '/dark.svg', accentColor: null },
+        baseUrl,
+      ).logoUrl,
+    ).toBe('https://akademia.together.test/light.svg');
+  });
+
+  it('falls back to the dark variant when it is the only uploaded logo', () => {
+    expect(
+      emailBrandingFrom({ logoUrl: null, logoDarkUrl: '/dark.svg', accentColor: null }, baseUrl).logoUrl,
+    ).toBe('https://akademia.together.test/dark.svg');
+  });
 });

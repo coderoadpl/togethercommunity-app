@@ -93,7 +93,9 @@ describe('image assets', () => {
     ['course-cover', adminCtx, beginCourseCoverUpload],
     ['product-cover', adminCtx, beginProductCoverUpload],
     ['logo', ownerCtx, beginBrandingAssetUpload],
+    ['logo-dark', ownerCtx, beginBrandingAssetUpload],
     ['favicon', ownerCtx, beginBrandingAssetUpload],
+    ['share-image', ownerCtx, beginBrandingAssetUpload],
   ] as const)('begins an authorized %s upload with a tenant-scoped key', async (kind, ctx, begin) => {
     const { deps, signed } = testDeps();
     const result = await begin(ctx, {
@@ -179,6 +181,37 @@ describe('image assets', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(signed).toEqual([]);
+  });
+
+  it.each([
+    ['image/svg+xml', 'share.svg'],
+    ['image/x-icon', 'share.ico'],
+  ] as const)('rejects a %s share image because crawlers cannot render it', async (contentType, fileName) => {
+    const { deps, signed } = testDeps();
+    const result = await beginBrandingAssetUpload(ownerCtx, {
+      kind: 'share-image',
+      fileName,
+      contentType,
+      sizeBytes: 1024,
+    }, deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(signed).toEqual([]);
+  });
+
+  it('accepts a dark logo in SVG', async () => {
+    const { deps } = testDeps();
+    const result = await beginBrandingAssetUpload(ownerCtx, {
+      kind: 'logo-dark',
+      fileName: 'logo.svg',
+      contentType: 'image/svg+xml',
+      sizeBytes: 1024,
+    }, deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { servePath: `/api/public/assets/logo-dark/${ASSET_ID}.svg` },
+    });
   });
 
   it('reports missing storage configuration before signing', async () => {

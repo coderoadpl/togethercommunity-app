@@ -1,6 +1,6 @@
 {
-  "hash": "3b61917742a396507f86bcc0806a5a72fd24d959bdf18f6b0dc0461df7dcfc81",
-  "shortId": "3b61917742a3",
+  "hash": "db47a50e7e3961ac95809670b883eaba29573458c8855d49fee9d23bc5287048",
+  "shortId": "db47a50e7e39",
   "schema": {
     "constraints": [
       {
@@ -2889,6 +2889,14 @@
             "name": "invoice_vat_rate_percent",
             "notNull": false,
             "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "logo_dark_url",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

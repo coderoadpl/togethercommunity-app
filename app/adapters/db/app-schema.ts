@@ -38,6 +38,7 @@ export const tenants = pgTable(
     bunnyStreamCdnHostname: text('bunny_stream_cdn_hostname'),
     onboardingDismissedAt: text('onboarding_dismissed_at'),
     logoUrl: text('logo_url'),
+    logoDarkUrl: text('logo_dark_url'),
     accentColor: text('accent_color'),
     faviconUrl: text('favicon_url'),
     socialLinks: jsonb('social_links').$type<Array<{ label: string; url: string }>>().notNull().default([]),

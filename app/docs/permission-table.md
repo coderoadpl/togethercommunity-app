@@ -570,9 +570,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:134` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
 | staff-role | `core/server/usecases/community-access.ts:240` | `if (ctx.identity.staffRole) return ok(space);` |
 | staff-role | `core/server/usecases/community-access.ts:256` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:229` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:243` | `if (ctx.identity.staffRole !== null) return false;` |
-| staff-role | `core/server/usecases/community.ts:438` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| member-scope | `core/server/usecases/community.ts:223` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:237` | `if (ctx.identity.staffRole !== null) return false;` |
+| staff-role | `core/server/usecases/community.ts:432` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |

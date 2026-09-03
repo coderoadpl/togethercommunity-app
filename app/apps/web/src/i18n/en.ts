@@ -2069,6 +2069,7 @@ export const en: Messages = {
     wizardProductionAccess: 'SES production access',
     wizardDocs: 'Open the SES production-access guide',
     wizardFeedbackDisabled: 'Identity feedback forwarding is disabled because SNS is confirmed.',
+    wizardAwsRejected: 'AWS rejected the operation',
     configurationSetLabel: 'Configuration set', snsTopicLabel: 'SNS topic ARN', trackingEnabledLabel: 'Track marketing opens and clicks',
     autoPauseOnCriticalLabel: 'Pause broadcasts when reputation is critical',
     autoPauseOnCriticalHint: 'Paused campaigns must be resumed manually after the sending problem is resolved.',

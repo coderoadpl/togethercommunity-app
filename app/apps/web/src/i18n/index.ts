@@ -7,6 +7,7 @@ export {
   localizePanelError,
   providerCodeOf,
   rejectedCorsOriginOf,
+  serverMessageOf,
 } from './errors.js';
 export type { Messages } from './messages.js';
 export type { Language } from '#core/domain/index.js';

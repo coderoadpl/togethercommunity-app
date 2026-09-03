@@ -13,6 +13,14 @@ export const errorCodeOf = (error: unknown): ErrorCode | null => {
   return typeof code === 'string' && isErrorCode(code) ? code : null;
 };
 
+export const serverMessageOf = (error: unknown): string | null => {
+  if (typeof error !== 'object' || error === null || !('appError' in error)) return null;
+  const { appError } = error;
+  if (typeof appError !== 'object' || appError === null || !('message' in appError)) return null;
+  const { message } = appError;
+  return typeof message === 'string' && message.trim() !== '' ? message : null;
+};
+
 const errorDetailOf = (error: unknown, key: string): string | null => {
   if (typeof error !== 'object' || error === null || !('appError' in error)) return null;
   const { appError } = error;

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
+  AlertTitle,
   Button,
   Chip,
   FormControl,
@@ -21,7 +22,13 @@ import { sesIdentityFreshness } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import {
+  errorCodeOf,
+  localizePanelError,
+  serverMessageOf,
+  useLanguage,
+  useTranslations,
+} from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { MarketingReadiness } from './MarketingReadiness.js';
 import { ProviderTest } from './ProviderTest.js';
@@ -36,6 +43,18 @@ interface LiveSesChecklist {
   footer: boolean;
   productionAccess: boolean;
 }
+
+const WizardError = ({ error }: { error: unknown }) => {
+  const t = useTranslations();
+  const awsMessage = errorCodeOf(error) === 'integration_unavailable' ? serverMessageOf(error) : null;
+  if (awsMessage === null) return <Alert severity="error">{localizePanelError(error, t)}</Alert>;
+  return (
+    <Alert severity="error">
+      <AlertTitle>{t.marketing.wizardAwsRejected}</AlertTitle>
+      <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{awsMessage}</Typography>
+    </Alert>
+  );
+};
 
 const SesOnboardingWizard = ({
   enabled,
@@ -145,7 +164,7 @@ const SesOnboardingWizard = ({
         {t.marketing.wizardSimulator}
       </Button>
       {simulator.data?.waitingForWebhook === true ? <Alert severity="info">{t.marketing.wizardWaitingWebhook}</Alert> : null}
-      {error === null || error === undefined ? null : <Alert severity="error">{localizePanelError(error, t)}</Alert>}
+      {error === null || error === undefined ? null : <WizardError error={error} />}
       <Link
         href="https://github.com/coderoadpl/togethercommunity-app/blob/main/docs/ses-onboarding.md"
         target="_blank"

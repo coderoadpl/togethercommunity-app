@@ -2023,6 +2023,7 @@ export interface Messages {
     wizardProductionAccess: string;
     wizardDocs: string;
     wizardFeedbackDisabled: string;
+    wizardAwsRejected: string;
     configurationSetLabel: string;
     snsTopicLabel: string;
     trackingEnabledLabel: string;

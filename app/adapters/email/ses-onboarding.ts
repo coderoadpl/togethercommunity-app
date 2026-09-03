@@ -114,6 +114,18 @@ const snsSubscriptionOperations: SnsSubscriptionOperations = {
   subscribe: async (sns, input) => sns.send(new SubscribeCommand(input)),
 };
 
+const TOPIC_OWNER_ACTIONS = [
+  'SNS:Publish',
+  'SNS:Subscribe',
+  'SNS:GetTopicAttributes',
+  'SNS:SetTopicAttributes',
+  'SNS:AddPermission',
+  'SNS:RemovePermission',
+  'SNS:DeleteTopic',
+  'SNS:ListSubscriptionsByTopic',
+  'SNS:Receive',
+];
+
 const topicPolicy = (topicArn: string): string => {
   const accountId = topicArn.split(':')[4] ?? '';
   return JSON.stringify({
@@ -123,7 +135,7 @@ const topicPolicy = (topicArn: string): string => {
         Sid: 'TopicOwner',
         Effect: 'Allow',
         Principal: { AWS: `arn:aws:iam::${accountId}:root` },
-        Action: 'SNS:*',
+        Action: TOPIC_OWNER_ACTIONS,
         Resource: topicArn,
       },
       {

@@ -33,6 +33,8 @@ export interface Messages {
     free: string;
     add: string;
     open: string;
+    close: string;
+    clear: string;
     status: string;
     retry: string;
     unsavedChanges: string;
@@ -2003,11 +2005,17 @@ export interface Messages {
     identityLabel: string;
     identityVerifiedLabel: string;
     identityAuthenticationHint: string;
+    identityDetectedInSes: string;
+    identityDkimReady: string;
+    identityDkimPending: string;
+    identityListAccessDenied: (input: { action: string }) => string;
+    identityDetectedDomainHint: (input: { domain: string }) => string;
     wizardTitle: string;
     wizardDescription: string;
     wizardDomainIdentity: string;
     wizardEmailIdentity: string;
     wizardIdentityHint: string;
+    wizardIdentityAlreadyVerified: string;
     wizardProvision: string;
     wizardProvisionHint: string;
     wizardPoll: string;
@@ -2058,6 +2066,7 @@ export interface Messages {
     credentialsConfigured: string;
     identityVerified: string;
     identityNeverChecked: string;
+    identityCheckedAfterSave: string;
     identityLastChecked: (input: { checkedAt: string }) => string;
     identityCheckStale: (input: { checkedAt: string }) => string;
     identityCheckFailed: (input: { message: string }) => string;

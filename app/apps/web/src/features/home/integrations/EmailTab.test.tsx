@@ -56,6 +56,18 @@ const reputation = {
   },
 };
 
+const unconfiguredSender = {
+  ok: true,
+  data: {
+    credentialsConfigured: true,
+    smtpConfigured: false,
+    resendConfigured: false,
+    platformPool: { used: 0, limit: 1000 },
+    webhookUrl: null,
+    settings: null,
+  },
+};
+
 describe('email transport wizard', () => {
   it('keeps SES onboarding and runs the shared SMTP, SES and Resend test-email flow', async () => {
     const testedTransports: string[] = [];
@@ -137,5 +149,73 @@ describe('email transport wizard', () => {
 
     expect(await screen.findByText('Usługa AWS odrzuciła operację')).toBeInTheDocument();
     expect(screen.getByText(awsMessage)).toBeInTheDocument();
+  }, 15_000);
+
+  it('prefills the single verified SES domain and badges the detected identities', async () => {
+    server.use(
+      http.get('/api/marketing/ses-settings', () => HttpResponse.json(unconfiguredSender)),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+      http.get('/api/marketing/ses-onboarding/identities', () => HttpResponse.json({
+        ok: true,
+        data: {
+          identities: [
+            { identity: 'owner@tenant.test', kind: 'email', verified: true, dkimVerified: true },
+            { identity: 'old.tenant.test', kind: 'domain', verified: false, dkimVerified: false },
+            { identity: 'tenant.test', kind: 'domain', verified: true, dkimVerified: true },
+          ],
+          accessDeniedAction: null,
+        },
+      })),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EmailTab />);
+
+    expect(await screen.findByText(/Adres nadawcy musi należeć do domeny tenant\.test/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Zweryfikowana domena lub adres')).toHaveValue('tenant.test');
+    expect(screen.getByText('Sprawdzenie nastąpi po zapisaniu nadawcy')).toBeInTheDocument();
+    expect(screen.getByText(/Domena jest już zweryfikowana w SES/)).toBeInTheDocument();
+
+    await user.click(screen.getByTitle('Otwórz'));
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      'owner@tenant.testZweryfikowana w SES',
+      'tenant.testZweryfikowana w SESDKIM zweryfikowany',
+      'old.tenant.testDKIM oczekuje',
+    ]);
+  }, 15_000);
+
+  it('keeps the DNS shortcut hidden for a verified e-mail identity', async () => {
+    server.use(
+      http.get('/api/marketing/ses-settings', () => HttpResponse.json(unconfiguredSender)),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+      http.get('/api/marketing/ses-onboarding/identities', () => HttpResponse.json({
+        ok: true,
+        data: {
+          identities: [{ identity: 'owner@tenant.test', kind: 'email', verified: true, dkimVerified: true }],
+          accessDeniedAction: null,
+        },
+      })),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EmailTab />);
+
+    await user.type(await screen.findByLabelText('Zweryfikowana domena lub adres'), 'owner@tenant.test');
+
+    expect(screen.queryByText(/Domena jest już zweryfikowana w SES/)).not.toBeInTheDocument();
+  }, 15_000);
+
+  it('names the denied AWS action instead of failing the form', async () => {
+    server.use(
+      http.get('/api/marketing/ses-settings', () => HttpResponse.json(unconfiguredSender)),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+      http.get('/api/marketing/ses-onboarding/identities', () => HttpResponse.json({
+        ok: true,
+        data: { identities: [], accessDeniedAction: 'ses:GetIdentityDkimAttributes' },
+      })),
+    );
+    renderWithProviders(<EmailTab />);
+
+    expect(await screen.findByText(/Dodaj uprawnienie ses:GetIdentityDkimAttributes/)).toBeInTheDocument();
   }, 15_000);
 });

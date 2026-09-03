@@ -1769,7 +1769,22 @@ export interface SesDkimRecord {
   value: string;
 }
 
+export interface SesAccountIdentity {
+  identity: string;
+  kind: 'domain' | 'email';
+  verified: boolean;
+  dkimVerified: boolean;
+}
+
+export interface SesAccountIdentities {
+  identities: SesAccountIdentity[];
+  accessDeniedAction: string | null;
+}
+
 export interface SesOnboardingControlPlane {
+  listIdentities(
+    credentials: SesMarketingCredentials,
+  ): Promise<Result<SesAccountIdentities, AppError>>;
   startDomainIdentity(
     credentials: SesMarketingCredentials,
     identity: string,

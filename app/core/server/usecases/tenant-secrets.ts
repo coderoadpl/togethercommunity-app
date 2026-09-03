@@ -16,14 +16,60 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { Clock, IdGenerator, SecretCrypto, TenantSecretRepository } from '../ports.js';
+import type {
+  Clock,
+  IdGenerator,
+  MarketingSesCredentialResolver,
+  SecretCrypto,
+  SesOnboardingControlPlane,
+  TenantSecretRepository,
+  TenantSesSettingsRepository,
+} from '../ports.js';
+import { refreshTenantSesIdentityStatus } from './marketing-ses-onboarding.js';
 
 export interface TenantSecretDeps {
   tenantSecrets: TenantSecretRepository;
   secretCrypto: SecretCrypto;
   ids: IdGenerator;
   clock: Clock;
+  sesIdentity?: {
+    settings: TenantSesSettingsRepository;
+    credentials: MarketingSesCredentialResolver;
+    controlPlane: SesOnboardingControlPlane;
+    webhookBaseUrl: string;
+  };
 }
+
+const sesCredentialKeys: readonly TenantSecretKey[] = [
+  'ses.accessKeyId',
+  'ses.secretAccessKey',
+  'ses.region',
+];
+
+const sesCredentialsComplete = async (
+  tenantId: string,
+  deps: TenantSecretDeps,
+): Promise<boolean> => {
+  const stored = await deps.tenantSecrets.listByTenant(tenantId);
+  return sesCredentialKeys.every((key) => stored.some((secret) => secret.key === key));
+};
+
+const checkSesIdentityAfterCredentialSave = async (
+  tenantId: string,
+  key: TenantSecretKey,
+  deps: TenantSecretDeps,
+): Promise<void> => {
+  const sesIdentity = deps.sesIdentity;
+  if (sesIdentity === undefined || !sesCredentialKeys.includes(key)) return;
+  try {
+    if (!await sesCredentialsComplete(tenantId, deps)) return;
+    const settings = await sesIdentity.settings.findByTenant(tenantId);
+    if (settings === null || settings.identity.trim() === '') return;
+    await refreshTenantSesIdentityStatus(tenantId, settings, { ...sesIdentity, clock: deps.clock });
+  } catch {
+    return;
+  }
+};
 
 const masked = (secret: TenantSecret): TenantSecretMasked => ({
   key: secret.key,
@@ -54,6 +100,7 @@ export const setTenantSecret = async (
     maskedPreview: maskValue(parsed.data.value),
     updatedAt: deps.clock.nowIso(),
   });
+  await checkSesIdentityAfterCredentialSave(tenant.value, parsed.data.key, deps);
   return ok(masked(stored));
 };
 

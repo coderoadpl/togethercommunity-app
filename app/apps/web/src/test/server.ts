@@ -10,6 +10,9 @@ export const server = setupServer(
   http.get('*/api/member/navigation', () =>
     HttpResponse.json({ ok: true, data: { navigation: { spaces: [], courses: [], lockedSpaces: [] } } }),
   ),
+  http.get('*/api/marketing/ses-onboarding/identities', () =>
+    HttpResponse.json({ ok: true, data: { identities: [], accessDeniedAction: null } }),
+  ),
   http.get('*/api/member/upcoming-events', () =>
     HttpResponse.json({ ok: true, data: { events: [] } }),
   ),

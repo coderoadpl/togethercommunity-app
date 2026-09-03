@@ -1,0 +1,63 @@
+name: staging-links
+on:
+  push:
+    branches: [staging]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened]
+  workflow_dispatch:
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+concurrency:
+  group: staging-links
+  cancel-in-progress: true
+env:
+  TENANT_URL: https://coderoad.staging.togethercommunity.app
+  PLATFORM_URL: https://start.staging.togethercommunity.app
+  HEALTH_URL: https://coderoad.staging.togethercommunity.app/api/health
+  VERCEL_DEPLOYMENTS_URL: https://vercel.com/coderoad/togethercommunity-app/deployments
+jobs:
+  publish:
+    if: github.event_name != 'pull_request' || github.head_ref == 'staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Publish the staging environment deployment
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' '{"ref":"staging","environment":"staging","auto_merge":false,"required_contexts":[],"description":"Staging tenant host (Vercel preview of the staging branch)"}' > "$RUNNER_TEMP/deployment.json"
+          id=$(gh api "repos/${{ github.repository }}/deployments" --input "$RUNNER_TEMP/deployment.json" --jq '.id')
+          gh api "repos/${{ github.repository }}/deployments/$id/statuses" \
+            -f state=success \
+            -f environment_url="$TENANT_URL" \
+            -f log_url="$VERCEL_DEPLOYMENTS_URL" \
+            -f description="coderoad tenant on staging" >/dev/null
+      - name: Pin the staging links on the promotion pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          numbers=$(gh pr list --repo "${{ github.repository }}" --base main --head staging --state open --json number --jq '.[].number')
+          [ -n "$numbers" ] || exit 0
+          body=$(cat <<EOF
+          <!-- staging-links -->
+          **Staging (gałąź \`staging\`, Vercel preview — wymaga zalogowania do Vercela):**
+          - Tenant CodeRoad: $TENANT_URL
+          - Panel platformy: $PLATFORM_URL
+          - Health: $HEALTH_URL
+          - Deploymenty: $VERCEL_DEPLOYMENTS_URL
+
+          Ostatni push do \`staging\`: \`${{ github.sha }}\`
+          EOF
+          )
+          for n in $numbers; do
+            existing=$(gh api "repos/${{ github.repository }}/issues/$n/comments" --paginate --jq '.[] | select(.body | startswith("<!-- staging-links -->")) | .id' | head -1)
+            if [ -n "$existing" ]; then
+              gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$existing" -f body="$body" >/dev/null
+            else
+              gh api "repos/${{ github.repository }}/issues/$n/comments" -f body="$body" >/dev/null
+            fi
+          done

@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 108. Route rows: 279. Exported `Ctx` use-case rows: 228.
+Closed capability count: 109. Route rows: 280. Exported `Ctx` use-case rows: 229.
 
 ## Human-readable diff
 
@@ -263,6 +263,7 @@ no changes
 | `GET /api/student/progress` | member:progress:read | member | member | yes | identity middleware + use-case guard |
 | `POST /api/posts` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/support/message` | support:request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/platform/data-reset` | platform:data:reset | platform-owner | platform-owner | yes | identity middleware + use-case guard |
 | `POST /api/posts/pin` | community:pin | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/posts/report` | community:report | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/reports` | community:report:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -492,6 +493,7 @@ no changes
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
+| `platform-data-reset.ts#resetPlatformData` | platform:data:reset | platform-owner | platform-owner | yes | core/server/usecases/platform-data-reset.ts authorization call |
 | `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts authorization call |
 | `product-downloads.ts#beginProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#completeProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
@@ -546,11 +548,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:151` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:942` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:944` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1408` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1408` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:154` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:946` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:948` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1412` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1412` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:82` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

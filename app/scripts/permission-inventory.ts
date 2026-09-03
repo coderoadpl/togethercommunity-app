@@ -58,6 +58,7 @@ const operatorSecret = ['operator-secret'] as const;
 const webhook = ['webhook'] as const;
 const token = ['token'] as const;
 const authenticated = ['authenticated'] as const;
+const platformOwner = ['platform-owner'] as const;
 
 const principalsForCapability = (capability: Capability): readonly Principal[] =>
   PRINCIPALS.filter((principal) => ROLE_CAPABILITIES[principal].includes(capability));
@@ -167,6 +168,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
   if (path === '/api/tenant/routing') return 'tenant:domain:read';
   if (path === '/api/support/message') return 'support:request';
+  if (path === '/api/platform/data-reset') return 'platform:data:reset';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
@@ -261,6 +263,7 @@ const beforeForRoute = (
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
   if (path === '/api/tenant/routing') return staff;
   if (path === '/api/support/message') return tenantActors;
+  if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
   if (path === '/api/posts/pin') return staff;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications') || path.startsWith('/api/messages')) return tenantActors;
@@ -287,6 +290,7 @@ const reachableForRoute = (
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) return beforeForRoute(method, path);
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
+  if (path === '/api/platform/data-reset') return platformOwner;
   return tenantActors;
 };
 
@@ -512,6 +516,7 @@ const beforeForUseCase = (
   if (file === 'events.ts') return capability === 'event:write' ? staff : tenantActors;
   if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
   if (file === 'support.ts') return tenantActors;
+  if (file === 'platform-data-reset.ts') return platformOwner;
   if (file === 'spaces.ts') {
     return name === 'listSpacesForStaff' || capability === 'space:write' || capability === 'community:pin'
       ? staff
@@ -526,13 +531,15 @@ const useCaseRows = (): PermissionRow[] =>
     const before = beforeForUseCase(file, name, capability);
     const reachable = before === allHumans
       ? allHumans
-      : before === transactionalApiKey
-        ? transactionalApiKey
-        : before === importContentApiKey
-          ? importContentApiKey
-          : before === importUsersApiKey
-            ? importUsersApiKey
-            : tenantActors;
+      : before === platformOwner
+        ? platformOwner
+        : before === transactionalApiKey
+          ? transactionalApiKey
+          : before === importContentApiKey
+            ? importContentApiKey
+            : before === importUsersApiKey
+              ? importUsersApiKey
+              : tenantActors;
     return {
       subject: `${file}#${name}`,
       capability,

@@ -1986,3 +1986,19 @@ export const rateLimitBuckets = pgTable(
     index('rate_limit_buckets_expiry_idx').on(table.expiresAt),
   ],
 );
+
+export const platformAuditEvents = pgTable(
+  'platform_audit_events',
+  {
+    id: text('id').primaryKey(),
+    action: text('action', { enum: ['platform:data-reset'] }).notNull(),
+    actorUserId: text('actor_user_id').notNull(),
+    actorEmail: text('actor_email').notNull(),
+    environment: text('environment').notNull(),
+    status: text('status', { enum: ['succeeded', 'failed'] }).notNull(),
+    detail: text('detail'),
+    durationMs: integer('duration_ms').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [index('platform_audit_events_created_idx').on(table.createdAt, table.id)],
+);

@@ -44,6 +44,8 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'HealthPort.schemaStatus': 'The platform health probe reads migration bookkeeping without touching tenant data.',
   'KsefSubmissionJobRepository.claimDue': 'A platform worker leases the next due job across all tenants.',
   'NotificationFanoutJobRepository.claimDue': 'A platform worker leases due fan-out jobs across all tenants.',
+  'PlatformAuditRepository.record': 'Platform audit entries record operator actions taken outside any tenant boundary.',
+  'PlatformDataResetPort.run': 'The disposable-environment reset rebuilds every demo tenant, so it spans all of them by definition.',
   'MarketingJobRepository.listRetentionTenantIds': 'A platform worker discovers tenants due for retention work.',
   'MarketingJobRepository.listRunnableCampaigns': 'A platform worker discovers runnable campaigns with their tenant IDs.',
   'MarketingJobRepository.listSesIdentityRefreshTenantIds': 'A platform worker discovers tenants due for identity refresh.',

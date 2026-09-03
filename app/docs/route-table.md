@@ -173,6 +173,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |
 | `GET /api/tenant/settings` | authenticated | read | tenant settings |
+| `GET /api/tenant/routing` | authenticated | read | tenant routing |
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |

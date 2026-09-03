@@ -70,6 +70,8 @@ export const envSchema = z
     DATABASE_URL_UNPOOLED: optionalNonEmptyString,
     APP_BASE_DOMAIN: optionalNonEmptyString,
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
+    /** DNS target creators point a custom domain at; defaults to the platform host. */
+    APP_CUSTOM_DOMAIN_TARGET: optionalNonEmptyString,
     APP_COMMIT_SHA: optionalNonEmptyString,
     VERCEL_URL: optionalNonEmptyString,
     VERCEL_BRANCH_URL: optionalNonEmptyString,

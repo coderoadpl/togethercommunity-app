@@ -15,8 +15,13 @@ import { dispatchEmailBatch } from '#core/server/index.js';
 import { InMemorySchedulerRunRepository } from '#core/server/testing/marketing-fakes.js';
 
 import {
+  authRequestHost,
+  baseRelyingPartyId,
   createAuth,
   createAuthPort,
+  hostServedByBaseDomain,
+  isPasskeyCeremonyPath,
+  sharedCookieDomain,
   EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES,
   isAdditionalTwoFactorPath,
   isSensitivePasskeyPath,
@@ -400,6 +405,8 @@ const buildAuth = (options: {
   secureCookies?: boolean;
   baseDomain?: string;
   singleTenantMode?: boolean;
+  verifiedCustomHosts?: string[];
+  trustedOrigins?: string[];
 } = {}) => {
   const db = createDb('node-postgres', connectionString);
   const emailOutbox = createEmailOutboxRepository(db);
@@ -431,8 +438,11 @@ const buildAuth = (options: {
     baseUrl: 'http://localhost:48730',
     baseDomain: options.baseDomain ?? 'localhost',
     singleTenantMode: options.singleTenantMode ?? false,
-    trustedOrigins: ['http://localhost:48730', 'http://studio.localhost:48730'],
+    trustedOrigins: options.trustedOrigins ??
+      ['http://localhost:48730', 'http://studio.localhost:48730'],
     secureCookies: options.secureCookies ?? false,
+    isVerifiedCustomHost: async (host) =>
+      (options.verifiedCustomHosts ?? []).includes(host),
     exposeMagicLinks: true,
     emailOutbox,
     ids: { nextId: () => crypto.randomUUID() },
@@ -488,6 +498,203 @@ describe('auth cookie scope', () => {
       enabled: true,
       domain: '.example.com',
     });
+  });
+});
+
+describe('host scope derivation', () => {
+  const deployed = {
+    baseUrl: 'https://start.together.example',
+    baseDomain: 'together.example',
+    singleTenantMode: false,
+  };
+
+  it('shares the base domain across tenant subdomains when one is routable', () => {
+    expect(sharedCookieDomain(deployed)).toBe('.together.example');
+    expect(baseRelyingPartyId(deployed)).toBe('together.example');
+  });
+
+  it.each([
+    ['single-tenant mode', { ...deployed, singleTenantMode: true }],
+    ['a localhost base domain', {
+      baseUrl: 'http://acme.localhost:48730',
+      baseDomain: 'localhost',
+      singleTenantMode: false,
+    }],
+  ])('keeps cookies and the relying party on the configured host for %s', (_case, routing) => {
+    expect(sharedCookieDomain(routing)).toBeNull();
+    expect(baseRelyingPartyId(routing)).toBe(new URL(routing.baseUrl).hostname);
+  });
+
+  it('separates hosts served by the base domain from custom ones', () => {
+    expect(hostServedByBaseDomain('together.example', 'together.example')).toBe(true);
+    expect(hostServedByBaseDomain('acme.together.example', 'together.example')).toBe(true);
+    expect(hostServedByBaseDomain('kurs.coderoad.example', 'together.example')).toBe(false);
+    expect(hostServedByBaseDomain('kurs.coderoad.localhost', 'localhost')).toBe(false);
+  });
+
+  it('recognizes the ceremonies that carry a relying party', () => {
+    expect(isPasskeyCeremonyPath('/passkey/verify-authentication')).toBe(true);
+    expect(isPasskeyCeremonyPath('/passkey/list-user-passkeys')).toBe(false);
+    expect(isPasskeyCeremonyPath(undefined)).toBe(false);
+  });
+
+  it('reads the request host from the header, then the URL, without its port', () => {
+    expect(authRequestHost({ headers: new Headers({ host: 'KURS.coderoad.example:8443' }) }))
+      .toBe('kurs.coderoad.example');
+    expect(authRequestHost({ request: new Request('http://acme.localhost:48730/api/auth/ok') }))
+      .toBe('acme.localhost');
+    expect(authRequestHost({})).toBeNull();
+  });
+});
+
+describe('host-scoped credentials', () => {
+  const baseDomain = 'together.example';
+  const tenantHost = `acme.${baseDomain}`;
+  const customHost = 'kurs.coderoad.example';
+
+  const buildHostAuth = () => buildAuth({
+    baseDomain,
+    verifiedCustomHosts: [customHost],
+    trustedOrigins: [
+      'http://localhost:48730',
+      `http://${tenantHost}`,
+      `http://${customHost}`,
+    ],
+  });
+
+  const call = (
+    auth: ReturnType<typeof buildAuth>['auth'],
+    host: string,
+    path: string,
+    init: { body?: unknown; cookie?: string; authorization?: string } = {},
+  ) => auth.handler(new Request(`http://${host}/api/auth${path}`, {
+    ...(init.body === undefined ? {} : { method: 'POST', body: JSON.stringify(init.body) }),
+    headers: {
+      'content-type': 'application/json',
+      host,
+      origin: `http://${host}`,
+      'x-forwarded-for': `203.0.113.${signUpIpSuffix++}`,
+      ...(init.cookie === undefined ? {} : { cookie: init.cookie }),
+      ...(init.authorization === undefined ? {} : { authorization: init.authorization }),
+    },
+  }));
+
+  const sessionCookie = (response: Response): string =>
+    response.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.session_token=') && !entry.includes('Max-Age=0'))
+    ?? '';
+
+  const register = async (
+    auth: ReturnType<typeof buildAuth>['auth'],
+    host: string,
+    email: string,
+    password: string,
+  ) => {
+    const response = await call(auth, host, '/sign-up/email', {
+      body: { name: 'Ada', email, password, callbackURL: `http://${host}/my` },
+    });
+    expect(response.status).toBe(200);
+    return response.headers.get('set-auth-token') ?? '';
+  };
+
+  it('keeps the shared base-domain scope for a tenant subdomain sign-in', async () => {
+    const { auth } = buildHostAuth();
+    const email = `subdomain-scope-${Date.now()}@together.dev`;
+    const password = passwordFixture('subdomain-scope');
+    await register(auth, tenantHost, email, password);
+
+    const signedIn = await call(auth, tenantHost, '/sign-in/email', { body: { email, password } });
+
+    expect(signedIn.status).toBe(200);
+    expect(sessionCookie(signedIn)).toContain(`Domain=.${baseDomain}`);
+  });
+
+  it('scopes a password sign-in to the verified custom host only', async () => {
+    const { auth } = buildHostAuth();
+    const email = `custom-scope-${Date.now()}@together.dev`;
+    const password = passwordFixture('custom-scope');
+    await register(auth, customHost, email, password);
+
+    const signedIn = await call(auth, customHost, '/sign-in/email', { body: { email, password } });
+
+    expect(signedIn.status).toBe(200);
+    expect(sessionCookie(signedIn)).not.toBe('');
+    expect(sessionCookie(signedIn)).not.toContain('Domain=');
+  });
+
+  it('scopes a magic-link sign-in to the verified custom host only', async () => {
+    const { auth } = buildHostAuth();
+    const email = `custom-magic-${Date.now()}@together.dev`;
+    auth.setMagicLinkDeliveryContext(email, {
+      language: 'pl',
+      mode: 'capture',
+      baseUrl: `http://${customHost}`,
+    });
+    await call(auth, customHost, '/sign-in/magic-link', {
+      body: { email, callbackURL: `http://${customHost}/my` },
+    });
+    const captured = auth.consumeCapturedMagicLink(email);
+    expect(captured?.url).toContain(customHost);
+
+    const verified = await auth.handler(new Request(captured?.url ?? '', { redirect: 'manual' }));
+
+    expect(verified.status).toBe(302);
+    expect(sessionCookie(verified)).not.toBe('');
+    expect(sessionCookie(verified)).not.toContain('Domain=');
+  });
+
+  it('scopes the two-factor challenge and its session to the verified custom host', async () => {
+    const { auth } = buildHostAuth();
+    const email = `custom-two-factor-${Date.now()}@together.dev`;
+    const password = passwordFixture('custom-two-factor');
+    const token = await register(auth, customHost, email, password);
+    const enabled = await call(auth, customHost, '/two-factor/enable', {
+      body: { password },
+      authorization: `Bearer ${token}`,
+    });
+    const secret = new URL(
+      z.object({ totpURI: z.string() }).parse(await enabled.json()).totpURI,
+    ).searchParams.get('secret') ?? '';
+    await call(auth, customHost, '/two-factor/verify-totp', {
+      body: { code: totpCode(secret) },
+      authorization: `Bearer ${token}`,
+    });
+
+    const challenged = await call(auth, customHost, '/sign-in/email', { body: { email, password } });
+    const challengeCookie = challenged.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.two_factor=')) ?? '';
+    expect(challengeCookie).not.toBe('');
+    expect(challengeCookie).not.toContain('Domain=');
+
+    const completed = await call(auth, customHost, '/two-factor/verify-totp', {
+      body: { code: totpCode(secret) },
+      cookie: challengeCookie.split(';')[0] ?? '',
+    });
+
+    expect(completed.status).toBe(200);
+    expect(sessionCookie(completed)).not.toContain('Domain=');
+  });
+
+  it('answers passkey ceremonies for the base domain and for the verified custom host', async () => {
+    const { auth } = buildHostAuth();
+    const relyingParty = async (host: string): Promise<string> => {
+      const response = await call(auth, host, '/passkey/generate-authenticate-options');
+      expect(response.status).toBe(200);
+      return z.object({ rpId: z.string() }).parse(await response.json()).rpId;
+    };
+
+    expect(await relyingParty(tenantHost)).toBe(baseDomain);
+    expect(await relyingParty(customHost)).toBe(customHost);
+  });
+
+  it('keeps the passkey challenge cookie inside the custom host cookie world', async () => {
+    const { auth } = buildHostAuth();
+    const challenge = await call(auth, customHost, '/passkey/generate-authenticate-options');
+    const challengeCookie = challenge.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.better-auth-passkey=')) ?? '';
+
+    expect(challengeCookie).not.toBe('');
+    expect(challengeCookie).not.toContain('Domain=');
   });
 });
 

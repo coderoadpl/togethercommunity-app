@@ -60,6 +60,7 @@
     "import": "tsx scripts/import.ts",
     "e2e:auth": "tsx scripts/auth-e2e.ts",
     "e2e:two-factor": "tsx scripts/two-factor-e2e.ts",
+    "e2e:custom-domain": "tsx scripts/custom-domain-e2e.ts",
     "e2e:coupon": "tsx scripts/coupon-e2e.ts",
     "e2e:poc": "tsx scripts/poc-e2e.ts",
     "e2e:subs": "tsx scripts/subs-e2e.ts",

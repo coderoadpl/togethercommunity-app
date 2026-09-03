@@ -3608,6 +3608,12 @@ export const createTenantDomainRepository = (db: Db): TenantDomainRepository => 
   },
   listVerifiedDomains: async () =>
     db.select().from(tenantDomains).where(eq(tenantDomains.verified, true)),
+  listByTenant: async (tenantId) =>
+    db
+      .select()
+      .from(tenantDomains)
+      .where(eq(tenantDomains.tenantId, tenantId))
+      .orderBy(tenantDomains.domain),
 });
 
 export const createTenantRepository = (

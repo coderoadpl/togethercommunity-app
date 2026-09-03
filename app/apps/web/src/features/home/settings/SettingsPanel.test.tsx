@@ -92,6 +92,19 @@ const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = [
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('/api/tenant/routing', () => HttpResponse.json({
+      ok: true,
+      data: {
+        routing: {
+          tenantHost: 'akademia.together.example',
+          customDomains: [
+            { domain: 'kurs.coderoad.example', verified: true },
+            { domain: 'nowa.coderoad.example', verified: false },
+          ],
+          customDomainTarget: 'cname.vercel-dns.com',
+        },
+      },
+    })),
     http.get('/api/spaces/staff', () =>
       HttpResponse.json({ ok: true, data: { spaces: spaces.map(staffSpace) } }),
     ),
@@ -167,6 +180,17 @@ describe('SettingsPanel information architecture', () => {
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'settings-panel-company');
     expect(document.querySelector('#support')).not.toBeNull();
     expect(screen.queryByTestId('billing-portal-url')).not.toBeInTheDocument();
+  });
+
+  it('shows the workspace address with verified and pending custom domains', async () => {
+    renderPanel();
+
+    expect(await screen.findByText('akademia.together.example')).toBeInTheDocument();
+    expect(await screen.findByTestId('tenant-domain-kurs.coderoad.example'))
+      .toHaveTextContent(pl.tenantDomains.verified);
+    const pending = await screen.findByTestId('tenant-domain-nowa.coderoad.example');
+    expect(pending).toHaveTextContent(pl.tenantDomains.pending);
+    expect(pending).toHaveTextContent('cname.vercel-dns.com');
   });
 
   it('sends the retired billing deep link to the integrations stripe tab', async () => {

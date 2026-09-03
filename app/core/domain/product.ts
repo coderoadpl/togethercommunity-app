@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { slugify } from './slug.js';
+
 export const currencySchema = z.string().regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter uppercase code');
 
 export const SUPPORTED_CURRENCIES = ['PLN', 'EUR', 'USD'] as const;
@@ -28,14 +30,7 @@ export const productCoverUrlSchema = z.union([
   z.string().trim().regex(/^\/\S+$/),
 ]);
 
-export const productSlugFromTitle = (title: string): string =>
-  title
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .slice(0, 100)
-    .replace(/^-+|-+$/g, '');
+export const productSlugFromTitle = (title: string): string => slugify(title, { maxLength: 100 });
 
 const PRICE_MAJOR_PATTERN = /^\d+([.,]\d{1,2})?$/;
 

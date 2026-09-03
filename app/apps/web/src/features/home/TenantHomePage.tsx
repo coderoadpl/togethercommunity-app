@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import { slugify } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { BrandLoader } from '../../components/layout/BrandLoader.js';
@@ -77,7 +78,7 @@ const PickTenant = ({ account }: { account: { email: string; emailVerified: bool
   const [slugInput, setSlugInput] = useState('');
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const slugPreview = slugInput || name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const slugPreview = slugInput || slugify(name);
 
   const createTenant = useMutation({
     ...actions.createTenant,

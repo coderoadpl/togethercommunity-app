@@ -152,6 +152,7 @@ const navigationDeps = (input: {
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
       logoUrl: null,
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: null,

@@ -1,14 +1,54 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  absoluteBrandingAssetUrl,
   deletedMemberDisplay,
   isReservedTenantSlug,
   resolveInvoiceVat,
+  resolveTenantLogo,
   resolveTenantSocial,
   tenantSchema,
   tenantSettingsSchema,
   updateTenantSettingsInputSchema,
 } from './tenant.js';
+
+describe('resolveTenantLogo', () => {
+  it('picks the variant matching the background', () => {
+    const branding = { logoUrl: '/light.svg', logoDarkUrl: '/dark.svg' };
+
+    expect(resolveTenantLogo(branding, 'light')).toBe('/light.svg');
+    expect(resolveTenantLogo(branding, 'dark')).toBe('/dark.svg');
+  });
+
+  it('serves the only uploaded variant on both backgrounds', () => {
+    const lightOnly = { logoUrl: '/light.svg', logoDarkUrl: null };
+    const darkOnly = { logoUrl: null, logoDarkUrl: '/dark.svg' };
+
+    expect(resolveTenantLogo(lightOnly, 'light')).toBe('/light.svg');
+    expect(resolveTenantLogo(lightOnly, 'dark')).toBe('/light.svg');
+    expect(resolveTenantLogo(darkOnly, 'light')).toBe('/dark.svg');
+    expect(resolveTenantLogo(darkOnly, 'dark')).toBe('/dark.svg');
+  });
+
+  it('treats a tenant without any logo and without the dark field as unbranded', () => {
+    expect(resolveTenantLogo({ logoUrl: null, logoDarkUrl: null }, 'dark')).toBeNull();
+    expect(resolveTenantLogo({ logoUrl: null }, 'light')).toBeNull();
+    expect(resolveTenantLogo({ logoUrl: '/light.svg' }, 'dark')).toBe('/light.svg');
+  });
+});
+
+describe('absoluteBrandingAssetUrl', () => {
+  it('resolves app-relative asset paths against the tenant origin', () => {
+    expect(absoluteBrandingAssetUrl('/api/public/assets/logo/a.png', 'https://acme.together.test'))
+      .toBe('https://acme.together.test/api/public/assets/logo/a.png');
+  });
+
+  it('keeps an absolute pointer and passes a missing one through', () => {
+    expect(absoluteBrandingAssetUrl('https://cdn.example.com/a.png', 'https://acme.together.test'))
+      .toBe('https://cdn.example.com/a.png');
+    expect(absoluteBrandingAssetUrl(null, 'https://acme.together.test')).toBeNull();
+  });
+});
 
 describe('isReservedTenantSlug', () => {
   it('reserves the platform host label', () => {
@@ -176,6 +216,7 @@ describe('resolveTenantSocial', () => {
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
       logoUrl: '/logo.svg',
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: null,
@@ -186,10 +227,10 @@ describe('resolveTenantSocial', () => {
       termsUrl: null,
       privacyUrl: null,
       defaultHomeSpaceId: null,
-    })).toEqual({
+    }, 'https://acme.together.test')).toEqual({
       title: 'Acme',
       description: null,
-      imageUrl: '/logo.svg',
+      imageUrl: 'https://acme.together.test/logo.svg',
     });
   });
 
@@ -201,6 +242,7 @@ describe('resolveTenantSocial', () => {
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
       logoUrl: '/logo.svg',
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: 'Acme Academy',
@@ -211,10 +253,36 @@ describe('resolveTenantSocial', () => {
       termsUrl: null,
       privacyUrl: null,
       defaultHomeSpaceId: null,
-    })).toEqual({
+    }, 'https://acme.together.test')).toEqual({
       title: 'Acme Academy',
       description: 'Learn with Acme',
       imageUrl: 'https://cdn.example.com/social.png',
+    });
+  });
+
+  it('falls back to the dark logo when it is the only uploaded variant', () => {
+    expect(resolveTenantSocial(tenant, {
+      name: 'Acme',
+      socialLinks: [],
+      billingPortalUrl: null,
+      bunnyStreamLibraryId: null,
+      bunnyStreamCdnHostname: null,
+      logoUrl: null,
+      logoDarkUrl: '/api/public/assets/logo-dark/dark.png',
+      accentColor: null,
+      faviconUrl: null,
+      ogTitle: null,
+      ogDescription: null,
+      ogImageUrl: null,
+      supportEmail: null,
+      supportUrl: null,
+      termsUrl: null,
+      privacyUrl: null,
+      defaultHomeSpaceId: null,
+    }, 'https://acme.together.test')).toEqual({
+      title: 'Acme',
+      description: null,
+      imageUrl: 'https://acme.together.test/api/public/assets/logo-dark/dark.png',
     });
   });
 });
@@ -233,6 +301,7 @@ describe('tenantSettingsSchema', () => {
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
       logoUrl: null,
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: null,

@@ -1,4 +1,4 @@
-import { DEFAULT_LANGUAGE, languageSchema, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
+import { DEFAULT_LANGUAGE, languageSchema, resolveTenantLogo, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
 
 interface PublicMarketingMessages {
   language: string;
@@ -269,9 +269,12 @@ const renderPage = (input: {
 }): string => {
   const t = messages[input.language];
   const accent = input.brand.settings?.accentColor ?? '#7c3aed';
-  const logoUrl = input.brand.settings?.logoUrl;
+  const settings = input.brand.settings;
+  const logoUrl = settings === null || settings === undefined
+    ? null
+    : resolveTenantLogo(settings, 'light');
   const faviconUrl = input.brand.settings?.faviconUrl;
-  const brandMark = logoUrl === null || logoUrl === undefined
+  const brandMark = logoUrl === null
     ? `<span class="brand-name">${escapeHtml(input.brand.tenant.name)}</span>`
     : `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(input.brand.tenant.name)}">`;
   const favicon = faviconUrl === null || faviconUrl === undefined

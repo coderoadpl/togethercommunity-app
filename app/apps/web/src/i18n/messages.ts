@@ -48,6 +48,8 @@ export interface Messages {
     storageMissing: string;
     storageLink: string;
     invalidType: string;
+    invalidRasterType: string;
+    remove: string;
     tooLarge: string;
   };
   bootSplash: {
@@ -1663,6 +1665,9 @@ export interface Messages {
     nameLabel: string;
     nameHint: string;
     logoLabel: string;
+    logoHint: string;
+    logoDarkLabel: string;
+    logoDarkHint: string;
     logoPlaceholder: string;
     accentLabel: string;
     accentPlaceholder: string;
@@ -1686,7 +1691,7 @@ export interface Messages {
     ogDescriptionLabel: string;
     ogDescriptionHint: string;
     ogImageLabel: string;
-    ogImageHint: string;
+    ogImageHint: (input: { width: number; height: number }) => string;
     save: string;
     saving: string;
     saved: string;

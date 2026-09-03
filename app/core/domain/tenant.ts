@@ -55,6 +55,7 @@ export const accentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 export const tenantBrandingSchema = z.object({
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
+  logoDarkUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
 });
@@ -63,9 +64,25 @@ export type TenantBranding = z.output<typeof tenantBrandingSchema>;
 
 export const EMPTY_TENANT_BRANDING: TenantBranding = {
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
 };
+
+export type LogoBackground = 'light' | 'dark';
+
+/** A tenant that uploaded only one variant gets it on both backgrounds. */
+export const resolveTenantLogo = (
+  branding: { logoUrl: string | null; logoDarkUrl?: string | null | undefined },
+  background: LogoBackground,
+): string | null => {
+  const dark = branding.logoDarkUrl ?? null;
+  return background === 'dark' ? dark ?? branding.logoUrl : branding.logoUrl ?? dark;
+};
+
+/** Branding assets may be stored as app-relative paths; e-mail and OG consumers need absolute URLs. */
+export const absoluteBrandingAssetUrl = (value: string | null, baseUrl: string): string | null =>
+  value === null ? null : new URL(value, baseUrl).toString();
 
 export const TENANT_OG_TITLE_MAX_LENGTH = 70;
 export const TENANT_OG_DESCRIPTION_MAX_LENGTH = 200;
@@ -119,6 +136,7 @@ export const tenantSettingsSchema = z.object({
   bunnyStreamLibraryId: z.string().nullable(),
   bunnyStreamCdnHostname: z.string().nullable().default(null),
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
+  logoDarkUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
   supportEmail: z.string().email().nullable().default(null),
@@ -187,6 +205,7 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   logoUrl: clearableBrandingAssetUrl,
+  logoDarkUrl: clearableBrandingAssetUrl,
   accentColor: z
     .union([accentColorSchema, z.literal('')])
     .nullable()
@@ -259,10 +278,13 @@ export const invoiceVatTreatmentsEqual = (
 export const resolveTenantSocial = (
   tenant: Tenant,
   settings: TenantSettings | null,
+  baseUrl: string,
 ): { title: string; description: string | null; imageUrl: string | null } => ({
   title: settings?.ogTitle ?? tenant.name,
   description: settings?.ogDescription ?? null,
-  imageUrl: settings?.ogImageUrl ?? settings?.logoUrl ?? null,
+  imageUrl: settings === null
+    ? null
+    : absoluteBrandingAssetUrl(settings.ogImageUrl ?? resolveTenantLogo(settings, 'light'), baseUrl),
 });
 
 export const tenantSupportPublicSchema = z.object({

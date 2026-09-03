@@ -22,6 +22,8 @@ import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-rou
 
 import {
   accentColorSchema,
+  SHARE_IMAGE_RECOMMENDED_HEIGHT,
+  SHARE_IMAGE_RECOMMENDED_WIDTH,
   SOCIAL_LINK_LABEL_MAX_LENGTH,
   SOCIAL_LINKS_MAX_COUNT,
   TENANT_NAME_MAX_LENGTH,
@@ -493,6 +495,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const settings = useQuery(actions.tenantSettings);
   const [name, setName] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoDarkUrl, setLogoDarkUrl] = useState<string | null>(null);
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
   const [ogTitle, setOgTitle] = useState<string | null>(null);
@@ -504,6 +507,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
 
   const nameValue = name ?? settings.data?.settings.name ?? '';
   const logoValue = logoUrl ?? settings.data?.settings.logoUrl ?? '';
+  const logoDarkValue = logoDarkUrl ?? settings.data?.settings.logoDarkUrl ?? '';
   const accentValue = accentColor ?? settings.data?.settings.accentColor ?? '';
   const faviconValue = faviconUrl ?? settings.data?.settings.faviconUrl ?? '';
   const ogTitleValue = ogTitle ?? settings.data?.settings.ogTitle ?? '';
@@ -547,6 +551,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       name: nameValue.trim(),
       socialLinks: normalizedSocialLinks,
       logoUrl: logoValue.trim() === '' ? null : logoValue.trim(),
+      logoDarkUrl: logoDarkValue.trim() === '' ? null : logoDarkValue.trim(),
       accentColor: accent === '' ? null : accent,
       faviconUrl: faviconValue.trim() === '' ? null : faviconValue.trim(),
       ogTitle: ogTitleValue.trim() === '' ? null : ogTitleValue.trim(),
@@ -592,12 +597,28 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <ImageAssetField
             id="branding-logo-url"
             label={t.branding.logoLabel}
+            hint={t.branding.logoHint}
             placeholder={t.branding.logoPlaceholder}
             value={logoValue}
             onChange={setLogoUrl}
             kind="logo"
             disabled={disabled}
             testId="branding-logo-url"
+            previewBackground="light"
+            removable
+          />
+          <ImageAssetField
+            id="branding-logo-dark-url"
+            label={t.branding.logoDarkLabel}
+            hint={t.branding.logoDarkHint}
+            placeholder={t.branding.logoPlaceholder}
+            value={logoDarkValue}
+            onChange={setLogoDarkUrl}
+            kind="logo-dark"
+            disabled={disabled}
+            testId="branding-logo-dark-url"
+            previewBackground="dark"
+            removable
           />
           <FormControl fullWidth error={accentError}>
             <FormLabel htmlFor="branding-accent-color">{t.branding.accentLabel}</FormLabel>
@@ -741,18 +762,19 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {t.branding.ogDescriptionHint}
             </Typography>
           </FormControl>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="branding-og-image-url">{t.branding.ogImageLabel}</FormLabel>
-            <OutlinedInput
-              id="branding-og-image-url"
-              type="url"
-              value={ogImageValue}
-              disabled={disabled}
-              onChange={(event) => setOgImageUrl(event.target.value)}
-              inputProps={{ 'data-testid': 'branding-og-image-url' }}
-            />
-            <Typography variant="caption" component="p">{t.branding.ogImageHint}</Typography>
-          </FormControl>
+          <ImageAssetField
+            id="branding-og-image-url"
+            label={t.branding.ogImageLabel}
+            hint={t.branding.ogImageHint({
+              width: SHARE_IMAGE_RECOMMENDED_WIDTH,
+              height: SHARE_IMAGE_RECOMMENDED_HEIGHT,
+            })}
+            value={ogImageValue}
+            onChange={setOgImageUrl}
+            kind="share-image"
+            disabled={disabled}
+            testId="branding-og-image-url"
+          />
         </>
       )}
       {settings.isError ? (

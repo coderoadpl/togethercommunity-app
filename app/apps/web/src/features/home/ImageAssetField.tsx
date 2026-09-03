@@ -1,9 +1,8 @@
 import { useMutation } from '@tanstack/react-query';
 
 import {
-  IMAGE_ASSET_CONTENT_TYPES,
-  IMAGE_ASSET_FAVICON_CONTENT_TYPES,
   IMAGE_ASSET_MAX_BYTES,
+  imageAssetContentTypesFor,
   imageAssetUploadInputSchema,
   type ImageAssetKind,
 } from '#core/domain/index.js';
@@ -13,6 +12,7 @@ import {
   ImageAssetField as ImageAssetFieldView,
 } from '../../components/ui/ImageAssetField.js';
 import { errorCodeOf, localizePanelError, useTranslations } from '../../i18n/index.js';
+import type { PreviewBackground } from '../../theme.js';
 
 interface ImageAssetFieldProps {
   id: string;
@@ -24,13 +24,17 @@ interface ImageAssetFieldProps {
   kind: ImageAssetKind;
   disabled?: boolean;
   testId: string;
+  previewBackground?: PreviewBackground;
+  removable?: boolean;
 }
 
 const uploadActionByKind = {
   'course-cover': 'uploadCourseCover',
   'product-cover': 'uploadProductCover',
   logo: 'uploadBrandingAsset',
+  'logo-dark': 'uploadBrandingAsset',
   favicon: 'uploadBrandingAsset',
+  'share-image': 'uploadBrandingAsset',
 } as const;
 
 export const ImageAssetField = ({ onChange, kind, ...props }: ImageAssetFieldProps) => {
@@ -40,18 +44,17 @@ export const ImageAssetField = ({ onChange, kind, ...props }: ImageAssetFieldPro
     onSuccess: ({ url }) => onChange(url),
   });
   const storageMissing = upload.isError && errorCodeOf(upload.error) === 'integration_not_configured';
-  const allowedContentTypes = kind === 'favicon'
-    ? IMAGE_ASSET_FAVICON_CONTENT_TYPES
-    : IMAGE_ASSET_CONTENT_TYPES;
+  const allowedContentTypes = imageAssetContentTypesFor(kind);
   const accept = kind === 'favicon'
-    ? `${IMAGE_ASSET_FAVICON_CONTENT_TYPES.join(',')},.ico`
-    : IMAGE_ASSET_CONTENT_TYPES.join(',');
+    ? `${allowedContentTypes.join(',')},.ico`
+    : allowedContentTypes.join(',');
 
   return (
     <ImageAssetFieldView
       {...props}
       accept={accept}
       allowedContentTypes={allowedContentTypes}
+      invalidTypeMessage={kind === 'share-image' ? t.imageAssets.invalidRasterType : t.imageAssets.invalidType}
       maxBytes={IMAGE_ASSET_MAX_BYTES}
       onChange={onChange}
       uploading={upload.isPending}

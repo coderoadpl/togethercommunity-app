@@ -1,6 +1,7 @@
 import {
   computeTenantSetupReadiness,
   ok,
+  resolveTenantLogo,
   type AppError,
   type Result,
   type TenantSecret,
@@ -80,7 +81,8 @@ export const getTenantSetupReadiness = async (
       billingPortalConfigured: (settings?.billingPortalUrl ?? null) !== null,
       videoConfigured: has('bunny.apiKey') && (settings?.bunnyStreamLibraryId ?? null) !== null,
       brandingConfigured:
-        (settings?.logoUrl ?? null) !== null && (settings?.accentColor ?? null) !== null,
+        (settings === null ? null : resolveTenantLogo(settings, 'light')) !== null
+        && (settings?.accentColor ?? null) !== null,
       invoicingConfigured:
         invoicingProvider === 'ksef'
           ? has('ksef.token') && has('ksef.contextNip')

@@ -28,6 +28,7 @@ interface StoredSettings {
   bunnyStreamLibraryId: string | null;
   bunnyStreamCdnHostname: string | null;
   logoUrl: string | null;
+  logoDarkUrl: string | null;
   accentColor: string | null;
   faviconUrl: string | null;
   ogTitle?: string | null;
@@ -72,6 +73,7 @@ const EMPTY_SETTINGS: StoredSettings = {
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
   termsUrl: null,
@@ -497,7 +499,7 @@ describe('SettingsPanel branding', () => {
     const { updates } = renderPanel();
     await openSettingsSection(pl.settingsNavigation.brand);
 
-    expect(await screen.findAllByRole('button', { name: pl.imageAssets.upload })).toHaveLength(2);
+    expect(await screen.findAllByRole('button', { name: pl.imageAssets.upload })).toHaveLength(4);
     await userEvent.type(await screen.findByTestId('branding-logo-url'), 'https://cdn.example.com/logo.svg');
     await userEvent.type(screen.getByTestId('branding-accent-color'), '#0E7490');
     await userEvent.type(screen.getByTestId('branding-favicon-url'), 'https://cdn.example.com/favicon.svg');
@@ -508,6 +510,7 @@ describe('SettingsPanel branding', () => {
       name: 'Akademia',
       socialLinks: [],
       logoUrl: 'https://cdn.example.com/logo.svg',
+      logoDarkUrl: null,
       accentColor: '#0E7490',
       faviconUrl: 'https://cdn.example.com/favicon.svg',
       ogTitle: null,
@@ -533,6 +536,7 @@ describe('SettingsPanel branding', () => {
       name: 'Akademia',
       socialLinks: [],
       logoUrl: null,
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: 'Akademia Acme',
@@ -627,11 +631,106 @@ describe('SettingsPanel branding', () => {
       name: 'Akademia',
       socialLinks: [],
       logoUrl: null,
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: null,
       ogDescription: null,
       ogImageUrl: null,
     });
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('saves the dark logo variant beside the light one', async () => {
+    const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    await userEvent.type(
+      await screen.findByTestId('branding-logo-url'),
+      'https://cdn.example.com/light.svg',
+    );
+    await userEvent.type(
+      screen.getByTestId('branding-logo-dark-url'),
+      'https://cdn.example.com/dark.svg',
+    );
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual(expect.objectContaining({
+      logoUrl: 'https://cdn.example.com/light.svg',
+      logoDarkUrl: 'https://cdn.example.com/dark.svg',
+    }));
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('previews each logo slot on its matching background swatch', async () => {
+    renderPanel({
+      ...EMPTY_SETTINGS,
+      logoUrl: 'https://cdn.example.com/light.svg',
+      logoDarkUrl: 'https://cdn.example.com/dark.svg',
+    });
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    expect(await screen.findByTestId('branding-logo-url-preview-surface'))
+      .toHaveAttribute('data-background', 'light');
+    expect(screen.getByTestId('branding-logo-dark-url-preview-surface'))
+      .toHaveAttribute('data-background', 'dark');
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('removes the dark logo without touching the light one', async () => {
+    const { updates } = renderPanel({
+      ...EMPTY_SETTINGS,
+      logoUrl: 'https://cdn.example.com/light.svg',
+      logoDarkUrl: 'https://cdn.example.com/dark.svg',
+    });
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    await userEvent.click(await screen.findByTestId('branding-logo-dark-url-remove'));
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual(expect.objectContaining({
+      logoUrl: 'https://cdn.example.com/light.svg',
+      logoDarkUrl: null,
+    }));
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('fills the share image field from an upload and still accepts a typed URL', async () => {
+    const servePath = '/api/public/assets/share-image/6f1c0f2e-2b8a-4c3d-8e5f-9a0b1c2d3e4f.png';
+    server.use(
+      http.post('/api/image-assets/branding/upload', () => HttpResponse.json({
+        ok: true,
+        data: {
+          key: 'image-assets/tenant-akademia/share-image/6f1c0f2e-2b8a-4c3d-8e5f-9a0b1c2d3e4f.png',
+          servePath,
+          upload: {
+            url: 'https://storage.example.com/put',
+            headers: { 'content-type': 'image/png' },
+            expiresAt: '2026-09-03T12:00:00.000Z',
+          },
+        },
+      })),
+      http.put('https://storage.example.com/put', () => new HttpResponse(null, { status: 200 })),
+      http.post('/api/image-assets/branding/complete', () =>
+        HttpResponse.json({ ok: true, data: { url: servePath } })),
+    );
+    const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    const shareImageInput = await screen.findByTestId('branding-og-image-url');
+    await userEvent.upload(
+      screen.getByTestId('branding-og-image-url-file-input'),
+      new File(['x'], 'share.png', { type: 'image/png' }),
+    );
+    await waitFor(() => {
+      expect(shareImageInput).toHaveValue(servePath);
+    });
+
+    await userEvent.clear(shareImageInput);
+    await userEvent.type(shareImageInput, 'https://cdn.example.com/share.png');
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual(expect.objectContaining({
+      ogImageUrl: 'https://cdn.example.com/share.png',
+    }));
   }, BRANDING_TEST_TIMEOUT);
 });

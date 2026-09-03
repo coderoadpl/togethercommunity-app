@@ -305,6 +305,8 @@ export const memberBillingOrdersOutputSchema = z.object({
 export const tenantListOutputSchema = z.object({
   tenants: z.array(membershipSchema),
   canCreateTenant: z.boolean(),
+  /** Non-null only for a platform owner on a disposable deployment. */
+  dataResetEnvironment: z.string().min(1).nullable().default(null),
 });
 
 export const productsListOutputSchema = z.object({
@@ -1310,6 +1312,21 @@ export type SupportMessageInput = z.input<typeof supportMessageInputSchema>;
 
 export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
 
+export const platformDataResetInputSchema = z.object({
+  confirmation: z.string().min(1).max(100),
+});
+
+export type PlatformDataResetInput = z.input<typeof platformDataResetInputSchema>;
+
+export const platformDataResetOutputSchema = z.object({
+  environment: z.string().min(1),
+  durationMs: z.number().int().nonnegative(),
+  wiped: z.array(z.object({
+    table: z.string().min(1),
+    rows: z.number().int().nonnegative(),
+  })),
+});
+
 export const integrationTestInputSchema = z.object({
   provider: integrationProviderSchema,
   emailTransport: emailIntegrationTransportSchema.optional(),
@@ -1843,6 +1860,7 @@ export const API_ROUTES = {
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
   supportMessage: { method: 'POST', path: '/api/support/message' },
+  platformDataReset: { method: 'POST', path: '/api/platform/data-reset' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
   onboardingDismiss: { method: 'POST', path: '/api/onboarding/dismiss' },
   onboardingSetup: { method: 'GET', path: '/api/onboarding/setup' },
@@ -2078,6 +2096,7 @@ export const API_PATHS = {
   tenantRouting: API_ROUTES.tenantRouting.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   supportMessage: API_ROUTES.supportMessage.path,
+  platformDataReset: API_ROUTES.platformDataReset.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
   onboardingSetup: API_ROUTES.onboardingSetup.path,

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
@@ -43,6 +43,9 @@ import {
   createProductPriceHistoryRepository,
 } from '#adapters/db/coupon-repositories.js';
 import { createNotificationFanoutJobRepository } from '#adapters/db/notification-fanout-jobs.js';
+import { createPlatformAuditRepository } from '#adapters/db/platform-audit.js';
+import { reseedMarkers } from '#adapters/db/reseed-guard.js';
+import { runReseed } from '#adapters/db/reseed-run.js';
 import {
   createAvatarSourceReader,
   createCourseLessonRepository,
@@ -95,6 +98,7 @@ import {
 import { createAuth, createAuthPort, type Auth } from '#adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '#adapters/auth/api-key-crypto.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
 import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
 import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
@@ -204,6 +208,8 @@ import type {
   OrderDetailRepository,
   PaymentRefundRepository,
   PostRepository,
+  PlatformAuditRepository,
+  PlatformDataResetPort,
   PostReportRepository,
   PurchaseRepository,
   ProductBatchReader,
@@ -247,16 +253,20 @@ import type {
 } from '#core/server/index.js';
 import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
 import {
+  isProductionEnvironment,
   ok,
+  parsePlatformOwnerEmails,
+  resettableEnvironment,
   type AppError,
   type KsefEnvironment,
+  type ResettableEnvironment,
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import { createCoalescedRunner } from './coalesced-runner.js';
-import { type Env, isLocalDevelopmentEnvironment, isProductionEnvironment } from './env.js';
+import { type Env, isLocalDevelopmentEnvironment } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
@@ -268,6 +278,18 @@ interface DevEndpoints {
 
 interface AuthConfig {
   googleEnabled: boolean;
+}
+
+/**
+ * Present only on disposable deployments. Production composes `undefined`, so
+ * the reset route is never registered and answers 404 for every caller.
+ */
+export interface PlatformResetAppDeps {
+  environment: ResettableEnvironment;
+  ownerEmails: readonly string[];
+  productionDatabaseFingerprint: string | null;
+  dataReset: PlatformDataResetPort;
+  audit: PlatformAuditRepository;
 }
 
 interface DeploymentIdentity {
@@ -411,6 +433,7 @@ export interface AppDeps {
   appBaseUrl: string;
   customDomainTarget: string;
   devEndpoints: DevEndpoints;
+  platformReset?: PlatformResetAppDeps;
   authConfig: AuthConfig;
   authTrustedProxyHeader: string | null;
   marketing?: MarketingAppDeps;
@@ -465,6 +488,20 @@ export const selectDevEndpoints = (
       exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     }
     : { simulatedPayments: false, exposeMagicLinks: false };
+
+export const selectPlatformReset = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'PLATFORM_OWNER_EMAILS' | 'PRODUCTION_DATABASE_FINGERPRINT'>,
+  create: () => Pick<PlatformResetAppDeps, 'dataReset' | 'audit'>,
+): PlatformResetAppDeps | undefined => {
+  const environment = resettableEnvironment(env.APP_ENV);
+  if (environment === null || isProductionEnvironment(env)) return undefined;
+  return {
+    environment,
+    ownerEmails: parsePlatformOwnerEmails(env.PLATFORM_OWNER_EMAILS),
+    productionDatabaseFingerprint: env.PRODUCTION_DATABASE_FINGERPRINT ?? null,
+    ...create(),
+  };
+};
 
 export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
@@ -597,22 +634,12 @@ export const memoizeHostCheck = (
 
 export const selectDeploymentIdentity = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'APP_COMMIT_SHA' | 'DATABASE_URL'>,
-): DeploymentIdentity => {
-  let hostname: string | null = null;
-  try {
-    hostname = new URL(env.DATABASE_URL).hostname || null;
-  } catch {
-    hostname = null;
-  }
-  return {
-    environment: env.APP_ENV ?? 'unset',
-    production: isProductionEnvironment(env),
-    commit: env.APP_COMMIT_SHA ?? null,
-    databaseFingerprint: hostname === null
-      ? null
-      : createHash('sha256').update(hostname).digest('hex').slice(0, 12),
-  };
-};
+): DeploymentIdentity => ({
+  environment: env.APP_ENV ?? 'unset',
+  production: isProductionEnvironment(env),
+  commit: env.APP_COMMIT_SHA ?? null,
+  databaseFingerprint: databaseHostFingerprint(env.DATABASE_URL),
+});
 
 /**
  * Composition root — the ONLY place where env decides which adapters run.
@@ -719,6 +746,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const production = isProductionEnvironment(env);
   const devEndpoints = selectDevEndpoints(env);
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
+  const platformReset = selectPlatformReset(env, () => ({
+    dataReset: { run: () => runReseed(db, reseedMarkers(env)) },
+    audit: createPlatformAuditRepository(db),
+  }));
   const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
   const dispatchAutoInvoices = () => dispatchAutoInvoiceJobs({
     jobs: autoInvoiceJobs,
@@ -1123,6 +1154,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     customDomainTarget:
       env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname,
     devEndpoints,
+    ...(platformReset === undefined ? {} : { platformReset }),
     authConfig: { googleEnabled: google !== null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketing: {

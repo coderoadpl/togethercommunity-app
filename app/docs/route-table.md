@@ -243,6 +243,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/student/progress` | authenticated | read | student progress |
 | `POST /api/posts` | authenticated | mutating | posts create |
 | `POST /api/support/message` | authenticated | mutating | support message |
+| `POST /api/platform/data-reset` | authenticated | mutating | platform data reset |
 | `POST /api/posts/pin` | authenticated | mutating | posts pin |
 | `POST /api/posts/report` | authenticated | mutating | posts report |
 | `GET /api/reports` | authenticated | read | reports |

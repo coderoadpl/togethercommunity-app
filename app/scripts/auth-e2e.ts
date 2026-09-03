@@ -22,6 +22,7 @@ import {
   tsxBin,
 } from './server-harness.js';
 import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { continueWithIdentifier, signInWithPassword } from './login-flow.js';
 import { passwordFixture } from './password-fixture.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
@@ -201,6 +202,46 @@ const runTotpPath = async (transport: { connectUrl: string; origin: string }): P
   console.log('auth-e2e: TOTP path OK');
 };
 
+const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
+  let browser: Browser | null = null;
+  try {
+    browser = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const step = async (email: string): Promise<'password' | 'magic-link'> => {
+      await page.goto(`${webBaseUrl}/login`, { waitUntil: 'domcontentloaded' });
+      await continueWithIdentifier(page, email);
+      const passwordField = page.getByTestId('login-password');
+      const sendMagicLink = page.getByTestId('send-magic-link');
+      await passwordField.or(sendMagicLink).first().waitFor({ state: 'visible', timeout: 15000 });
+      return (await passwordField.isVisible()) ? 'password' : 'magic-link';
+    };
+
+    assert(await step('creator2@together.dev') === 'password', 'the acme owner was not offered the password step');
+    assert(await step('student2@together.dev') === 'magic-link', 'a passwordless acme member was offered a password');
+    assert(await step('nikt@together.dev') === 'magic-link', 'an unknown address did not fall back to the magic link');
+    assert(
+      await step('creator@together.dev') === 'magic-link',
+      'the acme login revealed a password account that belongs to another tenant',
+    );
+
+    await page.getByTestId('login-change-email').click();
+    const identifier = page.getByTestId('login-email');
+    await identifier.waitFor({ state: 'visible', timeout: 15000 });
+    assert(
+      await identifier.inputValue() === 'creator@together.dev',
+      'changing the e-mail did not keep the typed address',
+    );
+    console.log('auth-e2e: identifier-first path OK');
+  } finally {
+    if (browser) await browser.close();
+  }
+};
+
 const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
@@ -226,9 +267,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     });
 
     await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
-    await page.getByTestId('login-email').fill('creator2@together.dev');
-    await page.getByTestId('login-password').fill('demo-password-15');
-    await page.getByTestId('signin-submit').click();
+    await signInWithPassword(page, 'creator2@together.dev', 'demo-password-15');
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
@@ -291,6 +330,7 @@ try {
   });
   await runPasswordResetPath({ connectUrl, origin: webBaseUrl }, webBaseUrl);
   await runTotpPath({ connectUrl, origin: webBaseUrl });
+  await runIdentifierFirstPath(webBaseUrl);
   await runPasskeyPath(webBaseUrl);
   console.log(`\nauth-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {

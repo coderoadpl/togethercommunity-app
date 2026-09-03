@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 107. Route rows: 275. Exported `Ctx` use-case rows: 226.
+Closed capability count: 107. Route rows: 277. Exported `Ctx` use-case rows: 226.
 
 ## Human-readable diff
 
@@ -42,6 +42,7 @@ no changes
 | `OPTIONS /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/checkout/session` | checkout:start | public | public | yes | public route manifest |
 | `OPTIONS /api/public/auth-config` | auth:use | public | public | yes | public route manifest |
+| `OPTIONS /api/public/auth-resolve` | auth:use | public | public | yes | public route manifest |
 | `GET /api/public/assets/:kind/:file` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/offer` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/navigation` | offer:read | public | public | yes | public route manifest |
@@ -55,6 +56,7 @@ no changes
 | `POST /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
 | `POST /api/public/checkout/session` | checkout:start | public | public | yes | public route manifest |
 | `GET /api/public/auth-config` | auth:use | public | public | yes | public route manifest |
+| `POST /api/public/auth-resolve` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/sign-in/magic-link` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/request-password-reset` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/sign-up/email` | auth:use | public | public | yes | public route manifest |

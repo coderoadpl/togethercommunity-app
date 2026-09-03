@@ -21,6 +21,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
+| `OPTIONS /api/public/auth-resolve` | public | read | Sign-in method discovery for a typed identifier |
 | `GET /api/public/assets/:kind/:file` | public | read | Tenant image assets (covers, branding) redirected from private BYO storage |
 | `GET /api/public/offer` | public | read | Public offer discovery |
 | `GET /api/public/navigation` | public | read | Anonymous tenant-home navigation |
@@ -34,6 +35,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `POST /api/public/checkout/session` | public | mutating | Checkout session start |
 | `GET /api/public/auth-config` | public | read | Login capability discovery |
+| `POST /api/public/auth-resolve` | public | read | Sign-in method discovery for a typed identifier |
 | `POST /api/auth/sign-in/magic-link` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `POST /api/auth/request-password-reset` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `POST /api/auth/sign-up/email` | public | mutating | Login, recovery, and magic-link authentication surface |

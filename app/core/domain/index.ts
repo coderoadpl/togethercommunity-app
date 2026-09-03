@@ -20,6 +20,7 @@ export * from './api-key.js';
 export * from './import-audit.js';
 export * from './import.js';
 export * from './course.js';
+export * from './lesson-links.js';
 export * from './lesson-attachment.js';
 export * from './product-download.js';
 export * from './image-asset.js';

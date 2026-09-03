@@ -9,6 +9,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright-core
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
 
 import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { signInWithPassword } from './login-flow.js';
 import {
   bootServer,
   delay,
@@ -94,11 +95,9 @@ const expectAcmeWorkspace = async (page: Page): Promise<void> => {
   );
 };
 
-const signInWithPassword = async (page: Page, baseUrl: string): Promise<void> => {
+const signInWithAccountPassword = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('login-email').fill(account.email);
-  await page.getByTestId('login-password').fill(account.password);
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, account.email, account.password);
 };
 
 const signOut = async (page: Page): Promise<void> => {
@@ -147,7 +146,7 @@ const runEnrollmentJourney = async (
   page: Page,
   baseUrl: string,
 ): Promise<{ secret: string; oldBackupCode: string }> => {
-  await signInWithPassword(page, baseUrl);
+  await signInWithAccountPassword(page, baseUrl);
   await expectAcmeWorkspace(page);
   await openSecuritySettings(page, baseUrl);
 
@@ -187,7 +186,7 @@ const runProvisionalChallengeJourney = async (
   secret: string,
 ): Promise<void> => {
   await signOut(page);
-  await signInWithPassword(page, baseUrl);
+  await signInWithAccountPassword(page, baseUrl);
   await page.getByTestId('two-factor-challenge').waitFor(visible);
 
   await fillAndClick(
@@ -223,7 +222,7 @@ const runBackupCodeJourney = async (
   assert(oneTimeCode !== undefined, 'Regeneration did not return a backup code');
 
   await signOut(page);
-  await signInWithPassword(page, baseUrl);
+  await signInWithAccountPassword(page, baseUrl);
   await page.getByTestId('two-factor-challenge').waitFor(visible);
   const backupChallengeStartedAt = Date.now();
   await fillAndClick(
@@ -242,7 +241,7 @@ const runBackupCodeJourney = async (
   console.log('two-factor-e2e: regenerated backup code opened the workspace');
 
   await signOut(page);
-  await signInWithPassword(page, baseUrl);
+  await signInWithAccountPassword(page, baseUrl);
   await page.getByTestId('two-factor-challenge').waitFor(visible);
   await fillAndClick(
     page.getByTestId('two-factor-code'),
@@ -270,7 +269,7 @@ const runDisableJourney = async (page: Page, baseUrl: string): Promise<void> => 
   assert(await page.getByTestId('backup-codes').count() === 0, 'Backup codes remained visible after disabling 2FA');
 
   await signOut(page);
-  await signInWithPassword(page, baseUrl);
+  await signInWithAccountPassword(page, baseUrl);
   await expectAcmeWorkspace(page);
   assert(
     await page.getByTestId('two-factor-challenge').count() === 0,

@@ -24,16 +24,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
 import {
+  groupLessonBlocks,
   inspectVideoEmbedUrl,
   lessonBlockSchema,
   type CourseLesson,
   type LessonBlock,
+  type LessonContentGroup,
   type VideoEmbedUrlInspection,
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
+import { LessonLinkList, LessonSandboxEmbed } from '../../../components/ui/LessonLinks.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -42,6 +45,7 @@ import { useUnsavedChanges } from '../use-unsaved-changes.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import {
   Eyebrow,
+  FinePrint,
   LessonMediaClip,
   LessonMediaFrame,
   LessonMediaIframe,
@@ -166,6 +170,96 @@ const parseBlocks = (
   return { ok: true, blocks };
 };
 
+const memberGroupOf = (block: LessonBlock): LessonContentGroup | null => {
+  const parsed = lessonBlockSchema.safeParse(block);
+  if (!parsed.success) return null;
+  return groupLessonBlocks([parsed.data])[0] ?? null;
+};
+
+type SandboxGroup = Extract<LessonContentGroup, { kind: 'sandbox' }>;
+
+const SandboxPreview = ({ group, index }: { group: SandboxGroup; index: number }) => {
+  const t = useTranslations();
+  const [shown, setShown] = useState(false);
+  return (
+    <Stack useFlexGap spacing="0.6rem" sx={{ alignItems: 'flex-start' }}>
+      <Button
+        size="small"
+        variant="outlined"
+        data-testid={`block-${index}-sandbox-preview-toggle`}
+        onClick={() => setShown(!shown)}
+      >
+        {shown ? t.lessons.hideSandboxPreview : t.lessons.showSandboxPreview}
+      </Button>
+      {shown ? (
+        <Box sx={{ alignSelf: 'stretch', minWidth: 0 }}>
+          <LessonSandboxEmbed
+            embedUrl={group.embedUrl}
+            canonicalUrl={group.canonicalUrl}
+            providerName={group.providerName}
+            caption={group.caption}
+          />
+        </Box>
+      ) : null}
+    </Stack>
+  );
+};
+
+const MemberGroupPreview = ({ group, index }: { group: LessonContentGroup; index: number }) => {
+  if (group.kind === 'sandbox') return <SandboxPreview group={group} index={index} />;
+  return group.kind === 'links' ? <LessonLinkList links={group.links} /> : null;
+};
+
+const withoutEchoedCaption = (group: LessonContentGroup, description: string | undefined) =>
+  group.kind === 'sandbox' && group.caption !== null && group.caption === description?.trim()
+    ? { ...group, caption: null }
+    : group;
+
+const MemberLinkPreview = ({
+  block,
+  index,
+}: {
+  block: Extract<LessonBlock, { type: 'link' | 'embed' }>;
+  index: number;
+}) => {
+  const t = useTranslations();
+  const url = useDebouncedValue(block.type === 'link' ? block.url : block.embedUrl);
+  const parsed = memberGroupOf(block.type === 'link' ? { ...block, url } : { ...block, embedUrl: url });
+  if (parsed === null || parsed.kind === 'block') return null;
+  const group = withoutEchoedCaption(parsed, block.type === 'link' ? block.description : undefined);
+  return (
+    <Box>
+      <FinePrint component="p" color="text.secondary">
+        {t.lessons.blockPreviewLabel}
+      </FinePrint>
+      <MemberGroupPreview group={group} index={index} />
+    </Box>
+  );
+};
+
+const HtmlBlockPreview = ({ html: typedHtml, index }: { html: string; index: number }) => {
+  const t = useTranslations();
+  const html = useDebouncedValue(typedHtml);
+  const group = memberGroupOf({ type: 'html', html });
+  if (group === null || group.kind === 'block') return null;
+  return (
+    <Stack useFlexGap spacing="0.4rem">
+      <Typography variant="caption" color="text.secondary" role="note">
+        {group.kind === 'links' ? t.lessons.htmlLinkFoldNote : t.lessons.htmlSandboxFoldNote}
+      </Typography>
+      <MemberGroupPreview group={group} index={index} />
+    </Stack>
+  );
+};
+
+type BlockFieldRenderer = (
+  label: string,
+  key: string,
+  value: string,
+  update: (value: string) => void,
+  technicalName?: string,
+) => ReactElement;
+
 const VideoBlockFields = ({
   draft,
   index,
@@ -176,7 +270,7 @@ const VideoBlockFields = ({
   draft: Extract<BlockDraft, { type: 'video' }>;
   index: number;
   onChange: (next: BlockDraft) => void;
-  field: (label: string, key: string, value: string, update: (value: string) => void) => ReactElement;
+  field: BlockFieldRenderer;
   showPrivacyNote: boolean;
 }) => {
   const t = useTranslations();
@@ -199,16 +293,10 @@ const VideoBlockFields = ({
           {t.lessons.videoPickFromBunny}
         </Button>
       </Box>
-      {field(`${t.lessons.storageKeyLabel} — ${t.lessons.technicalFieldHint({ field: 'storageKey' })}`, 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }))}
-      {field(`${t.lessons.streamVideoIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamVideoId' })}`, 'streamVideoId', draft.streamVideoId, (streamVideoId) =>
-        onChange({ ...draft, streamVideoId }),
-      )}
-      {field(`${t.lessons.streamLibraryIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamLibraryId' })}`, 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) =>
-        onChange({ ...draft, streamLibraryId }),
-      )}
-      {field(`${t.lessons.streamCollectionIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamCollectionId' })}`, 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) =>
-        onChange({ ...draft, streamCollectionId }),
-      )}
+      {field(t.lessons.storageKeyLabel, 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }), 'storageKey')}
+      {field(t.lessons.streamVideoIdLabel, 'streamVideoId', draft.streamVideoId, (streamVideoId) => onChange({ ...draft, streamVideoId }), 'streamVideoId')}
+      {field(t.lessons.streamLibraryIdLabel, 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) => onChange({ ...draft, streamLibraryId }), 'streamLibraryId')}
+      {field(t.lessons.streamCollectionIdLabel, 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) => onChange({ ...draft, streamCollectionId }), 'streamCollectionId')}
       {pickerOpen ? (
         <BunnyVideoPickerDialog
           onClose={() => setPickerOpen(false)}
@@ -250,6 +338,7 @@ const EmbedBlockFields = ({
         />
         {error === null ? null : <FormHelperText>{error}</FormHelperText>}
       </FormControl>
+      <MemberLinkPreview block={{ type: 'embed', embedUrl: draft.embedUrl }} index={index} />
       {inspection.kind === 'supported' ? (
         <LessonMediaFrame sx={{ aspectRatio: '16 / 9' }}>
           <LessonMediaClip>
@@ -284,19 +373,26 @@ const BlockFields = ({
   showBunnyPrivacyNote: boolean;
 }) => {
   const t = useTranslations();
-  const field = (label: string, key: string, value: string, update: (value: string) => void, multiline = false) => (
-    <FormControl fullWidth size="small">
-      <FormLabel htmlFor={`block-${index}-${key}`}>{label}</FormLabel>
-      <OutlinedInput
-        id={`block-${index}-${key}`}
-        size="small"
-        value={value}
-        multiline={multiline}
-        minRows={multiline ? 3 : undefined}
-        onChange={(event) => update(event.target.value)}
-      />
-    </FormControl>
-  );
+  const field: BlockFieldRenderer = (label, key, value, update, technicalName) => {
+    const hintId = `block-${index}-${key}-hint`;
+    return (
+      <FormControl fullWidth size="small">
+        <FormLabel htmlFor={`block-${index}-${key}`}>{label}</FormLabel>
+        <OutlinedInput
+          id={`block-${index}-${key}`}
+          size="small"
+          value={value}
+          onChange={(event) => update(event.target.value)}
+          aria-describedby={technicalName === undefined ? undefined : hintId}
+        />
+        {technicalName === undefined ? null : (
+          <FormHelperText id={hintId}>
+            <code>{t.lessons.technicalFieldHint({ field: technicalName })}</code>
+          </FormHelperText>
+        )}
+      </FormControl>
+    );
+  };
 
   switch (draft.type) {
     case 'video':
@@ -314,26 +410,37 @@ const BlockFields = ({
     case 'pdf':
       return (
         <Stack useFlexGap spacing="0.6rem">
-          {field(`${t.lessons.pdfUrlLabel} — ${t.lessons.technicalFieldHint({ field: 'pdfUrl' })}`, 'pdfUrl', draft.pdfUrl, (pdfUrl) => onChange({ ...draft, pdfUrl }))}
-          {field(`${t.lessons.fileNameLabel} — ${t.lessons.technicalFieldHint({ field: 'name' })}`, 'name', draft.name, (name) => onChange({ ...draft, name }))}
+          {field(t.lessons.pdfUrlLabel, 'pdfUrl', draft.pdfUrl, (pdfUrl) => onChange({ ...draft, pdfUrl }), 'pdfUrl')}
+          {field(t.lessons.fileNameLabel, 'name', draft.name, (name) => onChange({ ...draft, name }), 'name')}
         </Stack>
       );
     case 'link':
       return (
         <Stack useFlexGap spacing="0.6rem">
-          {field(`${t.lessons.linkUrlLabel} — ${t.lessons.technicalFieldHint({ field: 'url' })}`, 'url', draft.url, (url) => onChange({ ...draft, url }))}
-          {field(`${t.lessons.linkDescriptionLabel} — ${t.lessons.technicalFieldHint({ field: 'description' })}`, 'description', draft.description, (description) => onChange({ ...draft, description }))}
+          {field(t.lessons.linkUrlLabel, 'url', draft.url, (url) => onChange({ ...draft, url }), 'url')}
+          {field(t.lessons.linkDescriptionLabel, 'description', draft.description, (description) => onChange({ ...draft, description }), 'description')}
+          <MemberLinkPreview
+            index={index}
+            block={{
+              type: 'link',
+              url: draft.url,
+              ...(draft.description.trim().length > 0 ? { description: draft.description.trim() } : {}),
+            }}
+          />
         </Stack>
       );
     case 'html':
       return (
-        <HtmlEditor
-          id={`block-${index}-html`}
-          value={draft.html}
-          onChange={(html) => onChange({ ...draft, html })}
-          fieldLabel={t.lessons.htmlLabel}
-          size="small"
-        />
+        <Stack useFlexGap spacing="0.6rem">
+          <HtmlEditor
+            id={`block-${index}-html`}
+            value={draft.html}
+            onChange={(html) => onChange({ ...draft, html })}
+            fieldLabel={t.lessons.htmlLabel}
+            size="small"
+          />
+          <HtmlBlockPreview html={draft.html} index={index} />
+        </Stack>
       );
   }
 };

@@ -209,8 +209,8 @@ describe('LessonPlayerPage', () => {
     expect(within(htmlBlock).queryByText('window.__xss = 1;')).not.toBeInTheDocument();
     expect(container.querySelector('[data-testid="lesson-html"] script')).toBeNull();
 
-    expect(screen.getByTestId('link-icon-code')).toBeInTheDocument();
-    expect(screen.getByTestId('link-icon-generic')).toBeInTheDocument();
+    expect(screen.getByTestId('link-icon-github')).toBeInTheDocument();
+    expect(screen.getByTestId('link-icon-external')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Course repo/ })).toHaveAttribute(
       'href',
       'https://github.com/acme/repo',
@@ -229,10 +229,194 @@ describe('LessonPlayerPage', () => {
 
     await screen.findByTestId('lesson-video-placeholder');
     expect(screen.getAllByTestId(/lesson-block-/u).map((node) => node.dataset.blockType)).toEqual([
-      'link',
+      'links',
       'html',
       'video',
       'pdf',
+    ]);
+  });
+
+  it('renders an embeddable link as a sandboxed editor with a new-tab link', async () => {
+    const sandboxUrl = 'https://codesandbox.io/embed/github/coderoadpl/task-1?autoresize=1';
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([{ type: 'link', url: sandboxUrl, description: 'Zadanie 1 — flexbox' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const sandbox = await screen.findByTestId('lesson-sandbox');
+    expect(sandbox).toHaveAttribute('src', sandboxUrl);
+    expect(sandbox).toHaveAttribute(
+      'sandbox',
+      'allow-scripts allow-same-origin allow-forms allow-popups allow-modals',
+    );
+    expect(sandbox).toHaveAttribute('loading', 'lazy');
+    expect(sandbox).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    expect(sandbox).toHaveAttribute('title', 'Zadanie 1 — flexbox');
+    expect(screen.getByTestId('lesson-sandbox-caption')).toHaveTextContent('Zadanie 1 — flexbox');
+    expect(screen.getByTestId('lesson-media-skeleton')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — Zadanie 1 — flexbox` }),
+    ).toHaveAttribute('href', 'https://codesandbox.io/s/github/coderoadpl/task-1?autoresize=1');
+    expect(screen.getByTestId('lesson-block-0')).toHaveTextContent(
+      pl.lesson.labelSandbox({ provider: 'CodeSandbox' }),
+    );
+  });
+
+  it('tells two captionless sandboxes apart by their frame title and link name', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'embed', embedUrl: 'https://codesandbox.io/s/flexbox-task-1' },
+        { type: 'embed', embedUrl: 'https://codesandbox.io/s/grid-task-2' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findAllByTestId('lesson-sandbox');
+    expect(screen.getAllByTestId('lesson-sandbox').map((frame) => frame.getAttribute('title'))).toEqual([
+      'CodeSandbox / flexbox-task-1',
+      'CodeSandbox / grid-task-2',
+    ]);
+    expect(screen.queryByTestId('lesson-sandbox-caption')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — CodeSandbox / grid-task-2` }),
+    ).toHaveAttribute('href', 'https://codesandbox.io/s/grid-task-2');
+  });
+
+  it('opens a mailto link in the mail app rather than a new tab', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([{ type: 'link', url: 'mailto:teacher@example.com', description: 'Napisz do prowadzącej' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const mailLink = await screen.findByRole('link', {
+      name: `Napisz do prowadzącej ${pl.lesson.mailHint}`,
+    });
+    expect(mailLink).toHaveAttribute('href', 'mailto:teacher@example.com');
+    expect(mailLink).not.toHaveAttribute('target');
+    expect(mailLink).not.toHaveAttribute('rel');
+  });
+
+  it('renders one iframe when a link and an html anchor point at the same sandbox', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'link', url: 'https://codesandbox.io/embed/abc123', description: 'Zadanie' },
+        { type: 'html', html: '<p><a href="https://codesandbox.io/s/abc123">sandbox</a></p>' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-sandbox');
+    expect(screen.getAllByTestId('lesson-sandbox')).toHaveLength(1);
+    expect(screen.getAllByTestId(/lesson-block-/u)).toHaveLength(1);
+    expect(screen.getByTestId('lesson-sandbox-caption')).toHaveTextContent('Zadanie');
+  });
+
+  it('merges consecutive links into one section without raw URLs', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'link', url: 'https://github.com/coderoadpl/task-1', description: 'GitHub' },
+        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/HTML' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const section = await screen.findByTestId('lesson-block-0');
+    expect(screen.getAllByTestId(/lesson-block-/u)).toHaveLength(1);
+    expect(section.dataset.blockType).toBe('links');
+    expect(within(section).getByText(pl.lesson.linksHeading)).toBeInTheDocument();
+    expect(within(section).getAllByRole('listitem')).toHaveLength(2);
+    const links = within(section).getAllByRole('link');
+    expect(links[0]).toHaveAttribute('title', 'https://github.com/coderoadpl/task-1');
+    expect(links[0]).toHaveAccessibleName(`GitHub ${pl.lesson.newTabHint}`);
+    expect(links[1]).toHaveAccessibleName(`developer.mozilla.org / HTML ${pl.lesson.newTabHint}`);
+    expect(section.textContent).not.toContain('https://');
+    expect(section.textContent).not.toContain('/coderoadpl/');
+  });
+
+  it('keeps description-less links on one host distinguishable', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'link', url: 'https://github.com/coderoadpl/one' },
+        { type: 'link', url: 'https://github.com/coderoadpl/two' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const section = await screen.findByTestId('lesson-block-0');
+    const names = within(section)
+      .getAllByRole('link')
+      .map((node) => node.getAttribute('title'));
+    expect(names).toEqual(['https://github.com/coderoadpl/one', 'https://github.com/coderoadpl/two']);
+    expect(within(section).getByRole('link', { name: `github.com / one ${pl.lesson.newTabHint}` })).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: `github.com / two ${pl.lesson.newTabHint}` })).toBeInTheDocument();
+  });
+
+  it('labels a chip from the path when the anchor text is a schemeless URL', async () => {
+    const repoUrl = 'https://github.com/coderoadpl/frontend--html-css-flexbox--task-1';
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'html', html: `<p><a href="${repoUrl}">github.com/coderoadpl/frontend--html-css-flexbox--task-1</a></p>` },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const section = await screen.findByTestId('lesson-block-0');
+    expect(within(section).getByRole('link')).toHaveAttribute('href', repoUrl);
+    expect(section.textContent).not.toContain('/coderoadpl/');
+  });
+
+  it('folds a single-anchor html block into the links section and drops the duplicate', async () => {
+    const repoUrl = 'https://github.com/coderoadpl/frontend--html-css-flexbox--task-1';
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'link', url: repoUrl, description: 'GitHub' },
+        { type: 'html', html: `<p><a href="${repoUrl}" target="_blank">${repoUrl}</a></p>` },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const section = await screen.findByTestId('lesson-block-0');
+    expect(screen.getAllByTestId(/lesson-block-/u)).toHaveLength(1);
+    expect(screen.queryByTestId('lesson-html')).not.toBeInTheDocument();
+    const links = within(section).getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveTextContent('GitHub');
+    expect(links[0]).toHaveAttribute('href', repoUrl);
+  });
+
+  it('keeps links separated by another block in their own sections', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'link', url: 'https://example.com/first', description: 'Pierwszy' },
+        { type: 'html', html: '<p>Notatki</p><p>Więcej</p>' },
+        { type: 'link', url: 'https://example.com/second', description: 'Drugi' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-html');
+    expect(screen.getAllByTestId(/lesson-block-/u).map((node) => node.dataset.blockType)).toEqual([
+      'links',
+      'html',
+      'links',
     ]);
   });
 

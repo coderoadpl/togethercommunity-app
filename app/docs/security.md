@@ -51,8 +51,14 @@ with shorter passwords may still sign in, but any replacement password must
 meet the current floor.
 
 Open CORS covers public offer and payment configuration reads, coupon
-validation, checkout-session start, auth configuration, and free lesson
-previews so external creator sites can use the public checkout contract.
+validation, checkout-session start, auth configuration, sign-in method
+resolution (`/api/public/auth-resolve`), and free lesson previews so external
+creator sites can use the public checkout contract. Sign-in method resolution
+reveals only whether a tenant member or admin holds a password credential —
+unknown addresses and passwordless accounts are indistinguishable — and
+enumeration of that signal is bounded by the auth-resolve per-address and
+per-tenant limits recorded in the
+[go-live checklist](go-live-checklist.md).
 Webhook, unsubscribe, confirmation, and authenticated routes do not inherit
 that policy. The lesson read resolves a session when one is present and falls
 back to anonymous public capabilities, which reach lessons flagged as free

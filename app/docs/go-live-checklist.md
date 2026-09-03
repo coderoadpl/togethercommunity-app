@@ -237,11 +237,16 @@ per request (`core/server/usecases/public-rate-limit.ts`,
 validation and the marketing consent forms allow 30 requests per minute per
 client address and 300 per minute per resolved tenant; magic-link,
 password-reset, sign-up and verification requests share that per-address budget
-and allow 5 per ten minutes per e-mail address. The three limits are
-configurable
+and allow 5 per ten minutes per e-mail address. The sign-in method lookup
+(`/api/public/auth-resolve`) spends its own `auth-resolve:ip` and
+`auth-resolve:tenant` windows — 20 per minute per client address and 200 per
+minute per resolved tenant — so a shared address exhausting the lookup cannot
+block checkout. The five limits are configurable
 (`PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE`,
 `PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE`,
-`PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES`), relax outside
+`PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES`,
+`PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE`,
+`PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE`), relax outside
 production so the end-to-end suites are unaffected, and switch off per bucket
 at `0`. Rejections answer `429` with `Retry-After`, and the hourly KSeF
 dispatch run deletes expired windows.
@@ -249,9 +254,9 @@ dispatch run deletes expired windows.
 `marketing_throttle_buckets` remains a per-tenant SES sending budget rather
 than a request limiter (`adapters/db/app-schema.ts:1387`).
 
-Before launch, add an edge or WAF rule in front of `/api/auth/*`. The durable
-application limiter is defense in depth and does not replace the launch edge
-control.
+Before launch, add an edge or WAF rule in front of `/api/auth/*` and
+`POST /api/public/auth-resolve`. The durable application limiter is defense in
+depth and does not replace the launch edge control.
 
 ### 11. Real Stripe verification runbook
 

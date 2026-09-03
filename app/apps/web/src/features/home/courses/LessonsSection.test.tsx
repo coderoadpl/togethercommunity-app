@@ -201,8 +201,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.type(await screen.findByLabelText(pl.common.name), 'Reordered Lesson');
 
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-    await userEvent.type(await screen.findByLabelText(/storageKey/), 'videos/intro.mp4');
-    await userEvent.type(screen.getByLabelText(/streamVideoId/), 'vid-1');
+    await userEvent.type(await screen.findByLabelText(pl.lessons.storageKeyLabel), 'videos/intro.mp4');
+    await userEvent.type(screen.getByLabelText(pl.lessons.streamVideoIdLabel), 'vid-1');
 
     await userEvent.click(screen.getByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
@@ -439,9 +439,9 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.click(await screen.findByTestId('block-0-bunny-picker'));
     await userEvent.click(await screen.findByTestId('bunny-picker-video'));
 
-    expect(screen.getByLabelText(/streamVideoId/)).toHaveValue('guid-1');
-    expect(screen.getByLabelText(/streamLibraryId/)).toHaveValue('lib-9');
-    expect(screen.getByLabelText(/storageKey/)).toHaveValue('guid-1');
+    expect(screen.getByLabelText(pl.lessons.streamVideoIdLabel)).toHaveValue('guid-1');
+    expect(screen.getByLabelText(pl.lessons.streamLibraryIdLabel)).toHaveValue('lib-9');
+    expect(screen.getByLabelText(pl.lessons.storageKeyLabel)).toHaveValue('guid-1');
   });
 
   it('keeps manual fields and shows a settings hint when Bunny Stream is not configured', async () => {
@@ -472,8 +472,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
-    expect(screen.getByLabelText(/storageKey/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/streamVideoId/)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.lessons.storageKeyLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.lessons.streamVideoIdLabel)).toBeInTheDocument();
   });
 
   it('inserts markup via the toolbar and renders a sanitized live preview', async () => {
@@ -500,6 +500,86 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     expect(preview).toHaveTextContent(pl.htmlEditor.placeholderBold);
     expect(container.querySelector('[data-testid="html-preview"] script')).toBeNull();
     expect(screen.queryByText('window.__xss=1')).not.toBeInTheDocument();
+  });
+
+  it('tells how a single-anchor html block will be shown to members', async () => {
+    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
+
+    await renderLessonsAt('/panel/lessons/new');
+
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeHtml }));
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+
+    const editor = await screen.findByLabelText(pl.lessons.htmlLabel);
+    await userEvent.type(editor, '<p>Notatki</p>');
+    expect(screen.queryByText(pl.lessons.htmlLinkFoldNote)).not.toBeInTheDocument();
+
+    await userEvent.clear(editor);
+    await userEvent.type(editor, '<p><a href="https://github.com/coderoadpl/task-1">repozytorium</a></p>');
+    expect(await screen.findByText(pl.lessons.htmlLinkFoldNote)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /repozytorium/ })).toHaveAttribute(
+      'href',
+      'https://github.com/coderoadpl/task-1',
+    );
+
+    await userEvent.clear(editor);
+    await userEvent.type(editor, '<p><a href="https://codesandbox.io/s/abc123">zadanie</a></p>');
+    expect(await screen.findByText(pl.lessons.htmlSandboxFoldNote)).toBeInTheDocument();
+    expect(screen.queryByText(pl.lessons.htmlLinkFoldNote)).not.toBeInTheDocument();
+  });
+
+  it('previews a link block only once its URL passes the block schema', async () => {
+    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
+
+    await renderLessonsAt('/panel/lessons/new');
+
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeLink }));
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+
+    const urlField = await screen.findByLabelText(pl.lessons.linkUrlLabel);
+    expect(urlField).toHaveAccessibleName(pl.lessons.linkUrlLabel);
+    expect(urlField).toHaveAccessibleDescription(pl.lessons.technicalFieldHint({ field: 'url' }));
+
+    await userEvent.type(urlField, 'javascript:alert(1)');
+    expect(screen.queryByTestId('lesson-links')).not.toBeInTheDocument();
+
+    await userEvent.clear(urlField);
+    await userEvent.type(urlField, 'https://github.com/coderoadpl/task-1');
+    expect(await screen.findByTestId('lesson-links')).toBeInTheDocument();
+    expect(screen.getByText(pl.lessons.blockPreviewLabel)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /github\.com/ })).toHaveAttribute(
+      'href',
+      'https://github.com/coderoadpl/task-1',
+    );
+  });
+
+  it('keeps the sandbox preview behind a toggle in the block editor', async () => {
+    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
+
+    await renderLessonsAt('/panel/lessons/new');
+
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeLink }));
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+
+    await userEvent.type(
+      await screen.findByLabelText(pl.lessons.linkUrlLabel),
+      'https://codesandbox.io/s/abc123',
+    );
+    await userEvent.type(await screen.findByLabelText(pl.lessons.linkDescriptionLabel), 'Zadanie');
+
+    const toggle = await screen.findByTestId('block-0-sandbox-preview-toggle');
+    expect(toggle).toHaveTextContent(pl.lessons.showSandboxPreview);
+    expect(screen.queryByTestId('lesson-sandbox')).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(await screen.findByTestId('lesson-sandbox')).toHaveAttribute(
+      'src',
+      'https://codesandbox.io/embed/abc123',
+    );
+    expect(screen.queryByTestId('lesson-sandbox-caption')).not.toBeInTheDocument();
   });
 
   it('filters lessons by name and by content type', async () => {

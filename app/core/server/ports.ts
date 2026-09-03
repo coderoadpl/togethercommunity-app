@@ -1915,6 +1915,14 @@ export interface TenantAccessReader {
   findMember(tenantId: string, userId: string): Promise<Member | null>;
 }
 
+/**
+ * `email` arrives exactly as the caller typed it: the adapter owns the single
+ * normalisation step, so callers must not pre-normalise and split the contract.
+ */
+export interface SignInMethodReader {
+  hasCredentialAccount(tenantId: string, email: string): Promise<boolean>;
+}
+
 /** Established authenticated session, before tenant resolution. */
 export interface AuthenticatedUser {
   sessionId: string;

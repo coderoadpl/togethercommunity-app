@@ -8,6 +8,8 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { API_PATHS } from '#core/contract/index.js';
 
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
+
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
@@ -186,10 +188,7 @@ const captureCreatorPanel = async (
   const page = await context.newPage();
 
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo-password-15');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
 
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
   assert(
@@ -222,10 +221,7 @@ const captureCheckout = async (
 
 const signInMember = async (page: Page, studioBaseUrl: string, email: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  const emailInput = page.locator('#magic-link-email');
-  await emailInput.waitFor({ state: 'visible', timeout: 20000 });
-  await emailInput.fill(email);
-  await emailInput.press('Enter');
+  await requestMagicLink(page, email);
   const sent = page.getByTestId('magic-link-sent');
   await sent.waitFor({ state: 'visible', timeout: 20000 });
   const magicLink = sent.locator('a[href]').first();
@@ -246,12 +242,9 @@ const captureDarkLoginStates = async (
 
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
-  await page.locator('#magic-link-email').waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, 'dark-login.png');
 
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('invalid-password');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'invalid-password');
   await page.getByRole('alert').last().waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, 'dark-error-alert.png');
 
@@ -267,10 +260,7 @@ const captureDarkCreatorStates = async (
   const page = await context.newPage();
 
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo-password-15');
-  await page.getByTestId('signin-submit').click();
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 
   const coursesNav = page.getByTestId('section-courses');

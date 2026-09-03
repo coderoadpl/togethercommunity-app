@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -6,6 +6,7 @@ import {
   err,
   invoiceVatTreatmentsEqual,
   memberTombstone,
+  normalizeEmail,
   ok,
   validation,
 } from '#core/domain/index.js';
@@ -57,6 +58,7 @@ import {
   createProductGrantRepository,
   createProductPriceRepository,
   createProductRepository,
+  createSignInMethodReader,
   createSpaceEventRepository,
   createSpaceEventRsvpRepository,
   createSpaceRepository,
@@ -81,6 +83,7 @@ import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
 import { createMemberErasureRequestRepository } from './member-erasure-requests.js';
 import {
+  account,
   autoInvoiceJobs,
   consents,
   couponRedemptions,
@@ -3209,5 +3212,58 @@ describe('member erasure repository', () => {
     await expect(
       db.delete(members).where(and(eq(members.tenantId, RODO), eq(members.id, 'mem-rodo'))),
     ).rejects.toThrow();
+  });
+});
+
+describe('createSignInMethodReader', () => {
+  const explainPredicate = async (
+    executor: Pick<Db, 'execute'>,
+    predicate: SQL,
+  ): Promise<string> => {
+    const result: unknown = await executor.execute(
+      sql`explain select 1 from ${user} where ${predicate}`,
+    );
+    if (
+      typeof result !== 'object'
+      || result === null
+      || !('rows' in result)
+      || !Array.isArray(result.rows)
+    ) {
+      throw new Error('explain did not return rows');
+    }
+    return JSON.stringify(result.rows);
+  };
+
+  beforeAll(async () => {
+    await db.insert(account).values({
+      id: 'account-signin-lookup',
+      accountId: 'owner-acme@together.dev',
+      providerId: 'credential',
+      userId: 'user-acme-owner',
+      password: 'hashed-password',
+      updatedAt: new Date(NOW),
+    });
+  });
+
+  it('resolves a mixed-case identifier exactly like the stored address', async () => {
+    const reader = createSignInMethodReader(db);
+
+    expect(await reader.hasCredentialAccount(ACME, 'owner-acme@together.dev')).toBe(true);
+    expect(await reader.hasCredentialAccount(ACME, '  Owner-Acme@Together.DEV ')).toBe(true);
+    expect(await reader.hasCredentialAccount(ACME, 'buyer-acme@together.dev')).toBe(false);
+    expect(await reader.hasCredentialAccount(GLOBEX, 'owner-acme@together.dev')).toBe(false);
+  });
+
+  it('keeps the identifier predicate on the unique e-mail index', async () => {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`set local enable_seqscan = off`);
+
+      expect(
+        await explainPredicate(tx, eq(user.email, normalizeEmail('  Owner-Acme@Together.DEV '))),
+      ).toContain('Index Cond');
+      expect(
+        await explainPredicate(tx, sql`lower(btrim(${user.email})) = 'owner-acme@together.dev'`),
+      ).not.toContain('Index Cond');
+    });
   });
 });

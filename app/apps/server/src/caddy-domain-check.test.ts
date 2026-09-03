@@ -24,6 +24,7 @@ const repository: TenantDomainRepository = {
   findByDomain: async (domain) =>
     [verified, unverified].find((candidate) => candidate.domain === domain) ?? null,
   listVerifiedDomains: async () => [verified],
+  listByTenant: async () => [verified, unverified],
 };
 
 const tenant: Tenant = {

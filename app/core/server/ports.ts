@@ -1551,6 +1551,7 @@ export interface DevSinkPurge {
 export interface TenantDomainRepository {
   findByDomain(domain: string): Promise<TenantDomain | null>;
   listVerifiedDomains(): Promise<TenantDomain[]>;
+  listByTenant(tenantId: string): Promise<TenantDomain[]>;
 }
 
 /** The only persisted onboarding state; every checklist step is recomputed on read. */

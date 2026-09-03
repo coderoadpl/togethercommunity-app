@@ -61,6 +61,7 @@ import {
   createApiKeyInputSchema,
   creatorOnboardingSchema,
   tenantSetupReadinessSchema,
+  tenantRoutingSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
@@ -1295,6 +1296,10 @@ export const tenantSetupReadinessOutputSchema = z.object({
   setup: tenantSetupReadinessSchema,
 });
 
+export const tenantRoutingOutputSchema = z.object({
+  routing: tenantRoutingSchema,
+});
+
 export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
 
 export type TenantSettingsUpdateInput = z.input<typeof tenantSettingsUpdateInputSchema>;
@@ -1835,6 +1840,7 @@ export const API_ROUTES = {
   globalSchedulerRun: { method: 'GET', path: '/api/internal/scheduler-runs/:id' },
   memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
+  tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
   supportMessage: { method: 'POST', path: '/api/support/message' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
@@ -2069,6 +2075,7 @@ export const API_PATHS = {
   globalSchedulerRuns: API_ROUTES.globalSchedulerRuns.path,
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
+  tenantRouting: API_ROUTES.tenantRouting.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   supportMessage: API_ROUTES.supportMessage.path,
   onboarding: API_ROUTES.onboarding.path,

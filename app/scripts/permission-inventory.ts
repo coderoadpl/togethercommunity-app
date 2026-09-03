@@ -165,6 +165,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
+  if (path === '/api/tenant/routing') return 'tenant:domain:read';
   if (path === '/api/support/message') return 'support:request';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
@@ -258,6 +259,7 @@ const beforeForRoute = (
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
+  if (path === '/api/tenant/routing') return staff;
   if (path === '/api/support/message') return tenantActors;
   if (path === '/api/api-keys/:id/import-audit') return owner;
   if (path === '/api/posts/pin') return staff;
@@ -493,6 +495,7 @@ const beforeForUseCase = (
   if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'lesson-playback.ts') return tenantActors;
+  if (file === 'tenant-domains.ts') return staff;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;

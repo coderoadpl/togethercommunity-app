@@ -1691,6 +1691,16 @@ export interface Messages {
     saving: string;
     saved: string;
   };
+  tenantDomains: {
+    heading: string;
+    intro: string;
+    workspaceAddress: string;
+    customDomains: string;
+    none: string;
+    verified: string;
+    pending: string;
+    dnsInstruction: (params: { domain: string; target: string }) => string;
+  };
   buildInfo: {
     heading: string;
     intro: string;

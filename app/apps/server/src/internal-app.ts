@@ -111,7 +111,9 @@ import {
   tenantSecretDeleteInputSchema,
   tenantSecretSetInputSchema,
   tenantSettingsUpdateInputSchema,
-  termsConsentRequestSchema
+  termsConsentRequestSchema,
+  capabilitiesForPrincipal,
+  platformDataResetInputSchema
 } from '#core/contract/index.js';
 import {
   devGrantInputSchema,
@@ -119,6 +121,7 @@ import {
   emailBrandingFrom,
   err,
   forbidden,
+  isPlatformOwner,
   internal,
   memberExportFormatSchema,
   ok,
@@ -324,6 +327,7 @@ import {
   setSpaceArchived,
   setPostPinned,
   sendSupportMessage,
+  resetPlatformData,
   setTenantSecret,
   simulatePurchase,
   simulateSubscriptionCycle,
@@ -2630,6 +2634,33 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     }
     return respond(await sendSupportMessage({ identity: c.get('identity') }, parsed.data, deps));
   });
+
+  if (deps.platformReset !== undefined) {
+    const platformReset = deps.platformReset;
+    app.post(API_PATHS.platformDataReset, async (c) => {
+      const body: unknown = await c.req.json().catch(() => null);
+      const parsed = platformDataResetInputSchema.safeParse(body);
+      if (!parsed.success) {
+        return respond(err(validation('Invalid data reset payload', parsed.error.flatten())));
+      }
+      const identity = c.get('identity');
+      const owner = isPlatformOwner(identity.email, platformReset.ownerEmails);
+      return respond(await resetPlatformData(
+        { identity, capabilities: owner ? capabilitiesForPrincipal('platform-owner') : [] },
+        parsed.data,
+        {
+          dataReset: platformReset.dataReset,
+          platformAudit: platformReset.audit,
+          environment: platformReset.environment,
+          production: deps.deploymentIdentity.production,
+          databaseFingerprint: deps.deploymentIdentity.databaseFingerprint,
+          productionDatabaseFingerprint: platformReset.productionDatabaseFingerprint,
+          ids: deps.ids,
+          clock: deps.clock,
+        },
+      ));
+    });
+  }
 
   app.post(API_PATHS.postsPin, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);

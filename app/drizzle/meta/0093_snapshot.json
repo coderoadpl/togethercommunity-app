@@ -1,6 +1,6 @@
 {
-  "id": "39191da8-846c-46ce-8ff8-e20b3d0ef2e4",
-  "prevId": "da3bd43f-586e-47ca-95b7-b6a62a5ef58b",
+  "id": "553110f9-119e-4d26-885b-3766793b4a8f",
+  "prevId": "39191da8-846c-46ce-8ff8-e20b3d0ef2e4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9559,6 +9559,75 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.sns_webhook_deliveries": {
+      "name": "sns_webhook_deliveries",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_type": {
+          "name": "message_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_ip": {
+          "name": "source_ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sns_webhook_deliveries_tenant_id_tenants_id_fk": {
+          "name": "sns_webhook_deliveries_tenant_id_tenants_id_fk",
+          "tableFrom": "sns_webhook_deliveries",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.space_event_rsvps": {
       "name": "space_event_rsvps",
       "schema": "",
@@ -10968,6 +11037,18 @@
         "sns_topic_arn": {
           "name": "sns_topic_arn",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sns_subscription_endpoint": {
+          "name": "sns_subscription_endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sns_subscription_confirmed_at": {
+          "name": "sns_subscription_confirmed_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

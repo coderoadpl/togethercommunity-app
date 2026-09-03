@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { isProductionEnvironment } from '#core/domain/index.js';
+
 const optionalNonEmptyString = z.preprocess(
   (value) => value === '' ? undefined : value,
   z.string().min(1).optional(),
@@ -20,20 +22,6 @@ const isLocalHostname = (hostname: string): boolean =>
   || hostname.endsWith('.localhost')
   || /^127(?:\.\d{1,3}){3}$/.test(hostname)
   || hostname === '[::1]';
-
-const NON_PRODUCTION_APP_ENVS: readonly string[] = ['preview', 'staging'];
-
-/**
- * Vercel sets `NODE_ENV=production` on Preview deployments as well, so
- * `NODE_ENV` alone cannot separate a preview from production. Only an
- * explicitly named non-production `APP_ENV` opts out; anything unrecognised
- * keeps the strict production posture.
- */
-export const isProductionEnvironment = (
-  env: { NODE_ENV?: string | undefined; APP_ENV?: string | undefined },
-): boolean =>
-  env.APP_ENV === 'production'
-  || (env.NODE_ENV === 'production' && !NON_PRODUCTION_APP_ENVS.includes(env.APP_ENV ?? ''));
 
 const LOCAL_DEVELOPMENT_APP_ENVS: readonly string[] = ['', 'development'];
 
@@ -77,6 +65,10 @@ export const envSchema = z
     VERCEL_BRANCH_URL: optionalNonEmptyString,
     AUTH_TRUSTED_PROXY_HEADER: optionalHeaderName,
     TENANT_CREATION: z.enum(['open', 'closed']).default('open'),
+    /** Comma-separated e-mail allowlist for the platform-owner surface. */
+    PLATFORM_OWNER_EMAILS: optionalNonEmptyString,
+    /** Fingerprint of the production database; a match refuses every destructive platform action. */
+    PRODUCTION_DATABASE_FINGERPRINT: optionalNonEmptyString,
     BETTER_AUTH_SECRET: z.string().min(16).default('dev-only-secret-do-not-use-in-prod'),
     // 32-byte AES-256-GCM key, base64. Generate: openssl rand -base64 32
     SECRETS_MASTER_KEY: z.string().min(1).default('dG9nZXRoZXItZGV2LXNlY3JldHMtbWFzdGVyLWtleSE='),

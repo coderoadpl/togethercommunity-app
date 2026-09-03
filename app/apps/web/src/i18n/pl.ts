@@ -217,6 +217,24 @@ export const pl: Messages = {
     openingWorkspace: 'Otwieranie Twojej platformy…',
     openingProducts: 'Otwieranie Twoich produktów…',
   },
+  platformReset: {
+    title: 'Dane środowiska',
+    description: ({ environment }) => format(
+      'Usuń dane demonstracyjne środowiska {environment} i utwórz je od nowa z wdrożonego kodu.',
+      { environment },
+    ),
+    action: 'Resetuj dane',
+    confirmTitle: 'Zresetować dane?',
+    confirmBody: ({ environment }) => format(
+      'Wszystkie platformy demonstracyjne zostaną usunięte i utworzone od nowa. '
+      + 'Wpisz {environment}, aby potwierdzić. Tej operacji nie można cofnąć.',
+      { environment },
+    ),
+    confirmLabel: 'Nazwa środowiska',
+    confirmButton: 'Resetuj dane',
+    running: 'Resetowanie danych…',
+    success: ({ environment }) => format('Dane środowiska {environment} zostały zresetowane.', { environment }),
+  },
   sections: {
     dashboard: 'Przegląd',
     products: 'Produkty',

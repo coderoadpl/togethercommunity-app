@@ -1880,6 +1880,17 @@ export const en: Messages = {
     saving: 'Saving…',
     saved: 'Saved.',
   },
+  tenantDomains: {
+    heading: 'Addresses',
+    intro: 'Where members reach this workspace.',
+    workspaceAddress: 'Workspace address',
+    customDomains: 'Custom domain',
+    none: 'No custom domain is connected. Ask the Together team to add one.',
+    verified: 'Active',
+    pending: 'Waiting for DNS',
+    dnsInstruction: ({ domain, target }) =>
+      format('Add a CNAME record for {domain} pointing at {target}, then ask the Together team to verify it.', { domain, target }),
+  },
   buildInfo: {
     heading: 'Build information',
     intro: 'Compare the browser bundle with the server it is connected to.',

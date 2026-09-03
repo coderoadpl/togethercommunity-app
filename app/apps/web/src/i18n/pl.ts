@@ -1900,6 +1900,17 @@ export const pl: Messages = {
     saving: 'Zapisywanie…',
     saved: 'Zapisano.',
   },
+  tenantDomains: {
+    heading: 'Adresy',
+    intro: 'Pod tymi adresami uczestnicy wchodzą na tę platformę.',
+    workspaceAddress: 'Adres platformy',
+    customDomains: 'Własna domena',
+    none: 'Nie podłączono własnej domeny. Napisz do zespołu Together, żeby ją dodać.',
+    verified: 'Działa',
+    pending: 'Czeka na DNS',
+    dnsInstruction: ({ domain, target }) =>
+      format('Dodaj rekord CNAME dla {domain} wskazujący na {target}, a potem poproś zespół Together o weryfikację.', { domain, target }),
+  },
   buildInfo: {
     heading: 'Wersja aplikacji',
     intro: 'Porównaj wersję aplikacji w przeglądarce z wersją serwera.',

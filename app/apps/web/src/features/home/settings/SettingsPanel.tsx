@@ -75,6 +75,7 @@ const settingsSectionFromHash = (hash: string): SettingsSection => {
     case 'support':
     case 'public-access':
     case 'invoice':
+    case 'domains':
     default:
       return 'company';
   }
@@ -921,6 +922,68 @@ const SecurityPanel = () => {
   );
 };
 
+const TenantDomainsPanel = () => {
+  const t = useTranslations();
+  const routing = useQuery(actions.tenantRouting);
+
+  if (routing.isError) {
+    return (
+      <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
+        <StatusView
+          surface={false}
+          state={{
+            kind: 'error',
+            message: localizePanelError(routing.error, t),
+            retry: { label: t.common.retry, onRetry: () => void routing.refetch() },
+          }}
+        />
+      </SectionCard>
+    );
+  }
+
+  if (!routing.isSuccess) {
+    return (
+      <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
+        <StatusView
+          surface={false}
+          state={{ kind: 'loading', label: t.common.loading }}
+          data-testid="tenant-domains-loading"
+        />
+      </SectionCard>
+    );
+  }
+
+  const { customDomains, tenantHost, customDomainTarget } = routing.data.routing;
+
+  return (
+    <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
+      <Stack useFlexGap spacing="1rem" data-testid="tenant-domains">
+        <Stack useFlexGap spacing="0.3rem">
+          <Eyebrow>{t.tenantDomains.workspaceAddress}</Eyebrow>
+          <Typography variant="body2">{tenantHost}</Typography>
+        </Stack>
+        <Stack useFlexGap spacing="0.3rem">
+          <Eyebrow>{t.tenantDomains.customDomains}</Eyebrow>
+          {customDomains.length === 0 ? (
+            <Typography variant="body2">{t.tenantDomains.none}</Typography>
+          ) : customDomains.map((entry) => (
+            <Stack key={entry.domain} useFlexGap spacing="0.2rem" data-testid={`tenant-domain-${entry.domain}`}>
+              <Typography variant="body2">
+                {entry.domain} · {entry.verified ? t.tenantDomains.verified : t.tenantDomains.pending}
+              </Typography>
+              {entry.verified ? null : (
+                <Typography variant="caption">
+                  {t.tenantDomains.dnsInstruction({ domain: entry.domain, target: customDomainTarget })}
+                </Typography>
+              )}
+            </Stack>
+          ))}
+        </Stack>
+      </Stack>
+    </SectionCard>
+  );
+};
+
 const BuildInfoPanel = () => {
   const t = useTranslations();
   const health = useQuery(actions.health);
@@ -1016,6 +1079,9 @@ export const SettingsPanel = () => {
           </Box>
           <Box id="invoice" sx={{ scrollMarginTop: '1rem' }}>
             <InvoiceSettingsPanel canEdit={canEdit} />
+          </Box>
+          <Box id="domains" sx={{ scrollMarginTop: '1rem' }}>
+            <TenantDomainsPanel />
           </Box>
         </Stack>
       ) : null}

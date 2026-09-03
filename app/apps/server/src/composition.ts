@@ -256,7 +256,7 @@ import {
 import { capabilitiesForPrincipal, communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import { createCoalescedRunner } from './coalesced-runner.js';
-import { type Env, isProductionEnvironment } from './env.js';
+import { type Env, isLocalDevelopmentEnvironment, isProductionEnvironment } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
@@ -454,6 +454,16 @@ export interface MarketingAppDeps {
   }, AppError>>;
   dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number; reputationAlertsSent: number }, AppError>>;
 }
+
+export const selectDevEndpoints = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'SIMULATED_PAYMENTS' | 'AUTH_DEV_EXPOSE_MAGIC_LINKS'>,
+): DevEndpoints =>
+  isLocalDevelopmentEnvironment(env)
+    ? {
+      simulatedPayments: env.SIMULATED_PAYMENTS,
+      exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
+    }
+    : { simulatedPayments: false, exposeMagicLinks: false };
 
 export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
@@ -671,6 +681,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const sesOnboardingControlPlane = createSesOnboardingControlPlane();
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = isProductionEnvironment(env);
+  const devEndpoints = selectDevEndpoints(env);
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
   const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
   const dispatchAutoInvoices = () => dispatchAutoInvoiceJobs({
@@ -901,7 +912,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     baseDomain,
     singleTenantMode,
     secureCookies: env.SECURE_COOKIES,
-    exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
+    exposeMagicLinks: devEndpoints.exposeMagicLinks,
     emailOutbox,
     ids,
     clock,
@@ -1071,10 +1082,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
-    devEndpoints: {
-      simulatedPayments: env.SIMULATED_PAYMENTS,
-      exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
-    },
+    devEndpoints,
     authConfig: { googleEnabled: google !== null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketing: {

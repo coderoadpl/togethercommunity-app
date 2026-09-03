@@ -35,6 +35,17 @@ export const isProductionEnvironment = (
   env.APP_ENV === 'production'
   || (env.NODE_ENV === 'production' && !NON_PRODUCTION_APP_ENVS.includes(env.APP_ENV ?? ''));
 
+const LOCAL_DEVELOPMENT_APP_ENVS: readonly string[] = ['', 'development'];
+
+export const isLocalDevelopmentEnvironment = (
+  env: { NODE_ENV?: string | undefined; APP_ENV?: string | undefined },
+): boolean =>
+  env.NODE_ENV !== 'production' && LOCAL_DEVELOPMENT_APP_ENVS.includes(env.APP_ENV ?? '');
+
+const localDevelopmentOnly = (key: string): string =>
+  `${key} can only be enabled in local development `
+  + '(NODE_ENV must not be production and APP_ENV must be unset or development)';
+
 /** Parse, don't cast: the process refuses to boot on invalid configuration. */
 export const envSchema = z
   .object({
@@ -151,6 +162,22 @@ export const envSchema = z
         message: 'APP_BASE_URL must use https outside local development',
       });
     }
+    if (!isLocalDevelopmentEnvironment(env)) {
+      if (env.SIMULATED_PAYMENTS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SIMULATED_PAYMENTS'],
+          message: localDevelopmentOnly('SIMULATED_PAYMENTS'),
+        });
+      }
+      if (env.AUTH_DEV_EXPOSE_MAGIC_LINKS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AUTH_DEV_EXPOSE_MAGIC_LINKS'],
+          message: localDevelopmentOnly('AUTH_DEV_EXPOSE_MAGIC_LINKS'),
+        });
+      }
+    }
     if (!isProductionEnvironment(env)) return;
     if (env.BETTER_AUTH_SECRET === 'dev-only-secret-do-not-use-in-prod') {
       ctx.addIssue({
@@ -192,20 +219,6 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SECURE_COOKIES'],
         message: 'SECURE_COOKIES must be true in production',
-      });
-    }
-    if (env.SIMULATED_PAYMENTS) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['SIMULATED_PAYMENTS'],
-        message: 'SIMULATED_PAYMENTS cannot be enabled in production',
-      });
-    }
-    if (env.AUTH_DEV_EXPOSE_MAGIC_LINKS) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['AUTH_DEV_EXPOSE_MAGIC_LINKS'],
-        message: 'AUTH_DEV_EXPOSE_MAGIC_LINKS cannot be enabled in production',
       });
     }
     if (env.TOGETHER_VISUAL_CLOCK !== undefined) {

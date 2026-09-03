@@ -1908,6 +1908,8 @@ export const tenantSesSettings = pgTable(
     identityCheckError: text('identity_check_error'),
     configurationSet: text('configuration_set'),
     snsTopicArn: text('sns_topic_arn'),
+    snsSubscriptionEndpoint: text('sns_subscription_endpoint'),
+    snsSubscriptionConfirmedAt: timestamp('sns_subscription_confirmed_at', { withTimezone: true, mode: 'string' }),
     trackingEnabled: boolean('tracking_enabled').notNull().default(false),
     autoPauseOnCritical: boolean('auto_pause_on_critical').notNull().default(false),
     webhookToken: text('webhook_token').notNull(),
@@ -1930,6 +1932,18 @@ export const tenantSesSettings = pgTable(
   },
   (table) => [uniqueIndex('tenant_ses_settings_webhook_token_uidx').on(table.webhookToken)],
 );
+
+export const snsWebhookDeliveries = pgTable('sns_webhook_deliveries', {
+  tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+  receivedAt: timestamp('received_at', { withTimezone: true, mode: 'string' }).notNull(),
+  messageType: text('message_type').notNull(),
+  outcome: text('outcome', {
+    enum: ['verified', 'signature_failed', 'unknown_token', 'confirm_failed', 'apply_failed', 'recorded'],
+  }).notNull(),
+  errorMessage: text('error_message'),
+  sourceIp: text('source_ip'),
+  userAgent: text('user_agent'),
+});
 
 export const marketingThrottleBuckets = pgTable(
   'marketing_throttle_buckets',

@@ -15,6 +15,7 @@ import {
   type ConsentDocumentVersionRef,
   type EmailLayout,
   type Result,
+  type SnsWebhookDelivery,
   type TenantDocument,
   type TenantDocumentVersion,
   type TenantSesSettings,
@@ -32,6 +33,7 @@ import type {
   MarketingSesCredentialResolver,
   PlatformTransactionalPool,
   SesOnboardingControlPlane,
+  SnsWebhookDeliveryRepository,
   TenantDocumentRepository,
   TenantSecretRepository,
   TenantSesSettingsRepository,
@@ -318,6 +320,7 @@ interface TenantSendingSettingsOutput {
   resendConfigured: boolean;
   platformPool: { used: number; limit: 1000 };
   webhookUrl: string | null;
+  lastSnsDelivery: SnsWebhookDelivery | null;
 }
 
 export const getTenantSesMarketingSettings = async (
@@ -327,14 +330,16 @@ export const getTenantSesMarketingSettings = async (
     settings: TenantSesSettingsRepository;
     secrets: TenantSecretRepository;
     pool: PlatformTransactionalPool;
+    snsDeliveries: SnsWebhookDeliveryRepository;
   },
 ): Promise<Result<TenantSendingSettingsOutput, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:ses:read');
   if (!tenantId.ok) return tenantId;
-  const [settings, storedSecrets, usage] = await Promise.all([
+  const [settings, storedSecrets, usage, lastSnsDelivery] = await Promise.all([
     deps.settings.findByTenant(tenantId.value),
     deps.secrets.listByTenant(tenantId.value),
     deps.pool.usage(tenantId.value),
+    deps.snsDeliveries.findByTenant(tenantId.value),
   ]);
   const hasCredentials = hasSecrets(storedSecrets, sesSecretKeys);
   const hasSenderIdentity = senderIdentityConfigured(settings);
@@ -343,6 +348,7 @@ export const getTenantSesMarketingSettings = async (
     smtpConfigured: hasSenderIdentity && hasSecrets(storedSecrets, smtpSecretKeys),
     resendConfigured: hasSenderIdentity && hasSecrets(storedSecrets, resendSecretKeys),
     platformPool: { used: usage.sent, limit: 1000 as const },
+    lastSnsDelivery,
   };
   if (settings === null) return ok({ settings: null, ...transport, webhookUrl: null });
   const derived = { ...settings, broadcastsEnabled: broadcastsEnabled(settings, hasCredentials) };
@@ -373,6 +379,7 @@ export const updateTenantSesMarketingSettings = async (
     clock: Clock;
     webhookBaseUrl: string;
     pool: PlatformTransactionalPool;
+    snsDeliveries: SnsWebhookDeliveryRepository;
     sesOnboarding?: SesIdentityCheckDeps;
   },
 ): Promise<Result<TenantSendingSettingsOutput, AppError>> => {
@@ -381,10 +388,11 @@ export const updateTenantSesMarketingSettings = async (
   if (input.trackingEnabled && input.configurationSet === null) {
     return err(validation('Open and click tracking requires an SES configuration set'));
   }
-  const [current, storedSecrets, usage] = await Promise.all([
+  const [current, storedSecrets, usage, lastSnsDelivery] = await Promise.all([
     deps.settings.findByTenant(tenantId.value),
     deps.secrets.listByTenant(tenantId.value),
     deps.pool.usage(tenantId.value),
+    deps.snsDeliveries.findByTenant(tenantId.value),
   ]);
   const hasCredentials = hasSecrets(storedSecrets, sesSecretKeys);
   const settings: TenantSesSettings = {
@@ -400,6 +408,10 @@ export const updateTenantSesMarketingSettings = async (
       current?.identity === input.identity ? current.identityCheckError : null,
     configurationSet: input.configurationSet,
     snsTopicArn: input.snsTopicArn,
+    snsSubscriptionEndpoint:
+      current?.snsTopicArn === input.snsTopicArn ? current.snsSubscriptionEndpoint : null,
+    snsSubscriptionConfirmedAt:
+      current?.snsTopicArn === input.snsTopicArn ? current.snsSubscriptionConfirmedAt : null,
     trackingEnabled: input.trackingEnabled,
     autoPauseOnCritical: input.autoPauseOnCritical,
     webhookToken: current?.webhookToken ?? deps.tokens.nextToken(),
@@ -430,5 +442,6 @@ export const updateTenantSesMarketingSettings = async (
     resendConfigured: hasSenderIdentity && hasSecrets(storedSecrets, resendSecretKeys),
     platformPool: { used: usage.sent, limit: 1000 as const },
     webhookUrl: `${deps.webhookBaseUrl}/${stored.webhookToken}`,
+    lastSnsDelivery,
   });
 };

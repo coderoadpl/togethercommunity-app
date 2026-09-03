@@ -20,7 +20,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { sesIdentityFreshness } from '#core/domain/index.js';
+import { sesIdentityFreshness, type SnsWebhookDelivery } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -31,7 +31,7 @@ import {
   useLanguage,
   useTranslations,
 } from '../../../i18n/index.js';
-import { formatDateTime } from '../../../lib/format.js';
+import { formatDateTime, formatRelativeTime } from '../../../lib/format.js';
 import { MarketingReadiness } from './MarketingReadiness.js';
 import { ProviderTest } from './ProviderTest.js';
 import { ReputationSummary } from './ReputationSummary.js';
@@ -58,13 +58,31 @@ const WizardError = ({ error }: { error: unknown }) => {
   );
 };
 
+const LastSnsDelivery = ({ delivery }: { delivery: SnsWebhookDelivery | null }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  return (
+    <Typography variant="body2" data-testid="marketing-sns-last-delivery">
+      {delivery === null
+        ? t.marketing.snsLastDeliveryNone
+        : t.marketing.snsLastDelivery({
+            messageType: delivery.messageType,
+            when: formatRelativeTime(delivery.receivedAt, language),
+            outcome: t.marketing.snsOutcome[delivery.outcome],
+          })}
+    </Typography>
+  );
+};
+
 const SesOnboardingWizard = ({
   enabled,
   identityAlreadyVerified,
+  lastDelivery,
   onChecklist,
 }: {
   enabled: boolean;
   identityAlreadyVerified: boolean;
+  lastDelivery: SnsWebhookDelivery | null;
   onChecklist(checklist: LiveSesChecklist): void;
 }) => {
   const t = useTranslations();
@@ -75,6 +93,18 @@ const SesOnboardingWizard = ({
   const simulator = useMutation(actions.testMarketingSesSimulator);
   const refresh = async () => {
     await queryClient.invalidateQueries(actions.marketingInvalidates());
+  };
+  const runPoll = () => {
+    poll.mutate(undefined, {
+      onSuccess: (status) => {
+        onChecklist(status.checklist);
+        void refresh();
+      },
+    });
+  };
+  const pollAgain = () => {
+    provision.reset();
+    runPoll();
   };
   const records = identity.data?.records ?? poll.data?.records ?? [];
   const pending = identity.isPending || provision.isPending || poll.isPending || simulator.isPending;
@@ -89,7 +119,7 @@ const SesOnboardingWizard = ({
           type="button"
           variant={identityAlreadyVerified ? 'outlined' : 'contained'}
           disabled={!enabled || pending}
-          onClick={() => identity.mutate({ kind: 'domain' })}
+          onClick={() => identity.mutate({ kind: 'domain' }, { onSuccess: () => void refresh() })}
         >
           {t.marketing.wizardDomainIdentity}
         </Button>
@@ -97,7 +127,7 @@ const SesOnboardingWizard = ({
           type="button"
           variant="outlined"
           disabled={!enabled || pending}
-          onClick={() => identity.mutate({ kind: 'email' })}
+          onClick={() => identity.mutate({ kind: 'email' }, { onSuccess: () => void refresh() })}
         >
           {t.marketing.wizardEmailIdentity}
         </Button>
@@ -139,7 +169,12 @@ const SesOnboardingWizard = ({
           type="button"
           variant="contained"
           disabled={!enabled || pending}
-          onClick={() => provision.mutate(undefined, { onSuccess: () => void refresh() })}
+          onClick={() => provision.mutate(undefined, {
+            onSuccess: () => {
+              void refresh();
+              runPoll();
+            },
+          })}
         >
           {t.marketing.wizardProvision}
         </Button>
@@ -147,16 +182,29 @@ const SesOnboardingWizard = ({
           type="button"
           variant="outlined"
           disabled={!enabled || pending}
-          onClick={() => poll.mutate(undefined, {
-            onSuccess: (status) => {
-              onChecklist(status.checklist);
-              void refresh();
-            },
-          })}
+          onClick={pollAgain}
         >
           {t.marketing.wizardPoll}
         </Button>
       </Stack>
+      {provision.data === undefined ? null : (
+        <Alert severity="success">
+          <AlertTitle>{t.marketing.wizardProvisionDone}</AlertTitle>
+          <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+            {t.marketing.wizardProvisionSummary({
+              configurationSet: provision.data.configurationSet,
+              topicArn: provision.data.topicArn,
+              endpoint: provision.data.subscriptionEndpoint,
+            })}
+          </Typography>
+          <Typography variant="body2">
+            {provision.data.subscriptionConfirmed
+              ? t.marketing.wizardSubscriptionConfirmed
+              : t.marketing.wizardSubscriptionPending}
+          </Typography>
+        </Alert>
+      )}
+      <LastSnsDelivery delivery={lastDelivery} />
       {poll.data?.identityRegressed === true ? <Alert severity="error">{t.marketing.wizardRegression}</Alert> : null}
       {poll.data?.feedbackForwardingDisabled === true ? <Alert severity="success">{t.marketing.wizardFeedbackDisabled}</Alert> : null}
       <Typography variant="body2">{t.marketing.wizardSimulatorHint}</Typography>
@@ -455,6 +503,8 @@ export const EmailTab = () => {
     && settings.footerAddress.trim() !== '';
   const verified = settings?.identityVerifiedAt !== null && settings?.identityVerifiedAt !== undefined;
   const webhookVerified = settings?.webhookVerifiedAt !== null && settings?.webhookVerifiedAt !== undefined;
+  const subscriptionConfirmed = settings?.snsSubscriptionConfirmedAt !== null
+    && settings?.snsSubscriptionConfirmedAt !== undefined;
   const enabled = settings?.broadcastsEnabled ?? false;
   const pool = result.data.platformPool;
   const identityFreshness =
@@ -492,7 +542,7 @@ export const EmailTab = () => {
           { label: t.marketing.credentialsConfigured, ready: credentialsConfigured },
           { label: t.marketing.identityVerified, ready: liveChecklist?.identity ?? verified, caption: identityCaption },
           { label: t.marketing.configurationSetConfigured, ready: liveChecklist?.configurationSet ?? (settings?.configurationSet !== null && settings?.configurationSet !== undefined) },
-          { label: t.marketing.wizardSubscription, ready: liveChecklist?.snsSubscription ?? (settings?.snsTopicArn !== null && settings?.snsTopicArn !== undefined) },
+          { label: t.marketing.wizardSubscription, ready: liveChecklist?.snsSubscription ?? subscriptionConfirmed },
           { label: t.marketing.webhookVerified, ready: liveChecklist?.webhook ?? webhookVerified },
           { label: t.marketing.footerConfigured, ready: liveChecklist?.footer ?? footerConfigured },
           { label: t.marketing.wizardProductionAccess, ready: liveChecklist?.productionAccess ?? (settings?.quotaRefreshedAt !== null && settings?.quotaRefreshedAt !== undefined && settings?.inSandbox === false) },
@@ -590,6 +640,7 @@ export const EmailTab = () => {
       <SesOnboardingWizard
         enabled={credentialsConfigured && settings !== null}
         identityAlreadyVerified={identityAlreadyVerified}
+        lastDelivery={result.data.lastSnsDelivery}
         onChecklist={setLiveChecklist}
       />
       <SmtpForm configured={result.data.smtpConfigured} />

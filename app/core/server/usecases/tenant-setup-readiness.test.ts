@@ -83,6 +83,8 @@ const senderSettings = (overrides: Partial<TenantSesSettings> = {}): TenantSesSe
   identityCheckError: null,
   configurationSet: null,
   snsTopicArn: null,
+  snsSubscriptionEndpoint: null,
+  snsSubscriptionConfirmedAt: null,
   trackingEnabled: true,
   autoPauseOnCritical: true,
   webhookToken: 'token-token-token-token',

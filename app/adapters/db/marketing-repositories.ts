@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 
 import {
   automationIdempotencyKeySchema,
@@ -11,6 +11,8 @@ import {
   emailEventSchema,
   marketingConsentSchema,
   normalizeEmail,
+  snsWebhookDeliverySchema,
+  snsWebhookDeliveryStaleBefore,
   suppressionSchema,
   tenantDocumentSchema,
   tenantDocumentVersionSchema,
@@ -31,6 +33,7 @@ import type {
   MarketingConsentRepository,
   MarketingJobRepository,
   MarketingThrottleRepository,
+  SnsWebhookDeliveryRepository,
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
@@ -52,6 +55,7 @@ import {
   marketingThrottleBuckets,
   members,
   productGrants,
+  snsWebhookDeliveries,
   suppressions,
   tenantDocuments,
   tenantDocumentVersions,
@@ -94,7 +98,11 @@ const parseUnsubscribe = (row: typeof unsubscribeTokens.$inferSelect) => unsubsc
 const parseSesSettings = (row: typeof tenantSesSettings.$inferSelect) => tenantSesSettingsSchema.parse({
   ...row, identityVerifiedAt: nullableIso(row.identityVerifiedAt), identityCheckedAt: nullableIso(row.identityCheckedAt),
   quotaRefreshedAt: nullableIso(row.quotaRefreshedAt), webhookVerifiedAt: nullableIso(row.webhookVerifiedAt),
+  snsSubscriptionConfirmedAt: nullableIso(row.snsSubscriptionConfirmedAt),
   reputationAlertedAt: nullableIso(row.reputationAlertedAt),
+});
+const parseSnsWebhookDelivery = (row: typeof snsWebhookDeliveries.$inferSelect) => snsWebhookDeliverySchema.parse({
+  ...row, receivedAt: iso(row.receivedAt),
 });
 const parseIdempotency = (row: typeof marketingIdempotencyKeys.$inferSelect) => automationIdempotencyKeySchema.parse({
   ...row, claimedAt: iso(row.claimedAt), expiresAt: iso(row.expiresAt),
@@ -586,6 +594,25 @@ export const createTenantSesSettingsRepository = (db: Db): TenantSesSettingsRepo
     const [row] = await db.insert(tenantSesSettings).values(parsed).onConflictDoUpdate({ target: tenantSesSettings.tenantId, set: parsed }).returning();
     if (row === undefined) throw new Error('SES settings upsert returned no row');
     return parseSesSettings(row);
+  },
+});
+
+export const createSnsWebhookDeliveryRepository = (db: Db): SnsWebhookDeliveryRepository => ({
+  findByTenant: async (tenantId) => {
+    const [row] = await db.select().from(snsWebhookDeliveries)
+      .where(eq(snsWebhookDeliveries.tenantId, tenantId)).limit(1);
+    return row === undefined ? null : parseSnsWebhookDelivery(row);
+  },
+  record: async (tenantId, delivery) => {
+    const parsed = snsWebhookDeliverySchema.parse({ ...delivery, tenantId });
+    await db.insert(snsWebhookDeliveries).values(parsed)
+      .onConflictDoUpdate({
+        target: snsWebhookDeliveries.tenantId,
+        set: parsed,
+        setWhere: sql`${ne(snsWebhookDeliveries.outcome, parsed.outcome)} or ${
+          lt(snsWebhookDeliveries.receivedAt, snsWebhookDeliveryStaleBefore(parsed.receivedAt))
+        }`,
+      });
   },
 });
 

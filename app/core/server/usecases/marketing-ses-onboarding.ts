@@ -151,6 +151,12 @@ export const provisionSesInfrastructure = async (
     endpoint: context.value.webhookUrl,
   });
   if (!subscription.ok) return subscription;
+  current = await store(deps, context.value.tenantId, current, {
+    snsSubscriptionEndpoint: subscription.value.endpoint,
+    snsSubscriptionConfirmedAt: subscription.value.confirmed
+      ? current.snsSubscriptionConfirmedAt ?? deps.clock.nowIso()
+      : null,
+  });
   const destination = await deps.controlPlane.ensureEventDestination(context.value.credentials, {
     configurationSet: configurationSet.value.name,
     topicArn: topic.value.arn,
@@ -187,6 +193,7 @@ export const provisionSesInfrastructure = async (
   return ok({
     configurationSet: current.configurationSet ?? configurationSet.value.name,
     topicArn: current.snsTopicArn ?? topic.value.arn,
+    subscriptionEndpoint: subscription.value.endpoint,
     subscriptionConfirmed: subscription.value.confirmed,
     feedbackForwardingDisabled,
   });
@@ -211,7 +218,7 @@ export const pollSesOnboarding = async (
   });
   let configurationSetReady = false;
   let eventDestinationReady = false;
-  let subscriptionConfirmed = false;
+  let observedSubscription: boolean | null = null;
   if (current.configurationSet !== null && current.snsTopicArn !== null) {
     const infrastructure = await deps.controlPlane.readInfrastructure(context.value.credentials, {
       configurationSet: current.configurationSet,
@@ -220,14 +227,17 @@ export const pollSesOnboarding = async (
       ),
       topicArn: current.snsTopicArn,
       endpoint: context.value.webhookUrl,
+      subscribedEndpoint: current.snsSubscriptionEndpoint,
     });
     if (!infrastructure.ok) return infrastructure;
     configurationSetReady = infrastructure.value.configurationSetReady;
     eventDestinationReady = infrastructure.value.eventDestinationReady;
-    subscriptionConfirmed = infrastructure.value.subscriptionConfirmed;
+    observedSubscription = infrastructure.value.subscriptionConfirmed;
   }
+  const subscriptionConfirmed = observedSubscription
+    ?? current.snsSubscriptionConfirmedAt !== null;
   let feedbackForwardingDisabled = false;
-  if (subscriptionConfirmed) {
+  if (observedSubscription === true) {
     const feedback = await deps.controlPlane.disableFeedbackForwarding(context.value.credentials, current.identity);
     if (!feedback.ok) return feedback;
     feedbackForwardingDisabled = true;
@@ -238,6 +248,13 @@ export const pollSesOnboarding = async (
     webhookVerifiedAt: configurationSetReady && eventDestinationReady && subscriptionConfirmed
       ? current.webhookVerifiedAt
       : null,
+    ...(observedSubscription === null ? {} : {
+      snsSubscriptionConfirmedAt: observedSubscription
+        ? current.snsSubscriptionConfirmedAt ?? deps.clock.nowIso()
+        : null,
+    }),
+    identityCheckedAt: deps.clock.nowIso(),
+    identityCheckError: null,
     quotaRatePerSec: quota.value.ratePerSecond,
     quotaDaily: quota.value.daily,
     quotaSentLast24Hours: quota.value.sentLast24Hours,
@@ -317,6 +334,7 @@ const checkTenantSesIdentity = async (
       ),
       topicArn: settings.snsTopicArn,
       endpoint: `${deps.webhookBaseUrl}/${settings.webhookToken}`,
+      subscribedEndpoint: settings.snsSubscriptionEndpoint,
     },
   );
   if (!infrastructure.ok) {
@@ -325,9 +343,15 @@ const checkTenantSesIdentity = async (
       identityCheckError: infrastructure.error.message,
     });
   }
+  const confirmed = {
+    ...patch,
+    snsSubscriptionConfirmedAt: infrastructure.value.subscriptionConfirmed
+      ? settings.snsSubscriptionConfirmedAt ?? deps.clock.nowIso()
+      : null,
+  };
   return store(deps, tenantId, settings, infrastructure.value.configurationSetReady
-    ? patch
-    : { ...patch, configurationSet: null, webhookVerifiedAt: null });
+    ? confirmed
+    : { ...confirmed, configurationSet: null, webhookVerifiedAt: null });
 };
 
 export const listSesIdentities = async (

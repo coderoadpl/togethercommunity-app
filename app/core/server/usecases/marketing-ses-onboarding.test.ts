@@ -23,6 +23,7 @@ import {
   type SesOnboardingControlPlane,
 } from './marketing-ses-onboarding.js';
 import {
+  InMemorySnsWebhookDeliveryRepository,
   InMemoryTenantSesSettingsRepository,
 } from '../testing/marketing-fakes.js';
 
@@ -57,6 +58,8 @@ const settings = (overrides: Partial<TenantSesSettings> = {}): TenantSesSettings
   identityCheckError: null,
   configurationSet: null,
   snsTopicArn: null,
+  snsSubscriptionEndpoint: null,
+  snsSubscriptionConfirmedAt: null,
   trackingEnabled: false,
   autoPauseOnCritical: false,
   webhookToken: 'webhook_token_123456789012345',
@@ -86,6 +89,8 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   simulatorRecipients: string[] = [];
   accountIdentities: SesAccountIdentity[] = [];
   accessDeniedAction: string | null = null;
+  subscribedEndpoints: string[] = [];
+  readSubscribedEndpoints: (string | null)[] = [];
 
   async listIdentities() {
     return ok({ identities: this.accountIdentities, accessDeniedAction: this.accessDeniedAction });
@@ -120,14 +125,17 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
     return ok({ arn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1' });
   }
 
-  async ensureSubscription() {
+  async ensureSubscription(_credentials: unknown, input: { endpoint: string }) {
+    this.subscribedEndpoints.push(input.endpoint);
     return ok({
       confirmed: this.subscriptionConfirmed,
       arn: this.subscriptionConfirmed ? 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1:sub' : null,
+      endpoint: input.endpoint,
     });
   }
 
-  async readInfrastructure() {
+  async readInfrastructure(_credentials: unknown, input: { subscribedEndpoint: string | null }) {
+    this.readSubscribedEndpoints.push(input.subscribedEndpoint);
     return ok({
       configurationSetReady: this.infrastructureReady,
       eventDestinationReady: true,
@@ -409,6 +417,97 @@ describe('SES onboarding wizard', () => {
     });
   });
 
+  it('stamps the subscription confirmation and the subscribed endpoint when SNS confirms it', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings()]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+
+    const result = await provisionSesInfrastructure(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({ ok: true, value: { subscriptionEndpoint: WEBHOOK_URL } });
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: NOW,
+    });
+    expect(controlPlane.subscribedEndpoints).toEqual([WEBHOOK_URL]);
+  });
+
+  it('leaves the subscription unconfirmed while SNS still reports it as pending', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings()]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.subscriptionConfirmed = false;
+
+    await provisionSesInfrastructure(ctx, deps(repository, controlPlane));
+
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: null,
+    });
+  });
+
+  it('clears the persisted confirmation when a poll no longer observes a confirmed subscription', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+    controlPlane.subscriptionConfirmed = false;
+
+    const result = await pollSesOnboarding(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({ ok: true, value: { checklist: { snsSubscription: false } } });
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionConfirmedAt: null,
+    });
+    expect(controlPlane.readSubscribedEndpoints).toEqual([WEBHOOK_URL]);
+  });
+
+  it('keeps the confirmation when the poll cannot observe the subscription', async () => {
+    const confirmedAt = '2026-07-20T10:00:00.000Z';
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: NOW,
+      configurationSet: null,
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: confirmedAt,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+
+    const result = await pollSesOnboarding(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({ ok: true, value: { checklist: { snsSubscription: true } } });
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionConfirmedAt: confirmedAt,
+    });
+    expect(controlPlane.readSubscribedEndpoints).toEqual([]);
+  });
+
+  it('keeps the poll and the stored readiness in sync and records the identity check time', async () => {
+    const confirmedAt = '2026-07-20T10:00:00.000Z';
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: confirmedAt,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+
+    const result = await pollSesOnboarding(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({ ok: true, value: { checklist: { snsSubscription: true } } });
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionConfirmedAt: confirmedAt,
+      identityCheckedAt: NOW,
+      identityCheckError: null,
+    });
+  });
+
   it('sends the simulator bounce and leaves webhook readiness to the SNS round-trip', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
       identityVerifiedAt: NOW,
@@ -477,6 +576,7 @@ describe('SES onboarding wizard', () => {
       clock: { nowIso: () => NOW },
       webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
       pool: platformPool,
+      snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
       sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
     });
 
@@ -498,6 +598,7 @@ describe('SES onboarding wizard', () => {
       clock: { nowIso: () => NOW },
       webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
       pool: platformPool,
+      snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
       sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
     });
 
@@ -526,6 +627,7 @@ describe('SES onboarding wizard', () => {
       clock: { nowIso: () => NOW },
       webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
       pool: platformPool,
+      snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
       sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
     });
 

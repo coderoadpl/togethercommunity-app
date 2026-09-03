@@ -1,6 +1,6 @@
 {
-  "hash": "db47a50e7e3961ac95809670b883eaba29573458c8855d49fee9d23bc5287048",
-  "shortId": "db47a50e7e39",
+  "hash": "19d4f0d60f53c687b5afd4ea1a0a484ce4dfe66b758bc817745e00915a1d51c5",
+  "shortId": "19d4f0d60f53",
   "schema": {
     "constraints": [
       {
@@ -545,6 +545,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "sns_webhook_deliveries_tenant_id_tenants_id_fk",
+        "table": "sns_webhook_deliveries"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "space_event_rsvps_tenant_id_tenants_id_fk",
         "table": "space_event_rsvps"
       },
@@ -1077,6 +1082,11 @@
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "marketing_throttle_buckets_pkey",
         "table": "marketing_throttle_buckets"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id)",
+        "name": "sns_webhook_deliveries_pkey",
+        "table": "sns_webhook_deliveries"
       },
       {
         "definition": "PRIMARY KEY (tenant_id)",
@@ -2182,6 +2192,22 @@
             "name": "reputation_alerted_at",
             "notNull": false,
             "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sns_subscription_confirmed_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sns_subscription_endpoint",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,
@@ -8559,6 +8585,67 @@
           }
         ],
         "name": "erased_member_imports"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "error_message",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "message_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "outcome",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "received_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source_ip",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "user_agent",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "sns_webhook_deliveries"
       },
       {
         "columns": [

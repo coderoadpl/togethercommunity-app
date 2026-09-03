@@ -549,16 +549,16 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/internal-app.ts:151` | `authenticateApiKey,` |
 | api-key | `apps/server/src/internal-app.ts:942` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
 | api-key | `apps/server/src/internal-app.ts:944` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1408` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1408` | `(identity.staffRole \|\| identity.memberId)` |
+| staff-role | `apps/server/src/internal-app.ts:1410` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1410` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
-| api-key | `apps/server/src/marketing-routes.ts:82` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
-| api-key | `apps/server/src/marketing-routes.ts:91` | `identity: apiIdentity(tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:102` | `const key = headers.get(API_KEY_HEADER);` |
-| api-key | `apps/server/src/marketing-routes.ts:104` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
-| api-key | `apps/server/src/marketing-routes.ts:110` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:554` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
+| api-key | `apps/server/src/marketing-routes.ts:85` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
+| api-key | `apps/server/src/marketing-routes.ts:94` | `identity: apiIdentity(tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:105` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/marketing-routes.ts:107` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
+| api-key | `apps/server/src/marketing-routes.ts:113` | `identity: apiIdentity(resolved.value.tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:640` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `core/server/usecases/community-access.ts:62` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:62` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:74` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

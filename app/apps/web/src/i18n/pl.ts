@@ -2120,6 +2120,22 @@ export const pl: Messages = {
     wizardDocs: 'Otwórz instrukcję dostępu produkcyjnego SES',
     wizardFeedbackDisabled: 'Przekazywanie powiadomień tożsamości jest wyłączone, ponieważ SNS jest potwierdzony.',
     wizardAwsRejected: 'Usługa AWS odrzuciła operację',
+    wizardProvisionDone: 'Infrastruktura SES + SNS jest utworzona',
+    wizardProvisionSummary: ({ configurationSet, topicArn, endpoint }: { configurationSet: string; topicArn: string; endpoint: string }) =>
+      `Zestaw konfiguracji: ${configurationSet} · Temat SNS: ${topicArn} · Endpoint subskrypcji: ${endpoint}`,
+    wizardSubscriptionConfirmed: 'Subskrypcja SNS jest potwierdzona.',
+    wizardSubscriptionPending: 'Subskrypcja SNS czeka na potwierdzenie. AWS wysyła je na endpoint webhooka — sprawdź status poniżej.',
+    snsLastDeliveryNone: 'Jeszcze nic nie dotarło',
+    snsLastDelivery: ({ messageType, when, outcome }: { messageType: string; when: string; outcome: string }) =>
+      `Ostatnie zdarzenie z SNS: ${messageType} · ${when} · ${outcome}`,
+    snsOutcome: {
+      verified: 'subskrypcja potwierdzona',
+      signature_failed: 'podpis odrzucony',
+      unknown_token: 'nieznany token webhooka',
+      confirm_failed: 'potwierdzenie nie powiodło się',
+      apply_failed: 'zdarzenie odrzucone przy zapisie',
+      recorded: 'zdarzenie zapisane',
+    },
     configurationSetLabel: 'Zestaw konfiguracji (configuration set)', snsTopicLabel: 'ARN tematu SNS', trackingEnabledLabel: 'Śledź otwarcia i kliknięcia marketingowe',
     autoPauseOnCriticalLabel: 'Wstrzymaj wysyłki przy krytycznej reputacji',
     autoPauseOnCriticalHint: 'Po usunięciu problemu wstrzymane kampanie trzeba wznowić ręcznie.',

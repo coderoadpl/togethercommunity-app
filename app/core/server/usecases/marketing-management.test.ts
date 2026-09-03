@@ -18,6 +18,7 @@ import {
   InMemoryEmailLayoutRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryTenantDocumentRepository,
+  InMemorySnsWebhookDeliveryRepository,
   InMemoryTenantSesSettingsRepository,
 } from '../testing/marketing-fakes.js';
 import {
@@ -33,6 +34,8 @@ import {
 } from './marketing-management.js';
 
 const NOW = '2026-07-22T10:00:00.000Z';
+const snsDeliveries = new InMemorySnsWebhookDeliveryRepository();
+
 const ctx: Ctx = { identity: {
   userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
@@ -188,6 +191,7 @@ describe('marketing management use-cases', () => {
       tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
       identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
       configurationSet: null, snsTopicArn: 'arn:topic',
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false,
       autoPauseOnCritical: false,
       webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
@@ -204,13 +208,13 @@ describe('marketing management use-cases', () => {
       settle: async () => undefined,
     };
     const read = await getTenantSesMarketingSettings(ctx, { webhookBaseUrl: 'https://tenant.test/api/webhooks/ses' }, {
-      settings: repository, secrets, pool,
+      settings: repository, secrets, pool, snsDeliveries,
     });
     expect(read.ok && read.value.settings?.broadcastsEnabled).toBe(false);
     await repository.upsert('tenant-1', { ...settings, configurationSet: 'marketing' });
     const configured = await getTenantSesMarketingSettings(ctx, {
       webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
-    }, { settings: repository, secrets, pool });
+    }, { settings: repository, secrets, pool, snsDeliveries });
     expect(configured.ok && configured.value.settings?.broadcastsEnabled).toBe(true);
 
     const sandboxed = await updateTenantSesMarketingSettings(ctx, {
@@ -224,6 +228,7 @@ describe('marketing management use-cases', () => {
       tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
       webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
       pool,
+      snsDeliveries,
     });
     expect(sandboxed.ok && sandboxed.value.settings?.broadcastsEnabled).toBe(false);
     expect(sandboxed.ok && sandboxed.value.settings?.trackingEnabled).toBe(true);
@@ -246,6 +251,7 @@ describe('marketing management use-cases', () => {
       clock,
       webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
       pool,
+      snsDeliveries,
     });
     expect(changedIdentity).toMatchObject({
       ok: true,
@@ -269,6 +275,7 @@ describe('marketing management use-cases', () => {
       tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
       webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
       pool,
+      snsDeliveries,
     })).toMatchObject({ ok: false, error: { code: 'validation' } });
 
     const unrefreshed = await updateTenantSesMarketingSettings(ctx, {
@@ -282,6 +289,7 @@ describe('marketing management use-cases', () => {
       tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
       webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
       pool,
+      snsDeliveries,
     });
     expect(unrefreshed).toMatchObject({
       ok: true,
@@ -291,6 +299,58 @@ describe('marketing management use-cases', () => {
           inSandbox: true,
           quotaRefreshedAt: null,
           broadcastsEnabled: false,
+        },
+      },
+    });
+  });
+
+  it('keeps the SNS subscription state only while the topic ARN stays the same', async () => {
+    const stored: TenantSesSettings = {
+      tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
+      identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: 'arn:topic',
+      snsSubscriptionEndpoint: 'https://tenant.test/api/webhooks/ses/webhook_token_123456789012345',
+      snsSubscriptionConfirmedAt: NOW,
+      trackingEnabled: false, autoPauseOnCritical: false,
+      webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
+      quotaSentLast24Hours: 0, quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW,
+      footerLegalName: 'Tenant Ltd', footerAddress: 'Street 1, Warsaw', broadcastsEnabled: false,
+      reputationAlertStatus: null, reputationAlertedAt: null,
+    };
+    const secrets = secretRepository(['ses.accessKeyId', 'ses.secretAccessKey', 'ses.region']);
+    const pool = {
+      usage: async () => ({ sent: 0, reserved: 0 }),
+      reserve: async () => true,
+      settle: async () => undefined,
+    };
+    const save = (snsTopicArn: string | null) => updateTenantSesMarketingSettings(ctx, {
+      fromAddress: stored.fromAddress, fromName: stored.fromName, identity: stored.identity,
+      configurationSet: stored.configurationSet, snsTopicArn,
+      trackingEnabled: false, autoPauseOnCritical: false,
+      footerLegalName: stored.footerLegalName, footerAddress: stored.footerAddress,
+    }, {
+      settings: new InMemoryTenantSesSettingsRepository([stored]), secrets,
+      tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
+      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      pool,
+      snsDeliveries,
+    });
+
+    expect(await save(stored.snsTopicArn)).toMatchObject({
+      ok: true,
+      value: {
+        settings: {
+          snsSubscriptionEndpoint: stored.snsSubscriptionEndpoint,
+          snsSubscriptionConfirmedAt: NOW,
+        },
+      },
+    });
+    expect(await save('arn:other-topic')).toMatchObject({
+      ok: true,
+      value: {
+        settings: {
+          snsSubscriptionEndpoint: null,
+          snsSubscriptionConfirmedAt: null,
         },
       },
     });
@@ -323,7 +383,7 @@ describe('marketing management use-cases', () => {
     const missingIdentity = await getTenantSesMarketingSettings(
       ctx,
       { webhookBaseUrl: 'https://tenant.test/api/webhooks/ses' },
-      { settings, secrets, pool },
+      { settings, secrets, pool, snsDeliveries },
     );
 
     expect(missingIdentity).toMatchObject({
@@ -349,6 +409,7 @@ describe('marketing management use-cases', () => {
       clock,
       webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
       pool,
+      snsDeliveries,
     });
 
     expect(configured).toMatchObject({

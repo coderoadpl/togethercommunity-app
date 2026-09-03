@@ -23,6 +23,8 @@ import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-rout
 import {
   err,
   emailEventSchema,
+  forbidden,
+  integrationUnavailable,
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
   notFound,
@@ -45,6 +47,7 @@ import {
   type Tenant,
   type TenantApiKey,
   type TenantDomain,
+  type TenantSesSettings,
   type TermsConsent,
   type TenantApiKeyScope,
 } from '#core/domain/index.js';
@@ -73,6 +76,7 @@ import {
   InMemorySchedulerRunRepository,
   InMemoryMarketingThrottleRepository,
   InMemorySuppressionRepository,
+  InMemorySnsWebhookDeliveryRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
 } from '#core/server/testing/marketing-fakes.js';
@@ -915,6 +919,7 @@ const marketingDeps = (): MarketingAppDeps => ({
   suppressions: new InMemorySuppressionRepository(),
   unsubscribes: new InMemoryUnsubscribeTokenRepository(),
   sesSettings: new InMemoryTenantSesSettingsRepository(),
+  snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
   platformTransactionalPool: {
     usage: async () => ({ sent: 0, reserved: 0 }),
     reserve: async () => true,
@@ -953,8 +958,11 @@ const marketingDeps = (): MarketingAppDeps => ({
   }),
 });
 
-const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> => {
-  const configured = deps();
+const marketingApp = (
+  marketing = marketingDeps(),
+  logger?: AppDeps['logger'],
+): ReturnType<typeof buildApp> => {
+  const configured = deps(logger === undefined ? {} : { logger });
   configured.marketing = marketing;
   configured.tenantApiKeys = {
     listByTenant: async () => [],
@@ -1493,6 +1501,7 @@ describe('marketing HTTP surfaces', () => {
         tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
         identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
         identityCheckError: null, configurationSet: null, snsTopicArn: 'topic',
+        snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
         trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token',
         quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0,
         quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
@@ -1807,7 +1816,8 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: 'marketing',
-      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      snsTopicArn: null, snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
+      trackingEnabled: false, autoPauseOnCritical: false,
       webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '1998-07-22T00:00:00.000Z', footerLegalName: 'Acme',
@@ -1839,7 +1849,8 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: 'marketing',
-      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      snsTopicArn: null, snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
+      trackingEnabled: false, autoPauseOnCritical: false,
       webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '1998-07-22T00:00:00.000Z', footerLegalName: 'Acme',
@@ -1935,7 +1946,8 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: null,
-      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false,
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme',
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null, trackingEnabled: false,
       autoPauseOnCritical: false, webhookToken: 'webhook-token',
       quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
@@ -1958,6 +1970,7 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
@@ -2008,6 +2021,7 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: true, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
@@ -2060,6 +2074,7 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
@@ -2084,6 +2099,200 @@ describe('marketing HTTP surfaces', () => {
     }
     expect(await sends.correlateBySesMessageId('t-acme', 'ses-delivery'))
       .toMatchObject({ deliveryStatus: 'delivered' });
+  });
+
+  describe('SNS webhook diagnostics', () => {
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const now = '1998-07-22T00:00:00.000Z';
+    const snsSettings = (): TenantSesSettings => ({
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: 'https://start.localhost/api/webhooks/ses/webhook-token',
+      snsSubscriptionConfirmedAt: null,
+      trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token',
+      quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now,
+      inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: false, reputationAlertStatus: null, reputationAlertedAt: null,
+    });
+
+    it('records a confirm_failed diagnostic and logs instead of swallowing a failed SNS confirmation', async () => {
+      const marketing = marketingDeps();
+      const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sesSettings = settings;
+      marketing.sns = new FakeSnsVerifier(
+        ok({ type: 'SubscriptionConfirmation', topicArn, message: '{}', subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription' }),
+        err(integrationUnavailable('SNS confirmation returned HTTP 503')),
+      );
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'SubscriptionConfirmation',
+        outcome: 'confirm_failed',
+        errorMessage: 'SNS confirmation returned HTTP 503',
+      });
+      expect((await settings.findByTenant('t-acme'))?.snsSubscriptionConfirmedAt).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=confirm_failed'));
+    });
+
+    it('persists the confirmed subscription timestamp when SNS accepts the confirmation', async () => {
+      const marketing = marketingDeps();
+      const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sesSettings = settings;
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'SubscriptionConfirmation', topicArn, message: '{}',
+        subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription',
+      }));
+
+      const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
+      });
+
+      expect(response.status).toBe(200);
+      expect((await settings.findByTenant('t-acme'))?.snsSubscriptionConfirmedAt)
+        .toBe('1998-07-12T00:00:00.000Z');
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        outcome: 'verified', errorMessage: null,
+      });
+    });
+
+    it('records a signature_failed diagnostic when the SNS envelope does not verify', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(err(forbidden('Invalid SNS signature')));
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(403);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'Notification', outcome: 'signature_failed', errorMessage: 'Invalid SNS signature',
+      });
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=signature_failed'));
+    });
+
+    it('logs an unknown token without writing diagnostics into the host tenant', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/other-token', {
+        method: 'POST', body: '{}',
+        headers: { host: 'acme.localhost:48730', 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=unknown_token'));
+    });
+
+    it('keeps an unrecognised message type out of the diagnostics row', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(err(forbidden('Invalid SNS signature')));
+
+      await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'x'.repeat(5000) },
+      });
+
+      expect(await marketing.snsDeliveries.findByTenant('t-acme'))
+        .toMatchObject({ messageType: 'unknown' });
+    });
+
+    it('reports the verified envelope type rather than the unverified header', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'SubscriptionConfirmation', topicArn, message: '{}',
+        subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription',
+      }));
+
+      await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(await marketing.snsDeliveries.findByTenant('t-acme'))
+        .toMatchObject({ messageType: 'SubscriptionConfirmation', outcome: 'verified' });
+    });
+
+    it('logs a topic mismatch that it acknowledges without recording', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn: 'arn:aws:sns:eu-central-1:123:other', message: '{}',
+        subscribeUrl: null,
+      }));
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=topic_mismatch'));
+    });
+
+    it('records a recorded diagnostic for a verified SES notification', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn,
+        message: JSON.stringify({
+          eventType: 'Bounce',
+          mail: { messageId: 'ses-simulator-message', timestamp: now },
+          bounce: {
+            timestamp: now, bounceType: 'Permanent',
+            bouncedRecipients: [{ emailAddress: 'bounce@simulator.amazonses.com', status: '5.1.1' }],
+          },
+        }),
+        subscribeUrl: null,
+      }));
+
+      const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'Notification', outcome: 'recorded',
+      });
+    });
+
+    it('records an apply_failed diagnostic and logs when the event cannot be applied', async () => {
+      const marketing = marketingDeps();
+      const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sesSettings = settings;
+      vi.spyOn(settings, 'findByTenant').mockResolvedValue(null);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn,
+        message: JSON.stringify({
+          eventType: 'Delivery',
+          mail: { messageId: 'ses-simulator-message', timestamp: now },
+          delivery: { timestamp: now },
+        }),
+        subscribeUrl: null,
+      }));
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'Notification', outcome: 'apply_failed',
+        errorMessage: 'SNS topic does not match this tenant',
+      });
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=apply_failed'));
+    });
   });
 });
 

@@ -645,6 +645,13 @@
       "when": 1788465020410,
       "tag": "0091_tenant_logo_dark_url",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1788470790055,
+      "tag": "0092_ses_sns_subscription_state",
+      "breakpoints": true
     }
   ]
 }

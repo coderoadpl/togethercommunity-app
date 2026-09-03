@@ -147,7 +147,7 @@ describe('SES onboarding AWS adapter', () => {
       endpoint,
     });
 
-    expect(result).toEqual({ ok: true, value: { confirmed: false, arn: null } });
+    expect(result).toEqual({ ok: true, value: { confirmed: false, arn: null, endpoint } });
     expect(subscribe).toHaveBeenCalledWith(
       expect.any(SNSClient),
       {
@@ -178,7 +178,70 @@ describe('SES onboarding AWS adapter', () => {
       endpoint,
     });
 
-    expect(result).toEqual({ ok: true, value: { confirmed, arn } });
+    expect(result).toEqual({ ok: true, value: { confirmed, arn, endpoint } });
+  });
+
+  it.each([
+    'HTTPS://ACME.EXAMPLE.TEST/api/webhooks/ses',
+    'https://acme.example.test:443/api/webhooks/ses',
+    'https://acme.example.test/api/webhooks/ses/',
+  ])('reuses the subscription that SNS reports as %s', async (reported) => {
+    const subscribe = vi.fn(async () => ({ SubscriptionArn: 'pending confirmation', $metadata: {} }));
+    const controlPlane = createSesOnboardingControlPlane(factory, {
+      list: async () => [{
+        Protocol: 'https',
+        Endpoint: reported,
+        SubscriptionArn: 'arn:aws:sns:eu-central-1:123456789012:together:subscription-id',
+      }],
+      subscribe,
+    });
+
+    const result = await controlPlane.ensureSubscription(credentials, { topicArn, endpoint });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        confirmed: true,
+        arn: 'arn:aws:sns:eu-central-1:123456789012:together:subscription-id',
+        endpoint: reported,
+      },
+    });
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+
+  it('matches the persisted subscribe-time endpoint before the currently expected one', async () => {
+    const persisted = 'https://old.example.test/api/webhooks/ses';
+    const ses = new SESClient(credentials);
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises -- SES send also declares callback overloads, while this adapter uses the promise overload.
+    vi.spyOn(ses, 'send').mockImplementation(async () => ({ EventDestinations: [], $metadata: {} }));
+    const controlPlane = createSesOnboardingControlPlane(
+      () => ({ ses, sns: new SNSClient(credentials) }),
+      {
+        list: async () => [
+          {
+            Protocol: 'https',
+            Endpoint: `${persisted}/`,
+            SubscriptionArn: 'arn:aws:sns:eu-central-1:123456789012:together:persisted',
+          },
+          { Protocol: 'https', Endpoint: endpoint, SubscriptionArn: 'PendingConfirmation' },
+        ],
+        subscribe: async () => ({ SubscriptionArn: 'pending confirmation', $metadata: {} }),
+      },
+    );
+    const infrastructure = (subscribedEndpoint: string | null) => controlPlane.readInfrastructure(credentials, {
+      configurationSet: 'marketing',
+      transactionalConfigurationSet: 'marketing-transactional',
+      topicArn,
+      endpoint,
+      subscribedEndpoint,
+    });
+
+    expect(await infrastructure(persisted)).toMatchObject({
+      ok: true, value: { subscriptionConfirmed: true },
+    });
+    expect(await infrastructure(null)).toMatchObject({
+      ok: true, value: { subscriptionConfirmed: false },
+    });
   });
 
   it('pages through every SES identity and reports its verification and DKIM state', async () => {

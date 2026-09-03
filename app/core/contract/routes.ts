@@ -163,6 +163,7 @@ import {
   schedulerRunTenantItemSchema,
   schedulerRunTenantSchema,
   schedulerRunTenantSummarySchema,
+  snsWebhookDeliverySchema,
   suppressionSchema,
   tenantDocumentSchema,
   tenantDocumentVersionSchema,
@@ -1482,6 +1483,7 @@ export const marketingSesSettingsOutputSchema = z.object({
   resendConfigured: z.boolean(),
   platformPool: z.object({ used: z.number().int().nonnegative(), limit: z.literal(1000) }),
   webhookUrl: z.string().url().nullable(),
+  lastSnsDelivery: snsWebhookDeliverySchema.nullable(),
 });
 export const marketingReputationOutputSchema = emailReputationSchema;
 export const marketingSesSettingsUpdateInputSchema = z.object({
@@ -1538,6 +1540,7 @@ export const marketingSesOnboardingStatusSchema = z.object({
 export const marketingSesProvisionOutputSchema = z.object({
   configurationSet: z.string().min(1),
   topicArn: z.string().min(1),
+  subscriptionEndpoint: z.string().min(1),
   subscriptionConfirmed: z.boolean(),
   feedbackForwardingDisabled: z.boolean(),
 });

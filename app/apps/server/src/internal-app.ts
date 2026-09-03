@@ -1212,6 +1212,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       settings: deps.marketing.sesSettings,
       secrets: deps.tenantSecrets,
       pool: deps.marketing.platformTransactionalPool,
+      snsDeliveries: deps.marketing.snsDeliveries,
     }));
   });
 
@@ -1233,6 +1234,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') }, clock: deps.clock,
       webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
       pool: deps.marketing.platformTransactionalPool,
+      snsDeliveries: deps.marketing.snsDeliveries,
       ...(deps.marketing.sesOnboarding === undefined ? {} : {
         sesOnboarding: {
           credentials: deps.marketing.sesOnboarding.credentials,

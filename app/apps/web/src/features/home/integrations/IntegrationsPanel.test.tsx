@@ -235,6 +235,7 @@ const renderPanel = (
         platformPool: { used: 12, limit: 1000 },
         webhookUrl: 'https://app.example.test/api/webhooks/ses/webhook-token',
         settings: null,
+        lastSnsDelivery: null,
       },
     })),
     http.get('/api/marketing/reputation', () => HttpResponse.json({

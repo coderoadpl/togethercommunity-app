@@ -2095,6 +2095,7 @@ export const pl: Messages = {
     wizardProductionAccess: 'Dostęp produkcyjny SES',
     wizardDocs: 'Otwórz instrukcję dostępu produkcyjnego SES',
     wizardFeedbackDisabled: 'Przekazywanie powiadomień tożsamości jest wyłączone, ponieważ SNS jest potwierdzony.',
+    wizardAwsRejected: 'Usługa AWS odrzuciła operację',
     configurationSetLabel: 'Zestaw konfiguracji (configuration set)', snsTopicLabel: 'ARN tematu SNS', trackingEnabledLabel: 'Śledź otwarcia i kliknięcia marketingowe',
     autoPauseOnCriticalLabel: 'Wstrzymaj wysyłki przy krytycznej reputacji',
     autoPauseOnCriticalHint: 'Po usunięciu problemu wstrzymane kampanie trzeba wznowić ręcznie.',

@@ -43,7 +43,7 @@ const rows = () => collectRuntimeRoutes()
     const access = publicEntry !== undefined
       ? 'public'
       : route.path.startsWith('/api/dev/')
-        ? 'development-only'
+        ? 'local-development-only'
         : selfAuthenticatingEntry !== undefined
           ? 'self-authenticating'
           : 'authenticated';
@@ -57,6 +57,7 @@ const document = () => [
   '',
   'Generated from the Hono route table by `pnpm exec tsx scripts/generate-route-table.mjs`.',
   'Self-authenticating routes enforce a session, API key, or operator secret before the shared tenant identity middleware.',
+  'Local-development-only routes are registered exclusively when the process runs locally (`NODE_ENV` other than `production` with `APP_ENV` unset or `development`); production, staging and preview never mount them.',
   '',
   '| Route | Access | Operation | Purpose |',
   '|---|---|---|---|',

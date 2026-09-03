@@ -5,12 +5,13 @@ import {
   selectAuthTrustedProxyHeader,
   selectDeploymentAuthOrigins,
   selectDeploymentIdentity,
+  selectDevEndpoints,
   selectDevSinkPurge,
   selectTenantCreationMode,
   selectTenantRouting,
   selectTrustedAuthOrigins,
 } from './composition.js';
-import { envSchema, isProductionEnvironment } from './env.js';
+import { envSchema, isLocalDevelopmentEnvironment, isProductionEnvironment } from './env.js';
 
 const productionEnvironment = (overrides: Record<string, string | undefined> = {}) => ({
   NODE_ENV: 'production',
@@ -55,6 +56,70 @@ describe('production posture detection', () => {
   it('applies the same precedence to the boot-time schema', () => {
     expect(envSchema.safeParse({ NODE_ENV: 'production' }).success).toBe(false);
     expect(envSchema.parse({ NODE_ENV: 'production', APP_ENV: 'preview' }).KSEF_ENVIRONMENT).toBe('test');
+  });
+});
+
+describe('local development detection', () => {
+  it('accepts an unset or development APP_ENV outside a production NODE_ENV', () => {
+    expect(isLocalDevelopmentEnvironment({})).toBe(true);
+    expect(isLocalDevelopmentEnvironment({ NODE_ENV: 'development' })).toBe(true);
+    expect(isLocalDevelopmentEnvironment({ NODE_ENV: 'test', APP_ENV: '' })).toBe(true);
+    expect(isLocalDevelopmentEnvironment({ NODE_ENV: 'development', APP_ENV: 'development' })).toBe(true);
+  });
+
+  it('rejects every deployed environment, including the ones outside the production posture', () => {
+    expect(isLocalDevelopmentEnvironment({ NODE_ENV: 'production' })).toBe(false);
+    expect(isLocalDevelopmentEnvironment({ NODE_ENV: 'production', APP_ENV: 'staging' })).toBe(false);
+    expect(isLocalDevelopmentEnvironment({ NODE_ENV: 'production', APP_ENV: 'preview' })).toBe(false);
+    expect(isLocalDevelopmentEnvironment({ APP_ENV: 'staging' })).toBe(false);
+    expect(isLocalDevelopmentEnvironment({ APP_ENV: 'self-host' })).toBe(false);
+  });
+});
+
+describe('development-only endpoint flags', () => {
+  const deployedEnvironments = [
+    ['production', { NODE_ENV: 'production', APP_ENV: 'production' }],
+    ['staging', { NODE_ENV: 'production', APP_ENV: 'staging' }],
+    ['preview', { NODE_ENV: 'production', APP_ENV: 'preview' }],
+    ['self-host', { NODE_ENV: 'production', APP_ENV: 'self-host' }],
+  ] as const;
+
+  it.each(deployedEnvironments)('refuses to boot %s with the dev flags enabled', (_name, environment) => {
+    const parsed = envSchema.safeParse({
+      ...environment,
+      SIMULATED_PAYMENTS: 'true',
+      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+    });
+
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    expect(fieldErrors.SIMULATED_PAYMENTS).toContain(
+      'SIMULATED_PAYMENTS can only be enabled in local development '
+      + '(NODE_ENV must not be production and APP_ENV must be unset or development)',
+    );
+    expect(fieldErrors.AUTH_DEV_EXPOSE_MAGIC_LINKS).toContain(
+      'AUTH_DEV_EXPOSE_MAGIC_LINKS can only be enabled in local development '
+      + '(NODE_ENV must not be production and APP_ENV must be unset or development)',
+    );
+  });
+
+  it('accepts the flags in local development', () => {
+    const parsed = envSchema.parse({
+      NODE_ENV: 'development',
+      SIMULATED_PAYMENTS: 'true',
+      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+    });
+
+    expect(selectDevEndpoints(parsed)).toEqual({ simulatedPayments: true, exposeMagicLinks: true });
+  });
+
+  it.each(deployedEnvironments)('disables the endpoints on %s even when the flags are set', (_name, environment) => {
+    expect(selectDevEndpoints({
+      ...environment,
+      SIMULATED_PAYMENTS: true,
+      AUTH_DEV_EXPOSE_MAGIC_LINKS: true,
+    })).toEqual({ simulatedPayments: false, exposeMagicLinks: false });
   });
 });
 

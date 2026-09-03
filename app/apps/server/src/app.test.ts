@@ -15,6 +15,7 @@ import {
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
+import { selectDevEndpoints } from './composition.js';
 import { buildApp } from './app.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
 import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
@@ -3458,6 +3459,41 @@ describe('public route manifest', () => {
       'Stripe payment webhook',
       'Checkout session start',
       'Login, recovery, and magic-link authentication surface',
+    ]));
+  });
+});
+
+describe('development-only route table', () => {
+  const devRoutesFor = (environment: { NODE_ENV: string; APP_ENV: string }) =>
+    buildApp({
+      ...deps(),
+      devEndpoints: selectDevEndpoints({
+        ...environment,
+        SIMULATED_PAYMENTS: true,
+        AUTH_DEV_EXPOSE_MAGIC_LINKS: true,
+      }),
+    })
+      .routes
+      .filter((route) => route.path.startsWith('/api/dev/'))
+      .map((route) => `${route.method} ${route.path}`);
+
+  it.each([
+    ['production', { NODE_ENV: 'production', APP_ENV: 'production' }],
+    ['staging', { NODE_ENV: 'production', APP_ENV: 'staging' }],
+    ['preview', { NODE_ENV: 'production', APP_ENV: 'preview' }],
+    ['self-host', { NODE_ENV: 'production', APP_ENV: 'self-host' }],
+  ])('mounts no /api/dev route on %s even when the flags are set', (_name, environment) => {
+    expect(devRoutesFor(environment)).toEqual([]);
+  });
+
+  it('mounts the full /api/dev block in local development', () => {
+    expect(new Set(devRoutesFor({ NODE_ENV: 'development', APP_ENV: 'development' }))).toEqual(new Set([
+      `POST ${API_PATHS.devSimulatePurchase}`,
+      `GET ${API_PATHS.devMagicLink}`,
+      `GET ${API_PATHS.devEmail}`,
+      `POST ${API_PATHS.devGrant}`,
+      `POST ${API_PATHS.devSubscriptionSimulateCycle}`,
+      `POST ${API_PATHS.devSubscriptionSimulateFailure}`,
     ]));
   });
 });

@@ -3,6 +3,16 @@
 Together PoC on the strictly layered full-stack TypeScript foundation (§3 of the
 architecture spec is normative).
 
+## Language of repository artifacts
+
+This is a public repository. Everything that lands in it or on GitHub is written in
+**English**: code, identifiers, comments, commit messages, pull request titles and
+bodies, review comments, issue text, workflow output (bot comments, deployment
+descriptions), docs. Polish belongs only to product copy (i18n bundles) and to
+private, owner-facing notes outside this repository. Commits and pull requests carry
+no tool or session attribution (no generated-by footers, no session links); the
+provenance trail lives in the private notes.
+
 ## The two gates
 
 - `pnpm run check` = `typecheck` + `typecheck:islands` + `lint` + `lock-lint` +

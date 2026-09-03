@@ -44,13 +44,13 @@ jobs:
           [ -n "$numbers" ] || exit 0
           body=$(cat <<EOF
           <!-- staging-links -->
-          **Staging (gałąź \`staging\`, Vercel preview — wymaga zalogowania do Vercela):**
-          - Tenant CodeRoad: $TENANT_URL
-          - Panel platformy: $PLATFORM_URL
+          **Staging (branch \`staging\`, Vercel preview — requires a Vercel login):**
+          - CodeRoad tenant: $TENANT_URL
+          - Platform panel: $PLATFORM_URL
           - Health: $HEALTH_URL
-          - Deploymenty: $VERCEL_DEPLOYMENTS_URL
+          - Deployments: $VERCEL_DEPLOYMENTS_URL
 
-          Ostatni push do \`staging\`: \`${{ github.sha }}\`
+          Latest push to \`staging\`: \`${{ github.sha }}\`
           EOF
           )
           for n in $numbers; do

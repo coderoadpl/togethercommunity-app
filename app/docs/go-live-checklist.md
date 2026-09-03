@@ -141,21 +141,23 @@ The SigV4 presigner consumes those
 secrets through `core/server/usecases/lesson-media.ts` and
 `adapters/storage/s3.ts`.
 
-Create a fresh least-privilege IAM user limited to `s3:GetObject` on the media
-prefix. Store it on the production tenant:
+Create a fresh IAM user for the media bucket and store it on the production
+tenant through the storage flow, which probes the connection before saving:
 
 ```sh
-pnpm --silent run cli --tenant <slug> tenant-secret set s3.accessKeyId <id>
-pnpm --silent run cli --tenant <slug> tenant-secret set s3.secretAccessKey <secret>
+pnpm --silent run cli --tenant <slug> storage configure --provider aws_s3 \
+  --endpoint https://s3.<region>.amazonaws.com --region <region> \
+  --bucket <bucket> --access-key-id '<id>' --secret-access-key '<secret>'
 ```
 
-A tenant configured through the integrations panel wizard stores endpoint,
-region, bucket and both keys in the single encrypted `s3.configuration` secret
-instead. The legacy pair remains limited to imported lesson media playback;
-new attachment and product-download uploads require the wizard configuration.
+The generic `tenant-secret set` command rejects every `s3.*` key, so storage
+credentials always pass the probe first — the key needs write, read and delete
+on one scratch object, not only `s3:GetObject`. Endpoint, region, bucket and
+both keys end up in the single encrypted `s3.configuration` secret, which also
+backs imported lesson media playback when the legacy pair is absent.
 
-The commands are implemented in `apps/cli/src/main.ts:2368-2381`. Deactivate and
-then delete the legacy key in IAM. Delete the development copy with:
+Deactivate and then delete the legacy key in IAM. Delete the development copy
+with:
 
 ```sh
 pnpm --silent run cli --tenant akademia-samouka tenant-secret delete s3.accessKeyId

@@ -120,6 +120,8 @@ const feedItem = (input: Partial<SpaceFeedItem> & { id: string }): SpaceFeedItem
   ...input,
 });
 
+const markupLikeBody = 'Generic<T> plus <script>alert(1)</script>';
+
 const okMemberNavigation = (lockedSpaces: MemberNavigation['lockedSpaces']) =>
   http.get('/api/member/navigation', () =>
     HttpResponse.json({
@@ -287,6 +289,46 @@ describe('community pages', () => {
     const plainPost = within(screen.getByTestId('feed-post-p2'));
     expect(plainPost.queryByTestId('member-avatar-image')).toBeNull();
     expect(plainPost.getByTestId('member-avatar')).toHaveTextContent('OA');
+  });
+
+  it('renders angle-bracketed post bodies as literal text in the feed', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okFeed('s1', [feedItem({ id: 'p1', body: markupLikeBody })]),
+      okSeen(),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const body = await screen.findByTestId('post-body-p1');
+    expect(body.textContent).toBe(markupLikeBody);
+    expect(body.querySelector('script')).toBeNull();
+    expect(body.innerHTML).toContain('&lt;script&gt;');
+  });
+
+  it('renders angle-bracketed post bodies as literal text in the thread view', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okDiscussion([
+        {
+          ...feedItem({ id: 'p1', body: markupLikeBody }),
+          replies: [{ ...feedItem({ id: 'p2', parentPostId: 'p1', rootPostId: 'p1', body: markupLikeBody }), replies: [] }],
+        },
+      ]),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    for (const postId of ['p1', 'p2']) {
+      const body = await screen.findByTestId(`post-body-${postId}`);
+      expect(body.textContent).toBe(markupLikeBody);
+      expect(body.querySelector('script')).toBeNull();
+      expect(body.innerHTML).toContain('&lt;script&gt;');
+    }
   });
 
   it('publishes a root post through the composer', async () => {

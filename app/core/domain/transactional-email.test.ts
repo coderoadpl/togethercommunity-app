@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  directMessage,
   emailBrandingFrom,
   emailTransportTest,
   lessonQuestion,
@@ -8,6 +9,7 @@ import {
   memberErasureRequestEmail,
   reputationAlertEmail,
   resetPassword,
+  spaceEvent,
   spacePost,
   subscriptionEnded,
   subscriptionPaymentFailed,
@@ -350,6 +352,27 @@ describe('notification opt-out footer', () => {
     expect(en.subject).toBe('New question under “Zmienne”');
     expect(en.text).toContain('Ola asked a question under “Zmienne”');
     expect(en.text).toContain('Manage notifications');
+  });
+
+  it('escapes angle-bracketed post excerpts in every notification mail', () => {
+    const snippet = 'Generic<T> plus <script>alert(1)</script>';
+    const messages = [
+      threadReply('pl', { ...replyInput, snippet }),
+      lessonQuestion('en', { ...replyInput, snippet }),
+      spacePost('pl', { ...postInput, snippet }),
+      spaceEvent('en', { ...postInput, snippet }),
+      directMessage('pl', {
+        tenantName: postInput.tenantName,
+        senderDisplay: postInput.authorDisplay,
+        snippet,
+        url: postInput.url,
+      }),
+    ];
+    for (const message of messages) {
+      expect(message.html).toContain('Generic&lt;T&gt; plus &lt;script&gt;alert(1)&lt;/script&gt;');
+      expect(message.html).not.toContain('<script>');
+      expect(message.text).toContain(snippet);
+    }
   });
 });
 

@@ -674,6 +674,7 @@ const deps = (input: {
     tenantDomains: {
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
       listVerifiedDomains: async () => domains,
+      listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
     },
     tenants: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
@@ -745,6 +746,7 @@ const deps = (input: {
     platformHost: 'start.localhost',
     singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
+    customDomainTarget: 'start.localhost',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
     authTrustedProxyHeader: null,
@@ -4427,6 +4429,26 @@ describe('public auth-config route', () => {
     const body: unknown = await response.json();
 
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
+  });
+
+  it('hides Google on a verified custom domain the OAuth callback cannot return to', async () => {
+    const app = buildApp({
+      ...deps({
+        domains: [{
+          id: 'domain-acme',
+          tenantId: acme.id,
+          domain: 'learn.acme.example',
+          kind: 'custom',
+          verified: true,
+        }],
+      }),
+      authConfig: { googleEnabled: true },
+    });
+
+    const response = await app.request(API_PATHS.authConfig, { headers: { host: 'learn.acme.example' } });
+    const body: unknown = await response.json();
+
+    expect(body).toMatchObject({ ok: true, data: { googleEnabled: false, passkeysEnabled: true } });
   });
 
 });

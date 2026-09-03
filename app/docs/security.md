@@ -6,9 +6,14 @@ Potential vulnerabilities must be reported privately through the repository
 Together serves its SPA and API on the same origin. Session-backed API routes do
 not expose CORS headers. Better Auth validates `Origin` on its authentication
 POST routes, and its session cookies remain `HttpOnly` and `SameSite=Lax`;
-production enables the `Secure` flag. Sessions span tenant subdomains on a real
-base domain, while each custom domain remains a separate cookie world.
-Non-local authentication origins are HTTPS-only. HTTP origins are composed only
+production enables the `Secure` flag. Cookie scope and the passkey relying
+party are derived from the host of each request: a host under the base domain
+gets `Domain=.<baseDomain>` and the base domain as its relying party, so one
+session and one passkey cover the platform host and every tenant subdomain,
+while a verified custom domain gets host-only cookies and its own relying
+party and therefore remains a separate credential world. A `localhost` base
+domain and single-tenant deployments keep host-only cookies and the configured
+host as the relying party. Non-local authentication origins are HTTPS-only. HTTP origins are composed only
 for `localhost`, and boot rejects an HTTP `APP_BASE_URL` outside local
 development.
 

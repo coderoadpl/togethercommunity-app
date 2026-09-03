@@ -42,6 +42,7 @@ const deps = (tenants: Tenant[], accentColor: string | null = null): ManifestDep
   tenantDomains: {
     findByDomain: async () => null,
     listVerifiedDomains: async () => [],
+    listByTenant: async () => [],
   },
   tenants: {
     findById: async (id) => tenants.find((candidate) => candidate.id === id) ?? null,

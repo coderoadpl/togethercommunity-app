@@ -230,6 +230,7 @@ import {
   getSchedulerRunForTenant,
   getSpaceFeed,
   getTenantDocument,
+  getTenantRouting,
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
@@ -1845,6 +1846,19 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   app.get(API_PATHS.tenantSettings, async (c) => {
     const result = await getTenantSettings({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ settings: result.value }) : result);
+  });
+
+  app.get(API_PATHS.tenantRouting, async (c) => {
+    const result = await getTenantRouting({ identity: c.get('identity') }, {
+      tenantDomains: deps.tenantDomains,
+      routing: {
+        appBaseUrl: deps.appBaseUrl,
+        baseDomain: deps.baseDomain,
+        singleTenantMode: deps.singleTenantMode,
+      },
+      customDomainTarget: deps.customDomainTarget,
+    });
+    return respond(result.ok ? ok({ routing: result.value }) : result);
   });
 
   app.post(API_PATHS.tenantSettingsUpdate, async (c) => {

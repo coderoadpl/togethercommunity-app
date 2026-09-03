@@ -409,6 +409,7 @@ export interface AppDeps {
   platformHost: string | null;
   singleTenantMode: boolean;
   appBaseUrl: string;
+  customDomainTarget: string;
   devEndpoints: DevEndpoints;
   authConfig: AuthConfig;
   authTrustedProxyHeader: string | null;
@@ -544,9 +545,8 @@ export const selectTrustedAuthOrigins = (input: {
   singleTenantMode: boolean;
   customDomains: readonly string[];
 }): string[] => {
-  const subdomainSchemes = input.baseDomain === 'localhost'
-    ? ['http', 'https'] as const
-    : ['https'] as const;
+  const local = input.baseDomain === 'localhost';
+  const subdomainSchemes = local ? ['http', 'https'] as const : ['https'] as const;
   return [
     input.appBaseUrl,
     ...(input.singleTenantMode
@@ -555,8 +555,44 @@ export const selectTrustedAuthOrigins = (input: {
           `${scheme}://*.${input.baseDomain}`,
           `${scheme}://*.${input.baseDomain}:${input.port}`,
         ])),
-    ...input.customDomains.map((domain) => `https://${domain}`),
+    ...input.customDomains.flatMap((domain) => [
+      `https://${domain}`,
+      ...(local ? [`http://${domain}:${input.port}`] : []),
+    ]),
   ];
+};
+
+const VERIFIED_CUSTOM_HOST_TTL_MS = 5_000;
+
+const VERIFIED_CUSTOM_HOST_MAX_ENTRIES = 512;
+
+/**
+ * Every authenticated API call dispatches through Better Auth, which re-checks the
+ * request host, so an uncached check doubles the `tenant_domains` lookups a custom
+ * domain pays per request. The window stays short enough that verifying or
+ * unverifying a domain still takes effect without a deploy.
+ */
+export const memoizeHostCheck = (
+  check: (host: string) => Promise<boolean>,
+  options: { ttlMs?: number; now?: () => number } = {},
+): ((host: string) => Promise<boolean>) => {
+  const ttlMs = options.ttlMs ?? VERIFIED_CUSTOM_HOST_TTL_MS;
+  const now = options.now ?? Date.now;
+  const entries = new Map<string, { verified: boolean; expiresAt: number }>();
+  return async (host) => {
+    const at = now();
+    const cached = entries.get(host);
+    if (cached !== undefined && cached.expiresAt > at) return cached.verified;
+    const verified = await check(host);
+    entries.delete(host);
+    while (entries.size >= VERIFIED_CUSTOM_HOST_MAX_ENTRIES) {
+      const oldest = entries.keys().next();
+      if (oldest.done) break;
+      entries.delete(oldest.value);
+    }
+    entries.set(host, { verified, expiresAt: at + ttlMs });
+    return verified;
+  };
 };
 
 export const selectDeploymentIdentity = (
@@ -919,6 +955,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dispatchEmail,
     defaultTenantName: 'Together',
     google,
+    isVerifiedCustomHost: memoizeHostCheck(async (host) =>
+      (await tenantDomains.findByDomain(host))?.kind === 'custom'),
     validateSignUpConsent: async ({ request, accepted }) => {
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
@@ -1082,6 +1120,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
+    customDomainTarget:
+      env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname,
     devEndpoints,
     authConfig: { googleEnabled: google !== null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),

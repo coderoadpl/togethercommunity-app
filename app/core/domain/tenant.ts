@@ -360,3 +360,15 @@ export type TenantDomain = {
   kind: 'subdomain' | 'custom';
   verified: boolean;
 };
+
+export const tenantRoutingSchema = z.object({
+  tenantHost: z.string(),
+  customDomains: z.array(z.object({
+    domain: z.string(),
+    verified: z.boolean(),
+  })),
+  /** Value a creator points the custom domain at with a CNAME record. */
+  customDomainTarget: z.string(),
+});
+
+export type TenantRouting = z.infer<typeof tenantRoutingSchema>;

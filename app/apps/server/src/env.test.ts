@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createMultipleTenantsReporter,
+  memoizeHostCheck,
   selectAuthTrustedProxyHeader,
   selectDeploymentAuthOrigins,
   selectDeploymentIdentity,
@@ -301,6 +302,23 @@ describe('tenant routing mode', () => {
 
     expect(write).toHaveBeenCalledTimes(1);
   });
+
+  it('reuses a host check within the cache window and re-runs it after expiry', async () => {
+    const check = vi.fn(async () => true);
+    let clock = 1_000;
+    const memoized = memoizeHostCheck(check, { ttlMs: 100, now: () => clock });
+
+    expect(await memoized('kurs.coderoad.example')).toBe(true);
+    expect(await memoized('kurs.coderoad.example')).toBe(true);
+    expect(check).toHaveBeenCalledTimes(1);
+
+    expect(await memoized('inna.coderoad.example')).toBe(true);
+    expect(check).toHaveBeenCalledTimes(2);
+
+    clock += 100;
+    expect(await memoized('kurs.coderoad.example')).toBe(true);
+    expect(check).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('deployed auth origin policy', () => {
@@ -323,7 +341,7 @@ describe('deployed auth origin policy', () => {
     expect(envSchema.safeParse({ APP_BASE_URL: 'https://together.example' }).success).toBe(true);
   });
 
-  it('allows HTTP tenant origins only on localhost and keeps custom domains HTTPS-only', () => {
+  it('allows HTTP tenant and custom-domain origins only on localhost', () => {
     const localOrigins = selectTrustedAuthOrigins({
       appBaseUrl: 'http://localhost:48730',
       baseDomain: 'localhost',
@@ -342,7 +360,8 @@ describe('deployed auth origin policy', () => {
     expect(localOrigins).toContain('http://*.localhost');
     expect(localOrigins).toContain('https://*.localhost');
     expect(localOrigins).toContain('https://courses.example');
-    expect(localOrigins).not.toContain('http://courses.example');
+    expect(localOrigins).toContain('http://courses.example:48730');
+    expect(deployedOrigins).toContain('https://courses.example');
     expect(deployedOrigins.some((origin) => origin.startsWith('http://'))).toBe(false);
   });
 });

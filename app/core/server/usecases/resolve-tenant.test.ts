@@ -25,6 +25,7 @@ const globex: Tenant = {
 const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
   findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
   listVerifiedDomains: async () => domains,
+  listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
 });
 
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({

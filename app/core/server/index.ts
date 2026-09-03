@@ -34,6 +34,7 @@ export * from './usecases/course-management.js';
 export * from './usecases/content-history.js';
 export * from './usecases/access.js';
 export * from './usecases/tenant-secrets.js';
+export * from './usecases/tenant-domains.js';
 export * from './usecases/tenant-settings.js';
 export * from './usecases/terms-consent.js';
 export * from './usecases/onboarding.js';

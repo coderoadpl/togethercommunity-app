@@ -707,16 +707,20 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     return respondPublic(session);
   });
 
-  app.get(API_PATHS.authConfig, async () =>
-    respondPublic(
+  app.get(API_PATHS.authConfig, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    // The Google callback is pinned to APP_BASE_URL, so its session cookie never
+    // reaches a custom host; offering the button there would dead-end the sign-in.
+    const onCustomDomain = tenant.ok && tenant.value?.source === 'custom-domain';
+    return respondPublic(
       ok({
-        googleEnabled: deps.authConfig.googleEnabled,
+        googleEnabled: deps.authConfig.googleEnabled && !onCustomDomain,
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
       }),
-    ),
-  );
+    );
+  });
 
   app.post(API_PATHS.authResolve, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);

@@ -256,6 +256,16 @@ export interface Messages {
     deletePost: string;
     deletePostConfirm: string;
   };
+  dmReports: {
+    heading: string;
+    intro: string;
+    empty: string;
+    emptySnapshot: string;
+    parties: (params: { reporter: string; reported: string }) => string;
+    resolve: string;
+    resolveConfirm: string;
+    loadMore: string;
+  };
   dashboard: {
     heading: string;
     loading: string;
@@ -454,6 +464,7 @@ export interface Messages {
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
     dmMessage: (params: { author: string }) => string;
+    dmReport: (params: { reporter: string }) => string;
     spaceEvent: (params: { space: string }) => string;
   };
   messages: {
@@ -483,6 +494,16 @@ export interface Messages {
     optOutSaved: string;
     recipientUnavailable: string;
     rateLimited: string;
+    conversationMenu: string;
+    block: string;
+    unblock: string;
+    blockedByYou: string;
+    cannotSend: string;
+    report: string;
+    reportTitle: string;
+    reportHint: string;
+    reportSent: string;
+    reportAlready: string;
   };
   events: {
     sectionTitle: string;
@@ -1647,6 +1668,11 @@ export interface Messages {
     homeSpaceLabel: string;
     homeSpaceNone: string;
     homeSpaceHint: string;
+  };
+  directMessages: {
+    heading: string;
+    intro: string;
+    toggleLabel: string;
   };
   legal: {
     heading: string;

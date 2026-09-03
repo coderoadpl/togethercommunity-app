@@ -22,6 +22,7 @@ import {
   PostMetaText,
 } from '../../../theme.js';
 import { MemberSurface } from '../MemberSurface.js';
+import { ConversationMenu } from './ConversationMenu.js';
 import { MessageComposer } from './MessageComposer.js';
 
 const PAGE_SIZE = 30;
@@ -142,6 +143,10 @@ export const ConversationPage = ({ conversationId }: { conversationId: string })
           ) : null}
           <Box sx={{ flex: 1 }} />
           {backLink}
+          <ConversationMenu
+            conversationId={conversationId}
+            blockedByViewer={conversation.blockedByViewer}
+          />
         </Stack>
 
         {nextCursor === null || limit >= MAX_LIMIT ? null : (
@@ -171,12 +176,18 @@ export const ConversationPage = ({ conversationId }: { conversationId: string })
 
         {send.isError ? <Alert severity="error">{sendErrorMessage(send.error, t)}</Alert> : null}
 
-        <MessageComposer
-          busy={send.isPending}
-          onSend={(body, reset) =>
-            send.mutate({ conversationId, body }, { onSuccess: () => reset() })
-          }
-        />
+        {conversation.canSend ? (
+          <MessageComposer
+            busy={send.isPending}
+            onSend={(body, reset) =>
+              send.mutate({ conversationId, body }, { onSuccess: () => reset() })
+            }
+          />
+        ) : (
+          <Alert severity="info" data-testid="conversation-send-blocked">
+            {conversation.blockedByViewer ? t.messages.blockedByYou : t.messages.cannotSend}
+          </Alert>
+        )}
       </Stack>
     </MemberSurface>
   );

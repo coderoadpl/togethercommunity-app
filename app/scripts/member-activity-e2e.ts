@@ -6,8 +6,11 @@ import pg from 'pg';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import type { ZodTypeAny, output } from 'zod';
 
+import { DM_REPORT_SNAPSHOT_SIZE } from '#core/domain/index.js';
+
 import {
   API_PATHS,
+  dmReportsListOutputSchema,
   eventIcsOutputSchema,
   eventOutputSchema,
   looseEnvelopeSchema,
@@ -336,7 +339,7 @@ const runDirectMessageJourney = async (
   memberAPage: Page,
   memberBPage: Page,
   baseUrl: string,
-): Promise<void> => {
+): Promise<string> => {
   await memberAPage.goto(`${baseUrl}/community/${studioSpaceId}`, { waitUntil: 'domcontentloaded' });
   await memberAPage.getByTestId(`post-menu-${freeMemberPostId}`).waitFor({ state: 'visible', timeout: 15000 });
   await memberAPage.getByTestId(`post-menu-${freeMemberPostId}`).click();
@@ -451,6 +454,95 @@ const runDirectMessageJourney = async (
     assert(opened?.readAt !== null && opened?.readAt !== undefined, 'DM notification remained unread');
   }, 'DM deep-link read state');
   console.log('member-activity-e2e: DM unread state, SSE refresh, collapse, and deep link OK');
+  return conversationId;
+};
+
+const pollForOpenDmReports = async (
+  creatorPage: Page,
+  conversationId: string,
+): Promise<output<typeof dmReportsListOutputSchema>['reports']> => {
+  let found: output<typeof dmReportsListOutputSchema>['reports'] = [];
+  await pollUntil(async () => {
+    const queue = await requestOk(
+      creatorPage,
+      `${API_PATHS.dmReports}?status=open`,
+      'open DM reports',
+      dmReportsListOutputSchema,
+    );
+    found = queue.reports.filter((report) => report.conversationId === conversationId);
+    assert(found.length === 1, `Expected one open DM report, got ${String(found.length)}`);
+  }, 'DM report arrival');
+  return found;
+};
+
+const openConversationMenuItem = async (page: Page, testId: string): Promise<void> => {
+  await page.getByTestId('conversation-menu').click();
+  const item = page.getByTestId(testId);
+  await item.waitFor({ state: 'visible', timeout: 15000 });
+  await item.click();
+};
+
+const runBlockAndReportJourney = async (
+  memberAPage: Page,
+  memberBPage: Page,
+  creatorPage: Page,
+  baseUrl: string,
+  conversationId: string,
+): Promise<void> => {
+  const conversationUrl = `${baseUrl}/messages/${conversationId}`;
+  await memberBPage.goto(conversationUrl, { waitUntil: 'domcontentloaded' });
+  await memberBPage.getByTestId('conversation-page').waitFor({ state: 'visible', timeout: 15000 });
+  await openConversationMenuItem(memberBPage, 'conversation-block');
+  await memberBPage.getByTestId('conversation-send-blocked').waitFor({ state: 'visible', timeout: 15000 });
+
+  await memberAPage.goto(conversationUrl, { waitUntil: 'domcontentloaded' });
+  await memberAPage.getByTestId('conversation-send-blocked').waitFor({ state: 'visible', timeout: 15000 });
+  assert(
+    await memberAPage.getByTestId('message-composer-input').count() === 0,
+    'A blocked sender still saw the composer',
+  );
+  const rejected = await browserRequest(memberAPage, API_PATHS.messagesSend, {
+    method: 'POST',
+    body: JSON.stringify({ conversationId, body: 'E2E blocked message' }),
+  });
+  assert(rejected.status === 403, `Blocked send returned HTTP ${String(rejected.status)}`);
+
+  await openConversationMenuItem(memberAPage, 'conversation-report');
+  await memberAPage.getByTestId('dm-report-submit').click();
+
+  const openReports = await pollForOpenDmReports(creatorPage, conversationId);
+  const report = openReports[0];
+  assert(report !== undefined, 'Staff did not receive the reported conversation');
+  assert(
+    report.snapshot.some((message) => message.body === firstMessage),
+    'The report snapshot did not carry the conversation tail',
+  );
+  assert(
+    report.snapshot.length <= DM_REPORT_SNAPSHOT_SIZE,
+    `The report snapshot held ${String(report.snapshot.length)} messages`,
+  );
+
+  await creatorPage.goto(`${baseUrl}/panel/reports`, { waitUntil: 'domcontentloaded' });
+  await creatorPage.getByTestId(`dm-report-resolve-${report.id}`).click();
+  await creatorPage.getByTestId('confirm-dialog-confirm').click();
+  await pollUntil(async () => {
+    const remaining = await requestOk(
+      creatorPage,
+      `${API_PATHS.dmReports}?status=open`,
+      'open DM reports after resolve',
+      dmReportsListOutputSchema,
+    );
+    assert(remaining.openCount === 0, 'Resolving the DM report left it open');
+  }, 'DM report resolution');
+
+  await memberBPage.reload({ waitUntil: 'domcontentloaded' });
+  await openConversationMenuItem(memberBPage, 'conversation-unblock');
+  await memberBPage.getByTestId('message-composer-input').waitFor({ state: 'visible', timeout: 15000 });
+
+  await memberAPage.reload({ waitUntil: 'domcontentloaded' });
+  await memberAPage.getByTestId('message-composer-input').waitFor({ state: 'visible', timeout: 15000 });
+  await sendMessage(memberAPage, 'E2E message after unblock');
+  console.log('member-activity-e2e: DM block, neutral send state, report snapshot, and resolve OK');
 };
 
 const startedAt = Date.now();
@@ -515,7 +607,14 @@ try {
   );
   const created = await createLiveEvent(creatorPage);
   await runEventJourney(memberAPage, anonymousPage, studioBaseUrl, created);
-  await runDirectMessageJourney(memberAPage, memberBPage, studioBaseUrl);
+  const conversationId = await runDirectMessageJourney(memberAPage, memberBPage, studioBaseUrl);
+  await runBlockAndReportJourney(
+    memberAPage,
+    memberBPage,
+    creatorPage,
+    studioBaseUrl,
+    conversationId,
+  );
   await Promise.all([
     creatorContext.close(),
     memberAContext.close(),

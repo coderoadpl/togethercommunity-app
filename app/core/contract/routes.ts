@@ -120,6 +120,12 @@ import {
   reportPostInputSchema,
   reportQueueSchema,
   resolveReportInputSchema,
+  dmReportSchema,
+  dmReportQueueSchema,
+  dmReportReceiptSchema,
+  listDmReportsInputSchema,
+  reportDmConversationInputSchema,
+  resolveDmReportInputSchema,
   newProductSchema,
   nextLessonSchema,
   publicNavigationSchema,
@@ -1091,6 +1097,18 @@ export const reportResolveInputSchema = resolveReportInputSchema;
 export type ReportResolveInput = z.input<typeof reportResolveInputSchema>;
 export const reportResolveOutputSchema = z.object({ report: postReportSchema });
 
+export const dmReportInputSchema = reportDmConversationInputSchema;
+export type DmReportInput = z.input<typeof dmReportInputSchema>;
+export const dmReportOutputSchema = z.object({ report: dmReportReceiptSchema });
+
+export const dmReportsListInputSchema = listDmReportsInputSchema;
+export type DmReportsListInput = z.input<typeof dmReportsListInputSchema>;
+export const dmReportsListOutputSchema = dmReportQueueSchema;
+
+export const dmReportResolveInputSchema = resolveDmReportInputSchema;
+export type DmReportResolveInput = z.input<typeof dmReportResolveInputSchema>;
+export const dmReportResolveOutputSchema = z.object({ report: dmReportSchema });
+
 export const postsSearchInputSchema = searchPostsInputSchema;
 
 export type PostsSearchInput = z.input<typeof postsSearchInputSchema>;
@@ -1170,6 +1188,14 @@ export const messagesReadOutputSchema = z.object({
 
 export const messagesUnreadOutputSchema = z.object({
   unread: z.number().int().nonnegative(),
+});
+
+export const messagesBlockInputSchema = dmConversationRefSchema;
+
+export type MessagesBlockInput = z.input<typeof messagesBlockInputSchema>;
+
+export const messagesBlockOutputSchema = z.object({
+  conversation: publicDmConversationSchema,
 });
 
 export const eventsBySpaceInputSchema = listSpaceEventsInputSchema;
@@ -1737,8 +1763,13 @@ export const API_ROUTES = {
   messagesStart: { method: 'POST', path: '/api/messages/start' },
   messagesSend: { method: 'POST', path: '/api/messages/send' },
   messagesRead: { method: 'POST', path: '/api/messages/read' },
+  messagesBlock: { method: 'POST', path: '/api/messages/block' },
+  messagesUnblock: { method: 'POST', path: '/api/messages/unblock' },
+  messagesReport: { method: 'POST', path: '/api/messages/report' },
   messagesUnread: { method: 'GET', path: '/api/messages/unread-count' },
   messagesThread: { method: 'GET', path: '/api/messages/:conversationId' },
+  dmReports: { method: 'GET', path: '/api/dm-reports' },
+  dmReportResolve: { method: 'POST', path: '/api/dm-reports/resolve' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   memberNavigation: { method: 'GET', path: '/api/member/navigation' },
   memberHomeFeed: { method: 'GET', path: '/api/member/home-feed' },
@@ -1983,8 +2014,13 @@ export const API_PATHS = {
   messagesStart: API_ROUTES.messagesStart.path,
   messagesSend: API_ROUTES.messagesSend.path,
   messagesRead: API_ROUTES.messagesRead.path,
+  messagesBlock: API_ROUTES.messagesBlock.path,
+  messagesUnblock: API_ROUTES.messagesUnblock.path,
+  messagesReport: API_ROUTES.messagesReport.path,
   messagesUnread: API_ROUTES.messagesUnread.path,
   messagesThread: API_ROUTES.messagesThread.path,
+  dmReports: API_ROUTES.dmReports.path,
+  dmReportResolve: API_ROUTES.dmReportResolve.path,
   devGrant: API_ROUTES.devGrant.path,
   memberNavigation: API_ROUTES.memberNavigation.path,
   memberHomeFeed: API_ROUTES.memberHomeFeed.path,

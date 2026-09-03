@@ -645,6 +645,13 @@
       "when": 1788465020410,
       "tag": "0091_tenant_logo_dark_url",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1788469404551,
+      "tag": "0092_member_blocks_and_dm_reports",
+      "breakpoints": true
     }
   ]
 }

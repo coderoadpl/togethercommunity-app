@@ -90,6 +90,7 @@ const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation
   lockedSpaces: [
     { id: 's9', slug: 'premium', name: 'Premium', description: 'Tylko dla kursantów.', productIds: ['p1'] },
   ],
+  directMessagesEnabled: true,
   ...overrides,
 });
 
@@ -253,6 +254,27 @@ describe('MemberShell', () => {
     await waitFor(() =>
       expect(messages).toHaveAttribute('aria-label', pl.messages.unreadAria({ count: 3 })));
     expect(within(messages).getByTestId('sidebar-messages-unread')).toBeInTheDocument();
+  });
+
+  it('hides the messages row and skips the unread poll when direct messages are off', async () => {
+    stubViewport(true);
+    let unreadRequests = 0;
+    server.use(
+      okMe(),
+      okNavigation(navigation({ directMessagesEnabled: false })),
+      okOffer(),
+      noNotifications(),
+      http.get('*/api/messages/unread-count', () => {
+        unreadRequests += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'forbidden', message: 'off' } }, { status: 403 });
+      }),
+    );
+
+    await renderShell('/my');
+
+    expect(await screen.findByTestId('sidebar-products')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('sidebar-messages')).not.toBeInTheDocument());
+    expect(unreadRequests).toBe(0);
   });
 
   it('marks a space row with an unread dot and a labelled row', async () => {

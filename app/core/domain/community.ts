@@ -89,6 +89,7 @@ const notificationKindSchema = z.enum([
   'space-post',
   'lesson-question',
   'dm-message',
+  'dm-report',
   'space-event',
 ]);
 

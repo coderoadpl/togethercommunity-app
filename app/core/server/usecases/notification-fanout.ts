@@ -27,6 +27,7 @@ import type {
   CourseRepository,
   DiscussionLinkPort,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -52,6 +53,7 @@ export interface PostFanoutDeps {
   notificationChannels: NotificationChannelPort[];
   spaceSubscriptions: SpaceSubscriptionRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
+  memberBlocks: MemberBlockRepository;
   spaces: SpaceRepository;
   posts: PostRepository;
   courses: CourseRepository;
@@ -71,6 +73,7 @@ export interface EventFanoutDeps {
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   spaceSubscriptions: SpaceSubscriptionRepository;
+  memberBlocks: MemberBlockRepository;
   spaces: SpaceRepository;
   events: SpaceEventRepository;
   grants: ProductGrantRepository;
@@ -150,23 +153,37 @@ export const buildNotificationFanoutJob = (input: {
   updatedAt: input.now,
 });
 
+const withoutAuthorBlockers = async (
+  tenantId: string,
+  authorUserId: string,
+  candidates: readonly Recipient[],
+  deps: { memberBlocks: MemberBlockRepository },
+): Promise<Recipient[]> => {
+  if (candidates.length === 0) return [];
+  const directions = await deps.memberBlocks.findDirections(tenantId, {
+    viewerUserId: authorUserId,
+    otherUserIds: candidates.map((candidate) => candidate.userId),
+  });
+  return candidates.filter((candidate) => directions.get(candidate.userId)?.blocksViewer !== true);
+};
+
 const spaceRecipients =
-  (tenantId: string, space: Space, excludeUserId: string, deps: PostFanoutDeps | EventFanoutDeps) =>
+  (tenantId: string, space: Space, authorUserId: string, deps: PostFanoutDeps | EventFanoutDeps) =>
   async (afterUserId: string | null, limit: number): Promise<RecipientPage> => {
     const followers = await deps.spaceSubscriptions.listFollowersPage(tenantId, {
       spaceId: space.id,
       afterUserId,
       limit,
     });
-    const recipients: Recipient[] = [];
+    const candidates: Recipient[] = [];
     for (const follower of followers) {
-      if (follower.userId === excludeUserId) continue;
+      if (follower.userId === authorUserId) continue;
       const eligible = await spaceNotificationRecipient(tenantId, follower.userId, space, deps);
       if (eligible === null) continue;
-      recipients.push({ userId: follower.userId, email: eligible.email });
+      candidates.push({ userId: follower.userId, email: eligible.email });
     }
     return {
-      recipients,
+      recipients: await withoutAuthorBlockers(tenantId, authorUserId, candidates, deps),
       nextCursorUserId: followers.at(-1)?.userId ?? null,
       exhausted: followers.length < limit,
     };
@@ -228,7 +245,7 @@ const postPlan = async (
         afterUserId,
         limit,
       });
-      const recipients: Recipient[] = [];
+      const candidates: Recipient[] = [];
       for (const subscriber of subscribers) {
         if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
         const recipient = await notificationRecipient(job.tenantId, subscriber.userId, deps);
@@ -238,10 +255,10 @@ const postPlan = async (
           (recipient.memberId !== null &&
             (await subscriberCanAccessContext(job.tenantId, recipient.memberId, post, deps)));
         if (!canAccess) continue;
-        recipients.push({ userId: subscriber.userId, email: recipient.email });
+        candidates.push({ userId: subscriber.userId, email: recipient.email });
       }
       return {
-        recipients,
+        recipients: await withoutAuthorBlockers(job.tenantId, post.authorUserId, candidates, deps),
         nextCursorUserId: subscribers.at(-1)?.userId ?? null,
         exhausted: subscribers.length < limit,
       };

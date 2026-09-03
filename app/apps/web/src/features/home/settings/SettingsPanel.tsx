@@ -13,6 +13,7 @@ import {
   OutlinedInput,
   Select,
   Stack,
+  Switch,
   Tab,
   Tabs,
   Typography,
@@ -484,6 +485,41 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
       {spaces.isError ? (
         <StatusView state={{ kind: 'error', message: localizePanelError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
       ) : null}
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
+const DirectMessagesPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+      await queryClient.invalidateQueries(actions.memberNavigationInvalidates());
+    },
+  });
+  const enabled = settings.data?.settings.directMessagesEnabled !== false;
+
+  return (
+    <SectionCard title={t.directMessages.heading} description={t.directMessages.intro}>
+      <FormControlLabel
+        control={
+          <Switch
+            checked={enabled}
+            disabled={!canEdit || !settings.isSuccess || updateSettings.isPending}
+            slotProps={{ input: { 'aria-label': t.directMessages.toggleLabel } }}
+            data-testid="direct-messages-toggle"
+            onChange={(event) => updateSettings.mutate({ directMessagesEnabled: event.target.checked })}
+          />
+        }
+        label={t.directMessages.toggleLabel}
+      />
+      <FormHelperText data-testid="direct-messages-status">
+        {updateSettings.isPending ? t.common.saving : updateSettings.isSuccess ? t.common.saved : ' '}
+      </FormHelperText>
       {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
@@ -1098,6 +1134,9 @@ export const SettingsPanel = () => {
           </Box>
           <Box id="public-access" sx={{ scrollMarginTop: '1rem' }}>
             <PublicAccessPanel canEdit={canEdit} />
+          </Box>
+          <Box id="direct-messages" sx={{ scrollMarginTop: '1rem' }}>
+            <DirectMessagesPanel canEdit={canEdit} />
           </Box>
           <Box id="invoice" sx={{ scrollMarginTop: '1rem' }}>
             <InvoiceSettingsPanel canEdit={canEdit} />

@@ -264,6 +264,17 @@ export const pl: Messages = {
     deletePost: 'Usuń wpis',
     deletePostConfirm: 'Usunąć ten wpis? Uczestnicy zobaczą informację o usunięciu.',
   },
+  dmReports: {
+    heading: 'Zgłoszone rozmowy prywatne',
+    intro: 'Zgłoszenia wiadomości prywatnych wraz z zapisem 20 ostatnich wiadomości z chwili zgłoszenia.',
+    empty: 'Brak zgłoszonych rozmów.',
+    emptySnapshot: 'Rozmowa nie zawierała jeszcze wiadomości.',
+    parties: ({ reporter, reported }) =>
+      format('Zgłasza: {reporter} · zgłoszony(a): {reported}', { reporter, reported }),
+    resolve: 'Zamknij zgłoszenie',
+    resolveConfirm: 'Oznaczyć to zgłoszenie jako rozpatrzone?',
+    loadMore: 'Wczytaj starsze zgłoszenia',
+  },
   dashboard: {
     heading: 'Przegląd',
     loading: 'Ładowanie przeglądu…',
@@ -513,6 +524,7 @@ export const pl: Messages = {
         ? format('{author} dodał(a) nowy wpis w przestrzeni „{space}”', { author, space })
         : format('{author} dodał(a) nowy wpis w przestrzeni', { author }),
     dmMessage: ({ author }) => format('Nowa wiadomość od {author}', { author }),
+    dmReport: ({ reporter }) => format('{reporter} zgłosił(a) rozmowę prywatną', { reporter }),
     spaceEvent: ({ space }) =>
       space.length > 0
         ? format('Nowe wydarzenie w przestrzeni „{space}”', { space })
@@ -545,6 +557,16 @@ export const pl: Messages = {
     optOutSaved: 'Zapisano ustawienia prywatności.',
     recipientUnavailable: 'Ta osoba nie przyjmuje teraz wiadomości.',
     rateLimited: 'Wysyłasz wiadomości zbyt szybko — zrób krótką przerwę.',
+    conversationMenu: 'Opcje rozmowy',
+    block: 'Zablokuj',
+    unblock: 'Odblokuj',
+    blockedByYou: 'Ta osoba jest zablokowana. Odblokuj ją, aby znowu pisać.',
+    cannotSend: 'Nie można teraz wysłać wiadomości w tej rozmowie.',
+    report: 'Zgłoś rozmowę',
+    reportTitle: 'Zgłoś rozmowę',
+    reportHint: 'Do zgłoszenia dołączymy 20 ostatnich wiadomości z tej rozmowy, aby zespół mógł je ocenić.',
+    reportSent: 'Dzięki — zespół to sprawdzi.',
+    reportAlready: 'Ta rozmowa ma już Twoje otwarte zgłoszenie.',
   },
   events: {
     sectionTitle: 'Wydarzenia',
@@ -1856,6 +1878,12 @@ export const pl: Messages = {
     homeSpaceNone: 'Brak',
     homeSpaceHint:
       'Do wyboru są tylko aktywne przestrzenie widoczne publicznie. Bez przestrzeni startowej odwiedzający zobaczą same kafelki.',
+  },
+  directMessages: {
+    heading: 'Wiadomości prywatne',
+    intro:
+      'Gdy wyłączysz wiadomości prywatne, uczestnicy nie zobaczą sekcji „Wiadomości” i nie rozpoczną nowych rozmów. Zapisane rozmowy pozostają w bazie.',
+    toggleLabel: 'Wiadomości prywatne między uczestnikami',
   },
   legal: {
     heading: 'Regulamin i polityka prywatności',

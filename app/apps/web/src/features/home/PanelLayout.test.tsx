@@ -60,6 +60,8 @@ const commonHandlers = () => {
     http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: [] } })),
     http.get('/api/reports', () =>
       HttpResponse.json({ ok: true, data: { items: [], nextCursor: null, openCount: 3 } })),
+    http.get('/api/dm-reports', () =>
+      HttpResponse.json({ ok: true, data: { reports: [], nextCursor: null, openCount: 2 } })),
     http.get('/api/sales/summary', () =>
       HttpResponse.json({
         ok: true,
@@ -277,7 +279,7 @@ describe('Creator panel routing', () => {
     expect(new Set(iconPaths).size).toBe(sectionIds.length);
     expect(screen.getByTestId('section-members')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
-    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('3');
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
     expect(screen.getByRole('heading', { name: pl.members.heading, level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('build-stamp')).toBeInTheDocument();
   });

@@ -4,9 +4,12 @@ import type {
   CourseLesson,
   LessonAttachment,
   CourseModule,
+  DmBlockDirections,
   DmConversation,
   DmConversationState,
   DmMessage,
+  DmReport,
+  DmReportStatus,
   EntityHistoryEntry,
   EntityKind,
   EmailBranding,
@@ -22,6 +25,7 @@ import type {
   EmailOutboxPayload,
   Member,
   MemberBanEvent,
+  MemberBlock,
   MemberEvent,
   MemberGrant,
   MemberCourseProgress,
@@ -457,6 +461,31 @@ export interface DmConversationStateRepository {
     tenantId: string,
     input: { conversationId: string; userId: string; lastReadAt: string },
   ): Promise<DmConversationState>;
+}
+
+export interface MemberBlockRepository {
+  /** Idempotent: returns false when the pair is already blocked in this direction. */
+  block(tenantId: string, block: MemberBlock): Promise<boolean>;
+  /** Idempotent: returns false when there was nothing to remove. */
+  unblock(tenantId: string, input: { blockerUserId: string; blockedUserId: string }): Promise<boolean>;
+  findDirections(
+    tenantId: string,
+    query: { viewerUserId: string; otherUserIds: string[] },
+  ): Promise<Map<string, DmBlockDirections>>;
+}
+
+export interface DmReportRepository {
+  /** Returns null when the reporter already has an open report on the conversation. */
+  open(tenantId: string, report: DmReport): Promise<DmReport | null>;
+  listByStatus(
+    tenantId: string,
+    query: { status: DmReportStatus; cursor?: string; limit: number },
+  ): Promise<{ reports: DmReport[]; nextCursor: string | null }>;
+  countOpen(tenantId: string): Promise<number>;
+  resolve(
+    tenantId: string,
+    input: { id: string; resolvedAt: string; resolvedByUserId: string },
+  ): Promise<DmReport | null>;
 }
 
 export interface NotificationRepository {

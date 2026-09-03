@@ -21,6 +21,7 @@ import {
   PASSWORD_MIN_LENGTH,
   priceMajorSchema,
   reactionEmojiSchema,
+  slugify,
   spaceVisibilitySchema,
   storageProviderKindSchema,
   tenantSecretKeySchema,
@@ -527,13 +528,6 @@ const readJsonPayload = async (
 const accessGlyph = (status: AccessStatus): string =>
   status === 'fully-accessible' ? 'open' : status === 'partially-accessible' ? 'partial' : 'locked';
 
-const slugFromName = (name: string): string =>
-  name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
 const rawGlobalOptions = (): unknown => program.opts();
 
 const currentJsonFlag = (): boolean => {
@@ -827,7 +821,7 @@ tenant
       z.tuple([z.array(z.string().min(1)).min(1), tenantCreateOptionsSchema]),
       async (ctx, [nameWords, options]) => {
         const name = nameWords.join(' ');
-        const slug = options.slug ?? slugFromName(name);
+        const slug = options.slug ?? slugify(name);
         emit(await ctx.api.createTenant({ slug, name }), ctx.json, (data) =>
           `created tenant: ${data.tenant.name} (${data.tenant.slug})`,
         );

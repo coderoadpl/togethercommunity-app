@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
-import type { SpaceVisibility } from '#core/domain/index.js';
+import { slugify, type SpaceVisibility } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -40,13 +40,7 @@ interface SpaceFormProps {
   onSubmit: (values: SpaceFormValues) => void;
 }
 
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
+const SPACE_SLUG_MAX_LENGTH = 80;
 
 export const SpaceForm = ({
   mode,
@@ -117,7 +111,7 @@ export const SpaceForm = ({
           value={name}
           onChange={(event) => {
             setName(event.target.value);
-            if (mode === 'create' && !slugTouched) setSlug(slugify(event.target.value));
+            if (mode === 'create' && !slugTouched) setSlug(slugify(event.target.value, { maxLength: SPACE_SLUG_MAX_LENGTH }));
           }}
           required
         />
@@ -131,7 +125,7 @@ export const SpaceForm = ({
             value={slug}
             onChange={(event) => {
               setSlugTouched(true);
-              setSlug(slugify(event.target.value));
+              setSlug(slugify(event.target.value, { maxLength: SPACE_SLUG_MAX_LENGTH }));
             }}
             required
           />

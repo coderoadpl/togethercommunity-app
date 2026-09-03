@@ -14,6 +14,7 @@ export * from './scheduler-run.js';
 export * from './email-event.js';
 export * from './email-reputation.js';
 export * from './email-send.js';
+export * from './slug.js';
 export * from './product.js';
 export * from './grant.js';
 export * from './api-key.js';

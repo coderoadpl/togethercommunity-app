@@ -2,6 +2,7 @@
 
 Generated from the Hono route table by `pnpm exec tsx scripts/generate-route-table.mjs`.
 Self-authenticating routes enforce a session, API key, or operator secret before the shared tenant identity middleware.
+Local-development-only routes are registered exclusively when the process runs locally (`NODE_ENV` other than `production` with `APP_ENV` unset or `development`); production, staging and preview never mount them.
 
 | Route | Access | Operation | Purpose |
 |---|---|---|---|
@@ -63,12 +64,12 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/internal/scheduler-runs/:id` | self-authenticating | read | global scheduler run |
 | `POST /api/public/terms-consent` | self-authenticating | mutating | terms consent |
 | `POST /api/tenants` | self-authenticating | mutating | tenants create |
-| `POST /api/dev/simulate-purchase` | development-only | mutating | dev simulate purchase |
-| `GET /api/dev/magic-link` | development-only | read | dev magic link |
-| `GET /api/dev/email` | development-only | read | dev email |
-| `POST /api/dev/grant` | development-only | mutating | dev grant |
-| `POST /api/dev/subscriptions/simulate-cycle` | development-only | mutating | dev subscription simulate cycle |
-| `POST /api/dev/subscriptions/simulate-failure` | development-only | mutating | dev subscription simulate failure |
+| `POST /api/dev/simulate-purchase` | local-development-only | mutating | dev simulate purchase |
+| `GET /api/dev/magic-link` | local-development-only | read | dev magic link |
+| `GET /api/dev/email` | local-development-only | read | dev email |
+| `POST /api/dev/grant` | local-development-only | mutating | dev grant |
+| `POST /api/dev/subscriptions/simulate-cycle` | local-development-only | mutating | dev subscription simulate cycle |
+| `POST /api/dev/subscriptions/simulate-failure` | local-development-only | mutating | dev subscription simulate failure |
 | `POST /api/m2m/enroll` | self-authenticating | mutating | m2m enroll |
 | `POST /api/m2m/transactional/messages` | self-authenticating | mutating | m2m transactional messages create |
 | `GET /api/m2m/transactional/messages/:id` | self-authenticating | read | m2m transactional message |

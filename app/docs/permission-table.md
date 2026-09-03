@@ -84,12 +84,12 @@ no changes
 | `GET /api/internal/scheduler-runs/:id` | scheduler:read | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/public/terms-consent` | terms:accept | authenticated | authenticated | yes | Authenticated user session before tenant grant |
 | `POST /api/tenants` | tenant:create | authenticated | authenticated | yes | Authenticated user session before tenant grant |
-| `POST /api/dev/simulate-purchase` | development:mutate | public | public | yes | Development-only composition flag |
-| `GET /api/dev/magic-link` | development:inspect | public | public | yes | Development-only composition flag |
-| `GET /api/dev/email` | development:inspect | public | public | yes | Development-only composition flag |
-| `POST /api/dev/grant` | development:mutate | public | public | yes | Development-only composition flag |
-| `POST /api/dev/subscriptions/simulate-cycle` | development:mutate | public | public | yes | Development-only composition flag |
-| `POST /api/dev/subscriptions/simulate-failure` | development:mutate | public | public | yes | Development-only composition flag |
+| `POST /api/dev/simulate-purchase` | development:mutate | public | public | yes | Local-development-only composition flag |
+| `GET /api/dev/magic-link` | development:inspect | public | public | yes | Local-development-only composition flag |
+| `GET /api/dev/email` | development:inspect | public | public | yes | Local-development-only composition flag |
+| `POST /api/dev/grant` | development:mutate | public | public | yes | Local-development-only composition flag |
+| `POST /api/dev/subscriptions/simulate-cycle` | development:mutate | public | public | yes | Local-development-only composition flag |
+| `POST /api/dev/subscriptions/simulate-failure` | development:mutate | public | public | yes | Local-development-only composition flag |
 | `POST /api/m2m/enroll` | enrollment:create | api-key | api-key | yes | Tenant API key |
 | `POST /api/m2m/transactional/messages` | transactional:message:send | transactional-api-key | transactional-api-key | yes | Tenant API key |
 | `GET /api/m2m/transactional/messages/:id` | transactional:message:read | transactional-api-key | transactional-api-key | yes | Tenant API key |

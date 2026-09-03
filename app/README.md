@@ -234,7 +234,9 @@ The integrations panel walks the tenant owner through provider choice,
 connection fields and a live probe that writes, reads back and deletes one
 scratch object before the configuration is encrypted as the `s3.configuration`
 tenant secret. AWS S3, Cloudflare R2, Backblaze B2 and MinIO are covered by
-per-provider key instructions in the wizard. The same two steps are available
+per-provider key instructions in the wizard. This is the only way in: the
+generic tenant-secrets endpoint rejects every `s3.*` key, so no storage
+credential is stored without a passing probe. The same two steps are available
 from the CLI:
 
 ```bash

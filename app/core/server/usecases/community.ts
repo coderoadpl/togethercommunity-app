@@ -131,13 +131,7 @@ export const resolveAuthorDisplay = (
   return fromEmail.length > 0 ? fromEmail : PARTICIPANT_DISPLAY[language];
 };
 
-const sanitizeBody = (body: string): string =>
-  body
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\r\n/g, '\n')
-    .trim();
+const normalizeBody = (body: string): string => body.replace(/\r\n/g, '\n').trim();
 
 const contextAccess = async (
   ctx: Ctx,
@@ -259,8 +253,8 @@ export const createPost = async (
   if (!parsed.success) return err(validation('Invalid post payload', parsed.error.flatten()));
   const access = await contextAccess(ctx, parsed.data, deps);
   if (!access.ok) return access;
-  const body = sanitizeBody(parsed.data.body);
-  if (body.length === 0) return err(validation('Post body is required after sanitization'));
+  const body = normalizeBody(parsed.data.body);
+  if (body.length === 0) return err(validation('Post body cannot be blank'));
   let parentPost: Post | null = null;
   let rootPostId = deps.ids.nextId();
   if (parsed.data.parentPostId !== undefined) {
@@ -405,8 +399,8 @@ export const editPost = async (
   const access = await contextAccess(ctx, post, deps);
   if (!access.ok) return access;
   if (post.authorUserId !== actor.value.userId) return err(forbidden('Only the author can edit this post'));
-  const body = sanitizeBody(parsed.data.body);
-  if (body.length === 0) return err(validation('Post body is required after sanitization'));
+  const body = normalizeBody(parsed.data.body);
+  if (body.length === 0) return err(validation('Post body cannot be blank'));
   const now = deps.clock.nowIso();
   if (await postRateLimitExceeded(ctx, actor.value, now, deps)) {
     return err(rateLimited('You are posting too quickly — take a short break'));

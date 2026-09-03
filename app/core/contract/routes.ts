@@ -1502,6 +1502,15 @@ export const marketingSesIdentityStartOutputSchema = z.object({
     value: z.string().min(1),
   })),
 });
+export const marketingSesIdentitiesOutputSchema = z.object({
+  identities: z.array(z.object({
+    identity: z.string().min(1),
+    kind: z.enum(['domain', 'email']),
+    verified: z.boolean(),
+    dkimVerified: z.boolean(),
+  })),
+  accessDeniedAction: z.string().min(1).nullable(),
+});
 export const marketingSesOnboardingStatusSchema = z.object({
   identityVerified: z.boolean(),
   dkimVerified: z.boolean(),
@@ -1810,6 +1819,7 @@ export const API_ROUTES = {
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
   marketingSesOnboarding: { method: 'POST', path: '/api/marketing/ses-onboarding/poll' },
+  marketingSesIdentities: { method: 'GET', path: '/api/marketing/ses-onboarding/identities' },
   marketingSesIdentityStart: { method: 'POST', path: '/api/marketing/ses-onboarding/identity' },
   marketingSesProvision: { method: 'POST', path: '/api/marketing/ses-onboarding/infrastructure' },
   marketingSesSimulator: { method: 'POST', path: '/api/marketing/ses-onboarding/simulator' },
@@ -2045,6 +2055,7 @@ export const API_PATHS = {
   marketingLayouts: API_ROUTES.marketingLayouts.path,
   marketingSesSettings: API_ROUTES.marketingSesSettings.path,
   marketingSesOnboarding: API_ROUTES.marketingSesOnboarding.path,
+  marketingSesIdentities: API_ROUTES.marketingSesIdentities.path,
   marketingSesIdentityStart: API_ROUTES.marketingSesIdentityStart.path,
   marketingSesProvision: API_ROUTES.marketingSesProvision.path,
   marketingSesSimulator: API_ROUTES.marketingSesSimulator.path,

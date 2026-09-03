@@ -29,12 +29,15 @@ import type {
   EmailLayoutRepository,
   IdGenerator,
   MarketingAudienceRepository,
+  MarketingSesCredentialResolver,
   PlatformTransactionalPool,
+  SesOnboardingControlPlane,
   TenantDocumentRepository,
   TenantSecretRepository,
   TenantSesSettingsRepository,
   TokenGenerator,
 } from '../ports.js';
+import { refreshTenantSesIdentityStatus } from './marketing-ses-onboarding.js';
 
 const staffTenantIdFrom = (ctx: Ctx, capability: Capability): Result<string, AppError> =>
   authorizeRequiredTenant(ctx, capability);
@@ -277,6 +280,37 @@ const senderIdentityConfigured = (settings: TenantSesSettings | null): boolean =
 const broadcastsEnabled = (settings: TenantSesSettings, hasCredentials: boolean): boolean =>
   hasCredentials && tenantSesBroadcastsReady(settings);
 
+export interface SesIdentityCheckDeps {
+  credentials: MarketingSesCredentialResolver;
+  controlPlane: SesOnboardingControlPlane;
+}
+
+const checkSesIdentityAfterSave = async (
+  tenantId: string,
+  settings: TenantSesSettings,
+  hasCredentials: boolean,
+  deps: {
+    settings: TenantSesSettingsRepository;
+    clock: Clock;
+    webhookBaseUrl: string;
+    sesOnboarding?: SesIdentityCheckDeps;
+  },
+): Promise<TenantSesSettings> => {
+  const sesOnboarding = deps.sesOnboarding;
+  if (sesOnboarding === undefined || !hasCredentials || settings.identity.trim() === '') return settings;
+  try {
+    return await refreshTenantSesIdentityStatus(tenantId, settings, {
+      settings: deps.settings,
+      credentials: sesOnboarding.credentials,
+      controlPlane: sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: deps.webhookBaseUrl,
+    });
+  } catch {
+    return settings;
+  }
+};
+
 interface TenantSendingSettingsOutput {
   settings: TenantSesSettings | null;
   credentialsConfigured: boolean;
@@ -339,6 +373,7 @@ export const updateTenantSesMarketingSettings = async (
     clock: Clock;
     webhookBaseUrl: string;
     pool: PlatformTransactionalPool;
+    sesOnboarding?: SesIdentityCheckDeps;
   },
 ): Promise<Result<TenantSendingSettingsOutput, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:ses:write');
@@ -381,7 +416,12 @@ export const updateTenantSesMarketingSettings = async (
     reputationAlertedAt: current?.reputationAlertedAt ?? null,
   };
   settings.broadcastsEnabled = broadcastsEnabled(settings, hasCredentials);
-  const stored = await deps.settings.upsert(tenantId.value, settings);
+  const stored = await checkSesIdentityAfterSave(
+    tenantId.value,
+    await deps.settings.upsert(tenantId.value, settings),
+    hasCredentials,
+    deps,
+  );
   const hasSenderIdentity = senderIdentityConfigured(stored);
   return ok({
     settings: stored,

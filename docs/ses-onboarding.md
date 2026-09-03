@@ -27,6 +27,7 @@ The wizard needs these permissions:
     {
       "Effect": "Allow",
       "Action": [
+        "ses:ListIdentities",
         "ses:VerifyDomainDkim",
         "ses:VerifyEmailIdentity",
         "ses:GetIdentityVerificationAttributes",
@@ -56,16 +57,33 @@ The wizard needs these permissions:
 }
 ```
 
+`ses:ListIdentities` is the only optional entry: it powers identity
+auto-detection, and every other step works without it.
+
 Use the same Region throughout. SES identities, sandbox status, quotas,
 configuration sets, and the SNS topic are Region-specific.
+
+## Identity auto-detection
+
+Once the AWS key is saved, Together lists the existing identities in that Region
+and offers them in the sender form, verified ones first, with the DKIM state of
+each domain. An account that already sends from a verified domain — typical when
+migrating from another tool — needs no DNS work: pick the identity and save. The
+list is capped at the first 500 identities of the account. Without one of
+`ses:ListIdentities`, `ses:GetIdentityVerificationAttributes` or
+`ses:GetIdentityDkimAttributes`, Together names the missing action next to the
+field and the identity stays free text. Saving the sender settings or the AWS key
+reads the identity status from AWS immediately, so the checklist reflects reality
+without waiting for the six-hourly refresh.
 
 ## 2. Run the Together wizard
 
 1. Save the sender name, sender address, identity, legal name, and footer
    address. Use the sending domain as the identity, for example `example.com`.
-2. Select **Create domain identity**. Add all three CNAME rows shown by Together
-   at the DNS provider. Keep the full names and targets; some DNS panels append
-   the zone automatically.
+2. Select **Create domain identity** and add all three CNAME rows shown by
+   Together at the DNS provider. Keep the full names and targets; some DNS
+   panels append the zone automatically. Skip this step when the chosen identity
+   is already verified with DKIM — Together says so above the button.
 3. If a domain cannot be changed, use **Use e-mail identity instead**. AWS sends
    a verification message to that exact address. This fallback does not provide
    domain-level DKIM control and is not recommended for sustained sending.

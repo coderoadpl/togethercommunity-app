@@ -70,6 +70,7 @@ import {
   marketingLayoutOutputSchema,
   marketingLayoutsOutputSchema,
   marketingSesSettingsOutputSchema,
+  marketingSesIdentitiesOutputSchema,
   marketingSesIdentityStartOutputSchema,
   marketingSesOnboardingStatusSchema,
   marketingSesProvisionOutputSchema,
@@ -481,6 +482,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingSesSettings.method, API_ROUTES.marketingSesSettings.path, marketingSesSettingsOutputSchema, undefined, signal),
   pollMarketingSesOnboarding: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesOnboarding.method, API_ROUTES.marketingSesOnboarding.path, marketingSesOnboardingStatusSchema, {}, signal),
+  listMarketingSesIdentities: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesIdentities.method, API_ROUTES.marketingSesIdentities.path, marketingSesIdentitiesOutputSchema, undefined, signal),
   startMarketingSesIdentity: (input: MarketingSesIdentityStartInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesIdentityStart.method, API_ROUTES.marketingSesIdentityStart.path, marketingSesIdentityStartOutputSchema, input, signal),
   provisionMarketingSes: (signal?: AbortSignal) =>

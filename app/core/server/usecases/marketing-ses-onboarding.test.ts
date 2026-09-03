@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { err, integrationUnavailable, ok, type TenantSesSettings } from '#core/domain/index.js';
+import {
+  err,
+  integrationUnavailable,
+  ok,
+  type TenantSecret,
+  type TenantSecretKey,
+  type TenantSesSettings,
+} from '#core/domain/index.js';
+
+import type { SecretCrypto, SesAccountIdentity, TenantSecretRepository } from '../ports.js';
+import { updateTenantSesMarketingSettings } from './marketing-management.js';
+import { setTenantSecret } from './tenant-secrets.js';
 import {
   deriveSesOnboardingChecklist,
+  listSesIdentities,
   pollSesOnboarding,
   provisionSesInfrastructure,
   refreshSesIdentity,
@@ -72,6 +84,12 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   subscriptionConfirmed = true;
   feedbackForwardingAttempts = 0;
   simulatorRecipients: string[] = [];
+  accountIdentities: SesAccountIdentity[] = [];
+  accessDeniedAction: string | null = null;
+
+  async listIdentities() {
+    return ok({ identities: this.accountIdentities, accessDeniedAction: this.accessDeniedAction });
+  }
 
   async startDomainIdentity() {
     return ok({
@@ -163,6 +181,51 @@ const deps = (
   clock: { nowIso: () => NOW },
   webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
 });
+
+const sesSecretKeys: TenantSecretKey[] = ['ses.accessKeyId', 'ses.secretAccessKey', 'ses.region'];
+
+const sesSecretRows: TenantSecret[] = sesSecretKeys.map(
+  (key) => ({
+    id: `secret-${key}`,
+    tenantId: 'tenant-1',
+    key,
+    ciphertext: `cipher:${key}`,
+    iv: 'iv',
+    authTag: 'tag',
+    maskedPreview: '••••2345',
+    updatedAt: NOW,
+  }),
+);
+
+const secretRepository = (rows: TenantSecret[]): TenantSecretRepository => ({
+  listByTenant: async () => rows,
+  findByKey: async (_tenantId, key) => rows.find((row) => row.key === key) ?? null,
+  upsert: async (_tenantId, secret) => secret,
+  delete: async () => false,
+});
+
+const secretCrypto: SecretCrypto = {
+  encrypt: (plaintext) => ({ ciphertext: `cipher:${plaintext}`, iv: 'iv', authTag: 'tag' }),
+  decrypt: (input) => ok(input.ciphertext),
+};
+
+const platformPool = {
+  usage: async () => ({ sent: 0, reserved: 0 }),
+  reserve: async () => true,
+  settle: async () => undefined,
+};
+
+const senderInput = {
+  fromAddress: 'news@tenant.test',
+  fromName: 'Tenant',
+  identity: 'tenant.test',
+  configurationSet: null,
+  snsTopicArn: null,
+  trackingEnabled: false,
+  autoPauseOnCritical: false,
+  footerLegalName: 'Tenant Ltd',
+  footerAddress: 'Street 1, Warsaw',
+};
 
 describe('SES onboarding wizard', () => {
   it('starts domain verification idempotently and returns copy-paste DKIM records', async () => {
@@ -363,5 +426,167 @@ describe('SES onboarding wizard', () => {
     }));
     expect(controlPlane.simulatorRecipients).toEqual(['bounce@simulator.amazonses.com']);
     expect(WEBHOOK_URL).toContain('webhook_token_123456789012345');
+  });
+
+  it('offers the identities that already exist in the tenant AWS account', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository();
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.accountIdentities = [
+      { identity: 'tenant.test', kind: 'domain', verified: true, dkimVerified: true },
+      { identity: 'owner@tenant.test', kind: 'email', verified: false, dkimVerified: false },
+    ];
+
+    expect(await listSesIdentities(ctx, deps(repository, controlPlane))).toEqual(ok({
+      identities: controlPlane.accountIdentities,
+      accessDeniedAction: null,
+    }));
+  });
+
+  it('passes the missing list permission through as a hint instead of an error', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository();
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.accessDeniedAction = 'ses:ListIdentities';
+
+    expect(await listSesIdentities(ctx, deps(repository, controlPlane))).toEqual(ok({
+      identities: [],
+      accessDeniedAction: 'ses:ListIdentities',
+    }));
+  });
+
+  it('refuses to list identities before the AWS credentials are configured', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository();
+    const controlPlane = new FakeSesOnboardingControlPlane();
+
+    const result = await listSesIdentities(ctx, {
+      ...deps(repository, controlPlane),
+      credentials: { resolve: async () => err(integrationUnavailable('SES credentials are missing')) },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+  });
+
+  it('reads the identity status from AWS as soon as the sender is saved', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository();
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+
+    const saved = await updateTenantSesMarketingSettings(ctx, senderInput, {
+      settings: repository,
+      secrets: secretRepository(sesSecretRows),
+      tokens: { nextToken: () => 'webhook_token_123456789012345' },
+      clock: { nowIso: () => NOW },
+      webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+      pool: platformPool,
+      sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
+    });
+
+    expect(saved).toMatchObject({
+      ok: true,
+      value: { settings: { identityCheckedAt: NOW, identityVerifiedAt: NOW, identityCheckError: null } },
+    });
+  });
+
+  it('still saves the sender when the AWS identity read fails', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository();
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityFailure = true;
+
+    const saved = await updateTenantSesMarketingSettings(ctx, senderInput, {
+      settings: repository,
+      secrets: secretRepository(sesSecretRows),
+      tokens: { nextToken: () => 'webhook_token_123456789012345' },
+      clock: { nowIso: () => NOW },
+      webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+      pool: platformPool,
+      sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
+    });
+
+    expect(saved).toMatchObject({
+      ok: true,
+      value: {
+        settings: {
+          identity: 'tenant.test',
+          identityCheckedAt: NOW,
+          identityVerifiedAt: null,
+          identityCheckError: 'SES identity lookup failed',
+        },
+      },
+    });
+  });
+
+  it('skips the immediate check while the AWS credentials are still missing', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository();
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+
+    const saved = await updateTenantSesMarketingSettings(ctx, senderInput, {
+      settings: repository,
+      secrets: secretRepository([]),
+      tokens: { nextToken: () => 'webhook_token_123456789012345' },
+      clock: { nowIso: () => NOW },
+      webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+      pool: platformPool,
+      sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
+    });
+
+    expect(saved).toMatchObject({
+      ok: true,
+      value: { settings: { identityCheckedAt: null, identityVerifiedAt: null } },
+    });
+  });
+
+  it('reads the identity status as soon as an AWS credential is saved', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings()]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+
+    const stored = await setTenantSecret(ctx, { key: 'ses.region', value: 'eu-central-1' }, {
+      tenantSecrets: secretRepository(sesSecretRows),
+      secretCrypto,
+      ids: { nextId: () => 'secret-1' },
+      clock: { nowIso: () => NOW },
+      sesIdentity: {
+        settings: repository,
+        credentials: deps(repository, controlPlane).credentials,
+        controlPlane,
+        webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+      },
+    });
+
+    expect(stored.ok).toBe(true);
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      identityCheckedAt: NOW,
+      identityVerifiedAt: NOW,
+      identityCheckError: null,
+    });
+  });
+
+  it('leaves non-SES secrets alone and stores the check error when AWS is unreachable', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings()]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityFailure = true;
+    const secretDeps = {
+      tenantSecrets: secretRepository(sesSecretRows),
+      secretCrypto,
+      ids: { nextId: () => 'secret-1' },
+      clock: { nowIso: () => NOW },
+      sesIdentity: {
+        settings: repository,
+        credentials: deps(repository, controlPlane).credentials,
+        controlPlane,
+        webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+      },
+    };
+
+    await setTenantSecret(ctx, { key: 'resend.apiKey', value: 're_abcdefghijkl' }, secretDeps);
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({ identityCheckedAt: null });
+
+    const stored = await setTenantSecret(ctx, { key: 'ses.accessKeyId', value: 'AKIAEXAMPLE12345' }, secretDeps);
+
+    expect(stored.ok).toBe(true);
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      identityCheckedAt: NOW,
+      identityCheckError: 'SES identity lookup failed',
+    });
   });
 });

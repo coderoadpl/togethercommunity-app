@@ -127,6 +127,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/marketing/audience-preview') return 'marketing:campaign:read';
   if (path.startsWith('/api/marketing/documents')) return method === 'GET' ? 'marketing:document:read' : 'marketing:document:write';
   if (path.startsWith('/api/marketing/layouts')) return method === 'GET' ? 'marketing:layout:read' : 'marketing:layout:write';
+  if (path === '/api/marketing/ses-onboarding/identities') return 'marketing:ses:write';
   if (path.startsWith('/api/marketing/ses-') || path === '/api/marketing/smtp/test') return method === 'GET' ? 'marketing:ses:read' : 'marketing:ses:write';
   if (path === '/api/marketing/reputation') return 'marketing:reputation:read';
   if (path === '/api/marketing/suppressions') return method === 'GET' ? 'marketing:suppression:read' : 'marketing:suppression:write';

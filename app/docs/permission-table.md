@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 107. Route rows: 277. Exported `Ctx` use-case rows: 226.
+Closed capability count: 107. Route rows: 278. Exported `Ctx` use-case rows: 227.
 
 ## Human-readable diff
 
@@ -137,6 +137,7 @@ no changes
 | `GET /api/marketing/reputation` | marketing:reputation:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-settings` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-onboarding/poll` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/ses-onboarding/identities` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-onboarding/identity` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-onboarding/infrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-onboarding/simulator` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -459,6 +460,7 @@ no changes
 | `marketing-ses-onboarding.ts#startSesIdentityVerification` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#provisionSesInfrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#pollSesOnboarding` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
+| `marketing-ses-onboarding.ts#listSesIdentities` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | member | member | yes | core/server/usecases/member-billing-orders.ts authorization call |
@@ -543,10 +545,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:151` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:940` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:942` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1387` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1387` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:941` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:943` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1407` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1407` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:82` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

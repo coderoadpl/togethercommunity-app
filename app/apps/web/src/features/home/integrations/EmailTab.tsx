@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import {
   Alert,
   AlertTitle,
+  Autocomplete,
   Button,
   Chip,
   FormControl,
@@ -14,6 +15,7 @@ import {
   OutlinedInput,
   Stack,
   Switch,
+  TextField,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -58,9 +60,11 @@ const WizardError = ({ error }: { error: unknown }) => {
 
 const SesOnboardingWizard = ({
   enabled,
+  identityAlreadyVerified,
   onChecklist,
 }: {
   enabled: boolean;
+  identityAlreadyVerified: boolean;
   onChecklist(checklist: LiveSesChecklist): void;
 }) => {
   const t = useTranslations();
@@ -79,10 +83,11 @@ const SesOnboardingWizard = ({
   return (
     <SectionCard title={t.marketing.wizardTitle} description={t.marketing.wizardDescription}>
       <Typography variant="body2">{t.marketing.wizardIdentityHint}</Typography>
+      {identityAlreadyVerified ? <Alert severity="info">{t.marketing.wizardIdentityAlreadyVerified}</Alert> : null}
       <Stack direction="row" useFlexGap sx={{ gap: '0.75rem', flexWrap: 'wrap' }}>
         <Button
           type="button"
-          variant="contained"
+          variant={identityAlreadyVerified ? 'outlined' : 'contained'}
           disabled={!enabled || pending}
           onClick={() => identity.mutate({ kind: 'domain' })}
         >
@@ -350,6 +355,10 @@ export const EmailTab = () => {
   const queryClient = useQueryClient();
   const result = useQuery(actions.marketingSesSettings);
   const reputation = useQuery(actions.marketingReputation);
+  const detected = useQuery({
+    ...actions.marketingSesIdentities,
+    enabled: result.data?.credentialsConfigured === true,
+  });
   const settings = result.data?.settings ?? null;
   const [fromAddress, setFromAddress] = useState<string | null>(null);
   const [fromName, setFromName] = useState<string | null>(null);
@@ -360,10 +369,20 @@ export const EmailTab = () => {
   const [footerAddress, setFooterAddress] = useState<string | null>(null);
   const [liveChecklist, setLiveChecklist] = useState<LiveSesChecklist | null>(null);
 
+  const detectedIdentities = detected.data?.identities ?? [];
+  const accessDeniedAction = detected.data?.accessDeniedAction ?? null;
+  const verifiedDomains = detectedIdentities.filter((item) => item.kind === 'domain' && item.verified);
+  const suggestedDomain = settings === null && verifiedDomains.length === 1
+    ? verifiedDomains[0]?.identity ?? null
+    : null;
+  const identityOptions = [...detectedIdentities]
+    .sort((left, right) => Number(right.verified) - Number(left.verified))
+    .map((item) => item.identity);
+
   const values = {
     fromAddress: fromAddress ?? settings?.fromAddress ?? '',
     fromName: fromName ?? settings?.fromName ?? '',
-    identity: identity ?? settings?.identity ?? '',
+    identity: identity ?? settings?.identity ?? suggestedDomain ?? '',
     configurationSet: settings?.configurationSet ?? '',
     snsTopicArn: settings?.snsTopicArn ?? '',
     trackingEnabled: trackingEnabled ?? settings?.trackingEnabled ?? false,
@@ -443,15 +462,21 @@ export const EmailTab = () => {
       ? 'never-checked'
       : sesIdentityFreshness(settings, new Date().toISOString());
   const identityCaption =
-    settings?.identityCheckedAt === null || settings?.identityCheckedAt === undefined
-      ? t.marketing.identityNeverChecked
-      : identityFreshness === 'stale'
-        ? t.marketing.identityCheckStale({
-            checkedAt: formatDateTime(settings.identityCheckedAt, language),
-          })
-        : t.marketing.identityLastChecked({
-            checkedAt: formatDateTime(settings.identityCheckedAt, language),
-          });
+    settings === null || settings.identity.trim() === ''
+      ? t.marketing.identityCheckedAfterSave
+      : settings.identityCheckedAt === null
+        ? t.marketing.identityNeverChecked
+        : identityFreshness === 'stale'
+          ? t.marketing.identityCheckStale({
+              checkedAt: formatDateTime(settings.identityCheckedAt, language),
+            })
+          : t.marketing.identityLastChecked({
+              checkedAt: formatDateTime(settings.identityCheckedAt, language),
+            });
+  const chosenIdentity = detectedIdentities.find((item) => item.identity === values.identity);
+  const identityAlreadyVerified = chosenIdentity?.kind === 'domain'
+    && chosenIdentity.verified
+    && chosenIdentity.dkimVerified;
 
   return (
     <>
@@ -494,6 +519,11 @@ export const EmailTab = () => {
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-from-address">{t.marketing.fromAddressLabel}</FormLabel>
           <OutlinedInput id="marketing-from-address" type="email" value={values.fromAddress} onChange={(event) => setFromAddress(event.target.value)} required />
+          {suggestedDomain === null ? null : (
+            <Typography variant="caption" color="text.secondary">
+              {t.marketing.identityDetectedDomainHint({ domain: suggestedDomain })}
+            </Typography>
+          )}
         </FormControl>
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-from-name">{t.marketing.fromNameLabel}</FormLabel>
@@ -501,7 +531,45 @@ export const EmailTab = () => {
         </FormControl>
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-identity">{t.marketing.identityLabel}</FormLabel>
-          <OutlinedInput id="marketing-identity" value={values.identity} onChange={(event) => setIdentity(event.target.value)} required />
+          <Autocomplete
+            freeSolo
+            forcePopupIcon
+            id="marketing-identity"
+            options={identityOptions}
+            inputValue={values.identity}
+            onInputChange={(_event, value) => setIdentity(value)}
+            openText={t.common.open}
+            closeText={t.common.close}
+            clearText={t.common.clear}
+            noOptionsText={t.common.noOptions}
+            renderInput={(params) => <TextField {...params} required />}
+            renderOption={({ key, ...optionProps }, option) => {
+              const item = detectedIdentities.find((candidate) => candidate.identity === option);
+              return (
+                <li key={key} {...optionProps}>
+                  <Stack direction="row" useFlexGap sx={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Typography variant="body2">{option}</Typography>
+                    {item?.verified === true
+                      ? <Chip size="small" variant="outlined" color="success" label={t.marketing.identityDetectedInSes} />
+                      : null}
+                    {item?.kind === 'domain' ? (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        color={item.dkimVerified ? 'success' : 'warning'}
+                        label={item.dkimVerified ? t.marketing.identityDkimReady : t.marketing.identityDkimPending}
+                      />
+                    ) : null}
+                  </Stack>
+                </li>
+              );
+            }}
+          />
+          {accessDeniedAction === null ? null : (
+            <Typography variant="caption" color="text.secondary">
+              {t.marketing.identityListAccessDenied({ action: accessDeniedAction })}
+            </Typography>
+          )}
         </FormControl>
         <FormControlLabel
           control={<Switch checked={values.trackingEnabled} onChange={(event) => setTrackingEnabled(event.target.checked)} />}
@@ -519,7 +587,11 @@ export const EmailTab = () => {
         </Alert>
         {senderUpdate.isError ? <Alert severity="error">{localizePanelError(senderUpdate.error, t)}</Alert> : null}
       </SectionCard>
-      <SesOnboardingWizard enabled={credentialsConfigured && settings !== null} onChecklist={setLiveChecklist} />
+      <SesOnboardingWizard
+        enabled={credentialsConfigured && settings !== null}
+        identityAlreadyVerified={identityAlreadyVerified}
+        onChecklist={setLiveChecklist}
+      />
       <SmtpForm configured={result.data.smtpConfigured} />
       <ResendForm configured={result.data.resendConfigured} />
       <SectionCard

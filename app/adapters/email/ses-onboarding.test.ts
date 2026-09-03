@@ -1,6 +1,9 @@
 import {
   CreateConfigurationSetEventDestinationCommand,
   DescribeConfigurationSetCommand,
+  GetIdentityDkimAttributesCommand,
+  GetIdentityVerificationAttributesCommand,
+  ListIdentitiesCommand,
   SESClient,
 } from '@aws-sdk/client-ses';
 import { CreateTopicCommand, SetTopicAttributesCommand, SNSClient } from '@aws-sdk/client-sns';
@@ -176,5 +179,89 @@ describe('SES onboarding AWS adapter', () => {
     });
 
     expect(result).toEqual({ ok: true, value: { confirmed, arn } });
+  });
+
+  it('pages through every SES identity and reports its verification and DKIM state', async () => {
+    const ses = new SESClient(credentials);
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises -- SES send also declares callback overloads, while this adapter uses the promise overload.
+    vi.spyOn(ses, 'send').mockImplementation(async (command) => {
+      if (command instanceof ListIdentitiesCommand) {
+        return command.input.NextToken === undefined
+          ? { Identities: ['tenant.test'], NextToken: 'page-2', $metadata: {} }
+          : { Identities: ['owner@tenant.test'], $metadata: {} };
+      }
+      if (command instanceof GetIdentityVerificationAttributesCommand) {
+        return {
+          VerificationAttributes: {
+            'tenant.test': { VerificationStatus: 'Success' },
+            'owner@tenant.test': { VerificationStatus: 'Pending' },
+          },
+          $metadata: {},
+        };
+      }
+      if (command instanceof GetIdentityDkimAttributesCommand) {
+        return {
+          DkimAttributes: { 'tenant.test': { DkimVerificationStatus: 'Success' } },
+          $metadata: {},
+        };
+      }
+      throw new Error('unexpected command');
+    });
+    const controlPlane = createSesOnboardingControlPlane(
+      () => ({ ses, sns: new SNSClient(credentials) }),
+    );
+
+    const result = await controlPlane.listIdentities(credentials);
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        identities: [
+          { identity: 'tenant.test', kind: 'domain', verified: true, dkimVerified: true },
+          { identity: 'owner@tenant.test', kind: 'email', verified: false, dkimVerified: false },
+        ],
+        accessDeniedAction: null,
+      },
+    });
+  });
+
+  it('turns a missing ses:ListIdentities permission into a non-fatal hint', async () => {
+    const ses = new SESClient(credentials);
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises -- SES send also declares callback overloads, while this adapter uses the promise overload.
+    vi.spyOn(ses, 'send').mockImplementation(async () => {
+      throw Object.assign(new Error('User is not authorized to perform ses:ListIdentities'), {
+        name: 'AccessDenied',
+      });
+    });
+    const controlPlane = createSesOnboardingControlPlane(
+      () => ({ ses, sns: new SNSClient(credentials) }),
+    );
+
+    expect(await controlPlane.listIdentities(credentials)).toEqual({
+      ok: true,
+      value: { identities: [], accessDeniedAction: 'ses:ListIdentities' },
+    });
+  });
+
+  it('names the denied attribute action when only the identity listing is allowed', async () => {
+    const ses = new SESClient(credentials);
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises -- SES send also declares callback overloads, while this adapter uses the promise overload.
+    vi.spyOn(ses, 'send').mockImplementation(async (command) => {
+      if (command instanceof ListIdentitiesCommand) return { Identities: ['tenant.test'], $metadata: {} };
+      if (command instanceof GetIdentityVerificationAttributesCommand) {
+        return { VerificationAttributes: { 'tenant.test': { VerificationStatus: 'Success' } }, $metadata: {} };
+      }
+      throw Object.assign(new Error('not authorized to perform ses:GetIdentityDkimAttributes'), {
+        name: 'AccessDeniedException',
+      });
+    });
+    const controlPlane = createSesOnboardingControlPlane(
+      () => ({ ses, sns: new SNSClient(credentials) }),
+    );
+
+    expect(await controlPlane.listIdentities(credentials)).toEqual({
+      ok: true,
+      value: { identities: [], accessDeniedAction: 'ses:GetIdentityDkimAttributes' },
+    });
   });
 });

@@ -390,6 +390,7 @@ const marketingScopes = {
   document: (id: string) => ['marketing', 'documents', id] as const,
   layouts: () => ['marketing', 'layouts'] as const,
   settings: () => ['marketing', 'settings'] as const,
+  identities: () => ['marketing', 'ses-identities'] as const,
   reputation: () => ['marketing', 'reputation'] as const,
   sends: (input: EmailSendsQueryInput) => ['marketing', 'sends', input] as const,
   send: (kind: 'transactional' | 'marketing', id: string) => ['marketing', 'sends', kind, id] as const,
@@ -462,6 +463,9 @@ export const marketingSesSettingsQuery = (api: ApiClient) => defineQuery({
 export const pollMarketingSesOnboardingMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'onboarding'],
   call: api.pollMarketingSesOnboarding,
+});
+export const marketingSesIdentitiesQuery = (api: ApiClient) => defineQuery({
+  queryKey: marketingScopes.identities(), call: ({ signal }) => api.listMarketingSesIdentities(signal),
 });
 export const startMarketingSesIdentityMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'identity'],

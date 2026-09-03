@@ -267,6 +267,7 @@ import {
   listReports,
   listProducts,
   listSchedulerRunsForTenant,
+  listSesIdentities,
   listSpacesForMember,
   listSpacesForStaff,
   listTenantApiKeys,
@@ -1231,6 +1232,12 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') }, clock: deps.clock,
       webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
       pool: deps.marketing.platformTransactionalPool,
+      ...(deps.marketing.sesOnboarding === undefined ? {} : {
+        sesOnboarding: {
+          credentials: deps.marketing.sesOnboarding.credentials,
+          controlPlane: deps.marketing.sesOnboarding.controlPlane,
+        },
+      }),
     }));
   });
 
@@ -1239,6 +1246,19 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       return respond(err(internal('SES onboarding is not configured')));
     }
     return respond(await pollSesOnboarding({ identity: c.get('identity') }, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+    }));
+  });
+
+  app.get(API_PATHS.marketingSesIdentities, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    return respond(await listSesIdentities({ identity: c.get('identity') }, {
       settings: deps.marketing.sesSettings,
       credentials: deps.marketing.sesOnboarding.credentials,
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
@@ -1831,7 +1851,18 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = tenantSecretSetInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid secret payload', parsed.error.flatten())));
-    const result = await setTenantSecret({ identity: c.get('identity') }, parsed.data, deps);
+    const marketing = deps.marketing;
+    const result = await setTenantSecret({ identity: c.get('identity') }, parsed.data, {
+      ...deps,
+      ...(marketing?.sesOnboarding === undefined ? {} : {
+        sesIdentity: {
+          settings: marketing.sesSettings,
+          credentials: marketing.sesOnboarding.credentials,
+          controlPlane: marketing.sesOnboarding.controlPlane,
+          webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+        },
+      }),
+    });
     return respond(result.ok ? ok({ secret: result.value }) : result);
   });
 

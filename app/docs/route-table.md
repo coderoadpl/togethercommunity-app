@@ -117,6 +117,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/marketing/reputation` | authenticated | read | marketing reputation |
 | `POST /api/marketing/ses-settings` | authenticated | mutating | marketing ses settings update |
 | `POST /api/marketing/ses-onboarding/poll` | authenticated | mutating | marketing ses onboarding |
+| `GET /api/marketing/ses-onboarding/identities` | authenticated | read | marketing ses identities |
 | `POST /api/marketing/ses-onboarding/identity` | authenticated | mutating | marketing ses identity start |
 | `POST /api/marketing/ses-onboarding/infrastructure` | authenticated | mutating | marketing ses provision |
 | `POST /api/marketing/ses-onboarding/simulator` | authenticated | mutating | marketing ses simulator |

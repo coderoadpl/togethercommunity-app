@@ -36,6 +36,30 @@ describe('i18n dictionaries', () => {
     expect(plainStrings(en).filter((text) => text.includes('Sending settings'))).toEqual([]);
   });
 
+  it('keeps the sign-in step copy neutral about the typed address', () => {
+    const enumerating = [
+      /to konto/iu,
+      /nie ma hasła/iu,
+      /nie istnieje/iu,
+      /this account/iu,
+      /has no password/iu,
+      /does not exist/iu,
+    ];
+    const stepCopy = Object.values(dictionaries).flatMap((messages) => [
+      messages.auth.signInMethodsUnavailable,
+      messages.auth.magicLinkStepBody,
+      messages.auth.magicLinkExpiredOnStep,
+      messages.auth.usePasswordPrompt,
+      messages.auth.usePasswordInstead,
+      messages.auth.useMagicLinkPrompt,
+      messages.auth.useMagicLinkInstead,
+    ]);
+
+    for (const text of stepCopy) {
+      expect([text, enumerating.filter((pattern) => pattern.test(text))]).toEqual([text, []]);
+    }
+  });
+
   it('share an identical key structure across every language', () => {
     expect(keyShape(dictionaries.en)).toEqual(keyShape(dictionaries.pl));
   });

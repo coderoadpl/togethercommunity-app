@@ -144,7 +144,7 @@ export const en: Messages = {
     identifierPending: 'Checking…',
     signingInAs: ({ email }) => format('Signing in as {email}', { email }),
     changeIdentifier: 'Use a different e-mail',
-    signInMethodsUnavailable: 'We could not check how you sign in to this account. We will email you a magic link — you can also switch to a password.',
+    signInMethodsUnavailable: 'We could not check the available sign-in options right now. We will email you a magic link — you can also sign in with a password.',
     usePasswordPrompt: 'Have a password?',
     usePasswordInstead: 'Sign in with it',
     useMagicLinkPrompt: 'Prefer no password?',

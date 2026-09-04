@@ -2210,6 +2210,30 @@ describe('public rate limiting', () => {
     expect(scopes).toEqual(['auth-resolve:ip', 'auth-resolve:tenant']);
   });
 
+  it('claims the production lookup budget of 60 per address and 1000 per tenant', async () => {
+    const claims: { scope: string; limit: number }[] = [];
+    const app = buildApp({
+      ...deps({
+        rateLimitBuckets: {
+          claim: async ({ scope, limit }) => { claims.push({ scope, limit }); return true; },
+          purgeExpired: async () => 0,
+        },
+      }),
+      publicRateLimitPolicies: selectPublicRateLimitPolicies({ NODE_ENV: 'production' }),
+    });
+
+    await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'buyer@together.dev' }),
+    });
+
+    expect(claims).toEqual([
+      { scope: 'auth-resolve:ip', limit: 60 },
+      { scope: 'auth-resolve:tenant', limit: 1_000 },
+    ]);
+  });
+
   it('keeps an exhausted lookup budget away from checkout and the other way round', async () => {
     const drained = (exhaustedScopes: readonly string[]): AppDeps['rateLimitBuckets'] => ({
       claim: async (input) => !exhaustedScopes.includes(input.scope),
@@ -4618,17 +4642,83 @@ describe('public auth-resolve route', () => {
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('handles auth-resolve preflight before auth middleware', async () => {
-    const response = await buildApp(deps()).request(API_PATHS.authResolve, {
+  const verifiedDomain = {
+    id: 'domain-acme',
+    tenantId: acme.id,
+    domain: 'learn.acme.example',
+    kind: 'custom' as const,
+    verified: true,
+  };
+
+  const preflight = (app: ReturnType<typeof buildApp>, origin: string) =>
+    app.request(API_PATHS.authResolve, {
       method: 'OPTIONS',
       headers: {
-        origin: 'https://creator.example',
+        host: 'acme.localhost:48730',
+        origin,
         'access-control-request-method': 'POST',
       },
     });
 
-    expect(response.status).toBe(204);
-    expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+  it('answers the preflight of a tenant subdomain, the platform host and a verified domain', async () => {
+    const app = buildApp(deps({ domains: [verifiedDomain] }));
+
+    for (const origin of [
+      'http://acme.localhost:48730',
+      'http://start.localhost:48730',
+      'https://learn.acme.example',
+    ]) {
+      const response = await preflight(app, origin);
+      expect([origin, response.status]).toEqual([origin, 204]);
+      expect(response.headers.get('access-control-allow-origin')).toBe(origin);
+      expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+      expect(response.headers.get('vary')).toContain('Origin');
+    }
+  });
+
+  it('refuses the preflight of a foreign origin, an unverified domain and a missing origin', async () => {
+    const app = buildApp(deps({
+      domains: [{ ...verifiedDomain, id: 'domain-pending', domain: 'pending.acme.example', verified: false }],
+    }));
+
+    for (const origin of ['https://creator.example', 'https://pending.acme.example']) {
+      const response = await preflight(app, origin);
+      expect([origin, response.status]).toEqual([origin, 403]);
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    }
+    const bare = await app.request(API_PATHS.authResolve, {
+      method: 'OPTIONS',
+      headers: { host: 'acme.localhost:48730', 'access-control-request-method': 'POST' },
+    });
+    expect(bare.status).toBe(403);
+  });
+
+  it('never answers the lookup with a wildcard and withholds it from a foreign origin', async () => {
+    const app = buildApp(deps());
+
+    const allowed = await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        origin: 'http://acme.localhost:48730',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'kursant@together.dev' }),
+    });
+    const foreign = await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        origin: 'https://creator.example',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'kursant@together.dev' }),
+    });
+
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('http://acme.localhost:48730');
+    expect(foreign.status).toBe(200);
+    expect(foreign.headers.get('access-control-allow-origin')).toBeNull();
+    expect(foreign.headers.get('vary')).toContain('Origin');
   });
 });
 

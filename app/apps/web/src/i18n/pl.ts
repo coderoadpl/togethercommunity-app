@@ -2189,6 +2189,7 @@ export const pl: Messages = {
     wizardIdentityAlreadyVerified: 'Domena jest już zweryfikowana w SES — krok DNS możesz pominąć',
     wizardProvision: 'Utwórz infrastrukturę SES + SNS',
     wizardProvisionHint: 'Tworzy zestaw konfiguracji (configuration set), politykę i subskrypcję HTTPS SNS, a następnie publikuje zdarzenia Send, Delivery, Bounce, Complaint, Open i Click.',
+    wizardWebhookEndpointStale: 'Adres webhooka zmienił się — kliknij Utwórz infrastrukturę, aby zasubskrybować nowy adres',
     wizardPoll: 'Sprawdź status w AWS',
     wizardSimulator: 'Wyślij test odbicia w symulatorze',
     wizardSimulatorHint: 'Konfiguracja zakończy się, gdy podpisane odbicie z SNS dotrze do webhooka tej platformy.',

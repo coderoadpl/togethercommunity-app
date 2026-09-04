@@ -26,6 +26,7 @@ import type {
   TenantSesSettingsRepository,
 } from '../ports.js';
 import { refreshTenantSesIdentityStatus } from './marketing-ses-onboarding.js';
+import type { SesWebhookBaseUrlResolver } from './ses-webhook-url.js';
 
 export interface TenantSecretDeps {
   tenantSecrets: TenantSecretRepository;
@@ -36,7 +37,7 @@ export interface TenantSecretDeps {
     settings: TenantSesSettingsRepository;
     credentials: MarketingSesCredentialResolver;
     controlPlane: SesOnboardingControlPlane;
-    webhookBaseUrl: string;
+    webhookBaseUrl: SesWebhookBaseUrlResolver;
   };
 }
 

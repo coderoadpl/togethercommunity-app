@@ -1862,6 +1862,11 @@ export interface SesOnboardingControlPlane {
     credentials: SesMarketingCredentials,
     input: { topicArn: string; endpoint: string },
   ): Promise<Result<{ confirmed: boolean; arn: string | null; endpoint: string }, AppError>>;
+  /** SNS rejects Unsubscribe for pending subscriptions; those are reported as not removed. */
+  removeSubscription(
+    credentials: SesMarketingCredentials,
+    input: { topicArn: string; endpoint: string },
+  ): Promise<Result<{ removed: boolean }, AppError>>;
   readInfrastructure(
     credentials: SesMarketingCredentials,
     input: {

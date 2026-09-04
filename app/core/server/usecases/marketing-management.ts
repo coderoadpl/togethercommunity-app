@@ -39,7 +39,8 @@ import type {
   TenantSesSettingsRepository,
   TokenGenerator,
 } from '../ports.js';
-import { refreshTenantSesIdentityStatus } from './marketing-ses-onboarding.js';
+import { refreshTenantSesIdentityStatus, staleSesWebhookEndpoint } from './marketing-ses-onboarding.js';
+import type { SesWebhookBaseUrlResolver } from './ses-webhook-url.js';
 
 const staffTenantIdFrom = (ctx: Ctx, capability: Capability): Result<string, AppError> =>
   authorizeRequiredTenant(ctx, capability);
@@ -294,7 +295,7 @@ const checkSesIdentityAfterSave = async (
   deps: {
     settings: TenantSesSettingsRepository;
     clock: Clock;
-    webhookBaseUrl: string;
+    webhookBaseUrl: SesWebhookBaseUrlResolver;
     sesOnboarding?: SesIdentityCheckDeps;
   },
 ): Promise<TenantSesSettings> => {
@@ -320,12 +321,13 @@ interface TenantSendingSettingsOutput {
   resendConfigured: boolean;
   platformPool: { used: number; limit: 1000 };
   webhookUrl: string | null;
+  webhookEndpointStale: boolean;
   lastSnsDelivery: SnsWebhookDelivery | null;
 }
 
 export const getTenantSesMarketingSettings = async (
   ctx: Ctx,
-  input: { webhookBaseUrl: string },
+  input: { webhookBaseUrl: SesWebhookBaseUrlResolver },
   deps: {
     settings: TenantSesSettingsRepository;
     secrets: TenantSecretRepository;
@@ -350,12 +352,16 @@ export const getTenantSesMarketingSettings = async (
     platformPool: { used: usage.sent, limit: 1000 as const },
     lastSnsDelivery,
   };
-  if (settings === null) return ok({ settings: null, ...transport, webhookUrl: null });
+  if (settings === null) {
+    return ok({ settings: null, ...transport, webhookUrl: null, webhookEndpointStale: false });
+  }
   const derived = { ...settings, broadcastsEnabled: broadcastsEnabled(settings, hasCredentials) };
+  const webhookUrl = `${await input.webhookBaseUrl(tenantId.value)}/${settings.webhookToken}`;
   return ok({
     settings: derived,
     ...transport,
-    webhookUrl: `${input.webhookBaseUrl}/${settings.webhookToken}`,
+    webhookUrl,
+    webhookEndpointStale: staleSesWebhookEndpoint(settings, webhookUrl) !== null,
   });
 };
 
@@ -377,7 +383,7 @@ export const updateTenantSesMarketingSettings = async (
     secrets: TenantSecretRepository;
     tokens: TokenGenerator;
     clock: Clock;
-    webhookBaseUrl: string;
+    webhookBaseUrl: SesWebhookBaseUrlResolver;
     pool: PlatformTransactionalPool;
     snsDeliveries: SnsWebhookDeliveryRepository;
     sesOnboarding?: SesIdentityCheckDeps;
@@ -435,13 +441,15 @@ export const updateTenantSesMarketingSettings = async (
     deps,
   );
   const hasSenderIdentity = senderIdentityConfigured(stored);
+  const webhookUrl = `${await deps.webhookBaseUrl(tenantId.value)}/${stored.webhookToken}`;
   return ok({
     settings: stored,
     credentialsConfigured: hasCredentials,
     smtpConfigured: hasSenderIdentity && hasSecrets(storedSecrets, smtpSecretKeys),
     resendConfigured: hasSenderIdentity && hasSecrets(storedSecrets, resendSecretKeys),
     platformPool: { used: usage.sent, limit: 1000 as const },
-    webhookUrl: `${deps.webhookBaseUrl}/${stored.webhookToken}`,
+    webhookUrl,
+    webhookEndpointStale: staleSesWebhookEndpoint(stored, webhookUrl) !== null,
     lastSnsDelivery,
   });
 };

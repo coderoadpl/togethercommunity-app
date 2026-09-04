@@ -176,6 +176,7 @@ import {
   createPost,
   createProduct,
   createProductPrice,
+  createSesWebhookBaseUrlResolver,
   createSpace,
   createTenant,
   createTenantApiKey,
@@ -615,6 +616,11 @@ const recordCheckoutConsents = async (
 
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
+  const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
+    tenants: deps.tenants,
+    tenantDomains: deps.tenantDomains,
+    routing: deps,
+  });
   app.post(API_PATHS.emailDispatch, async (c) => {
     if (!secretEquals(c.req.header(EMAIL_DISPATCH_SECRET_HEADER), deps.emailDispatchSecret)) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
@@ -1256,7 +1262,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   app.get(API_PATHS.marketingSesSettings, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     return respond(await getTenantSesMarketingSettings(ctxOf(c), {
-      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      webhookBaseUrl: sesWebhookBaseUrl,
     }, {
       settings: deps.marketing.sesSettings,
       secrets: deps.tenantSecrets,
@@ -1281,7 +1287,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await updateTenantSesMarketingSettings(ctxOf(c), parsed.data, {
       settings: deps.marketing.sesSettings, secrets: deps.tenantSecrets,
       tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') }, clock: deps.clock,
-      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      webhookBaseUrl: sesWebhookBaseUrl,
       pool: deps.marketing.platformTransactionalPool,
       snsDeliveries: deps.marketing.snsDeliveries,
       ...(deps.marketing.sesOnboarding === undefined ? {} : {
@@ -1302,7 +1308,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       credentials: deps.marketing.sesOnboarding.credentials,
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
-      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      webhookBaseUrl: sesWebhookBaseUrl,
     }));
   });
 
@@ -1315,7 +1321,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       credentials: deps.marketing.sesOnboarding.credentials,
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
-      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      webhookBaseUrl: sesWebhookBaseUrl,
     }));
   });
 
@@ -1331,7 +1337,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       credentials: deps.marketing.sesOnboarding.credentials,
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
-      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      webhookBaseUrl: sesWebhookBaseUrl,
     }));
   });
 
@@ -1344,7 +1350,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       credentials: deps.marketing.sesOnboarding.credentials,
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
-      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      webhookBaseUrl: sesWebhookBaseUrl,
     }));
   });
 
@@ -1357,7 +1363,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       credentials: deps.marketing.sesOnboarding.credentials,
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
-      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      webhookBaseUrl: sesWebhookBaseUrl,
     }));
   });
 
@@ -1946,7 +1952,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           settings: marketing.sesSettings,
           credentials: marketing.sesOnboarding.credentials,
           controlPlane: marketing.sesOnboarding.controlPlane,
-          webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+          webhookBaseUrl: sesWebhookBaseUrl,
         },
       }),
     });

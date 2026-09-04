@@ -2099,6 +2099,7 @@ export interface Messages {
     wizardIdentityAlreadyVerified: string;
     wizardProvision: string;
     wizardProvisionHint: string;
+    wizardWebhookEndpointStale: string;
     wizardPoll: string;
     wizardSimulator: string;
     wizardSimulatorHint: string;

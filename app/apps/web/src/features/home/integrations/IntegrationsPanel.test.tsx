@@ -234,6 +234,7 @@ const renderPanel = (
         resendConfigured: false,
         platformPool: { used: 12, limit: 1000 },
         webhookUrl: 'https://app.example.test/api/webhooks/ses/webhook-token',
+        webhookEndpointStale: false,
         settings: null,
         lastSnsDelivery: null,
       },

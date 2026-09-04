@@ -29,6 +29,7 @@ import {
 
 const NOW = '2026-07-27T10:00:00.000Z';
 const WEBHOOK_URL = 'https://app.together.test/api/webhooks/ses/webhook_token_123456789012345';
+const LEGACY_WEBHOOK_URL = 'https://together.test/api/webhooks/ses/webhook_token_123456789012345';
 
 const ctx = {
   identity: {
@@ -91,6 +92,8 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   accountIdentities: SesAccountIdentity[] = [];
   accessDeniedAction: string | null = null;
   subscribedEndpoints: string[] = [];
+  removedEndpoints: string[] = [];
+  removable = true;
   readSubscribedEndpoints: (string | null)[] = [];
 
   async listIdentities() {
@@ -133,6 +136,11 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
       arn: this.subscriptionConfirmed ? 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1:sub' : null,
       endpoint: input.endpoint,
     });
+  }
+
+  async removeSubscription(_credentials: unknown, input: { endpoint: string }) {
+    this.removedEndpoints.push(input.endpoint);
+    return ok({ removed: this.removable });
   }
 
   async readInfrastructure(_credentials: unknown, input: { subscribedEndpoint: string | null }) {
@@ -188,7 +196,7 @@ const deps = (
   },
   controlPlane,
   clock: { nowIso: () => NOW },
-  webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+  webhookBaseUrl: async () => 'https://app.together.test/api/webhooks/ses',
 });
 
 const sesSecretKeys: TenantSecretKey[] = ['ses.accessKeyId', 'ses.secretAccessKey', 'ses.region'];
@@ -445,6 +453,85 @@ describe('SES onboarding wizard', () => {
     });
   });
 
+  it('resubscribes and drops the confirmation when provisioning finds a stale endpoint', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.subscriptionConfirmed = false;
+
+    const result = await provisionSesInfrastructure(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({ ok: true, value: { subscriptionEndpoint: WEBHOOK_URL } });
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: null,
+    });
+    expect(controlPlane.subscribedEndpoints).toEqual([WEBHOOK_URL, WEBHOOK_URL]);
+    expect(controlPlane.removedEndpoints).toEqual([LEGACY_WEBHOOK_URL]);
+  });
+
+  it('keeps the stale subscription when SNS cannot unsubscribe it', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.removable = false;
+
+    const result = await provisionSesInfrastructure(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({ ok: true, value: { subscriptionEndpoint: WEBHOOK_URL } });
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+    });
+  });
+
+  it('migrates a stale endpoint on poll and reports the subscription as pending again', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+    controlPlane.subscriptionConfirmed = false;
+
+    const result = await pollSesOnboarding(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({ ok: true, value: { checklist: { snsSubscription: false } } });
+    expect(controlPlane.subscribedEndpoints).toEqual([WEBHOOK_URL]);
+    expect(controlPlane.removedEndpoints).toEqual([LEGACY_WEBHOOK_URL]);
+    expect(controlPlane.readSubscribedEndpoints).toEqual([WEBHOOK_URL]);
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: null,
+    });
+  });
+
+  it('leaves a subscription that only differs by trailing slash alone', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: `${WEBHOOK_URL}/`,
+      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+
+    await pollSesOnboarding(ctx, deps(repository, controlPlane));
+
+    expect(controlPlane.subscribedEndpoints).toEqual([]);
+    expect(controlPlane.removedEndpoints).toEqual([]);
+  });
+
   it('clears the persisted confirmation when a poll no longer observes a confirmed subscription', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
       identityVerifiedAt: NOW,
@@ -575,7 +662,7 @@ describe('SES onboarding wizard', () => {
       secrets: secretRepository(sesSecretRows),
       tokens: { nextToken: () => 'webhook_token_123456789012345' },
       clock: { nowIso: () => NOW },
-      webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://app.together.test/api/webhooks/ses',
       pool: platformPool,
       snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
       sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
@@ -597,7 +684,7 @@ describe('SES onboarding wizard', () => {
       secrets: secretRepository(sesSecretRows),
       tokens: { nextToken: () => 'webhook_token_123456789012345' },
       clock: { nowIso: () => NOW },
-      webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://app.together.test/api/webhooks/ses',
       pool: platformPool,
       snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
       sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
@@ -626,7 +713,7 @@ describe('SES onboarding wizard', () => {
       secrets: secretRepository([]),
       tokens: { nextToken: () => 'webhook_token_123456789012345' },
       clock: { nowIso: () => NOW },
-      webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://app.together.test/api/webhooks/ses',
       pool: platformPool,
       snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
       sesOnboarding: { credentials: deps(repository, controlPlane).credentials, controlPlane },
@@ -652,7 +739,7 @@ describe('SES onboarding wizard', () => {
         settings: repository,
         credentials: deps(repository, controlPlane).credentials,
         controlPlane,
-        webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+        webhookBaseUrl: async () => 'https://app.together.test/api/webhooks/ses',
       },
     });
 
@@ -677,7 +764,7 @@ describe('SES onboarding wizard', () => {
         settings: repository,
         credentials: deps(repository, controlPlane).credentials,
         controlPlane,
-        webhookBaseUrl: 'https://app.together.test/api/webhooks/ses',
+        webhookBaseUrl: async () => 'https://app.together.test/api/webhooks/ses',
       },
     };
 

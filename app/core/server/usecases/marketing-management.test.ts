@@ -208,13 +208,13 @@ describe('marketing management use-cases', () => {
       reserve: async () => true,
       settle: async () => undefined,
     };
-    const read = await getTenantSesMarketingSettings(ctx, { webhookBaseUrl: 'https://tenant.test/api/webhooks/ses' }, {
+    const read = await getTenantSesMarketingSettings(ctx, { webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses' }, {
       settings: repository, secrets, pool, snsDeliveries,
     });
     expect(read.ok && read.value.settings?.broadcastsEnabled).toBe(false);
     await repository.upsert('tenant-1', { ...settings, configurationSet: 'marketing' });
     const configured = await getTenantSesMarketingSettings(ctx, {
-      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses',
     }, { settings: repository, secrets, pool, snsDeliveries });
     expect(configured.ok && configured.value.settings?.broadcastsEnabled).toBe(true);
 
@@ -227,7 +227,7 @@ describe('marketing management use-cases', () => {
     }, {
       settings: new InMemoryTenantSesSettingsRepository([{ ...settings, inSandbox: true }]), secrets,
       tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
-      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses',
       pool,
       snsDeliveries,
     });
@@ -250,7 +250,7 @@ describe('marketing management use-cases', () => {
       secrets,
       tokens: { nextToken: () => 'webhook_token_123456789012345' },
       clock,
-      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses',
       pool,
       snsDeliveries,
     });
@@ -274,7 +274,7 @@ describe('marketing management use-cases', () => {
     }, {
       settings: repository, secrets,
       tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
-      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses',
       pool,
       snsDeliveries,
     })).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -288,7 +288,7 @@ describe('marketing management use-cases', () => {
     }, {
       settings: new InMemoryTenantSesSettingsRepository(), secrets,
       tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
-      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses',
       pool,
       snsDeliveries,
     });
@@ -332,7 +332,7 @@ describe('marketing management use-cases', () => {
     }, {
       settings: new InMemoryTenantSesSettingsRepository([stored]), secrets,
       tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
-      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses',
       pool,
       snsDeliveries,
     });
@@ -355,6 +355,47 @@ describe('marketing management use-cases', () => {
         },
       },
     });
+  });
+
+  it('flags a subscribed endpoint that no longer matches the tenant webhook address', async () => {
+    const stored: TenantSesSettings = {
+      tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
+      identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: 'arn:topic',
+      snsSubscriptionEndpoint: 'https://apex.test/api/webhooks/ses/webhook_token_123456789012345',
+      snsSubscriptionConfirmedAt: NOW,
+      trackingEnabled: false, autoPauseOnCritical: false,
+      webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
+      quotaSentLast24Hours: 0, quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW,
+      footerLegalName: 'Tenant Ltd', footerAddress: 'Street 1, Warsaw', broadcastsEnabled: false,
+      reputationAlertStatus: null, reputationAlertedAt: null,
+    };
+    const read = (settings: TenantSesSettings) => getTenantSesMarketingSettings(
+      ctx,
+      { webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses' },
+      {
+        settings: new InMemoryTenantSesSettingsRepository([settings]),
+        secrets: secretRepository(['ses.accessKeyId', 'ses.secretAccessKey', 'ses.region']),
+        pool: {
+          usage: async () => ({ sent: 0, reserved: 0 }),
+          reserve: async () => true,
+          settle: async () => undefined,
+        },
+        snsDeliveries,
+      },
+    );
+
+    expect(await read(stored)).toMatchObject({
+      ok: true,
+      value: {
+        webhookUrl: 'https://tenant.test/api/webhooks/ses/webhook_token_123456789012345',
+        webhookEndpointStale: true,
+      },
+    });
+    expect(await read({
+      ...stored,
+      snsSubscriptionEndpoint: 'https://tenant.test/api/webhooks/ses/webhook_token_123456789012345',
+    })).toMatchObject({ ok: true, value: { webhookEndpointStale: false } });
   });
 
   it('reads secrets once and requires sender identity for SMTP and Resend readiness', async () => {
@@ -383,7 +424,7 @@ describe('marketing management use-cases', () => {
 
     const missingIdentity = await getTenantSesMarketingSettings(
       ctx,
-      { webhookBaseUrl: 'https://tenant.test/api/webhooks/ses' },
+      { webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses' },
       { settings, secrets, pool, snsDeliveries },
     );
 
@@ -408,7 +449,7 @@ describe('marketing management use-cases', () => {
       secrets,
       tokens: { nextToken: () => 'webhook_token_123456789012345' },
       clock,
-      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses',
       pool,
       snsDeliveries,
     });

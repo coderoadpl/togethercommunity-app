@@ -70,6 +70,9 @@ import type {
   Tenant,
   TenantApiKey,
   TenantDomain,
+  TenantDomainEventKind,
+  TenantDomainProvider,
+  DnsRecord,
   TenantSecret,
   TenantSecretKey,
   TenantSettings,
@@ -1598,8 +1601,88 @@ export interface DevSinkPurge {
 
 export interface TenantDomainRepository {
   findByDomain(domain: string): Promise<TenantDomain | null>;
+  findAnyByDomain(domain: string): Promise<TenantDomain | null>;
   listVerifiedDomains(): Promise<TenantDomain[]>;
   listByTenant(tenantId: string): Promise<TenantDomain[]>;
+  insert(tenantId: string, domain: TenantDomain): Promise<TenantDomain | null>;
+  patch(
+    tenantId: string,
+    id: string,
+    patch: {
+      verified?: boolean;
+      verification?: DnsRecord[];
+      verifiedAt?: string | null;
+      lastCheckedAt?: string | null;
+      lastError?: string | null;
+    },
+  ): Promise<TenantDomain | null>;
+  /**
+   * Flips an unverified row and returns it, or `null` when another check won the
+   * race, so exactly one verification lands in the audit trail and the inbox.
+   */
+  markVerified(
+    tenantId: string,
+    id: string,
+    patch: {
+      verification: DnsRecord[];
+      verifiedAt: string;
+      lastCheckedAt: string;
+      lastError: null;
+    },
+  ): Promise<TenantDomain | null>;
+  remove(tenantId: string, id: string): Promise<boolean>;
+  /** One row per tenant per pass keeps a tenant with three pending domains from starving the rest. */
+  listOldestPendingPerTenant(limit: number): Promise<TenantDomain[]>;
+}
+
+export interface TenantDomainEventInput {
+  id: string;
+  tenantId: string;
+  domain: string;
+  kind: TenantDomainEventKind;
+  actorUserId: string | null;
+  detail: string | null;
+  at: string;
+}
+
+/**
+ * Append-only: the domain trail is evidence and is never updated or deleted. It is
+ * read by the platform operator over SQL, so the port stays write-only.
+ */
+export interface TenantDomainEventRepository {
+  append(tenantId: string, event: TenantDomainEventInput): Promise<void>;
+}
+
+export interface DomainProvisionState {
+  verified: boolean;
+  misconfigured: boolean;
+  verification: DnsRecord[];
+}
+
+/**
+ * One `signal` covers every call a caller makes, so a request that fans out to
+ * several provider calls still fits inside one serverless invocation.
+ */
+interface DomainProvisionerCall {
+  signal?: AbortSignal | undefined;
+}
+
+/** A manual implementation is always available, so no deployment needs a platform account. */
+export interface DomainProvisioner {
+  readonly provider: TenantDomainProvider;
+  add(
+    domain: string,
+    options?: DomainProvisionerCall & { gitBranch?: string },
+  ): Promise<Result<{ verification: DnsRecord[]; verified: boolean }, AppError>>;
+  status(
+    domain: string,
+    options?: DomainProvisionerCall,
+  ): Promise<Result<DomainProvisionState, AppError>>;
+  verify(
+    domain: string,
+    options?: DomainProvisionerCall,
+  ): Promise<Result<DomainProvisionState, AppError>>;
+  remove(domain: string, options?: DomainProvisionerCall): Promise<Result<void, AppError>>;
 }
 
 /** The only persisted onboarding state; every checklist step is recomputed on read. */
@@ -1987,7 +2070,7 @@ export interface TenantAccessReader {
   listTenantsForStaff(userId: string): Promise<Membership[]>;
   listStaffForTenant(
     tenantId: string,
-  ): Promise<Array<{ userId: string; email: string; language: Language | null }>>;
+  ): Promise<Array<{ userId: string; email: string; staffRole: StaffRole; language: Language | null }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
   findMember(tenantId: string, userId: string): Promise<Member | null>;
 }

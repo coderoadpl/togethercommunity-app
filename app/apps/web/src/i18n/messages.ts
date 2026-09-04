@@ -499,6 +499,8 @@ export interface Messages {
     dmMessage: (params: { author: string }) => string;
     dmReport: (params: { reporter: string }) => string;
     spaceEvent: (params: { space: string }) => string;
+    tenantDomainVerified: (params: { domain: string }) => string;
+    tenantDomainError: (params: { domain: string }) => string;
   };
   messages: {
     navLabel: string;
@@ -1794,9 +1796,31 @@ export interface Messages {
     workspaceAddress: string;
     customDomains: string;
     none: string;
-    verified: string;
-    pending: string;
-    dnsInstruction: (params: { domain: string; target: string }) => string;
+    addLabel: string;
+    addPlaceholder: string;
+    add: string;
+    adding: string;
+    limitReached: (params: { max: number }) => string;
+    statusActive: string;
+    statusPendingDns: string;
+    statusProviderVerification: string;
+    statusError: string;
+    recordsHeading: string;
+    recordType: string;
+    recordName: string;
+    recordValue: string;
+    copy: string;
+    copied: string;
+    check: string;
+    checking: string;
+    remove: string;
+    removeConfirm: (params: { domain: string }) => string;
+    removing: string;
+    removedRedirect: string;
+    lastChecked: (params: { at: string }) => string;
+    conflict: string;
+    firstDomainWarning: string;
+    docsLink: string;
   };
   buildInfo: {
     heading: string;

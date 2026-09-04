@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import type { Identity, Tenant } from '#core/domain/index.js';
+import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
 
 import { registerManifestRoute } from './manifest.js';
 
@@ -39,11 +40,7 @@ const deps = (tenants: Tenant[], accentColor: string | null = null): ManifestDep
   baseDomain: 'localhost',
   platformHost: 'start.localhost',
   singleTenantMode: false,
-  tenantDomains: {
-    findByDomain: async () => null,
-    listVerifiedDomains: async () => [],
-    listByTenant: async () => [],
-  },
+  tenantDomains: createInMemoryTenantDomainRepository(),
   tenants: {
     findById: async (id) => tenants.find((candidate) => candidate.id === id) ?? null,
     findBySlug: async (slug) => tenants.find((candidate) => candidate.slug === slug) ?? null,

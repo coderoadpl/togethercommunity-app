@@ -1,23 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
 import type { TenantDomain } from '#core/domain/index.js';
+import { tenantDomainFixture, tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 
 import { isTenantScopedOrigin, type TenantCorsDeps } from './tenant-cors.js';
 
-const domain = (input: Partial<TenantDomain> & { domain: string }): TenantDomain => ({
-  id: `domain-${input.domain}`,
-  tenantId: 't-acme',
-  kind: 'custom',
-  verified: true,
-  ...input,
-});
+const domain = (input: Partial<TenantDomain> & { domain: string }): TenantDomain =>
+  tenantDomainFixture({
+    id: `domain-${input.domain}`,
+    tenantId: 't-acme',
+    verified: true,
+    ...input,
+  });
 
 const deps = (domains: TenantDomain[] = [], overrides: Partial<TenantCorsDeps> = {}): TenantCorsDeps => ({
-  tenantDomains: {
+  tenantDomains: tenantDomainRepositoryStub({
     findByDomain: async (host) => domains.find((candidate) => candidate.domain === host) ?? null,
     listVerifiedDomains: async () => domains.filter((candidate) => candidate.verified),
     listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
-  },
+  }),
   baseDomain: 'together.test',
   platformHost: 'start.together.test',
   appBaseUrl: 'https://start.together.test',

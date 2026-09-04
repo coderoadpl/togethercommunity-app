@@ -91,27 +91,32 @@ export const notificationKindSchema = z.enum([
   'dm-message',
   'dm-report',
   'space-event',
+  'tenant-domain-verified',
+  'tenant-domain-error',
 ]);
 
 /** Notification contexts outgrew post contexts: posts stay lesson|space. */
-const notificationContextKindSchema = z.enum(['lesson', 'space', 'dm']);
+const notificationContextKindSchema = z.enum(['lesson', 'space', 'dm', 'tenant']);
 
 /**
  * One payload shape for every notification kind so clients render without
- * narrowing: `lessonName` holds the lesson name for lesson contexts, the
- * space name for space contexts and the sender display for direct messages
+ * narrowing: `lessonName` holds the lesson name for lesson contexts, the space
+ * name for space contexts and the sender display for direct messages, while
+ * `domain` carries tenant contexts, which have no post, author or context row
  * (courseId stays null outside lessons).
  */
 const notificationPayloadSchema = z.object({
-  rootPostId: z.string().min(1),
-  postId: z.string().min(1),
+  // Defaults keep rows persisted before these fields existed parseable, and the
+  // nullable ids carry the kinds that have no post, author or context of their own.
+  rootPostId: z.string().min(1).nullable().default(null),
+  postId: z.string().min(1).nullable().default(null),
   contextKind: notificationContextKindSchema,
-  contextId: z.string().min(1),
-  // Defaults keep rows persisted before these fields existed parseable.
+  contextId: z.string().min(1).nullable().default(null),
   courseId: z.string().min(1).nullable().default(null),
   eventId: z.string().min(1).nullable().default(null),
+  domain: z.string().min(1).optional(),
   lessonName: z.string().default(''),
-  authorDisplay: z.string().trim().min(1),
+  authorDisplay: z.string().trim().min(1).nullable().default(null),
   authorAvatarUrl: z.string().nullable().default(null),
   snippet: z.string(),
 });

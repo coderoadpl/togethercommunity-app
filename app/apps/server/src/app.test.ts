@@ -15,9 +15,11 @@ import {
   BETTER_AUTH_SIGN_OUT_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
+import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
+import { tenantDomainFixture, tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
-import { selectDevEndpoints, selectPlatformReset } from './composition.js';
+import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
 import { buildApp } from './app.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
 import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
@@ -135,6 +137,7 @@ const deps = (input: {
   schemaStatus?: Awaited<ReturnType<AppDeps['health']['schemaStatus']>>;
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
+  checkTenantDomains?: AppDeps['checkTenantDomains'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
   paymentRefunds?: AppDeps['paymentRefunds'];
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
@@ -506,6 +509,11 @@ const deps = (input: {
     emailDispatchSecret: 'test-email-dispatch-secret',
     emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
     autoInvoiceDispatchSecret: 'test-auto-invoice-dispatch-secret',
+    domainCheckSecret: 'test-domain-check-secret',
+    checkTenantDomains: input.checkTenantDomains
+      ?? (async () => ok({ checked: 0, verified: 0, failed: 0, alerted: 0 })),
+    tenantDomainEvents: { append: async () => undefined },
+    domainProvisioner: createManualDomainProvisioner(),
     devEmails: {
       findByRecipient: async () => null,
     },
@@ -712,11 +720,11 @@ const deps = (input: {
       spaceUrl: ({ spaceId, rootPostId }) =>
         `http://localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
-    tenantDomains: {
+    tenantDomains: tenantDomainRepositoryStub({
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
       listVerifiedDomains: async () => domains,
       listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
-    },
+    }),
     tenants: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
@@ -2601,6 +2609,48 @@ describe('automatic invoice dispatch route', () => {
   });
 });
 
+describe('tenant domain check route', () => {
+  const summary = { checked: 2, verified: 1, failed: 0, alerted: 0 };
+
+  it('runs the scheduled check only for the configured operator secret', async () => {
+    const checkTenantDomains = vi.fn(async () => ok(summary));
+    const app = buildApp(deps({ checkTenantDomains }));
+
+    const refused = await app.request(API_PATHS.tenantDomainDispatch, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-secret' },
+    });
+    expect(refused.status).toBe(401);
+    expect(checkTenantDomains).not.toHaveBeenCalled();
+
+    const response = await app.request(API_PATHS.tenantDomainDispatch, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-domain-check-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, data: summary });
+  });
+
+  it('accepts the cron GET only with the same secret as a bearer token', async () => {
+    const checkTenantDomains = vi.fn(async () => ok(summary));
+    const app = buildApp(deps({ checkTenantDomains }));
+
+    expect((await app.request(API_PATHS.tenantDomainDispatch)).status).toBe(401);
+    expect((await app.request(API_PATHS.tenantDomainDispatch, {
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-domain-check-secret' },
+    })).status).toBe(401);
+    expect(checkTenantDomains).not.toHaveBeenCalled();
+
+    const response = await app.request(API_PATHS.tenantDomainDispatch, {
+      headers: { authorization: 'Bearer test-domain-check-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(checkTenantDomains).toHaveBeenCalledOnce();
+  });
+});
+
 describe('health route', () => {
   it('keeps the compatibility endpoint and exposes deploy attestation', async () => {
     const up = await buildApp(deps()).request(API_PATHS.health);
@@ -3818,6 +3868,26 @@ describe('platform data reset route', () => {
   });
 });
 
+describe('domain provisioner selection', () => {
+  it('stays manual until both the Vercel token and project are configured', () => {
+    expect(selectDomainProvisioner({
+      VERCEL_API_TOKEN: undefined,
+      VERCEL_PROJECT_ID: undefined,
+      VERCEL_TEAM_ID: undefined,
+      VERCEL_DOMAIN_GIT_BRANCH: undefined,
+    }).provider).toBe('manual');
+  });
+
+  it('hands provisioning to Vercel once the project credentials are present', () => {
+    expect(selectDomainProvisioner({
+      VERCEL_API_TOKEN: 'token',
+      VERCEL_PROJECT_ID: 'prj_1',
+      VERCEL_TEAM_ID: 'team_1',
+      VERCEL_DOMAIN_GIT_BRANCH: 'staging',
+    }).provider).toBe('vercel');
+  });
+});
+
 describe('development-only route table', () => {
   const devRoutesFor = (environment: { NODE_ENV: string; APP_ENV: string }) =>
     buildApp({
@@ -4796,13 +4866,13 @@ describe('public auth-config route', () => {
   it('hides Google on a verified custom domain the OAuth callback cannot return to', async () => {
     const app = buildApp({
       ...deps({
-        domains: [{
+        domains: [tenantDomainFixture({
           id: 'domain-acme',
           tenantId: acme.id,
           domain: 'learn.acme.example',
           kind: 'custom',
           verified: true,
-        }],
+        })],
       }),
       authConfig: { googleEnabled: true },
     });
@@ -4854,13 +4924,13 @@ describe('public auth-resolve route', () => {
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  const verifiedDomain = {
+  const verifiedDomain = tenantDomainFixture({
     id: 'domain-acme',
     tenantId: acme.id,
     domain: 'learn.acme.example',
     kind: 'custom' as const,
     verified: true,
-  };
+  });
 
   const preflight = (app: ReturnType<typeof buildApp>, origin: string) =>
     app.request(API_PATHS.authResolve, {
@@ -5844,13 +5914,13 @@ describe('tenant-host email verification', () => {
     'rebases %s delivery to a verified custom domain',
     async (path) => {
       const { app, captured } = capturingApp({
-        domains: [{
+        domains: [tenantDomainFixture({
           id: 'domain-acme',
           tenantId: acme.id,
           domain: 'learn.acme.example',
           kind: 'custom',
           verified: true,
-        }],
+        })],
       });
 
       await app.request(path, {
@@ -5985,7 +6055,7 @@ describe('auth link host trust', () => {
   it('keeps the scheme and port of the seeded subdomain domain row', async () => {
     const { app, captured } = capturingApp({
       domains: [
-        { id: 'domain-acme', tenantId: acme.id, domain: 'acme.localhost', kind: 'subdomain', verified: true },
+        tenantDomainFixture({ id: 'domain-acme', tenantId: acme.id, domain: 'acme.localhost', kind: 'subdomain', verified: true }),
       ],
     });
 
@@ -6001,7 +6071,7 @@ describe('auth link host trust', () => {
   it('builds the magic-link base on a verified custom domain over HTTPS', async () => {
     const { app, captured } = capturingApp({
       domains: [
-        { id: 'domain-learn', tenantId: acme.id, domain: 'learn.acme.example', kind: 'custom', verified: true },
+        tenantDomainFixture({ id: 'domain-learn', tenantId: acme.id, domain: 'learn.acme.example', kind: 'custom', verified: true }),
       ],
     });
 

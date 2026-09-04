@@ -58,6 +58,8 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
 | `POST /api/internal/dispatch-auto-invoices` | self-authenticating | mutating | auto invoice dispatch |
 | `GET /api/internal/dispatch-auto-invoices` | self-authenticating | read | api internal dispatch-auto-invoices |
+| `POST /api/internal/domain-check` | self-authenticating | mutating | tenant domain dispatch |
+| `GET /api/internal/domain-check` | self-authenticating | read | api internal domain-check |
 | `POST /api/internal/dispatch-ksef` | self-authenticating | mutating | ksef dispatch |
 | `GET /api/internal/dispatch-ksef` | self-authenticating | read | api internal dispatch-ksef |
 | `GET /api/internal/scheduler-runs` | self-authenticating | read | global scheduler runs |
@@ -178,6 +180,9 @@ Local-development-only routes are registered exclusively when the process runs l
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |
 | `GET /api/tenant/settings` | authenticated | read | tenant settings |
 | `GET /api/tenant/routing` | authenticated | read | tenant routing |
+| `POST /api/tenant/domains` | authenticated | mutating | tenant domain add |
+| `POST /api/tenant/domains/check` | authenticated | mutating | tenant domain check |
+| `POST /api/tenant/domains/remove` | authenticated | mutating | tenant domain remove |
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |

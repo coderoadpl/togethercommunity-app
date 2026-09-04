@@ -1,9 +1,11 @@
 import type { ChildProcess } from 'node:child_process';
+import { request as httpRequest } from 'node:http';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import pg from 'pg';
 import { chromium, type Browser, type BrowserContext } from 'playwright-core';
+import { z } from 'zod';
 
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 
@@ -185,6 +187,141 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
   }
 };
 
+const SELF_SERVE_HOST = 'sklep.coderoad.example';
+
+const readDomainRow = async (
+  databaseUrl: string,
+  domain: string,
+): Promise<{ verified: boolean; provider: string; kind: string } | null> => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const result = await client.query<{ verified: boolean; provider: string; kind: string }>(
+      'SELECT verified, provider, kind FROM tenant_domains WHERE domain = $1',
+      [domain],
+    );
+    return result.rows[0] ?? null;
+  } finally {
+    await client.end();
+  }
+};
+
+const verifyDomainRow = async (databaseUrl: string, domain: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await client.query(
+      'UPDATE tenant_domains SET verified = true, verified_at = now() WHERE domain = $1',
+      [domain],
+    );
+  } finally {
+    await client.end();
+  }
+};
+
+/** Node's fetch drops a custom Host header, and the domain has no DNS record. */
+const getWithHost = (connectUrl: string, path: string, host: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const target = new URL(path, connectUrl);
+    const request = httpRequest(
+      { hostname: target.hostname, port: target.port, path: target.pathname, headers: { host } },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk: string) => {
+          body += chunk;
+        });
+        response.on('end', () => resolve(body));
+      },
+    );
+    request.on('error', reject);
+    request.end();
+  });
+
+const resolveTenantThroughHost = async (
+  connectUrl: string,
+  host: string,
+): Promise<string | null> => {
+  const body = await getWithHost(connectUrl, '/api/public/offer', host);
+  const parsed = z
+    .object({ ok: z.literal(true), data: z.object({ tenant: z.object({ name: z.string() }) }) })
+    .safeParse(JSON.parse(body));
+  return parsed.success ? parsed.data.data.tenant.name : null;
+};
+
+const runSelfServeAdd = async (input: {
+  tenantBaseUrl: string;
+  connectUrl: string;
+  databaseUrl: string;
+}): Promise<void> => {
+  let browser: Browser | null = null;
+  try {
+    browser = await launchBrowser();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${input.tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
+    await signInWithPassword(page, CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
+    await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
+
+    await page.getByTestId('tenant-domain-input').fill('sklep.acme.localhost');
+    await page.getByTestId('tenant-domain-add').click();
+    await page.getByTestId('tenant-domain-error').waitFor({ state: 'visible', timeout: 20000 });
+    assert(
+      await readDomainRow(input.databaseUrl, 'sklep.acme.localhost') === null,
+      'the platform base domain was accepted as a custom domain',
+    );
+    console.log('custom-domain-e2e: self-serve add refused a platform subdomain OK');
+
+    await page.getByTestId('tenant-domain-input').fill(SELF_SERVE_HOST);
+    await page.getByTestId('tenant-domain-add').click();
+    const row = page.getByTestId(`tenant-domain-${SELF_SERVE_HOST}`);
+    await row.waitFor({ state: 'visible', timeout: 20000 });
+    assert(
+      (await row.textContent())?.includes('Czeka na DNS') === true,
+      'a self-serve domain did not land in the pending state',
+    );
+
+    const pending = await readDomainRow(input.databaseUrl, SELF_SERVE_HOST);
+    assert(
+      pending?.verified === false && pending.provider === 'manual' && pending.kind === 'custom',
+      `manual mode stored an unexpected row: ${JSON.stringify(pending)}`,
+    );
+    console.log('custom-domain-e2e: self-serve add stored a pending manual row OK');
+
+    await verifyDomainRow(input.databaseUrl, SELF_SERVE_HOST);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByTestId(`tenant-domain-status-${SELF_SERVE_HOST}`).waitFor({
+      state: 'visible',
+      timeout: 20000,
+    });
+    assert(
+      (await page.getByTestId(`tenant-domain-status-${SELF_SERVE_HOST}`).textContent()) === 'Działa',
+      'the Studio did not show the operator-verified domain as active',
+    );
+
+    const resolved = await resolveTenantThroughHost(input.connectUrl, SELF_SERVE_HOST);
+    assert(
+      resolved === 'Acme Courses',
+      `the self-serve host did not resolve the Acme workspace: ${String(resolved)}`,
+    );
+    console.log('custom-domain-e2e: operator flip made the self-serve host resolve OK');
+
+    await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.getByTestId(`tenant-domain-remove-${SELF_SERVE_HOST}`).click();
+    await row.waitFor({ state: 'detached', timeout: 20000 });
+    assert(
+      await readDomainRow(input.databaseUrl, SELF_SERVE_HOST) === null,
+      'removing the domain left its row behind',
+    );
+    console.log('custom-domain-e2e: self-serve removal deleted the row OK');
+    await context.close();
+  } finally {
+    if (browser) await browser.close();
+  }
+};
+
 const runStudioDomainStatus = async (tenantBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
@@ -238,6 +375,7 @@ try {
   await runCustomHostSignIn(customBaseUrl, tenantBaseUrl);
   await runCustomHostPasskey(customBaseUrl);
   await runStudioDomainStatus(tenantBaseUrl);
+  await runSelfServeAdd({ tenantBaseUrl, connectUrl, databaseUrl: e2eDatabaseUrl });
   console.log(`\ncustom-domain-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof E2eFailure ? error.message : String(error);

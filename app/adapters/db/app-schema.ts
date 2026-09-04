@@ -14,6 +14,7 @@ import type {
   ConsentDocumentVersionRef,
   ConsentEvidence,
   DmReportMessage,
+  DnsRecord,
   EmailEventType,
   EmailEventMailKind,
   LessonBlock,
@@ -22,6 +23,7 @@ import type {
   SchedulerRunStatus,
   SchedulerRunTotals,
   SchedulerRunTrigger,
+  TenantDomainEventKind,
 } from '#core/domain/index.js';
 
 export const tenants = pgTable(
@@ -1451,7 +1453,16 @@ export const notifications = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
     kind: text('kind', {
-      enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'dm-report', 'space-event'],
+      enum: [
+        'thread-reply',
+        'space-post',
+        'lesson-question',
+        'dm-message',
+        'dm-report',
+        'space-event',
+        'tenant-domain-verified',
+        'tenant-domain-error',
+      ],
     }).notNull(),
     payload: jsonb('payload').notNull(),
     sourceKey: text('source_key'),
@@ -1752,8 +1763,35 @@ export const tenantDomains = pgTable(
     domain: text('domain').notNull(),
     kind: text('kind', { enum: ['subdomain', 'custom'] }).notNull(),
     verified: boolean('verified').notNull().default(false),
+    provider: text('provider', { enum: ['manual', 'vercel'] }).notNull().default('manual'),
+    verification: jsonb('verification').$type<DnsRecord[]>().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+    verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'string' }),
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true, mode: 'string' }),
+    lastError: text('last_error'),
   },
-  (table) => [uniqueIndex('tenant_domains_domain_uidx').on(table.domain)],
+  (table) => [
+    uniqueIndex('tenant_domains_domain_uidx').on(table.domain),
+    index('tenant_domains_pending_idx').on(table.kind, table.verified, table.lastCheckedAt),
+  ],
+);
+
+export const tenantDomainEvents = pgTable(
+  'tenant_domain_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    domain: text('domain').notNull(),
+    kind: text('kind')
+      .$type<TenantDomainEventKind>()
+      .notNull(),
+    actorUserId: text('actor_user_id'),
+    detail: text('detail'),
+    at: timestamp('at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [index('tenant_domain_events_tenant_at_idx').on(table.tenantId, table.at, table.id)],
 );
 
 export const emailLayouts = pgTable(

@@ -558,6 +558,9 @@ export const en: Messages = {
       space.length > 0
         ? format('New event in the “{space}” space', { space })
         : 'New event in a space',
+    tenantDomainVerified: ({ domain }) => format('{domain} is live', { domain }),
+    tenantDomainError: ({ domain }) =>
+      format('{domain} has not resolved for a day — check its DNS records', { domain }),
   },
   messages: {
     navLabel: 'Messages',
@@ -1996,11 +1999,37 @@ export const en: Messages = {
     intro: 'Where members reach this workspace.',
     workspaceAddress: 'Workspace address',
     customDomains: 'Custom domain',
-    none: 'No custom domain is connected. Ask the Together team to add one.',
-    verified: 'Active',
-    pending: 'Waiting for DNS',
-    dnsInstruction: ({ domain, target }) =>
-      format('Add a CNAME record for {domain} pointing at {target}, then ask the Together team to verify it.', { domain, target }),
+    none: 'No custom domain is connected. Add one below.',
+    addLabel: 'Add a domain',
+    addPlaceholder: 'courses.example.com',
+    add: 'Add domain',
+    adding: 'Adding…',
+    limitReached: ({ max }) => format('A workspace can hold at most {max} {noun}.', {
+      max,
+      noun: plural(max, 'custom domain', 'custom domains'),
+    }),
+    statusActive: 'Active',
+    statusPendingDns: 'Waiting for DNS',
+    statusProviderVerification: 'Provider verification',
+    statusError: 'Error',
+    recordsHeading: 'DNS records to add',
+    recordType: 'Type',
+    recordName: 'Name',
+    recordValue: 'Value',
+    copy: 'Copy',
+    copied: 'Copied',
+    check: 'Check now',
+    checking: 'Checking…',
+    remove: 'Remove',
+    removeConfirm: ({ domain }) =>
+      format('Remove {domain}? The address will stop reaching this workspace.', { domain }),
+    removing: 'Removing…',
+    removedRedirect: 'This domain was removed. Continue at:',
+    lastChecked: ({ at }) => format('Last checked: {at}', { at }),
+    conflict: 'This domain cannot be connected.',
+    firstDomainWarning:
+      'Once you move to a custom domain members sign in again and re-register their passkeys. Google sign-in is unavailable on custom domains.',
+    docsLink: 'How custom domains work',
   },
   buildInfo: {
     heading: 'Build information',

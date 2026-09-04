@@ -20,6 +20,8 @@ const adapterVideoExternal = 'node_modules/zod(/|$)';
 const adapterVideoTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterNotificationsTestExternal = 'node_modules/vitest(/|$)';
 const adapterStorageExternal = 'node_modules/undici(/|$)';
+const adapterDomainsExternal = 'node_modules/zod(/|$)';
+const adapterDomainsTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterStorageTestExternal = 'node_modules/vitest(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
@@ -77,7 +79,7 @@ module.exports = {
       name: 'web-never-server-side',
       severity: 'error',
       from: { path: '^apps/web' },
-      to: { path: '^(core/server|adapters/db|adapters/domain-provisioning|apps/(server|cli))' },
+      to: { path: '^(core/server|adapters/(db|domains)|apps/(server|cli))' },
     },
     {
       name: 'web-layout-structure-only',
@@ -107,7 +109,7 @@ module.exports = {
       name: 'cli-is-a-pure-api-client',
       severity: 'error',
       from: { path: '^apps/cli' },
-      to: { path: '^(core/server|adapters/(db|domain-provisioning)|apps/(server|web))' },
+      to: { path: '^(core/server|adapters/(db|domains)|apps/(server|web))' },
     },
     {
       name: 'vercel-and-neon-only-in-adapters',
@@ -265,6 +267,18 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters/notifications/.*\\.test\\.tsx?$' },
       to: { path: external, pathNot: adapterNotificationsTestExternal },
+    },
+    {
+      name: 'adapter-domains-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/domains', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterDomainsExternal },
+    },
+    {
+      name: 'adapter-domains-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/domains/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterDomainsTestExternal },
     },
     {
       name: 'adapter-storage-external-allowlist',

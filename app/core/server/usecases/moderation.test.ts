@@ -14,6 +14,7 @@ import {
   type DmReport,
   type DmReportStatus,
   type Language,
+  type StaffRole,
   type Space,
 } from '#core/domain/index.js';
 
@@ -268,7 +269,7 @@ interface DmOptions {
   dmConversations?: DmConversation[];
   dmMessages?: DmMessage[];
   directMessagesEnabled?: boolean;
-  staff?: Array<{ userId: string; email: string; language: Language | null }>;
+  staff?: Array<{ userId: string; email: string; staffRole: StaffRole; language: Language | null }>;
   published?: RealtimeEvent[];
 }
 
@@ -672,7 +673,7 @@ describe('direct message reports', () => {
         dmMessage('dm-1', 'member-user', '2026-07-29T00:00:01.000Z'),
         dmMessage('dm-2', 'other-user', '2026-07-29T00:00:02.000Z'),
       ],
-      staff: [{ userId: 'staff-user', email: 'staff@example.com', language: null }],
+      staff: [{ userId: 'staff-user', email: 'staff@example.com', staffRole: 'owner', language: null }],
     });
 
     const result = await reportDmConversation(
@@ -745,7 +746,7 @@ describe('direct message reports', () => {
       dmReports,
       dmConversations: [dmConversation()],
       dmMessages: [dmMessage('dm-1', 'other-user', '2026-07-29T00:00:01.000Z')],
-      staff: [{ userId: 'staff-user', email: 'staff@example.com', language: null }],
+      staff: [{ userId: 'staff-user', email: 'staff@example.com', staffRole: 'owner', language: null }],
     });
     deps.notifications = {
       ...deps.notifications,

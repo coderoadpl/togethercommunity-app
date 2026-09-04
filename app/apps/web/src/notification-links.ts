@@ -10,57 +10,53 @@ export type NotificationTarget =
   | { kind: 'dm-conversation'; conversationId: string }
   | { kind: 'dm-reports' }
   | { kind: 'space-event'; spaceId: string; eventId: string }
+  | { kind: 'tenant-domains' }
   | { kind: 'none' };
 
-export const notificationTarget = (notification: Notification): NotificationTarget =>
-  notification.kind === 'dm-report'
-  ? { kind: 'dm-reports' }
-  : notification.kind === 'space-event'
-    ? notification.payload.eventId === null
-      ? { kind: 'none' }
-      : {
-          kind: 'space-event',
-          spaceId: notification.payload.contextId,
-          eventId: notification.payload.eventId,
-        }
-    : notification.payload.contextKind === 'dm'
-    ? { kind: 'dm-conversation', conversationId: notification.payload.contextId }
-    : notification.payload.contextKind === 'space'
-      ? {
-          kind: 'space-thread',
-          spaceId: notification.payload.contextId,
-          postId: notification.payload.rootPostId,
-        }
-      : notification.payload.courseId === null
-        ? { kind: 'none' }
-        : {
-            kind: 'lesson-thread',
-            courseId: notification.payload.courseId,
-            lessonId: notification.payload.contextId,
-            rootPostId: notification.payload.rootPostId,
-          };
+const TENANT_DOMAIN_KINDS: readonly Notification['kind'][] = [
+  'tenant-domain-verified',
+  'tenant-domain-error',
+];
 
-export const notificationTitle = (t: Messages, notification: Notification): string =>
-  notification.kind === 'dm-report'
-  ? t.notifications.dmReport({ reporter: notification.payload.authorDisplay })
+export const notificationTarget = (notification: Notification): NotificationTarget => {
+  const { contextKind, contextId, rootPostId, courseId, eventId } = notification.payload;
+  if (TENANT_DOMAIN_KINDS.includes(notification.kind)) return { kind: 'tenant-domains' };
+  if (notification.kind === 'dm-report') return { kind: 'dm-reports' };
+  if (contextId === null) return { kind: 'none' };
+  if (notification.kind === 'space-event') {
+    return eventId === null
+      ? { kind: 'none' }
+      : { kind: 'space-event', spaceId: contextId, eventId };
+  }
+  if (contextKind === 'dm') return { kind: 'dm-conversation', conversationId: contextId };
+  if (rootPostId === null) return { kind: 'none' };
+  if (contextKind === 'space') {
+    return { kind: 'space-thread', spaceId: contextId, postId: rootPostId };
+  }
+  return courseId === null
+    ? { kind: 'none' }
+    : { kind: 'lesson-thread', courseId, lessonId: contextId, rootPostId };
+};
+
+export const notificationTitle = (t: Messages, notification: Notification): string => {
+  const { lessonName, domain = '' } = notification.payload;
+  const author = notification.payload.authorDisplay ?? '';
+  return notification.kind === 'tenant-domain-verified'
+  ? t.notifications.tenantDomainVerified({ domain })
+  : notification.kind === 'tenant-domain-error'
+  ? t.notifications.tenantDomainError({ domain })
+  : notification.kind === 'dm-report'
+  ? t.notifications.dmReport({ reporter: author })
   : notification.kind === 'space-event'
-    ? t.notifications.spaceEvent({ space: notification.payload.lessonName })
+    ? t.notifications.spaceEvent({ space: lessonName })
     : notification.kind === 'dm-message'
-    ? t.notifications.dmMessage({ author: notification.payload.authorDisplay })
+    ? t.notifications.dmMessage({ author })
     : notification.kind === 'space-post'
-      ? t.notifications.spacePost({
-          author: notification.payload.authorDisplay,
-          space: notification.payload.lessonName,
-        })
+      ? t.notifications.spacePost({ author, space: lessonName })
       : notification.kind === 'lesson-question'
-        ? t.notifications.lessonQuestion({
-            author: notification.payload.authorDisplay,
-            lesson: notification.payload.lessonName,
-          })
-        : t.notifications.threadReply({
-            author: notification.payload.authorDisplay,
-            lesson: notification.payload.lessonName,
-          });
+        ? t.notifications.lessonQuestion({ author, lesson: lessonName })
+        : t.notifications.threadReply({ author, lesson: lessonName });
+};
 
 export const useNotificationNavigation = () => {
   const navigate = useNavigate();
@@ -83,6 +79,8 @@ export const useNotificationNavigation = () => {
       });
     } else if (target.kind === 'dm-reports') {
       void navigate({ to: '/panel/reports' });
+    } else if (target.kind === 'tenant-domains') {
+      void navigate({ to: '/panel/settings', hash: 'company' });
     } else if (target.kind === 'space-event') {
       void navigate({
         to: '/community/$spaceId/events/$eventId',

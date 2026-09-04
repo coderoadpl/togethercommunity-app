@@ -208,7 +208,7 @@ export const NotificationBell = ({
             >
               {notification.readAt === null ? <UnreadDot aria-hidden /> : null}
               <MemberAvatar
-                name={notification.payload.authorDisplay}
+                name={notification.payload.authorDisplay ?? ''}
                 avatarUrl={notification.payload.authorAvatarUrl}
                 size="sm"
               />

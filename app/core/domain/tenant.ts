@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+import {
+  dnsRecordSchema,
+  tenantDomainStatusSchema,
+  type DnsRecord,
+  type TenantDomainProvider,
+} from './custom-domain.js';
 import { staffRoleSchema } from './identity.js';
 import { DEFAULT_LANGUAGE, languageSchema, type Language } from './language.js';
 
@@ -390,6 +396,12 @@ export type TenantDomain = {
   domain: string;
   kind: 'subdomain' | 'custom';
   verified: boolean;
+  provider: TenantDomainProvider;
+  verification: DnsRecord[];
+  createdAt: string;
+  verifiedAt: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
 };
 
 export const tenantRoutingSchema = z.object({
@@ -397,9 +409,14 @@ export const tenantRoutingSchema = z.object({
   customDomains: z.array(z.object({
     domain: z.string(),
     verified: z.boolean(),
+    status: tenantDomainStatusSchema,
+    records: z.array(dnsRecordSchema),
+    lastCheckedAt: z.string().datetime().nullable(),
+    lastError: z.string().nullable(),
   })),
   /** Value a creator points the custom domain at with a CNAME record. */
   customDomainTarget: z.string(),
+  canAddCustomDomain: z.boolean(),
 });
 
 export type TenantRouting = z.infer<typeof tenantRoutingSchema>;

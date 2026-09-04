@@ -711,6 +711,7 @@ const deps = (
         ? staffUserIds.map((userId) => ({
             userId,
             email: members.find((member) => member.userId === userId)?.email ?? `${userId}@example.com`,
+            staffRole: 'owner' as const,
             language: members.find((member) => member.userId === userId)?.language ?? null,
           }))
         : [],

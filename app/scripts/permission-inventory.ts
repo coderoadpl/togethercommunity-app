@@ -97,6 +97,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     path === '/api/internal/dispatch-email'
     || path === '/api/internal/dispatch-auto-invoices'
     || path === '/api/internal/dispatch-ksef'
+    || path === '/api/internal/domain-check'
   ) return 'scheduler:dispatch';
   if (path.startsWith('/api/internal/scheduler-runs')) return 'scheduler:read';
   if (path === '/api/public/terms-consent') return 'terms:accept';
@@ -168,6 +169,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
   if (path === '/api/tenant/routing') return 'tenant:domain:read';
+  if (path.startsWith('/api/tenant/domains')) return 'tenant:settings:write';
   if (path === '/api/support/message') return 'support:request';
   if (path === '/api/platform/data-reset') return 'platform:data:reset';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
@@ -280,6 +282,7 @@ const beforeForRoute = (
     || (path.startsWith('/api/integrations/') && path !== '/api/integrations/bunny/videos')
     || path === '/api/bunny/test'
     || path.startsWith('/api/image-assets/branding/')
+    || path.startsWith('/api/tenant/domains')
   ) return owner;
   return staff;
 };
@@ -503,7 +506,7 @@ const beforeForUseCase = (
   if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'lesson-playback.ts') return tenantActors;
-  if (file === 'tenant-domains.ts') return staff;
+  if (file === 'tenant-domains.ts') return capability === 'tenant:domain:read' ? staff : owner;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;

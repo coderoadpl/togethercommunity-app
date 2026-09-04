@@ -48,7 +48,7 @@ const NotificationBody = ({ notification }: { notification: Notification }) => {
         </>
       ) : null}
       <MemberAvatar
-        name={notification.payload.authorDisplay}
+        name={notification.payload.authorDisplay ?? ''}
         avatarUrl={notification.payload.authorAvatarUrl}
         size="sm"
       />

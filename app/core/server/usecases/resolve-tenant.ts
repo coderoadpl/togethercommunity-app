@@ -42,7 +42,9 @@ export const authLinkBaseUrl = (
   return routing.appBaseUrl;
 };
 
-const stripPort = (host: string): string => host.split(':')[0] ?? host;
+/** Matches `normalizeCustomDomain`, so a fully qualified `Host` still finds its row. */
+const hostOf = (hostHeader: string): string =>
+  (hostHeader.split(':')[0] ?? hostHeader).replace(/\.+$/, '');
 
 const resolvedIfActive = (
   tenant: Tenant,
@@ -61,7 +63,7 @@ export const resolveTenant = async (
   tenantHeader: string | null,
   deps: ResolveTenantDeps,
 ): Promise<Result<ResolvedTenant | null, AppError>> => {
-  const host = stripPort(hostHeader).toLowerCase();
+  const host = hostOf(hostHeader).toLowerCase();
   if (deps.platformHost !== null && host === deps.platformHost.toLowerCase()) return ok(null);
 
   const customDomain = await deps.tenantDomains.findByDomain(host);

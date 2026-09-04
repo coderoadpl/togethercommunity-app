@@ -1354,6 +1354,17 @@ export const tenantRoutingOutputSchema = z.object({
   routing: tenantRoutingSchema,
 });
 
+export const tenantDomainInputSchema = z.object({
+  domain: z.string().trim().min(1).max(253),
+});
+
+export type TenantDomainInput = z.infer<typeof tenantDomainInputSchema>;
+
+export const tenantDomainRemovalOutputSchema = z.object({
+  routing: tenantRoutingSchema,
+  redirectTo: z.string().url().nullable(),
+});
+
 export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
 
 export type TenantSettingsUpdateInput = z.input<typeof tenantSettingsUpdateInputSchema>;
@@ -1677,6 +1688,7 @@ export const API_ROUTES = {
   healthReady: { method: 'GET', path: '/api/health/ready' },
   emailDispatch: { method: 'POST', path: '/api/internal/dispatch-email' },
   autoInvoiceDispatch: { method: 'POST', path: '/api/internal/dispatch-auto-invoices' },
+  tenantDomainDispatch: { method: 'POST', path: '/api/internal/domain-check' },
   ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicNavigation: { method: 'GET', path: '/api/public/navigation' },
@@ -1921,6 +1933,9 @@ export const API_ROUTES = {
   memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
+  tenantDomainAdd: { method: 'POST', path: '/api/tenant/domains' },
+  tenantDomainCheck: { method: 'POST', path: '/api/tenant/domains/check' },
+  tenantDomainRemove: { method: 'POST', path: '/api/tenant/domains/remove' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
   supportMessage: { method: 'POST', path: '/api/support/message' },
   platformDataReset: { method: 'POST', path: '/api/platform/data-reset' },
@@ -2165,6 +2180,10 @@ export const API_PATHS = {
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantRouting: API_ROUTES.tenantRouting.path,
+  tenantDomainDispatch: API_ROUTES.tenantDomainDispatch.path,
+  tenantDomainAdd: API_ROUTES.tenantDomainAdd.path,
+  tenantDomainCheck: API_ROUTES.tenantDomainCheck.path,
+  tenantDomainRemove: API_ROUTES.tenantDomainRemove.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   supportMessage: API_ROUTES.supportMessage.path,
   platformDataReset: API_ROUTES.platformDataReset.path,

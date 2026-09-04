@@ -1,6 +1,6 @@
 {
-  "hash": "99f795aac809645f514d4a9ae444758d8d306f84518849d664434651dc975c11",
-  "shortId": "99f795aac809",
+  "hash": "b429382b78d702450cbed4ef0fa9a663e3bbf9e2fa77a870aeb9c9b4d6acd327",
+  "shortId": "b429382b78d7",
   "schema": {
     "constraints": [
       {
@@ -635,6 +635,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "tenant_domain_events_tenant_id_tenants_id_fk",
+        "table": "tenant_domain_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "tenant_domains_tenant_id_tenants_id_fk",
         "table": "tenant_domains"
       },
@@ -1077,6 +1082,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "tenant_documents_pkey",
         "table": "tenant_documents"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "tenant_domain_events_pkey",
+        "table": "tenant_domain_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1741,6 +1751,16 @@
         "definition": "CREATE INDEX tenant_audit_events_tenant_at_idx ON tenant_audit_events USING btree (tenant_id, at)",
         "name": "tenant_audit_events_tenant_at_idx",
         "table": "tenant_audit_events"
+      },
+      {
+        "definition": "CREATE INDEX tenant_domain_events_tenant_at_idx ON tenant_domain_events USING btree (tenant_id, at, id)",
+        "name": "tenant_domain_events_tenant_at_idx",
+        "table": "tenant_domain_events"
+      },
+      {
+        "definition": "CREATE INDEX tenant_domains_pending_idx ON tenant_domains USING btree (kind, verified, last_checked_at)",
+        "name": "tenant_domains_pending_idx",
+        "table": "tenant_domains"
       },
       {
         "definition": "CREATE INDEX thread_subscriptions_tenant_root_idx ON thread_subscriptions USING btree (tenant_id, root_post_id)",
@@ -3258,6 +3278,99 @@
           }
         ],
         "name": "members"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "verification",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'manual'::text",
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "verified",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "domain",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_checked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "verified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "tenant_domains"
       },
       {
         "columns": [
@@ -5016,51 +5129,6 @@
       {
         "columns": [
           {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "verified",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "domain",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "tenant_domains"
-      },
-      {
-        "columns": [
-          {
             "default": "nextval('coupon_events_sequence_seq'::regclass)",
             "generated": "",
             "identity": "",
@@ -6294,6 +6362,67 @@
           }
         ],
         "name": "impersonation_sessions"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "detail",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "domain",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_domain_events"
       },
       {
         "columns": [

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Tenant, TenantDomain } from '#core/domain/index.js';
 
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
+import { tenantDomainFixture, tenantDomainRepositoryStub } from '../testing/tenant-domain-fakes.js';
 import { createSesWebhookBaseUrlResolver } from './ses-webhook-url.js';
 
 const acme: Tenant = {
@@ -24,20 +25,21 @@ const fakeTenants: TenantRepository = {
   createTenantWithOwnerGrant: async () => acme,
 };
 
-const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
-  findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
-  listVerifiedDomains: async () => domains.filter((candidate) => candidate.verified),
-  listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
-});
+const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository =>
+  tenantDomainRepositoryStub({
+    findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
+    listVerifiedDomains: async () => domains.filter((candidate) => candidate.verified),
+    listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
+  });
 
-const customDomain = (overrides: Partial<TenantDomain> = {}): TenantDomain => ({
-  id: 'domain-acme',
-  tenantId: 't-acme',
-  domain: 'community.acme.test',
-  kind: 'custom',
-  verified: true,
-  ...overrides,
-});
+const customDomain = (overrides: Partial<TenantDomain> = {}): TenantDomain =>
+  tenantDomainFixture({
+    id: 'domain-acme',
+    tenantId: 't-acme',
+    domain: 'community.acme.test',
+    verified: true,
+    ...overrides,
+  });
 
 const routing = {
   appBaseUrl: 'https://togethercommunity.app',

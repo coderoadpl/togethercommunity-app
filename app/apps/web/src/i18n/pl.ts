@@ -565,6 +565,9 @@ export const pl: Messages = {
       space.length > 0
         ? format('Nowe wydarzenie w przestrzeni „{space}”', { space })
         : 'Nowe wydarzenie w przestrzeni',
+    tenantDomainVerified: ({ domain }) => format('Domena {domain} działa', { domain }),
+    tenantDomainError: ({ domain }) =>
+      format('Domena {domain} od doby nie wskazuje na platformę — sprawdź rekordy DNS', { domain }),
   },
   messages: {
     navLabel: 'Wiadomości',
@@ -2016,11 +2019,37 @@ export const pl: Messages = {
     intro: 'Pod tymi adresami uczestnicy wchodzą na tę platformę.',
     workspaceAddress: 'Adres platformy',
     customDomains: 'Własna domena',
-    none: 'Nie podłączono własnej domeny. Napisz do zespołu Together, żeby ją dodać.',
-    verified: 'Działa',
-    pending: 'Czeka na DNS',
-    dnsInstruction: ({ domain, target }) =>
-      format('Dodaj rekord CNAME dla {domain} wskazujący na {target}, a potem poproś zespół Together o weryfikację.', { domain, target }),
+    none: 'Nie podłączono własnej domeny. Dodaj ją poniżej.',
+    addLabel: 'Dodaj domenę',
+    addPlaceholder: 'kurs.twojadomena.pl',
+    add: 'Dodaj domenę',
+    adding: 'Dodaję…',
+    limitReached: ({ max }) => format('Możesz podłączyć najwyżej {max} {noun}.', {
+      max,
+      noun: plural(max, 'własną domenę', 'własne domeny', 'własnych domen'),
+    }),
+    statusActive: 'Działa',
+    statusPendingDns: 'Czeka na DNS',
+    statusProviderVerification: 'Weryfikacja u dostawcy',
+    statusError: 'Błąd',
+    recordsHeading: 'Rekordy DNS do dodania',
+    recordType: 'Typ',
+    recordName: 'Nazwa',
+    recordValue: 'Wartość',
+    copy: 'Kopiuj',
+    copied: 'Skopiowano',
+    check: 'Sprawdź teraz',
+    checking: 'Sprawdzam…',
+    remove: 'Usuń',
+    removeConfirm: ({ domain }) =>
+      format('Usunąć {domain}? Adres przestanie prowadzić do tej platformy.', { domain }),
+    removing: 'Usuwam…',
+    removedRedirect: 'Ta domena została usunięta. Wróć na adres platformy:',
+    lastChecked: ({ at }) => format('Ostatnie sprawdzenie: {at}', { at }),
+    conflict: 'Tej domeny nie można podłączyć.',
+    firstDomainWarning:
+      'Po przełączeniu na własną domenę uczestnicy zalogują się ponownie, a klucze dostępu trzeba dodać na nowo. Logowanie przez Google nie działa na własnych domenach.',
+    docsLink: 'Jak działają własne domeny',
   },
   buildInfo: {
     heading: 'Wersja aplikacji',

@@ -150,7 +150,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->331<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->334<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -159,7 +159,10 @@ Per request: (1) exact custom-domain match in `tenant_domains`,
 (2) subdomain of `APP_BASE_DOMAIN` (subdomain = org slug),
 (3) `X-Tenant` header (CLI), (4) the sole tenant when `APP_BASE_DOMAIN` is
 unset. An unknown supplied subdomain or header is rejected instead of falling
-back to the single-tenant target. Membership is verified in every case; every
+back to the single-tenant target. Owners connect their own domains from
+**Ustawienia → Adresy**; see the [custom domains guide](docs/custom-domains.md)
+for the provider keys and the manual mode self-hosted installs run on.
+Membership is verified in every case; every
 tenant-scoped use-case takes `ctx.identity` and every repository call requires
 `tenantId`. Tenant lifecycle status and plan are migration-managed in this
 phase; no application write surface is exposed yet.

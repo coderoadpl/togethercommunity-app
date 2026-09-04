@@ -184,6 +184,7 @@ import {
   tenantSecretDeleteOutputSchema,
   tenantSettingsOutputSchema,
   tenantRoutingOutputSchema,
+  tenantDomainRemovalOutputSchema,
   termsConsentOutputSchema,
   onboardingOutputSchema,
   tenantSetupReadinessOutputSchema,
@@ -301,6 +302,7 @@ import {
   type TenantCreateInput,
   type TenantSecretDeleteInput,
   type TenantSecretSetInput,
+  type TenantDomainInput,
   type TenantSettingsUpdateInput,
   type TermsConsentRequest,
   type WriteMethod,
@@ -2267,6 +2269,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.tenantRouting.path,
       tenantRoutingOutputSchema,
       undefined,
+      signal,
+    ),
+  addTenantDomain: (input: TenantDomainInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantDomainAdd.method,
+      API_ROUTES.tenantDomainAdd.path,
+      tenantRoutingOutputSchema,
+      input,
+      signal,
+    ),
+  checkTenantDomain: (input: TenantDomainInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantDomainCheck.method,
+      API_ROUTES.tenantDomainCheck.path,
+      tenantRoutingOutputSchema,
+      input,
+      signal,
+    ),
+  removeTenantDomain: (input: TenantDomainInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantDomainRemove.method,
+      API_ROUTES.tenantDomainRemove.path,
+      tenantDomainRemovalOutputSchema,
+      input,
       signal,
     ),
   updateTenantSettings: (input: TenantSettingsUpdateInput, signal?: AbortSignal) =>

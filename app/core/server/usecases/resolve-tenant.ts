@@ -9,7 +9,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
-import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { customDomainOrigin, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 
 export interface ResolveTenantDeps {
   tenantDomains: TenantDomainRepository;
@@ -26,13 +26,6 @@ export interface ResolvedTenant {
   source: TenantSource;
   domain?: TenantDomain;
 }
-
-const customDomainOrigin = (domain: string, routing: TenantUrlDeps): string => {
-  const configured = new URL(routing.appBaseUrl);
-  const origin = new URL(`https://${domain}`);
-  if (configured.protocol === 'https:') origin.port = configured.port;
-  return origin.origin;
-};
 
 export const authLinkBaseUrl = (
   resolved: ResolvedTenant | null,

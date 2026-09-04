@@ -140,6 +140,7 @@ describe('SES onboarding AWS adapter', () => {
     const controlPlane = createSesOnboardingControlPlane(factory, {
       list: async () => [],
       subscribe,
+      unsubscribe: async () => undefined,
     });
 
     const result = await controlPlane.ensureSubscription(credentials, {
@@ -171,6 +172,7 @@ describe('SES onboarding AWS adapter', () => {
         SubscriptionArn: subscriptionArn,
       }],
       subscribe: async () => ({ SubscriptionArn: 'pending confirmation', $metadata: {} }),
+      unsubscribe: async () => undefined,
     });
 
     const result = await controlPlane.ensureSubscription(credentials, {
@@ -194,6 +196,7 @@ describe('SES onboarding AWS adapter', () => {
         SubscriptionArn: 'arn:aws:sns:eu-central-1:123456789012:together:subscription-id',
       }],
       subscribe,
+      unsubscribe: async () => undefined,
     });
 
     const result = await controlPlane.ensureSubscription(credentials, { topicArn, endpoint });
@@ -226,6 +229,7 @@ describe('SES onboarding AWS adapter', () => {
           { Protocol: 'https', Endpoint: endpoint, SubscriptionArn: 'PendingConfirmation' },
         ],
         subscribe: async () => ({ SubscriptionArn: 'pending confirmation', $metadata: {} }),
+        unsubscribe: async () => undefined,
       },
     );
     const infrastructure = (subscribedEndpoint: string | null) => controlPlane.readInfrastructure(credentials, {

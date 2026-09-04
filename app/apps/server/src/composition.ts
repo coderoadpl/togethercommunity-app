@@ -265,7 +265,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
 import {
   isProductionEnvironment,
   ok,
@@ -766,6 +766,11 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const idempotency = createAutomationIdempotencyRepository(db);
   const marketingJobs = createMarketingJobRepository(db);
   const sesOnboardingControlPlane = createSesOnboardingControlPlane();
+  const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
+    tenants,
+    tenantDomains,
+    routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
+  });
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = isProductionEnvironment(env);
   const devEndpoints = selectDevEndpoints(env);
@@ -941,7 +946,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
             credentials: tenantMarketingCredentials,
             controlPlane: sesOnboardingControlPlane,
             clock,
-            webhookBaseUrl: `${env.APP_BASE_URL}/api/webhooks/ses`,
+            webhookBaseUrl: sesWebhookBaseUrl,
           },
         ),
       runReputationAlerts: (tenantId) =>

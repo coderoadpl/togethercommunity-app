@@ -91,3 +91,4 @@ export * from './usecases/purge-consent-evidence.js';
 export * from './usecases/marketing-email.js';
 export * from './usecases/marketing-management.js';
 export * from './usecases/marketing-ses-onboarding.js';
+export * from './usecases/ses-webhook-url.js';

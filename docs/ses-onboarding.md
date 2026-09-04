@@ -90,7 +90,8 @@ without waiting for the six-hourly refresh.
 4. Select **Create SES + SNS infrastructure**. This repeat-safe step creates
    separate marketing and transactional SES configuration sets, an SNS topic
    and SES publish policy, the HTTPS subscription to
-   `/api/webhooks/ses/:token`, and event destinations for both sets. The
+   `/api/webhooks/ses/:token` on the tenant domain, and event destinations for
+   both sets. The
    marketing set publishes Send, Delivery, Bounce, Complaint, Open, and Click.
    The transactional set publishes only Send, Delivery, Bounce, and Complaint,
    so magic links and other one-to-one messages receive neither SES open pixels
@@ -110,6 +111,19 @@ without waiting for the six-hourly refresh.
 
 Every step can be retried. Completed resource identifiers are saved after each
 successful step, so a later AWS error does not force the wizard to restart.
+
+## The webhook lives on the tenant domain
+
+The SNS subscription endpoint is built on the tenant origin: the verified custom
+domain when the workspace has one, otherwise `<slug>.<platform domain>`. Adding,
+verifying, or removing a custom domain therefore changes the webhook address.
+Together shows a warning in the wizard while the subscribed endpoint differs
+from the current one; select **Create SES + SNS infrastructure** again to
+subscribe the new address. Together then subscribes the new endpoint, drops the
+stored confirmation until SNS confirms it again, and unsubscribes the previous
+endpoint when SNS still exposes it as a confirmed subscription — subscriptions
+that never left `PendingConfirmation` cannot be unsubscribed and AWS discards
+them after three days.
 
 References: [SES mailbox simulator](https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html),
 [configuration sets](https://docs.aws.amazon.com/ses/latest/dg/creating-configuration-sets.html).

@@ -6,9 +6,11 @@ import {
 } from '@opentelemetry/semantic-conventions';
 import { type Context, type Next } from 'hono';
 
-import type { AppError, Identity } from '#core/domain/index.js';
+import type { AppError, Identity, ImpersonationPrincipal } from '#core/domain/index.js';
 
-type TelemetryVars = { Variables: { identity?: Identity } };
+type TelemetryVars = {
+  Variables: { identity?: Identity; impersonation?: ImpersonationPrincipal };
+};
 
 const tracer = trace.getTracer('apps/server');
 
@@ -41,6 +43,13 @@ const annotateIdentity = (span: Span, identity: Identity): void => {
   if (identity.tenantSlug) span.setAttribute('app.tenant.slug', identity.tenantSlug);
 };
 
+/** `identity` resolves to the subject under impersonation, so the operator needs its own attributes. */
+const annotateImpersonation = (span: Span, impersonation: ImpersonationPrincipal): void => {
+  span.setAttribute('app.impersonation.id', impersonation.id);
+  span.setAttribute('app.impersonation.actor.id', impersonation.actorUserId);
+  span.setAttribute('app.impersonation.actor.email', impersonation.actorEmail);
+};
+
 /**
  * The one request-scoped wide event. Opens a single span, continues an
  * incoming W3C `traceparent`, accrues infra context as the request runs and
@@ -64,6 +73,8 @@ export const telemetryMiddleware = async (c: Context<TelemetryVars>, next: Next)
       span.setAttribute('http.server.duration_ms', Date.now() - startedAt);
       const identity = c.get('identity');
       if (identity) annotateIdentity(span, identity);
+      const impersonation = c.get('impersonation');
+      if (impersonation) annotateImpersonation(span, impersonation);
       if (status >= SERVER_ERROR_STATUS) span.setStatus({ code: SpanStatusCode.ERROR });
       span.end();
     }

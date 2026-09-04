@@ -1,6 +1,6 @@
 {
-  "hash": "f91938341e3d6276ef995e74a2236b19f8f87b1dacae74fa1967e75fd41e1689",
-  "shortId": "f91938341e3d",
+  "hash": "33cfa4c7785b2ae5ea3335132d9e7438023208eb229fd6b367ada5a11496014b",
+  "shortId": "33cfa4c7785b",
   "schema": {
     "constraints": [
       {
@@ -405,6 +405,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "impersonation_sessions_tenant_id_tenants_id_fk",
+        "table": "impersonation_sessions"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "import_audit_events_tenant_id_tenants_id_fk",
         "table": "import_audit_events"
       },
@@ -597,6 +602,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "tenant_api_keys_tenant_id_tenants_id_fk",
         "table": "tenant_api_keys"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "tenant_audit_events_tenant_id_tenants_id_fk",
+        "table": "tenant_audit_events"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -870,6 +880,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "impersonation_sessions_pkey",
+        "table": "impersonation_sessions"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "import_audit_events_pkey",
         "table": "import_audit_events"
       },
@@ -1032,6 +1047,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "tenant_api_keys_pkey",
         "table": "tenant_api_keys"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "tenant_audit_events_pkey",
+        "table": "tenant_audit_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1483,6 +1503,16 @@
         "table": "erased_member_imports"
       },
       {
+        "definition": "CREATE INDEX impersonation_sessions_open_actor_session_idx ON impersonation_sessions USING btree (tenant_id, actor_session_id) WHERE (ended_at IS NULL)",
+        "name": "impersonation_sessions_open_actor_session_idx",
+        "table": "impersonation_sessions"
+      },
+      {
+        "definition": "CREATE INDEX impersonation_sessions_open_expiry_idx ON impersonation_sessions USING btree (expires_at) WHERE (ended_at IS NULL)",
+        "name": "impersonation_sessions_open_expiry_idx",
+        "table": "impersonation_sessions"
+      },
+      {
         "definition": "CREATE INDEX import_audit_events_tenant_api_key_at_idx ON import_audit_events USING btree (tenant_id, api_key_id, at)",
         "name": "import_audit_events_tenant_api_key_at_idx",
         "table": "import_audit_events"
@@ -1686,6 +1716,11 @@
         "definition": "CREATE INDEX space_subscriptions_tenant_space_idx ON space_subscriptions USING btree (tenant_id, space_id)",
         "name": "space_subscriptions_tenant_space_idx",
         "table": "space_subscriptions"
+      },
+      {
+        "definition": "CREATE INDEX tenant_audit_events_tenant_at_idx ON tenant_audit_events USING btree (tenant_id, at)",
+        "name": "tenant_audit_events_tenant_at_idx",
+        "table": "tenant_audit_events"
       },
       {
         "definition": "CREATE INDEX thread_subscriptions_tenant_root_idx ON thread_subscriptions USING btree (tenant_id, root_post_id)",
@@ -6053,6 +6088,160 @@
           }
         ],
         "name": "import_audit_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject_member_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_audit_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_session_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ended_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject_member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "token_hash",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "impersonation_sessions"
       },
       {
         "columns": [

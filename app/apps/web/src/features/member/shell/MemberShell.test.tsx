@@ -42,6 +42,7 @@ const okMe = (
     banned?: boolean;
     tenant?: null;
     displayName?: string | null;
+    impersonated?: boolean;
   } = {},
 ) =>
   http.get('/api/me', () =>
@@ -63,6 +64,15 @@ const okMe = (
               displayName: overrides.displayName ?? null,
               banned: overrides.banned ?? false,
             },
+        impersonation: overrides.impersonated === true
+          ? {
+              id: 'imp-1',
+              subjectMemberId: 'm1',
+              subjectName: 'Jan Uczestnik',
+              actorName: 'Ala Tworczyni',
+              expiresAt: '2026-09-03T11:00:00.000Z',
+            }
+          : null,
       },
     }),
   );
@@ -498,6 +508,17 @@ describe('MemberShell', () => {
     await renderShell('/my');
 
     expect(await screen.findAllByText(pl.community.bannedBanner)).toHaveLength(1);
+  });
+
+  it('keeps the member-view banner in the sticky app bar, out of the scrolling page', async () => {
+    stubViewport(true);
+    server.use(okMe({ impersonated: true }), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/my');
+
+    const banner = await screen.findByTestId('impersonation-banner');
+    expect(banner.closest('header')).not.toBeNull();
+    expect(banner.closest('main')).toBeNull();
   });
 
   it('hands the bar over to the course while a course page is open', async () => {

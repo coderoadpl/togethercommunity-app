@@ -2039,6 +2039,49 @@ export const rateLimitBuckets = pgTable(
   ],
 );
 
+export const impersonationSessions = pgTable(
+  'impersonation_sessions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    actorUserId: text('actor_user_id').notNull(),
+    actorSessionId: text('actor_session_id').notNull(),
+    subjectMemberId: text('subject_member_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    reason: text('reason'),
+    createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    endedAt: text('ended_at'),
+  },
+  (table) => [
+    index('impersonation_sessions_open_actor_session_idx')
+      .on(table.tenantId, table.actorSessionId)
+      .where(sql`${table.endedAt} is null`),
+    index('impersonation_sessions_open_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.endedAt} is null`),
+  ],
+);
+
+export const tenantAuditEvents = pgTable(
+  'tenant_audit_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['impersonation_started', 'impersonation_ended'] }).notNull(),
+    actorUserId: text('actor_user_id').notNull(),
+    actorEmail: text('actor_email').notNull(),
+    subjectMemberId: text('subject_member_id'),
+    reason: text('reason'),
+    at: text('at').notNull(),
+  },
+  (table) => [index('tenant_audit_events_tenant_at_idx').on(table.tenantId, table.at)],
+);
+
 export const platformAuditEvents = pgTable(
   'platform_audit_events',
   {

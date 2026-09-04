@@ -2358,6 +2358,51 @@ describe('notification repository', () => {
     expect(third.nextCursor).toBeNull();
   });
 
+  it('hides every dm-context notification when direct messages are excluded', async () => {
+    const repository = createNotificationRepository(db);
+    const recipientUserId = 'user-acme-dm-filter';
+    const row = (
+      id: string,
+      kind: Notification['kind'],
+      contextKind: 'space' | 'dm',
+    ): Notification => ({
+      id,
+      tenantId: ACME,
+      recipientUserId,
+      kind,
+      payload: {
+        rootPostId: `root-${id}`,
+        postId: `post-${id}`,
+        contextKind,
+        contextId: `context-${id}`,
+        courseId: null,
+        eventId: null,
+        lessonName: 'DM filter',
+        authorDisplay: 'Author',
+        authorAvatarUrl: null,
+        snippet: id,
+      },
+      sourceKey: null,
+      readAt: null,
+      createdAt: NOW,
+    });
+    await repository.insertMany(ACME, [
+      row('dm-message-hidden', 'dm-message', 'dm'),
+      row('dm-report-hidden', 'dm-report', 'dm'),
+      row('space-post-visible', 'space-post', 'space'),
+    ]);
+
+    const page = await repository.listForRecipient(ACME, {
+      recipientUserId,
+      limit: 50,
+      excludeDms: true,
+    });
+
+    expect(page.notifications.map((item) => item.id)).toEqual(['space-post-visible']);
+    expect(await repository.unreadCount(ACME, recipientUserId, { excludeDms: true })).toBe(1);
+    expect(await repository.unreadCount(ACME, recipientUserId)).toBe(3);
+  });
+
   it('bulk insert skips rows already carrying the same fan-out source key', async () => {
     const repository = createNotificationRepository(db);
     const row = (id: string, recipientUserId: string, sourceKey: string | null): Notification => ({

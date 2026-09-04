@@ -17,6 +17,7 @@ import {
 import { useNotificationsTransport } from '../../../notifications-transport.js';
 import { SidebarProgressPercent } from '../../../theme.js';
 import { AccountIcon } from '../account-icons.js';
+import { useImpersonation } from '../viewer.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
 import { LockClosed } from '../tree-icons.js';
@@ -162,6 +163,7 @@ export const MemberSidebar = ({
   const t = useTranslations();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const active = activeNavEntry(pathname);
+  const impersonating = useImpersonation() !== null;
 
   return (
     <Box
@@ -225,7 +227,7 @@ export const MemberSidebar = ({
           active={active?.kind === 'products'}
           testId="sidebar-products"
         />
-        <MessagesRow active={active?.kind === 'messages'} />
+        {impersonating ? null : <MessagesRow active={active?.kind === 'messages'} />}
         {variant === 'drawer' ? <NotificationBell navLabel={t.notifications.bell} /> : null}
         <LinkRow
           to="/account"

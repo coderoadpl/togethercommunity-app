@@ -33,6 +33,9 @@ import {
   healthReadyOutputSchema,
   imageAssetCompleteOutputSchema,
   imageAssetUploadOutputSchema,
+  impersonationStartOutputSchema,
+  impersonationStopOutputSchema,
+  tenantAuditEventsOutputSchema,
   ifirmaTestConnectionOutputSchema,
   integrationTestOutputSchema,
   storageConfigureOutputSchema,
@@ -249,6 +252,8 @@ import {
   type MessagesThreadInput,
   type MemberHomeFeedGetInput,
   type MemberRemoveInput,
+  type ImpersonationStartRequest,
+  type TenantAuditEventsQueryInput,
   type MemberBanInput,
   type MemberErasureRequestCreateInput,
   type MemberErasureRequestsQueryInput,
@@ -1224,6 +1229,40 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  startImpersonation: (input: ImpersonationStartRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.impersonationStart.method,
+      API_ROUTES.impersonationStart.path,
+      impersonationStartOutputSchema,
+      input,
+      signal,
+    ),
+  stopImpersonation: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.impersonationStop.method,
+      API_ROUTES.impersonationStop.path,
+      impersonationStopOutputSchema,
+      {},
+      signal,
+    ),
+  tenantAuditEvents: (input: TenantAuditEventsQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.tenantAuditEvents.method,
+      suffix.length > 0
+        ? `${API_ROUTES.tenantAuditEvents.path}?${suffix}`
+        : API_ROUTES.tenantAuditEvents.path,
+      tenantAuditEventsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   memberTimeline: (memberId: string, signal?: AbortSignal) =>
     request(
       options,

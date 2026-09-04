@@ -238,6 +238,8 @@ export const LessonPlayerPage = ({
     lesson.data?.authenticated === true ||
     isForbidden(lesson.error) ||
     (lesson.isPending && cachedMe !== undefined);
+  const me = useQuery({ ...actions.me, enabled: authenticated });
+  const ownProgress = me.data !== undefined && me.data.impersonation === null;
   const structure = useQuery({ ...actions.courseStructure(courseId), enabled: authenticated });
   const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated });
   const attachments = useQuery({
@@ -272,6 +274,7 @@ export const LessonPlayerPage = ({
   useEffect(() => {
     if (
       !authenticated ||
+      !ownProgress ||
       lastViewedRef.current === lessonId ||
       !lesson.isSuccess ||
       lesson.isPlaceholderData ||
@@ -284,7 +287,7 @@ export const LessonPlayerPage = ({
       moduleId: location?.module?.id,
       chapterId: location?.chapter?.id,
     });
-  }, [authenticated, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
+  }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 
   const [optimisticDone, setOptimisticDone] = useState<{
     lessonId: string;

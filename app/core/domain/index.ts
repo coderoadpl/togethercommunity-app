@@ -2,6 +2,7 @@ export * from './result.js';
 export * from './errors.js';
 export * from './identity.js';
 export * from './authorization.js';
+export * from './impersonation.js';
 export * from './email.js';
 export * from './integration.js';
 export * from './storage.js';

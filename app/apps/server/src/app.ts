@@ -3,11 +3,13 @@ import { bodyLimit } from 'hono/body-limit';
 import { NONCE, secureHeaders } from 'hono/secure-headers';
 
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
-import { err, internal, notFound, validation, type Identity } from '#core/domain/index.js';
+import { err, internal, notFound, validation } from '#core/domain/index.js';
 
 import type { AppDeps } from './composition.js';
+import type { AppVars } from './app-vars.js';
 import { requestBodyLimit } from './body-limits.js';
 import { trustedAuthRequest } from './auth-network.js';
+import { impersonationGuard } from './impersonation-guard.js';
 import { registerInternalRoutes } from './internal-app.js';
 import {
   assertPublicRouteManifest,
@@ -19,7 +21,6 @@ import { respond } from './respond.js';
 import { registerSocialPreviewRoute } from './social-preview.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
 
-type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 const betterAuthPathPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
 const isServerRenderedDocument = (path: string): boolean =>
   ['/u/', '/marketing/', '/legal/'].some((prefix) => path.startsWith(prefix));
@@ -41,7 +42,7 @@ const routePathMatches = (routePath: string, requestPath: string): boolean => {
 };
 
 export const buildApp = (deps: AppDeps) => {
-  const app = new Hono<Vars>();
+  const app = new Hono<AppVars>();
 
   app.use('*', async (c, next) =>
     secureHeaders({
@@ -90,6 +91,7 @@ export const buildApp = (deps: AppDeps) => {
     }
     await next();
   });
+  app.use('*', impersonationGuard(deps));
   app.onError((error) => {
     recordException(error);
     return respond(err(internal()));

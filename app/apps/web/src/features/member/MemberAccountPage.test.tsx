@@ -14,7 +14,11 @@ import { MemberAccountPage } from './MemberAccountPage.js';
 
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
-const stubMe = (emailVerified = true, tenant: Record<string, unknown> = {}) =>
+const stubMe = (
+  emailVerified = true,
+  tenant: Record<string, unknown> = {},
+  impersonation: unknown = null,
+) =>
   http.get('*/api/me', () =>
     HttpResponse.json({
       ok: true,
@@ -27,6 +31,7 @@ const stubMe = (emailVerified = true, tenant: Record<string, unknown> = {}) =>
           id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1', banned: false,
           ...tenant,
         },
+        impersonation,
       },
     }),
   );
@@ -248,6 +253,33 @@ describe('MemberAccountPage', () => {
       .toBeInTheDocument();
     expect(screen.queryByLabelText(pl.account.displayNameLabel)).not.toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: pl.messages.optOutLabel })).not.toBeInTheDocument();
+  });
+
+  it('hides the direct-message privacy switch and the personal-data export while viewing as a member', async () => {
+    let sessionCalls = 0;
+    server.use(
+      http.get('*/api/me/sessions', () => {
+        sessionCalls += 1;
+        return HttpResponse.json({ ok: true, data: { sessions: [] } });
+      }),
+      stubMe(true, {}, {
+        id: 'imp-1',
+        subjectMemberId: 'm1',
+        subjectName: 'Member',
+        actorName: 'Owner',
+        expiresAt: '2026-09-03T11:00:00.000Z',
+      }),
+      stubSettings(null),
+      stubBillingOrders(),
+    );
+    await renderAccount();
+
+    expect(await screen.findByTestId('account-email')).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: pl.messages.optOutLabel })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: pl.messages.privacyHeading }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-data-export')).not.toBeInTheDocument();
+    expect(sessionCalls).toBe(0);
   });
 
   it('hides the manage-payments link when no billing portal URL is set', async () => {

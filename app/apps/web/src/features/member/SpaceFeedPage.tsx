@@ -164,6 +164,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const me = useQuery(actions.me);
   const feed = useQuery(actions.spaceFeed({ spaceId }));
   const banned = me.data?.tenant?.banned === true;
+  const ownVisit = me.data !== undefined && me.data.impersonation === null;
 
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionSummary[]>>({});
@@ -202,8 +203,8 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   const feedReadable = feed.isSuccess;
   useEffect(() => {
-    if (feedReadable) markSeen({ spaceId });
-  }, [feedReadable, markSeen, spaceId]);
+    if (feedReadable && ownVisit) markSeen({ spaceId });
+  }, [feedReadable, ownVisit, markSeen, spaceId]);
 
   if (spaces.isPending) {
     return (

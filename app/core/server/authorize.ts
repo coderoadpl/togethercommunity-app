@@ -2,6 +2,8 @@ import {
   err,
   capabilitiesForPrincipal,
   forbidden,
+  impersonationReadOnly,
+  isImpersonationReadCapability,
   ok,
   requiresVerifiedEmail,
   tenantNotFound,
@@ -19,11 +21,33 @@ const principalFor = (ctx: Ctx) => {
   return 'authenticated';
 };
 
+interface AuthorizeOptions {
+  allowUnverifiedEmail?: boolean;
+  /**
+   * Decides the capability against the acting staff account instead of the
+   * impersonated subject. Reserved for leaving the view, which has to work from
+   * inside it; everything else stays on the subject's own read surface, so a
+   * staff-only read is unreachable while viewing as a member.
+   */
+  asImpersonationActor?: boolean;
+}
+
 export const authorize = (
   ctx: Ctx,
   capability: Capability,
-  options: { allowUnverifiedEmail?: boolean } = {},
+  options: AuthorizeOptions = {},
 ): AppError | null => {
+  const impersonation = ctx.impersonation;
+  if (impersonation !== undefined) {
+    if (options.asImpersonationActor === true) {
+      return capabilitiesForPrincipal(impersonation.actorStaffRole).includes(capability)
+        ? null
+        : forbidden(`${capability} is not permitted`);
+    }
+    if (!isImpersonationReadCapability(capability)) {
+      return impersonationReadOnly(`${capability} is blocked while viewing as a member`);
+    }
+  }
   const granted =
     ctx.capabilities?.includes(capability)
     ?? (
@@ -44,11 +68,12 @@ export const authorize = (
 export const authorizeTenant = (
   ctx: Ctx,
   capability: Capability,
+  options: AuthorizeOptions = {},
 ): Result<string, AppError> => {
   if (ctx.identity.tenantId === null) {
     return err(tenantNotFound('Select a tenant'));
   }
-  const denial = authorize(ctx, capability);
+  const denial = authorize(ctx, capability, options);
   if (denial !== null) return err(denial);
   return ok(ctx.identity.tenantId);
 };

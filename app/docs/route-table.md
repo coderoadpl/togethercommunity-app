@@ -128,6 +128,9 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/members/:id/emails` | authenticated | read | member email sends |
 | `POST /api/marketing/suppressions` | authenticated | mutating | marketing staff suppressions create |
 | `GET /api/me` | authenticated | read | me |
+| `POST /api/impersonation/start` | authenticated | mutating | impersonation start |
+| `POST /api/impersonation/stop` | authenticated | mutating | impersonation stop |
+| `GET /api/tenant/audit-events` | authenticated | read | tenant audit events |
 | `POST /api/me/profile` | authenticated | mutating | me profile |
 | `GET /api/me/sessions` | authenticated | read | account sessions |
 | `POST /api/me/sessions/revoke` | authenticated | mutating | account session revoke |

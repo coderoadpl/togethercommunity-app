@@ -17,6 +17,7 @@ import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { useViewerKind } from '../viewer.js';
 import { AnonShell } from './AnonShell.js';
 import { CourseSidebar } from './CourseSidebar.js';
+import { ImpersonationBanner } from './ImpersonationBanner.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
 import { courseContextFromPath, memberHomePath } from './member-nav.js';
 import { CourseProgramSheet, MemberMenuSheet } from './MemberMenuSheet.js';
@@ -172,6 +173,7 @@ export const MemberShell = () => {
                 <MemberAccountMenu />
               </Box>
             </Toolbar>
+            <ImpersonationBanner />
           </AppBar>
           <Box
             component="main"

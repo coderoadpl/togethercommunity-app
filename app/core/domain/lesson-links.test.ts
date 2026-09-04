@@ -143,6 +143,11 @@ describe('groupLessonBlocks', () => {
     embedUrl: 'https://iframe.mediadelivery.net/embed/1/v1',
   };
 
+  const labelsOf = (blocks: PlayableLessonBlock[]): string[] => {
+    const groups = groupLessonBlocks(blocks);
+    return groups.flatMap((group) => (group.kind === 'links' ? group.links.map((link) => link.label) : []));
+  };
+
   it('merges consecutive links into one section and keeps other blocks in place', () => {
     const groups = groupLessonBlocks([
       video,
@@ -159,7 +164,7 @@ describe('groupLessonBlocks', () => {
         { url: 'https://github.com/coderoadpl/task-1', label: 'GitHub', host: 'github.com' },
         {
           url: 'https://developer.mozilla.org/pl/docs/Web/HTML',
-          label: 'developer.mozilla.org / HTML',
+          label: 'developer.mozilla.org',
           host: 'developer.mozilla.org',
         },
       ],
@@ -198,32 +203,16 @@ describe('groupLessonBlocks', () => {
     ]);
   });
 
-  it('renders one sandbox when the same sandbox arrives in several block forms', () => {
+  it('renders one sandbox per block when several blocks point at the same sandbox', () => {
     const groups = groupLessonBlocks([
       { type: 'link', url: 'https://codesandbox.io/embed/abc123', description: 'Zadanie' },
-      { type: 'html', html: '<p><a href="https://codesandbox.io/s/abc123">sandbox</a></p>' },
       { type: 'embed', embedUrl: 'https://codesandbox.io/p/sandbox/abc123' },
     ]);
 
-    expect(groups).toEqual([
-      {
-        kind: 'sandbox',
-        provider: 'codesandbox',
-        providerName: 'CodeSandbox',
-        embedUrl: 'https://codesandbox.io/embed/abc123',
-        canonicalUrl: 'https://codesandbox.io/s/abc123',
-        caption: 'Zadanie',
-      },
+    expect(groups.map((group) => (group.kind === 'sandbox' ? group.caption : group.kind))).toEqual([
+      'Zadanie',
+      null,
     ]);
-  });
-
-  it('takes the sandbox caption from a later duplicate when the first has none', () => {
-    const groups = groupLessonBlocks([
-      { type: 'embed', embedUrl: 'https://codepen.io/coderoad/pen/abcDEF' },
-      { type: 'link', url: 'https://codepen.io/coderoad/embed/abcDEF', description: 'Przykład' },
-    ]);
-
-    expect(groups.map((group) => (group.kind === 'sandbox' ? group.caption : group.kind))).toEqual(['Przykład']);
   });
 
   it('keeps different sandboxes on the same provider apart', () => {
@@ -238,72 +227,68 @@ describe('groupLessonBlocks', () => {
     ]);
   });
 
-  it('folds a single-anchor html block into the links section and drops the duplicate', () => {
+  it('renders a repeated link target once per block the author placed', () => {
     const groups = groupLessonBlocks([
       { type: 'link', url: 'https://github.com/coderoadpl/task-1', description: 'GitHub' },
-      { type: 'html', html: '<p><a href="https://github.com/coderoadpl/task-1/">repozytorium</a></p>' },
+      { type: 'link', url: 'https://github.com/coderoadpl/task-1', description: 'Repozytorium zadania' },
+      { type: 'link', url: 'https://github.com/coderoadpl/task-1' },
     ]);
 
     expect(groups).toEqual([
       {
         kind: 'links',
-        links: [{ url: 'https://github.com/coderoadpl/task-1', label: 'GitHub', host: 'github.com' }],
-      },
-    ]);
-  });
-
-  it('falls back to a derived label when the anchor text is the URL itself', () => {
-    expect(
-      groupLessonBlocks([
-        { type: 'html', html: '<p><a href="https://github.com/a/b" target="_blank">https://github.com/a/b</a></p>' },
-      ]),
-    ).toEqual([
-      { kind: 'links', links: [{ url: 'https://github.com/a/b', label: 'github.com / b', host: 'github.com' }] },
-    ]);
-  });
-
-  it('falls back to a derived label when the anchor text is a schemeless URL', () => {
-    const repoUrl = 'https://github.com/coderoadpl/frontend--html-css-flexbox--task-1';
-    expect(
-      groupLessonBlocks([
-        { type: 'html', html: `<p><a href="${repoUrl}">github.com/coderoadpl/frontend--html-css-flexbox--task-1</a></p>` },
-        { type: 'html', html: '<p><a href="https://developer.mozilla.org/pl/docs/Web/CSS">developer.mozilla.org</a></p>' },
-      ]),
-    ).toEqual([
-      {
-        kind: 'links',
         links: [
-          { url: repoUrl, label: 'github.com / frontend--html-css-flexbox--task-1', host: 'github.com' },
-          {
-            url: 'https://developer.mozilla.org/pl/docs/Web/CSS',
-            label: 'developer.mozilla.org / CSS',
-            host: 'developer.mozilla.org',
-          },
+          { url: 'https://github.com/coderoadpl/task-1', label: 'GitHub', host: 'github.com' },
+          { url: 'https://github.com/coderoadpl/task-1', label: 'Repozytorium zadania', host: 'github.com' },
+          { url: 'https://github.com/coderoadpl/task-1', label: 'github.com', host: 'github.com' },
         ],
       },
     ]);
   });
 
-  it('falls back to a derived label when the description repeats the URL', () => {
-    expect(
-      groupLessonBlocks([
-        { type: 'link', url: 'https://github.com/a/b', description: 'https://github.com/a/b' },
-      ]),
-    ).toEqual([
-      { kind: 'links', links: [{ url: 'https://github.com/a/b', label: 'github.com / b', host: 'github.com' }] },
+  it('leaves an html block in place even when it holds a single anchor', () => {
+    const blocks: PlayableLessonBlock[] = [
+      { type: 'html', html: '<p><a href="https://github.com/coderoadpl/task-1">repozytorium</a></p>' },
+      { type: 'html', html: '<p><a href="https://codesandbox.io/s/abc123">zadanie</a></p>' },
+      { type: 'html', html: '<p>Zobacz <a href="https://example.com/a">a</a> i <a href="https://example.com/b">b</a></p>' },
+    ];
+
+    expect(groupLessonBlocks(blocks)).toEqual(blocks.map((block) => ({ kind: 'block', block })));
+  });
+
+  it('keeps a link section around an html block that repeats the same target', () => {
+    const repoUrl = 'https://github.com/coderoadpl/task-1';
+    const htmlBlock: PlayableLessonBlock = {
+      type: 'html',
+      html: `<p><a href="${repoUrl}">repozytorium</a></p>`,
+    };
+
+    expect(groupLessonBlocks([{ type: 'link', url: repoUrl, description: 'GitHub' }, htmlBlock])).toEqual([
+      { kind: 'links', links: [{ url: repoUrl, label: 'GitHub', host: 'github.com' }] },
+      { kind: 'block', block: htmlBlock },
     ]);
   });
 
-  it('keeps description-less links on the same host distinguishable', () => {
-    const groups = groupLessonBlocks([
-      { type: 'link', url: 'https://github.com/a/one' },
-      { type: 'link', url: 'https://github.com/a/two' },
-      { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#syntax' },
-      { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#examples' },
-      { type: 'link', url: 'https://example.com' },
-    ]);
+  it('labels a description-less link with its host alone', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex' },
+        { type: 'html', html: '<p>Notatki</p>' },
+        { type: 'link', url: 'https://www.github.com/coderoadpl/task-1/' },
+      ]),
+    ).toEqual(['developer.mozilla.org', 'github.com']);
+  });
 
-    expect(groups[0]?.kind === 'links' ? groups[0].links.map((link) => link.label) : []).toEqual([
+  it('appends the last path segment when two chips in one section would collide', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'https://github.com/a/one' },
+        { type: 'link', url: 'https://github.com/a/two' },
+        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#syntax' },
+        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#examples' },
+        { type: 'link', url: 'https://example.com' },
+      ]),
+    ).toEqual([
       'github.com / one',
       'github.com / two',
       'developer.mozilla.org / flex#syntax',
@@ -312,240 +297,91 @@ describe('groupLessonBlocks', () => {
     ]);
   });
 
-  it('decodes percent-escapes in a derived label', () => {
+  it('keeps a repeated target on its host when the path cannot tell the chips apart', () => {
     expect(
-      groupLessonBlocks([{ type: 'link', url: 'https://example.com/docs/uk%C5%82ad%20flex' }]),
-    ).toEqual([
-      {
-        kind: 'links',
-        links: [
-          { url: 'https://example.com/docs/uk%C5%82ad%20flex', label: 'example.com / układ flex', host: 'example.com' },
-        ],
-      },
-    ]);
-  });
-
-  it('keeps a dotted product name as the label', () => {
-    expect(
-      groupLessonBlocks([
-        { type: 'html', html: '<p><a href="https://nodejs.org/docs/latest/api/">Node.js</a></p>' },
+      labelsOf([
+        { type: 'link', url: 'https://github.com/coderoadpl/task-1' },
+        { type: 'link', url: 'https://github.com/coderoadpl/task-1' },
+        { type: 'link', url: 'https://example.com/a' },
+        { type: 'link', url: 'https://example.com/b' },
       ]),
-    ).toEqual([
-      { kind: 'links', links: [{ url: 'https://nodejs.org/docs/latest/api/', label: 'Node.js', host: 'nodejs.org' }] },
-    ]);
+    ).toEqual(['github.com', 'github.com', 'example.com / a', 'example.com / b']);
   });
 
-  it('keeps links that differ only by fragment as separate chips', () => {
+  it('leaves chips on one host short when they sit in different sections', () => {
     expect(
-      groupLessonBlocks([
-        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#syntax', description: 'Składnia' },
-        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#examples', description: 'Przykłady' },
+      labelsOf([
+        { type: 'link', url: 'https://github.com/a/one' },
+        { type: 'html', html: '<p>Notatki</p>' },
+        { type: 'link', url: 'https://github.com/a/two' },
       ]),
-    ).toEqual([
-      {
-        kind: 'links',
-        links: [
-          {
-            url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#syntax',
-            label: 'Składnia',
-            host: 'developer.mozilla.org',
-          },
-          {
-            url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#examples',
-            label: 'Przykłady',
-            host: 'developer.mozilla.org',
-          },
-        ],
-      },
-    ]);
+    ).toEqual(['github.com', 'github.com']);
   });
 
-  it('prefers a link description over the anchor text of an earlier html duplicate', () => {
+  it('appends the last path segment when a derived chip repeats a description', () => {
     expect(
-      groupLessonBlocks([
-        { type: 'html', html: '<p><a href="https://github.com/a/b" target="_blank">repozytorium</a></p>' },
-        { type: 'link', url: 'https://github.com/a/b', description: 'GitHub' },
+      labelsOf([
+        { type: 'link', url: 'https://example.com/a', description: 'developer.mozilla.org' },
+        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex' },
       ]),
-    ).toEqual([
-      { kind: 'links', links: [{ url: 'https://github.com/a/b', label: 'GitHub', host: 'github.com' }] },
-    ]);
+    ).toEqual(['developer.mozilla.org', 'developer.mozilla.org / flex']);
   });
 
-  it('keeps paths that differ only by case as separate links', () => {
-    const groups = groupLessonBlocks([
-      { type: 'link', url: 'https://example.com/Case', description: 'Wielka' },
-      { type: 'link', url: 'https://example.com/case', description: 'Mala' },
-    ]);
-
-    expect(groups).toEqual([
-      {
-        kind: 'links',
-        links: [
-          { url: 'https://example.com/Case', label: 'Wielka', host: 'example.com' },
-          { url: 'https://example.com/case', label: 'Mala', host: 'example.com' },
-        ],
-      },
-    ]);
+  it('decodes percent-escapes in the appended path segment', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'https://example.com/docs/uk%C5%82ad%20flex' },
+        { type: 'link', url: 'https://example.com/docs/siatka' },
+      ]),
+    ).toEqual(['example.com / układ flex', 'example.com / siatka']);
   });
 
-  it('takes the label from a later duplicate when the first link has none', () => {
-    const groups = groupLessonBlocks([
-      { type: 'link', url: 'https://github.com/coderoadpl/task-1' },
-      { type: 'link', url: 'https://github.com/coderoadpl/task-1', description: 'Repozytorium zadania' },
-    ]);
-
-    expect(groups).toEqual([
-      {
-        kind: 'links',
-        links: [
-          { url: 'https://github.com/coderoadpl/task-1', label: 'Repozytorium zadania', host: 'github.com' },
-        ],
-      },
-    ]);
+  it('falls back to a derived label when the description repeats the URL', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'https://github.com/a/b', description: 'https://github.com/a/b' },
+        { type: 'link', url: 'https://example.com/docs', description: 'example.com/docs' },
+        { type: 'link', url: 'https://other.example.com:8080/x', description: 'other.example.com:8080/y' },
+        { type: 'link', url: 'https://www.wikipedia.org/wiki/Flex', description: 'wikipedia.org' },
+      ]),
+    ).toEqual(['github.com', 'example.com', 'other.example.com', 'wikipedia.org']);
   });
 
-  it('leaves html blocks that hold more than one anchor untouched', () => {
-    const blocks: PlayableLessonBlock[] = [
-      { type: 'html', html: '<p>Zobacz <a href="https://example.com/a">a</a> i <a href="https://example.com/b">b</a></p>' },
-      { type: 'html', html: '<p><a href="javascript:alert(1)">klik</a></p>' },
-      { type: 'html', html: '<p><a href="https://example.com/a"><img src="https://example.com/i.png" /></a></p>' },
-    ];
-
-    expect(groupLessonBlocks(blocks)).toEqual(blocks.map((block) => ({ kind: 'block', block })));
-  });
-
-  it('stays bounded on adversarial html and link text', () => {
-    const longText = `${'/'.repeat(50_000)}a`;
-    const unterminatedAnchor: PlayableLessonBlock = { type: 'html', html: `<a ${'href="" '.repeat(6_000)}` };
-    const blocks: PlayableLessonBlock[] = [
-      unterminatedAnchor,
-      { type: 'html', html: `<p><a href="https://example.com/a">${longText}</a></p>` },
-      { type: 'link', url: 'https://example.com/b', description: longText },
-    ];
-
-    const started = performance.now();
-    const groups = groupLessonBlocks(blocks);
-
-    expect(groups[0]).toEqual({ kind: 'block', block: unterminatedAnchor });
-    expect(groups[1]).toEqual({
-      kind: 'links',
-      links: [
-        { url: 'https://example.com/a', label: longText, host: 'example.com' },
-        { url: 'https://example.com/b', label: longText, host: 'example.com' },
-      ],
-    });
-    expect(performance.now() - started).toBeLessThan(2000);
+  it('keeps a dotted product name as the description it was given', () => {
+    expect(
+      labelsOf([
+        { type: 'link', url: 'https://nodejs.org/docs/latest/api/', description: 'Node.js' },
+        { type: 'link', url: 'https://expressjs.com/en/starter/hello-world.html', description: 'Node.js/Express' },
+      ]),
+    ).toEqual(['Node.js', 'Node.js/Express']);
   });
 
   it('keeps a mailto link readable without a description', () => {
-    expect(groupLessonBlocks([{ type: 'link', url: 'mailto:teacher@example.com' }])).toEqual([
+    expect(
+      groupLessonBlocks([
+        { type: 'link', url: 'mailto:teacher@example.com' },
+        { type: 'link', url: 'mailto:teacher@example.com?subject=Zadanie%201', description: 'Zadanie 1' },
+      ]),
+    ).toEqual([
       {
         kind: 'links',
         links: [
           { url: 'mailto:teacher@example.com', label: 'teacher@example.com', host: 'teacher@example.com' },
+          {
+            url: 'mailto:teacher@example.com?subject=Zadanie%201',
+            label: 'Zadanie 1',
+            host: 'teacher@example.com',
+          },
         ],
       },
     ]);
   });
 
-  const labelsOf = (blocks: PlayableLessonBlock[]): string[] => {
-    const groups = groupLessonBlocks(blocks);
-    return groups.flatMap((group) => (group.kind === 'links' ? group.links.map((link) => link.label) : []));
-  };
+  it('stays bounded on a description that mimics a schemeless URL at length', () => {
+    const longText = `${'host.'.repeat(50_000)}pl/a`;
+    const started = performance.now();
 
-  it('keeps the same path on http and https as separate links', () => {
-    expect(
-      labelsOf([
-        { type: 'link', url: 'http://example.com/docs', description: 'Bez TLS' },
-        { type: 'link', url: 'https://example.com/docs', description: 'Z TLS' },
-      ]),
-    ).toEqual(['Bez TLS', 'Z TLS']);
-  });
-
-  it('keeps the same path on different ports as separate links', () => {
-    expect(
-      labelsOf([
-        { type: 'link', url: 'http://example.com/app', description: 'Domyślny port' },
-        { type: 'link', url: 'http://example.com:8080/app', description: 'Port 8080' },
-      ]),
-    ).toEqual(['Domyślny port', 'Port 8080']);
-  });
-
-  it('keeps mailto links that differ only by subject or body apart', () => {
-    expect(
-      labelsOf([
-        { type: 'link', url: 'mailto:teacher@example.com?subject=Zadanie%201', description: 'Zadanie 1' },
-        { type: 'link', url: 'mailto:teacher@example.com?subject=Zadanie%202', description: 'Zadanie 2' },
-        { type: 'link', url: 'mailto:teacher@example.com?body=Cze%C5%9B%C4%87', description: 'Wiadomość' },
-      ]),
-    ).toEqual(['Zadanie 1', 'Zadanie 2', 'Wiadomość']);
-  });
-
-  it('folds the same mailto address written in different letter case into one chip', () => {
-    expect(
-      labelsOf([
-        { type: 'link', url: 'mailto:Teacher@Example.com', description: 'Kontakt' },
-        { type: 'link', url: 'mailto:teacher@example.com' },
-      ]),
-    ).toEqual(['Kontakt']);
-  });
-
-  it('decodes named and numeric entities in a folded anchor', () => {
-    expect(
-      labelsOf([
-        { type: 'html', html: '<p><a href="https://example.com/a">Flexbox &ndash; podstawy</a></p>' },
-        { type: 'html', html: '<p><a href="https://example.com/b">Grid &#8212; siatka</a></p>' },
-        { type: 'html', html: '<p><a href="https://example.com/c">Cytat &#x201C;flex&#x201D;</a></p>' },
-        { type: 'html', html: '<p><a href="https://example.com/d">Reszta&hellip;</a></p>' },
-      ]),
-    ).toEqual(['Flexbox – podstawy', 'Grid — siatka', 'Cytat “flex”', 'Reszta…']);
-  });
-
-  it('leaves an anchor unfolded when an entity stays undecoded', () => {
-    const block: PlayableLessonBlock = {
-      type: 'html',
-      html: '<p><a href="https://example.com/a">Zadanie &zzzz; jeden</a></p>',
-    };
-
-    expect(groupLessonBlocks([block])).toEqual([{ kind: 'block', block }]);
-  });
-
-  it('leaves an anchor unfolded when an entity names an object prototype member', () => {
-    const block: PlayableLessonBlock = {
-      type: 'html',
-      html: '<p><a href="https://example.com/a">Zadanie &constructor; jeden</a></p>',
-    };
-
-    expect(groupLessonBlocks([block])).toEqual([{ kind: 'block', block }]);
-  });
-
-  it('folds an anchor whose decoded text only looks like it holds an entity', () => {
-    expect(
-      labelsOf([{ type: 'html', html: '<p><a href="https://example.com/a">Tom &amp;Jerry; show</a></p>' }]),
-    ).toEqual(['Tom &Jerry; show']);
-  });
-
-  it('keeps a dotted product pair as the label instead of reading it as a URL', () => {
-    expect(
-      labelsOf([
-        { type: 'html', html: '<p><a href="https://expressjs.com/en/starter/hello-world.html">Node.js/Express</a></p>' },
-        { type: 'html', html: '<p><a href="https://nextjs.org/docs">Next.js/docs</a></p>' },
-      ]),
-    ).toEqual(['Node.js/Express', 'Next.js/docs']);
-  });
-
-  it('still treats a schemeless copy of the href as the URL itself', () => {
-    expect(
-      labelsOf([
-        { type: 'html', html: '<p><a href="https://example.com/docs">example.com/docs</a></p>' },
-        { type: 'html', html: '<p><a href="https://example.com/guide/intro">www.example.com/guide/intro</a></p>' },
-      ]),
-    ).toEqual(['example.com / docs', 'example.com / intro']);
-  });
-
-  it('reads schemeless text carrying the href port as the URL itself', () => {
-    expect(
-      labelsOf([{ type: 'html', html: '<p><a href="https://example.com:8080/x">example.com:8080/other</a></p>' }]),
-    ).toEqual(['example.com / x']);
+    expect(labelsOf([{ type: 'link', url: 'https://example.com/b', description: longText }])).toEqual([longText]);
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 });

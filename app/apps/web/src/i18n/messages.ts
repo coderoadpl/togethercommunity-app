@@ -1048,12 +1048,8 @@ export interface Messages {
     fileNameLabel: string;
     linkUrlLabel: string;
     linkDescriptionLabel: string;
-    htmlLinkFoldNote: string;
-    htmlSandboxFoldNote: string;
     technicalFieldHint: (params: { field: string }) => string;
     blockPreviewLabel: string;
-    showSandboxPreview: string;
-    hideSandboxPreview: string;
     addBlock: string;
     saving: string;
     saveLesson: string;

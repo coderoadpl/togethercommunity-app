@@ -660,7 +660,7 @@ describe('community pages', () => {
     expect(screen.queryByTestId('member-breadcrumbs')).not.toBeInTheDocument();
   });
 
-  it('serves an anonymous visitor a read-only feed with a sign-in CTA and no composer', async () => {
+  it('serves an anonymous visitor a read-only feed pointing at the offer and no composer', async () => {
     server.use(
       anonMe(),
       okPublicNavigation(),
@@ -675,10 +675,44 @@ describe('community pages', () => {
       '/community/s1/posts/p1',
     );
     expect(screen.getByTestId('anon-read-only')).toHaveTextContent(pl.anon.readOnlyBanner);
-    expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/login');
+    const cta = screen.getByTestId('anon-join-cta');
+    expect(cta).toHaveAttribute('href', '/#offer');
+    expect(cta).toHaveTextContent(pl.anon.joinOfferCta);
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('reaction-p1-👍')).not.toBeInTheDocument();
+  });
+
+  it('sends a guest to the plain home page when the space is not the visitors start space', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({ defaultHomeSpaceId: null })),
+      okPublicFeed('s1', []),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('anon-join-cta')).toHaveAttribute('href', '/');
+  });
+
+  it('renders the space description under the public heading', async () => {
+    server.use(anonMe(), okPublicNavigation(), okPublicFeed('s1', []));
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('anon-space-description')).toHaveTextContent(
+      'Rozmowy o kamperze.',
+    );
+  });
+
+  it('tells a guest the creator has published nothing instead of inviting a post', async () => {
+    server.use(anonMe(), okPublicNavigation(), okPublicFeed('s1', []));
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('public-feed-empty-state')).toHaveTextContent(
+      pl.anon.emptyFeed,
+    );
   });
 
   it('points an anonymous visitor at checkout for a product-gated space', async () => {
@@ -710,7 +744,7 @@ describe('community pages', () => {
 
     expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Wątek publiczny');
     expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Odpowiedź');
-    expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/login');
+    expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/#offer');
     expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
   });
 

@@ -598,7 +598,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/entitlements.ts:198` | `} else if (ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/entitlements.ts:232` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
 | member-scope | `core/server/usecases/entitlements.ts:258` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/invoices.ts:456` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
+| member-scope | `core/server/usecases/invoices.ts:459` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/member-data-export.ts:46` | `if (ctx.identity.memberId === null) {` |

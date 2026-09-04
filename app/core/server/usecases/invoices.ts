@@ -401,10 +401,13 @@ const issue = async (
   deps: InvoiceDeps,
 ): Promise<Result<Invoice, AppError>> => {
   const settings = await deps.tenants.findSettings(tenantId);
-  if ((settings?.invoicingProvider ?? 'ifirma') === 'ksef') {
-    return issueKsef(tenantId, order, billing, deps);
+  const provider = settings?.invoicingProvider ?? null;
+  if (provider === null) {
+    return err(integrationNotConfigured('Choose an invoice provider in Settings → Company before issuing invoices'));
   }
-  return issueIfirma(tenantId, order, billing, deps);
+  return provider === 'ksef'
+    ? issueKsef(tenantId, order, billing, deps)
+    : issueIfirma(tenantId, order, billing, deps);
 };
 
 export const downloadInvoice = async (
@@ -530,11 +533,16 @@ export const issueAutoInvoiceOnPayment = async (
 ): Promise<void> => {
   const settings = await deps.tenants.findSettings(tenantId);
   if (settings?.autoIssueInvoices !== true) return;
-  if ((settings.autoIssueInvoiceScope ?? 'b2b_only') === 'b2b_only' && order.billing?.nip == null) {
-    const skipped = eventFor(deps, tenantId, order.id, null, 'skipped', null, {
-      reason: 'b2b_only',
-    });
+  const skip = async (reason: string) => {
+    const skipped = eventFor(deps, tenantId, order.id, null, 'skipped', null, { reason });
     await deps.invoices.appendEvent(tenantId, skipped);
+  };
+  if ((settings.autoIssueInvoiceScope ?? 'b2b_only') === 'b2b_only' && order.billing?.nip == null) {
+    await skip('b2b_only');
+    return;
+  }
+  if (settings.invoicingProvider == null) {
+    await skip('provider_unset');
     return;
   }
   const detail = await deps.orderDetails.findById(tenantId, order.id);

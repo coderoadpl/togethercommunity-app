@@ -309,6 +309,21 @@ describe('email transport wizard', () => {
     expect(screen.queryByText(/Domena jest już zweryfikowana w SES/)).not.toBeInTheDocument();
   }, 15_000);
 
+  it('confirms the sender form save instead of leaving the creator guessing', async () => {
+    server.use(
+      http.get('/api/marketing/ses-settings', () => HttpResponse.json(sesSettings)),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+      http.post('/api/marketing/ses-settings', () => HttpResponse.json(sesSettings)),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EmailTab />);
+
+    const senderForm = (await screen.findByText('Nadawca i tożsamość')).closest('form');
+    await user.click(within(senderForm ?? document.body).getByRole('button', { name: 'Zapisz ustawienia' }));
+
+    expect(await screen.findByTestId('marketing-sender-status')).toHaveTextContent('Zapisano.');
+  }, 15_000);
+
   it('names the denied AWS action instead of failing the form', async () => {
     server.use(
       http.get('/api/marketing/ses-settings', () => HttpResponse.json(unconfiguredSender)),

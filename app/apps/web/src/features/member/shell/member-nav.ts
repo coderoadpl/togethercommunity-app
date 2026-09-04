@@ -16,6 +16,13 @@ export const memberHomePath = (): '/start' => '/start';
 
 export const anonHomePath = (): '/' => '/';
 
+export const PUBLIC_OFFER_ANCHOR = 'offer';
+
+export const anonOfferLink = (viewedSpaceIsHomeSpace: boolean): { to: '/'; hash?: string } =>
+  viewedSpaceIsHomeSpace
+    ? { to: anonHomePath(), hash: PUBLIC_OFFER_ANCHOR }
+    : { to: anonHomePath() };
+
 export const memberSearchPath = (): '/search' => '/search';
 
 export const memberMessagesPath = (): '/messages' => '/messages';

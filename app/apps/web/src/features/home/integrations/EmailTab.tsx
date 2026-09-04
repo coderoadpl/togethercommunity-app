@@ -7,6 +7,7 @@ import {
   Chip,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   Link,
   List,
@@ -638,6 +639,9 @@ export const EmailTab = () => {
             {t.marketing.trackingDocsLink}
           </Link>
         </Alert>
+        <FormHelperText data-testid="marketing-sender-status">
+          {senderUpdate.isPending ? t.common.saving : senderUpdate.isSuccess ? t.common.saved : ' '}
+        </FormHelperText>
         {senderUpdate.isError ? <Alert severity="error">{localizePanelError(senderUpdate.error, t)}</Alert> : null}
       </SectionCard>
       <SesOnboardingWizard

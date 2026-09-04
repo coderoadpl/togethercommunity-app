@@ -153,7 +153,7 @@ export const tenantSettingsSchema = z.object({
   invoiceVatMode: invoiceVatModeSchema.nullable().optional(),
   invoiceExemptionBasisKind: exemptionBasisKindSchema.nullable().optional(),
   invoiceExemptionBasis: z.string().trim().min(1).max(EXEMPTION_BASIS_MAX_LENGTH).nullable().optional(),
-  invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
+  invoicingProvider: z.enum(['ifirma', 'ksef']).nullable().optional(),
   invoiceSellerName: z.string().nullable().optional(),
   invoiceSellerAddress: z.string().nullable().optional(),
 }).extend(tenantSocialSchema.shape);

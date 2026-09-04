@@ -10,7 +10,7 @@ import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceEventsSection } from './events/PublicSpaceEventsSection.js';
 import { PublicFeedList } from './PublicFeed.js';
-import { anonHomePath } from './shell/member-nav.js';
+import { anonHomePath, anonOfferLink } from './shell/member-nav.js';
 
 export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
@@ -78,16 +78,18 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   const rail = (
     <>
-      <SectionCard title={t.community.aboutHeading} data-testid="anon-space-about">
-        <PostBody variant="body2" component="p" color="text.secondary">
-          {space.description ?? t.community.noDescription}
-        </PostBody>
+      <SectionCard title={t.anon.guestHeading} data-testid="anon-guest-notice">
         <PostBody variant="body2" component="p" color="text.secondary" data-testid="anon-read-only">
           {t.anon.readOnlyBanner}
         </PostBody>
         <Box>
-          <Button component={Link} to="/login" variant="contained" data-testid="anon-join-cta">
-            {t.anon.joinDiscussionCta}
+          <Button
+            component={Link}
+            {...anonOfferLink(navigation.data.navigation.defaultHomeSpaceId === spaceId)}
+            variant="contained"
+            data-testid="anon-join-cta"
+          >
+            {t.anon.joinOfferCta}
           </Button>
         </Box>
       </SectionCard>
@@ -104,6 +106,11 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
       breadcrumbs={anonCrumbs(t, { label: space.name })}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
+        {space.description === null ? null : (
+          <PostBody variant="body1" component="p" data-testid="anon-space-description">
+            {space.description}
+          </PostBody>
+        )}
         {feed.isPending ? (
           <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />
         ) : feed.isError ? (

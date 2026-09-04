@@ -319,6 +319,7 @@ export interface Messages {
     panelTitle: string;
     expand: (params: { title: string }) => string;
     collapse: (params: { title: string }) => string;
+    close: (params: { title: string }) => string;
   };
   tenantSetup: {
     title: string;
@@ -1293,8 +1294,10 @@ export interface Messages {
     homeTitle: string;
     coursesSection: string;
     spacesSection: string;
-    joinDiscussionCta: string;
+    guestHeading: string;
+    joinOfferCta: string;
     readOnlyBanner: string;
+    emptyFeed: string;
     lockedCourseHint: string;
     unlockCta: string;
     emptyTitle: string;
@@ -1560,6 +1563,7 @@ export interface Messages {
     statusArchived: string;
     membersOnlyChip: string;
     productGatedChip: string;
+    publicChip: string;
     postsNoun: (params: { count: number }) => string;
     followersNoun: (params: { count: number }) => string;
     archive: string;
@@ -1691,6 +1695,7 @@ export interface Messages {
     b2bOnly: string;
     allBuyers: string;
     vatRateUnset: string;
+    vatRateHint: string;
     vatTreatment: string;
     vatTreatmentRate: string;
     vatTreatmentExempt: string;
@@ -1706,6 +1711,7 @@ export interface Messages {
     exemptionBasisArt43Help: string;
     exemptNote: string;
     invoicingProvider: string;
+    providerUnset: string;
     providerIfirma: string;
     providerKsef: string;
     sellerName: string;
@@ -1716,8 +1722,15 @@ export interface Messages {
     heading: string;
     intro: string;
     homeSpaceLabel: string;
-    homeSpaceNone: string;
+    homeSpaceUnset: string;
     homeSpaceHint: string;
+    coursesHeading: string;
+    coursesHint: string;
+    coursesEmpty: string;
+    coursesLoading: string;
+    save: string;
+    saving: string;
+    saved: string;
   };
   directMessages: {
     heading: string;
@@ -1766,6 +1779,8 @@ export interface Messages {
     ogTitleHint: string;
     ogDescriptionLabel: string;
     ogDescriptionHint: string;
+    charCount: (input: { used: number; limit: number }) => string;
+    charLimitReached: string;
     ogImageLabel: string;
     ogImageHint: (input: { width: number; height: number }) => string;
     save: string;

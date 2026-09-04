@@ -241,7 +241,11 @@ describe('getTenantSetupReadiness', () => {
     const ifirmaKeys: TenantSecretKey[] = ['ifirma.invoiceApiKey', 'ifirma.username'];
     const ksefKeys: TenantSecretKey[] = ['ksef.token', 'ksef.contextNip'];
 
-    expect((await configuredById({ secretKeys: ifirmaKeys })).invoicing).toBe(true);
+    expect((await configuredById({ secretKeys: ifirmaKeys })).invoicing).toBe(false);
+    expect(
+      (await configuredById({ secretKeys: ifirmaKeys, settings: settings({ invoicingProvider: 'ifirma' }) }))
+        .invoicing,
+    ).toBe(true);
     expect(
       (await configuredById({ secretKeys: ifirmaKeys, settings: settings({ invoicingProvider: 'ksef' }) }))
         .invoicing,

@@ -67,7 +67,7 @@ export const getTenantSetupReadiness = async (
   const smtpTransportConfigured = hasAll(SMTP_SECRET_KEYS);
   const resendTransportConfigured = has('resend.apiKey');
 
-  const invoicingProvider = settings?.invoicingProvider ?? 'ifirma';
+  const invoicingProvider = settings?.invoicingProvider ?? null;
 
   return ok(
     computeTenantSetupReadiness({
@@ -86,7 +86,9 @@ export const getTenantSetupReadiness = async (
       invoicingConfigured:
         invoicingProvider === 'ksef'
           ? has('ksef.token') && has('ksef.contextNip')
-          : has('ifirma.invoiceApiKey') && has('ifirma.username'),
+          : invoicingProvider === 'ifirma'
+            && has('ifirma.invoiceApiKey')
+            && has('ifirma.username'),
     }),
   );
 };

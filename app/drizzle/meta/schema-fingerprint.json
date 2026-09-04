@@ -1,6 +1,6 @@
 {
-  "hash": "e0f9113a2b4ce0c12c287871a29845afaac22bb9d5a7a42360700ac03f807664",
-  "shortId": "e0f9113a2b4c",
+  "hash": "99f795aac809645f514d4a9ae444758d8d306f84518849d664434651dc975c11",
+  "shortId": "99f795aac809",
   "schema": {
     "constraints": [
       {
@@ -2868,14 +2868,6 @@
             "type": "text"
           },
           {
-            "default": "'ifirma'::text",
-            "generated": "",
-            "identity": "",
-            "name": "invoicing_provider",
-            "notNull": true,
-            "type": "text"
-          },
-          {
             "default": "'pl'::text",
             "generated": "",
             "identity": "",
@@ -3026,6 +3018,14 @@
             "name": "invoice_vat_rate_percent",
             "notNull": false,
             "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoicing_provider",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

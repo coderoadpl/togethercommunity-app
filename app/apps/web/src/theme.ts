@@ -3314,6 +3314,12 @@ export const EmptyStateContent = styled(Stack)({
   textAlign: 'center',
 });
 
+export const LESSON_CARD_PADDING_X = { xs: '0.75rem', sm: '1.5rem' } as const;
+
+export const LESSON_CARD_OUTDENT_X = { xs: '-0.5rem', sm: 0 } as const;
+
+export const LESSON_CARD_BLEED_X = { xs: `-${LESSON_CARD_PADDING_X.xs}`, sm: 0 } as const;
+
 export const LessonMediaFrame = styled(Box)(({ theme }) => ({
   position: 'relative',
   width: '100%',

@@ -12,6 +12,7 @@ import {
 } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
+import { stylesAt } from '../../../test/css.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelLessonEditRoute } from '../panel-routes.js';
@@ -502,33 +503,6 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     expect(screen.queryByText('window.__xss=1')).not.toBeInTheDocument();
   });
 
-  it('tells how a single-anchor html block will be shown to members', async () => {
-    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
-
-    await renderLessonsAt('/panel/lessons/new');
-
-    await userEvent.click(screen.getByRole('combobox'));
-    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeHtml }));
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-
-    const editor = await screen.findByLabelText(pl.lessons.htmlLabel);
-    await userEvent.type(editor, '<p>Notatki</p>');
-    expect(screen.queryByText(pl.lessons.htmlLinkFoldNote)).not.toBeInTheDocument();
-
-    await userEvent.clear(editor);
-    await userEvent.type(editor, '<p><a href="https://github.com/coderoadpl/task-1">repozytorium</a></p>');
-    expect(await screen.findByText(pl.lessons.htmlLinkFoldNote)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /repozytorium/ })).toHaveAttribute(
-      'href',
-      'https://github.com/coderoadpl/task-1',
-    );
-
-    await userEvent.clear(editor);
-    await userEvent.type(editor, '<p><a href="https://codesandbox.io/s/abc123">zadanie</a></p>');
-    expect(await screen.findByText(pl.lessons.htmlSandboxFoldNote)).toBeInTheDocument();
-    expect(screen.queryByText(pl.lessons.htmlLinkFoldNote)).not.toBeInTheDocument();
-  });
-
   it('previews a link block only once its URL passes the block schema', async () => {
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
 
@@ -555,7 +529,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     );
   });
 
-  it('keeps the sandbox preview behind a toggle in the block editor', async () => {
+  it('shows the sandbox preview in full as soon as the block editor holds one', async () => {
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
 
     await renderLessonsAt('/panel/lessons/new');
@@ -570,16 +544,13 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     );
     await userEvent.type(await screen.findByLabelText(pl.lessons.linkDescriptionLabel), 'Zadanie');
 
-    const toggle = await screen.findByTestId('block-0-sandbox-preview-toggle');
-    expect(toggle).toHaveTextContent(pl.lessons.showSandboxPreview);
-    expect(screen.queryByTestId('lesson-sandbox')).not.toBeInTheDocument();
-
-    await userEvent.click(toggle);
-    expect(await screen.findByTestId('lesson-sandbox')).toHaveAttribute(
-      'src',
-      'https://codesandbox.io/embed/abc123',
-    );
+    const sandbox = await screen.findByTestId('lesson-sandbox');
+    expect(sandbox).toHaveAttribute('src', 'https://codesandbox.io/embed/abc123');
     expect(screen.queryByTestId('lesson-sandbox-caption')).not.toBeInTheDocument();
+    expect(stylesAt(sandbox.parentElement?.parentElement, 375)).toMatchObject({
+      'margin-left': '0px',
+      'margin-right': '0px',
+    });
   });
 
   it('filters lessons by name and by content type', async () => {

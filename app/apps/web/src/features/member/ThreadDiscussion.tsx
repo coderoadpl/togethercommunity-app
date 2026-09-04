@@ -11,6 +11,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
+  ComposerPrompt,
   DeletedPostText,
   DiscussionThread,
   Eyebrow,
@@ -82,11 +83,12 @@ interface Viewer {
 export const PostComposer = ({
   label,
   placeholder,
+  collapsedPrompt,
   submitLabel,
   pendingLabel,
   initialValue = '',
   focusOnMount = false,
-  collapsible = false,
+  surface = false,
   busy,
   disabled = false,
   onSubmit,
@@ -95,11 +97,13 @@ export const PostComposer = ({
 }: {
   label: string;
   placeholder?: string;
+  collapsedPrompt?: string;
   submitLabel: string;
   pendingLabel: string;
   initialValue?: string;
   focusOnMount?: boolean;
-  collapsible?: boolean;
+  /** Wrap the composer in its own card, which disappears together with the composer. */
+  surface?: boolean;
   busy: boolean;
   disabled?: boolean;
   onSubmit: (body: string, reset: () => void) => void;
@@ -109,13 +113,17 @@ export const PostComposer = ({
   const t = useTranslations();
   const impersonating = useImpersonation() !== null;
   const [body, setBody] = useState(initialValue);
-  const [focusWithin, setFocusWithin] = useState(false);
+  const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const expanded = !collapsible || focusWithin || body.trim().length > 0;
+  const expanded = collapsedPrompt === undefined || open || body.trim().length > 0;
 
   useEffect(() => {
     if (focusOnMount) inputRef.current?.focus();
   }, [focusOnMount]);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -126,15 +134,32 @@ export const PostComposer = ({
 
   if (impersonating) return null;
 
-  return (
+  const inCard = (content: ReactNode) =>
+    surface ? <Paper elevation={1} sx={{ p: '1.25rem' }}>{content}</Paper> : content;
+
+  if (collapsedPrompt !== undefined && !expanded) {
+    return inCard(
+      <ComposerPrompt
+        variant="outlined"
+        fullWidth
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        data-testid={`${testId}-open`}
+      >
+        {collapsedPrompt}
+      </ComposerPrompt>,
+    );
+  }
+
+  return inCard(
     <Stack
       component="form"
       useFlexGap
       spacing="0.75rem"
       onSubmit={handleSubmit}
-      onFocus={() => setFocusWithin(true)}
+      onFocus={() => setOpen(true)}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setFocusWithin(false);
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
       data-testid={testId}
     >
@@ -142,31 +167,29 @@ export const PostComposer = ({
         label={label}
         placeholder={placeholder}
         multiline
-        minRows={expanded ? 3 : 1}
+        minRows={3}
         value={body}
         disabled={disabled}
         inputRef={inputRef}
         onChange={(event) => setBody(event.target.value)}
         slotProps={{ htmlInput: { 'data-testid': `${testId}-input` } }}
       />
-      {expanded && (
-        <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem' }}>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={disabled || busy || body.trim().length === 0}
-            data-testid={`${testId}-submit`}
-          >
-            {busy ? pendingLabel : submitLabel}
+      <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem' }}>
+        <Button
+          type="submit"
+          variant="contained"
+          disabled={disabled || busy || body.trim().length === 0}
+          data-testid={`${testId}-submit`}
+        >
+          {busy ? pendingLabel : submitLabel}
+        </Button>
+        {onCancel !== undefined && (
+          <Button variant="text" onClick={onCancel}>
+            {t.common.cancel}
           </Button>
-          {onCancel !== undefined && (
-            <Button variant="text" onClick={onCancel}>
-              {t.common.cancel}
-            </Button>
-          )}
-        </Stack>
-      )}
-    </Stack>
+        )}
+      </Stack>
+    </Stack>,
   );
 };
 
@@ -284,6 +307,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               size="small"
               variant="text"
               data-testid={`delete-button-${post.id}`}
+              disabled={a.writeDisabled}
               onClick={() => a.requestDelete(post)}
             >
               {t.discussion.delete}
@@ -387,6 +411,7 @@ export const ThreadDiscussion = ({
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const headingId = useId();
+  const impersonating = useImpersonation() !== null;
 
   const me = useQuery(actions.me);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -510,7 +535,7 @@ export const ThreadDiscussion = ({
     openSubthread: setSubthreadRootId,
     replyBusy: create.isPending,
     editBusy: update.isPending,
-    writeDisabled: banned,
+    writeDisabled: banned || impersonating,
     pendingReply,
   };
 
@@ -604,31 +629,30 @@ export const ThreadDiscussion = ({
           {search}
 
           {viewer !== null && (
-            <Paper elevation={1} sx={{ p: '1.25rem' }}>
-              <PostComposer
-                label={t.discussion.composerLabel}
-                placeholder={t.discussion.composerPlaceholder}
-                submitLabel={t.discussion.post}
-                pendingLabel={t.discussion.posting}
-                busy={create.isPending}
-                disabled={banned}
-                collapsible
-                onSubmit={(body, reset) => {
-                  create.mutate(
-                    { contextKind: context.contextKind, contextId: context.contextId, body },
-                    { onSuccess: () => reset() },
-                  );
-                }}
-                testId="discussion-composer"
-              />
-            </Paper>
+            <PostComposer
+              label={t.discussion.composerLabel}
+              placeholder={t.discussion.composerPlaceholder}
+              collapsedPrompt={t.discussion.composerPrompt}
+              submitLabel={t.discussion.post}
+              pendingLabel={t.discussion.posting}
+              busy={create.isPending}
+              disabled={banned}
+              surface
+              onSubmit={(body, reset) => {
+                create.mutate(
+                  { contextKind: context.contextKind, contextId: context.contextId, body },
+                  { onSuccess: () => reset() },
+                );
+              }}
+              testId="discussion-composer"
+            />
           )}
 
           {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
 
           {threads.length === 0 && pendingThread === null ? (
             <Typography variant="body1" data-testid="discussion-empty">
-              {emptyLabel ?? t.discussion.empty}
+              {emptyLabel ?? (impersonating ? t.discussion.emptyReadOnly : t.discussion.empty)}
             </Typography>
           ) : (
             <Stack useFlexGap sx={{ rowGap: '1rem' }}>

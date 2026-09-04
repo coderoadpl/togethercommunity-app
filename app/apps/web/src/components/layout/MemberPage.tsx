@@ -15,7 +15,7 @@ export interface BreadcrumbItem {
 export interface MemberPageProps {
   title: ReactNode;
   eyebrow: ReactNode;
-  width?: 'prose' | 'wide' | 'lesson';
+  width?: 'prose' | 'wide';
   breadcrumbs?: BreadcrumbItem[];
   breadcrumbLabel: string;
   /** Page-level call to action, right-aligned in the header on sm+. */

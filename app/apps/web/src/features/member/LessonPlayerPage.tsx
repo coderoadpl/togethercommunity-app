@@ -31,6 +31,8 @@ import {
   LESSON_CARD_BLEED_X,
   LESSON_CARD_OUTDENT_X,
   LESSON_CARD_PADDING_X,
+  LESSON_DOCUMENT_FRAME_SX,
+  LESSON_VIDEO_FRAME_SX,
 } from '../../theme.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon, LockedState } from './lesson-icons.js';
@@ -83,7 +85,7 @@ const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
     }
     return (
       <LessonMediaEmbed
-        frameSx={{ aspectRatio: '16 / 9' }}
+        frameSx={LESSON_VIDEO_FRAME_SX}
         data-testid="lesson-video"
         src={block.embedUrl}
         title={t.lesson.videoTitle}
@@ -97,7 +99,7 @@ const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
     return (
       <Stack useFlexGap spacing="0.75rem">
         <LessonMediaEmbed
-          frameSx={{ aspectRatio: '10 / 7', minHeight: '24rem' }}
+          frameSx={LESSON_DOCUMENT_FRAME_SX}
           data-testid="lesson-pdf"
           src={block.pdfUrl}
           title={block.name ?? t.lesson.pdfTitle}
@@ -120,7 +122,7 @@ const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
   if (block.type === 'embed') {
     return (
       <LessonMediaEmbed
-        frameSx={{ aspectRatio: '16 / 9' }}
+        frameSx={LESSON_VIDEO_FRAME_SX}
         data-testid="lesson-embed"
         src={block.embedUrl}
         title={t.lesson.embedTitle}
@@ -171,7 +173,7 @@ const LockedView = ({
     <MemberSurface
       title={lessonName ?? t.lesson.contentLocked}
       eyebrow={t.lesson.eyebrow}
-      width="lesson"
+      width="prose"
       {...(courseName === undefined
         ? {}
         : {
@@ -337,7 +339,7 @@ export const LessonPlayerPage = ({
       <MemberSurface
           title={t.lesson.loading}
         eyebrow={t.lesson.eyebrow}
-        width="lesson"
+        width="wide"
         state={{ kind: 'loading', label: t.lesson.loading }}
       />
     );
@@ -352,7 +354,7 @@ export const LessonPlayerPage = ({
           <MemberSurface
             title={t.lesson.unavailable}
             eyebrow={t.lesson.eyebrow}
-            width="lesson"
+            width="wide"
             state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }}
           />
         );
@@ -375,7 +377,7 @@ export const LessonPlayerPage = ({
       <MemberSurface
           title={t.lesson.unavailable}
         eyebrow={t.lesson.eyebrow}
-        width="lesson"
+        width="wide"
         state={{
           kind: 'error',
           message: localizeError(lesson.error, t),
@@ -411,7 +413,7 @@ export const LessonPlayerPage = ({
     <MemberSurface
       title={lessonName}
       eyebrow={t.lesson.eyebrow}
-      width="lesson"
+      width="wide"
       dense
       {...(location === null
         ? {}

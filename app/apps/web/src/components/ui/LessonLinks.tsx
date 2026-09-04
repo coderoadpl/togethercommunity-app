@@ -2,7 +2,7 @@ import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { type Breakpoint } from '@mui/material/styles';
 
 import { useTranslations } from '../../i18n/index.js';
-import { LessonBlockIcon, LessonLinkButton } from '../../theme.js';
+import { LessonBlockIcon, LessonLinkButton, LESSON_SANDBOX_FRAME_SX } from '../../theme.js';
 import { LessonMediaEmbed } from './LessonMedia.js';
 
 const SANDBOX_PERMISSIONS = 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals';
@@ -110,7 +110,7 @@ export const LessonSandboxEmbed = ({
         </Typography>
       )}
       <LessonMediaEmbed
-        frameSx={{ height: '70vh', minHeight: { sm: '600px' }, width: 'auto', mx: outdentX }}
+        frameSx={{ ...LESSON_SANDBOX_FRAME_SX, mx: outdentX }}
         data-testid="lesson-sandbox"
         src={embedUrl}
         title={title}

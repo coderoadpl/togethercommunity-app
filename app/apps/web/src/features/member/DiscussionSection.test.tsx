@@ -55,6 +55,27 @@ const okMe = (staffRole: 'owner' | null = null) =>
     }),
   );
 
+const impersonatedMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'user@example.com',
+        emailVerified: true,
+        name: 'Jan Uczestnik',
+        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
+        impersonation: {
+          id: 'imp-1',
+          subjectMemberId: 'm1',
+          subjectName: 'Jan Uczestnik',
+          actorName: 'Ola Operatorka',
+          expiresAt: '2026-07-20T10:00:00.000Z',
+        },
+      },
+    }),
+  );
+
 const okDiscussion = (
   threads: DiscussionPost[],
   viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
@@ -113,7 +134,7 @@ describe('DiscussionSection', () => {
     expect(await screen.findByTestId('discussion-locked-note')).toHaveTextContent(
       pl.discussion.lockedNote,
     );
-    expect(screen.queryByTestId('discussion-composer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^discussion-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-search-input')).not.toBeInTheDocument();
   });
 
@@ -122,22 +143,71 @@ describe('DiscussionSection', () => {
 
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    expect(await screen.findByTestId('discussion-composer-input')).toBeInTheDocument();
+    expect(await screen.findByTestId('discussion-composer-open')).toHaveTextContent(
+      pl.discussion.composerPrompt,
+    );
     expect(screen.getByTestId('discussion-empty')).toHaveTextContent(pl.discussion.empty);
   });
 
-  it('keeps the lesson composer collapsed until it takes focus', async () => {
+  it('opens the collapsed lesson composer from its prompt and collapses it again on blur', async () => {
     server.use(okMe(), okDiscussion([]));
 
     const user = userEvent.setup();
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    const input = await screen.findByTestId('discussion-composer-input');
-    expect(screen.queryByTestId('discussion-composer-submit')).not.toBeInTheDocument();
-
-    await user.click(input);
+    await user.click(await screen.findByTestId('discussion-composer-open'));
 
     expect(await screen.findByTestId('discussion-composer-submit')).toBeInTheDocument();
+    expect(screen.getByTestId('discussion-composer-input')).toHaveFocus();
+
+    await user.tab();
+
+    expect(await screen.findByTestId('discussion-composer-open')).toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-composer-submit')).not.toBeInTheDocument();
+  });
+
+  it('leaves no empty composer card and no invitation to write while viewing as a member', async () => {
+    server.use(impersonatedMe(), okDiscussion([]));
+
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    expect(await screen.findByTestId('discussion-empty')).toHaveTextContent(
+      pl.discussion.emptyReadOnly,
+    );
+    expect(screen.queryByTestId('discussion-composer-open')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-composer')).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId('discussion-section').querySelectorAll('.MuiPaper-root'),
+    ).toHaveLength(0);
+  });
+
+  it('disables the post write actions while viewing as a member', async () => {
+    server.use(
+      impersonatedMe(),
+      okDiscussion([asThread(post({ id: 'r1', isOwn: true, body: 'Mój wpis' }))]),
+    );
+
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    expect(await screen.findByTestId('reply-button-r1')).toBeDisabled();
+    expect(screen.getByTestId('edit-button-r1')).toBeDisabled();
+    expect(screen.getByTestId('delete-button-r1')).toBeDisabled();
+  });
+
+  it('keeps the reopened lesson composer mounted when its draft is cleared', async () => {
+    server.use(okMe(), okDiscussion([]));
+
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('discussion-composer-open'));
+    await user.type(await screen.findByTestId('discussion-composer-input'), 'abc');
+    await user.click(document.body);
+
+    await user.clear(await screen.findByTestId('discussion-composer-input'));
+
+    expect(screen.getByTestId('discussion-composer-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-composer-open')).not.toBeInTheDocument();
   });
 
   it('renders three nesting levels with indentation, author chip and deleted placeholder', async () => {

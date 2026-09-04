@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -3320,6 +3320,44 @@ export const LESSON_CARD_OUTDENT_X = { xs: '-0.5rem', sm: 0 } as const;
 
 export const LESSON_CARD_BLEED_X = { xs: `-${LESSON_CARD_PADDING_X.xs}`, sm: 0 } as const;
 
+/**
+ * Media stops short of the viewport so the next block still peeks in below it;
+ * a player that exactly fills the screen reads as the end of the lesson. The
+ * floor keeps short and landscape viewports, where the chrome eats most of the
+ * height, from collapsing the media instead.
+ */
+const LESSON_MEDIA_HEIGHT_FLOOR = '60vh';
+
+const LESSON_MEDIA_VIEWPORT_HEIGHT = '100vh - 14rem';
+
+const LESSON_MEDIA_MAX_HEIGHT = `max(${LESSON_MEDIA_HEIGHT_FLOOR}, ${LESSON_MEDIA_VIEWPORT_HEIGHT})`;
+
+/** A fixed-ratio frame takes its height from its width, so its cap is a max width. */
+const ratioWidthAtMaxHeight = (ratioWidth: number, ratioHeight: number) => {
+  const scaled = (height: string) => `(${height}) * ${ratioWidth} / ${ratioHeight}`;
+  return `max(${scaled(LESSON_MEDIA_HEIGHT_FLOOR)}, ${scaled(LESSON_MEDIA_VIEWPORT_HEIGHT)})`;
+};
+
+export const LESSON_VIDEO_FRAME_SX = {
+  aspectRatio: '16 / 9',
+  maxWidth: ratioWidthAtMaxHeight(16, 9),
+  mx: 'auto',
+} as const;
+
+export const LESSON_DOCUMENT_FRAME_SX = {
+  aspectRatio: '10 / 7',
+  minHeight: `min(24rem, ${LESSON_MEDIA_MAX_HEIGHT})`,
+  maxWidth: ratioWidthAtMaxHeight(10, 7),
+  mx: 'auto',
+} as const;
+
+export const LESSON_SANDBOX_FRAME_SX = {
+  height: '70vh',
+  maxHeight: LESSON_MEDIA_MAX_HEIGHT,
+  minHeight: { sm: `min(600px, ${LESSON_MEDIA_MAX_HEIGHT})` },
+  width: 'auto',
+} as const;
+
 export const LessonMediaFrame = styled(Box)(({ theme }) => ({
   position: 'relative',
   width: '100%',
@@ -3360,6 +3398,7 @@ export const LessonPlaceholder = styled(Box)(({ theme }) => ({
 export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   overflowWrap: 'anywhere',
   maxWidth: '44rem',
+  marginInline: 'auto',
   '& img': { maxWidth: '100%', height: 'auto' },
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
@@ -3390,6 +3429,48 @@ export const DiscussionThread = styled(Box)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.background.paper,
 }));
+
+export const ComposerPrompt = styled(Button)(({ theme }) => ({
+  justifyContent: 'flex-start',
+  textAlign: 'left',
+  textTransform: 'none',
+  fontWeight: 400,
+  padding: '0.65rem 0.9rem',
+  color: theme.palette.text.secondary,
+  borderColor: theme.palette.divider,
+  backgroundColor: theme.palette.background.default,
+  '&:hover': {
+    borderColor: theme.palette.text.disabled,
+    backgroundColor: theme.palette.background.default,
+  },
+}));
+
+export const SocialFooterBar = styled(Box)<AsElement>(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.35rem 1.25rem',
+  marginTop: '2.5rem',
+  paddingTop: '1rem',
+  borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const SocialFooterLink = styled(Link)(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  color: theme.palette.text.secondary,
+  textDecoration: 'none',
+  fontSize: '0.8125rem',
+  '&:hover': {
+    color: theme.palette.text.primary,
+    textDecoration: 'underline',
+  },
+}));
+
+export const SocialLinkIcon = styled(SvgIcon)({
+  fontSize: '1rem',
+});
 
 export const ConversationCard = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'block',

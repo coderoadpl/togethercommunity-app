@@ -279,6 +279,7 @@ describe('LessonPlayerPage', () => {
     const frame = (await screen.findByTestId('lesson-sandbox')).parentElement?.parentElement;
     expect(stylesAt(frame, phone)).toMatchObject({
       height: '70vh',
+      'max-height': 'max(60vh, 100vh - 14rem)',
       width: 'auto',
       'margin-left': '-0.75rem',
       'margin-right': '-0.75rem',
@@ -286,7 +287,8 @@ describe('LessonPlayerPage', () => {
     expect(stylesAt(frame, phone)).not.toHaveProperty('min-height');
     expect(stylesAt(frame, tablet)).toMatchObject({
       height: '70vh',
-      'min-height': '600px',
+      'max-height': 'max(60vh, 100vh - 14rem)',
+      'min-height': 'min(600px, max(60vh, 100vh - 14rem))',
       'margin-left': '0px',
       'margin-right': '0px',
     });
@@ -837,6 +839,39 @@ describe('LessonPlayerPage', () => {
 
     expect(await screen.findByTestId('lesson-html')).toBeInTheDocument();
     expect(screen.queryByTestId('curriculum-card')).not.toBeInTheDocument();
+  });
+
+  it('caps the video and the document to the viewport height and widens the reading column', async () => {
+    const desktop = 1440;
+    const belowContainerLg = 1100;
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const videoFrame = (await screen.findByTestId('lesson-video')).parentElement?.parentElement;
+    expect(stylesAt(videoFrame, desktop)).toMatchObject({
+      'aspect-ratio': '16/9',
+      'max-width': 'max((60vh) * 16 / 9, (100vh - 14rem) * 16 / 9)',
+      'margin-left': 'auto',
+      'margin-right': 'auto',
+    });
+
+    const documentFrame = screen.getByTestId('lesson-pdf').parentElement?.parentElement;
+    expect(stylesAt(documentFrame, desktop)).toMatchObject({
+      'aspect-ratio': '10/7',
+      'max-width': 'max((60vh) * 10 / 7, (100vh - 14rem) * 10 / 7)',
+      'min-height': 'min(24rem, max(60vh, 100vh - 14rem))',
+    });
+
+    expect(stylesAt(screen.getByTestId('lesson-embed').parentElement?.parentElement, desktop))
+      .toMatchObject({ 'max-width': 'max((60vh) * 16 / 9, (100vh - 14rem) * 16 / 9)' });
+
+    const column = screen.getByTestId('lesson-block-0').closest('.MuiContainer-root');
+    expect(stylesAt(column, belowContainerLg)).toMatchObject({ 'max-width': '72rem' });
+
+    expect(stylesAt(screen.getByTestId('lesson-html'), desktop)).toMatchObject({
+      'max-width': '44rem',
+      'margin-inline': 'auto',
+    });
   });
 
   it('leaves the program to the shell sidebar from md up', async () => {

@@ -148,7 +148,7 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
               {t.anon.lockedCourseHint}
             </Typography>
             {programCta === null ? null : <Box sx={{ mb: '0.9rem' }}>{programCta}</Box>}
-            <CourseTree courseId={courseId} structure={course} />
+            <CourseTree courseId={courseId} structure={course} expandAll />
           </Box>
         ) : (
           <StatusView

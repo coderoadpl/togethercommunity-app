@@ -84,7 +84,7 @@ export const TabButton = styled(ButtonBase)<ShellLinkProps>(({ theme }) => ({
 }));
 
 export const SidebarColumn = styled(Box)<{ component?: ElementType }>(({ theme }) => ({
-  width: '248px',
+  width: '272px',
   flexShrink: 0,
   alignSelf: 'flex-start',
   position: 'sticky',

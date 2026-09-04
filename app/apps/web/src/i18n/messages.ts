@@ -1351,6 +1351,7 @@ export interface Messages {
   };
   courseTree: {
     lockedTooltip: string;
+    lockedLessonTooltip: (params: { name: string }) => string;
     courseSyllabus: string;
     noPublishedContent: string;
     emptyCourseTitle: string;

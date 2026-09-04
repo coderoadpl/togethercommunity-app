@@ -1538,6 +1538,7 @@ export const pl: Messages = {
   },
   courseTree: {
     lockedTooltip: 'Treść zablokowana',
+    lockedLessonTooltip: ({ name }) => format('{name} — treść zablokowana', { name }),
     courseSyllabus: 'Program kursu',
     noPublishedContent: 'Ten kurs nie ma jeszcze opublikowanej treści.',
     emptyCourseTitle: 'Ten kurs dopiero powstaje',

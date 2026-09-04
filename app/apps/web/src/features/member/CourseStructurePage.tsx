@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Box, Link as MuiLink, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
@@ -19,6 +19,7 @@ import {
 } from '../../theme.js';
 import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseRail.js';
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
+import { focusLesson } from './course-tree-state.js';
 import { CourseTree } from './CourseTree.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyCourseIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
@@ -110,6 +111,16 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const theme = useTheme();
   const isCompact = useMediaQuery(theme.breakpoints.down('md'));
   const unauthorized = isUnauthorized(structure.error);
+  const loadedStructure = structure.data?.structure;
+  const lastViewedLessonId = progress.data?.progress.lastViewedLessonId;
+  const waitingForLastViewed = progress.isPending;
+  const focusLessonId = useMemo(
+    () =>
+      loadedStructure === undefined || waitingForLastViewed
+        ? null
+        : focusLesson(loadedStructure, { lastViewedLessonId }),
+    [loadedStructure, waitingForLastViewed, lastViewedLessonId],
+  );
 
   useEffect(() => {
     if (unauthorized) void navigate({ to: '/login' });
@@ -166,14 +177,14 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
           <CourseProgressCard
             courseId={courseId}
             structure={course}
-            lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
+            lastViewedLessonId={lastViewedLessonId}
           />
           {hasModules && isCompact ? (
             <Box data-testid="course-tree-inline">
               <Typography variant="overline" component="h2">
                 {t.courseOverview.curriculum}
               </Typography>
-              <CourseTree courseId={courseId} structure={course} initiallyCollapsed />
+              <CourseTree courseId={courseId} structure={course} focusLessonId={focusLessonId} />
             </Box>
           ) : null}
         </>

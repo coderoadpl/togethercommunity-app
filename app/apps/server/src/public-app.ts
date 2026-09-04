@@ -70,6 +70,7 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
+import type { AppVars } from './app-vars.js';
 import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
@@ -79,10 +80,8 @@ import {
   respondNotModified,
 } from './respond.js';
 
-type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
-
 const registerOpenCors = (
-  app: Hono<Vars>,
+  app: Hono<AppVars>,
   path: string,
   method: 'GET' | 'POST',
   excludedPath?: string,
@@ -312,7 +311,7 @@ const recordFulfilledCheckoutConsents = async (
   });
 };
 
-export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
+export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
 
   registerManifestRoute(app, deps);
@@ -527,12 +526,17 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
 
-    const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
-    const identity = await resolveIdentity(
-      user,
-      { host: c.req.header('host') ?? '', tenantHeader: c.req.header(TENANT_HEADER) ?? null },
-      deps,
-    );
+    const actorAuth = c.get('actorAuth');
+    const user = actorAuth?.user ?? await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
+    const identity = actorAuth === undefined
+      ? await resolveIdentity(
+        user,
+        { host: c.req.header('host') ?? '', tenantHeader: c.req.header(TENANT_HEADER) ?? null },
+        deps,
+      )
+      : ok(actorAuth.identity);
+    const impersonation = c.get('impersonation');
+    const impersonationIdentity = c.get('impersonationIdentity');
     let authenticated = false;
     let ctx: Parameters<typeof getPlayableLesson>[0] = {
       identity: anonymousIdentity('Preview', tenant.value.tenant),
@@ -545,7 +549,9 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         }
       } else {
         authenticated = true;
-        ctx = { identity: identity.value };
+        ctx = impersonation === undefined || impersonationIdentity === undefined
+          ? { identity: identity.value }
+          : { identity: impersonationIdentity, impersonation };
       }
     }
     const result = await getPlayableLesson(ctx, c.req.param('lessonId'), deps);

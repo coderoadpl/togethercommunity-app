@@ -57,6 +57,34 @@ const okList = (notifications: Notification[], nextCursor: string | null = null)
     HttpResponse.json({ ok: true, data: { notifications, nextCursor } }),
   );
 
+const impersonatedMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'user@example.com',
+        emailVerified: true,
+        name: 'Jan Uczestnik',
+        tenant: {
+          id: 't1',
+          slug: 'acme',
+          name: 'Acme',
+          staffRole: null,
+          memberId: 'mem-1',
+          banned: false,
+        },
+        impersonation: {
+          id: 'imp-1',
+          subjectMemberId: 'mem-1',
+          subjectName: 'Jan Uczestnik',
+          actorName: 'Ola Operatorka',
+          expiresAt: '2026-08-15T09:00:00.000Z',
+        },
+      },
+    }),
+  );
+
 const unauthorizedList = () =>
   http.get('/api/notifications', () =>
     HttpResponse.json(
@@ -224,6 +252,33 @@ describe('NotificationsPage', () => {
       expect(router.state.location.pathname).toBe('/community/s1/posts/root-n1'),
     );
     expect(readIds).toEqual(['n1']);
+  });
+
+  it('opens a notification without a read receipt while viewing as a member', async () => {
+    let readCalls = 0;
+    server.use(
+      impersonatedMe(),
+      okUnread(1),
+      okList([notification({ id: 'n1' })]),
+      http.post('/api/notifications/read', () => {
+        readCalls += 1;
+        return HttpResponse.json({
+          ok: true,
+          data: { notification: notification({ id: 'n1', read: true }) },
+        });
+      }),
+    );
+
+    const { router } = await renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('notifications-mark-all-read')).toBeDisabled(),
+    );
+    await userEvent.click(await screen.findByTestId('notification-open-n1'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/c1/lessons/l1'));
+    expect(readCalls).toBe(0);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('opens a lesson notification on its lesson with the thread in the URL', async () => {

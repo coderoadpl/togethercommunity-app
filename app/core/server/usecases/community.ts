@@ -542,6 +542,7 @@ export const listNotifications = async (
     await deps.notifications.listForRecipient(actor.value.tenantId, {
       recipientUserId: actor.value.userId,
       limit: parsed.data.limit,
+      excludeDms: ctx.impersonation !== undefined,
       ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
     }),
   );
@@ -584,5 +585,9 @@ export const unreadNotificationCount = async (
 ): Promise<Result<{ unread: number }, AppError>> => {
   const actor = requireActor(ctx, 'notification:read');
   if (!actor.ok) return actor;
-  return ok({ unread: await deps.notifications.unreadCount(actor.value.tenantId, actor.value.userId) });
+  return ok({
+    unread: await deps.notifications.unreadCount(actor.value.tenantId, actor.value.userId, {
+      excludeDms: ctx.impersonation !== undefined,
+    }),
+  });
 };

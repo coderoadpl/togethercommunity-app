@@ -84,7 +84,7 @@ export const searchPostsInputSchema = z.object({
   limit: z.number().int().min(1).max(50).default(20),
 });
 
-const notificationKindSchema = z.enum([
+export const notificationKindSchema = z.enum([
   'thread-reply',
   'space-post',
   'lesson-question',

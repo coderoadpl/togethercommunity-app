@@ -34,6 +34,7 @@ export const CAPABILITIES = [
   'member:erasure:read',
   'member:remove',
   'member:ban',
+  'member:impersonate',
   'member:grant:read',
   'member:grant:write',
   'member:learning:read',
@@ -164,6 +165,7 @@ const sharedStaffCapabilities = [
   'member:erasure:read',
   'member:remove',
   'member:ban',
+  'member:impersonate',
   'member:grant:read',
   'member:grant:write',
   'member:learning:read',
@@ -316,3 +318,32 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
 
 export const capabilitiesForPrincipal = (principal: Principal): readonly Capability[] =>
   ROLE_CAPABILITIES[principal];
+
+/**
+ * Default-deny allowlist for the impersonation principal: a capability absent
+ * here is refused while an operator views the community as a member, so a new
+ * capability is blocked until it is reviewed and listed. Entries that back both
+ * a read and a write route (`member:erasure:self-request`) stay listed because
+ * the request-method guard already refuses the mutating half.
+ * `member:data-export:self-read` is deliberately absent: the export is a
+ * downloadable copy of the subject's personal data, which no operator may take
+ * out of the tenant under someone else's name.
+ */
+const IMPERSONATION_READ_CAPABILITIES: readonly Capability[] = [
+  'tenant:settings:read',
+  'member:billing:read',
+  'member:erasure:self-request',
+  'member:product:read',
+  'member:progress:read',
+  'lesson:play',
+  'community:read',
+  'space:read',
+  'notification:read',
+  'event:read',
+  'invoice:member-read',
+  'marketing:consent:read',
+  'marketing:message:read',
+];
+
+export const isImpersonationReadCapability = (capability: Capability): boolean =>
+  IMPERSONATION_READ_CAPABILITIES.includes(capability);

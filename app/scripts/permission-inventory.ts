@@ -150,6 +150,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/my/products') return 'member:product:read';
   if (path.startsWith('/api/my/products/')) return 'member:product:read';
   if (path === '/api/members/ban') return 'member:ban';
+  if (path.startsWith('/api/impersonation/') || path === '/api/tenant/audit-events') return 'member:impersonate';
   if (path === '/api/members') return 'member:read';
   if (path === '/api/members/erasure-requests') return 'member:erasure:read';
   if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';

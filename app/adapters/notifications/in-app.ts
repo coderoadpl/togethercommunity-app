@@ -20,6 +20,7 @@ export const createInAppNotificationChannel = (bus: RealtimeBusPort): Notificati
       tenantId: notification.tenantId,
       recipientUserId: notification.recipientUserId,
       notificationId: notification.id,
+      notificationKind: notification.kind,
       createdAt: notification.createdAt,
     });
     return ok(undefined);

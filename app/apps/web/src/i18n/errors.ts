@@ -46,6 +46,8 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageForbidden;
     case 'banned':
       return t.errors.messageBanned;
+    case 'impersonation_read_only':
+      return t.errors.messageImpersonationReadOnly;
     case 'not_found':
       return t.errors.messageNotFound;
     case 'validation':
@@ -111,6 +113,7 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'unsubscribed':
     case 'pending_confirmation':
     case 'slug_reserved':
+    case 'impersonation_read_only':
     case 'internal':
       return null;
   }

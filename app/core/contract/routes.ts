@@ -67,6 +67,10 @@ import {
   grantProductToMemberInputSchema,
   grantWindowStatusSchema,
   imageAssetUploadInputSchema,
+  impersonationStartInputSchema,
+  impersonationViewSchema,
+  tenantAuditEventListQuerySchema,
+  tenantAuditEventSchema,
   languageSchema,
   type listOrdersQuerySchema,
   listStreamVideosInputSchema,
@@ -262,6 +266,7 @@ export const meOutputSchema = z.object({
       dmOptOut: z.boolean().default(false),
     })
     .nullable(),
+  impersonation: impersonationViewSchema.nullable().default(null),
 });
 
 export const meProfileUpdateInputSchema = z.object({
@@ -486,6 +491,23 @@ export const memberRemoveOutputSchema = z.object({
   memberId: z.string(),
   subscriptionCancellations: z.array(memberSubscriptionCancellationSchema),
   erasureRequestId: z.string().nullable(),
+});
+
+export const impersonationStartRequestSchema = impersonationStartInputSchema;
+export type ImpersonationStartRequest = z.input<typeof impersonationStartRequestSchema>;
+
+export const impersonationStartOutputSchema = z.object({
+  impersonation: impersonationViewSchema,
+});
+
+export const impersonationStopOutputSchema = z.object({ ended: z.boolean() });
+
+export const tenantAuditEventsQuerySchema = tenantAuditEventListQuerySchema;
+export type TenantAuditEventsQueryInput = z.input<typeof tenantAuditEventsQuerySchema>;
+
+export const tenantAuditEventsOutputSchema = z.object({
+  events: z.array(tenantAuditEventSchema),
+  nextCursor: z.string().nullable(),
 });
 
 export const memberBanInputSchema = setMemberBannedInputSchema;
@@ -1807,6 +1829,9 @@ export const API_ROUTES = {
   memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
   memberBan: { method: 'POST', path: '/api/members/ban' },
+  impersonationStart: { method: 'POST', path: '/api/impersonation/start' },
+  impersonationStop: { method: 'POST', path: '/api/impersonation/stop' },
+  tenantAuditEvents: { method: 'GET', path: '/api/tenant/audit-events' },
   grantsCreate: { method: 'POST', path: '/api/grants' },
   grantRevoke: { method: 'DELETE', path: '/api/grants/:grantId' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
@@ -2056,6 +2081,9 @@ export const API_PATHS = {
   memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,
   memberBan: API_ROUTES.memberBan.path,
+  impersonationStart: API_ROUTES.impersonationStart.path,
+  impersonationStop: API_ROUTES.impersonationStop.path,
+  tenantAuditEvents: API_ROUTES.tenantAuditEvents.path,
   memberEmailSends: API_ROUTES.memberEmailSends.path,
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,

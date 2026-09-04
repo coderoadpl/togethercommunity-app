@@ -2245,6 +2245,10 @@ const unreadDmConversationFilter = (
   sql`${notifications.payload}->>'contextId' = ${conversationId}`,
 ];
 
+/** Keyed on the context rather than the kind, so a future DM-flavoured kind is excluded too. */
+const notDirectMessage = (): SQL =>
+  sql`${notifications.payload}->>'contextKind' is distinct from 'dm'`;
+
 export const createNotificationRepository = (db: Db): NotificationRepository => ({
   insert: async (tenantId, notification) => {
     const rows = await db
@@ -2276,6 +2280,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
         and(
           eq(notifications.tenantId, tenantId),
           eq(notifications.recipientUserId, query.recipientUserId),
+          ...(query.excludeDms === true ? [notDirectMessage()] : []),
           ...(cursor === null
             ? []
             : [sql`(${notifications.createdAt}, ${notifications.id}) < (${cursor.createdAt}, ${cursor.id})`]),
@@ -2320,7 +2325,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
       .returning({ id: notifications.id });
     return rows.length;
   },
-  unreadCount: async (tenantId, recipientUserId) => {
+  unreadCount: async (tenantId, recipientUserId, options) => {
     const rows = await db
       .select({ value: sql<number>`count(*)::int` })
       .from(notifications)
@@ -2328,6 +2333,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
         and(
           eq(notifications.tenantId, tenantId),
           eq(notifications.recipientUserId, recipientUserId),
+          ...(options?.excludeDms === true ? [notDirectMessage()] : []),
           sql`${notifications.readAt} is null`,
         ),
       );

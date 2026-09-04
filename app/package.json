@@ -68,6 +68,7 @@
     "e2e:public-authz": "tsx scripts/public-authz-e2e.ts",
     "e2e:member-activity": "tsx scripts/member-activity-e2e.ts",
     "e2e:member-shell": "tsx scripts/member-shell-e2e.ts",
+    "e2e:impersonation": "tsx scripts/impersonation-e2e.ts",
     "e2e:image-assets": "tsx scripts/image-assets-e2e.ts",
     "e2e:ksef": "tsx scripts/ksef-e2e.ts",
     "e2e:storage": "tsx scripts/storage-e2e.ts",

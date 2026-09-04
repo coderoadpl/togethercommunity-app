@@ -160,6 +160,7 @@ describe('LessonPlayerPage', () => {
           data: {
             userId: 'u1',
             email: 'user@example.com',
+            emailVerified: true,
             name: 'Jan Uczestnik',
             tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'mem-1', banned: false },
           },
@@ -885,6 +886,45 @@ describe('LessonPlayerPage', () => {
         chapterId: 'c1',
       }),
     );
+  });
+
+  it('skips the last-viewed write and its error alert while viewing as a member', async () => {
+    let lastViewedCalls = 0;
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u1',
+            email: 'user@example.com',
+            emailVerified: true,
+            name: 'Jan Uczestnik',
+            tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'mem-1', banned: false },
+            impersonation: {
+              id: 'imp-1',
+              subjectMemberId: 'mem-1',
+              subjectName: 'Jan Uczestnik',
+              actorName: 'Ola Operatorka',
+              expiresAt: '2026-08-15T09:00:00.000Z',
+            },
+          },
+        }),
+      ),
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', () => {
+        lastViewedCalls += 1;
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-video');
+    await screen.findByTestId('mark-complete');
+
+    expect(lastViewedCalls).toBe(0);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
   it('focuses the thread named by the search param and clears it on exit', async () => {
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');

@@ -26,6 +26,7 @@ import { localizeErrorCodeForPanel, localizePanelError, useLanguage, useTranslat
 import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { ErasureRequestsSection } from './ErasureRequestsSection.js';
+import { ImpersonationActivitySection } from './ImpersonationActivitySection.js';
 
 const errorMessage = (error: unknown, t: Messages): string =>
   error instanceof ApiError ? localizeErrorCodeForPanel(error.appError.code, t) : t.members.exportFailed;
@@ -243,6 +244,7 @@ export const MembersPanel = () => {
       </ListSection>
       </Stack>
       <ErasureRequestsSection />
+      <ImpersonationActivitySection />
       {exportError !== null ? <Alert severity="error">{exportError}</Alert> : null}
       {failedSubscriptionIds.length > 0 ? (
         <Alert severity="warning" data-testid="member-remove-cancellation-warning">

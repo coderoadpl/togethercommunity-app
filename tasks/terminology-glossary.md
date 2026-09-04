@@ -64,6 +64,7 @@ here first, then use it.
 | ban a member | **ban** (verb: **zbanuj** / **zdejmij bana**) | **ban** | DECIDED: the colloquial noun is intentional and reaches the confirmation dialogs too („Zbanować {e-mail}?", „Zdjąć bana z {e-mail}?") — never „blokada"/„zablokuj" for this action. Badge „Zbanowany" / "Banned". |
 | block another member (private messages) | **zablokuj** / **odblokuj** | **block** / **unblock** | DECIDED: „zablokuj" is reserved for this member-to-member action and is never a synonym for the staff ban above. It is a private, symmetric cut-off between two people („Ta osoba jest zablokowana. Odblokuj ją, aby znowu pisać."), so copy never names who blocked whom. |
 | report a private conversation | **zgłoś rozmowę** | **report conversation** | Same verb as the post report („zgłoś" / "report"); the staff surface is „Zgłoszone rozmowy prywatne" / "Reported direct conversations" and closing one is „Zamknij zgłoszenie" / "Close report". |
+| direct messages (the member surface) | **wiadomości** | **messages** | DECIDED: one bare noun in the member surface, matching the navigation entry („Wiadomości" / "Messages") — never „wiadomości prywatne" or "direct messages" there. A single item is „wiadomość" / "message", the pair of people „rozmowa" / "conversation". |
 
 ## Platform
 
@@ -82,6 +83,7 @@ here first, then use it.
 | manage notifications (e-mail footer) | **zarządzaj powiadomieniami** | **manage notifications** | Opt-out footer in community notification e-mails; links the thread/space surface that owns the mute/unfollow toggle. |
 | terms of service | **regulamin** | **terms of service** | Tenant-configured BYO URL (panel Settings). Consent copy: „Akceptuję regulamin i politykę prywatności" / "I accept the terms of service and privacy policy". |
 | privacy policy | **polityka prywatności** | **privacy policy** | Same consent surface as regulamin; inflected „politykę prywatności" in the checkbox copy. |
+| member view (staff sees the community as a member) | **podgląd uczestnika** | **member view** | DECIDED: „podgląd" is free for this concept — the free-sample row forbids „darmowy podgląd"/„lekcja podglądowa" for a lesson, not the noun itself. The entry CTA is „Zobacz jako" / "View as", the banner „Oglądasz jako {imię}" / "Viewing as {name}", the exit „Wróć do panelu" / "Back to the panel". Never „impersonacja", „podszywanie się" or "impersonation" in user-facing copy. |
 | integration | **integracja** | **integration** | Third-party proper nouns (Stripe, Bunny Stream, restricted key, webhook) stay untranslated; PL may gloss them in parentheses. |
 
 ## Action verbs (buttons)
@@ -228,3 +230,10 @@ key, PDF, HTML, CSV, JSON) — gloss in parentheses when a PL label exists
     copy („Dzięki — zespół to sprawdzi.") — never „zespół społeczności".
 31. Dialog dismissal after a successful action = **Zamknij** / **Close**
     (`common.close`), so a finished dialog no longer offers „Anuluj".
+32. member view = **podgląd uczestnika** / **member view** (rejected:
+    „impersonacja", „podszywanie się" — jargon; „tryb podglądu" — names a mode,
+    not whose view it is). „Podgląd" stays forbidden only in the free-sample
+    wording.
+33. The member messages surface is **wiadomości** / **messages** in every
+    sentence (fixed „wiadomości prywatne" and "direct messages" in the
+    member-view copy).

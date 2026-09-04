@@ -91,6 +91,7 @@ export interface Messages {
     headingSessionEnded: string;
     headingInvalidCredentials: string;
     headingForbidden: string;
+    headingImpersonationReadOnly: string;
     headingNotFound: string;
     headingTenantNotFound: string;
     headingValidation: string;
@@ -102,6 +103,7 @@ export interface Messages {
     messageInvalidCredentials: string;
     messageForbidden: string;
     messageBanned: string;
+    messageImpersonationReadOnly: string;
     messageNotFound: string;
     messageValidation: string;
     messageConflict: string;
@@ -1138,6 +1140,18 @@ export interface Messages {
     tombstoneNotice: string;
     exportFailed: string;
     erasureRequestsHeading: string;
+    impersonateAction: string;
+    impersonateConfirmTitle: string;
+    impersonateConfirmBody: (params: { name: string }) => string;
+    impersonateConfirmTtl: string;
+    impersonateReasonLabel: string;
+    impersonateConfirm: string;
+    impersonateStarting: string;
+    impersonationLogHeading: string;
+    impersonationLogEmpty: string;
+    impersonationLogStarted: string;
+    impersonationLogEnded: string;
+    impersonationLogEntry: (params: { actor: string; subject: string }) => string;
     erasureRequestsEmpty: string;
     erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
     erasureRejectNote: string;
@@ -1243,6 +1257,12 @@ export interface Messages {
     programButton: string;
     programTitle: string;
     closeSheet: string;
+    impersonationBanner: (params: { name: string }) => string;
+    impersonationRegionLabel: string;
+    impersonationExit: string;
+    impersonationExiting: string;
+    impersonationReadOnlyHint: string;
+    impersonationExpired: string;
   };
   start: {
     title: string;

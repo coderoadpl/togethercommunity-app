@@ -48,6 +48,8 @@ import type {
   MessagesThreadInput,
   MemberHomeFeedGetInput,
   MemberProgressResetInput,
+  ImpersonationStartRequest,
+  TenantAuditEventsQueryInput,
   MemberBanInput,
   MemberRemoveInput,
   MemberErasureRequestCreateInput,
@@ -278,6 +280,7 @@ const membersScopes = {
   commerce: (memberId: string) => ['members', 'commerce', memberId] as const,
   timeline: (memberId: string) => ['members', 'timeline', memberId] as const,
   learningSummary: (memberId: string) => ['members', 'learning-summary', memberId] as const,
+  auditEvents: (input: TenantAuditEventsQueryInput) => ['members', 'audit-events', input] as const,
 };
 
 const authScopes = {
@@ -1638,6 +1641,24 @@ export const memberNavigationInvalidates = () => ({ queryKey: memberNavigationSc
 export const memberHomeFeedInvalidates = () => ({ queryKey: memberHomeFeedScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
+
+export const startImpersonationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'impersonate-start'],
+    call: (input: ImpersonationStartRequest) => api.startImpersonation(input),
+  });
+
+export const stopImpersonationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'impersonate-stop'],
+    call: () => api.stopImpersonation(),
+  });
+
+export const tenantAuditEventsQuery = (api: ApiClient, input: TenantAuditEventsQueryInput) =>
+  defineQuery({
+    queryKey: membersScopes.auditEvents(input),
+    call: ({ signal }) => api.tenantAuditEvents(input, signal),
+  });
 
 export const setMemberBannedMutation = (api: ApiClient) =>
   defineMutation({

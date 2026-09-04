@@ -14,7 +14,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
-import { groupLessonBlocks, type LessonContentGroup, type RenderableLessonBlock } from '#core/domain/index.js';
+import {
+  groupLessonBlocks,
+  withVideoAutoplay,
+  type LessonContentGroup,
+  type RenderableLessonBlock,
+} from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -73,7 +78,7 @@ const groupLabel = (t: Messages, group: LessonContentGroup): string => {
   }
 };
 
-const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
+const BlockBody = ({ block, autoplay }: { block: RenderableLessonBlock; autoplay: boolean }) => {
   const t = useTranslations();
   if (block.type === 'video') {
     if (block.embedUrl === undefined) {
@@ -87,7 +92,7 @@ const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
       <LessonMediaEmbed
         frameSx={LESSON_VIDEO_FRAME_SX}
         data-testid="lesson-video"
-        src={block.embedUrl}
+        src={withVideoAutoplay(block.embedUrl, autoplay)}
         title={t.lesson.videoTitle}
         allow={VIDEO_ALLOW}
         allowFullScreen
@@ -124,7 +129,7 @@ const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
       <LessonMediaEmbed
         frameSx={LESSON_VIDEO_FRAME_SX}
         data-testid="lesson-embed"
-        src={block.embedUrl}
+        src={withVideoAutoplay(block.embedUrl, autoplay)}
         title={t.lesson.embedTitle}
         allow={VIDEO_ALLOW}
         allowFullScreen
@@ -135,10 +140,10 @@ const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
   return <RichTextContent html={block.html} data-testid="lesson-html" />;
 };
 
-const GroupBody = ({ group }: { group: LessonContentGroup }) => {
+const GroupBody = ({ group, autoplay }: { group: LessonContentGroup; autoplay: boolean }) => {
   switch (group.kind) {
     case 'block':
-      return <BlockBody block={group.block} />;
+      return <BlockBody block={group.block} autoplay={autoplay} />;
     case 'sandbox':
       return (
         <LessonSandboxEmbed
@@ -388,6 +393,7 @@ export const LessonPlayerPage = ({
   }
 
   const groups = groupLessonBlocks(lesson.data.lesson.contents);
+  const videoAutoplay = me.data?.tenant?.videoAutoplay ?? false;
   const hasSideErrors = [structure, progress, attachments, lastViewed, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
@@ -474,7 +480,7 @@ export const LessonPlayerPage = ({
                 <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
                   {groupLabel(t, group)}
                 </Eyebrow>
-                <GroupBody group={group} />
+                <GroupBody group={group} autoplay={videoAutoplay} />
               </Paper>
             ))
           )}
@@ -523,6 +529,16 @@ export const LessonPlayerPage = ({
                   {t.lesson.previousLesson}
                 </Button>
               )
+            )}
+            {!completed && nextLesson !== null && (
+              <Button
+                component={Link}
+                to={lessonPath(courseId, nextLesson.lessonId)}
+                variant="text"
+                data-testid="skip-to-next-lesson"
+              >
+                {t.lesson.nextLesson}
+              </Button>
             )}
             <Box sx={{ flex: 1 }} />
             {progress.isSuccess && completed && (

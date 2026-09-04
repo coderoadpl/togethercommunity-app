@@ -26,6 +26,7 @@ memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
 memberLanguage: null,
+memberVideoAutoplay: false,
 } });
 
 const sends: EmailSendProjection[] = [
@@ -146,6 +147,7 @@ describe('email send observability use-cases', () => {
         create: async () => undefined,
         updateEmail: async () => null,
         updateLanguage: async () => null,
+        updateVideoAutoplay: async () => null,
         updateDisplayName: async () => null,
         updateDmOptOut: async () => null,
       setBanned: async () => null,

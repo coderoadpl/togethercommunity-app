@@ -25,6 +25,7 @@ const identity: Identity = {
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 };
 
 const harness = (supportEmail: string | null, defaultLanguage?: Language) => {
@@ -85,6 +86,7 @@ const harness = (supportEmail: string | null, defaultLanguage?: Language) => {
       create: async () => undefined,
       updateEmail: async () => null,
       updateLanguage: async () => null,
+      updateVideoAutoplay: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
     setBanned: async () => null,

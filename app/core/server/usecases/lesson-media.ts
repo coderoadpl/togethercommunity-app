@@ -1,4 +1,5 @@
 import {
+  bunnyEmbedUrl,
   ok,
   type AppError,
   type LessonBlock,
@@ -40,11 +41,6 @@ const isS3Url = (raw: string): boolean => {
 const needsPdfSigning = (block: LessonBlock): boolean =>
   block.type === 'pdf' && isS3Url(block.pdfUrl);
 
-const bunnyEmbedUrl = (
-  libraryId: string,
-  block: Extract<LessonBlock, { type: 'video' }>,
-): string => `https://iframe.mediadelivery.net/embed/${libraryId}/${block.streamVideoId}`;
-
 const signBunnyEmbedUrl = (
   libraryId: string,
   block: Extract<LessonBlock, { type: 'video' }>,
@@ -53,7 +49,7 @@ const signBunnyEmbedUrl = (
   signer: BunnyTokenSigner,
 ): string => {
   const token = signer.signEmbedToken({ securityKey, videoId: block.streamVideoId, expires });
-  const url = new URL(bunnyEmbedUrl(libraryId, block));
+  const url = bunnyEmbedUrl(libraryId, block.streamVideoId);
   url.searchParams.set('token', token);
   url.searchParams.set('expires', String(expires));
   return url.toString();
@@ -89,7 +85,7 @@ export const getPlayableLesson = async (
         if (block.type !== 'video') return block;
         const embedUrl = securityKey.ok
           ? signBunnyEmbedUrl(libraryId, block, securityKey.value, expires, deps.bunnyTokenSigner)
-          : bunnyEmbedUrl(libraryId, block);
+          : bunnyEmbedUrl(libraryId, block.streamVideoId).toString();
         return { ...block, embedUrl };
       });
     }

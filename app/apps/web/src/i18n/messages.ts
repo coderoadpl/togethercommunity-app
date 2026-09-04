@@ -1408,6 +1408,7 @@ export interface Messages {
     unmarkCompletedHint: string;
     completeContinue: string;
     previousLesson: string;
+    nextLesson: string;
     firstLesson: string;
     nextLocked: string;
     courseCompleted: string;
@@ -1607,6 +1608,11 @@ export interface Messages {
     preferencesHeading: string;
     preferencesIntro: string;
     emailLanguage: { pl: string; en: string; unset: string; reset: string; panelOnly: string };
+    playbackHeading: string;
+    playbackIntro: string;
+    videoAutoplayLabel: string;
+    videoAutoplayHint: string;
+    videoAutoplaySaved: string;
     dataExportHeading: string;
     dataExportIntro: string;
     dataExportButton: string;

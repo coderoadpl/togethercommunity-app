@@ -220,6 +220,7 @@ export const members = pgTable(
     email: text('email').notNull(),
     displayName: text('display_name'),
     language: text('language', { enum: ['pl', 'en'] }),
+    videoAutoplay: boolean('video_autoplay').notNull().default(false),
     legacyId: text('legacy_id'),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     marketingConsents: jsonb('marketing_consents')

@@ -44,6 +44,7 @@ const identity = (staffRole: Identity['staffRole'], memberId: string | null): Id
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const ownerCtx: Ctx = { identity: identity('owner', null) };

@@ -321,6 +321,7 @@ export const memberSchema = z.object({
   email: z.string(),
   displayName: z.string().nullable(),
   language: languageSchema.nullable().optional(),
+  videoAutoplay: z.boolean().optional(),
   tags: z.array(z.string()),
   marketingConsents: z.record(z.boolean()),
   externalCustomerIds: z.record(z.string()),

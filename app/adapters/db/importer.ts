@@ -1700,6 +1700,7 @@ const runSpotChecks = async (
           memberBannedAt: null,
           memberDmOptOutAt: null,
           memberLanguage: null,
+          memberVideoAutoplay: false,
         },
       };
       const result = await isLessonAccessible(ctx, lessonId, deps);

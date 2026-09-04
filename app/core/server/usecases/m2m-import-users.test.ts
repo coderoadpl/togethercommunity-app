@@ -56,6 +56,7 @@ const ctx: Ctx = {
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   },
   capabilities: capabilitiesForApiKey(apiKey),
 };

@@ -7,8 +7,10 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type DmBlockDirections,
   type Identity,
   type Member,
+  type MemberBlock,
   type Notification,
   type Post,
   type PostContextKind,
@@ -27,6 +29,7 @@ import type {
   CourseModuleRepository,
   CourseRepository,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -474,6 +477,44 @@ const fakeFanoutJobs = (): NotificationFanoutJobRepository => ({
   save: async () => undefined,
 });
 
+class FakeMemberBlocks implements MemberBlockRepository {
+  private readonly rows: MemberBlock[] = [];
+
+  async block(tenantId: string, row: MemberBlock): Promise<boolean> {
+    this.rows.push({ ...row, tenantId });
+    return true;
+  }
+
+  async unblock(): Promise<boolean> {
+    return false;
+  }
+
+  async findDirections(
+    tenantId: string,
+    query: { viewerUserId: string; otherUserIds: string[] },
+  ): Promise<Map<string, DmBlockDirections>> {
+    return new Map(
+      query.otherUserIds.map((otherUserId) => [
+        otherUserId,
+        {
+          blockedByViewer: this.rows.some(
+            (row) =>
+              row.tenantId === tenantId &&
+              row.blockerUserId === query.viewerUserId &&
+              row.blockedUserId === otherUserId,
+          ),
+          blocksViewer: this.rows.some(
+            (row) =>
+              row.tenantId === tenantId &&
+              row.blockerUserId === otherUserId &&
+              row.blockedUserId === query.viewerUserId,
+          ),
+        },
+      ]),
+    );
+  }
+}
+
 class FakeSubscriptions implements ThreadSubscriptionRepository {
   readonly rows: ThreadSubscription[] = [];
 
@@ -685,6 +726,7 @@ const deps = (
     reports: new FakeReports(),
     threadSubscriptions: new FakeSubscriptions(),
     spaceSubscriptions: new FakeSpaceSubscriptions(),
+    memberBlocks: new FakeMemberBlocks(),
     spaces: emptySpacesRepo,
     notifications: new FakeNotifications(),
     notificationChannels: [],
@@ -1230,6 +1272,42 @@ describe('community guard and error branches', () => {
     await d.threadSubscriptions.upsert('t1', {
       userId: 'u2',
       rootPostId: root.value.rootPostId,
+      createdAt: NOW,
+    });
+
+    const reply = await createPost(
+      memberCtx,
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' },
+      d,
+    );
+
+    expect(reply).toMatchObject({ ok: true });
+    expect(delivered).toEqual([]);
+    expect(d.notifications).toBeInstanceOf(FakeNotifications);
+    if (!(d.notifications instanceof FakeNotifications)) return;
+    expect(d.notifications.rows).toEqual([]);
+  });
+
+  it('drops a subscriber who blocked the author from the thread-reply fan-out', async () => {
+    const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
+    const delivered: string[] = [];
+    d.notificationChannels.push({
+      deliver: async (notification) => {
+        delivered.push(notification.recipientUserId);
+        return { ok: true, value: undefined };
+      },
+    });
+    const root = await createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    if (!root.ok) throw new Error('root failed');
+    await d.threadSubscriptions.upsert('t1', {
+      userId: 'u2',
+      rootPostId: root.value.rootPostId,
+      createdAt: NOW,
+    });
+    await d.memberBlocks.block('t1', {
+      tenantId: 't1',
+      blockerUserId: 'u2',
+      blockedUserId: 'u1',
       createdAt: NOW,
     });
 

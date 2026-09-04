@@ -57,6 +57,7 @@ import {
   memberUpcomingEventsInputSchema,
   messagesListInputSchema,
   messagesReadInputSchema,
+  messagesBlockInputSchema,
   messagesSendInputSchema,
   messagesStartInputSchema,
   messagesThreadInputSchema,
@@ -82,6 +83,9 @@ import {
   postReactInputSchema,
   postsSearchInputSchema,
   reportResolveInputSchema,
+  dmReportInputSchema,
+  dmReportResolveInputSchema,
+  dmReportsListInputSchema,
   reportsListInputSchema,
   postUpdateInputSchema,
   productPriceCreateInputSchema,
@@ -268,6 +272,7 @@ import {
   listProductAccessIssues,
   listProductDownloadAssets,
   listProductPrices,
+  listDmReports,
   listReports,
   listProducts,
   listSchedulerRunsForTenant,
@@ -280,6 +285,7 @@ import {
   m2mEnroll,
   createEvent,
   deleteEvent,
+  blockDmParticipant,
   dmUnreadCount,
   getDmConversation,
   getEvent,
@@ -298,6 +304,7 @@ import {
   muteThread,
   sendDmMessage,
   startDmConversation,
+  unblockDmParticipant,
   pauseCampaign,
   pollSesOnboarding,
   previewMarketingAudience,
@@ -314,6 +321,8 @@ import {
   requestInvoice,
   resetMemberCourseProgress,
   resolveIdentity,
+  reportDmConversation,
+  resolveDmReport,
   resolveReport,
   resolveTenant,
   revokeGrant,
@@ -2701,6 +2710,25 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ report: result.value }) : result);
   });
 
+  app.get(API_PATHS.dmReports, async (c) => {
+    const parsed = dmReportsListInputSchema.safeParse({
+      status: c.req.query('status'),
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit') === undefined ? undefined : Number(c.req.query('limit')),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid reports query', parsed.error.flatten())));
+    const result = await listDmReports({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok(result.value) : result);
+  });
+
+  app.post(API_PATHS.dmReportResolve, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = dmReportResolveInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid report resolution', parsed.error.flatten())));
+    const result = await resolveDmReport({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ report: result.value }) : result);
+  });
+
   app.post(API_PATHS.postsUpdate, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = postUpdateInputSchema.safeParse(body);
@@ -2962,6 +2990,30 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     const parsed = messagesReadInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
     return respond(await markDmConversationRead({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.messagesBlock, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = messagesBlockInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
+    const result = await blockDmParticipant({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ conversation: result.value }) : result);
+  });
+
+  app.post(API_PATHS.messagesUnblock, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = messagesBlockInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
+    const result = await unblockDmParticipant({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ conversation: result.value }) : result);
+  });
+
+  app.post(API_PATHS.messagesReport, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = dmReportInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid report payload', parsed.error.flatten())));
+    const result = await reportDmConversation({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ report: result.value }) : result);
   });
 
   app.get(API_PATHS.messagesThread, async (c) => {

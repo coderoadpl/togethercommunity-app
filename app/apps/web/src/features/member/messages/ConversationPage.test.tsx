@@ -10,7 +10,7 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { PublicDmConversation, PublicDmMessage } from '#core/domain/index.js';
+import type { DmReportReceipt, PublicDmConversation, PublicDmMessage } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -25,6 +25,16 @@ const conversation: PublicDmConversation = {
   lastMessageIsOwn: false,
   hasMessages: true,
   unread: true,
+  blockedByViewer: false,
+  canSend: true,
+};
+
+const report: DmReportReceipt = {
+  id: 'r1',
+  conversationId: 'c1',
+  reason: 'harassment',
+  status: 'open',
+  createdAt: '2026-08-17T10:00:00.000Z',
 };
 
 const message = (input: { id: string; body: string; own?: boolean; at?: string }): PublicDmMessage => ({
@@ -35,9 +45,16 @@ const message = (input: { id: string; body: string; own?: boolean; at?: string }
   isOwn: input.own ?? false,
 });
 
-const okThread = (messages: PublicDmMessage[], nextCursor: string | null = null) =>
+const okThread = (
+  messages: PublicDmMessage[],
+  nextCursor: string | null = null,
+  overrides: Partial<PublicDmConversation> = {},
+) =>
   http.get('*/api/messages/c1', () =>
-    HttpResponse.json({ ok: true, data: { conversation, messages, nextCursor } }),
+    HttpResponse.json({
+      ok: true,
+      data: { conversation: { ...conversation, ...overrides }, messages, nextCursor },
+    }),
   );
 
 const okRead = () =>
@@ -152,5 +169,106 @@ describe('ConversationPage', () => {
     expect(await screen.findByTestId('conversation-empty')).toHaveTextContent(
       pl.messages.emptyConversation,
     );
+  });
+
+  it('replaces the composer with a neutral notice when the thread is closed', async () => {
+    server.use(okThread([message({ id: 'm1', body: 'Pierwsza' })], null, { canSend: false }), okRead());
+
+    await renderPage();
+
+    expect(await screen.findByTestId('conversation-send-blocked')).toHaveTextContent(
+      pl.messages.cannotSend,
+    );
+    expect(screen.queryByTestId('message-composer-input')).not.toBeInTheDocument();
+  });
+
+  it('tells the blocker that their own block closed the thread', async () => {
+    server.use(
+      okThread([message({ id: 'm1', body: 'Pierwsza' })], null, {
+        canSend: false,
+        blockedByViewer: true,
+      }),
+      okRead(),
+    );
+
+    await renderPage();
+
+    expect(await screen.findByTestId('conversation-send-blocked')).toHaveTextContent(
+      pl.messages.blockedByYou,
+    );
+  });
+
+  it('blocks the other participant from the header menu', async () => {
+    let blockBody: unknown;
+    server.use(
+      okThread([message({ id: 'm1', body: 'Pierwsza' })]),
+      okRead(),
+      http.post('*/api/messages/block', async ({ request }) => {
+        blockBody = await request.json();
+        return HttpResponse.json({
+          ok: true,
+          data: { conversation: { ...conversation, blockedByViewer: true, canSend: false } },
+        });
+      }),
+    );
+
+    await renderPage();
+
+    await userEvent.click(await screen.findByTestId('conversation-menu'));
+    await userEvent.click(await screen.findByTestId('conversation-block'));
+
+    await waitFor(() => expect(blockBody).toEqual({ conversationId: 'c1' }));
+  });
+
+  it('offers unblocking once the viewer is the blocker', async () => {
+    let unblockBody: unknown;
+    server.use(
+      okThread([message({ id: 'm1', body: 'Pierwsza' })], null, {
+        canSend: false,
+        blockedByViewer: true,
+      }),
+      okRead(),
+      http.post('*/api/messages/unblock', async ({ request }) => {
+        unblockBody = await request.json();
+        return HttpResponse.json({ ok: true, data: { conversation } });
+      }),
+    );
+
+    await renderPage();
+
+    await userEvent.click(await screen.findByTestId('conversation-menu'));
+    await userEvent.click(await screen.findByTestId('conversation-unblock'));
+
+    await waitFor(() => expect(unblockBody).toEqual({ conversationId: 'c1' }));
+  });
+
+  it('reports the conversation with a reason from the header menu', async () => {
+    let reportBody: unknown;
+    server.use(
+      okThread([message({ id: 'm1', body: 'Pierwsza' })]),
+      okRead(),
+      http.post('*/api/messages/report', async ({ request }) => {
+        reportBody = await request.json();
+        return HttpResponse.json({ ok: true, data: { report } });
+      }),
+    );
+
+    await renderPage();
+
+    await userEvent.click(await screen.findByTestId('conversation-menu'));
+    await userEvent.click(await screen.findByTestId('conversation-report'));
+    await userEvent.click(await screen.findByTestId('dm-report-submit'));
+
+    await waitFor(() =>
+      expect(reportBody).toEqual({ conversationId: 'c1', reason: 'harassment' }),
+    );
+    expect(await screen.findByText(pl.messages.reportSent)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: pl.common.close }));
+    await userEvent.click(await screen.findByTestId('conversation-menu'));
+    await userEvent.click(await screen.findByTestId('conversation-report'));
+
+    expect(screen.queryByText(pl.messages.reportSent)).not.toBeInTheDocument();
+    expect(await screen.findByTestId('dm-report-submit')).toBeEnabled();
   });
 });

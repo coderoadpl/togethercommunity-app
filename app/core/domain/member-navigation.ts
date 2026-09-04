@@ -36,6 +36,7 @@ export const memberNavigationSchema = z.object({
   spaces: z.array(memberNavigationSpaceSchema),
   courses: z.array(memberNavigationCourseSchema),
   lockedSpaces: z.array(memberNavigationLockedSpaceSchema),
+  directMessagesEnabled: z.boolean().default(true),
 });
 
 export type MemberNavigation = z.output<typeof memberNavigationSchema>;

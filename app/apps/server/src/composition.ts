@@ -60,6 +60,7 @@ import {
   createDmConversationRepository,
   createDmConversationStateRepository,
   createDmMessageRepository,
+  createDmReportRepository,
   createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
@@ -70,6 +71,7 @@ import {
   createOrderRepository,
   createPaymentRefundRepository,
   createPostReactionRepository,
+  createMemberBlockRepository,
   createPostReportRepository,
   createPostRepository,
   createSpaceEventRepository,
@@ -191,6 +193,8 @@ import type {
   MemberErasureRequestRepository,
   DmConversationRepository,
   DmConversationStateRepository,
+  DmReportRepository,
+  MemberBlockRepository,
   DmMessageRepository,
   MemberErasurePort,
   MemberEventRepository,
@@ -355,6 +359,8 @@ export interface AppDeps {
   dmConversations: DmConversationRepository;
   dmMessages: DmMessageRepository;
   dmConversationStates: DmConversationStateRepository;
+  dmReports: DmReportRepository;
+  memberBlocks: MemberBlockRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
@@ -1054,6 +1060,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dmConversations: createDmConversationRepository(db),
     dmMessages: createDmMessageRepository(db),
     dmConversationStates: createDmConversationStateRepository(db),
+    dmReports: createDmReportRepository(db),
+    memberBlocks: createMemberBlockRepository(db),
     notifications: createNotificationRepository(db),
     fanoutJobs: createNotificationFanoutJobRepository(db),
     notificationChannels: [

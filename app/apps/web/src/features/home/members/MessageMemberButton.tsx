@@ -1,5 +1,5 @@
 import { Alert, Box, Button } from '@mui/material';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
@@ -17,6 +17,7 @@ const startErrorMessage = (error: Error, t: Messages): string =>
 export const MessageMemberButton = ({ memberId }: { memberId: string }) => {
   const t = useTranslations();
   const navigate = useNavigate();
+  const settings = useQuery(actions.tenantSettings);
   const start = useMutation({
     ...actions.startConversation,
     onSuccess: (data) =>
@@ -25,6 +26,8 @@ export const MessageMemberButton = ({ memberId }: { memberId: string }) => {
         params: { conversationId: data.conversation.id },
       }),
   });
+
+  if (settings.data?.settings.directMessagesEnabled === false) return null;
 
   return (
     <Box>

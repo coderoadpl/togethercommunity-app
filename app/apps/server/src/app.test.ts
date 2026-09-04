@@ -648,6 +648,18 @@ const deps = (input: {
       findForViewer: async () => [],
       markRead: async (tenantId, input) => ({ tenantId, ...input }),
     },
+    dmReports: {
+      open: async (_tenantId, report) => report,
+      listByStatus: async () => ({ reports: [], nextCursor: null }),
+      countOpen: async () => 0,
+      resolve: async () => null,
+    },
+    memberBlocks: {
+      block: async () => true,
+      unblock: async () => true,
+      findDirections: async (_tenantId, query) =>
+        new Map(query.otherUserIds.map((userId) => [userId, { blockedByViewer: false, blocksViewer: false }])),
+    },
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     notifications: {
       insert: async (_tenantId, notification) => notification,

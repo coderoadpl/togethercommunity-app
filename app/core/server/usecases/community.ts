@@ -25,6 +25,7 @@ import {
   type AppError,
   type Discussion,
   type DiscussionPost,
+  type Identity,
   type Language,
   type Notification,
   type Post,
@@ -44,6 +45,7 @@ import type {
   CourseRepository,
   DiscussionLinkPort,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -78,6 +80,7 @@ export interface CommunityDeps {
   reports: PostReportRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
+  memberBlocks: MemberBlockRepository;
   spaces: SpaceRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
@@ -218,14 +221,17 @@ const notifyLessonQuestionStaff = async (
   return ok(undefined);
 };
 
-const resolvePostAuthorDisplay = async (ctx: Ctx, deps: CommunityDeps): Promise<string> => {
-  const tenantId = ctx.identity.tenantId;
-  if (tenantId !== null && ctx.identity.memberId !== null) {
-    const member = await deps.tenantAccess.findMember(tenantId, ctx.identity.userId);
+export const resolveActorDisplay = async (
+  identity: Identity,
+  deps: Pick<CommunityDeps, 'tenantAccess'>,
+): Promise<string> => {
+  const tenantId = identity.tenantId;
+  if (tenantId !== null && identity.memberId !== null) {
+    const member = await deps.tenantAccess.findMember(tenantId, identity.userId);
     const override = member?.displayName?.trim() ?? '';
     if (override.length > 0) return override;
   }
-  return resolveAuthorDisplay(ctx.identity);
+  return resolveAuthorDisplay(identity);
 };
 
 const postRateLimitExceeded = async (
@@ -282,7 +288,7 @@ export const createPost = async (
     parentPostId: parentPost?.id ?? null,
     rootPostId,
     authorUserId: actor.value.userId,
-    authorDisplay: await resolvePostAuthorDisplay(ctx, deps),
+    authorDisplay: await resolveActorDisplay(ctx.identity, deps),
     authorIsStaff: ctx.identity.staffRole !== null,
     body,
     createdAt: now,

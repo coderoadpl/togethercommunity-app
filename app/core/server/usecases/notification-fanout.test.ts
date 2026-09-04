@@ -19,6 +19,7 @@ import type {
   CourseRepository,
   DiscussionLinkPort,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -267,6 +268,7 @@ const fixture = (input: {
   deliver?: NotificationChannelPort['deliver'];
   claimable?: NotificationFanoutJob[];
   clock?: Clock;
+  authorBlockedBy?: string[];
 }) => {
   const memberUserIds = new Set(input.memberUserIds ?? input.followers);
   const pages: Array<{ afterUserId: string | null; limit: number }> = [];
@@ -290,6 +292,21 @@ const fixture = (input: {
         }));
     },
     listForUser: async () => [],
+  };
+
+  const memberBlocks: MemberBlockRepository = {
+    block: async () => true,
+    unblock: async () => true,
+    findDirections: async (_tenantId, query) =>
+      new Map(
+        query.otherUserIds.map((userId) => [
+          userId,
+          {
+            blockedByViewer: false,
+            blocksViewer: (input.authorBlockedBy ?? []).includes(userId),
+          },
+        ]),
+      ),
   };
 
   const tenantAccess: TenantAccessReader = {
@@ -338,6 +355,7 @@ const fixture = (input: {
     ],
     spaceSubscriptions,
     threadSubscriptions,
+    memberBlocks,
     spaces: { ...unusedSpaces, findById: async () => space },
     posts: { ...unusedPosts, findById: async () => post },
     courses,
@@ -423,6 +441,20 @@ describe('notification fan-out', () => {
     expect(result).toMatchObject({ ok: true, value: { created: 10, completed: true } });
     expect(pages).toHaveLength(2);
     expect(notifications.rows.map((row) => row.recipientUserId)).toEqual(followers.slice(50));
+  });
+
+  it('skips followers who blocked the author', async () => {
+    const followers = followerIds(3);
+    const { deps, notifications, delivered } = fixture({
+      followers,
+      authorBlockedBy: ['u002'],
+    });
+
+    const result = await runPostFanoutJob(job, deps);
+
+    expect(result).toMatchObject({ ok: true, value: { created: 2, completed: true } });
+    expect(notifications.rows.map((row) => row.recipientUserId)).toEqual(['u001', 'u003']);
+    expect(delivered).toEqual(['u001', 'u003']);
   });
 
   it('re-running a completed job inserts and delivers nothing', async () => {

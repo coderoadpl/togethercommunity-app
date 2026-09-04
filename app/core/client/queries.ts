@@ -41,6 +41,7 @@ import type {
   MemberUpcomingEventsInput,
   MeProfileUpdateInput,
   MessagesListInput,
+  MessagesBlockInput,
   MessagesReadInput,
   MessagesSendInput,
   MessagesStartInput,
@@ -76,6 +77,9 @@ import type {
   PostPinInput,
   PostReportInput,
   ReportResolveInput,
+  DmReportInput,
+  DmReportResolveInput,
+  DmReportsListInput,
   ReportsListInput,
   PostReactInput,
   PostUpdateInput,
@@ -360,6 +364,11 @@ const spacesScopes = {
 const reportScopes = {
   all: () => ['reports'] as const,
   list: (input: ReportsListInput) => ['reports', 'list', input] as const,
+};
+
+const dmReportScopes = {
+  all: () => ['dm-reports'] as const,
+  list: (input: DmReportsListInput) => ['dm-reports', 'list', input] as const,
 };
 
 const notificationScopes = {
@@ -1274,6 +1283,20 @@ export const resolveReportMutation = (api: ApiClient) =>
 
 export const reportsInvalidates = () => ({ queryKey: reportScopes.all() });
 
+export const dmReportsQuery = (api: ApiClient, input: DmReportsListInput = {}) =>
+  defineQuery({
+    queryKey: dmReportScopes.list(input),
+    call: ({ signal }) => api.listDmReports(input, signal),
+  });
+
+export const resolveDmReportMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...dmReportScopes.all(), 'resolve'],
+    call: (input: DmReportResolveInput) => api.resolveDmReport(input),
+  });
+
+export const dmReportsInvalidates = () => ({ queryKey: dmReportScopes.all() });
+
 export const unreactToPostMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'unreact'],
@@ -1354,6 +1377,27 @@ export const markConversationReadMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...messagesScopes.all(), 'read'],
     call: (input: MessagesReadInput) => api.markConversationRead(input),
+  });
+
+/** @public */
+export const blockConversationParticipantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'block'],
+    call: (input: MessagesBlockInput) => api.blockConversationParticipant(input),
+  });
+
+/** @public */
+export const unblockConversationParticipantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'unblock'],
+    call: (input: MessagesBlockInput) => api.unblockConversationParticipant(input),
+  });
+
+/** @public */
+export const reportConversationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'report'],
+    call: (input: DmReportInput) => api.reportConversation(input),
   });
 
 /** @public */

@@ -300,19 +300,28 @@ const refreshTenantDomain = async (
   const now = deps.clock.nowIso();
   if (!state.ok) {
     // Our own deadline fired, so nothing was learned about the domain: recording a
-    // failure would blame the provider for a budget the caller ran out of.
-    if (deadline.aborted) return state;
+    // failure would blame the provider for a budget the caller ran out of. The stamp
+    // still moves, or the row this deadline keeps cutting short would be picked first
+    // by every following tick and starve every other tenant.
+    if (deadline.aborted) {
+      await deps.tenantDomains.patch(row.tenantId, row.id, { lastCheckedAt: now });
+      return state;
+    }
     await deps.tenantDomains.patch(row.tenantId, row.id, {
       lastCheckedAt: now,
       lastError: state.error.message,
     });
-    await appendEvent(deps, {
-      tenantId: row.tenantId,
-      domain: row.domain,
-      kind: 'domain_check_failed',
-      actorUserId,
-      detail: state.error.message,
-    });
+    // The trail is evidence, and a domain that keeps failing the same way would add
+    // one row per tick to it, so only a change is worth recording.
+    if (row.lastError !== state.error.message) {
+      await appendEvent(deps, {
+        tenantId: row.tenantId,
+        domain: row.domain,
+        kind: 'domain_check_failed',
+        actorUserId,
+        detail: state.error.message,
+      });
+    }
     return state;
   }
   // A provisioner is never allowed to demote: manual mode has no opinion at all,
@@ -419,8 +428,11 @@ export interface TenantDomainCheckResult {
 export const runTenantDomainChecks = async (
   deps: TenantDomainDeps,
 ): Promise<Result<TenantDomainCheckResult, AppError>> => {
-  const pending = await deps.tenantDomains.listOldestPendingPerTenant(TENANT_DOMAIN_CHECK_BATCH);
   const result: TenantDomainCheckResult = { checked: 0, verified: 0, failed: 0, alerted: 0 };
+  // Manual mode reports no verification at all, so a tick could only learn nothing and
+  // then blame correct DNS for the operator flip that is actually missing.
+  if (deps.provisioner.provider === 'manual') return ok(result);
+  const pending = await deps.tenantDomains.listOldestPendingPerTenant(TENANT_DOMAIN_CHECK_BATCH);
   const startedAt = Date.parse(deps.clock.nowIso());
   for (const row of pending) {
     // A row only starts when its own refresh deadline still fits the tick, and a row that

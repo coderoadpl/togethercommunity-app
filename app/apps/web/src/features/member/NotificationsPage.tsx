@@ -47,11 +47,13 @@ const NotificationBody = ({ notification }: { notification: Notification }) => {
           <VisuallyHidden>{t.notifications.unreadLabel}</VisuallyHidden>
         </>
       ) : null}
-      <MemberAvatar
-        name={notification.payload.authorDisplay ?? ''}
-        avatarUrl={notification.payload.authorAvatarUrl}
-        size="sm"
-      />
+      {notification.payload.contextKind === 'tenant' ? null : (
+        <MemberAvatar
+          name={notification.payload.authorDisplay ?? ''}
+          avatarUrl={notification.payload.authorAvatarUrl}
+          size="sm"
+        />
+      )}
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <NotificationTitle component="p" unread={unread}>
           {notificationTitle(t, notification)}

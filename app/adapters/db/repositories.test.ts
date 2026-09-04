@@ -1188,7 +1188,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       lastError: null,
       verification: [],
     })).toBeNull();
-    expect(await repo.patch(GLOBEX, 'dom-1', { verified: false })).toBeNull();
+    expect(await repo.patch(GLOBEX, 'dom-1', { lastError: 'foreign tenant' })).toBeNull();
     expect(await repo.findByDomain('a.coderoad.test')).toMatchObject({ id: 'dom-1' });
 
     await events.append(ACME, {
@@ -2394,6 +2394,7 @@ describe('notification repository', () => {
         contextId: 'lesson-notification-pagination',
         courseId: 'course-notification-pagination',
         eventId: null,
+        domain: null,
         lessonName: 'Pagination',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2457,6 +2458,7 @@ describe('notification repository', () => {
         contextId: `context-${id}`,
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'DM filter',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2497,6 +2499,7 @@ describe('notification repository', () => {
         contextId: 'space-bulk',
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'Bulk',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2541,6 +2544,7 @@ describe('notification repository', () => {
         contextId: 'space-scoped',
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'Scoped',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2752,6 +2756,7 @@ describe('direct message repositories', () => {
         contextId: 'dm-conversation-1',
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'Acme Member',
         authorDisplay: 'Acme Member',
         authorAvatarUrl: null,

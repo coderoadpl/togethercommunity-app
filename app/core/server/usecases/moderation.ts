@@ -245,6 +245,7 @@ const notifyStaffOfDmReport = async (
       contextId: report.conversationId,
       courseId: null,
       eventId: null,
+      domain: null,
       lessonName: report.reportedDisplay,
       authorDisplay: report.reporterDisplay,
       authorAvatarUrl: null,

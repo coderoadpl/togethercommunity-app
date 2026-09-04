@@ -1128,6 +1128,7 @@ describe('community use-cases', () => {
         contextId: 'conversation-1',
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'Ola',
         authorDisplay: 'Ola',
         authorAvatarUrl: null,

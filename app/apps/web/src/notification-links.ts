@@ -39,7 +39,8 @@ export const notificationTarget = (notification: Notification): NotificationTarg
 };
 
 export const notificationTitle = (t: Messages, notification: Notification): string => {
-  const { lessonName, domain = '' } = notification.payload;
+  const { lessonName } = notification.payload;
+  const domain = notification.payload.domain ?? '';
   const author = notification.payload.authorDisplay ?? '';
   return notification.kind === 'tenant-domain-verified'
   ? t.notifications.tenantDomainVerified({ domain })

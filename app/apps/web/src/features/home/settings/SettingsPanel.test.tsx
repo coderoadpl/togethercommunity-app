@@ -328,6 +328,71 @@ describe('SettingsPanel information architecture', () => {
       .toHaveTextContent(pl.tenantDomains.conflict);
   });
 
+  it('quotes the provider when it refuses the domain for good', async () => {
+    renderPanel();
+
+    await screen.findByTestId('tenant-domain-input');
+    server.use(http.post('/api/tenant/domains', () => HttpResponse.json(
+      {
+        ok: false,
+        error: {
+          code: 'integration_unavailable',
+          message: 'Vercel: Domain is already in use by another project',
+        },
+      },
+      { status: 502 },
+    )));
+
+    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.coderoad.example');
+    await userEvent.click(screen.getByTestId('tenant-domain-add'));
+
+    expect(await screen.findByTestId('tenant-domain-error'))
+      .toHaveTextContent('Vercel: Domain is already in use by another project');
+  });
+
+  it('shows the recorded error after a check the provider failed', async () => {
+    renderPanel();
+
+    await screen.findByTestId('tenant-domain-check-nowa.coderoad.example');
+    let checked = false;
+    server.use(
+      http.get('/api/tenant/routing', () => HttpResponse.json({
+        ok: true,
+        data: {
+          routing: {
+            tenantHost: 'akademia.together.example',
+            customDomains: [{
+              domain: 'nowa.coderoad.example',
+              verified: false,
+              status: checked ? 'error' : 'pending-dns',
+              records: [],
+              lastCheckedAt: null,
+              lastError: checked ? 'Vercel is unreachable' : null,
+            }],
+            customDomainTarget: 'cname.vercel-dns.com',
+            canAddCustomDomain: true,
+          },
+        },
+      })),
+      http.post('/api/tenant/domains/check', () => {
+        checked = true;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'integration_unavailable', message: 'Vercel is unreachable' } },
+          { status: 502 },
+        );
+      }),
+    );
+
+    await userEvent.click(screen.getByTestId('tenant-domain-check-nowa.coderoad.example'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tenant-domain-status-nowa.coderoad.example'))
+        .toHaveTextContent(pl.tenantDomains.statusError);
+    });
+    expect(screen.getByTestId('tenant-domain-nowa.coderoad.example'))
+      .toHaveTextContent('Vercel is unreachable');
+  });
+
   it('adds a domain and lists it as waiting for DNS', async () => {
     const { domainCalls } = renderPanel();
 

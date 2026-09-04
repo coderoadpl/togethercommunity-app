@@ -8,6 +8,7 @@ import {
   type Identity,
   type Notification,
   type TenantDomain,
+  type TenantDomainProvider,
 } from '#core/domain/index.js';
 
 import type {
@@ -62,18 +63,21 @@ const TXT_RECORD: DnsRecord = {
 };
 
 class FakeProvisioner implements DomainProvisioner {
-  readonly provider = 'vercel' as const;
+  readonly provider: TenantDomainProvider;
   readonly calls: string[] = [];
   readonly statusSignals: (AbortSignal | undefined)[] = [];
 
   constructor(
     private readonly states: {
+      provider?: TenantDomainProvider;
       add?: { verification: DnsRecord[]; verified: boolean };
       status?: DomainProvisionState;
       verify?: DomainProvisionState;
       failure?: string;
     } = {},
-  ) {}
+  ) {
+    this.provider = states.provider ?? 'vercel';
+  }
 
   async add(domain: string) {
     this.calls.push(`add:${domain}`);
@@ -730,7 +734,7 @@ describe('runTenantDomainChecks', () => {
     expect(notifications).toHaveLength(0);
   });
 
-  it('defers a row its own deadline cut short instead of recording a provider failure', async () => {
+  it('stamps a row its own deadline cut short instead of recording a provider failure', async () => {
     const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort());
     const provisioner = new DeadlineHonouringProvisioner();
     const { deps, rows, events, notifications } = harness({
@@ -748,7 +752,11 @@ describe('runTenantDomainChecks', () => {
 
       expect(result).toEqual({ ok: true, value: { checked: 0, verified: 0, failed: 0, alerted: 0 } });
       expect(provisioner.calls).toEqual(['status:kurs.coderoad.example']);
-      expect(rows[0]).toMatchObject({ verified: false, lastCheckedAt: null, lastError: null });
+      expect(rows[0]).toMatchObject({
+        verified: false,
+        lastCheckedAt: '2026-09-04T10:00:00.000Z',
+        lastError: null,
+      });
       expect(events).toEqual([]);
       expect(notifications).toEqual([]);
     } finally {
@@ -766,5 +774,40 @@ describe('runTenantDomainChecks', () => {
 
     expect(result).toMatchObject({ ok: true, value: { checked: 1, failed: 1, verified: 0 } });
     expect(rows[0]).toMatchObject({ lastError: 'gateway timeout' });
+  });
+
+  it('records a failure that repeats once and the failure that replaces it', async () => {
+    const states = { failure: 'gateway timeout' };
+    const { deps, events } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.coderoad.example' })],
+      provisioner: new FakeProvisioner(states),
+    });
+
+    await runTenantDomainChecks(deps);
+    await runTenantDomainChecks(deps);
+    states.failure = 'domain is locked';
+    await runTenantDomainChecks(deps);
+
+    expect(events.map((event) => event.kind)).toEqual(['domain_check_failed', 'domain_check_failed']);
+    expect(events.map((event) => event.detail)).toEqual(['gateway timeout', 'domain is locked']);
+  });
+
+  it('skips the tick in manual mode, where only an operator verifies a domain', async () => {
+    const provisioner = new FakeProvisioner({ provider: 'manual' });
+    const { deps, notifications } = harness({
+      rows: [tenantDomainFixture({
+        id: 'd-1',
+        tenantId: 't-acme',
+        domain: 'kurs.coderoad.example',
+        createdAt: '2026-09-01T09:00:00.000Z',
+      })],
+      provisioner,
+    });
+
+    const result = await runTenantDomainChecks(deps);
+
+    expect(result).toEqual({ ok: true, value: { checked: 0, verified: 0, failed: 0, alerted: 0 } });
+    expect(provisioner.calls).toEqual([]);
+    expect(notifications).toEqual([]);
   });
 });

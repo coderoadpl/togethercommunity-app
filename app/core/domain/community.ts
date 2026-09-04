@@ -114,7 +114,7 @@ const notificationPayloadSchema = z.object({
   contextId: z.string().min(1).nullable().default(null),
   courseId: z.string().min(1).nullable().default(null),
   eventId: z.string().min(1).nullable().default(null),
-  domain: z.string().min(1).optional(),
+  domain: z.string().min(1).nullable().default(null),
   lessonName: z.string().default(''),
   authorDisplay: z.string().trim().min(1).nullable().default(null),
   authorAvatarUrl: z.string().nullable().default(null),

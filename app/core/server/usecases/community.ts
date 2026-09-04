@@ -201,6 +201,7 @@ const notifyLessonQuestionStaff = async (
         contextId: post.contextId,
         courseId: context.courseId,
         eventId: null,
+        domain: null,
         lessonName: context.contextName,
         authorDisplay: post.authorDisplay,
         authorAvatarUrl,

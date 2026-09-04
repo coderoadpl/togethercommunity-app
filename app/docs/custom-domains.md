@@ -114,8 +114,10 @@ UPDATE tenant_domains SET verified = true, verified_at = now()
 WHERE domain = 'kurs.example.com';
 ```
 
-The scheduled check never demotes a verified row, so an operator decision
-survives every later pass. This is the mode self-hosted installs behind their
+The scheduled check does nothing in this mode: no provider can report DNS, so a
+pass could only mistake a missing operator flip for a misconfigured domain and
+alert the workspace about correct records. It also never demotes a verified row,
+so an operator decision survives every later pass. This is the mode self-hosted installs behind their
 own proxy run on permanently; the bundled Caddy configuration asks
 `/internal/domain-check` whether a host is allowed before issuing a
 certificate.

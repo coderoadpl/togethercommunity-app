@@ -24,6 +24,7 @@ const notification = (input: {
     contextId: input.contextId,
     courseId: input.courseId,
     eventId: input.eventId ?? null,
+    domain: null,
     lessonName: input.lessonName ?? 'Hamaki w kamperze',
     authorDisplay: 'Ola',
     authorAvatarUrl: null,

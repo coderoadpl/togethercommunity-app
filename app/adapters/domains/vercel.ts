@@ -98,6 +98,7 @@ export const createVercelDomainProvisioner = (
       method: string;
       body?: unknown;
       missingIsOk?: boolean;
+      unmetChallengeIsOk?: boolean;
       deadline?: AbortSignal | undefined;
     },
   ): Promise<Result<unknown, AppError>> => {
@@ -119,6 +120,7 @@ export const createVercelDomainProvisioner = (
       )));
     }
     if (response.status === 404 && init.missingIsOk === true) return ok(null);
+    if (response.status === 400 && init.unmetChallengeIsOk === true) return ok(null);
     if (!response.ok) return err(await describeFailure(response));
     const payload: unknown = await response.json().catch(() => null);
     return ok(payload);
@@ -187,9 +189,12 @@ export const createVercelDomainProvisioner = (
     },
     status: async (domain, options) => readState(domain, options?.signal),
     verify: async (domain, options) => {
+      // A missing, mismatched or foreign TXT challenge answers 400, which is where an
+      // unverified domain sits until its owner publishes the record — not an outage,
+      // so the state read below decides what the workspace is told.
       const verified = await call(
         `/v9/projects/${project}/domains/${encodeURIComponent(domain)}/verify`,
-        { method: 'POST', deadline: options?.signal },
+        { method: 'POST', unmetChallengeIsOk: true, deadline: options?.signal },
       );
       if (!verified.ok) return verified;
       return readState(domain, options?.signal);

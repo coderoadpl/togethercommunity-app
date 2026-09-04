@@ -17,6 +17,7 @@ const notification: Notification = {
     contextId: 'l1',
     courseId: 'c1',
     eventId: null,
+    domain: null,
     lessonName: 'Lekcja o hamakach',
     authorDisplay: 'Ola',
     authorAvatarUrl: null,

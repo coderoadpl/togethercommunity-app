@@ -1609,7 +1609,6 @@ export interface TenantDomainRepository {
     tenantId: string,
     id: string,
     patch: {
-      verified?: boolean;
       verification?: DnsRecord[];
       verifiedAt?: string | null;
       lastCheckedAt?: string | null;

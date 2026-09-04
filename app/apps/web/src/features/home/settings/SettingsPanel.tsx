@@ -51,7 +51,7 @@ import { ActiveSessions } from '../../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
 import { EmailVerificationStatus } from '../../../components/ui/EmailVerificationStatus.js';
-import { errorCodeOf, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { errorCodeOf, localizePanelError, serverMessageOf, useLanguage, useTranslations } from '../../../i18n/index.js';
 import type { Messages } from '../../../i18n/index.js';
 import {
   BUILD_SHA,
@@ -1192,6 +1192,19 @@ const DOMAIN_STATUS_COLOR: Record<TenantDomainStatus, 'success' | 'warning' | 'i
   error: 'error',
 };
 
+/**
+ * A provider refusal and a rejected domain both carry the one sentence that says
+ * which domain cannot be connected and why, which the generic copy would drop.
+ */
+const domainErrorMessage = (error: unknown, t: Messages): string => {
+  const code = errorCodeOf(error);
+  if (code === 'conflict') return t.tenantDomains.conflict;
+  if (code === 'integration_unavailable' || code === 'validation') {
+    return serverMessageOf(error) ?? localizePanelError(error, t);
+  }
+  return localizePanelError(error, t);
+};
+
 const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
   const t = useTranslations();
   const [copied, setCopied] = useState(false);
@@ -1241,7 +1254,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
     await queryClient.invalidateQueries(actions.tenantRoutingInvalidates());
   };
   const addDomain = useMutation({ ...actions.addTenantDomain, onSuccess: invalidate });
-  const checkDomain = useMutation({ ...actions.checkTenantDomain, onSuccess: invalidate });
+  const checkDomain = useMutation({ ...actions.checkTenantDomain, onSettled: invalidate });
   const removeDomain = useMutation({
     ...actions.removeTenantDomain,
     onSuccess: async (result) => {
@@ -1303,9 +1316,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
         )}
         {error === null ? null : (
           <Alert severity="error" data-testid="tenant-domain-error">
-            {errorCodeOf(error) === 'conflict'
-              ? t.tenantDomains.conflict
-              : localizePanelError(error, t)}
+            {domainErrorMessage(error, t)}
           </Alert>
         )}
         {redirectTo === null ? null : (

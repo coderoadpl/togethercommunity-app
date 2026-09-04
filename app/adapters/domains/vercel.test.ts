@@ -140,6 +140,38 @@ describe('vercel domain provisioner', () => {
     ]);
   });
 
+  it('reads the state of a domain whose TXT challenge is not published yet', async () => {
+    const { subject } = provisioner({
+      'POST /v9/projects/prj_1/domains/kurs.coderoad.example/verify': {
+        status: 400,
+        payload: {
+          error: {
+            code: 'missing_txt_record',
+            message: 'Domain does not have a TXT record verifying the project domain',
+          },
+        },
+      },
+      'GET /v9/projects/prj_1/domains/kurs.coderoad.example': {
+        status: 200,
+        payload: { verified: false, verification: [TXT] },
+      },
+      'GET /v6/domains/kurs.coderoad.example/config': { status: 200, payload: { misconfigured: false } },
+    });
+
+    expect(await subject.verify('kurs.coderoad.example')).toEqual({
+      ok: true,
+      value: {
+        verified: false,
+        misconfigured: false,
+        verification: [{
+          type: 'TXT',
+          name: '_vercel.kurs.coderoad.example',
+          value: 'vc-domain-verify=kurs.coderoad.example,abc',
+        }],
+      },
+    });
+  });
+
   it('treats a domain the project no longer holds as removed', async () => {
     const { subject } = provisioner({
       'DELETE /v9/projects/prj_1/domains/kurs.coderoad.example': { status: 404 },

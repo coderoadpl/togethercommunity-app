@@ -37,6 +37,7 @@ const notification = (input: {
     contextId: input.contextId ?? 'l1',
     courseId: input.courseId === undefined ? 'c1' : input.courseId,
     eventId: null,
+    domain: null,
     lessonName: 'Hamaki w kamperze',
     authorDisplay: 'Ola',
     authorAvatarUrl: input.authorAvatarUrl ?? null,
@@ -322,6 +323,34 @@ describe('NotificationsPage', () => {
     const withInitials = within(screen.getByTestId('notification-row-n2'));
     expect(withInitials.queryByTestId('member-avatar-image')).toBeNull();
     expect(withInitials.getByTestId('member-avatar')).toHaveTextContent('O');
+  });
+
+  it('leaves out the avatar of a workspace notification that has no author', async () => {
+    const domainNotification: Notification = {
+      ...notification({ id: 'n1', kind: 'tenant-domain-verified', read: true }),
+      payload: {
+        rootPostId: null,
+        postId: null,
+        contextKind: 'tenant',
+        contextId: null,
+        courseId: null,
+        eventId: null,
+        domain: 'kurs.coderoad.example',
+        lessonName: '',
+        authorDisplay: null,
+        authorAvatarUrl: null,
+        snippet: '',
+      },
+    };
+    server.use(okUnread(0), okList([domainNotification]));
+
+    await renderPage();
+
+    const row = within(await screen.findByTestId('notification-row-n1'));
+
+    expect(row.queryByTestId('member-avatar')).toBeNull();
+    expect(row.getByText(pl.notifications.tenantDomainVerified({ domain: 'kurs.coderoad.example' })))
+      .toBeInTheDocument();
   });
 
   it('sends an unauthenticated visitor to the login page', async () => {

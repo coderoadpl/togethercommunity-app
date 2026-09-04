@@ -3649,6 +3649,7 @@ describe('notifications stream route', () => {
       contextId: 'lesson-1',
       courseId: 'course-1',
       eventId: null,
+      domain: null,
       lessonName: 'Lesson',
       authorDisplay: 'Author',
       authorAvatarUrl: null,

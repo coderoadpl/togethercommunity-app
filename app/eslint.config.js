@@ -428,6 +428,7 @@ export default tseslint.config(
                 'web-branding',
                 'web-api',
                 'web-layout',
+                'web-ui',
                 'web-lib',
                 'web-theme',
                 'web-i18n',

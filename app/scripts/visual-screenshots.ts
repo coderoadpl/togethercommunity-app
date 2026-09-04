@@ -188,6 +188,16 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByTestId('marketing-confirmation-expired').waitFor(visible),
   },
   {
+    name: 'anon-home-branded',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    path: '/',
+    ready: async (page) => {
+      await page.getByRole('heading', { name: 'Zajrzyj do środka' }).waitFor(visible);
+      await page.getByTestId('tenant-logo').first().waitFor(visible);
+    },
+  },
+  {
     // Waits target the LAST async element of each screen (waterfall queries),
     // otherwise a shot can land mid-load and produce a flaky golden.
     name: 'start',

@@ -2883,14 +2883,6 @@ export const AppBarTitle = styled(Typography)<AsElement>({
   lineHeight: 1.2,
 });
 
-export const AppBarWordmark = styled('img')({
-  display: 'block',
-  height: 20,
-  width: 'auto',
-  alignSelf: 'flex-start',
-  opacity: 0.62,
-});
-
 export const TenantListItemText = styled(ListItemText)({
   '& .MuiListItemText-primary': { fontWeight: 700 },
 });

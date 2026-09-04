@@ -12,7 +12,7 @@ import {
 } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
-import { stylesAt } from '../../../test/css.js';
+import { stylesAt } from '../../../lib/stylesheet.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelLessonEditRoute } from '../panel-routes.js';

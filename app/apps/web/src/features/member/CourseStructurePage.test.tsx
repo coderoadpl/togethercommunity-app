@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CourseStructurePage } from './CourseStructurePage.js';
@@ -189,6 +190,35 @@ const stubViewport = (isCompact: boolean) => {
     removeEventListener: () => undefined,
     dispatchEvent: () => false,
   }));
+};
+
+const anonCoursePage = (imageUrl: string | null) => {
+  server.use(
+    anonMe(),
+    http.get('/api/public/courses/:courseId/structure', () =>
+      HttpResponse.json({ ok: true, data: { structure } }),
+    ),
+    http.get('/api/public/navigation', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          navigation: {
+            defaultHomeSpaceId: null,
+            spaces: [],
+            courses: [
+              {
+                id: 'course-1',
+                name: 'JavaScript Foundations',
+                description: 'Start from zero.',
+                imageUrl,
+              },
+            ],
+            lockedSpaces: [],
+          },
+        },
+      }),
+    ),
+  );
 };
 
 const renderPage = async (node: ReactNode) => {
@@ -448,32 +478,7 @@ describe('CourseStructurePage', () => {
   });
 
   it('serves an anonymous visitor the public program without progress or discussion', async () => {
-    server.use(
-      anonMe(),
-      http.get('/api/public/courses/:courseId/structure', () =>
-        HttpResponse.json({ ok: true, data: { structure } }),
-      ),
-      http.get('/api/public/navigation', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            navigation: {
-              defaultHomeSpaceId: null,
-              spaces: [],
-              courses: [
-                {
-                  id: 'course-1',
-                  name: 'JavaScript Foundations',
-                  description: 'Start from zero.',
-                  imageUrl: null,
-                },
-              ],
-              lockedSpaces: [],
-            },
-          },
-        }),
-      ),
-    );
+    anonCoursePage(null);
 
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
@@ -491,5 +496,38 @@ describe('CourseStructurePage', () => {
       expect(screen.getByTestId(testId)).toHaveAttribute('href', '/checkout/prod-advanced');
     }
     expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(pl.shell.start);
+  });
+
+  it('crops the anonymous cover exactly like the member cover', async () => {
+    mockPage();
+    const member = await renderPage(<CourseStructurePage courseId="course-1" />);
+    const memberStyles = stylesAt(await screen.findByTestId('course-cover'), 1440);
+    member.unmount();
+
+    anonCoursePage('https://picsum.photos/seed/js/960/540');
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const anonStyles = stylesAt(await screen.findByTestId('course-cover'), 1440);
+    expect(anonStyles).toEqual(memberStyles);
+    expect(anonStyles).toMatchObject({
+      'aspect-ratio': '16/9',
+      'object-fit': 'cover',
+      width: '100%',
+    });
+    expect(anonStyles['max-height']).toBeUndefined();
+  });
+
+  it('replaces a missing anonymous cover with the neutral placeholder', async () => {
+    anonCoursePage(null);
+
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const placeholder = await screen.findByTestId('course-cover-fallback');
+    expect(placeholder).toHaveTextContent('JF');
+    expect(stylesAt(placeholder, 1440)).toMatchObject({
+      'aspect-ratio': '16/9',
+      width: '100%',
+    });
+    expect(screen.queryByTestId('course-cover')).not.toBeInTheDocument();
   });
 });

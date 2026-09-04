@@ -10,7 +10,11 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+import {
+  PASSWORD_MIN_LENGTH,
+  TENANT_OG_DESCRIPTION_MAX_LENGTH,
+  TENANT_OG_TITLE_MAX_LENGTH,
+} from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
@@ -68,6 +72,24 @@ const staffSpace = ({ id, name, publicReadOnly, archivedAt }: StubSpace) => ({
   stats: { posts: 0, followers: 0 },
 });
 
+interface StubCourse {
+  id: string;
+  name: string;
+  publiclyVisible: boolean;
+}
+
+const staffCourse = ({ id, name, publiclyVisible }: StubCourse) => ({
+  id,
+  tenantId: 'tenant-akademia',
+  name,
+  description: '',
+  imageUrl: null,
+  moduleOrder: [],
+  publiclyVisible,
+  legacyId: null,
+  createdAt: '2026-07-20T08:00:00.000Z',
+});
+
 const EMPTY_SETTINGS: StoredSettings = {
   name: 'Akademia',
   socialLinks: [],
@@ -90,12 +112,31 @@ const PANEL_TENANT = {
   memberId: null,
 };
 
-const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = []) => {
+const installSettingsBackend = (
+  initial: StoredSettings,
+  spaces: StubSpace[] = [],
+  courses: StubCourse[] | 'unavailable' = [],
+) => {
   let settings = { ...initial };
   const updates: unknown[] = [];
+  const courseUpdates: unknown[] = [];
+  const courseList = courses === 'unavailable' ? [] : courses;
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('/api/courses', () =>
+      courses === 'unavailable'
+        ? HttpResponse.json({ ok: false, error: { code: 'internal' } }, { status: 500 })
+        : HttpResponse.json({ ok: true, data: { courses: courseList.map(staffCourse) } }),
+    ),
+    http.post('/api/courses/update', async ({ request }) => {
+      const body = await request.json();
+      courseUpdates.push(body);
+      return HttpResponse.json({
+        ok: true,
+        data: { course: staffCourse(courseList[0] ?? { id: 'c1', name: 'Kurs', publiclyVisible: true }) },
+      });
+    }),
     http.get('/api/tenant/routing', () => HttpResponse.json({
       ok: true,
       data: {
@@ -126,11 +167,16 @@ const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = [
     }),
   );
 
-  return { updates };
+  return { updates, courseUpdates };
 };
 
-const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true, spaces: StubSpace[] = []) => {
-  const { updates } = installSettingsBackend(initial, spaces);
+const renderPanel = (
+  initial: StoredSettings = EMPTY_SETTINGS,
+  emailVerified = true,
+  spaces: StubSpace[] = [],
+  courses: StubCourse[] | 'unavailable' = [],
+) => {
+  const { updates, courseUpdates } = installSettingsBackend(initial, spaces, courses);
 
   const rootRoute = createRootRoute();
   const settingsRoute = createRoute({
@@ -158,7 +204,7 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = t
 
   const { queryClient } = renderWithProviders(<RouterProvider router={router} />);
 
-  return { queryClient, router, updates };
+  return { queryClient, router, updates, courseUpdates };
 };
 
 const openSettingsSection = async (label: string) => {
@@ -427,20 +473,72 @@ describe('SettingsPanel public access', () => {
     await userEvent.click(picker);
 
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      pl.publicAccess.homeSpaceNone,
+      pl.publicAccess.homeSpaceUnset,
       'Ogólna',
     ]);
   });
 
-  it('saves the picked home space and clears it again', async () => {
+  it('only saves the picked home space once the section is submitted', async () => {
     const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultHomeSpaceId: 's1' }, true, spaces);
 
     const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
     await waitFor(() => expect(picker).toHaveTextContent('Ogólna'));
     await userEvent.click(picker);
-    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceNone }));
+    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceUnset }));
 
-    await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: '' }));
+    expect(updates).toHaveLength(0);
+
+    await userEvent.click(screen.getByTestId('public-access-save'));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: null }));
+    expect(await screen.findByTestId('public-access-status')).toHaveTextContent(pl.publicAccess.saved);
+  });
+
+  it('keeps a dormant home space when the section is saved for other reasons', async () => {
+    const { updates, courseUpdates } = renderPanel(
+      { ...EMPTY_SETTINGS, defaultHomeSpaceId: 's3' },
+      true,
+      spaces,
+      [{ id: 'c1', name: 'Kamper od zera', publiclyVisible: false }],
+    );
+
+    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toHaveTextContent(pl.publicAccess.homeSpaceUnset));
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Kamper od zera' }));
+    await userEvent.click(screen.getByTestId('public-access-save'));
+
+    await waitFor(() => expect(courseUpdates).toEqual([{ id: 'c1', publiclyVisible: true }]));
+    expect(updates).toEqual([]);
+  });
+
+  it('manages course public visibility next to the home space picker', async () => {
+    const { courseUpdates } = renderPanel(EMPTY_SETTINGS, true, spaces, [
+      { id: 'c1', name: 'Kamper od zera', publiclyVisible: false },
+      { id: 'c2', name: 'Trasy', publiclyVisible: true },
+    ]);
+
+    const toggle = await screen.findByRole('switch', { name: 'Kamper od zera' });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(screen.getByRole('switch', { name: 'Trasy' })).toBeChecked();
+
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByTestId('public-access-save'));
+
+    await waitFor(() =>
+      expect(courseUpdates).toEqual([{ id: 'c1', publiclyVisible: true }]));
+  });
+
+  it('still saves the home space when the course list fails to load', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultHomeSpaceId: 's1' }, true, spaces, 'unavailable');
+
+    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await userEvent.click(picker);
+    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceUnset }));
+    await userEvent.click(screen.getByTestId('public-access-save'));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: null }));
   });
 });
 
@@ -513,6 +611,15 @@ describe('SettingsPanel direct KSeF', () => {
     );
     expect(screen.queryByTestId('secret-input-ksef.token')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ksef-test-connection')).not.toBeInTheDocument();
+  });
+
+  it('leaves the invoice provider unset until the owner picks one', async () => {
+    renderPanel(EMPTY_SETTINGS);
+
+    const picker = await screen.findByRole('combobox', { name: pl.billing.invoicingProvider });
+    expect(picker).toHaveTextContent(pl.billing.providerUnset);
+    expect(picker).not.toHaveTextContent(pl.billing.providerIfirma);
+    expect(screen.queryByText(pl.billing.ksefConfiguredInIntegrations)).not.toBeInTheDocument();
   });
 });
 
@@ -603,6 +710,24 @@ describe('SettingsPanel branding', () => {
       ogDescription: 'Praktyczna nauka',
       ogImageUrl: 'https://cdn.example.com/social.png',
     });
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('counts share preview characters and warns once the limit is reached', async () => {
+    renderPanel({
+      ...EMPTY_SETTINGS,
+      ogTitle: 'x'.repeat(TENANT_OG_TITLE_MAX_LENGTH),
+      ogDescription: 'opis',
+    });
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    expect(await screen.findByTestId('branding-og-description-count')).toHaveTextContent(
+      pl.branding.charCount({ used: 4, limit: TENANT_OG_DESCRIPTION_MAX_LENGTH }),
+    );
+    const titleCount = screen.getByTestId('branding-og-title-count');
+    expect(titleCount).toHaveTextContent(
+      pl.branding.charCount({ used: TENANT_OG_TITLE_MAX_LENGTH, limit: TENANT_OG_TITLE_MAX_LENGTH }),
+    );
+    expect(titleCount).toHaveTextContent(pl.branding.charLimitReached);
   }, BRANDING_TEST_TIMEOUT);
 
   it('renames the tenant and round-trips social profiles without a slug field', async () => {

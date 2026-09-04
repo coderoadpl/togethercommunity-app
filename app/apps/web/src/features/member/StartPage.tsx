@@ -108,15 +108,17 @@ const ContinueCard = ({ course }: { course: MemberNavigationCourse }) => {
 export const TileSection = ({
   title,
   to,
+  id,
   testId,
   children,
 }: {
   title: string;
   to?: string;
+  id?: string | undefined;
   testId: string;
   children: ReactNode;
 }) => (
-  <Box component="section" data-testid={testId}>
+  <Box component="section" id={id} data-testid={testId}>
     <Typography variant="h3" component="h2" sx={{ mb: '0.9rem' }}>
       {to === undefined ? title : (
         <SectionHeadingLink component={RouterLink} to={to} data-testid={`${testId}-link`}>

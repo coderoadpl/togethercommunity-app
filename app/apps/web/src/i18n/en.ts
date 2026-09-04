@@ -325,6 +325,7 @@ export const en: Messages = {
     panelTitle: 'Panel setup',
     expand: ({ title }) => format('{title}: open the checklist', { title }),
     collapse: ({ title }) => format('{title}: collapse the checklist', { title }),
+    close: ({ title }) => format('{title}: close', { title }),
   },
   tenantSetup: {
     title: 'Platform setup',
@@ -1458,9 +1459,11 @@ export const en: Messages = {
     homeTitle: 'Look inside',
     coursesSection: 'Courses',
     spacesSection: 'Spaces',
-    joinDiscussionCta: 'Sign in to join the discussion',
+    guestHeading: 'For visitors',
+    joinOfferCta: 'Join the community — see the offer',
     readOnlyBanner:
-      'You are browsing as a visitor: reading is open, posting and reactions need an account.',
+      'You are browsing as a visitor: reading is open, posting and reactions are for community members.',
+    emptyFeed: 'The creator has not published anything here yet.',
     lockedCourseHint:
       'Lessons marked as a free preview open right away; the rest unlocks after purchase.',
     unlockCta: 'Unlock access',
@@ -1734,6 +1737,7 @@ export const en: Messages = {
     statusArchived: 'Archived',
     membersOnlyChip: 'All members',
     productGatedChip: 'Product holders',
+    publicChip: 'Public',
     postsNoun: ({ count }) => plural(count, 'post', 'posts'),
     followersNoun: ({ count }) => plural(count, 'follower', 'followers'),
     archive: 'Archive',
@@ -1887,7 +1891,8 @@ export const en: Messages = {
     autoIssueScope: 'Automation scope',
     b2bOnly: 'Orders with a tax ID only',
     allBuyers: 'All orders',
-    vatRateUnset: 'Select a VAT rate or exemption before issuing',
+    vatRateUnset: 'Not selected',
+    vatRateHint: 'Pick a VAT rate or the exemption before the first invoice is issued.',
     vatTreatment: 'VAT treatment',
     vatTreatmentRate: 'VAT rate',
     vatTreatmentExempt: 'VAT exempt (zw)',
@@ -1903,6 +1908,7 @@ export const en: Messages = {
     exemptionBasisArt43Help: 'Identify the applicable point (pkt) of art. 43(1).',
     exemptNote: 'Exempt invoices carry no VAT and gross equals net. You are responsible for the cited provision and monitoring the art. 113 threshold.',
     invoicingProvider: 'Invoice provider',
+    providerUnset: 'Not selected',
     providerIfirma: 'iFirma',
     providerKsef: 'Direct KSeF',
     sellerName: 'Seller legal name',
@@ -1912,11 +1918,19 @@ export const en: Messages = {
   publicAccess: {
     heading: 'Public access',
     intro:
-      'Choose what anonymous visitors see before signing in: publicly readable spaces, publicly visible courses and the space that opens your home page.',
+      'Choose what anonymous visitors see before signing in: which courses are publicly visible and which public space opens your home page. Public read-only access for a single space is switched on in that space’s own settings.',
     homeSpaceLabel: 'Home space for visitors',
-    homeSpaceNone: 'None',
+    homeSpaceUnset: 'None',
     homeSpaceHint:
       'Only active publicly readable spaces can be picked. Without one, visitors land on the tiles alone.',
+    coursesHeading: 'Publicly visible courses',
+    coursesHint:
+      'Checked courses show up for visitors who are not signed in. Lessons stay locked until purchase.',
+    coursesEmpty: 'You have no courses yet.',
+    coursesLoading: 'Loading courses…',
+    save: 'Save public access',
+    saving: 'Saving…',
+    saved: 'Saved.',
   },
   directMessages: {
     heading: 'Direct messages',
@@ -1970,6 +1984,8 @@ export const en: Messages = {
     ogDescriptionHint: 'Left empty, the preview has no description.',
     ogImageLabel: 'Preview image URL',
     ogImageHint: ({ width, height }) => `Recommended size ${String(width)}×${String(height)} px. Falls back to the logo for light backgrounds.`,
+    charCount: ({ used, limit }) => `${String(used)}/${String(limit)}`,
+    charLimitReached: 'Character limit reached — longer text will not fit.',
     save: 'Save',
     saving: 'Saving…',
     saved: 'Saved.',

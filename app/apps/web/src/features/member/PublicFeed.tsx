@@ -110,7 +110,7 @@ export const PublicFeedList = ({ spaceId, feed }: { spaceId: string; feed: Space
   if (feed.items.length === 0 && feed.pinned.length === 0) {
     return (
       <StatusView
-        state={{ kind: 'empty', icon: <EmptyFeedIcon />, title: t.community.emptyFeed }}
+        state={{ kind: 'empty', icon: <EmptyFeedIcon />, title: t.anon.emptyFeed }}
         data-testid="public-feed-empty-state"
       />
     );

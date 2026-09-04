@@ -38,6 +38,15 @@ const SpaceRow = ({ space }: { space: StaffSpace }) => {
             variant="outlined"
             label={space.visibility === 'members' ? t.spacesPanel.membersOnlyChip : t.spacesPanel.productGatedChip}
           />
+          {space.publicReadOnly ? (
+            <Chip
+              size="small"
+              color="info"
+              variant="outlined"
+              label={t.spacesPanel.publicChip}
+              data-testid={`space-public-${space.id}`}
+            />
+          ) : null}
           {isArchived ? (
             <Chip size="small" color="warning" variant="outlined" label={t.spacesPanel.statusArchived} />
           ) : null}

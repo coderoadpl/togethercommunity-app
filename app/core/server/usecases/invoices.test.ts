@@ -59,7 +59,7 @@ const harness = (options: {
   fail?: boolean;
   failAfterCreate?: boolean;
   uncertainFailure?: boolean;
-  provider?: 'ifirma' | 'ksef';
+  provider?: 'ifirma' | 'ksef' | null;
   nowIso?: string;
 } = {}) => {
   const invoices: Invoice[] = [];
@@ -171,7 +171,7 @@ const harness = (options: {
         autoIssueInvoices: options.auto ?? false,
         autoIssueInvoiceScope: options.scope ?? 'b2b_only',
         invoiceVatRatePercent: 23,
-        invoicingProvider: options.provider ?? 'ifirma',
+        invoicingProvider: options.provider === undefined ? 'ifirma' : options.provider,
         invoiceSellerName: 'Together sp. z o.o.',
         invoiceSellerAddress: 'Prosta 1, 00-001 Warszawa',
       }),
@@ -314,6 +314,22 @@ describe('requestInvoice', () => {
     });
     expect(h.invoices).toMatchObject([{ status: 'failed', error: 'integration_not_configured' }]);
     expect(h.events.some((event) => event.type === 'failed')).toBe(true);
+  });
+
+  it('refuses to issue while no invoicing provider is selected', async () => {
+    const h = harness();
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : { ...settings, invoicingProvider: null };
+    };
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'integration_not_configured' },
+    });
+    expect(h.calls()).toBe(0);
+    expect(h.invoices).toHaveLength(0);
   });
 
   it('persists a provider checkpoint and resumes a failed read-back without creating again', async () => {
@@ -613,6 +629,14 @@ describe('autoIssueOnPayment', () => {
     await autoIssueOnPayment('tenant-1', paidOrder, h.deps);
     expect(h.calls()).toBe(issued);
     expect(h.events.filter((event) => event.type === 'skipped')).toHaveLength(skipped);
+  });
+
+  it('records a skipped event when no invoicing provider is chosen', async () => {
+    const h = harness({ auto: true, scope: 'all', provider: null });
+    await autoIssueOnPayment('tenant-1', order(), h.deps);
+    expect(h.calls()).toBe(0);
+    expect(h.invoices).toEqual([]);
+    expect(h.events).toMatchObject([{ type: 'skipped', meta: { reason: 'provider_unset' } }]);
   });
 
   it('records a failed projection without throwing', async () => {

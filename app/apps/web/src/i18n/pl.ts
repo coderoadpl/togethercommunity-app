@@ -332,6 +332,7 @@ export const pl: Messages = {
     panelTitle: 'Konfiguracja panelu',
     expand: ({ title }) => format('{title}: otwórz listę', { title }),
     collapse: ({ title }) => format('{title}: zwiń listę', { title }),
+    close: ({ title }) => format('{title}: zamknij', { title }),
   },
   tenantSetup: {
     title: 'Konfiguracja platformy',
@@ -1476,9 +1477,11 @@ export const pl: Messages = {
     homeTitle: 'Zajrzyj do środka',
     coursesSection: 'Kursy',
     spacesSection: 'Przestrzenie',
-    joinDiscussionCta: 'Zaloguj się, aby dołączyć do dyskusji',
+    guestHeading: 'Dla odwiedzających',
+    joinOfferCta: 'Dołącz do społeczności — zobacz ofertę',
     readOnlyBanner:
-      'Przeglądasz jako gość — możesz czytać, a żeby pisać i reagować, załóż konto.',
+      'Przeglądasz jako gość — możesz czytać. Pisanie i reakcje są dla uczestników społeczności.',
+    emptyFeed: 'Twórca jeszcze nic tu nie opublikował.',
     lockedCourseHint:
       'Bezpłatne lekcje próbne otworzysz od razu; resztę odblokujesz po zakupie.',
     unlockCta: 'Odblokuj dostęp',
@@ -1753,6 +1756,7 @@ export const pl: Messages = {
     statusArchived: 'Zarchiwizowana',
     membersOnlyChip: 'Wszyscy uczestnicy',
     productGatedChip: 'Posiadacze produktu',
+    publicChip: 'Publiczna',
     postsNoun: ({ count }) => plural(count, 'wpis', 'wpisy', 'wpisów'),
     followersNoun: ({ count }) =>
       plural(count, 'obserwujący', 'obserwujących', 'obserwujących'),
@@ -1907,7 +1911,8 @@ export const pl: Messages = {
     autoIssueScope: 'Zakres automatyzacji',
     b2bOnly: 'Tylko zamówienia z NIP',
     allBuyers: 'Wszystkie zamówienia',
-    vatRateUnset: 'Wybierz stawkę VAT albo zwolnienie przed wystawieniem',
+    vatRateUnset: 'Nie wybrano',
+    vatRateHint: 'Wybierz stawkę VAT albo zwolnienie przed wystawieniem pierwszej faktury.',
     vatTreatment: 'Rozliczenie VAT',
     vatTreatmentRate: 'Stawka VAT',
     vatTreatmentExempt: 'Zwolnienie z VAT (zw)',
@@ -1923,6 +1928,7 @@ export const pl: Messages = {
     exemptionBasisArt43Help: 'Wskaż właściwy punkt (pkt) art. 43 ust. 1.',
     exemptNote: 'Faktura zwolniona nie zawiera VAT, a kwota brutto jest równa netto. Odpowiadasz za poprawność przepisu i monitorowanie limitu z art. 113.',
     invoicingProvider: 'Dostawca faktur',
+    providerUnset: 'Nie wybrano',
     providerIfirma: 'iFirma',
     providerKsef: 'Bezpośrednio w KSeF',
     sellerName: 'Pełna nazwa sprzedawcy',
@@ -1932,11 +1938,19 @@ export const pl: Messages = {
   publicAccess: {
     heading: 'Dostęp publiczny',
     intro:
-      'Zdecyduj, co zobaczą odwiedzający bez logowania: przestrzenie i kursy widoczne publicznie oraz przestrzeń, która otwiera stronę główną.',
+      'Zdecyduj, co zobaczą odwiedzający bez logowania: które kursy są widoczne publicznie i która z publicznych przestrzeni otwiera stronę główną. Publiczny podgląd pojedynczej przestrzeni włączysz w jej ustawieniach.',
     homeSpaceLabel: 'Przestrzeń startowa dla odwiedzających',
-    homeSpaceNone: 'Brak',
+    homeSpaceUnset: 'Brak',
     homeSpaceHint:
       'Do wyboru są tylko aktywne przestrzenie widoczne publicznie. Bez przestrzeni startowej odwiedzający zobaczą same kafelki.',
+    coursesHeading: 'Kursy widoczne publicznie',
+    coursesHint:
+      'Zaznaczone kursy zobaczą odwiedzający bez logowania. Lekcje pozostają zablokowane do zakupu.',
+    coursesEmpty: 'Nie masz jeszcze żadnego kursu.',
+    coursesLoading: 'Ładowanie kursów…',
+    save: 'Zapisz dostęp publiczny',
+    saving: 'Zapisywanie…',
+    saved: 'Zapisano.',
   },
   directMessages: {
     heading: 'Wiadomości prywatne',
@@ -1990,6 +2004,8 @@ export const pl: Messages = {
     ogDescriptionHint: 'Gdy pole jest puste, podgląd nie ma opisu.',
     ogImageLabel: 'Adres obrazu podglądu',
     ogImageHint: ({ width, height }) => `Zalecany rozmiar ${String(width)}×${String(height)} px. Gdy pole jest puste, używane jest logo na jasne tło.`,
+    charCount: ({ used, limit }) => `${String(used)}/${String(limit)}`,
+    charLimitReached: 'Osiągnięto limit znaków — dłuższy tekst się nie zmieści.',
     save: 'Zapisz',
     saving: 'Zapisywanie…',
     saved: 'Zapisano.',

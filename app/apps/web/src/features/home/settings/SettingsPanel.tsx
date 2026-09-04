@@ -241,7 +241,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
     basisValue.trim() === '' ||
     (selectedBasisKind === 'art_43_1' && !/\bpkt\s*\d/iu.test(basisValue))
   );
-  const provider = settings.data?.settings.invoicingProvider ?? 'ifirma';
+  const provider = settings.data?.settings.invoicingProvider ?? '';
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerAddress, setSellerAddress] = useState<string | null>(null);
 
@@ -283,6 +283,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         <FormLabel id="invoice-provider-label">{t.billing.invoicingProvider}</FormLabel>
         <Select
           labelId="invoice-provider-label"
+          displayEmpty
           value={provider}
           disabled={!canEdit || settings.isPending || updateSettings.isPending}
           onChange={(event) =>
@@ -290,6 +291,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               invoicingProvider: event.target.value === 'ksef' ? 'ksef' : 'ifirma',
             })}
         >
+          <MenuItem value="" disabled>{t.billing.providerUnset}</MenuItem>
           <MenuItem value="ifirma">{t.billing.providerIfirma}</MenuItem>
           <MenuItem value="ksef">{t.billing.providerKsef}</MenuItem>
         </Select>
@@ -331,6 +333,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <MenuItem value={23}>{t.billing.vatTreatmentRate} 23%</MenuItem>
           <MenuItem value="exempt">{t.billing.vatTreatmentExempt}</MenuItem>
         </Select>
+        <Typography variant="caption" component="p">{t.billing.vatRateHint}</Typography>
       </FormControl>
       {treatment === 'exempt' ? (
         <>
@@ -497,31 +500,86 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
   const queryClient = useQueryClient();
   const settings = useQuery(actions.tenantSettings);
   const spaces = useQuery(actions.staffSpaces);
-  const updateSettings = useMutation({
-    ...actions.updateTenantSettings,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
-    },
-  });
+  const courses = useQuery(actions.courses);
+  const updateSettings = useMutation(actions.updateTenantSettings);
+  const updateCourse = useMutation(actions.updateCourse);
+  const [homeSpaceDraft, setHomeSpaceDraft] = useState<string | null>(null);
+  const [courseDrafts, setCourseDrafts] = useState<Record<string, boolean>>({});
+  const [saved, setSaved] = useState(false);
 
   const publicSpaces = (spaces.data?.spaces ?? []).filter(
     (space) => space.publicReadOnly && space.archivedAt === null,
   );
-  const homeSpaceId = settings.data?.settings.defaultHomeSpaceId ?? '';
-  const selectable = publicSpaces.some((space) => space.id === homeSpaceId) ? homeSpaceId : '';
+  const storedHomeSpaceId = settings.data?.settings.defaultHomeSpaceId ?? '';
+  const homeSpaceId = homeSpaceDraft ?? storedHomeSpaceId;
+  const homeSpaceValue = publicSpaces.some((space) => space.id === homeSpaceId) ? homeSpaceId : '';
+  const courseList = courses.data?.courses ?? [];
+  const publiclyVisible = (course: { id: string; publiclyVisible: boolean }) =>
+    courseDrafts[course.id] ?? course.publiclyVisible;
+  const changedCourses = courseList.filter(
+    (course) => publiclyVisible(course) !== course.publiclyVisible,
+  );
+
+  const pending = updateSettings.isPending || updateCourse.isPending;
+  const loaded = settings.isSuccess && spaces.isSuccess;
+
+  const submit = async () => {
+    setSaved(false);
+    try {
+      if (homeSpaceDraft !== null) {
+        await updateSettings.mutateAsync({
+          defaultHomeSpaceId: homeSpaceDraft === '' ? null : homeSpaceDraft,
+        });
+      }
+      for (const course of changedCourses) {
+        await updateCourse.mutateAsync({ id: course.id, publiclyVisible: publiclyVisible(course) });
+      }
+    } catch {
+      return;
+    }
+    await Promise.all([
+      queryClient.invalidateQueries(actions.tenantSettingsInvalidates()),
+      queryClient.invalidateQueries(actions.coursesInvalidates()),
+      queryClient.invalidateQueries(actions.publicOfferInvalidates()),
+    ]);
+    setHomeSpaceDraft(null);
+    setCourseDrafts({});
+    setSaved(true);
+  };
 
   return (
-    <SectionCard title={t.publicAccess.heading} description={t.publicAccess.intro}>
+    <SectionCard
+      title={t.publicAccess.heading}
+      description={t.publicAccess.intro}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+      actions={canEdit ? (
+        <Button
+          type="submit"
+          variant="contained"
+          data-testid="public-access-save"
+          disabled={!loaded || pending}
+        >
+          {pending ? t.publicAccess.saving : t.publicAccess.save}
+        </Button>
+      ) : undefined}
+    >
       <FormControl fullWidth>
         <FormLabel htmlFor="public-home-space">{t.publicAccess.homeSpaceLabel}</FormLabel>
         <Select
           id="public-home-space"
-          value={selectable}
-          disabled={!canEdit || !settings.isSuccess || !spaces.isSuccess || updateSettings.isPending}
+          displayEmpty
+          value={homeSpaceValue}
+          disabled={!canEdit || !loaded || pending}
           inputProps={{ 'aria-label': t.publicAccess.homeSpaceLabel }}
-          onChange={(event) => updateSettings.mutate({ defaultHomeSpaceId: event.target.value })}
+          onChange={(event) => {
+            setSaved(false);
+            setHomeSpaceDraft(event.target.value);
+          }}
         >
-          <MenuItem value="">{t.publicAccess.homeSpaceNone}</MenuItem>
+          <MenuItem value="">{t.publicAccess.homeSpaceUnset}</MenuItem>
           {publicSpaces.map((space) => (
             <MenuItem key={space.id} value={space.id}>
               {space.name}
@@ -531,14 +589,45 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
         <Typography variant="caption" component="p">
           {t.publicAccess.homeSpaceHint}
         </Typography>
-        <FormHelperText data-testid="public-access-status">
-          {updateSettings.isPending ? t.common.saving : updateSettings.isSuccess ? t.common.saved : ' '}
-        </FormHelperText>
       </FormControl>
+      <FormControl component="fieldset" variant="standard" data-testid="public-access-courses">
+        <FormLabel component="legend">{t.publicAccess.coursesHeading}</FormLabel>
+        {courses.isPending ? (
+          <StatusView state={{ kind: 'loading', label: t.publicAccess.coursesLoading }} />
+        ) : courses.isError ? (
+          <StatusView state={{ kind: 'error', message: localizePanelError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />
+        ) : courseList.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">{t.publicAccess.coursesEmpty}</Typography>
+        ) : (
+          courseList.map((course) => (
+            <FormControlLabel
+              key={course.id}
+              control={(
+                <Switch
+                  checked={publiclyVisible(course)}
+                  disabled={!canEdit || pending}
+                  slotProps={{ input: { 'aria-label': course.name } }}
+                  data-testid={`public-course-${course.id}`}
+                  onChange={(event) => {
+                    setSaved(false);
+                    setCourseDrafts((current) => ({ ...current, [course.id]: event.target.checked }));
+                  }}
+                />
+              )}
+              label={course.name}
+            />
+          ))
+        )}
+        <FormHelperText>{t.publicAccess.coursesHint}</FormHelperText>
+      </FormControl>
+      <FormHelperText data-testid="public-access-status">
+        {pending ? t.publicAccess.saving : saved ? t.publicAccess.saved : ' '}
+      </FormHelperText>
       {spaces.isError ? (
         <StatusView state={{ kind: 'error', message: localizePanelError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
       ) : null}
       {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
+      {updateCourse.isError ? <Alert severity="error">{localizePanelError(updateCourse.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -575,6 +664,31 @@ const DirectMessagesPanel = ({ canEdit }: { canEdit: boolean }) => {
       </FormHelperText>
       {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
+  );
+};
+
+const CharacterCounter = ({
+  used,
+  limit,
+  testId,
+}: {
+  used: number;
+  limit: number;
+  testId: string;
+}) => {
+  const t = useTranslations();
+  const atLimit = used >= limit;
+  return (
+    <Typography
+      variant="caption"
+      component="p"
+      color={atLimit ? 'error' : 'text.secondary'}
+      data-testid={testId}
+    >
+      {atLimit
+        ? `${t.branding.charCount({ used, limit })} · ${t.branding.charLimitReached}`
+        : t.branding.charCount({ used, limit })}
+    </Typography>
   );
 };
 
@@ -832,6 +946,11 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               }}
             />
             <Typography variant="caption" component="p">{t.branding.ogTitleHint}</Typography>
+            <CharacterCounter
+              used={ogTitleValue.length}
+              limit={TENANT_OG_TITLE_MAX_LENGTH}
+              testId="branding-og-title-count"
+            />
           </FormControl>
           <FormControl fullWidth>
             <FormLabel htmlFor="branding-og-description">{t.branding.ogDescriptionLabel}</FormLabel>
@@ -850,6 +969,11 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             <Typography variant="caption" component="p">
               {t.branding.ogDescriptionHint}
             </Typography>
+            <CharacterCounter
+              used={ogDescriptionValue.length}
+              limit={TENANT_OG_DESCRIPTION_MAX_LENGTH}
+              testId="branding-og-description-count"
+            />
           </FormControl>
           <ImageAssetField
             id="branding-og-image-url"

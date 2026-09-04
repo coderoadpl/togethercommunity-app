@@ -70,6 +70,8 @@ interface ScreenPreparation {
 
 const visible = { state: 'visible', timeout: 20000 } as const;
 
+const CHECKLIST_DOCK_MIN_WIDTH = 600;
+
 const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   let release = (): void => undefined;
   let complete = (): void => undefined;
@@ -334,7 +336,12 @@ const SCREENS: ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     ready: async (page) => {
-      await page.getByTestId('onboarding-checklist').waitFor(visible);
+      if ((page.viewportSize()?.width ?? 0) >= CHECKLIST_DOCK_MIN_WIDTH) {
+        await page.getByTestId('studio-checklist-panel').waitFor(visible);
+        await page.getByTestId('onboarding-checklist').waitFor(visible);
+      } else {
+        await page.getByTestId('studio-checklist-launcher').waitFor(visible);
+      }
       await page.getByTestId('dashboard-tile-revenue').waitFor(visible);
       await page.getByTestId('dashboard-member-row').first().waitFor(visible);
     },

@@ -6,8 +6,9 @@ import { useNavigate } from '@tanstack/react-router';
 import { tenantSetupProgress, type TenantSetupItem, type TenantSetupItemId, type TenantSetupTier } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
+import { ChecklistSection } from './ChecklistSection.js';
 
 const itemCopy = (
   items: Messages['tenantSetup']['items'],
@@ -43,7 +44,7 @@ const SetupGroup = ({ heading, items }: { heading: string; items: TenantSetupIte
 
   return (
     <>
-      <Typography variant="overline" component="h3">
+      <Typography variant="overline" component="h4">
         {heading}
       </Typography>
       <List disablePadding>
@@ -111,7 +112,7 @@ export const TenantSetupChecklist = () => {
   const byTier = (tier: TenantSetupTier) => items.filter((item) => item.tier === tier);
 
   return (
-    <SectionCard
+    <ChecklistSection
       title={t.tenantSetup.title}
       description={t.tenantSetup.progress({ configured: progress.configured, total: progress.total })}
       data-testid="tenant-setup-checklist"
@@ -139,6 +140,6 @@ export const TenantSetupChecklist = () => {
           <SetupGroup heading={t.tenantSetup.optionalHeading} items={byTier('optional')} />
         </>
       ) : null}
-    </SectionCard>
+    </ChecklistSection>
   );
 };

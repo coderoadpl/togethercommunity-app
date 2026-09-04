@@ -16,6 +16,9 @@ export const en: Messages = {
       light: 'Light',
       dark: 'Dark',
       auto: 'Auto',
+      currentMode: ({ mode }) => format('Theme: {mode}', { mode }),
+      cycle: ({ current, next }) =>
+        format('Theme: {current}. Switch to: {next}', { current, next }),
     },
     home: 'Home',
     reload: 'Reload',
@@ -315,6 +318,11 @@ export const en: Messages = {
       firstMember: 'Welcome your first member',
       paymentsConfigured: 'Set up payments',
     },
+  },
+  studioSetup: {
+    panelTitle: 'Panel setup',
+    expand: ({ title }) => format('{title}: open the checklist', { title }),
+    collapse: ({ title }) => format('{title}: collapse the checklist', { title }),
   },
   tenantSetup: {
     title: 'Platform setup',
@@ -1517,7 +1525,6 @@ export const en: Messages = {
     coverAlt: ({ name }) => format('Course cover for {name}', { name }),
     statLessons: ({ count }) => (count === 1 ? 'Lesson' : 'Lessons'),
     statDuration: 'Total duration',
-    statCompleted: 'Completed',
     durationHoursMinutes: ({ hours, minutes }) => format('{hours} h {minutes} min', { hours, minutes }),
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
   },

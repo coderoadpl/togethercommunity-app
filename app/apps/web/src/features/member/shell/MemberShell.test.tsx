@@ -452,13 +452,14 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
   });
 
-  it('offers the colour scheme toggle in the member topbar', async () => {
+  it('offers a single cycling colour scheme button in the member topbar', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
 
     await renderShell(memberHomePath());
 
-    expect(await screen.findByTestId('color-scheme-switcher')).toBeInTheDocument();
+    expect(await screen.findByTestId('color-scheme-cycle')).toBeInTheDocument();
+    expect(screen.queryByTestId('color-scheme-switcher')).not.toBeInTheDocument();
   });
 
   it('shows the member identity block linking to the account page', async () => {
@@ -634,6 +635,8 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
     expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
+    expect(screen.getByTestId('color-scheme-cycle')).toBeInTheDocument();
+    expect(screen.queryByTestId('color-scheme-switcher')).not.toBeInTheDocument();
   });
 
   it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {

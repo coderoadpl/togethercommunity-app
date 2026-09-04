@@ -5,7 +5,7 @@ import { Link } from '@tanstack/react-router';
 
 import { TenantLogo } from '../../../branding.js';
 import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
-import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.js';
+import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { AnonSidebar } from './AnonSidebar.js';
 import { anonHomePath } from './member-nav.js';
@@ -39,7 +39,7 @@ export const AnonShell = ({ children }: { children: ReactNode }) => {
             </Box>
             <Box sx={{ flex: 1 }} />
             <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
-              <ColorSchemeSwitcher compact />
+              <ColorSchemeCycleButton />
             </Box>
             <Button component={Link} to="/login" color="inherit" size="small">
               {t.auth.signInLink}

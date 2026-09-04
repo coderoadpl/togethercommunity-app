@@ -1,62 +1,20 @@
-import { and, eq, getTableName, inArray, notExists, notInArray } from 'drizzle-orm';
-
 import { createDb } from './client.js';
-import { DEMO_TENANT_WIPE_TABLES, type DemoTenantWipeTable } from './reseed-wipe-tables.js';
-import { schedulerRuns, schedulerRunTenants, tenants } from './schema.js';
-
-const DEMO_TENANT_IDS = ['tenant-studio', 'tenant-acme', 'tenant-akademia'];
+import { reseedMarkers } from './reseed-guard.js';
+import { runReseed } from './reseed-run.js';
+import { printSeedSummary } from './seed-data.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
   'postgres://together:together@localhost:48912/together';
 
-const db = createDb('node-postgres', connectionString);
-
-const wiped: Array<{ table: string; rows: number }> = [];
-const record = (table: string, rows: unknown[]): void => {
-  wiped.push({ table, rows: rows.length });
-};
-
-const nonDemoRunTenant = db
-  .select({ id: schedulerRunTenants.id })
-  .from(schedulerRunTenants)
-  .where(and(
-    eq(schedulerRunTenants.runId, schedulerRuns.id),
-    notInArray(schedulerRunTenants.tenantId, DEMO_TENANT_IDS),
-  ));
-
-record(
-  'scheduler_runs',
-  await db
-    .delete(schedulerRuns)
-    .where(notExists(nonDemoRunTenant))
-    .returning({ id: schedulerRuns.id }),
+const summary = await runReseed(
+  createDb('node-postgres', connectionString),
+  reseedMarkers({ ...process.env, DATABASE_URL: connectionString }),
 );
 
-const wipeTenantTable = async (table: DemoTenantWipeTable): Promise<void> => {
-  const rows = await db
-    .delete(table)
-    .where(inArray(table.tenantId, DEMO_TENANT_IDS))
-    .returning({ tenantId: table.tenantId });
-  record(getTableName(table), rows);
-};
-
-for (const table of DEMO_TENANT_WIPE_TABLES) {
-  await wipeTenantTable(table);
-}
-
-record(
-  'tenants',
-  await db
-    .delete(tenants)
-    .where(inArray(tenants.id, DEMO_TENANT_IDS))
-    .returning({ id: tenants.id }),
-);
-
-console.log(`Demo tenants wiped (${DEMO_TENANT_IDS.join(', ')}):`);
-for (const entry of wiped) {
+console.log(`Demo tenants wiped (${summary.demoTenantIds.join(', ')}):`);
+for (const entry of summary.wiped) {
   if (entry.rows > 0) console.log(`  ${entry.table}: ${entry.rows} rows`);
 }
-console.log('Re-seeding...');
-
-await import('./seed.js');
+printSeedSummary(summary.seed);
+process.exit(0);

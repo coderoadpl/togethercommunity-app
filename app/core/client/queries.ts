@@ -93,6 +93,7 @@ import type {
   SpaceSeenInput,
   SpaceUpdateInput,
   SupportMessageInput,
+  PlatformDataResetInput,
   ProductsAccessItemsInput,
   ProductsPublishInput,
   ProductsUnpublishInput,
@@ -1585,6 +1586,12 @@ export const sendSupportMessageMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: ['support', 'message'],
     call: (input: SupportMessageInput) => api.sendSupportMessage(input),
+  });
+
+export const resetPlatformDataMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['platform', 'data-reset'],
+    call: (input: PlatformDataResetInput) => api.resetPlatformData(input),
   });
 
 export const onboardingQuery = (api: ApiClient) =>

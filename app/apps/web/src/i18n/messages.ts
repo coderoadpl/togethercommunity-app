@@ -209,6 +209,17 @@ export interface Messages {
     openingWorkspace: string;
     openingProducts: string;
   };
+  platformReset: {
+    title: string;
+    description: (params: { environment: string }) => string;
+    action: string;
+    confirmTitle: string;
+    confirmBody: (params: { environment: string }) => string;
+    confirmLabel: string;
+    confirmButton: string;
+    running: string;
+    success: (params: { environment: string }) => string;
+  };
   sections: {
     dashboard: string;
     products: string;

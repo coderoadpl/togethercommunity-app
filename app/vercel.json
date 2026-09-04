@@ -10,6 +10,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/platform/data-reset",
+      "destination": "/api/platform-reset"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index"
     },

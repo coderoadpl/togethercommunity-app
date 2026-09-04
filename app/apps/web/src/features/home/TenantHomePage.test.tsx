@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -147,6 +147,31 @@ describe('TenantHomePage dispatcher', () => {
 
     expect(await screen.findByTestId('resend-verification-email')).toBeInTheDocument();
     expect(await screen.findByLabelText(pl.tenant.nameLabel)).toBeInTheDocument();
+  });
+
+  it('offers the data reset only when the deployment reports a resettable environment', async () => {
+    const withoutReset = async () => {
+      server.use(
+        http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithoutTenant })),
+        http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
+      );
+      await renderHome();
+      expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
+    };
+    await withoutReset();
+    expect(screen.queryByTestId('platform-reset-open')).not.toBeInTheDocument();
+
+    cleanup();
+    server.use(
+      http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithoutTenant })),
+      http.get('/api/tenants', () => HttpResponse.json({
+        ok: true,
+        data: { ...tenantsBody, dataResetEnvironment: 'staging' },
+      })),
+    );
+    await renderHome();
+
+    expect(await screen.findByTestId('platform-reset-open')).toHaveTextContent(pl.platformReset.action);
   });
 
   it('renders the anonymous home on a tenant host instead of redirecting to sign in', async () => {

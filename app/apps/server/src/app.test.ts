@@ -15,7 +15,7 @@ import {
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
-import { selectDevEndpoints } from './composition.js';
+import { selectDevEndpoints, selectPlatformReset } from './composition.js';
 import { buildApp } from './app.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
 import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
@@ -3478,6 +3478,88 @@ describe('public route manifest', () => {
   });
 });
 
+describe('platform data reset route', () => {
+  const platformReset = (overrides: Partial<NonNullable<AppDeps['platformReset']>> = {}) => ({
+    environment: 'staging' as const,
+    ownerEmails: ['user@acme.test'],
+    productionDatabaseFingerprint: null,
+    dataReset: { run: async () => ({ wiped: [{ table: 'members', rows: 3 }] }) },
+    audit: { record: async () => undefined },
+    ...overrides,
+  });
+
+  const postReset = (overrides: Partial<AppDeps>, confirmation = 'staging') =>
+    scopedApp('none', { overrides }).request(API_PATHS.platformDataReset, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ confirmation }),
+    });
+
+  it('is absent when the deployment composes no reset surface', async () => {
+    const response = await postReset({});
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('is absent from the route table when no reset surface is composed', () => {
+    const paths = buildApp(deps()).routes.map((route) => route.path);
+
+    expect(paths).not.toContain(API_PATHS.platformDataReset);
+  });
+
+  const routeTableFor = (environment: { NODE_ENV: string; APP_ENV: string }) => {
+    const composed = selectPlatformReset(
+      {
+        ...environment,
+        PLATFORM_OWNER_EMAILS: 'user@acme.test',
+        PRODUCTION_DATABASE_FINGERPRINT: undefined,
+      },
+      () => {
+        const { dataReset, audit } = platformReset();
+        return { dataReset, audit };
+      },
+    );
+    return buildApp(composed === undefined ? deps() : { ...deps(), platformReset: composed })
+      .routes
+      .map((route) => route.path);
+  };
+
+  it('is absent from the route table when APP_ENV is production', () => {
+    expect(routeTableFor({ NODE_ENV: 'production', APP_ENV: 'production' }))
+      .not.toContain(API_PATHS.platformDataReset);
+  });
+
+  it.each(['staging', 'preview'])('is registered when APP_ENV is %s', (appEnv) => {
+    expect(routeTableFor({ NODE_ENV: 'production', APP_ENV: appEnv }))
+      .toContain(API_PATHS.platformDataReset);
+  });
+
+  it('forbids an authenticated caller outside the owner allowlist', async () => {
+    const response = await postReset({
+      platformReset: platformReset({ ownerEmails: ['someone-else@acme.test'] }),
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('reseeds for a platform owner who confirms the environment name', async () => {
+    const response = await postReset({ platformReset: platformReset() });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { environment: 'staging', wiped: [{ table: 'members', rows: 3 }] },
+    });
+  });
+
+  it('rejects a confirmation that is not the environment name', async () => {
+    const response = await postReset({ platformReset: platformReset() }, 'production');
+
+    expect(response.status).toBe(400);
+  });
+});
+
 describe('development-only route table', () => {
   const devRoutesFor = (environment: { NODE_ENV: string; APP_ENV: string }) =>
     buildApp({
@@ -4261,7 +4343,16 @@ describe('anonymous public surface routes', () => {
       && selfAuthenticatingRouteManifestEntry(route) === undefined);
 
     it('answers unauthorized on every member API route without a session', async () => {
-      const app = buildApp(deps({ authenticated: true }));
+      const app = buildApp({
+        ...deps({ authenticated: true }),
+        platformReset: {
+          environment: 'staging',
+          ownerEmails: [],
+          productionDatabaseFingerprint: null,
+          dataReset: { run: async () => ({ wiped: [] }) },
+          audit: { record: async () => undefined },
+        },
+      });
 
       const verdicts = await Promise.all(memberRoutes.map(async (route) => {
         const response = await app.request(route.path.replace(/:[^/]+/g, 'probe'), {

@@ -1171,14 +1171,29 @@ describe('community guard and error branches', () => {
     expect(await markNotificationRead(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('rejects a post whose body sanitizes to empty', async () => {
+  it('rejects a blank body', async () => {
     const d = access();
     const result = await createPost(
       memberCtx,
-      { contextKind: 'lesson', contextId: 'l1', body: '<script>alert(1)</script>' },
+      { contextKind: 'lesson', contextId: 'l1', body: '   \r\n  ' },
       d,
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('keeps angle-bracketed text in created and edited bodies', async () => {
+    const d = access();
+    const markupLike = 'Generic<T> renders <script>alert(1)</script> and <div class="x">';
+    const created = await createPost(
+      memberCtx,
+      { contextKind: 'lesson', contextId: 'l1', body: markupLike },
+      d,
+    );
+    expect(created).toMatchObject({ ok: true, value: { body: markupLike } });
+    if (!created.ok) return;
+
+    const edited = await editPost(memberCtx, { id: created.value.id, body: `${markupLike} onclick=1` }, d);
+    expect(edited).toMatchObject({ ok: true, value: { body: `${markupLike} onclick=1` } });
   });
 
   it('rejects a reply whose parent belongs to another discussion', async () => {

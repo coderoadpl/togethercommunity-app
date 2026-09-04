@@ -1,6 +1,6 @@
 {
-  "hash": "1ce0b4e63e6389c00b573bccbf9d6157c2376dbf23c47221da993d5f5eb9ba2d",
-  "shortId": "1ce0b4e63e63",
+  "hash": "f91938341e3d6276ef995e74a2236b19f8f87b1dacae74fa1967e75fd41e1689",
+  "shortId": "f91938341e3d",
   "schema": {
     "constraints": [
       {
@@ -950,6 +950,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "platform_audit_events_pkey",
+        "table": "platform_audit_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "post_report_events_pkey",
         "table": "post_report_events"
       },
@@ -1581,6 +1586,11 @@
         "definition": "CREATE INDEX orders_tenant_product_idx ON orders USING btree (tenant_id, product_id)",
         "name": "orders_tenant_product_idx",
         "table": "orders"
+      },
+      {
+        "definition": "CREATE INDEX platform_audit_events_created_idx ON platform_audit_events USING btree (created_at, id)",
+        "name": "platform_audit_events_created_idx",
+        "table": "platform_audit_events"
       },
       {
         "definition": "CREATE INDEX post_reactions_tenant_post_idx ON post_reactions USING btree (tenant_id, post_id)",
@@ -5889,6 +5899,83 @@
           }
         ],
         "name": "consents"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "action",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "detail",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "duration_ms",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "platform_audit_events"
       },
       {
         "columns": [

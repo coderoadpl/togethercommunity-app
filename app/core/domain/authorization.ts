@@ -15,6 +15,7 @@ export const CAPABILITIES = [
   'account:session:self-revoke',
   'development:inspect',
   'development:mutate',
+  'platform:data:reset',
   'enrollment:create',
   'product:read',
   'product:write',
@@ -116,6 +117,7 @@ export const PRINCIPALS = [
   'admin',
   'member',
   'authenticated',
+  'platform-owner',
   'api-key',
   'transactional-api-key',
   'import-content-api-key',
@@ -130,7 +132,10 @@ export type Principal = (typeof PRINCIPALS)[number];
 
 export type CapabilityMatrix = Record<Principal, readonly Capability[]>;
 
-const VERIFIED_EMAIL_CAPABILITIES: readonly Capability[] = ['tenant:create'];
+const VERIFIED_EMAIL_CAPABILITIES: readonly Capability[] = [
+  'tenant:create',
+  'platform:data:reset',
+];
 
 export const requiresVerifiedEmail = (capability: Capability): boolean =>
   VERIFIED_EMAIL_CAPABILITIES.includes(capability);
@@ -268,6 +273,7 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'marketing:consent:write',
     'marketing:message:read',
   ],
+  'platform-owner': ['platform:data:reset'],
   'api-key': [
     'marketing:consent:read',
     'marketing:consent:write',

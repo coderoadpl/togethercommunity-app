@@ -1371,6 +1371,8 @@ export const en: Messages = {
     revoking: 'Revoking…',
     sourceManual: 'Manual',
     sourceSimulated: 'Simulated',
+    sourceStripe: 'Stripe',
+    sourceImport: 'Import',
     revokeAccess: 'Revoke access',
     revokeConfirm: ({ product, email }) =>
       format(

@@ -1219,6 +1219,8 @@ export interface Messages {
     revoking: string;
     sourceManual: string;
     sourceSimulated: string;
+    sourceStripe: string;
+    sourceImport: string;
     revokeAccess: string;
     revokeConfirm: (params: { product: string; email: string }) => string;
     learningHeading: string;

@@ -1389,6 +1389,8 @@ export const pl: Messages = {
     revoking: 'Cofanie…',
     sourceManual: 'Ręcznie',
     sourceSimulated: 'Symulacja',
+    sourceStripe: 'Stripe',
+    sourceImport: 'Import',
     revokeAccess: 'Cofnij dostęp',
     revokeConfirm: ({ product, email }) =>
       format(

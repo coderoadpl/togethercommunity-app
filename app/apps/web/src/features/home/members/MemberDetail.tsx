@@ -46,8 +46,18 @@ import { PanelBackLink } from '../PanelBackLink.js';
 const toIsoOrNull = (localValue: string): string | null =>
   localValue.trim() === '' ? null : new Date(localValue).toISOString();
 
-const grantSourceLabel = (source: GrantSource, t: Messages): string =>
-  source === 'manual' ? t.members.sourceManual : t.members.sourceSimulated;
+const grantSourceLabel = (source: GrantSource, t: Messages): string => {
+  switch (source) {
+    case 'manual':
+      return t.members.sourceManual;
+    case 'simulated':
+      return t.members.sourceSimulated;
+    case 'stripe':
+      return t.members.sourceStripe;
+    case 'import':
+      return t.members.sourceImport;
+  }
+};
 
 const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () => Promise<void> }) => {
   const t = useTranslations();

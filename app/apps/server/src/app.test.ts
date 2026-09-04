@@ -3870,21 +3870,21 @@ describe('platform data reset route', () => {
 });
 
 describe('domain provisioner selection', () => {
-  it('stays manual until both the Vercel token and project are configured', () => {
+  it('stays manual until both the provisioner token and project are configured', () => {
     expect(selectDomainProvisioner({
-      VERCEL_API_TOKEN: undefined,
-      VERCEL_PROJECT_ID: undefined,
-      VERCEL_TEAM_ID: undefined,
-      VERCEL_DOMAIN_GIT_BRANCH: undefined,
+      DOMAIN_PROVISIONER_TOKEN: undefined,
+      DOMAIN_PROVISIONER_PROJECT_ID: undefined,
+      DOMAIN_PROVISIONER_TEAM_ID: undefined,
+      DOMAIN_PROVISIONER_GIT_BRANCH: undefined,
     }).provider).toBe('manual');
   });
 
-  it('hands provisioning to Vercel once the project credentials are present', () => {
+  it('hands provisioning to the provider once the project credentials are present', () => {
     expect(selectDomainProvisioner({
-      VERCEL_API_TOKEN: 'token',
-      VERCEL_PROJECT_ID: 'prj_1',
-      VERCEL_TEAM_ID: 'team_1',
-      VERCEL_DOMAIN_GIT_BRANCH: 'staging',
+      DOMAIN_PROVISIONER_TOKEN: 'token',
+      DOMAIN_PROVISIONER_PROJECT_ID: 'prj_1',
+      DOMAIN_PROVISIONER_TEAM_ID: 'team_1',
+      DOMAIN_PROVISIONER_GIT_BRANCH: 'staging',
     }).provider).toBe('vercel');
   });
 });

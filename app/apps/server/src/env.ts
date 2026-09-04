@@ -61,12 +61,16 @@ export const envSchema = z
     /** DNS target creators point a custom domain at; defaults to the platform host. */
     APP_CUSTOM_DOMAIN_TARGET: optionalNonEmptyString,
     APP_COMMIT_SHA: optionalNonEmptyString,
-    /** Token and project together hand custom-domain provisioning to Vercel; unset keeps manual mode. */
-    VERCEL_API_TOKEN: optionalNonEmptyString,
-    VERCEL_PROJECT_ID: optionalNonEmptyString,
-    VERCEL_TEAM_ID: optionalNonEmptyString,
+    /**
+     * Token and project together hand custom-domain provisioning to the provider; unset keeps
+     * manual mode. Never name these `VERCEL_*`: the platform injects its own variables under that
+     * prefix, so a system-provided project id would read as half-configured provisioning.
+     */
+    DOMAIN_PROVISIONER_TOKEN: optionalNonEmptyString,
+    DOMAIN_PROVISIONER_PROJECT_ID: optionalNonEmptyString,
+    DOMAIN_PROVISIONER_TEAM_ID: optionalNonEmptyString,
     /** Routes tenant domains at a preview branch instead of production (staging: "staging"). */
-    VERCEL_DOMAIN_GIT_BRANCH: optionalNonEmptyString,
+    DOMAIN_PROVISIONER_GIT_BRANCH: optionalNonEmptyString,
     VERCEL_URL: optionalNonEmptyString,
     VERCEL_BRANCH_URL: optionalNonEmptyString,
     AUTH_TRUSTED_PROXY_HEADER: optionalHeaderName,
@@ -140,11 +144,18 @@ export const envSchema = z
     WEB_DIST_DIR: z.string().default('dist/web'),
   })
   .superRefine((env, ctx) => {
-    if ((env.VERCEL_API_TOKEN === undefined) !== (env.VERCEL_PROJECT_ID === undefined)) {
+    if (
+      (env.DOMAIN_PROVISIONER_TOKEN === undefined)
+      !== (env.DOMAIN_PROVISIONER_PROJECT_ID === undefined)
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: [env.VERCEL_API_TOKEN === undefined ? 'VERCEL_API_TOKEN' : 'VERCEL_PROJECT_ID'],
-        message: 'VERCEL_API_TOKEN and VERCEL_PROJECT_ID must be set together',
+        path: [
+          env.DOMAIN_PROVISIONER_TOKEN === undefined
+            ? 'DOMAIN_PROVISIONER_TOKEN'
+            : 'DOMAIN_PROVISIONER_PROJECT_ID',
+        ],
+        message: 'DOMAIN_PROVISIONER_TOKEN and DOMAIN_PROVISIONER_PROJECT_ID must be set together',
       });
     }
     if ((env.SMTP_USER === undefined) !== (env.SMTP_PASSWORD === undefined)) {

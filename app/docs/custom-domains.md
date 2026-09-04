@@ -87,24 +87,28 @@ Set these on the deployment that terminates TLS:
 | Key | Purpose |
 |---|---|
 | `APP_CUSTOM_DOMAIN_TARGET` | The `CNAME` value shown to creators. Defaults to the platform host. |
-| `VERCEL_API_TOKEN` | Enables provider mode. See the warning below. |
-| `VERCEL_PROJECT_ID` | The project the domains attach to. Required together with the token. |
-| `VERCEL_TEAM_ID` | Set when the project lives in a team. |
-| `VERCEL_DOMAIN_GIT_BRANCH` | Routes attached domains at a branch deployment. Set to `staging` on the staging environment; leave unset in production so domains serve the production deployment. |
+| `DOMAIN_PROVISIONER_TOKEN` | Enables provider mode. See the warning below. |
+| `DOMAIN_PROVISIONER_PROJECT_ID` | The project the domains attach to. Required together with the token. |
+| `DOMAIN_PROVISIONER_TEAM_ID` | Set when the project lives in a team. |
+| `DOMAIN_PROVISIONER_GIT_BRANCH` | Routes attached domains at a branch deployment. Set to `staging` on the staging environment; leave unset in production so domains serve the production deployment. |
+
+These keys deliberately avoid the `VERCEL_` prefix: the platform injects its own
+`VERCEL_*` system variables (including a project id) into every deployment, and
+a name collision there would read as half-configured provisioning.
 
 The scheduled check runs at `/api/internal/domain-check` every 15 minutes and
 authenticates with `CRON_SECRET`.
 
 A Vercel token carries every permission its owner has across the whole team —
 it cannot be limited to one project or to domain operations. Anyone who reads
-`VERCEL_API_TOKEN` out of the runtime can read environment variables, trigger
+`DOMAIN_PROVISIONER_TOKEN` out of the runtime can read environment variables, trigger
 deployments and delete projects. Issue it from a dedicated team member with the
 narrowest role that can attach domains, never from the team owner's account,
 and rotate it whenever anyone with runtime access leaves.
 
 ### Manual mode
 
-With no `VERCEL_API_TOKEN` the platform runs the manual provisioner: adding a
+With no `DOMAIN_PROVISIONER_TOKEN` the platform runs the manual provisioner: adding a
 domain records the row and shows the `CNAME` to `APP_CUSTOM_DOMAIN_TARGET`, and
 nothing else contacts an external API. The domain stays *Czeka na DNS* until an
 operator flips it:

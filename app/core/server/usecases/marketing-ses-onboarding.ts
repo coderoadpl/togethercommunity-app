@@ -1,5 +1,6 @@
 import {
   err,
+  normalizeSesWebhookEndpoint,
   notFound,
   ok,
   tenantSesBroadcastsReady,
@@ -19,6 +20,7 @@ import type {
   SesOnboardingControlPlane,
   TenantSesSettingsRepository,
 } from '../ports.js';
+import type { SesWebhookBaseUrlResolver } from './ses-webhook-url.js';
 
 export type { SesOnboardingControlPlane } from '../ports.js';
 
@@ -49,7 +51,7 @@ export interface SesOnboardingDeps {
   credentials: MarketingSesCredentialResolver;
   controlPlane: SesOnboardingControlPlane;
   clock: Clock;
-  webhookBaseUrl: string;
+  webhookBaseUrl: SesWebhookBaseUrlResolver;
 }
 
 const onboardingContext = async (ctx: Ctx, deps: SesOnboardingDeps) => {
@@ -63,7 +65,7 @@ const onboardingContext = async (ctx: Ctx, deps: SesOnboardingDeps) => {
     tenantId: tenantId.value,
     settings,
     credentials: credentials.value,
-    webhookUrl: `${deps.webhookBaseUrl}/${settings.webhookToken}`,
+    webhookUrl: `${await deps.webhookBaseUrl(tenantId.value)}/${settings.webhookToken}`,
   });
 };
 
@@ -79,6 +81,44 @@ const store = async (
   const next = { ...settings, ...patch, broadcastsEnabled: false };
   next.broadcastsEnabled = tenantSesBroadcastsReady(next);
   return deps.settings.upsert(tenantId, next);
+};
+
+export const staleSesWebhookEndpoint = (
+  settings: Pick<TenantSesSettings, 'snsSubscriptionEndpoint'>,
+  webhookUrl: string,
+): string | null => {
+  const subscribed = settings.snsSubscriptionEndpoint;
+  if (subscribed === null) return null;
+  return normalizeSesWebhookEndpoint(subscribed) === normalizeSesWebhookEndpoint(webhookUrl)
+    ? null
+    : subscribed;
+};
+
+const migrateStaleSubscription = async (
+  deps: SesOnboardingDeps,
+  input: {
+    credentials: SesMarketingCredentials;
+    tenantId: string;
+    settings: TenantSesSettings;
+    topicArn: string;
+    webhookUrl: string;
+  },
+): Promise<Result<TenantSesSettings, AppError>> => {
+  const stale = staleSesWebhookEndpoint(input.settings, input.webhookUrl);
+  if (stale === null) return ok(input.settings);
+  const subscription = await deps.controlPlane.ensureSubscription(input.credentials, {
+    topicArn: input.topicArn,
+    endpoint: input.webhookUrl,
+  });
+  if (!subscription.ok) return subscription;
+  await deps.controlPlane.removeSubscription(input.credentials, {
+    topicArn: input.topicArn,
+    endpoint: stale,
+  });
+  return ok(await store(deps, input.tenantId, input.settings, {
+    snsSubscriptionEndpoint: subscription.value.endpoint,
+    snsSubscriptionConfirmedAt: null,
+  }));
 };
 
 export const deriveSesOnboardingChecklist = (input: {
@@ -146,6 +186,15 @@ export const provisionSesInfrastructure = async (
   if (current.snsTopicArn !== topic.value.arn) {
     current = await store(deps, context.value.tenantId, current, { snsTopicArn: topic.value.arn });
   }
+  const migrated = await migrateStaleSubscription(deps, {
+    credentials: context.value.credentials,
+    tenantId: context.value.tenantId,
+    settings: current,
+    topicArn: topic.value.arn,
+    webhookUrl: context.value.webhookUrl,
+  });
+  if (!migrated.ok) return migrated;
+  current = migrated.value;
   const subscription = await deps.controlPlane.ensureSubscription(context.value.credentials, {
     topicArn: topic.value.arn,
     endpoint: context.value.webhookUrl,
@@ -216,6 +265,17 @@ export const pollSesOnboarding = async (
       ? context.value.settings.identityVerifiedAt ?? deps.clock.nowIso()
       : null,
   });
+  if (current.snsTopicArn !== null) {
+    const migrated = await migrateStaleSubscription(deps, {
+      credentials: context.value.credentials,
+      tenantId: context.value.tenantId,
+      settings: current,
+      topicArn: current.snsTopicArn,
+      webhookUrl: context.value.webhookUrl,
+    });
+    if (!migrated.ok) return migrated;
+    current = migrated.value;
+  }
   let configurationSetReady = false;
   let eventDestinationReady = false;
   let observedSubscription: boolean | null = null;
@@ -333,7 +393,7 @@ const checkTenantSesIdentity = async (
         settings.configurationSet,
       ),
       topicArn: settings.snsTopicArn,
-      endpoint: `${deps.webhookBaseUrl}/${settings.webhookToken}`,
+      endpoint: `${await deps.webhookBaseUrl(tenantId)}/${settings.webhookToken}`,
       subscribedEndpoint: settings.snsSubscriptionEndpoint,
     },
   );

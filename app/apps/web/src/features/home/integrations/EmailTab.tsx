@@ -77,11 +77,13 @@ const LastSnsDelivery = ({ delivery }: { delivery: SnsWebhookDelivery | null }) 
 const SesOnboardingWizard = ({
   enabled,
   identityAlreadyVerified,
+  webhookEndpointStale,
   lastDelivery,
   onChecklist,
 }: {
   enabled: boolean;
   identityAlreadyVerified: boolean;
+  webhookEndpointStale: boolean;
   lastDelivery: SnsWebhookDelivery | null;
   onChecklist(checklist: LiveSesChecklist): void;
 }) => {
@@ -164,6 +166,7 @@ const SesOnboardingWizard = ({
         </>
       )}
       <Typography variant="body2">{t.marketing.wizardProvisionHint}</Typography>
+      {webhookEndpointStale ? <Alert severity="warning">{t.marketing.wizardWebhookEndpointStale}</Alert> : null}
       <Stack direction="row" useFlexGap sx={{ gap: '0.75rem', flexWrap: 'wrap' }}>
         <Button
           type="button"
@@ -640,6 +643,7 @@ export const EmailTab = () => {
       <SesOnboardingWizard
         enabled={credentialsConfigured && settings !== null}
         identityAlreadyVerified={identityAlreadyVerified}
+        webhookEndpointStale={result.data.webhookEndpointStale}
         lastDelivery={result.data.lastSnsDelivery}
         onChecklist={setLiveChecklist}
       />

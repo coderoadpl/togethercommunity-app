@@ -1551,6 +1551,7 @@ export const marketingSesSettingsOutputSchema = z.object({
   resendConfigured: z.boolean(),
   platformPool: z.object({ used: z.number().int().nonnegative(), limit: z.literal(1000) }),
   webhookUrl: z.string().url().nullable(),
+  webhookEndpointStale: z.boolean(),
   lastSnsDelivery: snsWebhookDeliverySchema.nullable(),
 });
 export const marketingReputationOutputSchema = emailReputationSchema;

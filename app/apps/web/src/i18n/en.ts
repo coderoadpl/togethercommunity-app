@@ -2163,6 +2163,7 @@ export const en: Messages = {
     wizardIdentityAlreadyVerified: 'The domain is already verified in SES — you can skip the DNS step',
     wizardProvision: 'Create SES + SNS infrastructure',
     wizardProvisionHint: 'Creates the configuration set, SNS topic policy and HTTPS subscription, then publishes Send, Delivery, Bounce, Complaint, Open and Click events.',
+    wizardWebhookEndpointStale: 'The webhook address changed — click Create infrastructure to subscribe the new address',
     wizardPoll: 'Poll AWS status',
     wizardSimulator: 'Send bounce simulator test',
     wizardSimulatorHint: 'The checklist completes after the signed SNS bounce reaches this workspace webhook.',

@@ -19,6 +19,7 @@ import {
   SetTopicAttributesCommand,
   SNSClient,
   SubscribeCommand,
+  UnsubscribeCommand,
   type SubscribeCommandInput,
   type SubscribeCommandOutput,
   type Subscription,
@@ -202,11 +203,14 @@ const listSubscriptions = async (
 interface SnsSubscriptionOperations {
   list(sns: SNSClient, topicArn: string): Promise<Subscription[]>;
   subscribe(sns: SNSClient, input: SubscribeCommandInput): Promise<SubscribeCommandOutput>;
+  unsubscribe(sns: SNSClient, subscriptionArn: string): Promise<unknown>;
 }
 
 const snsSubscriptionOperations: SnsSubscriptionOperations = {
   list: listSubscriptions,
   subscribe: async (sns, input) => sns.send(new SubscribeCommand(input)),
+  unsubscribe: async (sns, subscriptionArn) =>
+    sns.send(new UnsubscribeCommand({ SubscriptionArn: subscriptionArn })),
 };
 
 const TOPIC_OWNER_ACTIONS = [
@@ -350,6 +354,21 @@ export const createSesOnboardingControlPlane = (
       return ok({ ...subscriptionArnState(created.SubscriptionArn), endpoint: input.endpoint });
     } catch (cause) {
       return failed('Could not subscribe the Together webhook to SNS', cause);
+    }
+  },
+  removeSubscription: async (credentials, input) => {
+    try {
+      const sns = factory(credentials).sns;
+      const existing = findHttpsSubscription(
+        await subscriptions.list(sns, input.topicArn),
+        [input.endpoint],
+      );
+      const arn = subscriptionArnState(existing?.SubscriptionArn).arn;
+      if (arn === null) return ok({ removed: false });
+      await subscriptions.unsubscribe(sns, arn);
+      return ok({ removed: true });
+    } catch (cause) {
+      return failed('Could not unsubscribe the previous Together webhook from SNS', cause);
     }
   },
   readInfrastructure: async (credentials, input) => {

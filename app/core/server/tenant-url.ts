@@ -15,3 +15,18 @@ export const tenantUrl = (
   }
   return url.toString();
 };
+
+export const customDomainOrigin = (domain: string, deps: TenantUrlDeps): string => {
+  const configured = new URL(deps.appBaseUrl);
+  const origin = new URL(`https://${domain}`);
+  if (configured.protocol === 'https:') origin.port = configured.port;
+  return origin.origin;
+};
+
+export const tenantOriginUrl = (
+  tenant: { slug: string | null; customDomain: string | null },
+  deps: TenantUrlDeps,
+): string =>
+  tenant.customDomain === null
+    ? new URL(tenantUrl(tenant.slug, '/', deps)).origin
+    : customDomainOrigin(tenant.customDomain, deps);

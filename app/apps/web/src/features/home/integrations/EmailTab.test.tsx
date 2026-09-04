@@ -17,6 +17,7 @@ const sesSettings = {
     resendConfigured: true,
     platformPool: { used: 25, limit: 1000 },
     webhookUrl: 'https://app.test/api/webhooks/ses/webhook-token',
+    webhookEndpointStale: false,
     lastSnsDelivery: null,
     settings: {
       tenantId: 'tenant-1',
@@ -67,6 +68,7 @@ const unconfiguredSender = {
     resendConfigured: false,
     platformPool: { used: 0, limit: 1000 },
     webhookUrl: null,
+    webhookEndpointStale: false,
     settings: null,
     lastSnsDelivery: null,
   },
@@ -219,6 +221,19 @@ describe('email transport wizard', () => {
     await vi.waitFor(() => {
       expect(screen.queryByText('Infrastruktura SES + SNS jest utworzona')).not.toBeInTheDocument();
     });
+  }, 15_000);
+
+  it('asks for a new provisioning run when the subscribed webhook address is stale', async () => {
+    server.use(
+      http.get('/api/marketing/ses-settings', () => HttpResponse.json({
+        ...sesSettings,
+        data: { ...sesSettings.data, webhookEndpointStale: true },
+      })),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+    );
+    renderWithProviders(<EmailTab />);
+
+    expect(await screen.findByText(/Adres webhooka zmienił się/)).toBeInTheDocument();
   }, 15_000);
 
   it('shows the AWS message verbatim when provisioning fails as integration_unavailable', async () => {

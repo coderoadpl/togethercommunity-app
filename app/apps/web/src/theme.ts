@@ -3102,38 +3102,49 @@ export const VisuallyHidden = styled('span')({
   border: 0,
 });
 
-export const CourseCardCover = styled('img')(({ theme }) => ({
+export type CoverFrame = 'card' | 'standalone';
+
+/** Wider than the member course column, so a page cover never shrinks below the member reference. */
+const COVER_STANDALONE_MAX_WIDTH = '45rem';
+
+const coverBox = (theme: Theme, frame: CoverFrame) => ({
   display: 'block',
   width: '100%',
   aspectRatio: '16 / 9',
-  objectFit: 'cover',
-  borderBottom: `1px solid ${theme.palette.divider}`,
-}));
+  ...(frame === 'standalone'
+    ? {
+        maxWidth: COVER_STANDALONE_MAX_WIDTH,
+        border: `1px solid ${theme.palette.divider}`,
+        borderRadius: theme.shape.borderRadius,
+      }
+    : { borderBottom: `1px solid ${theme.palette.divider}` }),
+});
 
-export const CourseCardCoverFallback = styled(Box)(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  aspectRatio: '16 / 9',
-  backgroundColor: alpha(theme.palette.text.primary, 0.06),
-  color: theme.palette.text.primary,
-  borderBottom: `1px solid ${theme.palette.divider}`,
-}));
+const forwardExceptFrame = { shouldForwardProp: (prop: PropertyKey) => prop !== 'frame' };
 
-export const CourseCardInitials = styled(Typography)<AsElement>({
+export const CoverImageElement = styled('img', forwardExceptFrame)<{ frame: CoverFrame }>(
+  ({ theme, frame }) => ({
+    ...coverBox(theme, frame),
+    objectFit: 'cover',
+  }),
+);
+
+export const CoverPlaceholderBox = styled(Box, forwardExceptFrame)<{ frame: CoverFrame }>(
+  ({ theme, frame }) => ({
+    ...coverBox(theme, frame),
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: alpha(theme.palette.text.primary, 0.06),
+    color: theme.palette.text.primary,
+  }),
+);
+
+export const CoverPlaceholderInitials = styled(Typography)<AsElement>({
   fontSize: '2.1rem',
   fontWeight: 700,
   letterSpacing: '0.12em',
 });
-
-export const CourseCoverImage = styled('img')(({ theme }) => ({
-  display: 'block',
-  width: '100%',
-  aspectRatio: '16 / 9',
-  objectFit: 'cover',
-  border: `1px solid ${theme.palette.divider}`,
-  borderRadius: theme.shape.borderRadius,
-}));
 
 /** Fixed page backgrounds a logo has to sit on, so a preview shows its real contrast. */
 const PREVIEW_SWATCH = {
@@ -3143,6 +3154,8 @@ const PREVIEW_SWATCH = {
 
 export type PreviewBackground = keyof typeof PREVIEW_SWATCH;
 
+const COVER_PREVIEW_MAX_WIDTH = '30rem';
+
 export const CoverPreviewSurface = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'swatch',
 })<{ swatch?: PreviewBackground | undefined }>(({ theme, swatch }) => ({
@@ -3151,7 +3164,7 @@ export const CoverPreviewSurface = styled(Box, {
   alignItems: 'center',
   justifyContent: 'center',
   width: '100%',
-  maxWidth: '30rem',
+  maxWidth: COVER_PREVIEW_MAX_WIDTH,
   aspectRatio: '16 / 9',
   overflow: 'hidden',
   border: `1px solid ${theme.palette.divider}`,

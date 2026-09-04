@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
@@ -75,7 +76,14 @@ describe('CheckoutPage', () => {
     renderCheckout('course-1');
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
-    expect(screen.getByTestId('checkout-product-cover')).toHaveAttribute('src', 'https://cdn.test/intro.jpg');
+    const cover = screen.getByTestId('checkout-product-cover');
+    expect(cover).toHaveAttribute('src', 'https://cdn.test/intro.jpg');
+    expect(stylesAt(cover, 1440)).toMatchObject({
+      'aspect-ratio': '16/9',
+      'object-fit': 'cover',
+      width: '100%',
+    });
+    expect(stylesAt(cover, 1440)['max-height']).toBeUndefined();
     expect(screen.getByText('49,00 zł')).toBeInTheDocument();
     expect(screen.getByText(pl.checkout.checkoutEyebrow)).toBeInTheDocument();
     expect(screen.getByText(pl.checkout.simulatedPaymentDevNote)).toBeInTheDocument();
@@ -88,6 +96,25 @@ describe('CheckoutPage', () => {
     expect(screen.getByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
     expect(screen.queryByText(pl.checkout.alreadyOwnedTitle)).not.toBeInTheDocument();
     expect(screen.getByText(pl.checkout.productionNote)).toBeInTheDocument();
+  });
+
+  it('gives a product without a cover the same neutral placeholder as a member card', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
+      ),
+    );
+
+    renderCheckout('course-1');
+
+    const placeholder = await screen.findByTestId('checkout-product-cover-fallback');
+    expect(placeholder).toHaveTextContent('IC');
+    expect(stylesAt(placeholder, 1440)).toMatchObject({
+      'aspect-ratio': '16/9',
+      width: '100%',
+    });
+    expect(screen.queryByTestId('checkout-product-cover')).not.toBeInTheDocument();
   });
 
   it('renders tenant social links after the payment controls', async () => {

@@ -18,6 +18,7 @@ const identity = (tenantId: string | null): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 describe('authorize', () => {

@@ -43,6 +43,7 @@ interface StoredSettings {
   invoiceExemptionBasis?: string | null;
   defaultHomeSpaceId?: string | null;
   directMessagesEnabled?: boolean;
+  defaultLanguage?: 'pl' | 'en';
 }
 
 interface StubSpace {
@@ -472,6 +473,32 @@ describe('SettingsPanel direct messages', () => {
     await userEvent.click(toggle);
 
     await waitFor(() => expect(updates).toContainEqual({ directMessagesEnabled: true }));
+  });
+});
+
+describe('SettingsPanel e-mail language', () => {
+  it('labels the picker and saves the chosen platform default', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'pl' });
+
+    const picker = await screen.findByRole('combobox', { name: pl.emailLanguageSettings.label });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await userEvent.click(picker);
+    await userEvent.click(
+      screen.getByRole('option', { name: pl.emailLanguageSettings.options.en }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: pl.emailLanguageSettings.save }));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'en' }));
+  });
+
+  it('saves the stored default back instead of the Polish fallback', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'en' });
+
+    const picker = await screen.findByRole('combobox', { name: pl.emailLanguageSettings.label });
+    await waitFor(() => expect(picker).toHaveTextContent(pl.emailLanguageSettings.options.en));
+    await userEvent.click(screen.getByRole('button', { name: pl.emailLanguageSettings.save }));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'en' }));
   });
 });
 

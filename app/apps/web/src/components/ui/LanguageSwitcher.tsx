@@ -3,7 +3,13 @@ import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { languageOptions, useLanguage, useTranslations, type Language } from '../../i18n/index.js';
 import { useGlobalChromeSuppressed } from './app-chrome.js';
 
-export const LanguageSwitcher = ({ inline = false }: { inline?: boolean }) => {
+export const LanguageSwitcher = ({
+  inline = false,
+  onChange,
+}: {
+  inline?: boolean;
+  onChange?: (language: Language) => void;
+}) => {
   const { language, setLanguage } = useLanguage();
   const t = useTranslations();
   const suppressed = useGlobalChromeSuppressed();
@@ -18,7 +24,9 @@ export const LanguageSwitcher = ({ inline = false }: { inline?: boolean }) => {
       value={language}
       aria-label={t.common.language}
       onChange={(_event, next: Language | null) => {
-        if (next) setLanguage(next);
+        if (next === null) return;
+        setLanguage(next);
+        onChange?.(next);
       }}
       sx={{ '& .MuiToggleButton-root': { minHeight: '44px', minWidth: '44px' } }}
     >

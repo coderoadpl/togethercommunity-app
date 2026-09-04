@@ -1,8 +1,8 @@
 import {
-  DEFAULT_LANGUAGE,
   emailTransportTest,
   integrationNotConfigured,
   ok,
+  resolveEmailLanguage,
   type AppError,
   type EmailIntegrationTransport,
   type IntegrationProvider,
@@ -17,6 +17,7 @@ import type {
   EmailPort,
   PaymentProvider,
   StorageProvider,
+  TenantRepository,
   TransactionalEmailSender,
 } from '../ports.js';
 import { authorizeTenant } from '../authorize.js';
@@ -30,6 +31,7 @@ export interface TestIntegrationDeps {
   emailTransports: EmailIntegrationTransportResolver;
   payment: PaymentProvider;
   storage: StorageProvider;
+  tenants: Pick<TenantRepository, 'findSettings'>;
 }
 
 type TestedTransport = EmailIntegrationTransport | TransactionalEmailTransport;
@@ -50,7 +52,7 @@ const resolveTestedTransport = async (
 const testEmailTransport = async (
   ctx: Ctx,
   tenantId: string,
-  input: { transport: EmailIntegrationTransport | undefined; language: string },
+  input: { transport: EmailIntegrationTransport | undefined; language: string | undefined },
   deps: TestIntegrationDeps,
 ): Promise<Result<ProviderDiagnostic, AppError>> => {
   const tested = await resolveTestedTransport(tenantId, input.transport, deps);
@@ -59,9 +61,15 @@ const testEmailTransport = async (
   }
   const diagnostic = await tested.email.test();
   if (!diagnostic.ok) return diagnostic;
+  const settings = await deps.tenants.findSettings(tenantId);
+  const language = resolveEmailLanguage(
+    ctx.identity.memberLanguage,
+    input.language,
+    settings?.defaultLanguage,
+  );
   const message = {
     to: ctx.identity.email,
-    ...emailTransportTest(input.language, { transport: tested.transport }),
+    ...emailTransportTest(language, { transport: tested.transport }),
   };
   const sent = input.transport === undefined
     ? await deps.emailSender.send({ tenantId, ...message })
@@ -87,7 +95,7 @@ export const testIntegration = async (
         ? await testEmailTransport(
             ctx,
             tenant.value,
-            { transport: input.emailTransport, language: input.language ?? DEFAULT_LANGUAGE },
+            { transport: input.emailTransport, language: input.language },
             deps,
           )
         : await deps.payment.test({ tenantId: tenant.value, appBaseUrl: deps.appBaseUrl });

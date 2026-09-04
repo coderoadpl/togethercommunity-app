@@ -42,6 +42,7 @@ import type {
   SpaceRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
+  TenantRepository,
   ThreadSubscriptionRepository,
 } from '../ports.js';
 import {
@@ -67,6 +68,7 @@ export interface EventsDeps {
   fanoutJobs: NotificationFanoutJobRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;

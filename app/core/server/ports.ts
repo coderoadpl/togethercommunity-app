@@ -115,6 +115,7 @@ import type {
   FiscalArtifact,
   KsefEnvironment,
   KsefStatus,
+  Language,
   WipedTable,
 } from '#core/domain/index.js';
 
@@ -542,7 +543,7 @@ export interface NotificationDeliveryContext {
   /** Lesson name for lesson contexts, space name for space contexts. */
   contextName: string;
   contextUrl: string;
-  language: string;
+  language: Language;
 }
 
 export interface NotificationChannelPort {
@@ -626,6 +627,11 @@ export interface MemberRepository {
     tenantId: string,
     memberId: string,
     displayName: string | null,
+  ): Promise<Member | null>;
+  updateLanguage(
+    tenantId: string,
+    memberId: string,
+    language: Language | null,
   ): Promise<Member | null>;
   updateDmOptOut(
     tenantId: string,
@@ -1967,7 +1973,9 @@ export interface AutomationIdempotencyRepository {
 
 export interface TenantAccessReader {
   listTenantsForStaff(userId: string): Promise<Membership[]>;
-  listStaffForTenant(tenantId: string): Promise<Array<{ userId: string; email: string }>>;
+  listStaffForTenant(
+    tenantId: string,
+  ): Promise<Array<{ userId: string; email: string; language: Language | null }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
   findMember(tenantId: string, userId: string): Promise<Member | null>;
 }

@@ -59,6 +59,7 @@ export const resolveIdentity = async (
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   };
 
   if (!tenant.value) return ok(base);
@@ -85,5 +86,6 @@ export const resolveIdentity = async (
     memberDisplayName: member?.displayName ?? null,
     memberBannedAt: member?.bannedAt ?? null,
     memberDmOptOutAt: member?.dmOptOutAt ?? null,
+    memberLanguage: member?.language ?? null,
   });
 };

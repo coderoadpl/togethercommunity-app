@@ -13,5 +13,16 @@ export const languageOrDefault = (language: string): Language => {
   return parsed.success ? parsed.data : DEFAULT_LANGUAGE;
 };
 
+export const resolveEmailLanguage = (
+  ...preferences: ReadonlyArray<string | null | undefined>
+): Language => {
+  for (const preference of preferences) {
+    if (preference === null || preference === undefined) continue;
+    const parsed = languageSchema.safeParse(preference);
+    if (parsed.success) return parsed.data;
+  }
+  return DEFAULT_LANGUAGE;
+};
+
 /** HTTP header carrying the UI language for transactional magic-link emails. */
 export const MAGIC_LINK_LANGUAGE_HEADER = 'x-together-language';

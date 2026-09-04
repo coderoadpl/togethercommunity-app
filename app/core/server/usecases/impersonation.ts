@@ -264,6 +264,7 @@ export const resolveImpersonation = async (
       memberDisplayName: member.displayName,
       memberBannedAt: member.bannedAt,
       memberDmOptOutAt: member.dmOptOutAt,
+      memberLanguage: member.language ?? null,
     },
     principal: {
       id: session.id,

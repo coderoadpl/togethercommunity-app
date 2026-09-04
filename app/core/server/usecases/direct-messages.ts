@@ -1,5 +1,4 @@
 import {
-  DEFAULT_LANGUAGE,
   DM_CONVERSATION_RATE_LIMIT,
   DM_MESSAGE_RATE_LIMIT,
   NO_DM_BLOCKS,
@@ -70,6 +69,7 @@ import {
   spaceContextAccess,
 } from './community-access.js';
 import { resolveAuthorDisplay } from './community.js';
+import { tenantEmailLanguage } from './email-language.js';
 
 export interface DirectMessagesDeps {
   dmConversations: DmConversationRepository;
@@ -438,13 +438,15 @@ const notifyDmRecipient = async (
     tenantSlug: tenant.tenantSlug,
     conversationId: input.conversationId,
   });
+  const language =
+    input.recipient.member?.language ?? (await tenantEmailLanguage(tenantId, deps));
   for (const channel of deps.notificationChannels) {
     const delivered = await channel.deliver(inserted, {
       recipientEmail: input.recipient.member?.email ?? null,
       tenantName: tenant.tenantName,
       contextName: input.senderDisplay,
       contextUrl: conversationUrl,
-      language: DEFAULT_LANGUAGE,
+      language,
     });
     if (!delivered.ok) return delivered;
   }

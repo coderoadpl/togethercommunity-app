@@ -5,6 +5,7 @@ import {
   notFound,
   ok,
   type AppError,
+  type Language,
   type Result,
 } from '#core/domain/index.js';
 
@@ -18,13 +19,15 @@ export interface MemberProfileDeps {
 }
 
 export interface MemberProfileInput {
-  displayName: string | null;
+  displayName?: string | null | undefined;
   dmOptOut?: boolean | undefined;
+  language?: Language | null | undefined;
 }
 
 export interface MemberProfile {
   displayName: string | null;
   dmOptOut: boolean;
+  language: Language | null;
 }
 
 export const updateMyProfile = async (
@@ -40,12 +43,11 @@ export const updateMyProfile = async (
   if (ctx.identity.memberBannedAt !== null) {
     return err(banned('This account is suspended in this community'));
   }
-  const renamed = await deps.members.updateDisplayName(
-    tenant.value,
-    ctx.identity.memberId,
-    input.displayName,
-  );
-  const updated =
+  const renamed =
+    input.displayName === undefined
+      ? await deps.members.findById(tenant.value, ctx.identity.memberId)
+      : await deps.members.updateDisplayName(tenant.value, ctx.identity.memberId, input.displayName);
+  const withOptOut =
     input.dmOptOut === undefined
       ? renamed
       : await deps.members.updateDmOptOut(
@@ -53,8 +55,16 @@ export const updateMyProfile = async (
           ctx.identity.memberId,
           input.dmOptOut ? deps.clock.nowIso() : null,
         );
+  const updated =
+    input.language === undefined
+      ? withOptOut
+      : await deps.members.updateLanguage(tenant.value, ctx.identity.memberId, input.language);
   if (updated === null || updated.deletedAt !== null) {
     return err(notFound(`No member "${ctx.identity.memberId}" in this tenant`));
   }
-  return ok({ displayName: updated.displayName, dmOptOut: updated.dmOptOutAt !== null });
+  return ok({
+    displayName: updated.displayName,
+    dmOptOut: updated.dmOptOutAt !== null,
+    language: updated.language ?? null,
+  });
 };

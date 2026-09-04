@@ -55,6 +55,7 @@ import type {
   SpaceRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
+  TenantRepository,
   ThreadSubscriptionRepository,
 } from '../ports.js';
 import { avatarUrlForAuthor, avatarUrlsFor, type AvatarUrlMap } from './avatar.js';
@@ -68,6 +69,7 @@ import {
   requireTenant,
   spaceContextAccess,
 } from './community-access.js';
+import { tenantEmailLanguage } from './email-language.js';
 import { openHeuristicReport } from './moderation-heuristics.js';
 import {
   buildNotificationFanoutJob,
@@ -90,6 +92,7 @@ export interface CommunityDeps {
   lessons: CourseLessonRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
@@ -178,6 +181,7 @@ const notifyLessonQuestionStaff = async (
   if (staff.length === 0) return ok(undefined);
   const context = await threadContextInfo(tenantId, post, deps, tenant.tenantSlug);
   const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
+  const tenantLanguage = await tenantEmailLanguage(tenantId, deps);
   for (const recipient of staff) {
     if (recipient.userId === post.authorUserId) continue;
     await deps.threadSubscriptions.upsert(tenantId, {
@@ -213,7 +217,7 @@ const notifyLessonQuestionStaff = async (
         tenantName: tenant.tenantName,
         contextName: context.contextName,
         contextUrl: context.contextUrl,
-        language: DEFAULT_LANGUAGE,
+        language: recipient.language ?? tenantLanguage,
       });
       if (!delivered.ok) return delivered;
     }

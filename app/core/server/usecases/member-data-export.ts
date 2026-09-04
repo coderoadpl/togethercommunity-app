@@ -83,6 +83,7 @@ export const exportMyData = async (
       tags: member.tags,
       marketingConsents: member.marketingConsents,
       externalCustomerIds: member.externalCustomerIds,
+      language: member.language ?? null,
       createdAt: member.createdAt,
     },
     consents: { terms, marketing },

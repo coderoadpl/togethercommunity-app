@@ -35,6 +35,7 @@ const staffIdentity: Identity = {
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 };
 
 const member: Member = {
@@ -145,6 +146,7 @@ const harness = (overrides: { members?: Partial<MemberRepository>; now?: () => s
     create: async () => undefined,
     updateEmail: async () => null,
     updateDisplayName: async () => null,
+    updateLanguage: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,
     ...overrides.members,

@@ -73,7 +73,7 @@ export const m2mEnroll = async (
       email: parsed.data.email,
       productId: parsed.data.productId,
       expiresAt: parsed.data.expiresAt ?? null,
-      language: parsed.data.language ?? 'pl',
+      language: parsed.data.language ?? null,
       source: 'manual',
       sendEmail: parsed.data.doNotSendEmail !== true,
     },

@@ -3,7 +3,6 @@ import {
   buildEmailHeaders,
   campaignCanTransition,
   classifySesEvent,
-  DEFAULT_LANGUAGE,
   deriveConsentState,
   deriveEmailReputation,
   deriveMarketingEligibility,
@@ -15,6 +14,7 @@ import {
   notFound,
   ok,
   renderMarketingTemplate,
+  resolveEmailLanguage,
   reputationWindow,
   throttleBudget,
   tenantSesBroadcastsReady,
@@ -29,6 +29,7 @@ import {
   type ConsentDocumentVersionRef,
   type ConsentEvidence,
   type EmailEvent,
+  type Language,
   type MarketingConsent,
   type MarketingIneligibilityReason,
   type Result,
@@ -55,9 +56,11 @@ import type {
   MarketingJobRepository,
   MarketingSesCredentialResolver,
   MarketingThrottleRepository,
+  MemberRepository,
   SesMarketingQuotaReader,
   SesMarketingSender,
   SuppressionRepository,
+  TenantRepository,
   TenantSesSettingsRepository,
   TenantDocumentRepository,
   TokenGenerator,
@@ -75,6 +78,8 @@ interface ConsentDeps {
   definitions: ConsentDefinitionRepository;
   consents: MarketingConsentRepository;
   confirmations: ConsentConfirmationTokenRepository;
+  members: MemberRepository;
+  tenants: TenantRepository;
   outbox: EmailOutboxRepository;
   ids: IdGenerator;
   tokens: TokenGenerator;
@@ -133,6 +138,21 @@ export const listMarketingConsentDefinitions = async (
 
 const confirmationTokenTtlMs = 24 * 60 * 60 * 1000;
 
+const consentEmailLanguage = (
+  tenantId: string,
+  email: string,
+  deps: Pick<ConsentDeps, 'members' | 'tenants'>,
+): (() => Promise<Language>) => {
+  let pending: Promise<Language> | undefined;
+  return () => (pending ??= (async () => {
+    const [recipient, settings] = await Promise.all([
+      deps.members.findByEmail(tenantId, normalizeEmail(email)),
+      deps.tenants.findSettings(tenantId),
+    ]);
+    return resolveEmailLanguage(recipient?.language, settings?.defaultLanguage);
+  })());
+};
+
 export const recordMarketingConsent = async (
   ctx: Ctx,
   input: {
@@ -142,6 +162,7 @@ export const recordMarketingConsent = async (
     evidence: ConsentEvidence;
     source: MarketingConsent['source'];
     confirmationBaseUrl: string;
+    resolveLanguage?: (() => Promise<Language>) | undefined;
   },
   deps: ConsentDeps,
 ): Promise<Result<{ consent: MarketingConsent; state: 'active' | 'pending_confirmation' }, AppError>> => {
@@ -174,10 +195,14 @@ export const recordMarketingConsent = async (
     id: deps.ids.nextId(), tenantId: tenantId.value, token: tokenValue, marketingConsentRowId: consent.id,
     createdAt: now, expiresAt: new Date(Date.parse(now) + confirmationTokenTtlMs).toISOString(), usedAt: null,
   });
+  const resolveLanguage = input.resolveLanguage
+    ?? consentEmailLanguage(tenantId.value, consent.email, deps);
   const queued = await deps.outbox.enqueue({
     id: deps.ids.nextId(), tenantId: tenantId.value, to: consent.email, now,
     payload: {
-      kind: 'marketing-consent-confirmation', language: DEFAULT_LANGUAGE, wording: consent.wordingSnapshot,
+      kind: 'marketing-consent-confirmation',
+      language: await resolveLanguage(),
+      wording: consent.wordingSnapshot,
       confirmationUrl: `${input.confirmationBaseUrl}/${tokenValue}`,
     },
   });
@@ -199,6 +224,7 @@ export const recordCheckoutMarketingConsents = async (
   if (!tenantId.ok) return tenantId;
   const attached = new Set(input.attachedDefinitionIds);
   const selected = [...new Set(input.selectedDefinitionIds)].filter((definitionId) => attached.has(definitionId));
+  const resolveLanguage = consentEmailLanguage(tenantId.value, input.email, deps);
   let recordedCount = 0;
   let pendingConfirmations = 0;
   for (const definitionId of selected) {
@@ -218,6 +244,7 @@ export const recordCheckoutMarketingConsents = async (
       evidence: input.evidence,
       source: 'checkout',
       confirmationBaseUrl: input.confirmationBaseUrl,
+      resolveLanguage,
     }, deps);
     if (!recorded.ok) return recorded;
     recordedCount += 1;
@@ -402,7 +429,7 @@ export const saveMarketingConsentPreferences = async (
     evidence: ConsentEvidence;
     confirmationBaseUrl: string;
   },
-  deps: UnsubscribeDeps & Pick<ConsentDeps, 'confirmations' | 'outbox' | 'tokens'>,
+  deps: UnsubscribeDeps & Pick<ConsentDeps, 'confirmations' | 'members' | 'outbox' | 'tenants' | 'tokens'>,
 ): Promise<Result<{ pendingConfirmations: number }, AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
@@ -419,6 +446,7 @@ export const saveMarketingConsentPreferences = async (
   if (selectedIds.size > 0 && await deps.suppressions.isSuppressed(tenantId.value, emailHmac)) {
     return err(validation('Globally unsubscribed addresses cannot re-subscribe from this page'));
   }
+  const resolveLanguage = consentEmailLanguage(tenantId.value, token.email, deps);
   let pendingConfirmations = 0;
   for (const definition of definitions) {
     const state = deriveConsentState(
@@ -442,6 +470,7 @@ export const saveMarketingConsentPreferences = async (
         evidence: input.evidence,
         source: 'preference_page',
         confirmationBaseUrl: input.confirmationBaseUrl,
+        resolveLanguage,
       }, deps);
       if (!recorded.ok) return recorded;
       if (recorded.value.state === 'pending_confirmation') pendingConfirmations += 1;

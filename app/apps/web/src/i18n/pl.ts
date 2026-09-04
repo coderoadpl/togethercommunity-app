@@ -383,6 +383,13 @@ export const pl: Messages = {
       },
     },
   },
+  emailLanguageSettings: {
+    heading: 'Język wiadomości e-mail',
+    intro: 'Język powiadomień i wiadomości transakcyjnych dla uczestników, którzy nie wybrali własnego.',
+    label: 'Domyślny język platformy',
+    options: { pl: 'Polski', en: 'Angielski' },
+    save: 'Zapisz język',
+  },
   settingsNavigation: {
     aria: 'Sekcje ustawień',
     company: 'Firma',
@@ -1802,6 +1809,13 @@ export const pl: Messages = {
     invoiceDownload: 'Pobierz fakturę PDF',
     preferencesHeading: 'Wygląd i język',
     preferencesIntro: 'Wybierz wygląd stron uczestnika i język interfejsu.',
+    emailLanguage: {
+      pl: 'E-maile wysyłamy do Ciebie po polsku.',
+      en: 'E-maile wysyłamy do Ciebie po angielsku.',
+      unset: 'E-maile wysyłamy do Ciebie w domyślnym języku platformy.',
+      reset: 'Wróć do domyślnego języka platformy',
+      panelOnly: 'Ta zmiana dotyczy tylko języka panelu — nie zapisujemy jej jako języka e-maili.',
+    },
   },
   changePassword: {
     heading: 'Zmień hasło',

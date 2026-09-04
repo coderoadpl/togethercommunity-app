@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { Language } from './language.js';
+
 export const staffRoleSchema = z.enum(['owner', 'admin']);
 
 export type StaffRole = z.infer<typeof staffRoleSchema>;
@@ -22,4 +24,5 @@ export interface Identity {
   memberDisplayName: string | null;
   memberBannedAt: string | null;
   memberDmOptOutAt: string | null;
+  memberLanguage: Language | null;
 }

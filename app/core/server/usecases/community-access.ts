@@ -9,6 +9,7 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type Language,
   type Result,
   type Space,
 } from '#core/domain/index.js';
@@ -192,6 +193,7 @@ export interface SpaceNotificationRecipientDeps extends Pick<SpaceAccessDeps, 'g
 
 export interface NotificationRecipient {
   email: string | null;
+  language: Language | null;
   isStaff: boolean;
   memberId: string | null;
 }
@@ -207,10 +209,15 @@ export const notificationRecipient = async (
     deps.tenantAccess.findMember(tenantId, userId),
   ]);
   if (staffGrant !== null) {
-    return { email: member?.email ?? null, isStaff: true, memberId: member?.id ?? null };
+    return {
+      email: member?.email ?? null,
+      language: member?.language ?? null,
+      isStaff: true,
+      memberId: member?.id ?? null,
+    };
   }
   if (member === null || member.bannedAt !== null || member.deletedAt !== null) return null;
-  return { email: member.email, isStaff: false, memberId: member.id };
+  return { email: member.email, language: member.language ?? null, isStaff: false, memberId: member.id };
 };
 
 export const spaceNotificationRecipient = async (
@@ -218,13 +225,14 @@ export const spaceNotificationRecipient = async (
   userId: string,
   space: Space,
   deps: SpaceNotificationRecipientDeps,
-): Promise<{ email: string | null } | null> => {
+): Promise<{ email: string | null; language: Language | null } | null> => {
   const recipient = await notificationRecipient(tenantId, userId, deps);
   if (recipient === null) return null;
-  if (recipient.isStaff) return { email: recipient.email };
+  const reachable = { email: recipient.email, language: recipient.language };
+  if (recipient.isStaff) return reachable;
   return recipient.memberId !== null &&
     (await spaceVisibleToMemberScope({ tenantId, memberId: recipient.memberId }, space, deps))
-    ? { email: recipient.email }
+    ? reachable
     : null;
 };
 

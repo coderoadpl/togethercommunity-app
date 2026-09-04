@@ -7,6 +7,7 @@ import {
   type EmailEvent,
   type EmailReputationCounts,
   type Identity,
+  type Language,
   type TenantSesSettings,
 } from '#core/domain/index.js';
 
@@ -43,6 +44,7 @@ const ctx: Ctx = { identity: {
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 } satisfies Identity };
 
 const event = (
@@ -286,7 +288,7 @@ describe('run reputation alerts', () => {
 });
 
 describe('tenant staff recipients', () => {
-  const tenants = (supportEmail: string | null): TenantRepository => ({
+  const tenants = (supportEmail: string | null, defaultLanguage?: Language): TenantRepository => ({
     findById: async () => null,
     findBySlug: async () => null,
     findSole: async () => null,
@@ -298,16 +300,23 @@ describe('tenant staff recipients', () => {
         bunnyStreamLibraryId: null,
         bunnyStreamCdnHostname: null,
         supportEmail,
+        ...(defaultLanguage === undefined ? {} : { defaultLanguage }),
       }),
     updateSettings: async (_tenantId, value) => value,
     createTenantWithOwnerGrant: async () => {
       throw new Error('not called');
     },
   });
-  const tenantAccess = (emails: string[]): TenantAccessReader => ({
+  const tenantAccess = (
+    staff: Array<{ email: string; language?: Language }>,
+  ): TenantAccessReader => ({
     listTenantsForStaff: async () => [],
     listStaffForTenant: async () =>
-      emails.map((email, index) => ({ userId: `staff-${String(index)}`, email })),
+      staff.map((member, index) => ({
+        userId: `staff-${String(index)}`,
+        email: member.email,
+        language: member.language ?? null,
+      })),
     findStaffGrant: async () => null,
     findMember: async () => null,
   });
@@ -316,9 +325,9 @@ describe('tenant staff recipients', () => {
     await expect(
       tenantStaffRecipients('tenant-1', {
         tenants: tenants('support@tenant.test'),
-        tenantAccess: tenantAccess(['owner@tenant.test']),
+        tenantAccess: tenantAccess([{ email: 'owner@tenant.test' }]),
       }),
-    ).resolves.toEqual(['support@tenant.test']);
+    ).resolves.toEqual([{ email: 'support@tenant.test', language: 'pl' }]);
   });
 
   it('deduplicates owner and admin fallback addresses', async () => {
@@ -326,11 +335,38 @@ describe('tenant staff recipients', () => {
       tenantStaffRecipients('tenant-1', {
         tenants: tenants(null),
         tenantAccess: tenantAccess([
-          'owner@tenant.test',
-          'admin@tenant.test',
-          'owner@tenant.test',
+          { email: 'owner@tenant.test' },
+          { email: 'admin@tenant.test' },
+          { email: 'owner@tenant.test' },
         ]),
       }),
-    ).resolves.toEqual(['owner@tenant.test', 'admin@tenant.test']);
+    ).resolves.toEqual([
+      { email: 'owner@tenant.test', language: 'pl' },
+      { email: 'admin@tenant.test', language: 'pl' },
+    ]);
+  });
+
+  it('carries the tenant default language for the support inbox', async () => {
+    await expect(
+      tenantStaffRecipients('tenant-1', {
+        tenants: tenants('support@tenant.test', 'en'),
+        tenantAccess: tenantAccess([]),
+      }),
+    ).resolves.toEqual([{ email: 'support@tenant.test', language: 'en' }]);
+  });
+
+  it('prefers each staff member preference over the tenant default', async () => {
+    await expect(
+      tenantStaffRecipients('tenant-1', {
+        tenants: tenants(null, 'en'),
+        tenantAccess: tenantAccess([
+          { email: 'owner@tenant.test', language: 'pl' },
+          { email: 'admin@tenant.test' },
+        ]),
+      }),
+    ).resolves.toEqual([
+      { email: 'owner@tenant.test', language: 'pl' },
+      { email: 'admin@tenant.test', language: 'en' },
+    ]);
   });
 });

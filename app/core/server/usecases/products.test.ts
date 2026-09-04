@@ -26,6 +26,7 @@ image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
+memberLanguage: null,
 });
 
 const fakeRepo = (initial: Product[] = []) => {

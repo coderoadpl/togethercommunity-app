@@ -44,6 +44,7 @@ const ctx = {
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   },
 };
 

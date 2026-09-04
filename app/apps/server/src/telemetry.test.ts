@@ -29,6 +29,7 @@ const identity: Identity = {
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 };
 
 type Vars = { Variables: { identity?: Identity } };

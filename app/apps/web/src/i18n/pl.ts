@@ -22,6 +22,9 @@ export const pl: Messages = {
       light: 'Jasny',
       dark: 'Ciemny',
       auto: 'Auto',
+      currentMode: ({ mode }) => format('Motyw: {mode}', { mode }),
+      cycle: ({ current, next }) =>
+        format('Motyw: {current}. Przełącz na: {next}', { current, next }),
     },
     home: 'Start',
     reload: 'Odśwież',
@@ -311,6 +314,11 @@ export const pl: Messages = {
       firstMember: 'Powitaj pierwszego uczestnika',
       paymentsConfigured: 'Skonfiguruj płatności',
     },
+  },
+  studioSetup: {
+    panelTitle: 'Konfiguracja panelu',
+    expand: ({ title }) => format('{title}: otwórz listę', { title }),
+    collapse: ({ title }) => format('{title}: zwiń listę', { title }),
   },
   tenantSetup: {
     title: 'Konfiguracja platformy',
@@ -1513,7 +1521,6 @@ export const pl: Messages = {
     coverAlt: ({ name }) => format('Okładka kursu {name}', { name }),
     statLessons: ({ count }) => plural(count, 'Lekcja', 'Lekcje', 'Lekcji'),
     statDuration: 'Łączny czas',
-    statCompleted: 'Ukończono',
     durationHoursMinutes: ({ hours, minutes }) => format('{hours} godz. {minutes} min', { hours, minutes }),
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
   },

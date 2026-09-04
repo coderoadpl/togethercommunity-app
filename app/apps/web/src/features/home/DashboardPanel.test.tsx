@@ -102,6 +102,29 @@ describe('DashboardPanel', () => {
     expect(tile).toHaveTextContent('+ 1 usunięty');
   });
 
+  it('opens the page body with the KPI tiles', async () => {
+    server.use(
+      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [] } })),
+      http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members } })),
+      http.get('/api/sales/summary', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            summary: { revenueLast30Days: [], activeSubscriptions: 0, ordersLast30Days: 0 },
+          },
+        }),
+      ),
+    );
+
+    renderWithProviders(<DashboardPanel />);
+
+    const tiles = await screen.findByTestId('dashboard-tiles');
+    expect(tiles.parentElement?.firstElementChild).toBe(tiles);
+    expect(screen.queryByTestId('tenant-setup-checklist')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('onboarding-checklist')).not.toBeInTheDocument();
+  });
+
   it('shows counts for products, courses, members and active grants plus recent members', async () => {
     server.use(
       http.get('/api/products', () =>

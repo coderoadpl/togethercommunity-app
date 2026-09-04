@@ -1,5 +1,6 @@
 import { DashboardPanel } from '../features/home/DashboardPanel.js';
-import { OnboardingChecklist, TenantSetupChecklist } from '../features/onboarding/index.js';
+import { usePanelContext } from '../features/home/panel-context.js';
+import { StudioChecklistDock } from '../features/onboarding/index.js';
 
 export { PanelLayout } from '../features/home/PanelLayout.js';
 export {
@@ -62,13 +63,12 @@ export { SendDetailPage, SendsPanel, validateSendsSearch } from '../features/hom
  * features are import-islands, and this route is the feature's only mount —
  * delete `features/onboarding/` and this import to drop it wholesale.
  */
-export const PanelIndexRoute = () => (
-  <DashboardPanel
-    topContent={
-      <>
-        <TenantSetupChecklist />
-        <OnboardingChecklist />
-      </>
-    }
-  />
-);
+export const PanelIndexRoute = () => {
+  const { tenant, email } = usePanelContext();
+  return (
+    <>
+      <DashboardPanel />
+      <StudioChecklistDock scope={`${tenant.id}:${email}`} />
+    </>
+  );
+};

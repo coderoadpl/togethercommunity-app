@@ -21,6 +21,8 @@ export interface Messages {
       light: string;
       dark: string;
       auto: string;
+      currentMode: (params: { mode: string }) => string;
+      cycle: (params: { current: string; next: string }) => string;
     };
     home: string;
     reload: string;
@@ -295,6 +297,11 @@ export interface Messages {
       firstMember: string;
       paymentsConfigured: string;
     };
+  };
+  studioSetup: {
+    panelTitle: string;
+    expand: (params: { title: string }) => string;
+    collapse: (params: { title: string }) => string;
   };
   tenantSetup: {
     title: string;
@@ -1323,7 +1330,6 @@ export interface Messages {
     coverAlt: (params: { name: string }) => string;
     statLessons: (params: { count: number }) => string;
     statDuration: string;
-    statCompleted: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;
   };

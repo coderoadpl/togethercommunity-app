@@ -21,7 +21,7 @@ import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseR
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
 import { CourseTree } from './CourseTree.js';
 import { MemberSurface } from './MemberSurface.js';
-import { EmptyCourseIcon, StatCheckIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
+import { EmptyCourseIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
 import { PublicCourseStructurePage } from './PublicCourseStructurePage.js';
 import { useViewerKind } from './viewer.js';
 
@@ -54,12 +54,6 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
           },
         ]
       : []),
-    {
-      key: 'completed',
-      icon: <StatCheckIcon />,
-      value: t.courseOverview.percentValue({ percent: totals.percent }),
-      label: t.courseOverview.statCompleted,
-    },
   ];
   return (
     <Box
@@ -68,7 +62,7 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
         gap: '0.75rem',
         gridTemplateColumns: {
           xs: 'repeat(auto-fit, minmax(9rem, 1fr))',
-          sm: `repeat(${tiles.length}, 1fr)`,
+          sm: `repeat(${Math.max(tiles.length, 2)}, 1fr)`,
         },
       }}
     >

@@ -17,6 +17,7 @@ import {
 import { useNotificationsTransport } from '../../../notifications-transport.js';
 import { SidebarProgressPercent } from '../../../theme.js';
 import { AccountIcon } from '../account-icons.js';
+import { useImpersonation } from '../viewer.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
 import { LockClosed } from '../tree-icons.js';
@@ -41,11 +42,16 @@ import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-row
 const MessagesRow = ({ active }: { active: boolean }) => {
   const t = useTranslations();
   const { streamless } = useNotificationsTransport();
+  const navigation = useQuery(actions.memberNavigation);
+  const enabled = navigation.isSuccess && navigation.data.navigation.directMessagesEnabled;
   const unread = useQuery({
     ...actions.unreadMessages,
+    enabled,
     refetchInterval: streamlessPollInterval(streamless, UNREAD_BADGE_POLL_INTERVAL_MS),
   });
   const count = unread.data?.unread ?? 0;
+
+  if (!enabled) return null;
 
   return (
     <LinkRow
@@ -157,6 +163,7 @@ export const MemberSidebar = ({
   const t = useTranslations();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const active = activeNavEntry(pathname);
+  const impersonating = useImpersonation() !== null;
 
   return (
     <Box
@@ -220,7 +227,7 @@ export const MemberSidebar = ({
           active={active?.kind === 'products'}
           testId="sidebar-products"
         />
-        <MessagesRow active={active?.kind === 'messages'} />
+        {impersonating ? null : <MessagesRow active={active?.kind === 'messages'} />}
         {variant === 'drawer' ? <NotificationBell navLabel={t.notifications.bell} /> : null}
         <LinkRow
           to="/account"

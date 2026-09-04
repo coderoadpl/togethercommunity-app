@@ -13,6 +13,7 @@ import type {
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
   ConsentEvidence,
+  DmReportMessage,
   EmailEventType,
   EmailEventMailKind,
   LessonBlock,
@@ -50,6 +51,7 @@ export const tenants = pgTable(
     termsUrl: text('terms_url'),
     privacyUrl: text('privacy_url'),
     defaultHomeSpaceId: text('default_home_space_id'),
+    directMessagesEnabled: boolean('direct_messages_enabled').notNull().default(true),
     autoIssueInvoices: boolean('auto_issue_invoices').notNull().default(false),
     autoIssueInvoiceScope: text('auto_issue_invoice_scope', { enum: ['b2b_only', 'all'] })
       .notNull()
@@ -1445,7 +1447,7 @@ export const notifications = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
     kind: text('kind', {
-      enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'space-event'],
+      enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'dm-report', 'space-event'],
     }).notNull(),
     payload: jsonb('payload').notNull(),
     sourceKey: text('source_key'),
@@ -1555,6 +1557,56 @@ export const dmMessages = pgTable(
       table.senderUserId,
       table.createdAt,
     ),
+  ],
+);
+
+export const memberBlocks = pgTable(
+  'member_blocks',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    blockerUserId: text('blocker_user_id').notNull(),
+    blockedUserId: text('blocked_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('member_blocks_tenant_blocker_blocked_uidx').on(
+      table.tenantId,
+      table.blockerUserId,
+      table.blockedUserId,
+    ),
+    index('member_blocks_tenant_blocked_idx').on(table.tenantId, table.blockedUserId),
+  ],
+);
+
+export const dmReports = pgTable(
+  'dm_reports',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => dmConversations.id, { onDelete: 'cascade' }),
+    reporterUserId: text('reporter_user_id').notNull(),
+    reporterDisplay: text('reporter_display').notNull(),
+    reportedUserId: text('reported_user_id').notNull(),
+    reportedDisplay: text('reported_display').notNull(),
+    reason: text('reason', { enum: ['spam', 'harassment', 'illegal', 'other'] }).notNull(),
+    snapshot: jsonb('snapshot').$type<DmReportMessage[]>().notNull(),
+    status: text('status', { enum: ['open', 'resolved'] }).notNull(),
+    createdAt: text('created_at').notNull(),
+    resolvedAt: text('resolved_at'),
+    resolvedByUserId: text('resolved_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('dm_reports_tenant_conversation_reporter_open_uidx')
+      .on(table.tenantId, table.conversationId, table.reporterUserId)
+      .where(sql`${table.status} = 'open'`),
+    index('dm_reports_tenant_status_created_idx')
+      .on(table.tenantId, table.status, table.createdAt.desc(), table.id.desc()),
   ],
 );
 
@@ -1999,6 +2051,49 @@ export const rateLimitBuckets = pgTable(
     primaryKey({ columns: [table.scope, table.key] }),
     index('rate_limit_buckets_expiry_idx').on(table.expiresAt),
   ],
+);
+
+export const impersonationSessions = pgTable(
+  'impersonation_sessions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    actorUserId: text('actor_user_id').notNull(),
+    actorSessionId: text('actor_session_id').notNull(),
+    subjectMemberId: text('subject_member_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    reason: text('reason'),
+    createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    endedAt: text('ended_at'),
+  },
+  (table) => [
+    index('impersonation_sessions_open_actor_session_idx')
+      .on(table.tenantId, table.actorSessionId)
+      .where(sql`${table.endedAt} is null`),
+    index('impersonation_sessions_open_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.endedAt} is null`),
+  ],
+);
+
+export const tenantAuditEvents = pgTable(
+  'tenant_audit_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['impersonation_started', 'impersonation_ended'] }).notNull(),
+    actorUserId: text('actor_user_id').notNull(),
+    actorEmail: text('actor_email').notNull(),
+    subjectMemberId: text('subject_member_id'),
+    reason: text('reason'),
+    at: text('at').notNull(),
+  },
+  (table) => [index('tenant_audit_events_tenant_at_idx').on(table.tenantId, table.at)],
 );
 
 export const platformAuditEvents = pgTable(

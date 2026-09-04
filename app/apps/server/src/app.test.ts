@@ -12,8 +12,10 @@ import {
   BETTER_AUTH_EMAIL_VERIFICATION_PATH,
   BETTER_AUTH_MAGIC_LINK_PATH,
   BETTER_AUTH_PASSWORD_RESET_PATH,
+  BETTER_AUTH_SIGN_OUT_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
+import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { selectDevEndpoints, selectPlatformReset } from './composition.js';
 import { buildApp } from './app.js';
@@ -24,6 +26,7 @@ import {
   err,
   emailEventSchema,
   forbidden,
+  impersonationCookieName,
   integrationUnavailable,
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
@@ -32,7 +35,9 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type ImpersonationSession,
   type ImportAuditEvent,
+  type TenantAuditEventInput,
   type Member,
   type Membership,
   type LessonAttachment,
@@ -299,6 +304,23 @@ const deps = (input: {
       generateSecret: () => 'secret',
       hash: (secret) => `hash:${secret}`,
     },
+    impersonations: {
+      open: async () => undefined,
+      findById: async () => null,
+      end: async () => null,
+      endLapsed: async () => 0,
+      listLapsedTenantIds: async () => [],
+    },
+    auditEvents: {
+      list: async () => ({ events: [], nextCursor: null }),
+    },
+    impersonationTokens: {
+      issue: (sessionId) => ({ token: `token:${sessionId}`, tokenHash: `hash:${sessionId}` }),
+      verify: (token) => token.startsWith('token:')
+        ? { sessionId: token.slice('token:'.length), tokenHash: `hash:${token.slice('token:'.length)}` }
+        : null,
+    },
+    secureCookies: false,
     tenantSecrets: {
       listByTenant: async () => [],
       findByKey: async () => null,
@@ -651,6 +673,18 @@ const deps = (input: {
     dmConversationStates: {
       findForViewer: async () => [],
       markRead: async (tenantId, input) => ({ tenantId, ...input }),
+    },
+    dmReports: {
+      open: async (_tenantId, report) => report,
+      listByStatus: async () => ({ reports: [], nextCursor: null }),
+      countOpen: async () => 0,
+      resolve: async () => null,
+    },
+    memberBlocks: {
+      block: async () => true,
+      unblock: async () => true,
+      findDirections: async (_tenantId, query) =>
+        new Map(query.otherUserIds.map((userId) => [userId, { blockedByViewer: false, blocksViewer: false }])),
     },
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     notifications: {
@@ -2383,6 +2417,30 @@ describe('public rate limiting', () => {
     })).status).toBe(200);
 
     expect(scopes).toEqual(['auth-resolve:ip', 'auth-resolve:tenant']);
+  });
+
+  it('claims the production lookup budget of 60 per address and 1000 per tenant', async () => {
+    const claims: { scope: string; limit: number }[] = [];
+    const app = buildApp({
+      ...deps({
+        rateLimitBuckets: {
+          claim: async ({ scope, limit }) => { claims.push({ scope, limit }); return true; },
+          purgeExpired: async () => 0,
+        },
+      }),
+      publicRateLimitPolicies: selectPublicRateLimitPolicies({ NODE_ENV: 'production' }),
+    });
+
+    await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'buyer@together.dev' }),
+    });
+
+    expect(claims).toEqual([
+      { scope: 'auth-resolve:ip', limit: 60 },
+      { scope: 'auth-resolve:tenant', limit: 1_000 },
+    ]);
   });
 
   it('keeps an exhausted lookup budget away from checkout and the other way round', async () => {
@@ -4793,17 +4851,83 @@ describe('public auth-resolve route', () => {
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('handles auth-resolve preflight before auth middleware', async () => {
-    const response = await buildApp(deps()).request(API_PATHS.authResolve, {
+  const verifiedDomain = {
+    id: 'domain-acme',
+    tenantId: acme.id,
+    domain: 'learn.acme.example',
+    kind: 'custom' as const,
+    verified: true,
+  };
+
+  const preflight = (app: ReturnType<typeof buildApp>, origin: string) =>
+    app.request(API_PATHS.authResolve, {
       method: 'OPTIONS',
       headers: {
-        origin: 'https://creator.example',
+        host: 'acme.localhost:48730',
+        origin,
         'access-control-request-method': 'POST',
       },
     });
 
-    expect(response.status).toBe(204);
-    expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+  it('answers the preflight of a tenant subdomain, the platform host and a verified domain', async () => {
+    const app = buildApp(deps({ domains: [verifiedDomain] }));
+
+    for (const origin of [
+      'http://acme.localhost:48730',
+      'http://start.localhost:48730',
+      'https://learn.acme.example',
+    ]) {
+      const response = await preflight(app, origin);
+      expect([origin, response.status]).toEqual([origin, 204]);
+      expect(response.headers.get('access-control-allow-origin')).toBe(origin);
+      expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+      expect(response.headers.get('vary')).toContain('Origin');
+    }
+  });
+
+  it('refuses the preflight of a foreign origin, an unverified domain and a missing origin', async () => {
+    const app = buildApp(deps({
+      domains: [{ ...verifiedDomain, id: 'domain-pending', domain: 'pending.acme.example', verified: false }],
+    }));
+
+    for (const origin of ['https://creator.example', 'https://pending.acme.example']) {
+      const response = await preflight(app, origin);
+      expect([origin, response.status]).toEqual([origin, 403]);
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    }
+    const bare = await app.request(API_PATHS.authResolve, {
+      method: 'OPTIONS',
+      headers: { host: 'acme.localhost:48730', 'access-control-request-method': 'POST' },
+    });
+    expect(bare.status).toBe(403);
+  });
+
+  it('never answers the lookup with a wildcard and withholds it from a foreign origin', async () => {
+    const app = buildApp(deps());
+
+    const allowed = await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        origin: 'http://acme.localhost:48730',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'kursant@together.dev' }),
+    });
+    const foreign = await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        origin: 'https://creator.example',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'kursant@together.dev' }),
+    });
+
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('http://acme.localhost:48730');
+    expect(foreign.status).toBe(200);
+    expect(foreign.headers.get('access-control-allow-origin')).toBeNull();
+    expect(foreign.headers.get('vary')).toContain('Origin');
   });
 });
 
@@ -5976,5 +6100,268 @@ describe('scheduler operator routes', () => {
         tenants: [{ tenantId: 't-acme', budgetUsed: 4, errors: ['SES rejected'] }],
       },
     });
+  });
+});
+
+describe('impersonation HTTP surface', () => {
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+
+  const impersonatingApp = (extraOverrides: Partial<AppDeps> = {}) => {
+    const sessions = new Map<string, ImpersonationSession & { tokenHash: string }>();
+    const audit: TenantAuditEventInput[] = [];
+    const overrides: Partial<AppDeps> = {
+      ...extraOverrides,
+      impersonations: {
+        open: async (tenantId, session, tokenHash, appendAudit) => {
+          const superseded = [...sessions.values()].filter(
+            (candidate) => candidate.tenantId === tenantId
+              && candidate.actorSessionId === session.actorSessionId
+              && candidate.endedAt === null,
+          );
+          for (const previous of superseded) {
+            sessions.set(previous.id, { ...previous, endedAt: session.createdAt });
+          }
+          sessions.set(session.id, { ...session, tenantId, tokenHash });
+          audit.push(...appendAudit(
+            superseded.map((previous) => ({ ...previous, endedAt: session.createdAt })),
+          ));
+        },
+        findById: async (tenantId, id) => {
+          const found = sessions.get(id);
+          return found !== undefined && found.tenantId === tenantId ? found : null;
+        },
+        end: async (tenantId, id, endedAt, appendAudit) => {
+          const found = sessions.get(id);
+          if (found === undefined || found.tenantId !== tenantId || found.endedAt !== null) {
+            return null;
+          }
+          const ended = { ...found, endedAt };
+          sessions.set(id, ended);
+          audit.push(appendAudit(ended));
+          return ended;
+        },
+        endLapsed: async () => 0,
+        listLapsedTenantIds: async () => [],
+      },
+      auditEvents: {
+        list: async () => ({
+          events: [...audit].reverse().map((event) => ({ ...event, subjectLabel: 'User' })),
+          nextCursor: null,
+        }),
+      },
+    };
+    return { app: scopedApp('owner', { overrides }), audit };
+  };
+
+  const cookieOf = (response: Response): string =>
+    (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+  it('opens a read-only member view and blocks every write and direct message', async () => {
+    const { app, audit } = impersonatingApp();
+
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: 'support ticket 42' }),
+    });
+    expect(started.status).toBe(200);
+    expect(await started.json()).toMatchObject({
+      data: { impersonation: { subjectMemberId: 'member-1' } },
+    });
+    const cookie = cookieOf(started);
+    expect(cookie.startsWith(`${impersonationCookieName(false)}=`)).toBe(true);
+    expect(started.headers.get('set-cookie')).toContain('HttpOnly');
+
+    const impersonated = { ...headers, cookie };
+
+    const me = await app.request(API_PATHS.me, { headers: impersonated });
+    expect(await me.json()).toMatchObject({
+      data: { tenant: { memberId: 'member-1', staffRole: null }, impersonation: { subjectMemberId: 'member-1' } },
+    });
+
+    const write = await app.request(API_PATHS.postsCreate, {
+      method: 'POST',
+      headers: impersonated,
+      body: JSON.stringify({ contextKind: 'space', contextId: 'space-1', body: 'hello' }),
+    });
+    expect(write.status).toBe(403);
+    expect(await write.json()).toMatchObject({ error: { code: 'impersonation_read_only' } });
+
+    const messages = await app.request(API_PATHS.messagesList, { headers: impersonated });
+    expect(messages.status).toBe(403);
+    expect(await messages.json()).toMatchObject({ error: { code: 'impersonation_read_only' } });
+
+    const audits = await app.request(API_PATHS.tenantAuditEvents, { headers: impersonated });
+    expect(audits.status).toBe(403);
+    expect(await audits.json()).toMatchObject({ error: { code: 'impersonation_read_only' } });
+
+    const dataExport = await app.request(API_PATHS.memberDataExport, { headers: impersonated });
+    expect(dataExport.status).toBe(403);
+    expect(await dataExport.json()).toMatchObject({ error: { code: 'impersonation_read_only' } });
+
+    const stopped = await app.request(API_PATHS.impersonationStop, {
+      method: 'POST',
+      headers: impersonated,
+    });
+    expect(stopped.status).toBe(200);
+    expect(await stopped.json()).toMatchObject({ data: { ended: true } });
+    expect(audit.map((event) => event.kind)).toEqual([
+      'impersonation_started',
+      'impersonation_ended',
+    ]);
+
+    const afterExit = await app.request(API_PATHS.me, { headers: impersonated });
+    expect(await afterExit.json()).toMatchObject({
+      data: { tenant: { staffRole: 'owner' }, impersonation: null },
+    });
+  });
+
+  it('takes the __Host- prefix once cookies are secure', async () => {
+    const { app } = impersonatingApp({ secureCookies: true });
+
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+
+    const setCookie = started.headers.get('set-cookie') ?? '';
+    expect(setCookie.startsWith('__Host-together_impersonation=')).toBe(true);
+    expect(setCookie).toContain('Secure');
+    const me = await app.request(API_PATHS.me, { headers: { ...headers, cookie: cookieOf(started) } });
+    expect(await me.json()).toMatchObject({
+      data: { impersonation: { subjectMemberId: 'member-1' } },
+    });
+  });
+
+  it('plays a lesson with the subject entitlements, not the operator staff bypass', async () => {
+    const paidLesson: CourseLesson = {
+      id: 'lesson-paid',
+      tenantId: acme.id,
+      name: 'Paid lesson',
+      isPreview: false,
+      contents: [{ type: 'html', html: '<p>paid</p>' }],
+      legacyId: null,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const paidCourse: Course = {
+      id: 'course-paid',
+      tenantId: acme.id,
+      name: 'Paid course',
+      description: '',
+      imageUrl: null,
+      moduleOrder: ['module-paid'],
+      publiclyVisible: false,
+      legacyId: null,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const paidModule: CourseModule = {
+      id: 'module-paid',
+      tenantId: acme.id,
+      courseIds: [paidCourse.id],
+      title: 'Paid module',
+      prefix: null,
+      name: 'Paid module',
+      chapters: [{
+        id: 'chapter-paid',
+        name: 'Paid chapter',
+        contents: [{ id: 'content-paid', name: paidLesson.name, lessonId: paidLesson.id }],
+      }],
+      legacyId: null,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const base = deps({ lessons: [paidLesson] });
+    const { app } = impersonatingApp({
+      lessons: base.lessons,
+      courses: { ...base.courses, list: async () => [paidCourse] },
+      modules: { ...base.modules, list: async () => [paidModule] },
+    });
+    const lessonPath = API_PATHS.studentLesson.replace(':lessonId', paidLesson.id);
+
+    const asOperator = await app.request(lessonPath, { headers });
+    expect(asOperator.status).toBe(200);
+
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+    const asSubject = await app.request(lessonPath, {
+      headers: { ...headers, cookie: cookieOf(started) },
+    });
+
+    expect(asSubject.status).toBe(403);
+    expect(await asSubject.json()).toMatchObject({ error: { code: 'forbidden' } });
+  });
+
+  it('runs the guard before the handler of every mutating route in the table', async () => {
+    const { app } = impersonatingApp({
+      devEndpoints: { simulatedPayments: true, exposeMagicLinks: true },
+      platformReset: {
+        environment: 'staging',
+        ownerEmails: [],
+        productionDatabaseFingerprint: null,
+        dataReset: { run: async () => ({ wiped: [] }) },
+        audit: { record: async () => undefined },
+      },
+    });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    const mutations = collectRuntimeRoutes().filter(
+      (route) => !['GET', 'HEAD', 'OPTIONS'].includes(route.method)
+        && route.path !== API_PATHS.impersonationStop,
+    );
+
+    expect(mutations.length).toBeGreaterThan(100);
+    for (const route of mutations) {
+      const path = route.path.replaceAll(/:[^/]+/g, 'x').replaceAll('*', 'x');
+      const response = await app.request(path, { method: route.method, headers: impersonated });
+      expect(response.status, `${route.method} ${path}`).toBe(403);
+      expect(await response.json(), `${route.method} ${path}`).toMatchObject({
+        error: { code: 'impersonation_read_only' },
+      });
+    }
+  });
+
+  it('lets the operator sign out and closes the view on the way', async () => {
+    const { app, audit } = impersonatingApp();
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+
+    const signedOut = await app.request(BETTER_AUTH_SIGN_OUT_PATH, {
+      method: 'POST',
+      headers: { ...headers, cookie: cookieOf(started) },
+    });
+
+    expect(signedOut.status).not.toBe(403);
+    expect(signedOut.headers.get('set-cookie')).toContain(`${impersonationCookieName(false)}=;`);
+    expect(audit.map((event) => event.kind)).toEqual([
+      'impersonation_started',
+      'impersonation_ended',
+    ]);
+  });
+
+  it('ignores a forged impersonation cookie and keeps the staff session', async () => {
+    const { app } = impersonatingApp();
+    const forged = { ...headers, cookie: `${impersonationCookieName(false)}=forged` };
+
+    const me = await app.request(API_PATHS.me, { headers: forged });
+    expect(await me.json()).toMatchObject({ data: { tenant: { staffRole: 'owner' }, impersonation: null } });
+  });
+
+  it('refuses to open a member view for a member session', async () => {
+    const response = await scopedApp('member').request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+    expect(response.status).toBe(403);
   });
 });

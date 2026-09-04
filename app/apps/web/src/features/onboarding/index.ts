@@ -1,2 +1,1 @@
-export { OnboardingChecklist } from './OnboardingChecklist.js';
-export { TenantSetupChecklist } from './TenantSetupChecklist.js';
+export { StudioChecklistDock } from './StudioChecklistDock.js';

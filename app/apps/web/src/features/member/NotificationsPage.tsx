@@ -27,6 +27,7 @@ import {
 } from '../../theme.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
+import { useImpersonation } from './viewer.js';
 
 const PAGE_SIZE = 20;
 const MAX_LIMIT = 100;
@@ -86,6 +87,7 @@ export const NotificationsPage = () => {
   const t = useTranslations();
   const navigate = useNavigate();
   const navigateToTarget = useNotificationNavigation();
+  const impersonating = useImpersonation() !== null;
   const queryClient = useQueryClient();
   const [limit, setLimit] = useState(PAGE_SIZE);
 
@@ -105,7 +107,7 @@ export const NotificationsPage = () => {
   }, [navigate, unauthorized]);
 
   const openNotification = (notification: Notification) => {
-    if (notification.readAt === null) markRead.mutate({ id: notification.id });
+    if (notification.readAt === null && !impersonating) markRead.mutate({ id: notification.id });
     navigateToTarget(notificationTarget(notification));
   };
 
@@ -167,7 +169,7 @@ export const NotificationsPage = () => {
             <Button
               variant="outlined"
               data-testid="notifications-mark-all-read"
-              disabled={markAllRead.isPending || unreadCount === 0}
+              disabled={markAllRead.isPending || impersonating || unreadCount === 0}
               onClick={() => markAllRead.mutate()}
             >
               {t.notifications.markAllRead}

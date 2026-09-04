@@ -1,9 +1,14 @@
 import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
+import type { ImpersonationView } from '#core/domain/index.js';
+
 import { actions } from '../../api.js';
 
 export type ViewerKind = 'pending' | 'anonymous' | 'member';
+
+export const useImpersonation = (): ImpersonationView | null =>
+  useQuery(actions.me).data?.impersonation ?? null;
 
 /**
  * Mirrors the `isMember` split in `MemberShell`, so pages and shell never disagree.

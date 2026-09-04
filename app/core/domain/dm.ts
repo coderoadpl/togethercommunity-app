@@ -32,6 +32,24 @@ export const dmMessageSchema = z.object({
 
 export type DmMessage = z.output<typeof dmMessageSchema>;
 
+export const DM_REPORT_SNAPSHOT_SIZE = 20;
+
+export const memberBlockSchema = z.object({
+  tenantId: z.string().min(1),
+  blockerUserId: z.string().min(1),
+  blockedUserId: z.string().min(1),
+  createdAt: z.string().datetime(),
+});
+
+export type MemberBlock = z.output<typeof memberBlockSchema>;
+
+export interface DmBlockDirections {
+  blockedByViewer: boolean;
+  blocksViewer: boolean;
+}
+
+export const NO_DM_BLOCKS: DmBlockDirections = { blockedByViewer: false, blocksViewer: false };
+
 export const dmConversationStateSchema = z.object({
   tenantId: z.string().min(1),
   conversationId: z.string().min(1),
@@ -44,6 +62,8 @@ export type DmConversationState = z.output<typeof dmConversationStateSchema>;
 /**
  * Client projection: raw participant user ids never leave the server, the other
  * participant is pre-resolved and unread is computed against the viewer cursor.
+ * `canSend` collapses every reason the thread is closed (either block direction,
+ * opt-out, ban) into one neutral flag, so it never says who blocked whom.
  */
 export const publicDmConversationSchema = z.object({
   id: z.string().min(1),
@@ -57,6 +77,8 @@ export const publicDmConversationSchema = z.object({
   lastMessageIsOwn: z.boolean(),
   hasMessages: z.boolean(),
   unread: z.boolean(),
+  blockedByViewer: z.boolean().default(false),
+  canSend: z.boolean().default(true),
 });
 
 export type PublicDmConversation = z.output<typeof publicDmConversationSchema>;
@@ -138,8 +160,10 @@ export const toPublicDmConversation = (
   conversation: DmConversation,
   viewer: { userId: string; lastReadAt: string | null },
   otherParticipant: PublicDmConversation['otherParticipant'],
+  reachability: { blocks: DmBlockDirections; recipientReachable: boolean },
 ): PublicDmConversation => {
   const lastMessageIsOwn = conversation.lastMessageSenderUserId === viewer.userId;
+  const blocked = reachability.blocks.blockedByViewer || reachability.blocks.blocksViewer;
   return {
     id: conversation.id,
     otherParticipant,
@@ -151,5 +175,7 @@ export const toPublicDmConversation = (
       conversation.lastMessageId !== null
       && !lastMessageIsOwn
       && (viewer.lastReadAt === null || conversation.lastMessageAt > viewer.lastReadAt),
+    blockedByViewer: reachability.blocks.blockedByViewer,
+    canSend: !blocked && reachability.recipientReachable,
   };
 };

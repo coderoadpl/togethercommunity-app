@@ -45,15 +45,15 @@ const PRODUCTION_LIMITS = {
   writesPerIp: 30,
   writesPerTenant: 300,
   authLinksPerEmail: 5,
-  authResolvesPerIp: 20,
-  authResolvesPerTenant: 200,
+  authResolvesPerIp: 60,
+  authResolvesPerTenant: 1_000,
 };
 const DEVELOPMENT_LIMITS = {
   writesPerIp: 3_000,
   writesPerTenant: 30_000,
   authLinksPerEmail: 500,
-  authResolvesPerIp: 2_000,
-  authResolvesPerTenant: 20_000,
+  authResolvesPerIp: 6_000,
+  authResolvesPerTenant: 100_000,
 };
 
 export type PublicRateLimitEnv = Pick<

@@ -4,9 +4,12 @@ import type {
   CourseLesson,
   LessonAttachment,
   CourseModule,
+  DmBlockDirections,
   DmConversation,
   DmConversationState,
   DmMessage,
+  DmReport,
+  DmReportStatus,
   EntityHistoryEntry,
   EntityKind,
   EmailBranding,
@@ -22,6 +25,7 @@ import type {
   EmailOutboxPayload,
   Member,
   MemberBanEvent,
+  MemberBlock,
   MemberEvent,
   MemberGrant,
   MemberCourseProgress,
@@ -103,6 +107,10 @@ import type {
   Invoice,
   InvoiceEvent,
   InvoiceVatTreatment,
+  ImpersonationSession,
+  TenantAuditEventInput,
+  TenantAuditEventListQuery,
+  TenantAuditEventPage,
   ImportAuditEvent,
   ImportAuditResourceType,
   FiscalArtifact,
@@ -462,17 +470,46 @@ export interface DmConversationStateRepository {
   ): Promise<DmConversationState>;
 }
 
+export interface MemberBlockRepository {
+  /** Idempotent: returns false when the pair is already blocked in this direction. */
+  block(tenantId: string, block: MemberBlock): Promise<boolean>;
+  /** Idempotent: returns false when there was nothing to remove. */
+  unblock(tenantId: string, input: { blockerUserId: string; blockedUserId: string }): Promise<boolean>;
+  findDirections(
+    tenantId: string,
+    query: { viewerUserId: string; otherUserIds: string[] },
+  ): Promise<Map<string, DmBlockDirections>>;
+}
+
+export interface DmReportRepository {
+  /** Returns null when the reporter already has an open report on the conversation. */
+  open(tenantId: string, report: DmReport): Promise<DmReport | null>;
+  listByStatus(
+    tenantId: string,
+    query: { status: DmReportStatus; cursor?: string; limit: number },
+  ): Promise<{ reports: DmReport[]; nextCursor: string | null }>;
+  countOpen(tenantId: string): Promise<number>;
+  resolve(
+    tenantId: string,
+    input: { id: string; resolvedAt: string; resolvedByUserId: string },
+  ): Promise<DmReport | null>;
+}
+
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
   /** Returns only the rows this call created, so a retried fan-out re-delivers nothing. */
   insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;
   listForRecipient(
     tenantId: string,
-    query: { recipientUserId: string; cursor?: string; limit: number },
+    query: { recipientUserId: string; cursor?: string; limit: number; excludeDms?: boolean },
   ): Promise<{ notifications: Notification[]; nextCursor: string | null }>;
   markRead(tenantId: string, input: { id: string; recipientUserId: string; readAt: string }): Promise<Notification | null>;
   markAllRead(tenantId: string, input: { recipientUserId: string; readAt: string }): Promise<number>;
-  unreadCount(tenantId: string, recipientUserId: string): Promise<number>;
+  unreadCount(
+    tenantId: string,
+    recipientUserId: string,
+    options?: { excludeDms?: boolean },
+  ): Promise<number>;
   /** Collapse guard: one bell item and one e-mail per conversation burst. */
   hasUnreadDmNotification(
     tenantId: string,
@@ -524,6 +561,8 @@ export interface RealtimeNotificationEvent {
   tenantId: string;
   recipientUserId: string;
   notificationId: string;
+  /** Optional so an event published by an instance that predates the field still delivers. */
+  notificationKind?: Notification['kind'];
   createdAt: string;
 }
 
@@ -2008,6 +2047,49 @@ export interface HealthPort {
     schemaFingerprint: string | null;
     schemaFingerprintMatch: boolean | null;
   }>;
+}
+
+/**
+ * Every method takes the audit entries its own write implies and commits both
+ * together: a start with no `impersonation_started`, or an ended row with no
+ * `impersonation_ended`, is a hole the sweep cannot fill afterwards.
+ */
+export interface ImpersonationSessionRepository {
+  /**
+   * Opening supersedes and inserts in one step: the one-view-per-login invariant
+   * cannot survive two callers interleaving the end and the insert.
+   */
+  open(
+    tenantId: string,
+    session: ImpersonationSession,
+    tokenHash: string,
+    audit: (superseded: ImpersonationSession[]) => TenantAuditEventInput[],
+  ): Promise<void>;
+  findById(tenantId: string, id: string): Promise<(ImpersonationSession & { tokenHash: string }) | null>;
+  end(
+    tenantId: string,
+    id: string,
+    endedAt: string,
+    audit: (ended: ImpersonationSession) => TenantAuditEventInput,
+  ): Promise<ImpersonationSession | null>;
+  endLapsed(
+    tenantId: string,
+    now: string,
+    audit: (
+      lapsed: Array<{ session: ImpersonationSession; actorEmail: string }>,
+    ) => TenantAuditEventInput[],
+  ): Promise<number>;
+  listLapsedTenantIds(now: string): Promise<string[]>;
+}
+
+/** Append-only tenant audit trail; entries are never updated or deleted. */
+export interface TenantAuditEventRepository {
+  list(tenantId: string, query: TenantAuditEventListQuery): Promise<TenantAuditEventPage>;
+}
+
+export interface ImpersonationTokenCodec {
+  issue(sessionId: string): { token: string; tokenHash: string };
+  verify(token: string): { sessionId: string; tokenHash: string } | null;
 }
 
 export interface PlatformDataResetPort {

@@ -1,5 +1,5 @@
 {
-  "id": "553110f9-119e-4d26-885b-3766793b4a8f",
+  "id": "3554cab8-a3f1-4c15-9411-af29491a73d8",
   "prevId": "39191da8-846c-46ce-8ff8-e20b3d0ef2e4",
   "version": "7",
   "dialect": "postgresql",
@@ -3768,6 +3768,186 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.dm_reports": {
+      "name": "dm_reports",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reporter_user_id": {
+          "name": "reporter_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reporter_display": {
+          "name": "reporter_display",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reported_user_id": {
+          "name": "reported_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reported_display": {
+          "name": "reported_display",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by_user_id": {
+          "name": "resolved_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "dm_reports_tenant_conversation_reporter_open_uidx": {
+          "name": "dm_reports_tenant_conversation_reporter_open_uidx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "reporter_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"dm_reports\".\"status\" = 'open'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "dm_reports_tenant_status_created_idx": {
+          "name": "dm_reports_tenant_status_created_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "dm_reports_tenant_id_tenants_id_fk": {
+          "name": "dm_reports_tenant_id_tenants_id_fk",
+          "tableFrom": "dm_reports",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "dm_reports_conversation_id_dm_conversations_id_fk": {
+          "name": "dm_reports_conversation_id_dm_conversations_id_fk",
+          "tableFrom": "dm_reports",
+          "tableTo": "dm_conversations",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.email_events": {
       "name": "email_events",
       "schema": "",
@@ -5925,6 +6105,106 @@
         "marketing_throttle_buckets_tenant_id_tenants_id_fk": {
           "name": "marketing_throttle_buckets_tenant_id_tenants_id_fk",
           "tableFrom": "marketing_throttle_buckets",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.member_blocks": {
+      "name": "member_blocks",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blocker_user_id": {
+          "name": "blocker_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blocked_user_id": {
+          "name": "blocked_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "member_blocks_tenant_blocker_blocked_uidx": {
+          "name": "member_blocks_tenant_blocker_blocked_uidx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "blocker_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "blocked_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "member_blocks_tenant_blocked_idx": {
+          "name": "member_blocks_tenant_blocked_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "blocked_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "member_blocks_tenant_id_tenants_id_fk": {
+          "name": "member_blocks_tenant_id_tenants_id_fk",
+          "tableFrom": "member_blocks",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -9559,75 +9839,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.sns_webhook_deliveries": {
-      "name": "sns_webhook_deliveries",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "message_type": {
-          "name": "message_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "error_message": {
-          "name": "error_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_ip": {
-          "name": "source_ip",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "user_agent": {
-          "name": "user_agent",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "sns_webhook_deliveries_tenant_id_tenants_id_fk": {
-          "name": "sns_webhook_deliveries_tenant_id_tenants_id_fk",
-          "tableFrom": "sns_webhook_deliveries",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.space_event_rsvps": {
       "name": "space_event_rsvps",
       "schema": "",
@@ -11040,18 +11251,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sns_subscription_endpoint": {
-          "name": "sns_subscription_endpoint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sns_subscription_confirmed_at": {
-          "name": "sns_subscription_confirmed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "tracking_enabled": {
           "name": "tracking_enabled",
           "type": "boolean",
@@ -11388,6 +11587,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "direct_messages_enabled": {
+          "name": "direct_messages_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "auto_issue_invoices": {
           "name": "auto_issue_invoices",

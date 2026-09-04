@@ -34,6 +34,10 @@ reconciliation must therefore finish before the next billing cycle.
 - records the erasure in `erasedMemberImports`;
 - end-dates product grants and marks member subscriptions canceled locally;
 - replaces post author labels with `deletedMemberDisplay()`;
+- relabels the erased side of every `dm_reports` row — `reporter_display`,
+  `reported_display`, and the matching `snapshot[].senderDisplay` entries — with
+  `deletedMemberDisplay()`;
+- deletes the `member_blocks` rows on either side of the severed `userId`;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, and ban state (`bannedAt`,
@@ -133,10 +137,15 @@ erasure. The UI hides ban controls for members whose `deletedAt` is set, and
 
 ## Out of scope and known gaps
 
-Report rows retain `post_reports.reporter_user_id` after erasure, matching the
-existing retention of `posts.author_user_id`. The pseudonymization transaction
-relabels `reporter_display` to `deletedMemberDisplay()`. A full redesign around
-non-identifying subject references remains backlog item B1.
+Report rows retain `post_reports.reporter_user_id` and the
+`dm_reports.reporter_user_id` / `dm_reports.reported_user_id` pair after
+erasure, matching the existing retention of `posts.author_user_id`. The
+pseudonymization transaction relabels every display column those rows carry to
+`deletedMemberDisplay()`. A full redesign around non-identifying subject
+references remains backlog item B1.
+
+The `dm_reports.snapshot` message bodies are moderation evidence and keep their
+original text; only the `senderDisplay` labels on the erased side are rewritten.
 
 Self-service data-subject export and deletion remain backlog item B1.
 Provider-side customer deletion and durable cancellation retry scheduling are

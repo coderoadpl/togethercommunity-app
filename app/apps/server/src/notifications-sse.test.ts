@@ -170,6 +170,60 @@ describe('notification event stream', () => {
     await reader.cancel();
   });
 
+  it('hides both frames a direct message produces when direct messages are excluded', async () => {
+    const { bus } = recordingBus();
+    const stream = createNotificationEventStream({
+      tenantId: 't1',
+      recipientUserId: 'u1',
+      bus,
+      unreadCount: async () => 0,
+      excludeDms: true,
+      heartbeatMs: 60_000,
+      lifetimeMs: 60_000,
+    });
+    const reader = stream.getReader();
+    await readChunk(reader);
+    await readChunk(reader);
+
+    bus.publish({
+      kind: 'dm',
+      tenantId: 't1',
+      recipientUserId: 'u1',
+      conversationId: 'c-hidden',
+      createdAt: '2026-07-15T10:00:03.000Z',
+    });
+    bus.publish({
+      kind: 'notification',
+      tenantId: 't1',
+      recipientUserId: 'u1',
+      notificationId: 'n-hidden',
+      notificationKind: 'dm-message',
+      createdAt: '2026-07-15T10:00:04.000Z',
+    });
+    bus.publish({
+      kind: 'notification',
+      tenantId: 't1',
+      recipientUserId: 'u1',
+      notificationId: 'n-report-hidden',
+      notificationKind: 'dm-report',
+      createdAt: '2026-07-15T10:00:04.500Z',
+    });
+    bus.publish({
+      kind: 'notification',
+      tenantId: 't1',
+      recipientUserId: 'u1',
+      notificationId: 'n-visible',
+      notificationKind: 'space-post',
+      createdAt: '2026-07-15T10:00:05.000Z',
+    });
+
+    expect(await readChunk(reader)).toBe(
+      'id: 2026-07-15T10:00:05.000Z|n-visible\nevent: notification\ndata: {"id":"n-visible"}\n\n',
+    );
+
+    await reader.cancel();
+  });
+
   it('replays events the client missed before subscribing to live ones', async () => {
     const { bus } = recordingBus();
     const stream = createNotificationEventStream({

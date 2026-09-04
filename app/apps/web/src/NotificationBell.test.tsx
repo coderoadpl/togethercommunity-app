@@ -46,6 +46,34 @@ const notification = (input: {
   createdAt: '2026-07-15T08:00:00.000Z',
 });
 
+const impersonatedMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'user@example.com',
+        emailVerified: true,
+        name: 'Jan Uczestnik',
+        tenant: {
+          id: 't1',
+          slug: 'acme',
+          name: 'Acme',
+          staffRole: null,
+          memberId: 'mem-1',
+          banned: false,
+        },
+        impersonation: {
+          id: 'imp-1',
+          subjectMemberId: 'mem-1',
+          subjectName: 'Jan Uczestnik',
+          actorName: 'Ola Operatorka',
+          expiresAt: '2026-08-15T09:00:00.000Z',
+        },
+      },
+    }),
+  );
+
 const renderBell = async ({ tabLabel, live = true }: { tabLabel?: string; live?: boolean } = {}) => {
   const rootRoute = createRootRoute({
     component: () => <NotificationBell {...(tabLabel === undefined ? {} : { tabLabel })} live={live} />,
@@ -154,6 +182,44 @@ describe('NotificationBell', () => {
     await userEvent.click(screen.getByTestId('notification-n1'));
 
     await waitFor(() => expect(readIds).toEqual(['n1']));
+  });
+
+  it('opens a notification without a read receipt while viewing as a member', async () => {
+    let readCalls = 0;
+    server.use(
+      impersonatedMe(),
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 1 } }),
+      ),
+      http.get('/api/notifications', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            notifications: [notification({ id: 'n1', read: false, courseId: 'c1' })],
+            nextCursor: null,
+          },
+        }),
+      ),
+      http.post('/api/notifications/read', () => {
+        readCalls += 1;
+        return HttpResponse.json({
+          ok: true,
+          data: { notification: notification({ id: 'n1', read: true }) },
+        });
+      }),
+    );
+
+    const { router } = await renderRoutedBell();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await waitFor(() =>
+      expect(screen.getByTestId('notifications-popover-mark-all-read')).toBeDisabled(),
+    );
+    await userEvent.click(await screen.findByTestId('notification-n1'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/c1/lessons/l1'));
+    expect(readCalls).toBe(0);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('marks all notifications read from the dropdown', async () => {

@@ -34,6 +34,8 @@ const conversation = (input: {
   lastMessageIsOwn: input.own ?? false,
   hasMessages: true,
   unread: input.unread ?? false,
+  blockedByViewer: false,
+  canSend: true,
 });
 
 const okConversations = (conversations: PublicDmConversation[], nextCursor: string | null = null) =>

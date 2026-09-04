@@ -1,4 +1,5 @@
 import {
+  directMessagesEnabled,
   ok,
   type AppError,
   type MemberNavigation,
@@ -21,6 +22,7 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
+  TenantRepository,
 } from '../ports.js';
 import { fullCourseLookup } from './access.js';
 import { requireMemberOrStaff, spaceVisibleToMemberScope } from './community-access.js';
@@ -38,6 +40,7 @@ export interface MemberNavigationDeps {
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
   progress: MemberCourseProgressRepository;
+  tenants: TenantRepository;
   clock: Clock;
 }
 
@@ -74,12 +77,13 @@ export const getMemberNavigation = async (
       ? { tenantId, memberId: ctx.identity.memberId }
       : null;
 
-  const [spaces, courses, modules, lessons, products] = await Promise.all([
+  const [spaces, courses, modules, lessons, products, settings] = await Promise.all([
     deps.spaces.list(tenantId),
     deps.courses.list(tenantId),
     deps.modules.list(tenantId),
     deps.lessons.list(tenantId),
     deps.products.listByTenant(tenantId),
+    deps.tenants.findSettings(tenantId),
   ]);
   const coursesByProduct = courseIdsByProduct(
     products,
@@ -155,5 +159,6 @@ export const getMemberNavigation = async (
       description: space.description,
       productIds: space.productIds,
     })),
+    directMessagesEnabled: settings === null || directMessagesEnabled(settings),
   });
 };

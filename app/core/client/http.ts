@@ -33,6 +33,9 @@ import {
   healthReadyOutputSchema,
   imageAssetCompleteOutputSchema,
   imageAssetUploadOutputSchema,
+  impersonationStartOutputSchema,
+  impersonationStopOutputSchema,
+  tenantAuditEventsOutputSchema,
   ifirmaTestConnectionOutputSchema,
   integrationTestOutputSchema,
   storageConfigureOutputSchema,
@@ -101,6 +104,7 @@ import {
   messagesSendOutputSchema,
   messagesStartOutputSchema,
   messagesThreadOutputSchema,
+  messagesBlockOutputSchema,
   messagesUnreadOutputSchema,
   memberBillingOrdersOutputSchema,
   memberBanOutputSchema,
@@ -142,6 +146,9 @@ import {
   postReportOutputSchema,
   reportResolveOutputSchema,
   reportsListOutputSchema,
+  dmReportOutputSchema,
+  dmReportResolveOutputSchema,
+  dmReportsListOutputSchema,
   postReactOutputSchema,
   postsSearchOutputSchema,
   spaceDeleteOutputSchema,
@@ -238,12 +245,15 @@ import {
   type AccountSessionRevokeInput,
   type MeProfileUpdateInput,
   type MessagesListInput,
+  type MessagesBlockInput,
   type MessagesReadInput,
   type MessagesSendInput,
   type MessagesStartInput,
   type MessagesThreadInput,
   type MemberHomeFeedGetInput,
   type MemberRemoveInput,
+  type ImpersonationStartRequest,
+  type TenantAuditEventsQueryInput,
   type MemberBanInput,
   type MemberErasureRequestCreateInput,
   type MemberErasureRequestsQueryInput,
@@ -264,6 +274,9 @@ import {
   type PostDeleteInput,
   type PostPinInput,
   type PostReportInput,
+  type DmReportInput,
+  type DmReportResolveInput,
+  type DmReportsListInput,
   type ReportResolveInput,
   type ReportsListInput,
   type PostReactInput,
@@ -1216,6 +1229,40 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  startImpersonation: (input: ImpersonationStartRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.impersonationStart.method,
+      API_ROUTES.impersonationStart.path,
+      impersonationStartOutputSchema,
+      input,
+      signal,
+    ),
+  stopImpersonation: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.impersonationStop.method,
+      API_ROUTES.impersonationStop.path,
+      impersonationStopOutputSchema,
+      {},
+      signal,
+    ),
+  tenantAuditEvents: (input: TenantAuditEventsQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.tenantAuditEvents.method,
+      suffix.length > 0
+        ? `${API_ROUTES.tenantAuditEvents.path}?${suffix}`
+        : API_ROUTES.tenantAuditEvents.path,
+      tenantAuditEventsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   memberTimeline: (memberId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1602,6 +1649,30 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  listDmReports: (input: DmReportsListInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const query = params.size === 0 ? '' : `?${params.toString()}`;
+    return request(
+      options,
+      API_ROUTES.dmReports.method,
+      `${API_ROUTES.dmReports.path}${query}`,
+      dmReportsListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  resolveDmReport: (input: DmReportResolveInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.dmReportResolve.method,
+      API_ROUTES.dmReportResolve.path,
+      dmReportResolveOutputSchema,
+      input,
+      signal,
+    ),
   updatePost: (input: PostUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.postsUpdate.method, API_ROUTES.postsUpdate.path, postOutputSchema, input, signal),
   deletePost: (input: PostDeleteInput, signal?: AbortSignal) =>
@@ -1918,6 +1989,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.messagesUnread.path,
       messagesUnreadOutputSchema,
       undefined,
+      signal,
+    ),
+  blockConversationParticipant: (input: MessagesBlockInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesBlock.method,
+      API_ROUTES.messagesBlock.path,
+      messagesBlockOutputSchema,
+      input,
+      signal,
+    ),
+  unblockConversationParticipant: (input: MessagesBlockInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesUnblock.method,
+      API_ROUTES.messagesUnblock.path,
+      messagesBlockOutputSchema,
+      input,
+      signal,
+    ),
+  reportConversation: (input: DmReportInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.messagesReport.method,
+      API_ROUTES.messagesReport.path,
+      dmReportOutputSchema,
+      input,
       signal,
     ),
   devGrant: (input: DevGrantInput, signal?: AbortSignal) =>

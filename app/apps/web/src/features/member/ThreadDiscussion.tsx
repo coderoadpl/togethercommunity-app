@@ -25,6 +25,7 @@ import {
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
+import { useImpersonation } from './viewer.js';
 
 export const PAGE_SIZE = 20;
 const MAX_INDENT = 5;
@@ -106,6 +107,7 @@ export const PostComposer = ({
   testId: string;
 }) => {
   const t = useTranslations();
+  const impersonating = useImpersonation() !== null;
   const [body, setBody] = useState(initialValue);
   const [focusWithin, setFocusWithin] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -121,6 +123,8 @@ export const PostComposer = ({
     if (trimmed.length === 0) return;
     onSubmit(trimmed, () => setBody(''));
   };
+
+  if (impersonating) return null;
 
   return (
     <Stack

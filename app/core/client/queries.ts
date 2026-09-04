@@ -41,12 +41,15 @@ import type {
   MemberUpcomingEventsInput,
   MeProfileUpdateInput,
   MessagesListInput,
+  MessagesBlockInput,
   MessagesReadInput,
   MessagesSendInput,
   MessagesStartInput,
   MessagesThreadInput,
   MemberHomeFeedGetInput,
   MemberProgressResetInput,
+  ImpersonationStartRequest,
+  TenantAuditEventsQueryInput,
   MemberBanInput,
   MemberRemoveInput,
   MemberErasureRequestCreateInput,
@@ -76,6 +79,9 @@ import type {
   PostPinInput,
   PostReportInput,
   ReportResolveInput,
+  DmReportInput,
+  DmReportResolveInput,
+  DmReportsListInput,
   ReportsListInput,
   PostReactInput,
   PostUpdateInput,
@@ -274,6 +280,7 @@ const membersScopes = {
   commerce: (memberId: string) => ['members', 'commerce', memberId] as const,
   timeline: (memberId: string) => ['members', 'timeline', memberId] as const,
   learningSummary: (memberId: string) => ['members', 'learning-summary', memberId] as const,
+  auditEvents: (input: TenantAuditEventsQueryInput) => ['members', 'audit-events', input] as const,
 };
 
 const authScopes = {
@@ -360,6 +367,11 @@ const spacesScopes = {
 const reportScopes = {
   all: () => ['reports'] as const,
   list: (input: ReportsListInput) => ['reports', 'list', input] as const,
+};
+
+const dmReportScopes = {
+  all: () => ['dm-reports'] as const,
+  list: (input: DmReportsListInput) => ['dm-reports', 'list', input] as const,
 };
 
 const notificationScopes = {
@@ -1274,6 +1286,20 @@ export const resolveReportMutation = (api: ApiClient) =>
 
 export const reportsInvalidates = () => ({ queryKey: reportScopes.all() });
 
+export const dmReportsQuery = (api: ApiClient, input: DmReportsListInput = {}) =>
+  defineQuery({
+    queryKey: dmReportScopes.list(input),
+    call: ({ signal }) => api.listDmReports(input, signal),
+  });
+
+export const resolveDmReportMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...dmReportScopes.all(), 'resolve'],
+    call: (input: DmReportResolveInput) => api.resolveDmReport(input),
+  });
+
+export const dmReportsInvalidates = () => ({ queryKey: dmReportScopes.all() });
+
 export const unreactToPostMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'unreact'],
@@ -1354,6 +1380,27 @@ export const markConversationReadMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...messagesScopes.all(), 'read'],
     call: (input: MessagesReadInput) => api.markConversationRead(input),
+  });
+
+/** @public */
+export const blockConversationParticipantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'block'],
+    call: (input: MessagesBlockInput) => api.blockConversationParticipant(input),
+  });
+
+/** @public */
+export const unblockConversationParticipantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'unblock'],
+    call: (input: MessagesBlockInput) => api.unblockConversationParticipant(input),
+  });
+
+/** @public */
+export const reportConversationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...messagesScopes.all(), 'report'],
+    call: (input: DmReportInput) => api.reportConversation(input),
   });
 
 /** @public */
@@ -1594,6 +1641,24 @@ export const memberNavigationInvalidates = () => ({ queryKey: memberNavigationSc
 export const memberHomeFeedInvalidates = () => ({ queryKey: memberHomeFeedScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
+
+export const startImpersonationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'impersonate-start'],
+    call: (input: ImpersonationStartRequest) => api.startImpersonation(input),
+  });
+
+export const stopImpersonationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'impersonate-stop'],
+    call: () => api.stopImpersonation(),
+  });
+
+export const tenantAuditEventsQuery = (api: ApiClient, input: TenantAuditEventsQueryInput) =>
+  defineQuery({
+    queryKey: membersScopes.auditEvents(input),
+    call: ({ signal }) => api.tenantAuditEvents(input, signal),
+  });
 
 export const setMemberBannedMutation = (api: ApiClient) =>
   defineMutation({

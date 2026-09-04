@@ -1,0 +1,11 @@
+ui: full-height embeds with minimal mobile margins; no link de-duplication or folding
+
+Lesson video/content embeds now render full-height with minimal
+margins on mobile, improving usable viewport for the lesson player.
+
+Lesson links are shown as-is without de-duplication or folding, so
+every link the lesson author added is visible and clickable.
+
+Updates lesson links domain logic, the lesson player and lessons
+section UI, i18n strings, and theme tokens, with matching test
+coverage.

@@ -4,15 +4,19 @@ import {
   DM_CONVERSATION_RATE_LIMIT,
   DM_MESSAGE_RATE_LIMIT,
   canonicalDmParticipants,
+  tenantSettingsSchema,
+  type DmBlockDirections,
   type DmConversation,
   type DmConversationState,
   type DmMessage,
+  type MemberBlock,
   type Identity,
   type Member,
   type Notification,
   type Post,
   type PublicDmConversation,
   type Space,
+  type TenantSettings,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -23,10 +27,13 @@ import type {
   DmMessageRepository,
   IdGenerator,
   NotificationChannelPort,
+  MemberBlockRepository,
   NotificationRepository,
   RealtimeEvent,
+  TenantRepository,
 } from '../ports.js';
 import {
+  blockDmParticipant,
   dmUnreadCount,
   getDmConversation,
   listDmConversations,
@@ -34,6 +41,7 @@ import {
   markDmConversationRead,
   sendDmMessage,
   startDmConversation,
+  unblockDmParticipant,
   type DirectMessagesDeps,
 } from './direct-messages.js';
 
@@ -57,6 +65,14 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
 });
 
 const ctx = (overrides: Partial<Identity> = {}): Ctx => ({ identity: identity(overrides) });
+
+const tenantSettings = (overrides: Partial<TenantSettings> = {}): TenantSettings =>
+  tenantSettingsSchema.parse({
+    name: 'Tenant',
+    billingPortalUrl: null,
+    bunnyStreamLibraryId: null,
+    ...overrides,
+  });
 
 const member = (overrides: Partial<Member> & { id: string; userId: string }): Member => ({
   tenantId: 't1',
@@ -356,8 +372,65 @@ class FakeNotifications implements NotificationRepository {
   }
 }
 
+class FakeMemberBlocks implements MemberBlockRepository {
+  readonly rows: MemberBlock[] = [];
+
+  async block(tenantId: string, row: MemberBlock): Promise<boolean> {
+    const exists = this.rows.some(
+      (candidate) =>
+        candidate.tenantId === tenantId &&
+        candidate.blockerUserId === row.blockerUserId &&
+        candidate.blockedUserId === row.blockedUserId,
+    );
+    if (exists) return false;
+    this.rows.push({ ...row, tenantId });
+    return true;
+  }
+
+  async unblock(
+    tenantId: string,
+    input: { blockerUserId: string; blockedUserId: string },
+  ): Promise<boolean> {
+    const index = this.rows.findIndex(
+      (candidate) =>
+        candidate.tenantId === tenantId &&
+        candidate.blockerUserId === input.blockerUserId &&
+        candidate.blockedUserId === input.blockedUserId,
+    );
+    if (index === -1) return false;
+    this.rows.splice(index, 1);
+    return true;
+  }
+
+  async findDirections(
+    tenantId: string,
+    query: { viewerUserId: string; otherUserIds: string[] },
+  ): Promise<Map<string, DmBlockDirections>> {
+    return new Map(
+      query.otherUserIds.map((otherUserId) => [
+        otherUserId,
+        {
+          blockedByViewer: this.rows.some(
+            (row) =>
+              row.tenantId === tenantId &&
+              row.blockerUserId === query.viewerUserId &&
+              row.blockedUserId === otherUserId,
+          ),
+          blocksViewer: this.rows.some(
+            (row) =>
+              row.tenantId === tenantId &&
+              row.blockerUserId === otherUserId &&
+              row.blockedUserId === query.viewerUserId,
+          ),
+        },
+      ]),
+    );
+  }
+}
+
 interface Fixture {
   deps: DirectMessagesDeps;
+  blocks: FakeMemberBlocks;
   conversations: FakeDmConversations;
   messages: FakeDmMessages;
   states: FakeDmConversationStates;
@@ -366,8 +439,16 @@ interface Fixture {
   published: RealtimeEvent[];
 }
 
-const fixture = (input: { members?: Member[]; staffUserIds?: string[]; posts?: Post[] } = {}): Fixture => {
+const fixture = (
+  input: {
+    members?: Member[];
+    staffUserIds?: string[];
+    posts?: Post[];
+    directMessagesEnabled?: boolean;
+  } = {},
+): Fixture => {
   const conversations = new FakeDmConversations();
+  const blocks = new FakeMemberBlocks();
   const messages = new FakeDmMessages();
   const states = new FakeDmConversationStates(conversations);
   const notifications = new FakeNotifications();
@@ -388,10 +469,22 @@ const fixture = (input: { members?: Member[]; staffUserIds?: string[]; posts?: P
       return { ok: true, value: undefined };
     },
   };
+  const tenants: TenantRepository = {
+    findById: async () => null,
+    findBySlug: async () => null,
+    findSole: async () => null,
+    findSettings: async () =>
+      tenantSettings({ directMessagesEnabled: input.directMessagesEnabled ?? true }),
+    updateSettings: async (_tenantId, settings) => settings,
+    createTenantWithOwnerGrant: async () => null,
+    hasAny: async () => true,
+  };
   const deps: DirectMessagesDeps = {
     dmConversations: conversations,
     dmMessages: messages,
     dmConversationStates: states,
+    memberBlocks: blocks,
+    tenants,
     members: {
       findById: async (tenantId, memberId) =>
         members.find((row) => row.tenantId === tenantId && row.id === memberId) ?? null,
@@ -515,7 +608,7 @@ const fixture = (input: { members?: Member[]; staffUserIds?: string[]; posts?: P
     },
     contentHash: { sha256: (content) => `digest(${String(content)})` },
   };
-  return { deps, conversations, messages, states, notifications, delivered, published };
+  return { deps, blocks, conversations, messages, states, notifications, delivered, published };
 };
 
 const startWith = async (
@@ -828,5 +921,167 @@ describe('reading conversations', () => {
 
     expect(before.ok && before.value.unread).toBe(1);
     expect(after.ok && after.value.unread).toBe(0);
+  });
+});
+
+describe('member blocks', () => {
+  it('stops the blocked sender from continuing or reopening the conversation', async () => {
+    const fx = fixture();
+    const conversation = await startWith(fx);
+    const blocker = ctx({ userId: 'u2', memberId: 'm2' });
+
+    const blocked = await blockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
+
+    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    const restart = await startDmConversation(
+      ctx(),
+      { recipient: { kind: 'member', memberId: 'm2' } },
+      fx.deps,
+    );
+
+    expect(blocked.ok && blocked.value.blockedByViewer).toBe(true);
+    expect(blocked.ok && blocked.value.canSend).toBe(false);
+    expect(send.ok ? null : send.error.code).toBe('forbidden');
+    expect(restart.ok ? null : restart.error.code).toBe('forbidden');
+    expect(fx.messages.rows).toHaveLength(0);
+    expect(fx.notifications.rows).toHaveLength(0);
+  });
+
+  it('closes the support channel for staff too, unlike the opt-out', async () => {
+    const fx = fixture({ staffUserIds: ['u3'] });
+    await fx.deps.memberBlocks.block('t1', {
+      tenantId: 't1',
+      blockerUserId: 'u2',
+      blockedUserId: 'u3',
+      createdAt: NOW,
+    });
+
+    const asStaff = await startDmConversation(
+      ctx({ userId: 'u3', memberId: null, staffRole: 'admin' }),
+      { recipient: { kind: 'member', memberId: 'm2' } },
+      fx.deps,
+    );
+
+    expect(asStaff.ok ? null : asStaff.error.code).toBe('forbidden');
+  });
+
+  it('stops the blocker from writing to the blocked member too', async () => {
+    const fx = fixture();
+    const conversation = await startWith(fx);
+
+    await blockDmParticipant(ctx(), { conversationId: conversation.id }, fx.deps);
+    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+
+    expect(send.ok ? null : send.error.code).toBe('forbidden');
+  });
+
+  it('sends the blocker back to their own thread instead of the neutral rejection', async () => {
+    const fx = fixture();
+    const conversation = await startWith(fx);
+
+    await blockDmParticipant(ctx(), { conversationId: conversation.id }, fx.deps);
+    const restart = await startDmConversation(
+      ctx(),
+      { recipient: { kind: 'member', memberId: 'm2' } },
+      fx.deps,
+    );
+
+    expect(restart.ok && restart.value).toMatchObject({
+      id: conversation.id,
+      blockedByViewer: true,
+      canSend: false,
+    });
+  });
+
+  it('never tells the blocked sender who closed the thread', async () => {
+    const fx = fixture();
+    const conversation = await startWith(fx);
+    await blockDmParticipant(
+      ctx({ userId: 'u2', memberId: 'm2' }),
+      { conversationId: conversation.id },
+      fx.deps,
+    );
+
+    const projected = await getDmConversation(ctx(), { conversationId: conversation.id }, fx.deps);
+
+    expect(projected.ok && projected.value).toMatchObject({ blockedByViewer: false, canSend: false });
+  });
+
+  it('reopens the thread on unblock and is idempotent in both directions', async () => {
+    const fx = fixture();
+    const conversation = await startWith(fx);
+    const blocker = ctx({ userId: 'u2', memberId: 'm2' });
+
+    await blockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
+    await blockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
+    const unblocked = await unblockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
+    await unblockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
+    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+
+    expect(fx.blocks.rows).toHaveLength(0);
+    expect(unblocked.ok && unblocked.value).toMatchObject({ blockedByViewer: false, canSend: true });
+    expect(send.ok).toBe(true);
+  });
+
+  it('keeps blocks scoped to the tenant that created them', async () => {
+    const fx = fixture();
+    const conversation = await startWith(fx);
+    await blockDmParticipant(
+      ctx({ userId: 'u2', memberId: 'm2' }),
+      { conversationId: conversation.id },
+      fx.deps,
+    );
+
+    const other = await fx.deps.memberBlocks.findDirections('t2', {
+      viewerUserId: 'u1',
+      otherUserIds: ['u2'],
+    });
+
+    expect(fx.blocks.rows.map((row) => row.tenantId)).toEqual(['t1']);
+    expect(other.get('u2')).toEqual({ blockedByViewer: false, blocksViewer: false });
+  });
+
+  it('refuses to block from a conversation the actor is not part of', async () => {
+    const fx = fixture({
+      members: [
+        member({ id: 'm1', userId: 'u1' }),
+        member({ id: 'm2', userId: 'u2' }),
+        member({ id: 'm3', userId: 'u3' }),
+      ],
+    });
+    const conversation = await startWith(fx);
+
+    const result = await blockDmParticipant(
+      ctx({ userId: 'u3', memberId: 'm3' }),
+      { conversationId: conversation.id },
+      fx.deps,
+    );
+
+    expect(result.ok ? null : result.error.code).toBe('not_found');
+    expect(fx.blocks.rows).toHaveLength(0);
+  });
+});
+
+describe('the tenant direct-message switch', () => {
+  it('rejects every direct-message route when the owner turns messages off', async () => {
+    const enabled = fixture();
+    const conversation = await startWith(enabled);
+    const fx = fixture({ directMessagesEnabled: false });
+
+    const results = [
+      await listDmConversations(ctx(), {}, fx.deps),
+      await dmUnreadCount(ctx(), fx.deps),
+      await getDmConversation(ctx(), { conversationId: conversation.id }, fx.deps),
+      await listDmMessages(ctx(), { conversationId: conversation.id }, fx.deps),
+      await startDmConversation(ctx(), { recipient: { kind: 'member', memberId: 'm2' } }, fx.deps),
+      await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps),
+      await markDmConversationRead(ctx(), { conversationId: conversation.id }, fx.deps),
+      await blockDmParticipant(ctx(), { conversationId: conversation.id }, fx.deps),
+      await unblockDmParticipant(ctx(), { conversationId: conversation.id }, fx.deps),
+    ];
+
+    expect(results.map((result) => (result.ok ? 'ok' : result.error.code))).toEqual(
+      Array.from({ length: results.length }, () => 'forbidden'),
+    );
   });
 });

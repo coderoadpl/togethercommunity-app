@@ -26,6 +26,8 @@ export interface Messages {
       light: string;
       dark: string;
       auto: string;
+      currentMode: (params: { mode: string }) => string;
+      cycle: (params: { current: string; next: string }) => string;
     };
     home: string;
     reload: string;
@@ -94,6 +96,7 @@ export interface Messages {
     headingSessionEnded: string;
     headingInvalidCredentials: string;
     headingForbidden: string;
+    headingImpersonationReadOnly: string;
     headingNotFound: string;
     headingTenantNotFound: string;
     headingValidation: string;
@@ -105,6 +108,7 @@ export interface Messages {
     messageInvalidCredentials: string;
     messageForbidden: string;
     messageBanned: string;
+    messageImpersonationReadOnly: string;
     messageNotFound: string;
     messageValidation: string;
     messageConflict: string;
@@ -272,6 +276,16 @@ export interface Messages {
     deletePost: string;
     deletePostConfirm: string;
   };
+  dmReports: {
+    heading: string;
+    intro: string;
+    empty: string;
+    emptySnapshot: string;
+    parties: (params: { reporter: string; reported: string }) => string;
+    resolve: string;
+    resolveConfirm: string;
+    loadMore: string;
+  };
   dashboard: {
     heading: string;
     loading: string;
@@ -300,6 +314,11 @@ export interface Messages {
       firstMember: string;
       paymentsConfigured: string;
     };
+  };
+  studioSetup: {
+    panelTitle: string;
+    expand: (params: { title: string }) => string;
+    collapse: (params: { title: string }) => string;
   };
   tenantSetup: {
     title: string;
@@ -470,6 +489,7 @@ export interface Messages {
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
     dmMessage: (params: { author: string }) => string;
+    dmReport: (params: { reporter: string }) => string;
     spaceEvent: (params: { space: string }) => string;
   };
   messages: {
@@ -499,6 +519,16 @@ export interface Messages {
     optOutSaved: string;
     recipientUnavailable: string;
     rateLimited: string;
+    conversationMenu: string;
+    block: string;
+    unblock: string;
+    blockedByYou: string;
+    cannotSend: string;
+    report: string;
+    reportTitle: string;
+    reportHint: string;
+    reportSent: string;
+    reportAlready: string;
   };
   events: {
     sectionTitle: string;
@@ -1023,12 +1053,8 @@ export interface Messages {
     fileNameLabel: string;
     linkUrlLabel: string;
     linkDescriptionLabel: string;
-    htmlLinkFoldNote: string;
-    htmlSandboxFoldNote: string;
     technicalFieldHint: (params: { field: string }) => string;
     blockPreviewLabel: string;
-    showSandboxPreview: string;
-    hideSandboxPreview: string;
     addBlock: string;
     saving: string;
     saveLesson: string;
@@ -1115,6 +1141,18 @@ export interface Messages {
     tombstoneNotice: string;
     exportFailed: string;
     erasureRequestsHeading: string;
+    impersonateAction: string;
+    impersonateConfirmTitle: string;
+    impersonateConfirmBody: (params: { name: string }) => string;
+    impersonateConfirmTtl: string;
+    impersonateReasonLabel: string;
+    impersonateConfirm: string;
+    impersonateStarting: string;
+    impersonationLogHeading: string;
+    impersonationLogEmpty: string;
+    impersonationLogStarted: string;
+    impersonationLogEnded: string;
+    impersonationLogEntry: (params: { actor: string; subject: string }) => string;
     erasureRequestsEmpty: string;
     erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
     erasureRejectNote: string;
@@ -1220,6 +1258,12 @@ export interface Messages {
     programButton: string;
     programTitle: string;
     closeSheet: string;
+    impersonationBanner: (params: { name: string }) => string;
+    impersonationRegionLabel: string;
+    impersonationExit: string;
+    impersonationExiting: string;
+    impersonationReadOnlyHint: string;
+    impersonationExpired: string;
   };
   start: {
     title: string;
@@ -1328,7 +1372,6 @@ export interface Messages {
     coverAlt: (params: { name: string }) => string;
     statLessons: (params: { count: number }) => string;
     statDuration: string;
-    statCompleted: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;
   };
@@ -1663,6 +1706,11 @@ export interface Messages {
     homeSpaceLabel: string;
     homeSpaceNone: string;
     homeSpaceHint: string;
+  };
+  directMessages: {
+    heading: string;
+    intro: string;
+    toggleLabel: string;
   };
   legal: {
     heading: string;

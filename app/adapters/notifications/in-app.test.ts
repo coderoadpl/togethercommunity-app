@@ -52,6 +52,7 @@ describe('in-app notification channel', () => {
         tenantId: 't1',
         recipientUserId: 'u2',
         notificationId: 'n1',
+        notificationKind: 'thread-reply',
         createdAt: '2026-07-15T10:00:00.000Z',
       },
     ]);

@@ -75,6 +75,90 @@ export const resolveReportInputSchema = z.object({
   action: z.enum(['dismiss', 'delete-post']),
 });
 
+const dmReportReasonSchema = z.enum(['spam', 'harassment', 'illegal', 'other']);
+const dmReportStatusSchema = z.enum(['open', 'resolved']);
+
+export type DmReportReason = z.output<typeof dmReportReasonSchema>;
+export type DmReportStatus = z.output<typeof dmReportStatusSchema>;
+
+/**
+ * Staff cannot read live DM threads, so a report carries its own frozen copy of
+ * the conversation tail; the snapshot is evidence and is never refreshed.
+ */
+const dmReportMessageSchema = z.object({
+  id: z.string().min(1),
+  senderDisplay: z.string().min(1),
+  senderIsReporter: z.boolean(),
+  body: z.string(),
+  createdAt: z.string().datetime(),
+});
+
+export type DmReportMessage = z.output<typeof dmReportMessageSchema>;
+
+export const dmReportSchema = z.object({
+  id: z.string().min(1),
+  tenantId: z.string().min(1),
+  conversationId: z.string().min(1),
+  reporterUserId: z.string().min(1),
+  reporterDisplay: z.string().trim().min(1),
+  reportedUserId: z.string().min(1),
+  reportedDisplay: z.string().trim().min(1),
+  reason: dmReportReasonSchema,
+  snapshot: z.array(dmReportMessageSchema),
+  status: dmReportStatusSchema,
+  createdAt: z.string().datetime(),
+  resolvedAt: z.string().datetime().nullable(),
+  resolvedByUserId: z.string().min(1).nullable(),
+});
+
+export type DmReport = z.output<typeof dmReportSchema>;
+
+/**
+ * Raw participant user ids are global across tenants, so the reporter only ever
+ * gets back the acknowledgement fields; the identifying columns and the
+ * evidence snapshot stay on the staff queue.
+ */
+export const dmReportReceiptSchema = dmReportSchema.pick({
+  id: true,
+  conversationId: true,
+  reason: true,
+  status: true,
+  createdAt: true,
+});
+
+export type DmReportReceipt = z.output<typeof dmReportReceiptSchema>;
+
+export const dmReportReceiptOf = (report: DmReport): DmReportReceipt => ({
+  id: report.id,
+  conversationId: report.conversationId,
+  reason: report.reason,
+  status: report.status,
+  createdAt: report.createdAt,
+});
+
+export const dmReportQueueSchema = z.object({
+  reports: z.array(dmReportSchema),
+  nextCursor: z.string().nullable(),
+  openCount: z.number().int().nonnegative(),
+});
+
+export type DmReportQueue = z.output<typeof dmReportQueueSchema>;
+
+export const reportDmConversationInputSchema = z.object({
+  conversationId: z.string().min(1),
+  reason: dmReportReasonSchema,
+});
+
+export const listDmReportsInputSchema = z.object({
+  status: dmReportStatusSchema.default('open'),
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(100).default(20),
+});
+
+export const resolveDmReportInputSchema = z.object({
+  reportId: z.string().min(1),
+});
+
 export const setMemberBannedInputSchema = z.object({
   memberId: z.string().min(1),
   banned: z.boolean(),

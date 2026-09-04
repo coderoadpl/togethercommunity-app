@@ -21,6 +21,7 @@ export const ERROR_CODES = [
   'transactional_platform_cap_reached',
   'slug_reserved',
   'invoice_exemption_basis_missing',
+  'impersonation_read_only',
   'internal',
 ] as const;
 
@@ -75,5 +76,9 @@ export const rateLimited = (message = 'Too many requests'): AppError =>
   appError('rate_limited', message);
 
 export const slugReserved = (message: string): AppError => appError('slug_reserved', message);
+
+export const impersonationReadOnly = (
+  message = 'This action is blocked while viewing as a member',
+): AppError => appError('impersonation_read_only', message);
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);

@@ -8,6 +8,11 @@ import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.j
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
+import {
+  createImpersonationSessionRepository,
+  createTenantAuditEventRepository,
+} from '#adapters/db/impersonation.js';
+import { createImpersonationTokenCodec } from '#adapters/crypto/impersonation-token-codec.js';
 import { createImportContentRepository } from '#adapters/db/content-import.js';
 import { createImportUsersRepository } from '#adapters/db/users-import.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
@@ -61,6 +66,7 @@ import {
   createDmConversationRepository,
   createDmConversationStateRepository,
   createDmMessageRepository,
+  createDmReportRepository,
   createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
@@ -71,6 +77,7 @@ import {
   createOrderRepository,
   createPaymentRefundRepository,
   createPostReactionRepository,
+  createMemberBlockRepository,
   createPostReportRepository,
   createPostRepository,
   createSpaceEventRepository,
@@ -174,6 +181,9 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
+  ImpersonationSessionRepository,
+  ImpersonationTokenCodec,
+  TenantAuditEventRepository,
   ImportAuditEventRepository,
   ImportContentRepository,
   ImportUsersReader,
@@ -192,6 +202,8 @@ import type {
   MemberErasureRequestRepository,
   DmConversationRepository,
   DmConversationStateRepository,
+  DmReportRepository,
+  MemberBlockRepository,
   DmMessageRepository,
   MemberErasurePort,
   MemberEventRepository,
@@ -253,7 +265,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
 import {
   isProductionEnvironment,
   ok,
@@ -357,6 +369,8 @@ export interface AppDeps {
   dmConversations: DmConversationRepository;
   dmMessages: DmMessageRepository;
   dmConversationStates: DmConversationStateRepository;
+  dmReports: DmReportRepository;
+  memberBlocks: MemberBlockRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
@@ -372,6 +386,10 @@ export interface AppDeps {
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
+  impersonations: ImpersonationSessionRepository;
+  auditEvents: TenantAuditEventRepository;
+  impersonationTokens: ImpersonationTokenCodec;
+  secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
@@ -730,6 +748,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const emailEvents = createEmailEventRepository(db);
   const emailSends = createEmailSendRepository(db);
   const schedulerRuns = createSchedulerRunRepository(db);
+  const impersonations = createImpersonationSessionRepository(db);
+  const auditEvents = createTenantAuditEventRepository(db);
   const consentEvidenceRetention = createConsentEvidenceRetentionRepository(db);
   const definitions = createConsentDefinitionRepository(db);
   const marketingConsents = createMarketingConsentRepository(db);
@@ -949,8 +969,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
         )
       : ok({ purged: 0, tenantsProcessed: 0 });
+    const sweptViews = await sweepLapsedImpersonations({ impersonations, ids, clock });
     if (!marketing.ok) return marketing;
     if (!purged.ok) return purged;
+    if (!sweptViews.ok) return sweptViews;
     return marketing;
   };
   const realtimeBus = createRealtimeTransport({ env, db, logger });
@@ -1058,6 +1080,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dmConversations: createDmConversationRepository(db),
     dmMessages: createDmMessageRepository(db),
     dmConversationStates: createDmConversationStateRepository(db),
+    dmReports: createDmReportRepository(db),
+    memberBlocks: createMemberBlockRepository(db),
     notifications: createNotificationRepository(db),
     fanoutJobs: createNotificationFanoutJobRepository(db),
     notificationChannels: [
@@ -1076,6 +1100,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
+    impersonations,
+    auditEvents,
+    impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
+    secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),
     importContent: createImportContentRepository(db),
     importUsersReader,

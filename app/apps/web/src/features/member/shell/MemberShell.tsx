@@ -10,13 +10,14 @@ import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
 import { StatusView } from '../../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
-import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.js';
+import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { useViewerKind } from '../viewer.js';
 import { AnonShell } from './AnonShell.js';
 import { CourseSidebar } from './CourseSidebar.js';
+import { ImpersonationBanner } from './ImpersonationBanner.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
 import { courseContextFromPath, memberHomePath } from './member-nav.js';
 import { CourseProgramSheet, MemberMenuSheet } from './MemberMenuSheet.js';
@@ -166,12 +167,13 @@ export const MemberShell = () => {
               ) : null}
               {hasMobileNavigation ? <NotificationBell /> : null}
               <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
-                <ColorSchemeSwitcher compact />
+                <ColorSchemeCycleButton />
               </Box>
               <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
                 <MemberAccountMenu />
               </Box>
             </Toolbar>
+            <ImpersonationBanner />
           </AppBar>
           <Box
             component="main"

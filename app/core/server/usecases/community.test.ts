@@ -7,8 +7,10 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type DmBlockDirections,
   type Identity,
   type Member,
+  type MemberBlock,
   type Notification,
   type Post,
   type PostContextKind,
@@ -27,6 +29,7 @@ import type {
   CourseModuleRepository,
   CourseRepository,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -474,6 +477,44 @@ const fakeFanoutJobs = (): NotificationFanoutJobRepository => ({
   save: async () => undefined,
 });
 
+class FakeMemberBlocks implements MemberBlockRepository {
+  private readonly rows: MemberBlock[] = [];
+
+  async block(tenantId: string, row: MemberBlock): Promise<boolean> {
+    this.rows.push({ ...row, tenantId });
+    return true;
+  }
+
+  async unblock(): Promise<boolean> {
+    return false;
+  }
+
+  async findDirections(
+    tenantId: string,
+    query: { viewerUserId: string; otherUserIds: string[] },
+  ): Promise<Map<string, DmBlockDirections>> {
+    return new Map(
+      query.otherUserIds.map((otherUserId) => [
+        otherUserId,
+        {
+          blockedByViewer: this.rows.some(
+            (row) =>
+              row.tenantId === tenantId &&
+              row.blockerUserId === query.viewerUserId &&
+              row.blockedUserId === otherUserId,
+          ),
+          blocksViewer: this.rows.some(
+            (row) =>
+              row.tenantId === tenantId &&
+              row.blockerUserId === otherUserId &&
+              row.blockedUserId === query.viewerUserId,
+          ),
+        },
+      ]),
+    );
+  }
+}
+
 class FakeSubscriptions implements ThreadSubscriptionRepository {
   readonly rows: ThreadSubscription[] = [];
 
@@ -542,11 +583,12 @@ class FakeNotifications implements NotificationRepository {
 
   async listForRecipient(
     tenantId: string,
-    query: { recipientUserId: string; cursor?: string; limit: number },
+    query: { recipientUserId: string; cursor?: string; limit: number; excludeDms?: boolean },
   ): Promise<{ notifications: Notification[]; nextCursor: string | null }> {
     return {
       notifications: this.rows
         .filter((item) => item.tenantId === tenantId && item.recipientUserId === query.recipientUserId)
+        .filter((item) => query.excludeDms !== true || item.payload.contextKind !== 'dm')
         .slice(0, query.limit),
       nextCursor: null,
     };
@@ -573,8 +615,15 @@ class FakeNotifications implements NotificationRepository {
     return count;
   }
 
-  async unreadCount(tenantId: string, recipientUserId: string): Promise<number> {
-    return this.rows.filter((item) => item.tenantId === tenantId && item.recipientUserId === recipientUserId && item.readAt === null).length;
+  async unreadCount(
+    tenantId: string,
+    recipientUserId: string,
+    options?: { excludeDms?: boolean },
+  ): Promise<number> {
+    return this.rows
+      .filter((item) => item.tenantId === tenantId && item.recipientUserId === recipientUserId && item.readAt === null)
+      .filter((item) => options?.excludeDms !== true || item.payload.contextKind !== 'dm')
+      .length;
   }
 
   async hasUnreadDmNotification(): Promise<boolean> {
@@ -685,6 +734,7 @@ const deps = (
     reports: new FakeReports(),
     threadSubscriptions: new FakeSubscriptions(),
     spaceSubscriptions: new FakeSpaceSubscriptions(),
+    memberBlocks: new FakeMemberBlocks(),
     spaces: emptySpacesRepo,
     notifications: new FakeNotifications(),
     notificationChannels: [],
@@ -1057,6 +1107,57 @@ describe('community use-cases', () => {
     expect(await markAllNotificationsRead(ctx({ userId: 'u1', memberId: 'm1' }), d)).toEqual({ ok: true, value: { read: 1 } });
   });
 
+  it('hides direct-message notifications from the list and the unread badge under impersonation', async () => {
+    const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
+    const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    if (!root.ok) throw new Error('root failed');
+    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
+    await d.notifications.insert('t1', {
+      id: 'n-dm',
+      tenantId: 't1',
+      recipientUserId: 'u1',
+      kind: 'dm-message',
+      payload: {
+        rootPostId: 'dm-1',
+        postId: 'dm-1',
+        contextKind: 'dm',
+        contextId: 'conversation-1',
+        courseId: null,
+        eventId: null,
+        lessonName: 'Ola',
+        authorDisplay: 'Ola',
+        authorAvatarUrl: null,
+        snippet: 'private words',
+      },
+      sourceKey: null,
+      readAt: null,
+      createdAt: '1998-08-14T10:00:00.000Z',
+    });
+
+    const subject = ctx({ userId: 'u1', memberId: 'm1' });
+    expect(await unreadNotificationCount(subject, d)).toEqual({ ok: true, value: { unread: 2 } });
+
+    const impersonated: Ctx = {
+      ...subject,
+      impersonation: {
+        id: 'imp-1',
+        actorUserId: 'user-owner',
+        actorEmail: 'owner@example.test',
+        actorName: 'Owner',
+        actorStaffRole: 'owner',
+        subjectMemberId: 'm1',
+        subjectName: 'Member',
+        expiresAt: '1998-08-14T11:00:00.000Z',
+      },
+    };
+    expect(await unreadNotificationCount(impersonated, d)).toEqual({ ok: true, value: { unread: 1 } });
+    const listed = await listNotifications(impersonated, { limit: 10 }, d);
+    if (!listed.ok) throw new Error('list failed');
+    expect(listed.value.notifications.map((notification) => notification.kind)).toEqual([
+      'thread-reply',
+    ]);
+  });
+
   it('resolves author avatars for threads, replies, search hits and notification payloads', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
     const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'needle root' }, d);
@@ -1230,6 +1331,42 @@ describe('community guard and error branches', () => {
     await d.threadSubscriptions.upsert('t1', {
       userId: 'u2',
       rootPostId: root.value.rootPostId,
+      createdAt: NOW,
+    });
+
+    const reply = await createPost(
+      memberCtx,
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' },
+      d,
+    );
+
+    expect(reply).toMatchObject({ ok: true });
+    expect(delivered).toEqual([]);
+    expect(d.notifications).toBeInstanceOf(FakeNotifications);
+    if (!(d.notifications instanceof FakeNotifications)) return;
+    expect(d.notifications.rows).toEqual([]);
+  });
+
+  it('drops a subscriber who blocked the author from the thread-reply fan-out', async () => {
+    const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
+    const delivered: string[] = [];
+    d.notificationChannels.push({
+      deliver: async (notification) => {
+        delivered.push(notification.recipientUserId);
+        return { ok: true, value: undefined };
+      },
+    });
+    const root = await createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    if (!root.ok) throw new Error('root failed');
+    await d.threadSubscriptions.upsert('t1', {
+      userId: 'u2',
+      rootPostId: root.value.rootPostId,
+      createdAt: NOW,
+    });
+    await d.memberBlocks.block('t1', {
+      tenantId: 't1',
+      blockerUserId: 'u2',
+      blockedUserId: 'u1',
       createdAt: NOW,
     });
 

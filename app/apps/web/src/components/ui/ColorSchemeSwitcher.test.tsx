@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '../../i18n/index.js';
 import { colorSchemePreference, ThemeModeProvider } from '../../theme-mode.js';
-import { ColorSchemeSwitcher } from './ColorSchemeSwitcher.js';
+import { ColorSchemeCycleButton, ColorSchemeSwitcher } from './ColorSchemeSwitcher.js';
 
 const ThemeProbe = () => {
   const theme = useTheme();
@@ -54,6 +54,15 @@ const renderSwitcher = () => render(
   </ThemeModeProvider>,
 );
 
+const renderCycleButton = () => render(
+  <ThemeModeProvider>
+    <LanguageProvider>
+      <ColorSchemeCycleButton />
+      <ThemeProbe />
+    </LanguageProvider>
+  </ThemeModeProvider>,
+);
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('ColorSchemeSwitcher', () => {
@@ -90,5 +99,43 @@ describe('ColorSchemeSwitcher', () => {
     expect(screen.getByRole('button', { name: 'Jasny' })).toHaveAttribute('aria-pressed', 'true');
     act(() => media.setDark(true));
     expect(screen.getByTestId('scheme-probe')).toHaveTextContent('light');
+  });
+});
+
+describe('ColorSchemeCycleButton', () => {
+  it('cycles light → dark → auto from a single labelled button', async () => {
+    matchMediaController();
+    colorSchemePreference.save('light');
+    const user = userEvent.setup();
+    renderCycleButton();
+
+    const button = () => screen.getByTestId('color-scheme-cycle');
+    expect(button()).toHaveAttribute('aria-label', 'Motyw: Jasny. Przełącz na: Ciemny');
+    expect(button()).not.toHaveAttribute('aria-pressed');
+
+    await user.click(button());
+
+    expect(screen.getByTestId('scheme-probe')).toHaveTextContent('dark');
+    expect(button()).toHaveAttribute('aria-label', 'Motyw: Ciemny. Przełącz na: Auto');
+
+    await user.click(button());
+
+    expect(colorSchemePreference.load()).toBe('auto');
+    expect(button()).toHaveAttribute('aria-label', 'Motyw: Auto. Przełącz na: Jasny');
+
+    await user.click(button());
+
+    expect(colorSchemePreference.load()).toBe('light');
+  });
+
+  it('names the current mode in a tooltip on focus', async () => {
+    matchMediaController();
+    colorSchemePreference.save('dark');
+    const user = userEvent.setup();
+    renderCycleButton();
+
+    await user.hover(screen.getByTestId('color-scheme-cycle'));
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Motyw: Ciemny');
   });
 });

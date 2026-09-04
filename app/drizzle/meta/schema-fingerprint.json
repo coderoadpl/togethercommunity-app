@@ -1,6 +1,6 @@
 {
-  "hash": "a9a49f6b1cca75b02063b844d5f2dd6a9343c5a7a4466197de9ad0c7937a2174",
-  "shortId": "a9a49f6b1cca",
+  "hash": "d2343b66b4a9a3c836dca624080d1a4fe2396f142b13ffbab2b37007f9dc6751",
+  "shortId": "d2343b66b4a9",
   "schema": {
     "constraints": [
       {
@@ -87,6 +87,11 @@
         "definition": "FOREIGN KEY (conversation_id) REFERENCES dm_conversations(id) ON DELETE CASCADE",
         "name": "dm_messages_conversation_id_dm_conversations_id_fk",
         "table": "dm_messages"
+      },
+      {
+        "definition": "FOREIGN KEY (conversation_id) REFERENCES dm_conversations(id) ON DELETE CASCADE",
+        "name": "dm_reports_conversation_id_dm_conversations_id_fk",
+        "table": "dm_reports"
       },
       {
         "definition": "FOREIGN KEY (coupon_id) REFERENCES coupons(id) ON DELETE RESTRICT",
@@ -370,6 +375,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "dm_reports_tenant_id_tenants_id_fk",
+        "table": "dm_reports"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "email_layouts_tenant_id_tenants_id_fk",
         "table": "email_layouts"
       },
@@ -392,6 +402,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "fiscal_artifacts_tenant_id_tenants_id_fk",
         "table": "fiscal_artifacts"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "impersonation_sessions_tenant_id_tenants_id_fk",
+        "table": "impersonation_sessions"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -442,6 +457,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "marketing_throttle_buckets_tenant_id_tenants_id_fk",
         "table": "marketing_throttle_buckets"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "member_blocks_tenant_id_tenants_id_fk",
+        "table": "member_blocks"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -587,6 +607,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "tenant_api_keys_tenant_id_tenants_id_fk",
         "table": "tenant_api_keys"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "tenant_audit_events_tenant_id_tenants_id_fk",
+        "table": "tenant_audit_events"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -835,6 +860,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "dm_reports_pkey",
+        "table": "dm_reports"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "email_events_pkey",
         "table": "email_events"
       },
@@ -852,6 +882,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "entity_versions_pkey",
         "table": "entity_versions"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "impersonation_sessions_pkey",
+        "table": "impersonation_sessions"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1017,6 +1052,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "tenant_api_keys_pkey",
         "table": "tenant_api_keys"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "tenant_audit_events_pkey",
+        "table": "tenant_audit_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1428,6 +1468,11 @@
         "table": "dm_messages"
       },
       {
+        "definition": "CREATE INDEX dm_reports_tenant_status_created_idx ON dm_reports USING btree (tenant_id, status, created_at DESC NULLS LAST, id DESC NULLS LAST)",
+        "name": "dm_reports_tenant_status_created_idx",
+        "table": "dm_reports"
+      },
+      {
         "definition": "CREATE INDEX email_events_tenant_occurred_idx ON email_events USING btree (tenant_id, occurred_at, sequence)",
         "name": "email_events_tenant_occurred_idx",
         "table": "email_events"
@@ -1466,6 +1511,16 @@
         "definition": "CREATE INDEX erased_member_imports_tenant_email_hmac_idx ON erased_member_imports USING btree (tenant_id, email_hmac)",
         "name": "erased_member_imports_tenant_email_hmac_idx",
         "table": "erased_member_imports"
+      },
+      {
+        "definition": "CREATE INDEX impersonation_sessions_open_actor_session_idx ON impersonation_sessions USING btree (tenant_id, actor_session_id) WHERE (ended_at IS NULL)",
+        "name": "impersonation_sessions_open_actor_session_idx",
+        "table": "impersonation_sessions"
+      },
+      {
+        "definition": "CREATE INDEX impersonation_sessions_open_expiry_idx ON impersonation_sessions USING btree (expires_at) WHERE (ended_at IS NULL)",
+        "name": "impersonation_sessions_open_expiry_idx",
+        "table": "impersonation_sessions"
       },
       {
         "definition": "CREATE INDEX import_audit_events_tenant_api_key_at_idx ON import_audit_events USING btree (tenant_id, api_key_id, at)",
@@ -1511,6 +1566,11 @@
         "definition": "CREATE INDEX marketing_idempotency_keys_expiry_idx ON marketing_idempotency_keys USING btree (expires_at)",
         "name": "marketing_idempotency_keys_expiry_idx",
         "table": "marketing_idempotency_keys"
+      },
+      {
+        "definition": "CREATE INDEX member_blocks_tenant_blocked_idx ON member_blocks USING btree (tenant_id, blocked_user_id)",
+        "name": "member_blocks_tenant_blocked_idx",
+        "table": "member_blocks"
       },
       {
         "definition": "CREATE INDEX member_erasure_request_events_request_idx ON member_erasure_request_events USING btree (tenant_id, request_id, occurred_at)",
@@ -1668,6 +1728,11 @@
         "table": "space_subscriptions"
       },
       {
+        "definition": "CREATE INDEX tenant_audit_events_tenant_at_idx ON tenant_audit_events USING btree (tenant_id, at)",
+        "name": "tenant_audit_events_tenant_at_idx",
+        "table": "tenant_audit_events"
+      },
+      {
         "definition": "CREATE INDEX thread_subscriptions_tenant_root_idx ON thread_subscriptions USING btree (tenant_id, root_post_id)",
         "name": "thread_subscriptions_tenant_root_idx",
         "table": "thread_subscriptions"
@@ -1748,6 +1813,11 @@
         "table": "dm_conversations"
       },
       {
+        "definition": "CREATE UNIQUE INDEX dm_reports_tenant_conversation_reporter_open_uidx ON dm_reports USING btree (tenant_id, conversation_id, reporter_user_id) WHERE (status = 'open'::text)",
+        "name": "dm_reports_tenant_conversation_reporter_open_uidx",
+        "table": "dm_reports"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX email_layouts_tenant_name_uidx ON email_layouts USING btree (tenant_id, name)",
         "name": "email_layouts_tenant_name_uidx",
         "table": "email_layouts"
@@ -1811,6 +1881,11 @@
         "definition": "CREATE UNIQUE INDEX marketing_idempotency_keys_tenant_key_uidx ON marketing_idempotency_keys USING btree (tenant_id, key)",
         "name": "marketing_idempotency_keys_tenant_key_uidx",
         "table": "marketing_idempotency_keys"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX member_blocks_tenant_blocker_blocked_uidx ON member_blocks USING btree (tenant_id, blocker_user_id, blocked_user_id)",
+        "name": "member_blocks_tenant_blocker_blocked_uidx",
+        "table": "member_blocks"
       },
       {
         "definition": "CREATE UNIQUE INDEX member_course_progress_tenant_member_course_uidx ON member_course_progress USING btree (tenant_id, member_id, course_id)",
@@ -2819,6 +2894,14 @@
             "generated": "",
             "identity": "",
             "name": "auto_issue_invoices",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "direct_messages_enabled",
             "notNull": true,
             "type": "boolean"
           },
@@ -6038,6 +6121,160 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "actor_email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject_member_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_audit_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_session_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ended_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject_member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "token_hash",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "impersonation_sessions"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "actor_user_id",
             "notNull": false,
             "type": "text"
@@ -6384,6 +6621,43 @@
           }
         ],
         "name": "scheduler_run_tenants"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "blocked_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "blocker_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "member_blocks"
       },
       {
         "columns": [
@@ -6976,6 +7250,115 @@
           }
         ],
         "name": "tenant_document_versions"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "conversation_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reported_display",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reported_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reporter_display",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reporter_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "resolved_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "resolved_by_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "snapshot",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "dm_reports"
       },
       {
         "columns": [

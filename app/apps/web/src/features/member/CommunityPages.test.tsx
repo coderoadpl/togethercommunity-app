@@ -44,6 +44,27 @@ const okMe = () =>
     }),
   );
 
+const impersonatedMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'user@example.com',
+        emailVerified: true,
+        name: 'Jan Uczestnik',
+        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
+        impersonation: {
+          id: 'imp-1',
+          subjectMemberId: 'm1',
+          subjectName: 'Jan Uczestnik',
+          actorName: 'Ola Operatorka',
+          expiresAt: '2026-07-20T10:00:00.000Z',
+        },
+      },
+    }),
+  );
+
 const anonMe = () =>
   http.get('/api/me', () =>
     HttpResponse.json(
@@ -559,6 +580,23 @@ describe('community pages', () => {
     await user.click(screen.getByTestId('space-composer-submit'));
 
     await waitFor(() => expect(seenCalls).toEqual(['s1', 's1']));
+  });
+
+  it('never marks the space seen while viewing as a member', async () => {
+    const seenCalls: string[] = [];
+    server.use(
+      impersonatedMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', [feedItem({ id: 'p1', body: 'Cześć' })]),
+      okSeen(seenCalls),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByText('Cześć')).toBeInTheDocument();
+    expect(seenCalls).toEqual([]);
+    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
   });
 
   it('hides a gated space the member cannot access behind a not-found state', async () => {

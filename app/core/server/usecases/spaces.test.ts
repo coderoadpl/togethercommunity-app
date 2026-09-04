@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MAX_PINNED_POSTS_PER_SPACE,
+  NO_DM_BLOCKS,
   type Identity,
   type Member,
   type Notification,
@@ -738,6 +739,12 @@ const fixture = (input: {
     spaceSubscriptions,
     spaceSeen,
     threadSubscriptions: new FakeThreadSubscriptions(),
+    memberBlocks: {
+      block: async () => true,
+      unblock: async () => true,
+      findDirections: async (_tenantId, query) =>
+        new Map(query.otherUserIds.map((userId) => [userId, NO_DM_BLOCKS])),
+    },
     notifications,
     notificationChannels: [channel],
     courses: emptyCourses,

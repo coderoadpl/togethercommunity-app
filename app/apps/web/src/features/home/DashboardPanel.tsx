@@ -61,7 +61,7 @@ const DashboardTile = ({
   );
 };
 
-export const DashboardPanel = ({ topContent }: { topContent?: ReactNode } = {}) => {
+export const DashboardPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const navigate = useNavigate();
@@ -97,7 +97,6 @@ export const DashboardPanel = ({ topContent }: { topContent?: ReactNode } = {}) 
 
   return (
     <PanelPage title={t.dashboard.heading}>
-      {topContent}
       <Box
         data-testid="dashboard-tiles"
         sx={{

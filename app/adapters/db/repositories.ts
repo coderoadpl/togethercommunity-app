@@ -16,6 +16,7 @@ import {
   dmConversationSchema,
   dmConversationStateSchema,
   dmMessageSchema,
+  dmReportSchema,
   memberCourseProgressSchema,
   memberEventSchema,
   memberGrantSchema,
@@ -51,6 +52,8 @@ import {
   type DmMessage,
   type MemberCourseProgress,
   type MemberGrant,
+  type DmBlockDirections,
+  type DmReport,
   type MemberSubscription,
   type Membership,
   type Notification,
@@ -85,6 +88,8 @@ import type {
   DmConversationRepository,
   DmConversationStateRepository,
   DmMessageRepository,
+  DmReportRepository,
+  MemberBlockRepository,
   EntityVersionRecord,
   EntityVersionRepository,
   HealthPort,
@@ -153,6 +158,8 @@ import {
   dmConversations,
   dmConversationStates,
   dmMessages,
+  dmReports,
+  memberBlocks,
   emailEvents,
   erasedMemberImports,
   entityVersions,
@@ -2107,6 +2114,125 @@ export const createDmConversationStateRepository = (db: Db): DmConversationState
   },
 });
 
+export const createMemberBlockRepository = (db: Db): MemberBlockRepository => ({
+  block: async (tenantId, block) => {
+    const rows = await db
+      .insert(memberBlocks)
+      .values({ ...block, tenantId })
+      .onConflictDoNothing()
+      .returning();
+    return rows.length > 0;
+  },
+  unblock: async (tenantId, input) => {
+    const rows = await db
+      .delete(memberBlocks)
+      .where(
+        and(
+          eq(memberBlocks.tenantId, tenantId),
+          eq(memberBlocks.blockerUserId, input.blockerUserId),
+          eq(memberBlocks.blockedUserId, input.blockedUserId),
+        ),
+      )
+      .returning();
+    return rows.length > 0;
+  },
+  findDirections: async (tenantId, query) => {
+    const directions = new Map<string, DmBlockDirections>(
+      query.otherUserIds.map((userId) => [userId, { blockedByViewer: false, blocksViewer: false }]),
+    );
+    if (query.otherUserIds.length === 0) return directions;
+    const rows = await db
+      .select()
+      .from(memberBlocks)
+      .where(
+        and(
+          eq(memberBlocks.tenantId, tenantId),
+          or(
+            and(
+              eq(memberBlocks.blockerUserId, query.viewerUserId),
+              inArray(memberBlocks.blockedUserId, query.otherUserIds),
+            ),
+            and(
+              eq(memberBlocks.blockedUserId, query.viewerUserId),
+              inArray(memberBlocks.blockerUserId, query.otherUserIds),
+            ),
+          ),
+        ),
+      );
+    for (const row of rows) {
+      const viewerIsBlocker = row.blockerUserId === query.viewerUserId;
+      const otherUserId = viewerIsBlocker ? row.blockedUserId : row.blockerUserId;
+      const current = directions.get(otherUserId);
+      if (current === undefined) continue;
+      directions.set(otherUserId, {
+        blockedByViewer: current.blockedByViewer || viewerIsBlocker,
+        blocksViewer: current.blocksViewer || !viewerIsBlocker,
+      });
+    }
+    return directions;
+  },
+});
+
+const parseDmReport = (report: typeof dmReports.$inferSelect): DmReport =>
+  dmReportSchema.parse(report);
+
+export const createDmReportRepository = (db: Db): DmReportRepository => ({
+  open: async (tenantId, report) => {
+    const rows = await db
+      .insert(dmReports)
+      .values({ ...report, tenantId })
+      .onConflictDoNothing()
+      .returning();
+    const row = rows[0];
+    return row ? parseDmReport(row) : null;
+  },
+  listByStatus: async (tenantId, query) => {
+    const cursor = query.cursor === undefined ? null : parseThreadCursor(query.cursor);
+    const rows = await db
+      .select()
+      .from(dmReports)
+      .where(and(
+        eq(dmReports.tenantId, tenantId),
+        eq(dmReports.status, query.status),
+        ...(cursor === null
+          ? []
+          : [sql`(${dmReports.createdAt}, ${dmReports.id}) < (${cursor.createdAt}, ${cursor.id})`]),
+      ))
+      .orderBy(desc(dmReports.createdAt), desc(dmReports.id))
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const last = page.at(-1);
+    return {
+      reports: page.map(parseDmReport),
+      nextCursor: rows[query.limit] && last ? threadCursor(last) : null,
+    };
+  },
+  countOpen: async (tenantId) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(dmReports)
+      .where(and(eq(dmReports.tenantId, tenantId), eq(dmReports.status, 'open')));
+    return rows[0]?.value ?? 0;
+  },
+  resolve: async (tenantId, input) => {
+    const rows = await db
+      .update(dmReports)
+      .set({
+        status: 'resolved',
+        resolvedAt: input.resolvedAt,
+        resolvedByUserId: input.resolvedByUserId,
+      })
+      .where(and(
+        eq(dmReports.tenantId, tenantId),
+        eq(dmReports.id, input.id),
+        eq(dmReports.status, 'open'),
+      ))
+      .returning();
+    const row = rows[0];
+    return row ? parseDmReport(row) : null;
+  },
+});
+
 const unreadDmConversationFilter = (
   tenantId: string,
   recipientUserId: string,
@@ -2118,6 +2244,10 @@ const unreadDmConversationFilter = (
   sql`${notifications.readAt} is null`,
   sql`${notifications.payload}->>'contextId' = ${conversationId}`,
 ];
+
+/** Keyed on the context rather than the kind, so a future DM-flavoured kind is excluded too. */
+const notDirectMessage = (): SQL =>
+  sql`${notifications.payload}->>'contextKind' is distinct from 'dm'`;
 
 export const createNotificationRepository = (db: Db): NotificationRepository => ({
   insert: async (tenantId, notification) => {
@@ -2150,6 +2280,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
         and(
           eq(notifications.tenantId, tenantId),
           eq(notifications.recipientUserId, query.recipientUserId),
+          ...(query.excludeDms === true ? [notDirectMessage()] : []),
           ...(cursor === null
             ? []
             : [sql`(${notifications.createdAt}, ${notifications.id}) < (${cursor.createdAt}, ${cursor.id})`]),
@@ -2194,7 +2325,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
       .returning({ id: notifications.id });
     return rows.length;
   },
-  unreadCount: async (tenantId, recipientUserId) => {
+  unreadCount: async (tenantId, recipientUserId, options) => {
     const rows = await db
       .select({ value: sql<number>`count(*)::int` })
       .from(notifications)
@@ -2202,6 +2333,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
         and(
           eq(notifications.tenantId, tenantId),
           eq(notifications.recipientUserId, recipientUserId),
+          ...(options?.excludeDms === true ? [notDirectMessage()] : []),
           sql`${notifications.readAt} is null`,
         ),
       );
@@ -2357,6 +2489,22 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
     }),
 });
 
+const erasedDmSnapshot = (display: string, senderIsReporter: boolean): SQL =>
+  sql`(
+    select coalesce(
+      jsonb_agg(
+        case
+          when (entry->>'senderIsReporter')::boolean = ${senderIsReporter}::boolean
+            then jsonb_set(entry, '{senderDisplay}', to_jsonb(${display}::text))
+          else entry
+        end
+        order by idx
+      ),
+      '[]'::jsonb
+    )
+    from jsonb_array_elements(${dmReports.snapshot}) with ordinality as tail(entry, idx)
+  )`;
+
 export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): MemberErasurePort => ({
   pseudonymize: async (tenantId, input) =>
     db.transaction(async (tx) => {
@@ -2440,6 +2588,30 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .where(and(
           eq(postReports.tenantId, tenantId),
           eq(postReports.reporterUserId, member.userId),
+        ));
+
+      await tx
+        .update(dmReports)
+        .set({
+          reporterDisplay: input.postAuthorDisplay,
+          snapshot: erasedDmSnapshot(input.postAuthorDisplay, true),
+        })
+        .where(and(eq(dmReports.tenantId, tenantId), eq(dmReports.reporterUserId, member.userId)));
+      await tx
+        .update(dmReports)
+        .set({
+          reportedDisplay: input.postAuthorDisplay,
+          snapshot: erasedDmSnapshot(input.postAuthorDisplay, false),
+        })
+        .where(and(eq(dmReports.tenantId, tenantId), eq(dmReports.reportedUserId, member.userId)));
+      await tx
+        .delete(memberBlocks)
+        .where(and(
+          eq(memberBlocks.tenantId, tenantId),
+          or(
+            eq(memberBlocks.blockerUserId, member.userId),
+            eq(memberBlocks.blockedUserId, member.userId),
+          ),
         ));
 
       await tx
@@ -3653,6 +3825,7 @@ export const createTenantRepository = (
         termsUrl: tenants.termsUrl,
         privacyUrl: tenants.privacyUrl,
         defaultHomeSpaceId: tenants.defaultHomeSpaceId,
+        directMessagesEnabled: tenants.directMessagesEnabled,
         autoIssueInvoices: tenants.autoIssueInvoices,
         autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
         invoiceVatRatePercent: tenants.invoiceVatRatePercent,
@@ -3686,6 +3859,7 @@ export const createTenantRepository = (
           termsUrl: row.termsUrl,
           privacyUrl: row.privacyUrl,
           defaultHomeSpaceId: row.defaultHomeSpaceId,
+          directMessagesEnabled: row.directMessagesEnabled,
           autoIssueInvoices: row.autoIssueInvoices,
           autoIssueInvoiceScope: row.autoIssueInvoiceScope,
           invoiceVatRatePercent:
@@ -3735,6 +3909,7 @@ export const createTenantRepository = (
         termsUrl: settings.termsUrl,
         privacyUrl: settings.privacyUrl,
         defaultHomeSpaceId: settings.defaultHomeSpaceId,
+        directMessagesEnabled: settings.directMessagesEnabled,
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
         invoiceVatRatePercent: settings.invoiceVatRatePercent,
@@ -3764,6 +3939,7 @@ export const createTenantRepository = (
       termsUrl: settings.termsUrl,
       privacyUrl: settings.privacyUrl,
       defaultHomeSpaceId: settings.defaultHomeSpaceId,
+      directMessagesEnabled: settings.directMessagesEnabled,
       autoIssueInvoices: settings.autoIssueInvoices,
       autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
       invoiceVatRatePercent: settings.invoiceVatRatePercent,

@@ -26,6 +26,7 @@ const identity: Identity = {
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 };
 
 const fakeTenants = (initialTenants: Tenant[] = []) => {

@@ -47,6 +47,10 @@ Repeating the same request with the same `idempotencyKey` returns the original m
 
 `GET /api/m2m/transactional/messages/:id` returns the unified send projection and its delivery events. Use the same tenant API key authentication.
 
+## Message language
+
+Platform templates resolve their language in this order: the recipient's stored member preference, then an explicit `language` in the request payload (or the `x-together-language` header on a sign-in request), then the tenant default, then Polish. A member who picked a language in their account keeps receiving e-mail in it whatever the browser or the calling system asks for; a payload language only decides for recipients with no stored preference.
+
 ## Errors
 
 - `400` for an invalid or oversized payload.

@@ -1,5 +1,4 @@
 import {
-  DEFAULT_LANGUAGE,
   err,
   internal,
   notificationFanoutBackoffAt,
@@ -10,6 +9,7 @@ import {
   ok,
   postSnippet,
   type AppError,
+  type Language,
   type Notification,
   type NotificationFanoutJob,
   type NotificationFanoutKind,
@@ -37,9 +37,11 @@ import type {
   SpaceRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
+  TenantRepository,
   ThreadSubscriptionRepository,
 } from '../ports.js';
 import { avatarUrlForAuthor } from './avatar.js';
+import { tenantEmailLanguage } from './email-language.js';
 import { notificationRecipient, spaceNotificationRecipient } from './community-access.js';
 import { subscriberCanAccessContext, threadContextInfo } from './thread-context.js';
 
@@ -61,6 +63,7 @@ export interface PostFanoutDeps {
   lessons: CourseLessonRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
@@ -78,6 +81,7 @@ export interface EventFanoutDeps {
   events: SpaceEventRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
@@ -108,6 +112,7 @@ export interface NotificationFanoutDrainResult {
 interface Recipient {
   userId: string;
   email: string | null;
+  language: Language | null;
 }
 
 interface RecipientPage {
@@ -180,7 +185,7 @@ const spaceRecipients =
       if (follower.userId === authorUserId) continue;
       const eligible = await spaceNotificationRecipient(tenantId, follower.userId, space, deps);
       if (eligible === null) continue;
-      candidates.push({ userId: follower.userId, email: eligible.email });
+      candidates.push({ userId: follower.userId, email: eligible.email, language: eligible.language });
     }
     return {
       recipients: await withoutAuthorBlockers(tenantId, authorUserId, candidates, deps),
@@ -255,7 +260,11 @@ const postPlan = async (
           (recipient.memberId !== null &&
             (await subscriberCanAccessContext(job.tenantId, recipient.memberId, post, deps)));
         if (!canAccess) continue;
-        candidates.push({ userId: subscriber.userId, email: recipient.email });
+        candidates.push({
+          userId: subscriber.userId,
+          email: recipient.email,
+          language: recipient.language,
+        });
       }
       return {
         recipients: await withoutAuthorBlockers(job.tenantId, post.authorUserId, candidates, deps),
@@ -315,6 +324,7 @@ interface FanoutCoreDeps {
   fanoutJobs: NotificationFanoutJobRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
+  tenants: Pick<TenantRepository, 'findSettings'>;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -373,6 +383,13 @@ const runFanout = async (
   if (plan === null) return finish(true);
   const resolved = plan;
 
+  let tenantLanguage: Language;
+  try {
+    tenantLanguage = await tenantEmailLanguage(job.tenantId, deps);
+  } catch (cause) {
+    return abandon(internal(`Fan-out tenant settings lookup failed: ${String(cause)}`));
+  }
+
   for (let batch = 0; batch < maxBatches; batch += 1) {
     if (batch > 0 && Date.parse(deps.clock.nowIso()) >= deadlineAt) return finish(false);
     let page: RecipientPage;
@@ -405,15 +422,16 @@ const runFanout = async (
       return abandon(internal(`Fan-out notification insert failed: ${String(cause)}`));
     }
     created += inserted.length;
-    const emails = new Map(recipients.map((recipient) => [recipient.userId, recipient.email]));
+    const byUserId = new Map(recipients.map((recipient) => [recipient.userId, recipient]));
     for (const notification of inserted) {
+      const recipient = byUserId.get(notification.recipientUserId);
       for (const channel of deps.notificationChannels) {
         const delivered = await channel.deliver(notification, {
-          recipientEmail: emails.get(notification.recipientUserId) ?? null,
+          recipientEmail: recipient?.email ?? null,
           tenantName: job.payload.tenantName,
           contextName: resolved.contextName,
           contextUrl: resolved.contextUrl,
-          language: DEFAULT_LANGUAGE,
+          language: recipient?.language ?? tenantLanguage,
         });
         if (!delivered.ok) return abandon(delivered.error);
       }

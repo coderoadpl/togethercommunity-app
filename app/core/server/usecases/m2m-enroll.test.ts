@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type EmailOutboxPayload, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '#core/domain/index.js';
+import { ok, type EmailOutboxPayload, type Language, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '#core/domain/index.js';
 
 import type {
   ApiKeyCrypto,
@@ -101,6 +101,7 @@ const harness = (options: {
       members.push(m);
     },
     updateEmail: async () => null,
+    updateLanguage: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
   setBanned: async () => null,
@@ -194,13 +195,14 @@ const activeGrant = (): ProductGrant => ({
   createdAt: PAST,
 });
 
-const seedMember = async (deps: M2mEnrollDeps): Promise<void> => {
+const seedMember = async (deps: M2mEnrollDeps, language: Language | null = null): Promise<void> => {
   await deps.members.create('t1', {
     id: 'm1',
     tenantId: 't1',
     userId: 'u-1',
     email: 'buyer@together.dev',
     displayName: null,
+    language,
     tags: [],
     marketingConsents: {},
     externalCustomerIds: {},
@@ -263,6 +265,20 @@ describe('m2mEnroll', () => {
     expect(h.captured).toEqual([
       expect.objectContaining({ email: 'fresh@together.dev' }),
     ]);
+  });
+
+  it('keeps the stored member language ahead of the requested one', async () => {
+    const h = harness({ products: [product('p1', true)] });
+    await seedMember(h.deps, 'en');
+    await m2mEnroll(TENANT, { email: 'buyer@together.dev', productId: 'p1', language: 'pl' }, h.deps);
+    expect(h.sent[0]?.payload).toMatchObject({ kind: 'welcome-sign-in', language: 'en' });
+  });
+
+  it('uses the requested language when the member stored none', async () => {
+    const h = harness({ products: [product('p1', true)] });
+    await seedMember(h.deps);
+    await m2mEnroll(TENANT, { email: 'buyer@together.dev', productId: 'p1', language: 'en' }, h.deps);
+    expect(h.sent[0]?.payload).toMatchObject({ kind: 'welcome-sign-in', language: 'en' });
   });
 
   it('does not send an email when doNotSendEmail is set', async () => {

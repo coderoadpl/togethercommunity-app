@@ -5,9 +5,11 @@ import {
   err,
   integrationAuth,
   ok,
+  tenantSettingsSchema,
   type Campaign,
   type ConsentDefinition,
   type ConsentDefinitionVersion,
+  type Language,
   type MarketingConsent,
   type TenantSesSettings,
 } from '#core/domain/index.js';
@@ -32,7 +34,7 @@ import {
   FakeScheduler,
 } from '../testing/marketing-fakes.js';
 import type { Ctx } from '../context.js';
-import type { SesMarketingQuotaReader } from '../ports.js';
+import type { MemberRepository, SesMarketingQuotaReader, TenantRepository } from '../ports.js';
 import { removeMember } from './members.js';
 import { dispatchEmailBatch } from './dispatch-email-batch.js';
 import {
@@ -75,6 +77,7 @@ image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
+memberLanguage: null,
 } };
 const anonymousCtx: Ctx = { identity: {
   userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantId: 'tenant-1',
@@ -83,6 +86,7 @@ image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
+memberLanguage: null,
 } };
 const clock = { nowIso: () => NOW };
 const ids = (() => { let value = 0; return { nextId: () => `generated-${String(++value)}` }; })();
@@ -124,7 +128,48 @@ const campaign = (overrides: Partial<Campaign> = {}): Campaign => ({
   consentLabelSnapshot: version.label, startedAt: NOW, finishedAt: null, createdAt: NOW, ...overrides,
 });
 
-const setup = async (emails = ['member@example.test']) => {
+const memberLanguages = new Map<string, Language>();
+
+const languagePreferences = (tenantDefault?: Language): {
+  members: MemberRepository;
+  tenants: TenantRepository;
+} => ({
+  members: {
+    findById: async () => null,
+    findByEmail: async (_tenantId, email) => {
+      const language = memberLanguages.get(email);
+      return language === undefined ? null : {
+        id: `member-${email}`, tenantId: 'tenant-1', userId: `user-${email}`, email,
+        displayName: null, language, tags: [], marketingConsents: {}, externalCustomerIds: {},
+        createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null,
+        dmOptOutAt: null,
+      };
+    },
+    listWithProductIds: async () => [],
+    create: async () => undefined,
+    updateEmail: async () => null,
+    updateDisplayName: async () => null,
+    updateLanguage: async () => null,
+    updateDmOptOut: async () => null,
+    setBanned: async () => null,
+  },
+  tenants: {
+    findById: async () => null,
+    findBySlug: async () => null,
+    findSole: async () => null,
+    findSettings: async () => tenantSettingsSchema.parse({
+      name: 'Tenant',
+      ...(tenantDefault === undefined ? {} : { defaultLanguage: tenantDefault }),
+      billingPortalUrl: null,
+      bunnyStreamLibraryId: null,
+    }),
+    updateSettings: async (_tenantId, next) => next,
+    createTenantWithOwnerGrant: async () => null,
+    hasAny: async () => false,
+  },
+});
+
+const setup = async (emails = ['member@example.test'], tenantDefault?: Language) => {
   const definitions = new InMemoryConsentDefinitionRepository();
   await definitions.create('tenant-1', definition, version);
   const consents = new InMemoryMarketingConsentRepository();
@@ -151,6 +196,7 @@ const setup = async (emails = ['member@example.test']) => {
     credentials: { resolve: async () => ok({ accessKeyId: 'AKIA', secretAccessKey: 'secret', region: 'eu-central-1' }) },
     quotaReader,
     unsubscribeBaseUrl: 'https://tenant.test/u',
+    ...languagePreferences(tenantDefault),
   };
 };
 
@@ -832,7 +878,7 @@ describe('marketing e-mail use-case integration', () => {
     const member = { id: 'member-1', tenantId: 'tenant-1', userId: 'user-1', email: 'member@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null };
     const members = {
       findById: async () => member, findByEmail: async () => member, listWithProductIds: async () => [],
-      create: async () => undefined, updateEmail: async () => member, updateDisplayName: async () => member, updateDmOptOut: async () => member, setBanned: async () => null,
+      create: async () => undefined, updateEmail: async () => member, updateDisplayName: async () => member, updateLanguage: async () => member, updateDmOptOut: async () => member, setBanned: async () => null,
     };
     const erased = await removeMember(ctx, { memberId: 'member-1' }, {
       members,
@@ -890,6 +936,22 @@ describe('marketing e-mail use-case integration', () => {
       value: { pendingConsentsPurged: 1 },
     });
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
+  });
+
+  it('sends the double opt-in confirmation in the recipient language, then the tenant default, then Polish', async () => {
+    const polish = await setup([]);
+    await recordMarketingConsent(ctx, { email: 'pl@example.test', memberId: null, definitionId: definition.id, evidence: { collectedAt: NOW, proofRef: 'form-1' }, source: 'api', confirmationBaseUrl: 'https://tenant.test/confirm' }, polish);
+    expect(polish.outbox.items).toMatchObject([{ payload: { kind: 'marketing-consent-confirmation', language: 'pl' } }]);
+
+    const tenantEnglish = await setup([], 'en');
+    await recordMarketingConsent(ctx, { email: 'tenant-default@example.test', memberId: null, definitionId: definition.id, evidence: { collectedAt: NOW, proofRef: 'form-1' }, source: 'api', confirmationBaseUrl: 'https://tenant.test/confirm' }, tenantEnglish);
+    expect(tenantEnglish.outbox.items).toMatchObject([{ payload: { kind: 'marketing-consent-confirmation', language: 'en' } }]);
+
+    memberLanguages.set('member-pref@example.test', 'en');
+    const memberPreference = await setup([]);
+    await recordMarketingConsent(ctx, { email: 'member-pref@example.test', memberId: null, definitionId: definition.id, evidence: { collectedAt: NOW, proofRef: 'form-1' }, source: 'api', confirmationBaseUrl: 'https://tenant.test/confirm' }, memberPreference);
+    expect(memberPreference.outbox.items).toMatchObject([{ payload: { kind: 'marketing-consent-confirmation', language: 'en' } }]);
+    memberLanguages.clear();
   });
 
   it('records only selected checkout consents with the current wording snapshot and DOI mail', async () => {

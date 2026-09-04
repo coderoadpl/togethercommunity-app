@@ -2424,6 +2424,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         userId: member.userId,
         email: member.email,
         displayName: member.displayName,
+        language: member.language ?? null,
         tags: member.tags,
         marketingConsents: member.marketingConsents,
         externalCustomerIds: member.externalCustomerIds,
@@ -2447,6 +2448,18 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
     const rows = await db
       .update(members)
       .set({ displayName })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.id, memberId),
+        isNull(members.deletedAt),
+      ))
+      .returning();
+    return rows[0] ?? null;
+  },
+  updateLanguage: async (tenantId, memberId, language) => {
+    const rows = await db
+      .update(members)
+      .set({ language })
       .where(and(
         eq(members.tenantId, tenantId),
         eq(members.id, memberId),
@@ -3809,6 +3822,7 @@ export const createTenantRepository = (
     const rows = await db
       .select({
         name: tenants.name,
+        defaultLanguage: tenants.defaultLanguage,
         socialLinks: tenants.socialLinks,
         billingPortalUrl: tenants.billingPortalUrl,
         bunnyStreamLibraryId: tenants.bunnyStreamLibraryId,
@@ -3843,6 +3857,7 @@ export const createTenantRepository = (
     return row
       ? {
           name: row.name,
+          defaultLanguage: row.defaultLanguage,
           socialLinks: row.socialLinks,
           billingPortalUrl: row.billingPortalUrl,
           bunnyStreamLibraryId: row.bunnyStreamLibraryId,
@@ -3892,6 +3907,7 @@ export const createTenantRepository = (
       .update(tenants)
       .set({
         name: settings.name,
+        defaultLanguage: settings.defaultLanguage,
         socialLinks: settings.socialLinks,
         contentVersion: sql`${tenants.contentVersion} + 1`,
         billingPortalUrl: settings.billingPortalUrl,
@@ -3923,6 +3939,7 @@ export const createTenantRepository = (
       .where(eq(tenants.id, tenantId));
     return {
       name: settings.name,
+      defaultLanguage: settings.defaultLanguage,
       socialLinks: settings.socialLinks,
       billingPortalUrl: settings.billingPortalUrl,
       bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
@@ -4109,12 +4126,27 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
     },
     listStaffForTenant: async (tenantId) => {
       const rows = await db
-        .select({ userId: tenantAdmins.userId, email: user.email, staffRole: tenantAdmins.role })
+        .select({
+          userId: tenantAdmins.userId,
+          email: user.email,
+          staffRole: tenantAdmins.role,
+          language: members.language,
+        })
         .from(tenantAdmins)
         .innerJoin(user, eq(tenantAdmins.userId, user.id))
+        .leftJoin(
+          members,
+          and(
+            eq(members.tenantId, tenantId),
+            eq(members.userId, tenantAdmins.userId),
+            isNull(members.deletedAt),
+          ),
+        )
         .where(eq(tenantAdmins.tenantId, tenantId));
       return rows.flatMap((row) =>
-        parseStaffRole(row.staffRole) === null ? [] : [{ userId: row.userId, email: row.email }],
+        parseStaffRole(row.staffRole) === null
+          ? []
+          : [{ userId: row.userId, email: row.email, language: row.language ?? null }],
       );
     },
     findStaffGrant: async (userId, lookup) => {

@@ -55,6 +55,7 @@ const context = (kind: 'member' | 'staff'): Ctx => ({
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   },
 });
 
@@ -93,6 +94,7 @@ const harness = (selectedMember: Member | null = member) => {
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateLanguage: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,
@@ -162,8 +164,8 @@ describe('member erasure requests', () => {
       tenantAccess: {
         listTenantsForStaff: async () => [],
         listStaffForTenant: async () => [
-          { userId: 'staff-1', email: 'first@example.com' },
-          { userId: 'staff-2', email: 'second@example.com' },
+          { userId: 'staff-1', email: 'first@example.com', language: null },
+          { userId: 'staff-2', email: 'second@example.com', language: 'en' },
         ],
         findStaffGrant: async () => null,
         findMember: async () => null,
@@ -197,6 +199,7 @@ describe('member erasure requests', () => {
         to: 'first@example.com',
         payload: expect.objectContaining({
           kind: 'member-erasure-request',
+          language: 'pl',
           memberEmail: member.email,
           requestedAt: now,
           dueAt: erasureRequestDueAt(now),
@@ -207,6 +210,7 @@ describe('member erasure requests', () => {
         to: 'second@example.com',
         payload: expect.objectContaining({
           kind: 'member-erasure-request',
+          language: 'en',
           panelUrl: 'https://acme.example.com/panel/members',
         }),
       },
@@ -231,7 +235,7 @@ describe('member erasure requests', () => {
       tenantAccess: {
         listTenantsForStaff: async () => [],
         listStaffForTenant: async () => [
-          { userId: 'staff-1', email: 'staff@example.com' },
+          { userId: 'staff-1', email: 'staff@example.com', language: null },
         ],
         findStaffGrant: async () => null,
         findMember: async () => null,

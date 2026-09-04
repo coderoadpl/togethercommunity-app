@@ -337,6 +337,13 @@ export interface Messages {
       invoicing: { label: string; impact: string };
     };
   };
+  emailLanguageSettings: {
+    heading: string;
+    intro: string;
+    label: string;
+    options: { pl: string; en: string };
+    save: string;
+  };
   settingsNavigation: {
     aria: string;
     company: string;
@@ -1585,6 +1592,7 @@ export interface Messages {
     invoiceDownload: string;
     preferencesHeading: string;
     preferencesIntro: string;
+    emailLanguage: { pl: string; en: string; unset: string; reset: string; panelOnly: string };
     dataExportHeading: string;
     dataExportIntro: string;
     dataExportButton: string;

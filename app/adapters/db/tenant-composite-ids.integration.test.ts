@@ -77,6 +77,7 @@ const tenantFixture = (slug: string): Tenant => {
         memberId: null,
         memberBannedAt: null,
         memberDmOptOutAt: null,
+        memberLanguage: null,
         image: null,
         memberDisplayName: null,
       },

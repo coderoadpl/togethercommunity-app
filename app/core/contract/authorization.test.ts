@@ -32,6 +32,7 @@ const identity = (
   memberDisplayName: null,
   memberBannedAt,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 describe('authorization contract', () => {

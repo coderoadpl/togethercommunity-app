@@ -27,12 +27,15 @@ import {
 } from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
+  DEFAULT_LANGUAGE,
   emailBrandingFrom,
   err,
   internal,
   languageSchema,
   MAGIC_LINK_LANGUAGE_HEADER,
+  normalizeEmail,
   ok,
+  resolveEmailLanguage,
   tenantNotFound,
   unauthorized,
   unavailable,
@@ -145,6 +148,20 @@ const EMAIL_MAX_LENGTH = 254;
 
 const authEmailBodySchema = z.object({ email: z.string().email().max(EMAIL_MAX_LENGTH) });
 
+const authEmailLanguage = async (
+  email: string,
+  resolved: ResolvedTenant | null,
+  requested: Language | null,
+  deps: AppDeps,
+): Promise<Language> => {
+  if (resolved === null) return requested ?? DEFAULT_LANGUAGE;
+  const [member, settings] = await Promise.all([
+    deps.members.findByEmail(resolved.tenant.id, normalizeEmail(email)),
+    deps.tenants.findSettings(resolved.tenant.id),
+  ]);
+  return resolveEmailLanguage(member?.language, requested, settings?.defaultLanguage);
+};
+
 const withAuthDeliveryContext = async (
   c: Context,
   deps: AppDeps,
@@ -177,7 +194,12 @@ const withAuthDeliveryContext = async (
       email,
       resolved,
       baseUrl: authLinkBaseUrl(resolved, deps),
-      language: headerLanguage.success ? headerLanguage.data : 'pl',
+      language: await authEmailLanguage(
+        email,
+        resolved,
+        headerLanguage.success ? headerLanguage.data : null,
+        deps,
+      ),
     });
   }
   try {
@@ -208,6 +230,7 @@ const anonymousIdentity = (
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 const recordCheckoutConsents = async (
@@ -246,6 +269,8 @@ const recordCheckoutConsents = async (
         definitions: deps.marketing.definitions,
         consents: deps.marketing.marketingConsents,
         confirmations: deps.marketing.confirmations,
+        members: deps.members,
+        tenants: deps.tenants,
         outbox: deps.emailOutbox,
         ids: deps.ids,
         tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },

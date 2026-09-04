@@ -85,6 +85,7 @@ const apiIdentity = (tenant: Tenant): Identity => ({
   tenantId: tenant.id, tenantSlug: tenant.slug, tenantName: tenant.name,
   staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 const tokenCtx = (tenant: Tenant): Ctx => ({
@@ -391,7 +392,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
       confirmationBaseUrl: tenantUrl(authenticated.value.tenant.slug, '/marketing/confirm', deps),
     }, {
       definitions: marketing.value.definitions, consents: marketing.value.marketingConsents,
-      confirmations: marketing.value.confirmations, outbox: deps.emailOutbox, ids: deps.ids,
+      confirmations: marketing.value.confirmations, members: deps.members, tenants: deps.tenants,
+      outbox: deps.emailOutbox, ids: deps.ids,
       tokens: { nextToken: () => randomBytes(24).toString('base64url') },
       clock: deps.clock,
     }), 201);
@@ -696,6 +698,8 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     }, {
       ...unsubscribeDeps(deps, marketing.value),
       confirmations: marketing.value.confirmations,
+      members: deps.members,
+      tenants: deps.tenants,
       outbox: deps.emailOutbox,
       tokens: { nextToken: () => randomBytes(24).toString('base64url') },
     });

@@ -43,6 +43,7 @@ const ctx = (role: 'owner' | 'admin'): Ctx => ({
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   } satisfies Identity,
 });
 

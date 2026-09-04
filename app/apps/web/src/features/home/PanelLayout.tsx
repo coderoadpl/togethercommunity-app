@@ -29,7 +29,7 @@ import { ApiError } from '#core/client/index.js';
 import { useTenantBranding } from '../../branding.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
-import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
+import { EmailLanguageSwitcher } from '../../EmailLanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
@@ -445,7 +445,7 @@ const UserMenu = ({
         </Box>
         <Divider />
         <Box sx={{ display: { xs: 'grid', sm: 'none' }, gap: '0.5rem', px: '1rem', py: '0.75rem' }}>
-          <LanguageSwitcher inline />
+          <EmailLanguageSwitcher />
           <ColorSchemeSwitcher compact />
         </Box>
         <Divider sx={{ display: { xs: 'block', sm: 'none' } }} />
@@ -552,7 +552,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
             sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}
           >
             <ColorSchemeSwitcher compact />
-            <LanguageSwitcher inline />
+            <EmailLanguageSwitcher />
           </Box>
           <NotificationBell />
           <UserMenu

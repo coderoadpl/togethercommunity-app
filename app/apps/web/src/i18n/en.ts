@@ -376,6 +376,13 @@ export const en: Messages = {
       },
     },
   },
+  emailLanguageSettings: {
+    heading: 'E-mail language',
+    intro: 'The language of notifications and transactional messages for members who have not picked their own.',
+    label: 'Platform default language',
+    options: { pl: 'Polish', en: 'English' },
+    save: 'Save language',
+  },
   settingsNavigation: {
     aria: 'Settings sections',
     company: 'Company',
@@ -1786,6 +1793,13 @@ export const en: Messages = {
     invoiceDownload: 'Download invoice PDF',
     preferencesHeading: 'Appearance and language',
     preferencesIntro: 'Choose how member pages look and which language they use.',
+    emailLanguage: {
+      pl: 'We send your e-mails in Polish.',
+      en: 'We send your e-mails in English.',
+      unset: 'We send your e-mails in the platform default language.',
+      reset: 'Go back to the platform default language',
+      panelOnly: 'This only changes the panel language — we do not store it as your e-mail language.',
+    },
   },
   changePassword: {
     heading: 'Change password',

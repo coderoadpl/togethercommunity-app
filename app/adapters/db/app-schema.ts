@@ -32,6 +32,7 @@ export const tenants = pgTable(
     name: text('name').notNull(),
     status: text('status', { enum: ['active', 'suspended'] }).notNull().default('active'),
     plan: text('plan', { enum: ['self_hosted', 'hosted', 'hosted_pro'] }).notNull().default('self_hosted'),
+    defaultLanguage: text('default_language', { enum: ['pl', 'en'] }).notNull().default('pl'),
     createdAt: text('created_at').notNull(),
     contentVersion: integer('content_version').notNull().default(1),
     billingPortalUrl: text('billing_portal_url'),
@@ -70,6 +71,7 @@ export const tenants = pgTable(
     uniqueIndex('tenants_slug_uidx').on(table.slug),
     check('tenants_status_check', sql`${table.status} IN ('active', 'suspended')`),
     check('tenants_plan_check', sql`${table.plan} IN ('self_hosted', 'hosted', 'hosted_pro')`),
+    check('tenants_default_language_check', sql`${table.defaultLanguage} IN ('pl', 'en')`),
     check('tenants_invoice_vat_mode_check', sql`${table.invoiceVatMode} IN ('rate', 'exempt')`),
   ],
 );
@@ -215,6 +217,7 @@ export const members = pgTable(
     userId: text('user_id').notNull(),
     email: text('email').notNull(),
     displayName: text('display_name'),
+    language: text('language', { enum: ['pl', 'en'] }),
     legacyId: text('legacy_id'),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     marketingConsents: jsonb('marketing_consents')
@@ -234,6 +237,7 @@ export const members = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
+    check('members_language_check', sql`${table.language} IS NULL OR ${table.language} IN ('pl', 'en')`),
     index('members_tenantId_idx').on(table.tenantId),
     index('members_userId_idx').on(table.userId),
     uniqueIndex('members_tenant_user_uidx').on(table.tenantId, table.userId),

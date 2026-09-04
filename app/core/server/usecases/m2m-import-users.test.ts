@@ -55,6 +55,7 @@ const ctx: Ctx = {
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   },
   capabilities: capabilitiesForApiKey(apiKey),
 };

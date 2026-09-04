@@ -3,6 +3,7 @@ import {
   err,
   notFound,
   ok,
+  resolveEmailLanguage,
   type AppError,
   type GrantSource,
   type Result,
@@ -43,7 +44,7 @@ export const fulfillEnrollment = async (
     email: string;
     productId: string;
     expiresAt: string | null;
-    language: string;
+    language: string | null;
     source: GrantSource;
     sendEmail: boolean;
     allowUnpublished?: boolean;
@@ -65,21 +66,26 @@ export const fulfillEnrollment = async (
     );
     if (input.sendEmail) {
       const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
+      const settings = await deps.tenants.findSettings(tenant.id);
+      const language = resolveEmailLanguage(
+        member.value.language,
+        input.language,
+        settings?.defaultLanguage,
+      );
       const created = await deps.authPort.createEnrollmentMagicLink({
         email: member.value.email,
         callbackURL: tenantBaseUrl,
         baseUrl: tenantBaseUrl,
         tenantName: tenant.name,
-        language: input.language,
+        language,
       });
-      const settings = await deps.tenants.findSettings(tenant.id);
       const queued = await transaction.emailOutbox.enqueue({
         id: deps.ids.nextId(),
         tenantId: tenant.id,
         to: member.value.email,
         payload: {
           kind: 'welcome-sign-in',
-          language: input.language,
+          language,
           tenantName: tenant.name,
           actionUrl: created.url,
           ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),

@@ -1,5 +1,4 @@
 import {
-  DEFAULT_LANGUAGE,
   deriveEmailReputation,
   emailReputationSchema,
   err,
@@ -96,8 +95,8 @@ export const runReputationAlerts = async (
   }
   const tenant = await deps.tenants.findById(tenantId.value);
   if (tenant === null) return err(notFound('Tenant not found'));
-  const recipients = await tenantStaffRecipients(tenantId.value, deps);
-  if (recipients.length === 0) {
+  const staff = await tenantStaffRecipients(tenantId.value, deps);
+  if (staff.length === 0) {
     await deps.settings.upsert(tenantId.value, {
       ...settings,
       reputationAlertStatus: decision.nextStatus,
@@ -105,14 +104,14 @@ export const runReputationAlerts = async (
     });
     return ok({ sent: 0 });
   }
-  for (const recipient of recipients) {
+  for (const recipient of staff) {
     const queued = await deps.emailOutbox.enqueue({
       id: deps.ids.nextId(),
       tenantId: tenantId.value,
-      to: recipient,
+      to: recipient.email,
       payload: {
         kind: 'reputation-alert',
-        language: DEFAULT_LANGUAGE,
+        language: recipient.language,
         tenantName: tenant.name,
         status: reputation.overallStatus,
         hardBounceRate: reputation.hardBounce.rate,
@@ -131,5 +130,5 @@ export const runReputationAlerts = async (
     reputationAlertedAt: decision.nextAlertedAt,
   });
   deps.dispatchEmail();
-  return ok({ sent: recipients.length });
+  return ok({ sent: staff.length });
 };

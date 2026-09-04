@@ -565,30 +565,30 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:162` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:984` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:986` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1452` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1452` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:988` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:990` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1456` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1456` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:82` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
-| api-key | `apps/server/src/marketing-routes.ts:91` | `identity: apiIdentity(tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:102` | `const key = headers.get(API_KEY_HEADER);` |
-| api-key | `apps/server/src/marketing-routes.ts:104` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
-| api-key | `apps/server/src/marketing-routes.ts:110` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:554` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `core/server/usecases/community-access.ts:62` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/community-access.ts:62` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
-| staff-role | `core/server/usecases/community-access.ts:74` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
-| member-scope | `core/server/usecases/community-access.ts:82` | `ctx.identity.tenantId && ctx.identity.memberId` |
-| member-scope | `core/server/usecases/community-access.ts:83` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
-| staff-role | `core/server/usecases/community-access.ts:100` | `if (ctx.identity.staffRole) return ok(undefined);` |
-| staff-role | `core/server/usecases/community-access.ts:134` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
-| staff-role | `core/server/usecases/community-access.ts:240` | `if (ctx.identity.staffRole) return ok(space);` |
-| staff-role | `core/server/usecases/community-access.ts:256` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:229` | `if (tenantId !== null && identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:243` | `if (ctx.identity.staffRole !== null) return false;` |
-| staff-role | `core/server/usecases/community.ts:438` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| api-key | `apps/server/src/marketing-routes.ts:92` | `identity: apiIdentity(tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:103` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/marketing-routes.ts:105` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
+| api-key | `apps/server/src/marketing-routes.ts:111` | `identity: apiIdentity(resolved.value.tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:556` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
+| staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
+| member-scope | `core/server/usecases/community-access.ts:83` | `ctx.identity.tenantId && ctx.identity.memberId` |
+| member-scope | `core/server/usecases/community-access.ts:84` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
+| staff-role | `core/server/usecases/community-access.ts:101` | `if (ctx.identity.staffRole) return ok(undefined);` |
+| staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
+| staff-role | `core/server/usecases/community-access.ts:248` | `if (ctx.identity.staffRole) return ok(space);` |
+| staff-role | `core/server/usecases/community-access.ts:264` | `if (ctx.identity.staffRole) return ok(spaces);` |
+| member-scope | `core/server/usecases/community.ts:233` | `if (tenantId !== null && identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:247` | `if (ctx.identity.staffRole !== null) return false;` |
+| staff-role | `core/server/usecases/community.ts:442` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
@@ -603,18 +603,19 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/member-data-export.ts:46` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-data-export.ts:52` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| member-scope | `core/server/usecases/member-erasure-requests.ts:48` | `if (ctx.identity.memberId === null) {` |
-| member-scope | `core/server/usecases/member-erasure-requests.ts:53` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
+| member-scope | `core/server/usecases/member-erasure-requests.ts:47` | `if (ctx.identity.memberId === null) {` |
+| member-scope | `core/server/usecases/member-erasure-requests.ts:52` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | staff-role | `core/server/usecases/member-navigation.ts:76` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
 | member-scope | `core/server/usecases/member-navigation.ts:76` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
 | member-scope | `core/server/usecases/member-navigation.ts:77` | `? { tenantId, memberId: ctx.identity.memberId }` |
-| member-scope | `core/server/usecases/member-profile.ts:37` | `if (ctx.identity.memberId === null) {` |
-| member-scope | `core/server/usecases/member-profile.ts:57` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
+| member-scope | `core/server/usecases/member-profile.ts:40` | `if (ctx.identity.memberId === null) {` |
+| member-scope | `core/server/usecases/member-profile.ts:48` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
+| member-scope | `core/server/usecases/member-profile.ts:63` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/resolve-identity.ts:83` | `staffRole: staffGrant?.staffRole ?? null,` |
+| staff-role | `core/server/usecases/resolve-identity.ts:84` | `staffRole: staffGrant?.staffRole ?? null,` |
 
 ## Suspicious but preserved
 

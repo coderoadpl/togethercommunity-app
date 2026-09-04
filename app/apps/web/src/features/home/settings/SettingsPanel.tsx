@@ -23,6 +23,9 @@ import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-rou
 
 import {
   accentColorSchema,
+  DEFAULT_LANGUAGE,
+  languageOrDefault,
+  LANGUAGES,
   SHARE_IMAGE_RECOMMENDED_HEIGHT,
   SHARE_IMAGE_RECOMMENDED_WIDTH,
   SOCIAL_LINK_LABEL_MAX_LENGTH,
@@ -32,7 +35,7 @@ import {
   TENANT_OG_TITLE_MAX_LENGTH,
   tenantSocialLinkSchema,
 } from '#core/domain/index.js';
-import type { ExemptionBasisKind, TenantSocialLink } from '#core/domain/index.js';
+import type { ExemptionBasisKind, Language, TenantSocialLink } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -137,6 +140,56 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setUrl(event.target.value)}
         />
       </FormControl>
+      {update.isError ? <Alert severity="error">{localizePanelError(update.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
+const EmailLanguageSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [draft, setDraft] = useState<Language | null>(null);
+  const update = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+  const stored = settings.data?.settings.defaultLanguage ?? null;
+  const value = draft ?? stored ?? DEFAULT_LANGUAGE;
+  const unavailable = !settings.isSuccess || update.isPending;
+  return (
+    <SectionCard
+      title={t.emailLanguageSettings.heading}
+      description={t.emailLanguageSettings.intro}
+      actions={canEdit ? (
+        <Button type="submit" variant="contained" disabled={unavailable}>
+          {t.emailLanguageSettings.save}
+        </Button>
+      ) : undefined}
+      onSubmit={(event) => {
+        event.preventDefault();
+        update.mutate({ defaultLanguage: value });
+      }}
+    >
+      <FormControl fullWidth>
+        <FormLabel id="tenant-default-language-label">{t.emailLanguageSettings.label}</FormLabel>
+        <Select
+          labelId="tenant-default-language-label"
+          data-testid="tenant-default-language"
+          value={value}
+          disabled={!canEdit || unavailable}
+          onChange={(event) => setDraft(languageOrDefault(event.target.value))}
+        >
+          {LANGUAGES.map((option) => (
+            <MenuItem key={option} value={option}>{t.emailLanguageSettings.options[option]}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      {settings.isError ? (
+        <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
+      ) : null}
       {update.isError ? <Alert severity="error">{localizePanelError(update.error, t)}</Alert> : null}
     </SectionCard>
   );
@@ -1131,6 +1184,9 @@ export const SettingsPanel = () => {
         <Stack id="settings-panel-company" role="tabpanel" aria-labelledby="settings-tab-company" useFlexGap spacing="1.5rem">
           <Box id="support" sx={{ scrollMarginTop: '1rem' }}>
             <SupportSettingsPanel canEdit={canEdit} />
+          </Box>
+          <Box id="email-language" sx={{ scrollMarginTop: '1rem' }}>
+            <EmailLanguageSettingsPanel canEdit={canEdit} />
           </Box>
           <Box id="public-access" sx={{ scrollMarginTop: '1rem' }}>
             <PublicAccessPanel canEdit={canEdit} />

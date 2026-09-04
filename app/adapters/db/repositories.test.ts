@@ -1126,7 +1126,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const tenants = await reader.listTenantsForStaff('user-acme-owner');
     expect(tenants.map((t) => t.tenant.slug)).toEqual(['acme']);
     expect(await reader.listStaffForTenant(ACME)).toEqual([
-      { userId: 'user-acme-owner', email: 'owner-acme@together.dev' },
+      { userId: 'user-acme-owner', email: 'owner-acme@together.dev', language: null },
     ]);
     expect(await reader.findStaffGrant('user-acme-owner', { tenantSlug: 'globex' })).toBeNull();
     expect(await reader.findMember(ACME, 'user-acme-member')).toMatchObject({ id: 'mem-acme' });

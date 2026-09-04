@@ -3015,10 +3015,25 @@ export const TreeChapterTitle = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const TreeLessonTitle = styled(Typography)<AsElement>({ fontSize: '0.8125rem' });
+export const CourseTreeModuleTitle = styled(TreeModuleTitle)<AsElement>({
+  fontSize: '0.875rem',
+  lineHeight: 1.4,
+});
+
+export const CourseTreeChapterTitle = styled(TreeChapterTitle)<AsElement>({
+  fontSize: '0.875rem',
+  lineHeight: 1.4,
+});
+
+export const TreeLessonTitle = styled(Typography)<AsElement>({
+  fontSize: '0.875rem',
+  lineHeight: 1.45,
+});
 
 export const TreeProgressCount = styled(Typography)<AsElement>(({ theme }) => ({
-  fontSize: '0.6875rem',
+  fontSize: '0.75rem',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
   color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
@@ -3278,7 +3293,7 @@ export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({
 export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
   flexShrink: 0,
-  fontSize: '0.6875rem',
+  fontSize: '0.75rem',
   color: theme.palette.text.disabled,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',

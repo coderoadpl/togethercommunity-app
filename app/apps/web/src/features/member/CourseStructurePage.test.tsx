@@ -156,9 +156,11 @@ const progressView = (lastViewedLessonId?: string): ProgressView => ({
 const mockPage = ({
   body = structure,
   lastViewedLessonId,
+  progressPending = false,
 }: {
   body?: CourseStructureWithAccess;
   lastViewedLessonId?: string;
+  progressPending?: boolean;
 } = {}) => {
   server.use(
     okMe(),
@@ -166,7 +168,9 @@ const mockPage = ({
       HttpResponse.json({ ok: true, data: { structure: body } }),
     ),
     http.get('/api/student/progress', () =>
-      HttpResponse.json({ ok: true, data: { progress: progressView(lastViewedLessonId) } }),
+      progressPending
+        ? new Promise<never>(() => undefined)
+        : HttpResponse.json({ ok: true, data: { progress: progressView(lastViewedLessonId) } }),
     ),
     http.get('/api/student/courses', () =>
       HttpResponse.json({ ok: true, data: { courses: catalog } }),
@@ -217,11 +221,59 @@ describe('CourseStructurePage', () => {
     expect(within(inlineProgram).getByTestId('course-tree')).toBeInTheDocument();
     expect(screen.getAllByTestId('course-tree')).toHaveLength(1);
     expect(within(inlineProgram).getByTestId('lesson-search')).toBeInTheDocument();
+    expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
+  });
+
+  it('opens the small-screen program on the branch of the last viewed lesson', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l4' });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const inlineProgram = await screen.findByTestId('course-tree-inline');
+
+    expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
     expect(within(inlineProgram).getByTestId('module-toggle-m1')).toHaveAttribute(
       'aria-expanded',
       'false',
     );
+    expect(within(inlineProgram).getByText('Closures Deep Dive')).toBeInTheDocument();
     expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument();
+  });
+
+  it('holds the small-screen program closed until the last viewed lesson is known', async () => {
+    stubViewport(true);
+    mockPage({ progressPending: true });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const inlineProgram = await screen.findByTestId('course-tree-inline');
+
+    expect(within(inlineProgram).getByTestId('module-toggle-m1')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument();
+  });
+
+  it('keeps the page at the top instead of scrolling to the small-screen program', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l4' });
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByText('Closures Deep Dive')).toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    scrollIntoView.mockRestore();
   });
 
   it('drops the small-screen program for a course without modules', async () => {
@@ -429,6 +481,8 @@ describe('CourseStructurePage', () => {
       pl.anon.lockedCourseHint,
     );
     expect(screen.getByTestId('course-tree')).toBeInTheDocument();
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Closures Deep Dive')).toBeInTheDocument();
     expect(screen.getByTestId('stat-tile-lessons')).toHaveTextContent('5');
     expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();

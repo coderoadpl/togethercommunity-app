@@ -1520,6 +1520,7 @@ export const en: Messages = {
   },
   courseTree: {
     lockedTooltip: 'Content locked',
+    lockedLessonTooltip: ({ name }) => format('{name} — content locked', { name }),
     courseSyllabus: 'Course syllabus',
     noPublishedContent: 'This course has no published content yet.',
     emptyCourseTitle: 'This course is still in the making',

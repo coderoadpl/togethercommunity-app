@@ -9,9 +9,9 @@ import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
+import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import {
-  CourseCoverImage,
   CourseStatTile,
   Eyebrow,
   StatTileLabel,
@@ -195,11 +195,14 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
         {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
         {courses.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} /> : null}
         <CourseStatTiles structure={course} />
-        {catalogEntry?.imageUrl != null && (
-          <CourseCoverImage
+        {catalogEntry === undefined ? null : catalogEntry.imageUrl === null ? (
+          <CoverPlaceholder title={course.name} frame="standalone" testId="course-cover-fallback" />
+        ) : (
+          <CoverImage
             src={catalogEntry.imageUrl}
             alt={t.courseOverview.coverAlt({ name: course.name })}
-            data-testid="course-cover"
+            frame="standalone"
+            testId="course-cover"
           />
         )}
         {catalogEntry !== undefined && catalogEntry.description !== '' && (

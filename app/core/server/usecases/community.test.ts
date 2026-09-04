@@ -711,6 +711,7 @@ const deps = (
         ? staffUserIds.map((userId) => ({
             userId,
             email: members.find((member) => member.userId === userId)?.email ?? `${userId}@example.com`,
+            staffRole: 'owner' as const,
             language: members.find((member) => member.userId === userId)?.language ?? null,
           }))
         : [],
@@ -1127,6 +1128,7 @@ describe('community use-cases', () => {
         contextId: 'conversation-1',
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'Ola',
         authorDisplay: 'Ola',
         authorAvatarUrl: null,

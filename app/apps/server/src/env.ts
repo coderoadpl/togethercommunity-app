@@ -61,6 +61,12 @@ export const envSchema = z
     /** DNS target creators point a custom domain at; defaults to the platform host. */
     APP_CUSTOM_DOMAIN_TARGET: optionalNonEmptyString,
     APP_COMMIT_SHA: optionalNonEmptyString,
+    /** Token and project together hand custom-domain provisioning to Vercel; unset keeps manual mode. */
+    VERCEL_API_TOKEN: optionalNonEmptyString,
+    VERCEL_PROJECT_ID: optionalNonEmptyString,
+    VERCEL_TEAM_ID: optionalNonEmptyString,
+    /** Routes tenant domains at a preview branch instead of production (staging: "staging"). */
+    VERCEL_DOMAIN_GIT_BRANCH: optionalNonEmptyString,
     VERCEL_URL: optionalNonEmptyString,
     VERCEL_BRANCH_URL: optionalNonEmptyString,
     AUTH_TRUSTED_PROXY_HEADER: optionalHeaderName,
@@ -134,6 +140,13 @@ export const envSchema = z
     WEB_DIST_DIR: z.string().default('dist/web'),
   })
   .superRefine((env, ctx) => {
+    if ((env.VERCEL_API_TOKEN === undefined) !== (env.VERCEL_PROJECT_ID === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [env.VERCEL_API_TOKEN === undefined ? 'VERCEL_API_TOKEN' : 'VERCEL_PROJECT_ID'],
+        message: 'VERCEL_API_TOKEN and VERCEL_PROJECT_ID must be set together',
+      });
+    }
     if ((env.SMTP_USER === undefined) !== (env.SMTP_PASSWORD === undefined)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

@@ -69,6 +69,8 @@ import {
   createSpaceRepository,
   createSpaceSeenRepository,
   createTenantAccessReader,
+  createTenantDomainEventRepository,
+  createTenantDomainRepository,
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
   createPublicRateLimitRepository,
@@ -76,6 +78,7 @@ import {
   createTenantSecretRepository,
   createUserDisplayReader,
 } from './repositories.js';
+import { tenantDomainEvents } from './schema.js';
 import { createMemberEventRepository } from './member-events.js';
 import { createImportAuditEventRepository } from './import-audit-events.js';
 import {
@@ -1126,10 +1129,87 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const tenants = await reader.listTenantsForStaff('user-acme-owner');
     expect(tenants.map((t) => t.tenant.slug)).toEqual(['acme']);
     expect(await reader.listStaffForTenant(ACME)).toEqual([
-      { userId: 'user-acme-owner', email: 'owner-acme@together.dev', language: null },
+      { userId: 'user-acme-owner', email: 'owner-acme@together.dev', staffRole: 'owner', language: null },
     ]);
     expect(await reader.findStaffGrant('user-acme-owner', { tenantSlug: 'globex' })).toBeNull();
     expect(await reader.findMember(ACME, 'user-acme-member')).toMatchObject({ id: 'mem-acme' });
+  });
+
+  it('inserts, patches, removes and leases custom domains one per tenant', async () => {
+    const repo = createTenantDomainRepository(db);
+    const events = createTenantDomainEventRepository(db);
+    const row = (input: { id: string; tenantId: string; domain: string; lastCheckedAt: string | null }) => ({
+      ...input,
+      kind: 'custom' as const,
+      verified: false,
+      provider: 'vercel' as const,
+      verification: [{ type: 'TXT' as const, name: `_vercel.${input.domain}`, value: 'vc-1' }],
+      createdAt: '2026-09-01T00:00:00.000Z',
+      verifiedAt: null,
+      lastError: null,
+    });
+
+    const first = await repo.insert(ACME, row({ id: 'dom-1', tenantId: ACME, domain: 'a.coderoad.test', lastCheckedAt: null }));
+    expect(first).toMatchObject({
+      domain: 'a.coderoad.test',
+      provider: 'vercel',
+      verification: [{ type: 'TXT', name: '_vercel.a.coderoad.test', value: 'vc-1' }],
+    });
+    expect(await repo.insert(GLOBEX, row({ id: 'dom-clash', tenantId: GLOBEX, domain: 'a.coderoad.test', lastCheckedAt: null })))
+      .toBeNull();
+    await repo.insert(ACME, row({ id: 'dom-2', tenantId: ACME, domain: 'b.coderoad.test', lastCheckedAt: '2026-09-02T00:00:00.000Z' }));
+    await repo.insert(GLOBEX, row({ id: 'dom-3', tenantId: GLOBEX, domain: 'c.globex.test', lastCheckedAt: null }));
+
+    expect(await repo.findByDomain('a.coderoad.test')).toBeNull();
+    expect(await repo.findAnyByDomain('a.coderoad.test')).toMatchObject({ id: 'dom-1' });
+    expect((await repo.listOldestPendingPerTenant(10)).map((entry) => entry.id).toSorted())
+      .toEqual(['dom-1', 'dom-3']);
+
+    await repo.patch(ACME, 'dom-1', { lastCheckedAt: '2026-09-02T12:00:00.000Z' });
+    expect((await repo.listOldestPendingPerTenant(1)).map((entry) => entry.id))
+      .toEqual(['dom-3']);
+
+    const patched = await repo.markVerified(ACME, 'dom-1', {
+      verifiedAt: '2026-09-03T00:00:00.000Z',
+      lastCheckedAt: '2026-09-03T00:00:00.000Z',
+      lastError: null,
+      verification: [],
+    });
+    expect(patched).toMatchObject({
+      verified: true,
+      verification: [],
+      createdAt: '2026-09-01T00:00:00.000Z',
+      verifiedAt: '2026-09-03T00:00:00.000Z',
+      lastCheckedAt: '2026-09-03T00:00:00.000Z',
+    });
+    expect(await repo.markVerified(ACME, 'dom-1', {
+      verifiedAt: '2026-09-04T00:00:00.000Z',
+      lastCheckedAt: '2026-09-04T00:00:00.000Z',
+      lastError: null,
+      verification: [],
+    })).toBeNull();
+    expect(await repo.patch(GLOBEX, 'dom-1', { lastError: 'foreign tenant' })).toBeNull();
+    expect(await repo.findByDomain('a.coderoad.test')).toMatchObject({ id: 'dom-1' });
+
+    await events.append(ACME, {
+      id: 'evt-1',
+      tenantId: ACME,
+      domain: 'a.coderoad.test',
+      kind: 'domain_verified',
+      actorUserId: 'user-acme-owner',
+      detail: null,
+      at: '2026-09-03T00:00:00.000Z',
+    });
+    const trail = await db
+      .select({ id: tenantDomainEvents.id, tenantId: tenantDomainEvents.tenantId, kind: tenantDomainEvents.kind })
+      .from(tenantDomainEvents);
+    expect(trail).toEqual([{ id: 'evt-1', tenantId: ACME, kind: 'domain_verified' }]);
+
+    expect(await repo.remove(GLOBEX, 'dom-1')).toBe(false);
+    expect(await repo.remove(ACME, 'dom-1')).toBe(true);
+    expect(await repo.findAnyByDomain('a.coderoad.test')).toBeNull();
+    await repo.remove(ACME, 'dom-2');
+    await repo.remove(GLOBEX, 'dom-3');
   });
 
   it('limits user display names to identities belonging to the tenant', async () => {
@@ -2314,6 +2394,7 @@ describe('notification repository', () => {
         contextId: 'lesson-notification-pagination',
         courseId: 'course-notification-pagination',
         eventId: null,
+        domain: null,
         lessonName: 'Pagination',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2377,6 +2458,7 @@ describe('notification repository', () => {
         contextId: `context-${id}`,
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'DM filter',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2417,6 +2499,7 @@ describe('notification repository', () => {
         contextId: 'space-bulk',
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'Bulk',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2461,6 +2544,7 @@ describe('notification repository', () => {
         contextId: 'space-scoped',
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'Scoped',
         authorDisplay: 'Author',
         authorAvatarUrl: null,
@@ -2672,6 +2756,7 @@ describe('direct message repositories', () => {
         contextId: 'dm-conversation-1',
         courseId: null,
         eventId: null,
+        domain: null,
         lessonName: 'Acme Member',
         authorDisplay: 'Acme Member',
         authorAvatarUrl: null,

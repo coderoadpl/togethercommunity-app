@@ -281,6 +281,48 @@ describe('NotificationBell', () => {
     expect(withInitials.getByTestId('member-avatar')).toHaveTextContent('O');
   });
 
+  it('leaves out the avatar of a workspace notification that has no author', async () => {
+    server.use(
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 1 } }),
+      ),
+      http.get('/api/notifications', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            notifications: [{
+              ...notification({ id: 'n1', read: false }),
+              kind: 'tenant-domain-verified',
+              payload: {
+                rootPostId: null,
+                postId: null,
+                contextKind: 'tenant',
+                contextId: null,
+                courseId: null,
+                eventId: null,
+                domain: 'kurs.coderoad.example',
+                lessonName: '',
+                authorDisplay: null,
+                authorAvatarUrl: null,
+                snippet: '',
+              },
+            }],
+            nextCursor: null,
+          },
+        }),
+      ),
+    );
+
+    await renderBell();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+
+    const row = within(await screen.findByTestId('notification-n1'));
+    expect(row.queryByTestId('member-avatar')).toBeNull();
+    expect(row.getByText(pl.notifications.tenantDomainVerified({ domain: 'kurs.coderoad.example' })))
+      .toBeInTheDocument();
+  });
+
   it('shows the empty state when there are no notifications', async () => {
     server.use(
       http.get('/api/notifications/unread-count', () =>

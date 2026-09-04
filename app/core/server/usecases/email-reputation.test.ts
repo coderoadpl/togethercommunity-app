@@ -317,6 +317,7 @@ describe('tenant staff recipients', () => {
       staff.map((member, index) => ({
         userId: `staff-${String(index)}`,
         email: member.email,
+        staffRole: 'owner' as const,
         language: member.language ?? null,
       })),
     findStaffGrant: async () => null,

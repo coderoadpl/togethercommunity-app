@@ -17,6 +17,7 @@ import {
   dmConversationStateSchema,
   dmMessageSchema,
   dmReportSchema,
+  dnsRecordSchema,
   memberCourseProgressSchema,
   memberEventSchema,
   memberGrantSchema,
@@ -72,6 +73,7 @@ import {
   type StaffRole,
   type Tenant,
   type TenantApiKey,
+  type TenantDomain,
   type TenantSecret,
   type TenantSettings,
 } from '#core/domain/index.js';
@@ -125,6 +127,7 @@ import type {
   SignInMethodReader,
   TenantAccessReader,
   TenantApiKeyRepository,
+  TenantDomainEventRepository,
   TenantDomainRepository,
   TenantRepository,
   TenantSecretRepository,
@@ -191,6 +194,7 @@ import {
   tenantApiKeys,
   apiKeyRateLimitBuckets,
   rateLimitBuckets,
+  tenantDomainEvents,
   tenantDomains,
   tenantSecrets,
   tenants,
@@ -3782,6 +3786,28 @@ export const createDevSinkPurge = (db: Db): DevSinkPurge => ({
   },
 });
 
+type TenantDomainRow = typeof tenantDomains.$inferSelect;
+
+/** Postgres hands back `2026-09-04 10:15:00+00`; every contract schema expects ISO-8601. */
+const toIsoTimestamp = (value: string): string => new Date(value).toISOString();
+
+const toNullableIsoTimestamp = (value: string | null): string | null =>
+  value === null ? null : toIsoTimestamp(value);
+
+const toTenantDomain = (row: TenantDomainRow): TenantDomain => ({
+  id: row.id,
+  tenantId: row.tenantId,
+  domain: row.domain,
+  kind: row.kind,
+  verified: row.verified,
+  provider: row.provider,
+  verification: dnsRecordSchema.array().catch([]).parse(row.verification),
+  createdAt: toIsoTimestamp(row.createdAt),
+  verifiedAt: toNullableIsoTimestamp(row.verifiedAt),
+  lastCheckedAt: toNullableIsoTimestamp(row.lastCheckedAt),
+  lastError: row.lastError,
+});
+
 export const createTenantDomainRepository = (db: Db): TenantDomainRepository => ({
   findByDomain: async (domain) => {
     const rows = await db
@@ -3789,16 +3815,87 @@ export const createTenantDomainRepository = (db: Db): TenantDomainRepository => 
       .from(tenantDomains)
       .where(and(eq(tenantDomains.domain, domain), eq(tenantDomains.verified, true)))
       .limit(1);
-    return rows[0] ?? null;
+    return rows[0] === undefined ? null : toTenantDomain(rows[0]);
+  },
+  findAnyByDomain: async (domain) => {
+    const rows = await db
+      .select()
+      .from(tenantDomains)
+      .where(eq(tenantDomains.domain, domain))
+      .limit(1);
+    return rows[0] === undefined ? null : toTenantDomain(rows[0]);
   },
   listVerifiedDomains: async () =>
-    db.select().from(tenantDomains).where(eq(tenantDomains.verified, true)),
+    (await db.select().from(tenantDomains).where(eq(tenantDomains.verified, true)))
+      .map(toTenantDomain),
   listByTenant: async (tenantId) =>
-    db
+    (await db
       .select()
       .from(tenantDomains)
       .where(eq(tenantDomains.tenantId, tenantId))
-      .orderBy(tenantDomains.domain),
+      .orderBy(tenantDomains.domain)).map(toTenantDomain),
+  insert: async (tenantId, domain) => {
+    const rows = await db
+      .insert(tenantDomains)
+      .values({ ...domain, tenantId })
+      .onConflictDoNothing({ target: tenantDomains.domain })
+      .returning();
+    return rows[0] === undefined ? null : toTenantDomain(rows[0]);
+  },
+  patch: async (tenantId, id, patch) => {
+    const rows = await db
+      .update(tenantDomains)
+      .set(patch)
+      .where(and(eq(tenantDomains.tenantId, tenantId), eq(tenantDomains.id, id)))
+      .returning();
+    return rows[0] === undefined ? null : toTenantDomain(rows[0]);
+  },
+  markVerified: async (tenantId, id, patch) => {
+    const rows = await db
+      .update(tenantDomains)
+      .set({ ...patch, verified: true })
+      .where(and(
+        eq(tenantDomains.tenantId, tenantId),
+        eq(tenantDomains.id, id),
+        eq(tenantDomains.verified, false),
+      ))
+      .returning();
+    return rows[0] === undefined ? null : toTenantDomain(rows[0]);
+  },
+  remove: async (tenantId, id) => {
+    const rows = await db
+      .delete(tenantDomains)
+      .where(and(eq(tenantDomains.tenantId, tenantId), eq(tenantDomains.id, id)))
+      .returning({ id: tenantDomains.id });
+    return rows.length > 0;
+  },
+  listOldestPendingPerTenant: async (limit) => {
+    const ranked = db
+      .select({
+        id: tenantDomains.id,
+        rank: sql<number>`row_number() over (partition by ${tenantDomains.tenantId} order by ${tenantDomains.lastCheckedAt} asc nulls first, ${tenantDomains.createdAt} asc)`.as('rank'),
+      })
+      .from(tenantDomains)
+      .where(and(eq(tenantDomains.kind, 'custom'), eq(tenantDomains.verified, false)))
+      .as('ranked');
+    const rows = await db
+      .select({ domain: tenantDomains })
+      .from(tenantDomains)
+      .innerJoin(ranked, eq(ranked.id, tenantDomains.id))
+      .where(eq(ranked.rank, 1))
+      .orderBy(
+        sql`${tenantDomains.lastCheckedAt} asc nulls first`,
+        asc(tenantDomains.createdAt),
+      )
+      .limit(limit);
+    return rows.map((row) => toTenantDomain(row.domain));
+  },
+});
+
+export const createTenantDomainEventRepository = (db: Db): TenantDomainEventRepository => ({
+  append: async (tenantId, event) => {
+    await db.insert(tenantDomainEvents).values({ ...event, tenantId });
+  },
 });
 
 export const createTenantRepository = (
@@ -4143,11 +4240,12 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
           ),
         )
         .where(eq(tenantAdmins.tenantId, tenantId));
-      return rows.flatMap((row) =>
-        parseStaffRole(row.staffRole) === null
+      return rows.flatMap((row) => {
+        const staffRole = parseStaffRole(row.staffRole);
+        return staffRole === null
           ? []
-          : [{ userId: row.userId, email: row.email, language: row.language ?? null }],
-      );
+          : [{ userId: row.userId, email: row.email, staffRole, language: row.language ?? null }];
+      });
     },
     findStaffGrant: async (userId, lookup) => {
       const tenantCondition =

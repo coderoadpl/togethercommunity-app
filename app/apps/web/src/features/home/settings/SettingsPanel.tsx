@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   FormControl,
   FormControlLabel,
   FormHelperText,
@@ -26,6 +27,7 @@ import {
   DEFAULT_LANGUAGE,
   languageOrDefault,
   LANGUAGES,
+  MAX_CUSTOM_DOMAINS_PER_TENANT,
   SHARE_IMAGE_RECOMMENDED_HEIGHT,
   SHARE_IMAGE_RECOMMENDED_WIDTH,
   SOCIAL_LINK_LABEL_MAX_LENGTH,
@@ -35,7 +37,13 @@ import {
   TENANT_OG_TITLE_MAX_LENGTH,
   tenantSocialLinkSchema,
 } from '#core/domain/index.js';
-import type { ExemptionBasisKind, Language, TenantSocialLink } from '#core/domain/index.js';
+import type {
+  DnsRecord,
+  ExemptionBasisKind,
+  Language,
+  TenantDomainStatus,
+  TenantSocialLink,
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -43,13 +51,15 @@ import { ActiveSessions } from '../../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
 import { EmailVerificationStatus } from '../../../components/ui/EmailVerificationStatus.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { errorCodeOf, localizePanelError, serverMessageOf, useLanguage, useTranslations } from '../../../i18n/index.js';
+import type { Messages } from '../../../i18n/index.js';
 import {
   BUILD_SHA,
   BUILD_VERSION,
   isBuildMismatch,
   shortSha,
 } from '../../../lib/build-info.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
 import { usePanelContext } from '../panel-context.js';
@@ -1157,9 +1167,107 @@ const SecurityPanel = () => {
   );
 };
 
-const TenantDomainsPanel = () => {
+const CUSTOM_DOMAIN_DOCS_URL =
+  'https://github.com/coderoadpl/togethercommunity-app/blob/main/app/docs/custom-domains.md';
+
+const domainStatusLabel = (t: Messages, status: TenantDomainStatus): string => {
+  switch (status) {
+    case 'active':
+      return t.tenantDomains.statusActive;
+    case 'pending-dns':
+      return t.tenantDomains.statusPendingDns;
+    case 'provider-verification':
+      return t.tenantDomains.statusProviderVerification;
+    case 'error':
+      return t.tenantDomains.statusError;
+  }
+};
+
+const COPIED_LABEL_MS = 2_000;
+
+const DOMAIN_STATUS_COLOR: Record<TenantDomainStatus, 'success' | 'warning' | 'info' | 'error'> = {
+  active: 'success',
+  'pending-dns': 'warning',
+  'provider-verification': 'info',
+  error: 'error',
+};
+
+/**
+ * A provider refusal and a rejected domain both carry the one sentence that says
+ * which domain cannot be connected and why, which the generic copy would drop.
+ */
+const domainErrorMessage = (error: unknown, t: Messages): string => {
+  const code = errorCodeOf(error);
+  if (code === 'conflict') return t.tenantDomains.conflict;
+  if (code === 'integration_unavailable' || code === 'validation') {
+    return serverMessageOf(error) ?? localizePanelError(error, t);
+  }
+  return localizePanelError(error, t);
+};
+
+const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
   const t = useTranslations();
+  const [copied, setCopied] = useState(false);
+  const copyValue = async () => {
+    try {
+      await navigator.clipboard.writeText(record.value);
+      setCopied(true);
+      window.setTimeout(() => {
+        setCopied(false);
+      }, COPIED_LABEL_MS);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <Stack
+      direction="row"
+      useFlexGap
+      sx={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
+      data-testid={`dns-record-${record.type}-${record.name}`}
+    >
+      <Typography variant="caption" sx={{ overflowWrap: 'anywhere' }}>
+        {t.tenantDomains.recordType}: {record.type} · {t.tenantDomains.recordName}: {record.name}
+        {' · '}
+        {t.tenantDomains.recordValue}: {record.value}
+      </Typography>
+      <Button
+        type="button"
+        size="small"
+        onClick={() => void copyValue()}
+      >
+        {copied ? t.tenantDomains.copied : t.tenantDomains.copy}
+      </Button>
+    </Stack>
+  );
+};
+
+const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const queryClient = useQueryClient();
   const routing = useQuery(actions.tenantRouting);
+  const [draft, setDraft] = useState('');
+  const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  const invalidate = async () => {
+    await queryClient.invalidateQueries(actions.tenantRoutingInvalidates());
+  };
+  const addDomain = useMutation({ ...actions.addTenantDomain, onSuccess: invalidate });
+  const checkDomain = useMutation({ ...actions.checkTenantDomain, onSettled: invalidate });
+  const removeDomain = useMutation({
+    ...actions.removeTenantDomain,
+    onSuccess: async (result) => {
+      setRedirectTo(result.redirectTo);
+      await invalidate();
+    },
+  });
+  const pending = addDomain.isPending || checkDomain.isPending || removeDomain.isPending;
+  const busyWith = (
+    mutation: { isPending: boolean; variables?: { domain: string } | undefined },
+    domain: string,
+  ): boolean => mutation.isPending && mutation.variables?.domain === domain;
+  const error = addDomain.error ?? checkDomain.error ?? removeDomain.error;
 
   if (routing.isError) {
     return (
@@ -1188,7 +1296,7 @@ const TenantDomainsPanel = () => {
     );
   }
 
-  const { customDomains, tenantHost, customDomainTarget } = routing.data.routing;
+  const { customDomains, tenantHost, canAddCustomDomain } = routing.data.routing;
 
   return (
     <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
@@ -1197,23 +1305,122 @@ const TenantDomainsPanel = () => {
           <Eyebrow>{t.tenantDomains.workspaceAddress}</Eyebrow>
           <Typography variant="body2">{tenantHost}</Typography>
         </Stack>
+        {customDomains.some((entry) => entry.verified) ? null : (
+          <Alert severity="warning" data-testid="tenant-domain-warning">
+            {t.tenantDomains.firstDomainWarning}
+            {' '}
+            <MuiLink href={CUSTOM_DOMAIN_DOCS_URL} target="_blank" rel="noreferrer">
+              {t.tenantDomains.docsLink}
+            </MuiLink>
+          </Alert>
+        )}
+        {error === null ? null : (
+          <Alert severity="error" data-testid="tenant-domain-error">
+            {domainErrorMessage(error, t)}
+          </Alert>
+        )}
+        {redirectTo === null ? null : (
+          <Alert severity="info" data-testid="tenant-domain-redirect">
+            {t.tenantDomains.removedRedirect}
+            {' '}
+            <MuiLink href={redirectTo}>{redirectTo}</MuiLink>
+          </Alert>
+        )}
         <Stack useFlexGap spacing="0.3rem">
           <Eyebrow>{t.tenantDomains.customDomains}</Eyebrow>
           {customDomains.length === 0 ? (
             <Typography variant="body2">{t.tenantDomains.none}</Typography>
           ) : customDomains.map((entry) => (
-            <Stack key={entry.domain} useFlexGap spacing="0.2rem" data-testid={`tenant-domain-${entry.domain}`}>
-              <Typography variant="body2">
-                {entry.domain} · {entry.verified ? t.tenantDomains.verified : t.tenantDomains.pending}
-              </Typography>
+            <Stack key={entry.domain} useFlexGap spacing="0.4rem" data-testid={`tenant-domain-${entry.domain}`}>
+              <Stack direction="row" useFlexGap sx={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <Typography variant="body2">{entry.domain}</Typography>
+                <Chip
+                  size="small"
+                  color={DOMAIN_STATUS_COLOR[entry.status]}
+                  label={domainStatusLabel(t, entry.status)}
+                  data-testid={`tenant-domain-status-${entry.domain}`}
+                />
+                <Button
+                  type="button"
+                  size="small"
+                  disabled={!canEdit || pending}
+                  onClick={() => checkDomain.mutate({ domain: entry.domain })}
+                  data-testid={`tenant-domain-check-${entry.domain}`}
+                >
+                  {busyWith(checkDomain, entry.domain)
+                    ? t.tenantDomains.checking
+                    : t.tenantDomains.check}
+                </Button>
+                <Button
+                  type="button"
+                  size="small"
+                  color="error"
+                  disabled={!canEdit || pending}
+                  onClick={() => {
+                    if (!window.confirm(t.tenantDomains.removeConfirm({ domain: entry.domain }))) return;
+                    removeDomain.mutate({ domain: entry.domain });
+                  }}
+                  data-testid={`tenant-domain-remove-${entry.domain}`}
+                >
+                  {busyWith(removeDomain, entry.domain)
+                    ? t.tenantDomains.removing
+                    : t.tenantDomains.remove}
+                </Button>
+              </Stack>
+              {entry.lastError === null ? null : (
+                <Typography variant="caption" color="error">{entry.lastError}</Typography>
+              )}
               {entry.verified ? null : (
+                <>
+                  <Typography variant="caption">{t.tenantDomains.recordsHeading}</Typography>
+                  {entry.records.map((record) => (
+                    <DnsRecordRow key={`${record.type}-${record.name}`} record={record} />
+                  ))}
+                </>
+              )}
+              {entry.lastCheckedAt === null ? null : (
                 <Typography variant="caption">
-                  {t.tenantDomains.dnsInstruction({ domain: entry.domain, target: customDomainTarget })}
+                  {t.tenantDomains.lastChecked({ at: formatDateTime(entry.lastCheckedAt, language) })}
                 </Typography>
               )}
             </Stack>
           ))}
         </Stack>
+        {canAddCustomDomain ? (
+          <Stack
+            component="form"
+            useFlexGap
+            spacing="0.5rem"
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault();
+              addDomain.mutate({ domain: draft }, { onSuccess: () => setDraft('') });
+            }}
+          >
+            <FormControl>
+              <FormLabel htmlFor="tenant-domain-input">{t.tenantDomains.addLabel}</FormLabel>
+              <OutlinedInput
+                id="tenant-domain-input"
+                value={draft}
+                disabled={!canEdit}
+                placeholder={t.tenantDomains.addPlaceholder}
+                onChange={(event) => setDraft(event.target.value)}
+                inputProps={{ 'data-testid': 'tenant-domain-input' }}
+              />
+            </FormControl>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={!canEdit || pending || draft.trim().length === 0}
+              data-testid="tenant-domain-add"
+            >
+              {addDomain.isPending ? t.tenantDomains.adding : t.tenantDomains.add}
+            </Button>
+          </Stack>
+        ) : (
+          <Typography variant="body2" data-testid="tenant-domain-limit">
+            {t.tenantDomains.limitReached({ max: MAX_CUSTOM_DOMAINS_PER_TENANT })}
+          </Typography>
+        )}
       </Stack>
     </SectionCard>
   );
@@ -1322,7 +1529,7 @@ export const SettingsPanel = () => {
             <InvoiceSettingsPanel canEdit={canEdit} />
           </Box>
           <Box id="domains" sx={{ scrollMarginTop: '1rem' }}>
-            <TenantDomainsPanel />
+            <TenantDomainsPanel canEdit={canEdit} />
           </Box>
         </Stack>
       ) : null}

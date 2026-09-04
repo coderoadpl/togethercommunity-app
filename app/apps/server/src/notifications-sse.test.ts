@@ -27,6 +27,7 @@ const notification = (overrides: Partial<Notification>): Notification => ({
     contextId: 'l1',
     courseId: 'c1',
     eventId: null,
+    domain: null,
     lessonName: 'Lesson 1',
     authorDisplay: 'Author',
     authorAvatarUrl: null,

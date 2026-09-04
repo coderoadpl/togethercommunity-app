@@ -687,6 +687,13 @@
       "when": 1788660000000,
       "tag": "0097_invoicing_provider_unset",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1788700000000,
+      "tag": "0098_tenant_domain_self_serve",
+      "breakpoints": true
     }
   ]
 }

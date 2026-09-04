@@ -17,6 +17,7 @@ const notification: Notification = {
     contextId: 'l1',
     courseId: 'c1',
     eventId: null,
+    domain: null,
     lessonName: 'Lekcja o hamakach',
     authorDisplay: 'Ola',
     authorAvatarUrl: null,
@@ -140,6 +141,35 @@ describe('email notification channel', () => {
       url: 'http://acme.localhost:48730/messages/dc1',
     });
   });
+
+  it.each(['tenant-domain-verified', 'tenant-domain-error'] as const)(
+    'sends no e-mail for the in-app-only %s notification',
+    async (kind) => {
+      const { sent, port } = captureEmail();
+
+      const delivered = await channel(port).deliver(
+        {
+          ...notification,
+          kind,
+          payload: {
+            ...notification.payload,
+            contextKind: 'tenant',
+            rootPostId: null,
+            postId: null,
+            contextId: null,
+            courseId: null,
+            domain: 'kurs.coderoad.example',
+            lessonName: '',
+            authorDisplay: null,
+          },
+        },
+        context,
+      );
+
+      expect(delivered.ok).toBe(true);
+      expect(sent).toEqual([]);
+    },
+  );
 
   it('skips recipients without an email address', async () => {
     const { sent, port } = captureEmail();

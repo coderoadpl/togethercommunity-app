@@ -207,11 +207,13 @@ export const NotificationBell = ({
               sx={{ gap: '0.6rem', maxWidth: '22rem' }}
             >
               {notification.readAt === null ? <UnreadDot aria-hidden /> : null}
-              <MemberAvatar
-                name={notification.payload.authorDisplay}
-                avatarUrl={notification.payload.authorAvatarUrl}
-                size="sm"
-              />
+              {notification.payload.contextKind === 'tenant' ? null : (
+                <MemberAvatar
+                  name={notification.payload.authorDisplay ?? ''}
+                  avatarUrl={notification.payload.authorAvatarUrl}
+                  size="sm"
+                />
+              )}
               <Box sx={{ minWidth: 0 }}>
                 <NotificationTitle component="p" unread={notification.readAt === null}>
                   {notificationTitle(t, notification)}

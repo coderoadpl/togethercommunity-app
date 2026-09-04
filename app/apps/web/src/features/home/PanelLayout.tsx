@@ -310,6 +310,11 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const t = useTranslations();
   const { pathname } = useLocation();
   const openReports = useQuery(actions.reports({ status: 'open', limit: 1 }));
+  const openDmReports = useQuery(actions.dmReports({ status: 'open', limit: 1 }));
+  const openReportCount = openReports.data === undefined && openDmReports.data === undefined
+    ? undefined
+    : (openReports.data?.openCount ?? 0) + (openDmReports.data?.openCount ?? 0);
+  const failedReportQuery = openReports.isError ? openReports : openDmReports.isError ? openDmReports : null;
   const [groupState, setGroupState] = useState<NavigationGroupState>(navigationGroupPreference.load);
 
   const toggleGroup = (groupId: NavigationGroupId) => {
@@ -357,7 +362,7 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
                     descriptor={descriptor}
                     pathname={pathname}
                     onNavigate={onNavigate}
-                    openReportCount={openReports.data?.openCount}
+                    openReportCount={openReportCount}
                   />
                 ))}
               </List>
@@ -380,9 +385,9 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
         openReportCount={undefined}
         grouped={false}
       />
-      {openReports.isError ? (
-        <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />
-      ) : null}
+      {failedReportQuery === null ? null : (
+        <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(failedReportQuery.error, t), retry: { label: t.common.retry, onRetry: () => void failedReportQuery.refetch() } }} />
+      )}
     </List>
   );
 };

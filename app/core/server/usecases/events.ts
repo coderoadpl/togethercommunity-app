@@ -31,6 +31,7 @@ import type {
   ContentHash,
   DiscussionLinkPort,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -60,6 +61,7 @@ export interface EventsDeps {
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
+  memberBlocks: MemberBlockRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;

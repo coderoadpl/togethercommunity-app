@@ -41,11 +41,16 @@ import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-row
 const MessagesRow = ({ active }: { active: boolean }) => {
   const t = useTranslations();
   const { streamless } = useNotificationsTransport();
+  const navigation = useQuery(actions.memberNavigation);
+  const enabled = navigation.isSuccess && navigation.data.navigation.directMessagesEnabled;
   const unread = useQuery({
     ...actions.unreadMessages,
+    enabled,
     refetchInterval: streamlessPollInterval(streamless, UNREAD_BADGE_POLL_INTERVAL_MS),
   });
   const count = unread.data?.unread ?? 0;
+
+  if (!enabled) return null;
 
   return (
     <LinkRow

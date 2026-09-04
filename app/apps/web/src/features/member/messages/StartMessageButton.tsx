@@ -26,6 +26,7 @@ export interface StartPostConversation {
 export const useStartPostConversation = (postId: string): StartPostConversation => {
   const navigate = useNavigate();
   const me = useQuery(actions.me);
+  const navigation = useQuery(actions.memberNavigation);
   const start = useMutation({
     ...actions.startConversation,
     onSuccess: (data) =>
@@ -37,7 +38,10 @@ export const useStartPostConversation = (postId: string): StartPostConversation 
   const tenant = me.data?.tenant ?? null;
 
   return {
-    available: tenant !== null && !tenant.banned,
+    available:
+      tenant !== null
+      && !tenant.banned
+      && navigation.data?.navigation.directMessagesEnabled !== false,
     pending: start.isPending,
     error: start.isError ? start.error : null,
     start: () => start.mutate({ recipient: { kind: 'post-author', postId } }),

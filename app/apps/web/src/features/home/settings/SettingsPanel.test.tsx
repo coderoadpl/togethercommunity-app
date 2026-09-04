@@ -42,6 +42,7 @@ interface StoredSettings {
   invoiceExemptionBasisKind?: 'art_113_1' | 'art_113_9' | 'art_43_1' | 'other_statute' | 'other' | null;
   invoiceExemptionBasis?: string | null;
   defaultHomeSpaceId?: string | null;
+  directMessagesEnabled?: boolean;
 }
 
 interface StubSpace {
@@ -439,6 +440,38 @@ describe('SettingsPanel public access', () => {
     await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceNone }));
 
     await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: '' }));
+  });
+});
+
+describe('SettingsPanel direct messages', () => {
+  const findToggle = () => screen.findByRole('switch', { name: pl.directMessages.toggleLabel });
+
+  it('shows the switch on for tenants that never touched it', async () => {
+    renderPanel(EMPTY_SETTINGS);
+
+    const toggle = await findToggle();
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(toggle).toBeChecked();
+  });
+
+  it('turns direct messages off', async () => {
+    const { updates } = renderPanel(EMPTY_SETTINGS);
+
+    const toggle = await findToggle();
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await userEvent.click(toggle);
+
+    await waitFor(() => expect(updates).toContainEqual({ directMessagesEnabled: false }));
+  });
+
+  it('turns direct messages back on', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, directMessagesEnabled: false });
+
+    const toggle = await findToggle();
+    await waitFor(() => expect(toggle).not.toBeChecked());
+    await userEvent.click(toggle);
+
+    await waitFor(() => expect(updates).toContainEqual({ directMessagesEnabled: true }));
   });
 });
 

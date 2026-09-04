@@ -208,6 +208,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/posts/report') return 'community:report';
   if (path === '/api/reports') return 'community:report:read';
   if (path === '/api/reports/resolve') return 'community:moderate';
+  if (path === '/api/dm-reports') return 'community:report:read';
+  if (path === '/api/dm-reports/resolve') return 'community:moderate';
+  if (path === '/api/messages/report') return 'community:report';
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads')) {
     return method === 'GET' ? 'community:read' : 'community:write';
   }

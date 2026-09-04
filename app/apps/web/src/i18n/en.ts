@@ -278,6 +278,17 @@ export const en: Messages = {
     deletePost: 'Delete post',
     deletePostConfirm: 'Delete this post? Members will see a removal placeholder.',
   },
+  dmReports: {
+    heading: 'Reported direct conversations',
+    intro: 'Direct message reports with a snapshot of the last 20 messages taken when the report was filed.',
+    empty: 'No reported conversations.',
+    emptySnapshot: 'The conversation had no messages yet.',
+    parties: ({ reporter, reported }) =>
+      format('Reported by {reporter} · about {reported}', { reporter, reported }),
+    resolve: 'Close report',
+    resolveConfirm: 'Mark this report as resolved?',
+    loadMore: 'Load older reports',
+  },
   dashboard: {
     heading: 'Overview',
     loading: 'Loading overview…',
@@ -532,6 +543,7 @@ export const en: Messages = {
         ? format('{author} posted in the “{space}” space', { author, space })
         : format('{author} posted in a space', { author }),
     dmMessage: ({ author }) => format('New message from {author}', { author }),
+    dmReport: ({ reporter }) => format('{reporter} reported a direct conversation', { reporter }),
     spaceEvent: ({ space }) =>
       space.length > 0
         ? format('New event in the “{space}” space', { space })
@@ -564,6 +576,16 @@ export const en: Messages = {
     optOutSaved: 'Privacy settings saved.',
     recipientUnavailable: 'This person is not accepting messages right now.',
     rateLimited: 'You are sending messages too quickly — take a short break.',
+    conversationMenu: 'Conversation options',
+    block: 'Block',
+    unblock: 'Unblock',
+    blockedByYou: 'This person is blocked. Unblock them to write again.',
+    cannotSend: 'Messages cannot be sent in this conversation right now.',
+    report: 'Report conversation',
+    reportTitle: 'Report conversation',
+    reportHint: 'The report includes the last 20 messages of this conversation so the team can review them.',
+    reportSent: 'Thanks — the team will take a look.',
+    reportAlready: 'You already have an open report on this conversation.',
   },
   events: {
     sectionTitle: 'Events',
@@ -1861,6 +1883,12 @@ export const en: Messages = {
     homeSpaceNone: 'None',
     homeSpaceHint:
       'Only active publicly readable spaces can be picked. Without one, visitors land on the tiles alone.',
+  },
+  directMessages: {
+    heading: 'Direct messages',
+    intro:
+      'With direct messages off, members no longer see the Messages section and cannot start new conversations. Stored conversations stay in the database.',
+    toggleLabel: 'Direct messages between members',
   },
   legal: {
     heading: 'Terms of service and privacy policy',

@@ -145,6 +145,7 @@ export const tenantSettingsSchema = z.object({
   termsUrl: z.string().url().nullable().default(null),
   privacyUrl: z.string().url().nullable().default(null),
   defaultHomeSpaceId: z.string().min(1).nullable().default(null),
+  directMessagesEnabled: z.boolean().optional(),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
@@ -224,6 +225,7 @@ export const updateTenantSettingsInputSchema = z.object({
     .nullable()
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
+  directMessagesEnabled: z.boolean().optional(),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
@@ -236,6 +238,10 @@ export const updateTenantSettingsInputSchema = z.object({
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;
+
+/** Tenants created before the switch existed keep direct messages on. */
+export const directMessagesEnabled = (settings: TenantSettings): boolean =>
+  settings.directMessagesEnabled !== false;
 
 export const resolveInvoiceVat = (settings: TenantSettings): InvoiceVatResolution => {
   if (settings.invoiceVatMode === null) return { ok: false, reason: 'unset' };

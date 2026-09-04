@@ -248,6 +248,8 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/posts/report` | authenticated | mutating | posts report |
 | `GET /api/reports` | authenticated | read | reports |
 | `POST /api/reports/resolve` | authenticated | mutating | report resolve |
+| `GET /api/dm-reports` | authenticated | read | dm reports |
+| `POST /api/dm-reports/resolve` | authenticated | mutating | dm report resolve |
 | `POST /api/posts/update` | authenticated | mutating | posts update |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |
@@ -283,6 +285,9 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/messages/start` | authenticated | mutating | messages start |
 | `POST /api/messages/send` | authenticated | mutating | messages send |
 | `POST /api/messages/read` | authenticated | mutating | messages read |
+| `POST /api/messages/block` | authenticated | mutating | messages block |
+| `POST /api/messages/unblock` | authenticated | mutating | messages unblock |
+| `POST /api/messages/report` | authenticated | mutating | messages report |
 | `GET /api/messages/:conversationId` | authenticated | read | messages thread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
 | `GET /*` | public | read | Tenant social preview for link crawlers |

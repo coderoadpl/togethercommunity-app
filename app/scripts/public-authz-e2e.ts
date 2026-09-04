@@ -166,6 +166,7 @@ const expectHref = async (page: Page, testId: string, expected: string): Promise
 const expectNoDiscussionControls = async (page: Page, label: string): Promise<void> => {
   for (const selector of [
     '[data-testid="discussion-composer"]',
+    '[data-testid="discussion-composer-open"]',
     '[data-testid^="reply-button-"]',
     '[data-testid^="reply-composer-"]',
   ]) {

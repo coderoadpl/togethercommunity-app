@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { Box, Link, Stack } from '@mui/material';
+import { Box } from '@mui/material';
 import { ThemeProvider, useTheme, type Theme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 
@@ -11,6 +11,7 @@ import {
 } from '#core/domain/index.js';
 
 import { actions } from './api.js';
+import { SocialLinksFooter } from './branding-social.js';
 import { useTranslations } from './i18n/index.js';
 import { isConfiguredBaseDomainHost } from './lib/tenant.js';
 import { applyBranding } from './theme-branding.js';
@@ -55,22 +56,7 @@ export const TenantSocialLinks = ({
   const tenantLinks = useTenantOffer(providedLinks === undefined)?.socialLinks ?? [];
   const links = providedLinks ?? tenantLinks;
   if (links.length === 0) return null;
-  return (
-    <Stack
-      component="nav"
-      direction="row"
-      useFlexGap
-      aria-label={t.branding.socialLinksAria}
-      data-testid="tenant-social-links"
-      sx={{ flexWrap: 'wrap', gap: '0.5rem 1rem', mt: '1rem' }}
-    >
-      {links.map((item) => (
-        <Link key={`${item.label}:${item.url}`} href={item.url} target="_blank" rel="noreferrer">
-          {item.label}
-        </Link>
-      ))}
-    </Stack>
-  );
+  return <SocialLinksFooter links={links} ariaLabel={t.branding.socialLinksAria} />;
 };
 
 export const TenantLogo = () => {

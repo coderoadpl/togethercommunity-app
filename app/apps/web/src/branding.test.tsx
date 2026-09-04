@@ -190,6 +190,26 @@ describe('TenantSocialLinks', () => {
     expect(await screen.findByRole('navigation', { name: 'Profile społecznościowe' }))
       .toContainElement(screen.getByRole('link', { name: 'Instagram' }));
   });
+
+  it('gives every profile a recognisable icon and keeps the label as the accessible name', async () => {
+    server.use(offerHandler(BRANDED, [
+      { label: 'LinkedIn', url: 'https://www.linkedin.com/company/akademia' },
+      { label: 'Blog', url: 'https://akademia.example/blog' },
+    ]));
+    renderWithProviders(
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki">
+        <TenantSocialLinks />
+      </MemberPage>,
+    );
+
+    const footer = await screen.findByTestId('tenant-social-links');
+    expect(footer).toContainElement(screen.getByTestId('social-icon-linkedin'));
+    expect(footer).toContainElement(screen.getByTestId('social-icon-generic'));
+    expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/company/akademia',
+    );
+  });
 });
 
 describe('tenant logo variants', () => {

@@ -1429,9 +1429,11 @@ export interface Messages {
     retry: string;
     retrying: string;
     empty: string;
+    emptyReadOnly: string;
     lockedNote: string;
     composerLabel: string;
     composerPlaceholder: string;
+    composerPrompt: string;
     post: string;
     posting: string;
     reply: string;
@@ -1483,10 +1485,12 @@ export interface Messages {
     unfollow: string;
     composerLabel: string;
     composerPlaceholder: string;
+    composerPrompt: string;
     post: string;
     posting: string;
     loadingFeed: string;
     emptyFeed: string;
+    emptyFeedReadOnly: string;
     openThread: string;
     reactAria: (params: { emoji: string }) => string;
     addReaction: string;

@@ -373,6 +373,7 @@ describe('community pages', () => {
     const user = userEvent.setup();
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
+    await user.click(await screen.findByTestId('space-composer-open'));
     await user.type(await screen.findByTestId('space-composer-input'), 'Mój nowy wpis');
     await user.click(screen.getByTestId('space-composer-submit'));
 
@@ -462,7 +463,7 @@ describe('community pages', () => {
     await waitFor(() => expect(screen.getByTestId('reaction-p1-🎉')).toHaveTextContent('1'));
   });
 
-  it('keeps the space composer on one line until it takes focus', async () => {
+  it('keeps the space composer collapsed behind a prompt until it is opened', async () => {
     server.use(
       okMe(),
       noNotifications(),
@@ -474,16 +475,19 @@ describe('community pages', () => {
     const user = userEvent.setup();
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    const input = await screen.findByTestId('space-composer-input');
-    expect(screen.queryByTestId('space-composer-submit')).not.toBeInTheDocument();
+    const prompt = await screen.findByTestId('space-composer-open');
+    expect(prompt).toHaveTextContent(pl.community.composerPrompt);
+    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
 
-    await user.click(input);
+    await user.click(prompt);
 
     expect(await screen.findByTestId('space-composer-submit')).toBeDisabled();
+    expect(screen.getByTestId('space-composer-input')).toHaveFocus();
 
     await user.tab();
 
     await waitFor(() => expect(screen.queryByTestId('space-composer-submit')).not.toBeInTheDocument());
+    expect(screen.getByTestId('space-composer-open')).toBeInTheDocument();
   });
 
   it('copies a post permalink from the feed overflow menu', async () => {
@@ -576,6 +580,7 @@ describe('community pages', () => {
 
     await waitFor(() => expect(seenCalls).toEqual(['s1']));
 
+    await user.click(await screen.findByTestId('space-composer-open'));
     await user.type(await screen.findByTestId('space-composer-input'), 'Mój nowy wpis');
     await user.click(screen.getByTestId('space-composer-submit'));
 
@@ -597,6 +602,25 @@ describe('community pages', () => {
     expect(await screen.findByText('Cześć')).toBeInTheDocument();
     expect(seenCalls).toEqual([]);
     expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('space-composer-open')).not.toBeInTheDocument();
+  });
+
+  it('drops the composer card and the invitation from an empty feed viewed as a member', async () => {
+    server.use(
+      impersonatedMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', []),
+      okSeen(),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('feed-empty-state')).toHaveTextContent(
+      pl.community.emptyFeedReadOnly,
+    );
+    expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(pl.community.emptyFeed)).not.toBeInTheDocument();
   });
 
   it('hides a gated space the member cannot access behind a not-found state', async () => {
@@ -612,7 +636,7 @@ describe('community pages', () => {
 
     expect((await screen.findAllByText(pl.community.spaceNotFoundTitle)).length).toBeGreaterThan(0);
     expect(screen.getByText(pl.community.spaceNotFoundBody)).toBeInTheDocument();
-    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('feed-post-p1')).not.toBeInTheDocument();
   });
 
@@ -652,7 +676,7 @@ describe('community pages', () => {
     );
     expect(screen.getByTestId('anon-read-only')).toHaveTextContent(pl.anon.readOnlyBanner);
     expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/login');
-    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('reaction-p1-👍')).not.toBeInTheDocument();
   });
@@ -663,7 +687,7 @@ describe('community pages', () => {
     await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
 
     expect(await screen.findByTestId('anon-space-unlock')).toHaveAttribute('href', '/checkout/p1');
-    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
   });
 
   it('renders an anonymous thread read-only with its replies', async () => {

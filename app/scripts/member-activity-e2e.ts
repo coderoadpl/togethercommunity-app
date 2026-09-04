@@ -313,7 +313,7 @@ const runEventJourney = async (
   await anonymousPage.getByTestId('public-event-sign-in').waitFor({ state: 'visible' });
   assert(await anonymousPage.getByTestId('event-rsvp').count() === 0, 'Anonymous event exposed RSVP controls');
   assert(await anonymousPage.getByTestId('message-composer').count() === 0, 'Anonymous event exposed a composer');
-  assert(await anonymousPage.getByTestId('discussion-composer').count() === 0, 'Anonymous event exposed a discussion composer');
+  assert(await anonymousPage.locator('[data-testid^="discussion-composer"]').count() === 0, 'Anonymous event exposed a discussion composer');
 
   const publicEvent = await requestOk(
     anonymousPage,

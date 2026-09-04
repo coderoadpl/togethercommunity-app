@@ -471,7 +471,7 @@ const captureCommunitySurfaces = async (
   await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('deleted-post-post-js-zmienne-tip-r1').waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('follow-toggle-post-js-zmienne-q').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('discussion-composer').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('discussion-composer-open').waitFor({ state: 'visible', timeout: 20000 });
   const section = await page.getByTestId('discussion-section').boundingBox();
   if (section) await page.evaluate((top) => window.scrollTo(0, Math.max(0, top - 24)), section.y);
   await shoot(page, '18-lesson-discussion.png');

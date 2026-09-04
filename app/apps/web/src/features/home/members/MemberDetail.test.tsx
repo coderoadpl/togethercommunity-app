@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import type {
   EmailSendProjection,
+  GrantSource,
   MemberGrant,
   MemberWithProductIds,
   Product,
@@ -315,6 +316,36 @@ describe('MemberDetail', () => {
     expect(screen.getByText(pl.members.active)).toBeInTheDocument();
     expect(screen.getByText(pl.members.expired)).toBeInTheDocument();
     expect(screen.getByText(/1999/)).toBeInTheDocument();
+  });
+
+  it('labels every grant source', async () => {
+    setup();
+    const sources: GrantSource[] = ['manual', 'simulated', 'stripe', 'import'];
+    server.use(
+      http.get('/api/members/:memberId/grants', () => HttpResponse.json({
+        ok: true,
+        data: {
+          grants: sources.map((source, index): MemberGrant => ({
+            id: `grant-${source}`,
+            productId: `p-${source}`,
+            productName: `Product ${index}`,
+            startsAt: '1998-01-01T00:00:00.000Z',
+            expiresAt: null,
+            source,
+            active: true,
+          })),
+        },
+      })),
+    );
+    renderMemberDetail();
+
+    const rows = await screen.findAllByTestId('grant-row');
+    expect(rows.map((row) => within(row).getAllByRole('cell')[2]?.textContent)).toEqual([
+      pl.members.sourceManual,
+      pl.members.sourceSimulated,
+      pl.members.sourceStripe,
+      pl.members.sourceImport,
+    ]);
   });
 
   it('grants a product with the right mutation payload', async () => {

@@ -540,15 +540,21 @@ export const selectDevSinkPurge = (
   isProductionEnvironment(env) ? undefined : create();
 
 export const selectDomainProvisioner = (
-  env: Pick<Env, 'VERCEL_API_TOKEN' | 'VERCEL_PROJECT_ID' | 'VERCEL_TEAM_ID' | 'VERCEL_DOMAIN_GIT_BRANCH'>,
+  env: Pick<
+    Env,
+    | 'DOMAIN_PROVISIONER_TOKEN'
+    | 'DOMAIN_PROVISIONER_PROJECT_ID'
+    | 'DOMAIN_PROVISIONER_TEAM_ID'
+    | 'DOMAIN_PROVISIONER_GIT_BRANCH'
+  >,
 ): DomainProvisioner =>
-  env.VERCEL_API_TOKEN === undefined || env.VERCEL_PROJECT_ID === undefined
+  env.DOMAIN_PROVISIONER_TOKEN === undefined || env.DOMAIN_PROVISIONER_PROJECT_ID === undefined
     ? createManualDomainProvisioner()
     : createVercelDomainProvisioner({
-        token: env.VERCEL_API_TOKEN,
-        projectId: env.VERCEL_PROJECT_ID,
-        teamId: env.VERCEL_TEAM_ID,
-        gitBranch: env.VERCEL_DOMAIN_GIT_BRANCH,
+        token: env.DOMAIN_PROVISIONER_TOKEN,
+        projectId: env.DOMAIN_PROVISIONER_PROJECT_ID,
+        teamId: env.DOMAIN_PROVISIONER_TEAM_ID,
+        gitBranch: env.DOMAIN_PROVISIONER_GIT_BRANCH,
       });
 
 export const selectTenantRouting = (

@@ -10,6 +10,7 @@ import {
   selectDeploymentIdentity,
   selectDevEndpoints,
   selectDevSinkPurge,
+  selectDomainProvisioner,
   selectPlatformReset,
   selectTenantCreationMode,
   selectTenantRouting,
@@ -524,6 +525,60 @@ describe('local SMTP policy', () => {
       expect(parsed.error.flatten().fieldErrors.SMTP_PASSWORD).toContain(
         'SMTP_USER and SMTP_PASSWORD must be set together',
       );
+    }
+  });
+});
+
+describe('custom-domain provisioner configuration', () => {
+  const platformSystemEnvironment = {
+    VERCEL: '1',
+    VERCEL_ENV: 'production',
+    VERCEL_TARGET_ENV: 'production',
+    VERCEL_REGION: 'fra1',
+    VERCEL_URL: 'together-app-9f3a1c.vercel.app',
+    VERCEL_BRANCH_URL: 'together-app-git-staging.vercel.app',
+    VERCEL_PROJECT_PRODUCTION_URL: 'together.example',
+    VERCEL_DEPLOYMENT_ID: 'dpl_9f3a1c',
+    VERCEL_PROJECT_ID: 'prj_injected_by_the_platform',
+    VERCEL_TEAM_ID: 'team_injected_by_the_platform',
+    VERCEL_GIT_COMMIT_SHA: '9f3a1c0d2e4b6a8c',
+    VERCEL_GIT_COMMIT_REF: 'staging',
+    VERCEL_GIT_PROVIDER: 'github',
+  };
+
+  it('boots and stays manual on a deployment whose platform injects VERCEL_ variables', () => {
+    const parsed = envSchema.safeParse(platformSystemEnvironment);
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(selectDomainProvisioner(parsed.data).provider).toBe('manual');
+    }
+  });
+
+  it('rejects incomplete provisioner credential pairs', () => {
+    const parsed = envSchema.safeParse({
+      ...platformSystemEnvironment,
+      DOMAIN_PROVISIONER_PROJECT_ID: 'prj_ours',
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.DOMAIN_PROVISIONER_TOKEN).toContain(
+        'DOMAIN_PROVISIONER_TOKEN and DOMAIN_PROVISIONER_PROJECT_ID must be set together',
+      );
+    }
+  });
+
+  it('hands provisioning to the provider once both of our keys are set', () => {
+    const parsed = envSchema.safeParse({
+      ...platformSystemEnvironment,
+      DOMAIN_PROVISIONER_TOKEN: 'ours',
+      DOMAIN_PROVISIONER_PROJECT_ID: 'prj_ours',
+    });
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(selectDomainProvisioner(parsed.data).provider).toBe('vercel');
     }
   });
 });

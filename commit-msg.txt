@@ -1,0 +1,12 @@
+fix: tenant-scoped CORS, wider rate limits and neutral copy for the sign-in resolver
+
+Scope the public API's CORS allow-list to the resolved tenant's own
+origins instead of a global allow-list, closing a cross-tenant request
+vector on the sign-in resolver endpoint.
+
+Widen the public rate limits so legitimate bursts of resolver traffic
+are no longer throttled, and rewrite the associated user-facing copy
+in both locales to stay neutral about failure causes.
+
+Add coverage for the new tenant-scoped CORS behavior and update the
+security docs and go-live checklist to reflect the change.

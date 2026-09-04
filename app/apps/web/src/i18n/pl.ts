@@ -149,7 +149,7 @@ export const pl: Messages = {
     identifierPending: 'Sprawdzanie…',
     signingInAs: ({ email }) => format('Logujesz się jako {email}', { email }),
     changeIdentifier: 'Użyj innego adresu e-mail',
-    signInMethodsUnavailable: 'Nie udało się sprawdzić, jak logujesz się na to konto. Wyślemy Ci magiczny link — możesz też przejść do logowania hasłem.',
+    signInMethodsUnavailable: 'Nie udało się teraz sprawdzić dostępnych sposobów logowania. Wyślemy Ci magiczny link — możesz też zalogować się hasłem.',
     usePasswordPrompt: 'Masz hasło?',
     usePasswordInstead: 'Zaloguj się hasłem',
     useMagicLinkPrompt: 'Wolisz bez hasła?',

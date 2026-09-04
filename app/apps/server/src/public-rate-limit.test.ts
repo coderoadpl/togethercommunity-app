@@ -8,8 +8,8 @@ describe('selectPublicRateLimitPolicies', () => {
       writesPerIp: { limit: 30, windowMs: 60_000 },
       writesPerTenant: { limit: 300, windowMs: 60_000 },
       authLinksPerEmail: { limit: 5, windowMs: 600_000 },
-      authResolvesPerIp: { limit: 20, windowMs: 60_000 },
-      authResolvesPerTenant: { limit: 200, windowMs: 60_000 },
+      authResolvesPerIp: { limit: 60, windowMs: 60_000 },
+      authResolvesPerTenant: { limit: 1_000, windowMs: 60_000 },
     });
   });
 
@@ -17,8 +17,8 @@ describe('selectPublicRateLimitPolicies', () => {
     expect(selectPublicRateLimitPolicies({})).toMatchObject({
       writesPerIp: { limit: 3_000 },
       authLinksPerEmail: { limit: 500 },
-      authResolvesPerIp: { limit: 2_000 },
-      authResolvesPerTenant: { limit: 20_000 },
+      authResolvesPerIp: { limit: 6_000 },
+      authResolvesPerTenant: { limit: 100_000 },
     });
     expect(selectPublicRateLimitPolicies({ NODE_ENV: 'production', APP_ENV: 'staging' }))
       .toMatchObject({ writesPerIp: { limit: 3_000 } });

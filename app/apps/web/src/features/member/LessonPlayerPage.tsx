@@ -12,7 +12,6 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import DOMPurify from 'dompurify';
 
 import { ApiError } from '#core/client/index.js';
 import { groupLessonBlocks, type LessonContentGroup, type RenderableLessonBlock } from '#core/domain/index.js';
@@ -21,14 +20,17 @@ import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
 import { LessonMediaEmbed } from '../../components/ui/LessonMedia.js';
+import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { formatOfferPrice } from '../../lib/format.js';
 import {
   DataValue,
   Eyebrow,
   LessonFooterBar,
-  LessonHtmlContent,
   LessonPlaceholder,
+  LESSON_CARD_BLEED_X,
+  LESSON_CARD_OUTDENT_X,
+  LESSON_CARD_PADDING_X,
 } from '../../theme.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon, LockedState } from './lesson-icons.js';
@@ -128,12 +130,7 @@ const BlockBody = ({ block }: { block: RenderableLessonBlock }) => {
     );
   }
 
-  return (
-    <LessonHtmlContent
-      data-testid="lesson-html"
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
-    />
-  );
+  return <RichTextContent html={block.html} data-testid="lesson-html" />;
 };
 
 const GroupBody = ({ group }: { group: LessonContentGroup }) => {
@@ -147,6 +144,7 @@ const GroupBody = ({ group }: { group: LessonContentGroup }) => {
           canonicalUrl={group.canonicalUrl}
           providerName={group.providerName}
           caption={group.caption}
+          outdentX={LESSON_CARD_BLEED_X}
         />
       );
     case 'links':
@@ -463,7 +461,11 @@ export const LessonPlayerPage = ({
               <Paper
                 key={index}
                 elevation={1}
-                sx={{ p: '1.5rem' }}
+                sx={{
+                  px: LESSON_CARD_PADDING_X,
+                  py: { xs: '1rem', sm: '1.5rem' },
+                  mx: LESSON_CARD_OUTDENT_X,
+                }}
                 data-testid={`lesson-block-${index}`}
                 data-block-type={group.kind === 'block' ? group.block.type : group.kind}
               >

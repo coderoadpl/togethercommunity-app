@@ -112,15 +112,7 @@ export const inspectSandboxEmbedUrl = (value: string): SandboxEmbedInspection =>
 
 type LessonLinkChip = { url: string; label: string; host: string };
 
-type LinkLabel = { text: string; source: 'description' | 'anchorText' };
-
-const LABEL_RANK: Record<LinkLabel['source'], number> = { anchorText: 1, description: 2 };
-
-const labelRank = (label: LinkLabel | null): number => (label === null ? 0 : LABEL_RANK[label.source]);
-
-type LinkTarget = { host: string; key: string; fallbackLabel: string };
-
-const isSpace = (char: string): boolean => /\s/u.test(char);
+type LinkTarget = { host: string; derivedLabel: string; detailedLabel: string };
 
 const everyChar = (value: string, allowed: (char: string) => boolean): boolean =>
   [...value].every(allowed);
@@ -142,15 +134,12 @@ const withoutTrailingSlashes = (value: string): string => {
   return value.slice(0, end);
 };
 
-type MailtoParts = { address: string; query: string };
-
-const mailtoParts = (value: string): MailtoParts | null => {
+const mailtoAddress = (value: string): string | null => {
   const trimmed = value.trim();
   if (!/^mailto:/iu.test(trimmed)) return null;
   const rest = trimmed.slice('mailto:'.length);
   const queryStart = rest.indexOf('?');
-  if (queryStart < 0) return { address: rest, query: '' };
-  return { address: rest.slice(0, queryStart), query: rest.slice(queryStart) };
+  return queryStart < 0 ? rest : rest.slice(0, queryStart);
 };
 
 const decodeSegment = (value: string): string => {
@@ -161,33 +150,25 @@ const decodeSegment = (value: string): string => {
   }
 };
 
-const derivedLabel = (host: string, url: URL): string => {
+const detailedLabel = (host: string, url: URL): string => {
   const tail = pathSegments(url).at(-1);
   const fragment = url.hash.length > 1 ? decodeSegment(url.hash) : '';
   return `${host}${tail === undefined ? '' : ` / ${decodeSegment(tail)}`}${fragment}`;
 };
 
+const sameLabels = (value: string): LinkTarget => ({
+  host: value,
+  derivedLabel: value,
+  detailedLabel: value,
+});
+
 const linkTarget = (value: string): LinkTarget => {
-  const mail = mailtoParts(value);
-  if (mail !== null)
-    return {
-      host: mail.address,
-      key: `mailto:${mail.address.toLowerCase()}${mail.query}`,
-      fallbackLabel: mail.address,
-    };
+  const address = mailtoAddress(value);
+  if (address !== null) return sameLabels(address);
   const url = parseHttpUrl(value);
-  if (url === null) {
-    const trimmed = value.trim();
-    return { host: trimmed, key: trimmed.toLowerCase(), fallbackLabel: trimmed };
-  }
+  if (url === null) return sameLabels(value.trim());
   const host = withoutWww(url.hostname.toLowerCase());
-  const authority = url.port === '' ? host : `${host}:${url.port}`;
-  const path = withoutTrailingSlashes(url.pathname);
-  return {
-    host,
-    key: `${url.protocol}//${authority}${path}${url.search}${url.hash}`,
-    fallbackLabel: derivedLabel(host, url),
-  };
+  return { host, derivedLabel: host, detailedLabel: detailedLabel(host, url) };
 };
 
 const withoutUrlChrome = (value: string): string =>
@@ -222,149 +203,13 @@ const matchesHrefAuthority = (authority: string, href: string, host: string): bo
 };
 
 const isUrlText = (text: string, href: string): boolean => {
-  if (parseHttpUrl(text) !== null || mailtoParts(text) !== null) return true;
+  if (parseHttpUrl(text) !== null || mailtoAddress(text) !== null) return true;
   const { host } = linkTarget(href);
   const bare = withoutUrlChrome(text);
   if (bare === withoutUrlChrome(href) || bare === host) return true;
   const authority = schemelessAuthority(text);
   if (authority !== null && matchesHrefAuthority(withoutWww(authority), href, host)) return true;
   return host.length > 0 && bare.startsWith(`${host}/`);
-};
-
-const HTML_ENTITIES = new Map<string, string>([
-  ['amp', '&'],
-  ['lt', '<'],
-  ['gt', '>'],
-  ['quot', '"'],
-  ['apos', "'"],
-  ['nbsp', ' '],
-  ['ndash', '–'],
-  ['mdash', '—'],
-  ['rsquo', '’'],
-  ['lsquo', '‘'],
-  ['rdquo', '”'],
-  ['ldquo', '“'],
-  ['hellip', '…'],
-  ['laquo', '«'],
-  ['raquo', '»'],
-  ['bull', '•'],
-  ['middot', '·'],
-]);
-
-const NUMERIC_ENTITY = /^#(?:x([0-9a-f]+)|([0-9]+))$/iu;
-
-const isScalarCodePoint = (code: number): boolean =>
-  Number.isInteger(code) && code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
-
-const decodeNumericEntity = (body: string): string | null => {
-  const match = NUMERIC_ENTITY.exec(body);
-  if (match === null) return null;
-  const [, hex, decimal] = match;
-  const code = hex === undefined ? Number.parseInt(decimal ?? '', 10) : Number.parseInt(hex, 16);
-  return isScalarCodePoint(code) ? String.fromCodePoint(code) : null;
-};
-
-const ENTITY = /&([a-z0-9#]+);/giu;
-
-const decodeEntity = (body: string): string | null =>
-  HTML_ENTITIES.get(body.toLowerCase()) ?? decodeNumericEntity(body);
-
-const decodeEntities = (value: string): string | null => {
-  let unrecognised = false;
-  const decoded = value.replace(ENTITY, (match, body: string) => {
-    const entity = decodeEntity(body);
-    if (entity === null) unrecognised = true;
-    return entity ?? match;
-  });
-  return unrecognised ? null : decoded;
-};
-
-const PARAGRAPH_OPEN = '<p';
-const PARAGRAPH_CLOSE = '</p>';
-const ANCHOR_OPEN = '<a';
-const ANCHOR_CLOSE = '</a>';
-
-const matchesTagAt = (html: string, index: number, tag: string): boolean =>
-  html.slice(index, index + tag.length).toLowerCase() === tag;
-
-const scanUntil = (html: string, from: number, stops: (char: string) => boolean): number => {
-  let index = from;
-  while (index < html.length && !stops(html.charAt(index))) index += 1;
-  return index;
-};
-
-const skipSpaces = (html: string, from: number): number => scanUntil(html, from, (char) => !isSpace(char));
-
-const endsAttributeName = (char: string): boolean => isSpace(char) || char === '=' || char === '>';
-
-const endsUnquotedValue = (char: string): boolean => isSpace(char) || char === '>';
-
-const readQuotedValue = (html: string, from: number): { value: string; end: number } | null => {
-  const quote = html.charAt(from);
-  if (quote !== '"' && quote !== "'") return null;
-  const close = html.indexOf(quote, from + 1);
-  return close < 0 ? null : { value: html.slice(from + 1, close), end: close + 1 };
-};
-
-const readAnchorTag = (html: string, from: number): { href: string | null; end: number } | null => {
-  let index = from;
-  let href: string | null = null;
-  while (index < html.length) {
-    index = skipSpaces(html, index);
-    if (html.charAt(index) === '>') return { href, end: index + 1 };
-    const nameEnd = scanUntil(html, index, endsAttributeName);
-    if (nameEnd === index) return null;
-    const name = html.slice(index, nameEnd).toLowerCase();
-    const equals = skipSpaces(html, nameEnd);
-    if (html.charAt(equals) !== '=') {
-      index = nameEnd;
-      continue;
-    }
-    const valueStart = skipSpaces(html, equals + 1);
-    const quoted = readQuotedValue(html, valueStart);
-    if (quoted === null) {
-      index = scanUntil(html, valueStart, endsUnquotedValue);
-      continue;
-    }
-    if (name === 'href' && href === null) href = quoted.value;
-    index = quoted.end;
-  }
-  return null;
-};
-
-const afterParagraphOpen = (html: string): number => {
-  if (!matchesTagAt(html, 0, PARAGRAPH_OPEN)) return 0;
-  const next = html.charAt(PARAGRAPH_OPEN.length);
-  if (next !== '>' && !isSpace(next)) return 0;
-  const close = html.indexOf('>', PARAGRAPH_OPEN.length);
-  return close < 0 ? 0 : close + 1;
-};
-
-const singleAnchor = (html: string): { href: string; text: string } | null => {
-  const start = skipSpaces(html, afterParagraphOpen(html));
-  if (!matchesTagAt(html, start, ANCHOR_OPEN)) return null;
-  const attributes = start + ANCHOR_OPEN.length;
-  if (!isSpace(html.charAt(attributes))) return null;
-  const tag = readAnchorTag(html, attributes + 1);
-  if (tag === null || tag.href === null) return null;
-  const textEnd = html.indexOf('<', tag.end);
-  if (textEnd < 0 || !matchesTagAt(html, textEnd, ANCHOR_CLOSE)) return null;
-  const tail = html.slice(textEnd + ANCHOR_CLOSE.length);
-  if (tail !== '' && tail.trimStart().toLowerCase() !== PARAGRAPH_CLOSE) return null;
-  return { href: tag.href, text: html.slice(tag.end, textEnd) };
-};
-
-const anchorLink = (html: string): { url: string; label: LinkLabel | null } | null => {
-  const anchor = singleAnchor(html.trim());
-  if (anchor === null) return null;
-  const decodedHref = decodeEntities(anchor.href);
-  const decodedText = decodeEntities(anchor.text);
-  if (decodedHref === null || decodedText === null) return null;
-  const href = decodedHref.trim();
-  if (!/^(?:https?:\/\/|mailto:)/iu.test(href)) return null;
-  const text = decodedText.trim();
-  const describes = text.length > 0 && !isUrlText(text, href);
-  return { url: href, label: describes ? { text, source: 'anchorText' } : null };
 };
 
 export type RenderableLessonBlock = Exclude<PlayableLessonBlock, { type: 'link' }>;
@@ -383,98 +228,67 @@ export type LessonContentGroup =
   | LessonSandboxGroup
   | { kind: 'links'; links: LessonLinkChip[] };
 
-type PendingLink = { kind: 'link'; url: string; label: LinkLabel | null } & LinkTarget;
+type PendingLink = { kind: 'link'; url: string; label: string | null } & LinkTarget;
 
-type PendingSandbox = { kind: 'sandbox'; key: string; group: LessonSandboxGroup };
+type PendingEntry = { kind: 'block'; block: RenderableLessonBlock } | LessonSandboxGroup | PendingLink;
 
-type PendingEntry = { kind: 'block'; block: RenderableLessonBlock } | PendingSandbox | PendingLink;
-
-const pendingSandbox = (
+const sandboxGroup = (
   inspection: Extract<SandboxEmbedInspection, { kind: 'embeddable' }>,
   caption: string | null,
-): PendingSandbox => ({
+): LessonSandboxGroup => ({
   kind: 'sandbox',
-  key: `sandbox:${inspection.embedUrl}`,
-  group: {
-    kind: 'sandbox',
-    provider: inspection.provider,
-    providerName: SANDBOX_PROVIDER_LABEL[inspection.provider],
-    embedUrl: inspection.embedUrl,
-    canonicalUrl: inspection.canonicalUrl,
-    caption,
-  },
+  provider: inspection.provider,
+  providerName: SANDBOX_PROVIDER_LABEL[inspection.provider],
+  embedUrl: inspection.embedUrl,
+  canonicalUrl: inspection.canonicalUrl,
+  caption,
 });
 
-const classifyLink = (url: string, label: LinkLabel | null): PendingEntry => {
-  const inspection = inspectSandboxEmbedUrl(url);
-  if (inspection.kind === 'embeddable') return pendingSandbox(inspection, label?.text ?? null);
-  return { kind: 'link', url, label, ...linkTarget(url) };
-};
-
-const describedLabel = (description: string | undefined, url: string): LinkLabel | null =>
-  description === undefined || isUrlText(description, url) ? null : { text: description, source: 'description' };
+const describedLabel = (description: string | undefined, url: string): string | null =>
+  description === undefined || isUrlText(description, url) ? null : description;
 
 const classifyBlock = (block: PlayableLessonBlock): PendingEntry => {
-  if (block.type === 'link') return classifyLink(block.url, describedLabel(block.description, block.url));
+  if (block.type === 'link') {
+    const inspection = inspectSandboxEmbedUrl(block.url);
+    const label = describedLabel(block.description, block.url);
+    if (inspection.kind === 'embeddable') return sandboxGroup(inspection, label);
+    return { kind: 'link', url: block.url, label, ...linkTarget(block.url) };
+  }
   if (block.type === 'embed') {
     const inspection = inspectSandboxEmbedUrl(block.embedUrl);
-    if (inspection.kind === 'embeddable') return pendingSandbox(inspection, null);
-    return { kind: 'block', block };
-  }
-  if (block.type === 'html') {
-    const anchor = anchorLink(block.html);
-    if (anchor !== null) return classifyLink(anchor.url, anchor.label);
+    if (inspection.kind === 'embeddable') return sandboxGroup(inspection, null);
   }
   return { kind: 'block', block };
 };
 
-const bestDescribed = (first: PendingEntry, duplicate: PendingEntry): PendingEntry => {
-  if (first.kind === 'link' && duplicate.kind === 'link')
-    return labelRank(duplicate.label) > labelRank(first.label) ? { ...first, label: duplicate.label } : first;
-  if (first.kind === 'sandbox' && duplicate.kind === 'sandbox')
-    return first.group.caption === null ? duplicate : first;
-  return first;
-};
-
-const dedupeTargets = (entries: PendingEntry[]): PendingEntry[] => {
-  const positionByKey = new Map<string, number>();
-  const kept: PendingEntry[] = [];
-  for (const entry of entries) {
-    if (entry.kind === 'block') {
-      kept.push(entry);
-      continue;
-    }
-    const position = positionByKey.get(entry.key);
-    if (position === undefined) {
-      positionByKey.set(entry.key, kept.length);
-      kept.push(entry);
-      continue;
-    }
-    const first = kept[position];
-    if (first !== undefined) kept[position] = bestDescribed(first, entry);
+const chipsOf = (links: readonly PendingLink[]): LessonLinkChip[] => {
+  const detailedByLabel = new Map<string, Set<string>>();
+  for (const link of links) {
+    const label = link.label ?? link.derivedLabel;
+    const detailed = detailedByLabel.get(label) ?? new Set<string>();
+    detailedByLabel.set(label, detailed.add(link.label ?? link.detailedLabel));
   }
-  return kept;
+  const derived = (link: PendingLink): string =>
+    (detailedByLabel.get(link.derivedLabel)?.size ?? 0) > 1 ? link.detailedLabel : link.derivedLabel;
+  return links.map((link) => ({ url: link.url, label: link.label ?? derived(link), host: link.host }));
 };
 
 export const groupLessonBlocks = (blocks: readonly PlayableLessonBlock[]): LessonContentGroup[] => {
   const groups: LessonContentGroup[] = [];
-  for (const entry of dedupeTargets(blocks.map(classifyBlock))) {
-    if (entry.kind === 'block') {
-      groups.push(entry);
+  let run: PendingLink[] = [];
+  const closeRun = () => {
+    if (run.length === 0) return;
+    groups.push({ kind: 'links', links: chipsOf(run) });
+    run = [];
+  };
+  for (const entry of blocks.map(classifyBlock)) {
+    if (entry.kind === 'link') {
+      run.push(entry);
       continue;
     }
-    if (entry.kind === 'sandbox') {
-      groups.push(entry.group);
-      continue;
-    }
-    const chip: LessonLinkChip = {
-      url: entry.url,
-      label: entry.label?.text ?? entry.fallbackLabel,
-      host: entry.host,
-    };
-    const last = groups.at(-1);
-    if (last?.kind === 'links') last.links.push(chip);
-    else groups.push({ kind: 'links', links: [chip] });
+    closeRun();
+    groups.push(entry);
   }
+  closeRun();
   return groups;
 };

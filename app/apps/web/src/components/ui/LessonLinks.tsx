@@ -1,4 +1,5 @@
 import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
+import { type Breakpoint } from '@mui/material/styles';
 
 import { useTranslations } from '../../i18n/index.js';
 import { LessonBlockIcon, LessonLinkButton } from '../../theme.js';
@@ -45,8 +46,13 @@ export const LessonLinkList = ({ links }: { links: readonly LessonLinkItem[] }) 
       }}
       data-testid="lesson-links"
     >
-      {links.map((link) => (
-        <Box component="li" role="listitem" key={link.url} sx={{ minWidth: 0, maxWidth: '100%' }}>
+      {links.map((link, index) => (
+        <Box
+          component="li"
+          role="listitem"
+          key={`${index}-${link.url}`}
+          sx={{ minWidth: 0, maxWidth: '100%' }}
+        >
           <LessonLinkButton
             component="a"
             href={link.url}
@@ -79,16 +85,20 @@ const sandboxTitle = (providerName: string, canonicalUrl: string, caption: strin
   return segment === null ? providerName : `${providerName} / ${segment}`;
 };
 
+type ResponsiveLength = string | number | Partial<Record<Breakpoint, string | number>>;
+
 export const LessonSandboxEmbed = ({
   embedUrl,
   canonicalUrl,
   providerName,
   caption,
+  outdentX = 0,
 }: {
   embedUrl: string;
   canonicalUrl: string;
   providerName: string;
   caption: string | null;
+  outdentX?: ResponsiveLength;
 }) => {
   const t = useTranslations();
   const title = sandboxTitle(providerName, canonicalUrl, caption);
@@ -100,7 +110,7 @@ export const LessonSandboxEmbed = ({
         </Typography>
       )}
       <LessonMediaEmbed
-        frameSx={{ height: { xs: '24rem', md: '32.5rem' } }}
+        frameSx={{ height: '70vh', minHeight: { sm: '600px' }, width: 'auto', mx: outdentX }}
         data-testid="lesson-sandbox"
         src={embedUrl}
         title={title}

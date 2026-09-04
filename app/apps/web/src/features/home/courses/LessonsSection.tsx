@@ -176,37 +176,17 @@ const memberGroupOf = (block: LessonBlock): LessonContentGroup | null => {
   return groupLessonBlocks([parsed.data])[0] ?? null;
 };
 
-type SandboxGroup = Extract<LessonContentGroup, { kind: 'sandbox' }>;
-
-const SandboxPreview = ({ group, index }: { group: SandboxGroup; index: number }) => {
-  const t = useTranslations();
-  const [shown, setShown] = useState(false);
-  return (
-    <Stack useFlexGap spacing="0.6rem" sx={{ alignItems: 'flex-start' }}>
-      <Button
-        size="small"
-        variant="outlined"
-        data-testid={`block-${index}-sandbox-preview-toggle`}
-        onClick={() => setShown(!shown)}
-      >
-        {shown ? t.lessons.hideSandboxPreview : t.lessons.showSandboxPreview}
-      </Button>
-      {shown ? (
-        <Box sx={{ alignSelf: 'stretch', minWidth: 0 }}>
-          <LessonSandboxEmbed
-            embedUrl={group.embedUrl}
-            canonicalUrl={group.canonicalUrl}
-            providerName={group.providerName}
-            caption={group.caption}
-          />
-        </Box>
-      ) : null}
-    </Stack>
-  );
-};
-
-const MemberGroupPreview = ({ group, index }: { group: LessonContentGroup; index: number }) => {
-  if (group.kind === 'sandbox') return <SandboxPreview group={group} index={index} />;
+const MemberGroupPreview = ({ group }: { group: LessonContentGroup }) => {
+  if (group.kind === 'sandbox') {
+    return (
+      <LessonSandboxEmbed
+        embedUrl={group.embedUrl}
+        canonicalUrl={group.canonicalUrl}
+        providerName={group.providerName}
+        caption={group.caption}
+      />
+    );
+  }
   return group.kind === 'links' ? <LessonLinkList links={group.links} /> : null;
 };
 
@@ -217,10 +197,8 @@ const withoutEchoedCaption = (group: LessonContentGroup, description: string | u
 
 const MemberLinkPreview = ({
   block,
-  index,
 }: {
   block: Extract<LessonBlock, { type: 'link' | 'embed' }>;
-  index: number;
 }) => {
   const t = useTranslations();
   const url = useDebouncedValue(block.type === 'link' ? block.url : block.embedUrl);
@@ -232,23 +210,8 @@ const MemberLinkPreview = ({
       <FinePrint component="p" color="text.secondary">
         {t.lessons.blockPreviewLabel}
       </FinePrint>
-      <MemberGroupPreview group={group} index={index} />
+      <MemberGroupPreview group={group} />
     </Box>
-  );
-};
-
-const HtmlBlockPreview = ({ html: typedHtml, index }: { html: string; index: number }) => {
-  const t = useTranslations();
-  const html = useDebouncedValue(typedHtml);
-  const group = memberGroupOf({ type: 'html', html });
-  if (group === null || group.kind === 'block') return null;
-  return (
-    <Stack useFlexGap spacing="0.4rem">
-      <Typography variant="caption" color="text.secondary" role="note">
-        {group.kind === 'links' ? t.lessons.htmlLinkFoldNote : t.lessons.htmlSandboxFoldNote}
-      </Typography>
-      <MemberGroupPreview group={group} index={index} />
-    </Stack>
   );
 };
 
@@ -338,7 +301,7 @@ const EmbedBlockFields = ({
         />
         {error === null ? null : <FormHelperText>{error}</FormHelperText>}
       </FormControl>
-      <MemberLinkPreview block={{ type: 'embed', embedUrl: draft.embedUrl }} index={index} />
+      <MemberLinkPreview block={{ type: 'embed', embedUrl: draft.embedUrl }} />
       {inspection.kind === 'supported' ? (
         <LessonMediaFrame sx={{ aspectRatio: '16 / 9' }}>
           <LessonMediaClip>
@@ -420,7 +383,6 @@ const BlockFields = ({
           {field(t.lessons.linkUrlLabel, 'url', draft.url, (url) => onChange({ ...draft, url }), 'url')}
           {field(t.lessons.linkDescriptionLabel, 'description', draft.description, (description) => onChange({ ...draft, description }), 'description')}
           <MemberLinkPreview
-            index={index}
             block={{
               type: 'link',
               url: draft.url,
@@ -439,7 +401,6 @@ const BlockFields = ({
             fieldLabel={t.lessons.htmlLabel}
             size="small"
           />
-          <HtmlBlockPreview html={draft.html} index={index} />
         </Stack>
       );
   }

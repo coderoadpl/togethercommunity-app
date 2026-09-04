@@ -61,11 +61,16 @@ import {
   createApiKeyInputSchema,
   creatorOnboardingSchema,
   tenantSetupReadinessSchema,
+  tenantRoutingSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
   grantWindowStatusSchema,
   imageAssetUploadInputSchema,
+  impersonationStartInputSchema,
+  impersonationViewSchema,
+  tenantAuditEventListQuerySchema,
+  tenantAuditEventSchema,
   languageSchema,
   type listOrdersQuerySchema,
   listStreamVideosInputSchema,
@@ -119,6 +124,12 @@ import {
   reportPostInputSchema,
   reportQueueSchema,
   resolveReportInputSchema,
+  dmReportSchema,
+  dmReportQueueSchema,
+  dmReportReceiptSchema,
+  listDmReportsInputSchema,
+  reportDmConversationInputSchema,
+  resolveDmReportInputSchema,
   newProductSchema,
   nextLessonSchema,
   publicNavigationSchema,
@@ -162,6 +173,7 @@ import {
   schedulerRunTenantItemSchema,
   schedulerRunTenantSchema,
   schedulerRunTenantSummarySchema,
+  snsWebhookDeliverySchema,
   suppressionSchema,
   tenantDocumentSchema,
   tenantDocumentVersionSchema,
@@ -253,19 +265,23 @@ export const meOutputSchema = z.object({
       displayName: z.string().nullable().default(null),
       banned: z.boolean(),
       dmOptOut: z.boolean().default(false),
+      language: languageSchema.nullable().default(null),
     })
     .nullable(),
+  impersonation: impersonationViewSchema.nullable().default(null),
 });
 
 export const meProfileUpdateInputSchema = z.object({
-  displayName: z.string().trim().min(1).max(200).nullable(),
+  displayName: z.string().trim().min(1).max(200).nullable().optional(),
   dmOptOut: z.boolean().optional(),
+  language: languageSchema.nullable().optional(),
 });
 export type MeProfileUpdateInput = z.infer<typeof meProfileUpdateInputSchema>;
 
 export const meProfileUpdateOutputSchema = z.object({
   displayName: z.string().nullable(),
   dmOptOut: z.boolean().default(false),
+  language: languageSchema.nullable().default(null),
 });
 
 export const accountSessionsOutputSchema = z.object({
@@ -304,6 +320,8 @@ export const memberBillingOrdersOutputSchema = z.object({
 export const tenantListOutputSchema = z.object({
   tenants: z.array(membershipSchema),
   canCreateTenant: z.boolean(),
+  /** Non-null only for a platform owner on a disposable deployment. */
+  dataResetEnvironment: z.string().min(1).nullable().default(null),
 });
 
 export const productsListOutputSchema = z.object({
@@ -477,6 +495,23 @@ export const memberRemoveOutputSchema = z.object({
   memberId: z.string(),
   subscriptionCancellations: z.array(memberSubscriptionCancellationSchema),
   erasureRequestId: z.string().nullable(),
+});
+
+export const impersonationStartRequestSchema = impersonationStartInputSchema;
+export type ImpersonationStartRequest = z.input<typeof impersonationStartRequestSchema>;
+
+export const impersonationStartOutputSchema = z.object({
+  impersonation: impersonationViewSchema,
+});
+
+export const impersonationStopOutputSchema = z.object({ ended: z.boolean() });
+
+export const tenantAuditEventsQuerySchema = tenantAuditEventListQuerySchema;
+export type TenantAuditEventsQueryInput = z.input<typeof tenantAuditEventsQuerySchema>;
+
+export const tenantAuditEventsOutputSchema = z.object({
+  events: z.array(tenantAuditEventSchema),
+  nextCursor: z.string().nullable(),
 });
 
 export const memberBanInputSchema = setMemberBannedInputSchema;
@@ -1090,6 +1125,18 @@ export const reportResolveInputSchema = resolveReportInputSchema;
 export type ReportResolveInput = z.input<typeof reportResolveInputSchema>;
 export const reportResolveOutputSchema = z.object({ report: postReportSchema });
 
+export const dmReportInputSchema = reportDmConversationInputSchema;
+export type DmReportInput = z.input<typeof dmReportInputSchema>;
+export const dmReportOutputSchema = z.object({ report: dmReportReceiptSchema });
+
+export const dmReportsListInputSchema = listDmReportsInputSchema;
+export type DmReportsListInput = z.input<typeof dmReportsListInputSchema>;
+export const dmReportsListOutputSchema = dmReportQueueSchema;
+
+export const dmReportResolveInputSchema = resolveDmReportInputSchema;
+export type DmReportResolveInput = z.input<typeof dmReportResolveInputSchema>;
+export const dmReportResolveOutputSchema = z.object({ report: dmReportSchema });
+
 export const postsSearchInputSchema = searchPostsInputSchema;
 
 export type PostsSearchInput = z.input<typeof postsSearchInputSchema>;
@@ -1169,6 +1216,14 @@ export const messagesReadOutputSchema = z.object({
 
 export const messagesUnreadOutputSchema = z.object({
   unread: z.number().int().nonnegative(),
+});
+
+export const messagesBlockInputSchema = dmConversationRefSchema;
+
+export type MessagesBlockInput = z.input<typeof messagesBlockInputSchema>;
+
+export const messagesBlockOutputSchema = z.object({
+  conversation: publicDmConversationSchema,
 });
 
 export const eventsBySpaceInputSchema = listSpaceEventsInputSchema;
@@ -1295,6 +1350,10 @@ export const tenantSetupReadinessOutputSchema = z.object({
   setup: tenantSetupReadinessSchema,
 });
 
+export const tenantRoutingOutputSchema = z.object({
+  routing: tenantRoutingSchema,
+});
+
 export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
 
 export type TenantSettingsUpdateInput = z.input<typeof tenantSettingsUpdateInputSchema>;
@@ -1304,6 +1363,21 @@ export const supportMessageInputSchema = sendSupportMessageInputSchema;
 export type SupportMessageInput = z.input<typeof supportMessageInputSchema>;
 
 export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
+
+export const platformDataResetInputSchema = z.object({
+  confirmation: z.string().min(1).max(100),
+});
+
+export type PlatformDataResetInput = z.input<typeof platformDataResetInputSchema>;
+
+export const platformDataResetOutputSchema = z.object({
+  environment: z.string().min(1),
+  durationMs: z.number().int().nonnegative(),
+  wiped: z.array(z.object({
+    table: z.string().min(1),
+    rows: z.number().int().nonnegative(),
+  })),
+});
 
 export const integrationTestInputSchema = z.object({
   provider: integrationProviderSchema,
@@ -1477,6 +1551,7 @@ export const marketingSesSettingsOutputSchema = z.object({
   resendConfigured: z.boolean(),
   platformPool: z.object({ used: z.number().int().nonnegative(), limit: z.literal(1000) }),
   webhookUrl: z.string().url().nullable(),
+  lastSnsDelivery: snsWebhookDeliverySchema.nullable(),
 });
 export const marketingReputationOutputSchema = emailReputationSchema;
 export const marketingSesSettingsUpdateInputSchema = z.object({
@@ -1502,6 +1577,15 @@ export const marketingSesIdentityStartOutputSchema = z.object({
     value: z.string().min(1),
   })),
 });
+export const marketingSesIdentitiesOutputSchema = z.object({
+  identities: z.array(z.object({
+    identity: z.string().min(1),
+    kind: z.enum(['domain', 'email']),
+    verified: z.boolean(),
+    dkimVerified: z.boolean(),
+  })),
+  accessDeniedAction: z.string().min(1).nullable(),
+});
 export const marketingSesOnboardingStatusSchema = z.object({
   identityVerified: z.boolean(),
   dkimVerified: z.boolean(),
@@ -1524,6 +1608,7 @@ export const marketingSesOnboardingStatusSchema = z.object({
 export const marketingSesProvisionOutputSchema = z.object({
   configurationSet: z.string().min(1),
   topicArn: z.string().min(1),
+  subscriptionEndpoint: z.string().min(1),
   subscriptionConfirmed: z.boolean(),
   feedbackForwardingDisabled: z.boolean(),
 });
@@ -1723,8 +1808,13 @@ export const API_ROUTES = {
   messagesStart: { method: 'POST', path: '/api/messages/start' },
   messagesSend: { method: 'POST', path: '/api/messages/send' },
   messagesRead: { method: 'POST', path: '/api/messages/read' },
+  messagesBlock: { method: 'POST', path: '/api/messages/block' },
+  messagesUnblock: { method: 'POST', path: '/api/messages/unblock' },
+  messagesReport: { method: 'POST', path: '/api/messages/report' },
   messagesUnread: { method: 'GET', path: '/api/messages/unread-count' },
   messagesThread: { method: 'GET', path: '/api/messages/:conversationId' },
+  dmReports: { method: 'GET', path: '/api/dm-reports' },
+  dmReportResolve: { method: 'POST', path: '/api/dm-reports/resolve' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   memberNavigation: { method: 'GET', path: '/api/member/navigation' },
   memberHomeFeed: { method: 'GET', path: '/api/member/home-feed' },
@@ -1745,6 +1835,9 @@ export const API_ROUTES = {
   memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
   memberBan: { method: 'POST', path: '/api/members/ban' },
+  impersonationStart: { method: 'POST', path: '/api/impersonation/start' },
+  impersonationStop: { method: 'POST', path: '/api/impersonation/stop' },
+  tenantAuditEvents: { method: 'GET', path: '/api/tenant/audit-events' },
   grantsCreate: { method: 'POST', path: '/api/grants' },
   grantRevoke: { method: 'DELETE', path: '/api/grants/:grantId' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
@@ -1810,6 +1903,7 @@ export const API_ROUTES = {
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
   marketingSesOnboarding: { method: 'POST', path: '/api/marketing/ses-onboarding/poll' },
+  marketingSesIdentities: { method: 'GET', path: '/api/marketing/ses-onboarding/identities' },
   marketingSesIdentityStart: { method: 'POST', path: '/api/marketing/ses-onboarding/identity' },
   marketingSesProvision: { method: 'POST', path: '/api/marketing/ses-onboarding/infrastructure' },
   marketingSesSimulator: { method: 'POST', path: '/api/marketing/ses-onboarding/simulator' },
@@ -1825,8 +1919,10 @@ export const API_ROUTES = {
   globalSchedulerRun: { method: 'GET', path: '/api/internal/scheduler-runs/:id' },
   memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
+  tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
   supportMessage: { method: 'POST', path: '/api/support/message' },
+  platformDataReset: { method: 'POST', path: '/api/platform/data-reset' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
   onboardingDismiss: { method: 'POST', path: '/api/onboarding/dismiss' },
   onboardingSetup: { method: 'GET', path: '/api/onboarding/setup' },
@@ -1967,8 +2063,13 @@ export const API_PATHS = {
   messagesStart: API_ROUTES.messagesStart.path,
   messagesSend: API_ROUTES.messagesSend.path,
   messagesRead: API_ROUTES.messagesRead.path,
+  messagesBlock: API_ROUTES.messagesBlock.path,
+  messagesUnblock: API_ROUTES.messagesUnblock.path,
+  messagesReport: API_ROUTES.messagesReport.path,
   messagesUnread: API_ROUTES.messagesUnread.path,
   messagesThread: API_ROUTES.messagesThread.path,
+  dmReports: API_ROUTES.dmReports.path,
+  dmReportResolve: API_ROUTES.dmReportResolve.path,
   devGrant: API_ROUTES.devGrant.path,
   memberNavigation: API_ROUTES.memberNavigation.path,
   memberHomeFeed: API_ROUTES.memberHomeFeed.path,
@@ -1986,6 +2087,9 @@ export const API_PATHS = {
   memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,
   memberBan: API_ROUTES.memberBan.path,
+  impersonationStart: API_ROUTES.impersonationStart.path,
+  impersonationStop: API_ROUTES.impersonationStop.path,
+  tenantAuditEvents: API_ROUTES.tenantAuditEvents.path,
   memberEmailSends: API_ROUTES.memberEmailSends.path,
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,
@@ -2045,6 +2149,7 @@ export const API_PATHS = {
   marketingLayouts: API_ROUTES.marketingLayouts.path,
   marketingSesSettings: API_ROUTES.marketingSesSettings.path,
   marketingSesOnboarding: API_ROUTES.marketingSesOnboarding.path,
+  marketingSesIdentities: API_ROUTES.marketingSesIdentities.path,
   marketingSesIdentityStart: API_ROUTES.marketingSesIdentityStart.path,
   marketingSesProvision: API_ROUTES.marketingSesProvision.path,
   marketingSesSimulator: API_ROUTES.marketingSesSimulator.path,
@@ -2058,8 +2163,10 @@ export const API_PATHS = {
   globalSchedulerRuns: API_ROUTES.globalSchedulerRuns.path,
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
+  tenantRouting: API_ROUTES.tenantRouting.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   supportMessage: API_ROUTES.supportMessage.path,
+  platformDataReset: API_ROUTES.platformDataReset.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
   onboardingSetup: API_ROUTES.onboardingSetup.path,

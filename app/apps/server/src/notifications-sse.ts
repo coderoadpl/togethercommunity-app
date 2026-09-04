@@ -1,3 +1,4 @@
+import type { Notification } from '#core/domain/index.js';
 import { realtimeEventKey } from '#core/server/index.js';
 import type {
   DmConversationRepository,
@@ -8,7 +9,7 @@ import type {
 
 const SSE_HEARTBEAT_MS = 10_000;
 /** Serverless caps a request at 30 s, so the stream closes first and the client reconnects. */
-const SSE_LIFETIME_MS = 25_000;
+export const SSE_LIFETIME_MS = 25_000;
 const SSE_RETRY_MS = 1_000;
 const REPLAY_LIMIT = 20;
 /**
@@ -60,27 +61,17 @@ export const replayRealtimeEvents = async (input: {
   notifications: NotificationRepository;
   dmConversations: DmConversationRepository;
   limit?: number;
+  excludeDms?: boolean;
 }): Promise<RealtimeEvent[]> => {
   const limit = input.limit ?? REPLAY_LIMIT;
-  const [notified, conversations] = await Promise.all([
-    input.notifications.listForRecipient(input.tenantId, {
-      recipientUserId: input.recipientUserId,
-      limit,
-    }),
-    input.dmConversations.listForParticipant(input.tenantId, {
+  const excludeDms = input.excludeDms === true;
+  const replayDmEvents = async (): Promise<RealtimeEvent[]> => {
+    if (excludeDms) return [];
+    const page = await input.dmConversations.listForParticipant(input.tenantId, {
       userId: input.recipientUserId,
       limit,
-    }),
-  ]);
-  const events: RealtimeEvent[] = [
-    ...notified.notifications.map((notification): RealtimeEvent => ({
-      kind: 'notification',
-      tenantId: input.tenantId,
-      recipientUserId: input.recipientUserId,
-      notificationId: notification.id,
-      createdAt: notification.createdAt,
-    })),
-    ...conversations.conversations
+    });
+    return page.conversations
       .filter(
         (conversation) =>
           conversation.lastMessageId !== null
@@ -92,7 +83,25 @@ export const replayRealtimeEvents = async (input: {
         recipientUserId: input.recipientUserId,
         conversationId: conversation.id,
         createdAt: conversation.lastMessageAt,
-      })),
+      }));
+  };
+  const [notified, dmEvents] = await Promise.all([
+    input.notifications.listForRecipient(input.tenantId, {
+      recipientUserId: input.recipientUserId,
+      limit,
+      excludeDms,
+    }),
+    replayDmEvents(),
+  ]);
+  const events: RealtimeEvent[] = [
+    ...notified.notifications.map((notification): RealtimeEvent => ({
+      kind: 'notification',
+      tenantId: input.tenantId,
+      recipientUserId: input.recipientUserId,
+      notificationId: notification.id,
+      createdAt: notification.createdAt,
+    })),
+    ...dmEvents,
   ];
   const floor = replayFloor(input.since);
   return events
@@ -111,6 +120,13 @@ const streamEventId = (event: RealtimeEvent): string => {
   return `${cursor.at}|${cursor.id}`;
 };
 
+const DM_NOTIFICATION_KINDS: readonly Notification['kind'][] = ['dm-message', 'dm-report'];
+
+/** A direct message reaches the stream twice: as the live frame and as its bell notification. */
+const isDirectMessageEvent = (event: RealtimeEvent): boolean =>
+  event.kind === 'dm'
+  || (event.notificationKind !== undefined && DM_NOTIFICATION_KINDS.includes(event.notificationKind));
+
 const realtimeChunk = (event: RealtimeEvent): string => {
   const id = streamEventId(event);
   return event.kind === 'notification'
@@ -124,10 +140,13 @@ export const createNotificationEventStream = (input: {
   bus: RealtimeBusPort;
   unreadCount: () => Promise<number>;
   replay?: () => Promise<RealtimeEvent[]>;
+  excludeDms?: boolean;
   heartbeatMs?: number;
   lifetimeMs?: number;
 }): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder();
+  const carries = (event: RealtimeEvent): boolean =>
+    input.excludeDms !== true || !isDirectMessageEvent(event);
   let unsubscribe: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let lifetime: ReturnType<typeof setTimeout> | null = null;
@@ -162,6 +181,7 @@ export const createNotificationEventStream = (input: {
       unsubscribe = input.bus.subscribe(
         { tenantId: input.tenantId, recipientUserId: input.recipientUserId },
         (event) => {
+          if (!carries(event)) return;
           if (buffered === null) send(realtimeChunk(event));
           else buffered.push(event);
         },

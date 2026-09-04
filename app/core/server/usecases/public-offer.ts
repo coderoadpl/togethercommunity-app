@@ -107,7 +107,12 @@ export const getPublicOffer = async (
       branding:
         settings === null
           ? EMPTY_TENANT_BRANDING
-          : { logoUrl: settings.logoUrl, accentColor: settings.accentColor, faviconUrl: settings.faviconUrl },
+          : {
+            logoUrl: settings.logoUrl,
+            logoDarkUrl: settings.logoDarkUrl,
+            accentColor: settings.accentColor,
+            faviconUrl: settings.faviconUrl,
+          },
       socialLinks: settings?.socialLinks ?? [],
       legal:
         settings === null

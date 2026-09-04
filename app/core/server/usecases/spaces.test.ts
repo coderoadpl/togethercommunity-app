@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MAX_PINNED_POSTS_PER_SPACE,
+  NO_DM_BLOCKS,
   type Identity,
   type Member,
   type Notification,
@@ -75,6 +76,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...overrides,
 });
 
@@ -636,6 +638,7 @@ const tenantSettings = (defaultHomeSpaceId: string | null): TenantSettings => ({
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
   ogTitle: null,
@@ -737,6 +740,12 @@ const fixture = (input: {
     spaceSubscriptions,
     spaceSeen,
     threadSubscriptions: new FakeThreadSubscriptions(),
+    memberBlocks: {
+      block: async () => true,
+      unblock: async () => true,
+      findDirections: async (_tenantId, query) =>
+        new Map(query.otherUserIds.map((userId) => [userId, NO_DM_BLOCKS])),
+    },
     notifications,
     notificationChannels: [channel],
     courses: emptyCourses,

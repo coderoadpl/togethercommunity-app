@@ -25,6 +25,7 @@ image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
+memberLanguage: null,
 } });
 
 const sends: EmailSendProjection[] = [
@@ -144,6 +145,7 @@ describe('email send observability use-cases', () => {
         listWithProductIds: async () => [],
         create: async () => undefined,
         updateEmail: async () => null,
+        updateLanguage: async () => null,
         updateDisplayName: async () => null,
         updateDmOptOut: async () => null,
       setBanned: async () => null,

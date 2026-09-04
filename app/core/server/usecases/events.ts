@@ -31,6 +31,7 @@ import type {
   ContentHash,
   DiscussionLinkPort,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -41,6 +42,7 @@ import type {
   SpaceRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
+  TenantRepository,
   ThreadSubscriptionRepository,
 } from '../ports.js';
 import {
@@ -60,11 +62,13 @@ export interface EventsDeps {
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
+  memberBlocks: MemberBlockRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;

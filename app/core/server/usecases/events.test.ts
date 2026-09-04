@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  NO_DM_BLOCKS,
   type Identity,
   type Member,
   type Notification,
@@ -57,6 +58,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...overrides,
 });
 
@@ -425,6 +427,12 @@ const fixture = (input: {
           .slice(0, query.limit),
       listForUser: async () => [],
     },
+    memberBlocks: {
+      block: async () => true,
+      unblock: async () => true,
+      findDirections: async (_tenantId, query) =>
+        new Map(query.otherUserIds.map((userId) => [userId, NO_DM_BLOCKS])),
+    },
     notifications,
     notificationChannels: [channel],
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
@@ -439,6 +447,7 @@ const fixture = (input: {
         grants.filter((row) => row.tenantId === tenantId && row.memberId === memberId),
       listGrantedProducts: async () => products,
     },
+    tenants: { findSettings: async () => null },
     tenantAccess: {
       listTenantsForStaff: async () => [],
       listStaffForTenant: async () => [],

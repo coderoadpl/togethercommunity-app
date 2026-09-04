@@ -12,6 +12,7 @@ const member: Member = {
   userId: 'user-1',
   email: 'member@example.com',
   displayName: 'Member',
+  language: 'en',
   tags: ['customer'],
   marketingConsents: { newsletter: true },
   externalCustomerIds: { stripe: 'cus_1' },
@@ -68,6 +69,7 @@ const context = (role: 'member' | 'staff' | 'none'): Ctx => ({
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   },
 });
 
@@ -81,6 +83,7 @@ const deps = (
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateLanguage: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,
@@ -174,7 +177,7 @@ describe('exportMyData', () => {
     if (!result.ok) return;
     expect(JSON.parse(result.value.content)).toMatchObject({
       formatVersion: 1,
-      profile: { email: member.email },
+      profile: { email: member.email, language: 'en' },
       posts: [{ id: post.id, body: post.body }],
       invoices: [{
         id: invoice.id,

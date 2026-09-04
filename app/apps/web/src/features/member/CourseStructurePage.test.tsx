@@ -250,14 +250,14 @@ describe('CourseStructurePage', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'JavaScript Foundations' })).toBeInTheDocument();
   });
 
-  it('summarizes lessons, total duration and completion in the stat tiles', async () => {
+  it('summarizes lessons and total duration in the stat tiles, leaving progress to the rail', async () => {
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const lessonsTile = await screen.findByTestId('stat-tile-lessons');
     expect(lessonsTile).toHaveTextContent('5');
     expect(screen.getByTestId('stat-tile-duration')).toHaveTextContent('1 godz. 0 min');
-    expect(screen.getByTestId('stat-tile-completed')).toHaveTextContent('20%');
+    expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
     expect(screen.getByTestId('progress-summary')).toHaveTextContent('1 z 5 ukończone');
   });
 

@@ -33,6 +33,7 @@ const identity = (tenantId: string | null): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 const member: Member = {
@@ -126,6 +127,7 @@ const members: MemberRepository = {
   listWithProductIds: async () => [],
   create: async () => undefined,
   updateEmail: async () => null,
+  updateLanguage: async () => null,
   updateDisplayName: async () => null,
   updateDmOptOut: async () => null,
   setBanned: async () => null,

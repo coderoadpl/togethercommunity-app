@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { err, internal, ok, NOTIFICATION_FANOUT_BATCH_SIZE } from '#core/domain/index.js';
 import type {
+  Language,
   Member,
   Notification,
   NotificationFanoutJob,
   Post,
   Space,
   SpaceEvent,
+  TenantSettings,
 } from '#core/domain/index.js';
 
 import type {
@@ -19,6 +21,7 @@ import type {
   CourseRepository,
   DiscussionLinkPort,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -77,12 +80,13 @@ const post: Post = {
   pinnedAt: null,
 };
 
-const member = (userId: string): Member => ({
+const member = (userId: string, language: Language | null = null): Member => ({
   id: `m-${userId}`,
   tenantId: TENANT,
   userId,
   email: `${userId}@example.com`,
   displayName: null,
+  language,
   tags: [],
   marketingConsents: {},
   externalCustomerIds: {},
@@ -261,16 +265,42 @@ interface SavedJobState {
   nextAttemptAt: string;
 }
 
+const tenantSettings = (defaultLanguage: Language | undefined): TenantSettings => ({
+  name: 'Tenant',
+  defaultLanguage,
+  socialLinks: [],
+  billingPortalUrl: null,
+  bunnyStreamLibraryId: null,
+  bunnyStreamCdnHostname: null,
+  logoUrl: null,
+  logoDarkUrl: null,
+  accentColor: null,
+  faviconUrl: null,
+  ogTitle: null,
+  ogDescription: null,
+  ogImageUrl: null,
+  supportEmail: null,
+  supportUrl: null,
+  termsUrl: null,
+  privacyUrl: null,
+  defaultHomeSpaceId: null,
+});
+
 const fixture = (input: {
   followers: string[];
   memberUserIds?: string[];
+  memberLanguage?: Language;
+  tenantDefaultLanguage?: Language;
+  tenantSettingsFailure?: Error;
   deliver?: NotificationChannelPort['deliver'];
   claimable?: NotificationFanoutJob[];
   clock?: Clock;
+  authorBlockedBy?: string[];
 }) => {
   const memberUserIds = new Set(input.memberUserIds ?? input.followers);
   const pages: Array<{ afterUserId: string | null; limit: number }> = [];
   const delivered: string[] = [];
+  const languages: string[] = [];
   const saves: SavedJobState[] = [];
 
   const spaceSubscriptions: SpaceSubscriptionRepository = {
@@ -292,11 +322,27 @@ const fixture = (input: {
     listForUser: async () => [],
   };
 
+  const memberBlocks: MemberBlockRepository = {
+    block: async () => true,
+    unblock: async () => true,
+    findDirections: async (_tenantId, query) =>
+      new Map(
+        query.otherUserIds.map((userId) => [
+          userId,
+          {
+            blockedByViewer: false,
+            blocksViewer: (input.authorBlockedBy ?? []).includes(userId),
+          },
+        ]),
+      ),
+  };
+
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
     listStaffForTenant: async () => [],
     findStaffGrant: async () => null,
-    findMember: async (_tenantId, userId) => (memberUserIds.has(userId) ? member(userId) : null),
+    findMember: async (_tenantId, userId) =>
+      memberUserIds.has(userId) ? member(userId, input.memberLanguage ?? null) : null,
   };
 
   const avatarSources: AvatarSourceReader = {
@@ -330,14 +376,16 @@ const fixture = (input: {
     notifications,
     notificationChannels: [
       {
-        deliver: input.deliver ?? (async (notification) => {
+        deliver: input.deliver ?? (async (notification, context) => {
           delivered.push(notification.recipientUserId);
+          languages.push(context.language);
           return ok(undefined);
         }),
       },
     ],
     spaceSubscriptions,
     threadSubscriptions,
+    memberBlocks,
     spaces: { ...unusedSpaces, findById: async () => space },
     posts: { ...unusedPosts, findById: async () => post },
     courses,
@@ -345,6 +393,12 @@ const fixture = (input: {
     lessons,
     grants,
     events,
+    tenants: {
+      findSettings: async () => {
+        if (input.tenantSettingsFailure) throw input.tenantSettingsFailure;
+        return tenantSettings(input.tenantDefaultLanguage);
+      },
+    },
     tenantAccess,
     links,
     ids,
@@ -352,7 +406,7 @@ const fixture = (input: {
     avatarSources,
     contentHash,
   };
-  return { deps, notifications, pages, delivered, saves };
+  return { deps, notifications, pages, delivered, languages, saves };
 };
 
 const job = buildNotificationFanoutJob({
@@ -425,6 +479,20 @@ describe('notification fan-out', () => {
     expect(notifications.rows.map((row) => row.recipientUserId)).toEqual(followers.slice(50));
   });
 
+  it('skips followers who blocked the author', async () => {
+    const followers = followerIds(3);
+    const { deps, notifications, delivered } = fixture({
+      followers,
+      authorBlockedBy: ['u002'],
+    });
+
+    const result = await runPostFanoutJob(job, deps);
+
+    expect(result).toMatchObject({ ok: true, value: { created: 2, completed: true } });
+    expect(notifications.rows.map((row) => row.recipientUserId)).toEqual(['u001', 'u003']);
+    expect(delivered).toEqual(['u001', 'u003']);
+  });
+
   it('re-running a completed job inserts and delivers nothing', async () => {
     const followers = followerIds(3);
     const { deps, notifications, delivered } = fixture({ followers });
@@ -441,6 +509,59 @@ describe('notification fan-out', () => {
     const { deps, saves } = fixture({
       followers: followerIds(60),
       deliver: async () => err(internal('channel down')),
+    });
+
+    const result = await runPostFanoutJob({ ...job, attempts: 1 }, deps);
+
+    expect(result.ok).toBe(false);
+    expect(saves).toEqual([
+      {
+        status: 'pending',
+        attempts: 1,
+        cursorUserId: null,
+        nextAttemptAt: '2026-08-28T10:01:00.000Z',
+      },
+    ]);
+  });
+
+  it('delivers in the recipient language and falls back to the tenant default', async () => {
+    const preferred = fixture({
+      followers: ['u001'],
+      memberLanguage: 'en',
+      tenantDefaultLanguage: 'pl',
+    });
+    const inherited = fixture({ followers: ['u001'], tenantDefaultLanguage: 'en' });
+    const unset = fixture({ followers: ['u001'] });
+
+    await runPostFanoutJob(job, preferred.deps);
+    await runPostFanoutJob(job, inherited.deps);
+    await runPostFanoutJob(job, unset.deps);
+
+    expect(preferred.languages).toEqual(['en']);
+    expect(inherited.languages).toEqual(['en']);
+    expect(unset.languages).toEqual(['pl']);
+  });
+
+  it('reads the tenant default once per job, not once per recipient', async () => {
+    const { deps } = fixture({ followers: followerIds(60), tenantDefaultLanguage: 'en' });
+    let reads = 0;
+    const settings = deps.tenants.findSettings;
+    deps.tenants = {
+      findSettings: async (tenantId) => {
+        reads += 1;
+        return settings(tenantId);
+      },
+    };
+
+    await runPostFanoutJob(job, deps);
+
+    expect(reads).toBe(1);
+  });
+
+  it('backs off instead of throwing when the tenant settings read fails', async () => {
+    const { deps, saves } = fixture({
+      followers: followerIds(3),
+      tenantSettingsFailure: new Error('connection reset'),
     });
 
     const result = await runPostFanoutJob({ ...job, attempts: 1 }, deps);

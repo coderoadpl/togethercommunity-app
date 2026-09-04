@@ -36,6 +36,7 @@ image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
+memberLanguage: null,
 });
 
 const ctx = (tenantId: string | null, staffRole: StaffRole | null): Ctx => ({

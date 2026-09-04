@@ -23,6 +23,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   transactional_platform_cap_reached: 412,
   slug_reserved: 422,
   invoice_exemption_basis_missing: 422,
+  impersonation_read_only: 403,
   internal: 500,
 };
 
@@ -49,5 +50,6 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   transactional_platform_cap_reached: 19,
   slug_reserved: 21,
   invoice_exemption_basis_missing: 22,
+  impersonation_read_only: 24,
   internal: 10,
 };

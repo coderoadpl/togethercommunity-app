@@ -221,6 +221,7 @@ const harness = (
         members.set(`${tenantId}:${member.id}`, member);
       },
       updateEmail: async () => null,
+      updateLanguage: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
     setBanned: async () => null,
@@ -1218,6 +1219,19 @@ describe('fulfillStripeWebhook', () => {
         }),
       },
     ]);
+  });
+
+  it('sends the subscription notice in the stored member language', async () => {
+    const h = await subscribedHarness();
+    for (const [id, member] of h.members) h.members.set(id, { ...member, language: 'en' });
+
+    await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({ id: 'evt-3', type: 'invoice.payment_failed', invoiceId: 'in-2', subscriptionId: 'sub-1' }),
+      h.deps,
+    );
+
+    expect(h.queued[0]?.payload).toMatchObject({ kind: 'subscription-payment-failed', language: 'en' });
   });
 
   it('does not notify twice for a redelivered failed invoice', async () => {

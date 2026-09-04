@@ -515,6 +515,8 @@ export const tenantSesSettingsSchema = z.object({
   identityCheckError: z.string().nullable(),
   configurationSet: z.string().nullable(),
   snsTopicArn: z.string().nullable(),
+  snsSubscriptionEndpoint: z.string().nullable(),
+  snsSubscriptionConfirmedAt: isoDateTimeSchema.nullable(),
   trackingEnabled: z.boolean(),
   autoPauseOnCritical: z.boolean(),
   webhookToken: z.string().min(22),
@@ -554,6 +556,59 @@ export const sesIdentityFreshness = (
     ? 'stale'
     : 'fresh';
 };
+
+export const normalizeSesWebhookEndpoint = (endpoint: string): string => {
+  try {
+    const url = new URL(endpoint.trim());
+    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}${url.search}`;
+  } catch {
+    return endpoint.trim();
+  }
+};
+
+const snsWebhookDeliveryErrorLimit = 500;
+const snsWebhookDeliveryHeaderLimit = 200;
+const snsWebhookDeliveryRefreshMs = 60_000;
+
+const truncatedNullableText = (limit: number) => z.string()
+  .transform((value) => value.slice(0, limit))
+  .nullable();
+
+const snsWebhookMessageTypes = [
+  'Notification',
+  'SubscriptionConfirmation',
+  'UnsubscribeConfirmation',
+  'unknown',
+] as const;
+
+export const snsWebhookDeliverySchema = z.object({
+  tenantId: z.string().min(1),
+  receivedAt: isoDateTimeSchema,
+  messageType: z.enum(snsWebhookMessageTypes),
+  outcome: z.enum([
+    'verified', 'signature_failed', 'unknown_token', 'confirm_failed', 'apply_failed', 'recorded',
+  ]),
+  errorMessage: truncatedNullableText(snsWebhookDeliveryErrorLimit),
+  sourceIp: truncatedNullableText(snsWebhookDeliveryHeaderLimit),
+  userAgent: truncatedNullableText(snsWebhookDeliveryHeaderLimit),
+});
+
+export type SnsWebhookDelivery = z.output<typeof snsWebhookDeliverySchema>;
+export type SnsWebhookDeliveryOutcome = SnsWebhookDelivery['outcome'];
+export type SnsWebhookMessageType = SnsWebhookDelivery['messageType'];
+
+export const snsWebhookMessageType = (header: string | undefined): SnsWebhookMessageType =>
+  snsWebhookMessageTypes.find((type) => type === header) ?? 'unknown';
+
+export const snsWebhookDeliveryStaleBefore = (receivedAt: string): string =>
+  new Date(Date.parse(receivedAt) - snsWebhookDeliveryRefreshMs).toISOString();
+
+export const snsWebhookDeliverySupersedes = (
+  current: SnsWebhookDelivery | null,
+  next: SnsWebhookDelivery,
+): boolean => current === null
+  || current.outcome !== next.outcome
+  || Date.parse(current.receivedAt) < Date.parse(snsWebhookDeliveryStaleBefore(next.receivedAt));
 
 export const automationIdempotencyKeySchema = z.object({
   id: z.string().min(1),

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { emailOutboxPayloadSchema } from './email-outbox.js';
+import { marketingConsentConfirmation } from './marketing-email.js';
 import {
+  directMessage,
   emailBrandingFrom,
   emailTransportTest,
   lessonQuestion,
@@ -8,12 +11,15 @@ import {
   memberErasureRequestEmail,
   reputationAlertEmail,
   resetPassword,
+  spaceEvent,
   spacePost,
   subscriptionEnded,
   subscriptionPaymentFailed,
   supportMessage,
   threadReply,
+  verifyEmail,
   welcomeSignIn,
+  type EmailMessage,
 } from './transactional-email.js';
 
 describe('subscription lifecycle emails', () => {
@@ -43,6 +49,8 @@ describe('subscription lifecycle emails', () => {
     });
     expect(en.subject).toContain('Payment failed');
     expect(en.html).toContain('https://billing.example.com/portal');
+    expect(en.html).toContain('Your access ends on 17 August 1998.');
+    expect(en.text).toContain('Your access ends on 17 August 1998.');
   });
 
   it('renders ended subscription copy in both languages with an offer link', () => {
@@ -51,16 +59,19 @@ describe('subscription lifecycle emails', () => {
     expect(pl.subject).toBe('Subskrypcja „Course "One"” została zakończona');
     expect(pl.html).toContain('Zobacz ofertę');
     expect(pl.text).toContain('Dostęp do materiałów zachowasz do 17 sierpnia 1998.');
-    expect(subscriptionEnded('en', { ...input, offerUrl }).html).toContain('View the offer');
+    const en = subscriptionEnded('en', { ...input, offerUrl });
+    expect(en.html).toContain('View the offer');
+    expect(en.text).toContain('Your access ends on 17 August 1998.');
   });
 
-  it('formats Polish dates in the Warsaw timezone', () => {
-    const pl = subscriptionEnded('pl', {
+  it('formats dates in the Warsaw timezone in both languages', () => {
+    const lateEvening = {
       ...input,
       accessEndsAt: '1998-08-31T22:30:00.000Z',
       offerUrl: 'https://acme.example.com/',
-    });
-    expect(pl.text).toContain('zachowasz do 1 września 1998.');
+    };
+    expect(subscriptionEnded('pl', lateEvening).text).toContain('zachowasz do 1 września 1998.');
+    expect(subscriptionEnded('en', lateEvening).text).toContain('Your access ends on 1 September 1998.');
   });
 });
 
@@ -81,8 +92,13 @@ describe('member erasure request email', () => {
     expect(pl.html).toContain('Otwórz wniosek w panelu');
   });
 
-  it('keeps ISO timestamps in English', () => {
-    expect(memberErasureRequestEmail('en', input).html).toContain('Requested: 1998-08-17T10:00:00.000Z');
+  it('renders localized dates and the panel link in English', () => {
+    const en = memberErasureRequestEmail('en', input);
+    expect(en.subject).toBe('[Acme] Member erasure request');
+    expect(en.html).toContain('Requested: 17 August 1998');
+    expect(en.html).toContain('Due: 16 September 1998');
+    expect(en.text).toContain('Due: 16 September 1998');
+    expect(en.html).toContain('Review request');
   });
 });
 
@@ -104,6 +120,15 @@ describe('reputation alert email', () => {
     expect(pl.html).toContain('Okres: 17 sierpnia 1998 – 24 sierpnia 1998');
     expect(reputationAlertEmail('pl', { ...input, status: 'critical' }).subject)
       .toBe('[Acme] Reputacja nadawcy: stan krytyczny');
+  });
+
+  it('translates the status and the reporting window in English', () => {
+    const en = reputationAlertEmail('en', input);
+    expect(en.subject).toBe('[Acme] E-mail reputation: warning');
+    expect(en.html).toContain('<strong>warning</strong>');
+    expect(en.html).toContain('Window: 17 August 1998 – 24 August 1998');
+    expect(reputationAlertEmail('en', { ...input, status: 'critical' }).subject)
+      .toBe('[Acme] E-mail reputation: critical');
   });
 
   it('replaces missing rates with a Polish placeholder', () => {
@@ -136,23 +161,6 @@ describe('support message email', () => {
     const en = supportMessage('en', { ...input, branding });
     expect(en.html).toContain('Reply to: member@example.com');
     expect(en.text).not.toContain('youtube.com');
-  });
-});
-
-describe('email transport test message', () => {
-  it('names the tested transport in PL and EN', () => {
-    expect(emailTransportTest('pl', { transport: 'resend' })).toMatchObject({
-      subject: 'Together — wiadomość testowa (resend)',
-      text: expect.stringContaining('Transport resend jest poprawnie skonfigurowany.'),
-    });
-    expect(emailTransportTest('en', { transport: 'smtp' })).toMatchObject({
-      subject: 'Together test e-mail (smtp)',
-      text: expect.stringContaining('Your smtp transport is configured correctly.'),
-    });
-  });
-
-  it('falls back to Polish for unknown languages', () => {
-    expect(emailTransportTest('de', { transport: 'ses' }).subject).toBe('Together — wiadomość testowa (ses)');
   });
 });
 
@@ -351,6 +359,27 @@ describe('notification opt-out footer', () => {
     expect(en.text).toContain('Ola asked a question under “Zmienne”');
     expect(en.text).toContain('Manage notifications');
   });
+
+  it('escapes angle-bracketed post excerpts in every notification mail', () => {
+    const snippet = 'Generic<T> plus <script>alert(1)</script>';
+    const messages = [
+      threadReply('pl', { ...replyInput, snippet }),
+      lessonQuestion('en', { ...replyInput, snippet }),
+      spacePost('pl', { ...postInput, snippet }),
+      spaceEvent('en', { ...postInput, snippet }),
+      directMessage('pl', {
+        tenantName: postInput.tenantName,
+        senderDisplay: postInput.authorDisplay,
+        snippet,
+        url: postInput.url,
+      }),
+    ];
+    for (const message of messages) {
+      expect(message.html).toContain('Generic&lt;T&gt; plus &lt;script&gt;alert(1)&lt;/script&gt;');
+      expect(message.html).not.toContain('<script>');
+      expect(message.text).toContain(snippet);
+    }
+  });
 });
 
 describe('email branding header', () => {
@@ -426,5 +455,145 @@ describe('emailBrandingFrom', () => {
       emailBrandingFrom({ logoUrl: 'https://cdn.test/logo.svg', accentColor: null }, baseUrl).logoUrl,
     ).toBe('https://cdn.test/logo.svg');
     expect(emailBrandingFrom({ logoUrl: null, accentColor: null }, baseUrl).logoUrl).toBeNull();
+  });
+
+  it('takes the light-background variant and ignores a dark one beside it', () => {
+    expect(
+      emailBrandingFrom(
+        { logoUrl: '/light.svg', logoDarkUrl: '/dark.svg', accentColor: null },
+        baseUrl,
+      ).logoUrl,
+    ).toBe('https://akademia.together.test/light.svg');
+  });
+
+  it('falls back to the dark variant when it is the only uploaded logo', () => {
+    expect(
+      emailBrandingFrom({ logoUrl: null, logoDarkUrl: '/dark.svg', accentColor: null }, baseUrl).logoUrl,
+    ).toBe('https://akademia.together.test/dark.svg');
+  });
+});
+
+describe('transactional message catalogue', () => {
+  const notification = {
+    tenantName: 'Acme Courses',
+    lessonName: 'Lekcja 1',
+    spaceName: 'Ogłoszenia',
+    authorDisplay: 'Ola',
+    senderDisplay: 'Ola',
+    snippet: 'Cześć!',
+    url: 'https://acme.test/thread',
+  };
+  const linkless = new Set(['support-message', 'email-transport-test']);
+  const memberWrittenSubject = new Set(['support-message']);
+  const catalogue: Array<[string, (language: string) => EmailMessage]> = [
+    ['welcome-sign-in', (language) => welcomeSignIn(language, { tenantName: 'Acme Courses', actionUrl: 'https://acme.test/in' })],
+    ['reset-password', (language) => resetPassword(language, { actionUrl: 'https://acme.test/reset' })],
+    ['verify-email', (language) => verifyEmail(language, { actionUrl: 'https://acme.test/verify' })],
+    ['magic-link', (language) => magicLink(language, { tenantName: 'Acme Courses', url: 'https://acme.test/in' })],
+    ['thread-reply', (language) => threadReply(language, notification)],
+    ['lesson-question', (language) => lessonQuestion(language, notification)],
+    ['space-post', (language) => spacePost(language, notification)],
+    ['space-event', (language) => spaceEvent(language, notification)],
+    ['direct-message', (language) => directMessage(language, notification)],
+    ['subscription-payment-failed', (language) => subscriptionPaymentFailed(language, {
+      tenantName: 'Acme Courses', productTitle: 'Kurs', accessEndsAt: '1998-08-17T10:00:00.000Z',
+      billingPortalUrl: 'https://acme.test/billing',
+    })],
+    ['subscription-ended', (language) => subscriptionEnded(language, {
+      tenantName: 'Acme Courses', productTitle: 'Kurs', accessEndsAt: '1998-08-17T10:00:00.000Z',
+      offerUrl: 'https://acme.test/offer',
+    })],
+    ['support-message', (language) => supportMessage(language, {
+      tenantName: 'Acme Courses', memberEmail: 'ola@acme.test', memberDisplay: 'Ola',
+      subject: 'Pytanie', body: 'Treść',
+    })],
+    ['member-erasure-request', (language) => memberErasureRequestEmail(language, {
+      tenantName: 'Acme Courses', memberEmail: 'ola@acme.test',
+      requestedAt: '1998-08-17T10:00:00.000Z', dueAt: '1998-09-17T10:00:00.000Z',
+      panelUrl: 'https://acme.test/panel',
+    })],
+    ['reputation-alert', (language) => reputationAlertEmail(language, {
+      tenantName: 'Acme Courses', status: 'warn', hardBounceRate: 0.02, complaintRate: null,
+      windowStart: '1998-08-01T10:00:00.000Z', windowEnd: '1998-08-17T10:00:00.000Z',
+      dashboardUrl: 'https://acme.test/reputation',
+    })],
+    ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
+    ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
+      language, wording: 'Nowości i promocje', confirmationUrl: 'https://acme.test/confirm',
+    })],
+  ];
+
+  it('holds a rendering for every outbox payload kind built from a template', () => {
+    const kindsWithoutTemplate = new Set<string>(['m2m-transactional']);
+    const catalogued = catalogue.map(([kind]) => kind);
+    for (const option of emailOutboxPayloadSchema.options) {
+      const kind: string = option.shape.kind.value;
+      if (kindsWithoutTemplate.has(kind)) continue;
+      expect(catalogued).toContain(kind);
+    }
+  });
+
+  it.each(catalogue)('renders %s with a subject, body and CTA in both languages', (kind, render) => {
+    for (const language of ['pl', 'en']) {
+      const message = render(language);
+      expect(message.subject.trim()).not.toBe('');
+      expect(message.html.trim()).not.toBe('');
+      expect(message.text.trim()).not.toBe('');
+      if (linkless.has(kind)) continue;
+      expect(message.html).toContain('http');
+      expect(message.text).toContain('http');
+    }
+  });
+
+  it.each(catalogue)('renders %s differently in Polish and English', (kind, render) => {
+    expect(render('en').text).not.toEqual(render('pl').text);
+    if (memberWrittenSubject.has(kind)) return;
+    expect(render('en').subject).not.toEqual(render('pl').subject);
+  });
+
+  it.each(catalogue)('falls back to Polish for %s when the language is unsupported', (_kind, render) => {
+    expect(render('de')).toEqual(render('pl'));
+  });
+});
+
+describe('verifyEmail', () => {
+  it('renders both languages with the confirmation link', () => {
+    expect(verifyEmail('pl', { actionUrl: 'https://acme.test/verify' })).toMatchObject({
+      subject: 'Potwierdź swój adres e-mail',
+      text: expect.stringContaining('https://acme.test/verify'),
+    });
+    expect(verifyEmail('en', { actionUrl: 'https://acme.test/verify' })).toMatchObject({
+      subject: 'Verify your email address',
+      text: expect.stringContaining('Confirm that this email address belongs to you'),
+    });
+  });
+});
+
+describe('spaceEvent', () => {
+  const input = {
+    tenantName: 'Acme Courses',
+    spaceName: 'Ogłoszenia',
+    authorDisplay: 'Ola',
+    snippet: 'Spotkanie w czwartek',
+    url: 'https://acme.test/community/s1/events/e1',
+  };
+
+  it('names the space in the subject in both languages', () => {
+    expect(spaceEvent('pl', input).subject).toBe('Nowe wydarzenie w przestrzeni „Ogłoszenia”');
+    expect(spaceEvent('en', input).subject).toBe('New event in “Ogłoszenia”');
+  });
+});
+
+describe('directMessage', () => {
+  const input = {
+    tenantName: 'Acme Courses',
+    senderDisplay: 'Ola',
+    snippet: 'Cześć!',
+    url: 'https://acme.test/messages/dc1',
+  };
+
+  it('names the sender in the subject in both languages', () => {
+    expect(directMessage('pl', input).subject).toBe('Nowa wiadomość od Ola');
+    expect(directMessage('en', input).subject).toBe('New message from Ola');
   });
 });

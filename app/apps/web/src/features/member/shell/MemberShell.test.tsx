@@ -42,6 +42,7 @@ const okMe = (
     banned?: boolean;
     tenant?: null;
     displayName?: string | null;
+    impersonated?: boolean;
   } = {},
 ) =>
   http.get('/api/me', () =>
@@ -63,6 +64,15 @@ const okMe = (
               displayName: overrides.displayName ?? null,
               banned: overrides.banned ?? false,
             },
+        impersonation: overrides.impersonated === true
+          ? {
+              id: 'imp-1',
+              subjectMemberId: 'm1',
+              subjectName: 'Jan Uczestnik',
+              actorName: 'Ala Tworczyni',
+              expiresAt: '2026-09-03T11:00:00.000Z',
+            }
+          : null,
       },
     }),
   );
@@ -90,6 +100,7 @@ const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation
   lockedSpaces: [
     { id: 's9', slug: 'premium', name: 'Premium', description: 'Tylko dla kursantów.', productIds: ['p1'] },
   ],
+  directMessagesEnabled: true,
   ...overrides,
 });
 
@@ -253,6 +264,27 @@ describe('MemberShell', () => {
     await waitFor(() =>
       expect(messages).toHaveAttribute('aria-label', pl.messages.unreadAria({ count: 3 })));
     expect(within(messages).getByTestId('sidebar-messages-unread')).toBeInTheDocument();
+  });
+
+  it('hides the messages row and skips the unread poll when direct messages are off', async () => {
+    stubViewport(true);
+    let unreadRequests = 0;
+    server.use(
+      okMe(),
+      okNavigation(navigation({ directMessagesEnabled: false })),
+      okOffer(),
+      noNotifications(),
+      http.get('*/api/messages/unread-count', () => {
+        unreadRequests += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'forbidden', message: 'off' } }, { status: 403 });
+      }),
+    );
+
+    await renderShell('/my');
+
+    expect(await screen.findByTestId('sidebar-products')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('sidebar-messages')).not.toBeInTheDocument());
+    expect(unreadRequests).toBe(0);
   });
 
   it('marks a space row with an unread dot and a labelled row', async () => {
@@ -430,13 +462,14 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
   });
 
-  it('offers the colour scheme toggle in the member topbar', async () => {
+  it('offers a single cycling colour scheme button in the member topbar', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
 
     await renderShell(memberHomePath());
 
-    expect(await screen.findByTestId('color-scheme-switcher')).toBeInTheDocument();
+    expect(await screen.findByTestId('color-scheme-cycle')).toBeInTheDocument();
+    expect(screen.queryByTestId('color-scheme-switcher')).not.toBeInTheDocument();
   });
 
   it('shows the member identity block linking to the account page', async () => {
@@ -475,6 +508,17 @@ describe('MemberShell', () => {
     await renderShell('/my');
 
     expect(await screen.findAllByText(pl.community.bannedBanner)).toHaveLength(1);
+  });
+
+  it('keeps the member-view banner in the sticky app bar, out of the scrolling page', async () => {
+    stubViewport(true);
+    server.use(okMe({ impersonated: true }), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/my');
+
+    const banner = await screen.findByTestId('impersonation-banner');
+    expect(banner.closest('header')).not.toBeNull();
+    expect(banner.closest('main')).toBeNull();
   });
 
   it('hands the bar over to the course while a course page is open', async () => {
@@ -612,6 +656,8 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
     expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
+    expect(screen.getByTestId('color-scheme-cycle')).toBeInTheDocument();
+    expect(screen.queryByTestId('color-scheme-switcher')).not.toBeInTheDocument();
   });
 
   it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {

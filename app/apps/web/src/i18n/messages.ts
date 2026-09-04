@@ -1,4 +1,9 @@
-import type { ImportAuditAction, ImportAuditResourceType, MemberEventType } from '#core/domain/index.js';
+import type {
+  ImportAuditAction,
+  ImportAuditResourceType,
+  MemberEventType,
+  SnsWebhookDeliveryOutcome,
+} from '#core/domain/index.js';
 
 export type MessageParams = Record<string, string | number>;
 
@@ -21,6 +26,8 @@ export interface Messages {
       light: string;
       dark: string;
       auto: string;
+      currentMode: (params: { mode: string }) => string;
+      cycle: (params: { current: string; next: string }) => string;
     };
     home: string;
     reload: string;
@@ -33,6 +40,8 @@ export interface Messages {
     free: string;
     add: string;
     open: string;
+    close: string;
+    clear: string;
     status: string;
     retry: string;
     unsavedChanges: string;
@@ -46,6 +55,8 @@ export interface Messages {
     storageMissing: string;
     storageLink: string;
     invalidType: string;
+    invalidRasterType: string;
+    remove: string;
     tooLarge: string;
   };
   bootSplash: {
@@ -85,6 +96,7 @@ export interface Messages {
     headingSessionEnded: string;
     headingInvalidCredentials: string;
     headingForbidden: string;
+    headingImpersonationReadOnly: string;
     headingNotFound: string;
     headingTenantNotFound: string;
     headingValidation: string;
@@ -96,6 +108,7 @@ export interface Messages {
     messageInvalidCredentials: string;
     messageForbidden: string;
     messageBanned: string;
+    messageImpersonationReadOnly: string;
     messageNotFound: string;
     messageValidation: string;
     messageConflict: string;
@@ -205,6 +218,17 @@ export interface Messages {
     openingWorkspace: string;
     openingProducts: string;
   };
+  platformReset: {
+    title: string;
+    description: (params: { environment: string }) => string;
+    action: string;
+    confirmTitle: string;
+    confirmBody: (params: { environment: string }) => string;
+    confirmLabel: string;
+    confirmButton: string;
+    running: string;
+    success: (params: { environment: string }) => string;
+  };
   sections: {
     dashboard: string;
     products: string;
@@ -252,6 +276,16 @@ export interface Messages {
     deletePost: string;
     deletePostConfirm: string;
   };
+  dmReports: {
+    heading: string;
+    intro: string;
+    empty: string;
+    emptySnapshot: string;
+    parties: (params: { reporter: string; reported: string }) => string;
+    resolve: string;
+    resolveConfirm: string;
+    loadMore: string;
+  };
   dashboard: {
     heading: string;
     loading: string;
@@ -281,6 +315,11 @@ export interface Messages {
       paymentsConfigured: string;
     };
   };
+  studioSetup: {
+    panelTitle: string;
+    expand: (params: { title: string }) => string;
+    collapse: (params: { title: string }) => string;
+  };
   tenantSetup: {
     title: string;
     progress: (params: { configured: number; total: number }) => string;
@@ -302,6 +341,13 @@ export interface Messages {
       branding: { label: string; impact: string };
       invoicing: { label: string; impact: string };
     };
+  };
+  emailLanguageSettings: {
+    heading: string;
+    intro: string;
+    label: string;
+    options: { pl: string; en: string };
+    save: string;
   };
   settingsNavigation: {
     aria: string;
@@ -450,6 +496,7 @@ export interface Messages {
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
     dmMessage: (params: { author: string }) => string;
+    dmReport: (params: { reporter: string }) => string;
     spaceEvent: (params: { space: string }) => string;
   };
   messages: {
@@ -479,6 +526,16 @@ export interface Messages {
     optOutSaved: string;
     recipientUnavailable: string;
     rateLimited: string;
+    conversationMenu: string;
+    block: string;
+    unblock: string;
+    blockedByYou: string;
+    cannotSend: string;
+    report: string;
+    reportTitle: string;
+    reportHint: string;
+    reportSent: string;
+    reportAlready: string;
   };
   events: {
     sectionTitle: string;
@@ -1003,12 +1060,8 @@ export interface Messages {
     fileNameLabel: string;
     linkUrlLabel: string;
     linkDescriptionLabel: string;
-    htmlLinkFoldNote: string;
-    htmlSandboxFoldNote: string;
     technicalFieldHint: (params: { field: string }) => string;
     blockPreviewLabel: string;
-    showSandboxPreview: string;
-    hideSandboxPreview: string;
     addBlock: string;
     saving: string;
     saveLesson: string;
@@ -1095,6 +1148,18 @@ export interface Messages {
     tombstoneNotice: string;
     exportFailed: string;
     erasureRequestsHeading: string;
+    impersonateAction: string;
+    impersonateConfirmTitle: string;
+    impersonateConfirmBody: (params: { name: string }) => string;
+    impersonateConfirmTtl: string;
+    impersonateReasonLabel: string;
+    impersonateConfirm: string;
+    impersonateStarting: string;
+    impersonationLogHeading: string;
+    impersonationLogEmpty: string;
+    impersonationLogStarted: string;
+    impersonationLogEnded: string;
+    impersonationLogEntry: (params: { actor: string; subject: string }) => string;
     erasureRequestsEmpty: string;
     erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
     erasureRejectNote: string;
@@ -1200,6 +1265,12 @@ export interface Messages {
     programButton: string;
     programTitle: string;
     closeSheet: string;
+    impersonationBanner: (params: { name: string }) => string;
+    impersonationRegionLabel: string;
+    impersonationExit: string;
+    impersonationExiting: string;
+    impersonationReadOnlyHint: string;
+    impersonationExpired: string;
   };
   start: {
     title: string;
@@ -1308,7 +1379,6 @@ export interface Messages {
     coverAlt: (params: { name: string }) => string;
     statLessons: (params: { count: number }) => string;
     statDuration: string;
-    statCompleted: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;
   };
@@ -1523,6 +1593,7 @@ export interface Messages {
     invoiceDownload: string;
     preferencesHeading: string;
     preferencesIntro: string;
+    emailLanguage: { pl: string; en: string; unset: string; reset: string; panelOnly: string };
     dataExportHeading: string;
     dataExportIntro: string;
     dataExportButton: string;
@@ -1644,6 +1715,11 @@ export interface Messages {
     homeSpaceNone: string;
     homeSpaceHint: string;
   };
+  directMessages: {
+    heading: string;
+    intro: string;
+    toggleLabel: string;
+  };
   legal: {
     heading: string;
     intro: string;
@@ -1661,6 +1737,9 @@ export interface Messages {
     nameLabel: string;
     nameHint: string;
     logoLabel: string;
+    logoHint: string;
+    logoDarkLabel: string;
+    logoDarkHint: string;
     logoPlaceholder: string;
     accentLabel: string;
     accentPlaceholder: string;
@@ -1684,10 +1763,20 @@ export interface Messages {
     ogDescriptionLabel: string;
     ogDescriptionHint: string;
     ogImageLabel: string;
-    ogImageHint: string;
+    ogImageHint: (input: { width: number; height: number }) => string;
     save: string;
     saving: string;
     saved: string;
+  };
+  tenantDomains: {
+    heading: string;
+    intro: string;
+    workspaceAddress: string;
+    customDomains: string;
+    none: string;
+    verified: string;
+    pending: string;
+    dnsInstruction: (params: { domain: string; target: string }) => string;
   };
   buildInfo: {
     heading: string;
@@ -1993,11 +2082,17 @@ export interface Messages {
     identityLabel: string;
     identityVerifiedLabel: string;
     identityAuthenticationHint: string;
+    identityDetectedInSes: string;
+    identityDkimReady: string;
+    identityDkimPending: string;
+    identityListAccessDenied: (input: { action: string }) => string;
+    identityDetectedDomainHint: (input: { domain: string }) => string;
     wizardTitle: string;
     wizardDescription: string;
     wizardDomainIdentity: string;
     wizardEmailIdentity: string;
     wizardIdentityHint: string;
+    wizardIdentityAlreadyVerified: string;
     wizardProvision: string;
     wizardProvisionHint: string;
     wizardPoll: string;
@@ -2014,6 +2109,13 @@ export interface Messages {
     wizardDocs: string;
     wizardFeedbackDisabled: string;
     wizardAwsRejected: string;
+    wizardProvisionDone: string;
+    wizardProvisionSummary: (input: { configurationSet: string; topicArn: string; endpoint: string }) => string;
+    wizardSubscriptionConfirmed: string;
+    wizardSubscriptionPending: string;
+    snsLastDeliveryNone: string;
+    snsLastDelivery: (input: { messageType: string; when: string; outcome: string }) => string;
+    snsOutcome: Record<SnsWebhookDeliveryOutcome, string>;
     configurationSetLabel: string;
     snsTopicLabel: string;
     trackingEnabledLabel: string;
@@ -2048,6 +2150,7 @@ export interface Messages {
     credentialsConfigured: string;
     identityVerified: string;
     identityNeverChecked: string;
+    identityCheckedAfterSave: string;
     identityLastChecked: (input: { checkedAt: string }) => string;
     identityCheckStale: (input: { checkedAt: string }) => string;
     identityCheckFailed: (input: { message: string }) => string;

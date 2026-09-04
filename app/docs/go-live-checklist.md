@@ -141,21 +141,23 @@ The SigV4 presigner consumes those
 secrets through `core/server/usecases/lesson-media.ts` and
 `adapters/storage/s3.ts`.
 
-Create a fresh least-privilege IAM user limited to `s3:GetObject` on the media
-prefix. Store it on the production tenant:
+Create a fresh IAM user for the media bucket and store it on the production
+tenant through the storage flow, which probes the connection before saving:
 
 ```sh
-pnpm --silent run cli --tenant <slug> tenant-secret set s3.accessKeyId <id>
-pnpm --silent run cli --tenant <slug> tenant-secret set s3.secretAccessKey <secret>
+pnpm --silent run cli --tenant <slug> storage configure --provider aws_s3 \
+  --endpoint https://s3.<region>.amazonaws.com --region <region> \
+  --bucket <bucket> --access-key-id '<id>' --secret-access-key '<secret>'
 ```
 
-A tenant configured through the integrations panel wizard stores endpoint,
-region, bucket and both keys in the single encrypted `s3.configuration` secret
-instead. The legacy pair remains limited to imported lesson media playback;
-new attachment and product-download uploads require the wizard configuration.
+The generic `tenant-secret set` command rejects every `s3.*` key, so storage
+credentials always pass the probe first — the key needs write, read and delete
+on one scratch object, not only `s3:GetObject`. Endpoint, region, bucket and
+both keys end up in the single encrypted `s3.configuration` secret, which also
+backs imported lesson media playback when the legacy pair is absent.
 
-The commands are implemented in `apps/cli/src/main.ts:2368-2381`. Deactivate and
-then delete the legacy key in IAM. Delete the development copy with:
+Deactivate and then delete the legacy key in IAM. Delete the development copy
+with:
 
 ```sh
 pnpm --silent run cli --tenant akademia-samouka tenant-secret delete s3.accessKeyId
@@ -246,9 +248,10 @@ client address and 300 per minute per resolved tenant; magic-link,
 password-reset, sign-up and verification requests share that per-address budget
 and allow 5 per ten minutes per e-mail address. The sign-in method lookup
 (`/api/public/auth-resolve`) spends its own `auth-resolve:ip` and
-`auth-resolve:tenant` windows — 20 per minute per client address and 200 per
+`auth-resolve:tenant` windows — 60 per minute per client address and 1000 per
 minute per resolved tenant — so a shared address exhausting the lookup cannot
-block checkout. The five limits are configurable
+block checkout, and a cohort behind one NAT address still reaches the lookup.
+The five limits are configurable
 (`PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE`,
 `PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE`,
 `PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES`,
@@ -264,6 +267,13 @@ than a request limiter (`adapters/db/app-schema.ts:1387`).
 Before launch, add an edge or WAF rule in front of `/api/auth/*` and
 `POST /api/public/auth-resolve`. The durable application limiter is defense in
 depth and does not replace the launch edge control.
+
+`POST /api/public/auth-resolve` answers CORS only to the platform host, the
+tenant subdomains of `APP_BASE_DOMAIN` and the `custom` `tenant_domains` rows
+already marked verified (`apps/server/src/tenant-cors.ts`). A preflight from any
+other origin answers `403` and no response ever carries a wildcard
+`Access-Control-Allow-Origin`, so pointing a new custom domain at Together also
+requires verifying it before a browser on that domain can read the lookup.
 
 ### 11. Real Stripe verification runbook
 

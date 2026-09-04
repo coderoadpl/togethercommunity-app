@@ -44,6 +44,27 @@ const okMe = () =>
     }),
   );
 
+const impersonatedMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'user@example.com',
+        emailVerified: true,
+        name: 'Jan Uczestnik',
+        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
+        impersonation: {
+          id: 'imp-1',
+          subjectMemberId: 'm1',
+          subjectName: 'Jan Uczestnik',
+          actorName: 'Ola Operatorka',
+          expiresAt: '2026-07-20T10:00:00.000Z',
+        },
+      },
+    }),
+  );
+
 const anonMe = () =>
   http.get('/api/me', () =>
     HttpResponse.json(
@@ -119,6 +140,8 @@ const feedItem = (input: Partial<SpaceFeedItem> & { id: string }): SpaceFeedItem
   reactions: [],
   ...input,
 });
+
+const markupLikeBody = 'Generic<T> plus <script>alert(1)</script>';
 
 const okMemberNavigation = (lockedSpaces: MemberNavigation['lockedSpaces']) =>
   http.get('/api/member/navigation', () =>
@@ -287,6 +310,46 @@ describe('community pages', () => {
     const plainPost = within(screen.getByTestId('feed-post-p2'));
     expect(plainPost.queryByTestId('member-avatar-image')).toBeNull();
     expect(plainPost.getByTestId('member-avatar')).toHaveTextContent('OA');
+  });
+
+  it('renders angle-bracketed post bodies as literal text in the feed', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okFeed('s1', [feedItem({ id: 'p1', body: markupLikeBody })]),
+      okSeen(),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const body = await screen.findByTestId('post-body-p1');
+    expect(body.textContent).toBe(markupLikeBody);
+    expect(body.querySelector('script')).toBeNull();
+    expect(body.innerHTML).toContain('&lt;script&gt;');
+  });
+
+  it('renders angle-bracketed post bodies as literal text in the thread view', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okDiscussion([
+        {
+          ...feedItem({ id: 'p1', body: markupLikeBody }),
+          replies: [{ ...feedItem({ id: 'p2', parentPostId: 'p1', rootPostId: 'p1', body: markupLikeBody }), replies: [] }],
+        },
+      ]),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    for (const postId of ['p1', 'p2']) {
+      const body = await screen.findByTestId(`post-body-${postId}`);
+      expect(body.textContent).toBe(markupLikeBody);
+      expect(body.querySelector('script')).toBeNull();
+      expect(body.innerHTML).toContain('&lt;script&gt;');
+    }
   });
 
   it('publishes a root post through the composer', async () => {
@@ -517,6 +580,23 @@ describe('community pages', () => {
     await user.click(screen.getByTestId('space-composer-submit'));
 
     await waitFor(() => expect(seenCalls).toEqual(['s1', 's1']));
+  });
+
+  it('never marks the space seen while viewing as a member', async () => {
+    const seenCalls: string[] = [];
+    server.use(
+      impersonatedMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', [feedItem({ id: 'p1', body: 'Cześć' })]),
+      okSeen(seenCalls),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByText('Cześć')).toBeInTheDocument();
+    expect(seenCalls).toEqual([]);
+    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
   });
 
   it('hides a gated space the member cannot access behind a not-found state', async () => {

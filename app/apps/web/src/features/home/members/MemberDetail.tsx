@@ -40,6 +40,7 @@ import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
 import { EmailSendSummary } from '../marketing/EmailSendSummary.js';
 import { MessageMemberButton } from './MessageMemberButton.js';
+import { ViewAsMemberButton } from './ViewAsMemberButton.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 
 const toIsoOrNull = (localValue: string): string | null =>
@@ -140,6 +141,9 @@ const AccountSummary = ({ member }: { member: MemberWithProductIds }) => {
           </EntryDate>
         </Typography>
         {member.deletedAt === null ? <MessageMemberButton memberId={member.id} /> : null}
+        {member.deletedAt === null ? (
+          <ViewAsMemberButton memberId={member.id} memberName={member.displayName ?? member.email} />
+        ) : null}
       </Stack>
     </SectionCard>
   );

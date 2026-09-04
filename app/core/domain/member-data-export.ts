@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { memberCourseProgressSchema } from './course.js';
 import { memberGrantSchema } from './grant.js';
 import { invoiceSchema } from './invoice.js';
+import { languageSchema } from './language.js';
 import { isoDateTimeSchema, marketingConsentSchema } from './marketing-email.js';
 import { memberSubscriptionSchema, orderSchema } from './commerce.js';
 import { termsConsentSchema } from './consent.js';
@@ -23,6 +24,7 @@ export const memberDataExportSchema = z.object({
     tags: z.array(z.string()),
     marketingConsents: z.record(z.boolean()),
     externalCustomerIds: z.record(z.string()),
+    language: languageSchema.nullable(),
     createdAt: z.string(),
   }),
   consents: z.object({

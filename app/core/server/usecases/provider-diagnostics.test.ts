@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EmailIntegrationTransport, Identity, StaffRole } from '#core/domain/index.js';
-import { err, integrationAuth, notFound, ok } from '#core/domain/index.js';
+import type { EmailIntegrationTransport, Identity, Language, StaffRole } from '#core/domain/index.js';
+import { err, integrationAuth, notFound, ok, tenantSettingsSchema } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { PaymentProvider } from '../ports.js';
 import { testIntegration, type TestIntegrationDeps } from './provider-diagnostics.js';
 
-const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx => ({
+const ctx = (
+  staffRole: StaffRole | null,
+  tenantId: string | null = 't1',
+  memberLanguage: Language | null = null,
+): Ctx => ({
   identity: {
     userId: 'u1',
     email: 'owner@together.dev',
@@ -22,6 +26,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage,
   } satisfies Identity,
 });
 
@@ -50,6 +55,8 @@ const fakeDeps = (
   options: {
     emailMissing?: boolean;
     sendFails?: boolean;
+    subjects?: string[];
+    tenantLanguage?: Language;
     testFails?: boolean;
     tenantTransports?: EmailIntegrationTransport[];
     transportTestFails?: boolean;
@@ -69,6 +76,7 @@ const fakeDeps = (
   emailSender: {
     send: async (message) => {
       tested.push(`email-send:${message.tenantId}:${message.to}`);
+      options.subjects?.push(message.subject);
       return options.sendFails
         ? err(notFound('Platform email send failed'))
         : ok({ messageId: 'message-1', transport: 'platform' });
@@ -82,6 +90,7 @@ const fakeDeps = (
         : ({
           send: async (message) => {
             tested.push(`${transport}-send:${message.to}`);
+            options.subjects?.push(message.subject);
             return options.sendFails
               ? err(notFound(`${transport} send failed`))
               : ok({ messageId: `${transport}-message-1` });
@@ -94,6 +103,15 @@ const fakeDeps = (
               : ok({ code: 'email.available', message: `${transport} accepted the settings.` });
           },
         }),
+  },
+  tenants: {
+    findSettings: async () =>
+      tenantSettingsSchema.parse({
+        name: 'Acme',
+        billingPortalUrl: null,
+        bunnyStreamLibraryId: null,
+        ...(options.tenantLanguage === undefined ? {} : { defaultLanguage: options.tenantLanguage }),
+      }),
   },
   storage: {
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
@@ -151,6 +169,42 @@ describe('testIntegration', () => {
       'resend',
       'resend-send:owner@together.dev',
     ]);
+  });
+
+  it('writes the test message in the language stored for the staff member', async () => {
+    const subjects: string[] = [];
+
+    await testIntegration(
+      ctx('owner', 't1', 'en'),
+      { provider: 'email', emailTransport: 'ses' },
+      fakeDeps([], { subjects, tenantLanguage: 'pl' }),
+    );
+
+    expect(subjects).toEqual(['Together test e-mail (ses)']);
+  });
+
+  it('falls back to the tenant default language without a stored staff preference', async () => {
+    const subjects: string[] = [];
+
+    await testIntegration(
+      ctx('owner'),
+      { provider: 'email', emailTransport: 'ses' },
+      fakeDeps([], { subjects, tenantLanguage: 'en' }),
+    );
+
+    expect(subjects).toEqual(['Together test e-mail (ses)']);
+  });
+
+  it('writes the test message in Polish without any stored language', async () => {
+    const subjects: string[] = [];
+
+    await testIntegration(
+      ctx('owner'),
+      { provider: 'email', emailTransport: 'ses' },
+      fakeDeps([], { subjects }),
+    );
+
+    expect(subjects).toEqual(['Together — wiadomość testowa (ses)']);
   });
 
   it('tests the tenant transport the layered sender would use instead of the platform port', async () => {

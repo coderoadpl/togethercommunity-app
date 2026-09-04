@@ -65,6 +65,7 @@ const noCourses = fakeCourses([]);
 
 const fakeTenants = (branding?: {
   logoUrl: string | null;
+  logoDarkUrl: string | null;
   accentColor: string | null;
   faviconUrl: string | null;
   socialLinks?: Array<{ label: string; url: string }>;
@@ -132,7 +133,7 @@ describe('getPublicOffer', () => {
         tenant: {
           slug: 'acme',
           name: 'Acme',
-          branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+          branding: { logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null },
           socialLinks: [],
           legal: { termsUrl: null, privacyUrl: null },
           support: { url: null },
@@ -234,8 +235,27 @@ describe('getPublicOffer', () => {
   it('exposes the tenant branding pointers to the public surface', async () => {
     const branding = {
       logoUrl: '/assets/akademia-logo.svg',
+      logoDarkUrl: null,
       accentColor: '#0E7490',
       faviconUrl: '/assets/akademia-logo.svg',
+    };
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(branding),
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { tenant: { branding } } });
+  });
+
+  it('exposes the dark logo variant so clients can match the active theme', async () => {
+    const branding = {
+      logoUrl: '/api/public/assets/logo/light.png',
+      logoDarkUrl: '/api/public/assets/logo-dark/dark.png',
+      accentColor: null,
+      faviconUrl: null,
     };
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([]),
@@ -258,7 +278,7 @@ describe('getPublicOffer', () => {
       prices: noPrices,
       lessons: noLessons,
       courses: noCourses,
-      tenants: fakeTenants({ logoUrl: null, accentColor: null, faviconUrl: null, socialLinks }),
+      tenants: fakeTenants({ logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null, socialLinks }),
     });
 
     expect(result).toMatchObject({ ok: true, value: { tenant: { socialLinks } } });

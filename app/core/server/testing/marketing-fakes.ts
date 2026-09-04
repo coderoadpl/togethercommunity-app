@@ -21,6 +21,9 @@ import {
   type SchedulerRun,
   type SchedulerRunListQuery,
   type SchedulerRunTenant,
+  snsWebhookDeliverySchema,
+  snsWebhookDeliverySupersedes,
+  type SnsWebhookDelivery,
   type Suppression,
   type TenantSesSettings,
   type TenantDocument,
@@ -49,6 +52,7 @@ import type {
   SchedulerRunRepository,
   SesMarketingSender,
   SnsVerifier,
+  SnsWebhookDeliveryRepository,
   SuppressionRepository,
   TenantSesSettingsRepository,
   TenantDocumentRepository,
@@ -956,6 +960,20 @@ export class InMemoryUnsubscribeTokenRepository implements UnsubscribeTokenRepos
   }
 }
 
+export class InMemorySnsWebhookDeliveryRepository implements SnsWebhookDeliveryRepository {
+  private readonly rows = new Map<string, SnsWebhookDelivery>();
+
+  async findByTenant(tenantId: string): Promise<SnsWebhookDelivery | null> {
+    return this.rows.get(tenantId) ?? null;
+  }
+
+  async record(tenantId: string, delivery: SnsWebhookDelivery): Promise<void> {
+    const parsed = snsWebhookDeliverySchema.parse({ ...delivery, tenantId });
+    if (!snsWebhookDeliverySupersedes(this.rows.get(tenantId) ?? null, parsed)) return;
+    this.rows.set(tenantId, parsed);
+  }
+}
+
 export class InMemoryTenantSesSettingsRepository implements TenantSesSettingsRepository {
   private readonly rows: TenantSesSettings[];
 
@@ -1007,7 +1025,10 @@ export class FakeSesMarketingSender implements SesMarketingSender {
 export class FakeSnsVerifier implements SnsVerifier {
   readonly confirmed: Array<{ subscribeUrl: string; region: string }> = [];
 
-  constructor(readonly result: Result<VerifiedSnsEnvelope, AppError>) {}
+  constructor(
+    readonly result: Result<VerifiedSnsEnvelope, AppError>,
+    private readonly confirmation: Result<void, AppError> = ok(undefined),
+  ) {}
 
   async verify(): Promise<Result<VerifiedSnsEnvelope, AppError>> {
     return this.result;
@@ -1015,7 +1036,7 @@ export class FakeSnsVerifier implements SnsVerifier {
 
   async confirmSubscription(input: { subscribeUrl: string; region: string }): Promise<Result<void, AppError>> {
     this.confirmed.push(input);
-    return ok(undefined);
+    return this.confirmation;
   }
 }
 

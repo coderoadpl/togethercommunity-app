@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   computeCourseModuleName,
+  tenantSettingsSchema,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -10,6 +11,7 @@ import {
   type Product,
   type ProductGrant,
   type Space,
+  type TenantSettings,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -26,6 +28,7 @@ import type {
   SpaceSeenRepository,
   SpaceSubscription,
   SpaceSubscriptionRepository,
+  TenantRepository,
 } from '../ports.js';
 import { getMemberNavigation, type MemberNavigationDeps } from './member-navigation.js';
 
@@ -47,6 +50,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...over,
 });
 
@@ -202,6 +206,22 @@ const allSpaces = [openSpace, entitledSpace, lockedSpace, archivedSpace];
 
 const clock: Clock = { nowIso: () => NOW };
 
+const tenantsRepo = (directMessagesEnabled: boolean): TenantRepository => ({
+  findById: async () => null,
+  findBySlug: async () => null,
+  findSole: async () => null,
+  findSettings: async (): Promise<TenantSettings> =>
+    tenantSettingsSchema.parse({
+      name: 'Tenant',
+      billingPortalUrl: null,
+      bunnyStreamLibraryId: null,
+      directMessagesEnabled,
+    }),
+  updateSettings: async (_tenantId, settings) => settings,
+  createTenantWithOwnerGrant: async () => null,
+  hasAny: async () => true,
+});
+
 const deps = (input: {
   spaces?: Space[];
   products?: Product[];
@@ -210,6 +230,7 @@ const deps = (input: {
   follows?: SpaceSubscription[];
   latestRootPostAt?: Record<string, string>;
   seenMarks?: Array<{ spaceId: string; seenAt: string }>;
+  directMessagesEnabled?: boolean;
 }): MemberNavigationDeps => {
   const spaces = input.spaces ?? allSpaces;
   const products = input.products ?? [];
@@ -364,6 +385,7 @@ const deps = (input: {
     modules: modulesRepo,
     lessons: lessonsRepo,
     progress: progressRepo,
+    tenants: tenantsRepo(input.directMessagesEnabled ?? true),
     clock,
   };
 };

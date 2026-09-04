@@ -13,6 +13,7 @@ const settings: TenantSettings = {
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
   ogTitle: null,
@@ -65,6 +66,7 @@ image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
+memberLanguage: null,
 });
 
 const deps: TenantSettingsDeps = {
@@ -124,6 +126,37 @@ describe('updateTenantSettings', () => {
       },
     });
     expect(result.ok && 'slug' in result.value).toBe(false);
+  });
+
+  it('stores both logo variants and clears only the one sent empty', async () => {
+    let current: TenantSettings = settings;
+    const statefulDeps: TenantSettingsDeps = {
+      ...deps,
+      tenants: {
+        ...deps.tenants,
+        findSettings: async () => current,
+        updateSettings: async (_tenantId, next) => {
+          current = next;
+          return next;
+        },
+      },
+    };
+
+    expect(await updateTenantSettings(adminCtx, {
+      logoUrl: '/api/public/assets/logo/light.png',
+      logoDarkUrl: '/api/public/assets/logo-dark/dark.png',
+    }, statefulDeps)).toMatchObject({
+      ok: true,
+      value: {
+        logoUrl: '/api/public/assets/logo/light.png',
+        logoDarkUrl: '/api/public/assets/logo-dark/dark.png',
+      },
+    });
+
+    expect(await updateTenantSettings(adminCtx, { logoDarkUrl: '' }, statefulDeps)).toMatchObject({
+      ok: true,
+      value: { logoUrl: '/api/public/assets/logo/light.png', logoDarkUrl: null },
+    });
   });
 
   it('rejects an exempt mode without a legal basis', async () => {

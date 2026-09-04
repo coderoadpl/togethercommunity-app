@@ -45,6 +45,7 @@ const fakeTenantAccess = (memberships: Membership[], members: Member[] = []): Te
 const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
   findByDomain: async (domain) => domains.find((d) => d.domain === domain) ?? null,
   listVerifiedDomains: async () => domains,
+  listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
 });
 
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
@@ -54,7 +55,7 @@ const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   hasAny: async () => tenantList.length > 0,
   findSettings: async () => ({
     name: 'Acme', socialLinks: [],
-    billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null,
+    billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
     accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
     ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
     privacyUrl: null,
@@ -93,6 +94,7 @@ const deps = (
       memberRows[index] = refreshed;
       return refreshed;
     },
+    updateLanguage: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,

@@ -25,6 +25,7 @@ const globex: Tenant = {
 const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
   findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
   listVerifiedDomains: async () => domains,
+  listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
 });
 
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
@@ -34,7 +35,7 @@ const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   hasAny: async () => tenantList.length > 0,
   findSettings: async () => ({
     name: 'Acme', socialLinks: [],
-    billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null,
+    billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
     accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
     ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
     privacyUrl: null,

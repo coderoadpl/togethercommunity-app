@@ -1,4 +1,4 @@
-import { Stack, SvgIcon, ToggleButton, ToggleButtonGroup, Tooltip } from '@mui/material';
+import { IconButton, Stack, SvgIcon, ToggleButton, ToggleButtonGroup, Tooltip } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
 import { COLOR_SCHEMES, useColorScheme, type ColorScheme } from '../../theme-mode.js';
@@ -24,6 +24,31 @@ const SchemeIcon = ({ scheme }: { scheme: ColorScheme }) => {
         </SvgIcon>
       );
   }
+};
+
+const nextScheme = (scheme: ColorScheme): ColorScheme =>
+  COLOR_SCHEMES[(COLOR_SCHEMES.indexOf(scheme) + 1) % COLOR_SCHEMES.length] ?? 'light';
+
+export const ColorSchemeCycleButton = () => {
+  const t = useTranslations();
+  const { colorScheme, setColorScheme } = useColorScheme();
+  const labels = t.common.colorScheme;
+  const next = nextScheme(colorScheme);
+
+  return (
+    <Tooltip title={labels.currentMode({ mode: labels[colorScheme] })}>
+      <IconButton
+        data-testid="color-scheme-cycle"
+        color="inherit"
+        size="small"
+        aria-label={labels.cycle({ current: labels[colorScheme], next: labels[next] })}
+        onClick={() => setColorScheme(next)}
+        sx={{ minHeight: '44px', minWidth: '44px' }}
+      >
+        <SchemeIcon scheme={colorScheme} />
+      </IconButton>
+    </Tooltip>
+  );
 };
 
 export const ColorSchemeSwitcher = ({ compact = false }: { compact?: boolean }) => {

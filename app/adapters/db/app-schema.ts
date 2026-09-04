@@ -13,6 +13,7 @@ import type {
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
   ConsentEvidence,
+  DmReportMessage,
   EmailEventType,
   EmailEventMailKind,
   LessonBlock,
@@ -31,6 +32,7 @@ export const tenants = pgTable(
     name: text('name').notNull(),
     status: text('status', { enum: ['active', 'suspended'] }).notNull().default('active'),
     plan: text('plan', { enum: ['self_hosted', 'hosted', 'hosted_pro'] }).notNull().default('self_hosted'),
+    defaultLanguage: text('default_language', { enum: ['pl', 'en'] }).notNull().default('pl'),
     createdAt: text('created_at').notNull(),
     contentVersion: integer('content_version').notNull().default(1),
     billingPortalUrl: text('billing_portal_url'),
@@ -38,6 +40,7 @@ export const tenants = pgTable(
     bunnyStreamCdnHostname: text('bunny_stream_cdn_hostname'),
     onboardingDismissedAt: text('onboarding_dismissed_at'),
     logoUrl: text('logo_url'),
+    logoDarkUrl: text('logo_dark_url'),
     accentColor: text('accent_color'),
     faviconUrl: text('favicon_url'),
     socialLinks: jsonb('social_links').$type<Array<{ label: string; url: string }>>().notNull().default([]),
@@ -49,6 +52,7 @@ export const tenants = pgTable(
     termsUrl: text('terms_url'),
     privacyUrl: text('privacy_url'),
     defaultHomeSpaceId: text('default_home_space_id'),
+    directMessagesEnabled: boolean('direct_messages_enabled').notNull().default(true),
     autoIssueInvoices: boolean('auto_issue_invoices').notNull().default(false),
     autoIssueInvoiceScope: text('auto_issue_invoice_scope', { enum: ['b2b_only', 'all'] })
       .notNull()
@@ -67,6 +71,7 @@ export const tenants = pgTable(
     uniqueIndex('tenants_slug_uidx').on(table.slug),
     check('tenants_status_check', sql`${table.status} IN ('active', 'suspended')`),
     check('tenants_plan_check', sql`${table.plan} IN ('self_hosted', 'hosted', 'hosted_pro')`),
+    check('tenants_default_language_check', sql`${table.defaultLanguage} IN ('pl', 'en')`),
     check('tenants_invoice_vat_mode_check', sql`${table.invoiceVatMode} IN ('rate', 'exempt')`),
   ],
 );
@@ -212,6 +217,7 @@ export const members = pgTable(
     userId: text('user_id').notNull(),
     email: text('email').notNull(),
     displayName: text('display_name'),
+    language: text('language', { enum: ['pl', 'en'] }),
     legacyId: text('legacy_id'),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     marketingConsents: jsonb('marketing_consents')
@@ -231,6 +237,7 @@ export const members = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
+    check('members_language_check', sql`${table.language} IS NULL OR ${table.language} IN ('pl', 'en')`),
     index('members_tenantId_idx').on(table.tenantId),
     index('members_userId_idx').on(table.userId),
     uniqueIndex('members_tenant_user_uidx').on(table.tenantId, table.userId),
@@ -1444,7 +1451,7 @@ export const notifications = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
     kind: text('kind', {
-      enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'space-event'],
+      enum: ['thread-reply', 'space-post', 'lesson-question', 'dm-message', 'dm-report', 'space-event'],
     }).notNull(),
     payload: jsonb('payload').notNull(),
     sourceKey: text('source_key'),
@@ -1554,6 +1561,56 @@ export const dmMessages = pgTable(
       table.senderUserId,
       table.createdAt,
     ),
+  ],
+);
+
+export const memberBlocks = pgTable(
+  'member_blocks',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    blockerUserId: text('blocker_user_id').notNull(),
+    blockedUserId: text('blocked_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('member_blocks_tenant_blocker_blocked_uidx').on(
+      table.tenantId,
+      table.blockerUserId,
+      table.blockedUserId,
+    ),
+    index('member_blocks_tenant_blocked_idx').on(table.tenantId, table.blockedUserId),
+  ],
+);
+
+export const dmReports = pgTable(
+  'dm_reports',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => dmConversations.id, { onDelete: 'cascade' }),
+    reporterUserId: text('reporter_user_id').notNull(),
+    reporterDisplay: text('reporter_display').notNull(),
+    reportedUserId: text('reported_user_id').notNull(),
+    reportedDisplay: text('reported_display').notNull(),
+    reason: text('reason', { enum: ['spam', 'harassment', 'illegal', 'other'] }).notNull(),
+    snapshot: jsonb('snapshot').$type<DmReportMessage[]>().notNull(),
+    status: text('status', { enum: ['open', 'resolved'] }).notNull(),
+    createdAt: text('created_at').notNull(),
+    resolvedAt: text('resolved_at'),
+    resolvedByUserId: text('resolved_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('dm_reports_tenant_conversation_reporter_open_uidx')
+      .on(table.tenantId, table.conversationId, table.reporterUserId)
+      .where(sql`${table.status} = 'open'`),
+    index('dm_reports_tenant_status_created_idx')
+      .on(table.tenantId, table.status, table.createdAt.desc(), table.id.desc()),
   ],
 );
 
@@ -1907,6 +1964,8 @@ export const tenantSesSettings = pgTable(
     identityCheckError: text('identity_check_error'),
     configurationSet: text('configuration_set'),
     snsTopicArn: text('sns_topic_arn'),
+    snsSubscriptionEndpoint: text('sns_subscription_endpoint'),
+    snsSubscriptionConfirmedAt: timestamp('sns_subscription_confirmed_at', { withTimezone: true, mode: 'string' }),
     trackingEnabled: boolean('tracking_enabled').notNull().default(false),
     autoPauseOnCritical: boolean('auto_pause_on_critical').notNull().default(false),
     webhookToken: text('webhook_token').notNull(),
@@ -1929,6 +1988,18 @@ export const tenantSesSettings = pgTable(
   },
   (table) => [uniqueIndex('tenant_ses_settings_webhook_token_uidx').on(table.webhookToken)],
 );
+
+export const snsWebhookDeliveries = pgTable('sns_webhook_deliveries', {
+  tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+  receivedAt: timestamp('received_at', { withTimezone: true, mode: 'string' }).notNull(),
+  messageType: text('message_type').notNull(),
+  outcome: text('outcome', {
+    enum: ['verified', 'signature_failed', 'unknown_token', 'confirm_failed', 'apply_failed', 'recorded'],
+  }).notNull(),
+  errorMessage: text('error_message'),
+  sourceIp: text('source_ip'),
+  userAgent: text('user_agent'),
+});
 
 export const marketingThrottleBuckets = pgTable(
   'marketing_throttle_buckets',
@@ -1984,4 +2055,63 @@ export const rateLimitBuckets = pgTable(
     primaryKey({ columns: [table.scope, table.key] }),
     index('rate_limit_buckets_expiry_idx').on(table.expiresAt),
   ],
+);
+
+export const impersonationSessions = pgTable(
+  'impersonation_sessions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    actorUserId: text('actor_user_id').notNull(),
+    actorSessionId: text('actor_session_id').notNull(),
+    subjectMemberId: text('subject_member_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    reason: text('reason'),
+    createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    endedAt: text('ended_at'),
+  },
+  (table) => [
+    index('impersonation_sessions_open_actor_session_idx')
+      .on(table.tenantId, table.actorSessionId)
+      .where(sql`${table.endedAt} is null`),
+    index('impersonation_sessions_open_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.endedAt} is null`),
+  ],
+);
+
+export const tenantAuditEvents = pgTable(
+  'tenant_audit_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['impersonation_started', 'impersonation_ended'] }).notNull(),
+    actorUserId: text('actor_user_id').notNull(),
+    actorEmail: text('actor_email').notNull(),
+    subjectMemberId: text('subject_member_id'),
+    reason: text('reason'),
+    at: text('at').notNull(),
+  },
+  (table) => [index('tenant_audit_events_tenant_at_idx').on(table.tenantId, table.at)],
+);
+
+export const platformAuditEvents = pgTable(
+  'platform_audit_events',
+  {
+    id: text('id').primaryKey(),
+    action: text('action', { enum: ['platform:data-reset'] }).notNull(),
+    actorUserId: text('actor_user_id').notNull(),
+    actorEmail: text('actor_email').notNull(),
+    environment: text('environment').notNull(),
+    status: text('status', { enum: ['succeeded', 'failed'] }).notNull(),
+    detail: text('detail'),
+    durationMs: integer('duration_ms').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [index('platform_audit_events_created_idx').on(table.createdAt, table.id)],
 );

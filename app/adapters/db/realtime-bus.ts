@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import pg from 'pg';
 
+import { notificationKindSchema } from '#core/domain/index.js';
 import { createScopedSubscribers } from '#core/server/index.js';
 import type { RealtimeBusPort, RealtimeEvent, ScopedSubscribers } from '#core/server/index.js';
 
@@ -52,9 +53,16 @@ export const parseRealtimeEvent = (payload: string): RealtimeEvent | null => {
   if (tenantId === null || recipientUserId === null || createdAt === null) return null;
   if (decoded['kind'] === 'notification') {
     const notificationId = text(decoded, 'notificationId');
-    return notificationId === null
-      ? null
-      : { kind: 'notification', tenantId, recipientUserId, createdAt, notificationId };
+    if (notificationId === null) return null;
+    const notificationKind = notificationKindSchema.safeParse(decoded['notificationKind']);
+    return {
+      kind: 'notification',
+      tenantId,
+      recipientUserId,
+      createdAt,
+      notificationId,
+      ...(notificationKind.success ? { notificationKind: notificationKind.data } : {}),
+    };
   }
   if (decoded['kind'] === 'dm') {
     const conversationId = text(decoded, 'conversationId');

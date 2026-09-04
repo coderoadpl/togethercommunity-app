@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
@@ -8,6 +8,11 @@ import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.j
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
+import {
+  createImpersonationSessionRepository,
+  createTenantAuditEventRepository,
+} from '#adapters/db/impersonation.js';
+import { createImpersonationTokenCodec } from '#adapters/crypto/impersonation-token-codec.js';
 import { createImportContentRepository } from '#adapters/db/content-import.js';
 import { createImportUsersRepository } from '#adapters/db/users-import.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
@@ -30,6 +35,7 @@ import {
   createMarketingConsentRepository,
   createMarketingJobRepository,
   createMarketingThrottleRepository,
+  createSnsWebhookDeliveryRepository,
   createSuppressionRepository,
   createTenantDocumentRepository,
   createTenantSesSettingsRepository,
@@ -43,6 +49,9 @@ import {
   createProductPriceHistoryRepository,
 } from '#adapters/db/coupon-repositories.js';
 import { createNotificationFanoutJobRepository } from '#adapters/db/notification-fanout-jobs.js';
+import { createPlatformAuditRepository } from '#adapters/db/platform-audit.js';
+import { reseedMarkers } from '#adapters/db/reseed-guard.js';
+import { runReseed } from '#adapters/db/reseed-run.js';
 import {
   createAvatarSourceReader,
   createCourseLessonRepository,
@@ -57,6 +66,7 @@ import {
   createDmConversationRepository,
   createDmConversationStateRepository,
   createDmMessageRepository,
+  createDmReportRepository,
   createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
@@ -67,6 +77,7 @@ import {
   createOrderRepository,
   createPaymentRefundRepository,
   createPostReactionRepository,
+  createMemberBlockRepository,
   createPostReportRepository,
   createPostRepository,
   createSpaceEventRepository,
@@ -95,6 +106,7 @@ import {
 import { createAuth, createAuthPort, type Auth } from '#adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '#adapters/auth/api-key-crypto.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
 import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
 import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
@@ -169,6 +181,9 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
+  ImpersonationSessionRepository,
+  ImpersonationTokenCodec,
+  TenantAuditEventRepository,
   ImportAuditEventRepository,
   ImportContentRepository,
   ImportUsersReader,
@@ -187,6 +202,8 @@ import type {
   MemberErasureRequestRepository,
   DmConversationRepository,
   DmConversationStateRepository,
+  DmReportRepository,
+  MemberBlockRepository,
   DmMessageRepository,
   MemberErasurePort,
   MemberEventRepository,
@@ -204,6 +221,8 @@ import type {
   OrderDetailRepository,
   PaymentRefundRepository,
   PostRepository,
+  PlatformAuditRepository,
+  PlatformDataResetPort,
   PostReportRepository,
   PurchaseRepository,
   ProductBatchReader,
@@ -235,6 +254,7 @@ import type {
   SesMarketingQuotaReader,
   SesOnboardingControlPlane,
   SnsVerifier,
+  SnsWebhookDeliveryRepository,
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
@@ -245,18 +265,22 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
 import {
+  isProductionEnvironment,
   ok,
+  parsePlatformOwnerEmails,
+  resettableEnvironment,
   type AppError,
   type KsefEnvironment,
+  type ResettableEnvironment,
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import { createCoalescedRunner } from './coalesced-runner.js';
-import { type Env, isLocalDevelopmentEnvironment, isProductionEnvironment } from './env.js';
+import { type Env, isLocalDevelopmentEnvironment } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
@@ -268,6 +292,18 @@ interface DevEndpoints {
 
 interface AuthConfig {
   googleEnabled: boolean;
+}
+
+/**
+ * Present only on disposable deployments. Production composes `undefined`, so
+ * the reset route is never registered and answers 404 for every caller.
+ */
+export interface PlatformResetAppDeps {
+  environment: ResettableEnvironment;
+  ownerEmails: readonly string[];
+  productionDatabaseFingerprint: string | null;
+  dataReset: PlatformDataResetPort;
+  audit: PlatformAuditRepository;
 }
 
 interface DeploymentIdentity {
@@ -333,6 +369,8 @@ export interface AppDeps {
   dmConversations: DmConversationRepository;
   dmMessages: DmMessageRepository;
   dmConversationStates: DmConversationStateRepository;
+  dmReports: DmReportRepository;
+  memberBlocks: MemberBlockRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   fanoutJobs: NotificationFanoutJobRepository;
@@ -348,6 +386,10 @@ export interface AppDeps {
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
+  impersonations: ImpersonationSessionRepository;
+  auditEvents: TenantAuditEventRepository;
+  impersonationTokens: ImpersonationTokenCodec;
+  secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
@@ -409,7 +451,9 @@ export interface AppDeps {
   platformHost: string | null;
   singleTenantMode: boolean;
   appBaseUrl: string;
+  customDomainTarget: string;
   devEndpoints: DevEndpoints;
+  platformReset?: PlatformResetAppDeps;
   authConfig: AuthConfig;
   authTrustedProxyHeader: string | null;
   marketing?: MarketingAppDeps;
@@ -429,6 +473,7 @@ export interface MarketingAppDeps {
   suppressions: SuppressionRepository;
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
+  snsDeliveries: SnsWebhookDeliveryRepository;
   platformTransactionalPool: PlatformTransactionalPool;
   documents: TenantDocumentRepository;
   idempotency: AutomationIdempotencyRepository;
@@ -464,6 +509,20 @@ export const selectDevEndpoints = (
       exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     }
     : { simulatedPayments: false, exposeMagicLinks: false };
+
+export const selectPlatformReset = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'PLATFORM_OWNER_EMAILS' | 'PRODUCTION_DATABASE_FINGERPRINT'>,
+  create: () => Pick<PlatformResetAppDeps, 'dataReset' | 'audit'>,
+): PlatformResetAppDeps | undefined => {
+  const environment = resettableEnvironment(env.APP_ENV);
+  if (environment === null || isProductionEnvironment(env)) return undefined;
+  return {
+    environment,
+    ownerEmails: parsePlatformOwnerEmails(env.PLATFORM_OWNER_EMAILS),
+    productionDatabaseFingerprint: env.PRODUCTION_DATABASE_FINGERPRINT ?? null,
+    ...create(),
+  };
+};
 
 export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
@@ -544,9 +603,8 @@ export const selectTrustedAuthOrigins = (input: {
   singleTenantMode: boolean;
   customDomains: readonly string[];
 }): string[] => {
-  const subdomainSchemes = input.baseDomain === 'localhost'
-    ? ['http', 'https'] as const
-    : ['https'] as const;
+  const local = input.baseDomain === 'localhost';
+  const subdomainSchemes = local ? ['http', 'https'] as const : ['https'] as const;
   return [
     input.appBaseUrl,
     ...(input.singleTenantMode
@@ -555,28 +613,54 @@ export const selectTrustedAuthOrigins = (input: {
           `${scheme}://*.${input.baseDomain}`,
           `${scheme}://*.${input.baseDomain}:${input.port}`,
         ])),
-    ...input.customDomains.map((domain) => `https://${domain}`),
+    ...input.customDomains.flatMap((domain) => [
+      `https://${domain}`,
+      ...(local ? [`http://${domain}:${input.port}`] : []),
+    ]),
   ];
+};
+
+const VERIFIED_CUSTOM_HOST_TTL_MS = 5_000;
+
+const VERIFIED_CUSTOM_HOST_MAX_ENTRIES = 512;
+
+/**
+ * Every authenticated API call dispatches through Better Auth, which re-checks the
+ * request host, so an uncached check doubles the `tenant_domains` lookups a custom
+ * domain pays per request. The window stays short enough that verifying or
+ * unverifying a domain still takes effect without a deploy.
+ */
+export const memoizeHostCheck = (
+  check: (host: string) => Promise<boolean>,
+  options: { ttlMs?: number; now?: () => number } = {},
+): ((host: string) => Promise<boolean>) => {
+  const ttlMs = options.ttlMs ?? VERIFIED_CUSTOM_HOST_TTL_MS;
+  const now = options.now ?? Date.now;
+  const entries = new Map<string, { verified: boolean; expiresAt: number }>();
+  return async (host) => {
+    const at = now();
+    const cached = entries.get(host);
+    if (cached !== undefined && cached.expiresAt > at) return cached.verified;
+    const verified = await check(host);
+    entries.delete(host);
+    while (entries.size >= VERIFIED_CUSTOM_HOST_MAX_ENTRIES) {
+      const oldest = entries.keys().next();
+      if (oldest.done) break;
+      entries.delete(oldest.value);
+    }
+    entries.set(host, { verified, expiresAt: at + ttlMs });
+    return verified;
+  };
 };
 
 export const selectDeploymentIdentity = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'APP_COMMIT_SHA' | 'DATABASE_URL'>,
-): DeploymentIdentity => {
-  let hostname: string | null = null;
-  try {
-    hostname = new URL(env.DATABASE_URL).hostname || null;
-  } catch {
-    hostname = null;
-  }
-  return {
-    environment: env.APP_ENV ?? 'unset',
-    production: isProductionEnvironment(env),
-    commit: env.APP_COMMIT_SHA ?? null,
-    databaseFingerprint: hostname === null
-      ? null
-      : createHash('sha256').update(hostname).digest('hex').slice(0, 12),
-  };
-};
+): DeploymentIdentity => ({
+  environment: env.APP_ENV ?? 'unset',
+  production: isProductionEnvironment(env),
+  commit: env.APP_COMMIT_SHA ?? null,
+  databaseFingerprint: databaseHostFingerprint(env.DATABASE_URL),
+});
 
 /**
  * Composition root — the ONLY place where env decides which adapters run.
@@ -664,6 +748,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const emailEvents = createEmailEventRepository(db);
   const emailSends = createEmailSendRepository(db);
   const schedulerRuns = createSchedulerRunRepository(db);
+  const impersonations = createImpersonationSessionRepository(db);
+  const auditEvents = createTenantAuditEventRepository(db);
   const consentEvidenceRetention = createConsentEvidenceRetentionRepository(db);
   const definitions = createConsentDefinitionRepository(db);
   const marketingConsents = createMarketingConsentRepository(db);
@@ -675,6 +761,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const suppressions = createSuppressionRepository(db);
   const unsubscribes = createUnsubscribeTokenRepository(db);
   const sesSettings = createTenantSesSettingsRepository(db);
+  const snsDeliveries = createSnsWebhookDeliveryRepository(db);
   const documents = createTenantDocumentRepository(db);
   const idempotency = createAutomationIdempotencyRepository(db);
   const marketingJobs = createMarketingJobRepository(db);
@@ -683,6 +770,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const production = isProductionEnvironment(env);
   const devEndpoints = selectDevEndpoints(env);
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
+  const platformReset = selectPlatformReset(env, () => ({
+    dataReset: { run: () => runReseed(db, reseedMarkers(env)) },
+    audit: createPlatformAuditRepository(db),
+  }));
   const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
   const dispatchAutoInvoices = () => dispatchAutoInvoiceJobs({
     jobs: autoInvoiceJobs,
@@ -796,6 +887,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
         emailVerified: true, image: null,
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
         memberDmOptOutAt: null,
+        memberLanguage: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
@@ -814,6 +906,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     emailVerified: true, image: null,
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
     return tenantUrl(tenantSlug, '/panel/marketing', {
@@ -878,8 +971,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
         )
       : ok({ purged: 0, tenantsProcessed: 0 });
+    const sweptViews = await sweepLapsedImpersonations({ impersonations, ids, clock });
     if (!marketing.ok) return marketing;
     if (!purged.ok) return purged;
+    if (!sweptViews.ok) return sweptViews;
     return marketing;
   };
   const realtimeBus = createRealtimeTransport({ env, db, logger });
@@ -919,6 +1014,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dispatchEmail,
     defaultTenantName: 'Together',
     google,
+    isVerifiedCustomHost: memoizeHostCheck(async (host) =>
+      (await tenantDomains.findByDomain(host))?.kind === 'custom'),
     validateSignUpConsent: async ({ request, accepted }) => {
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
@@ -985,6 +1082,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dmConversations: createDmConversationRepository(db),
     dmMessages: createDmMessageRepository(db),
     dmConversationStates: createDmConversationStateRepository(db),
+    dmReports: createDmReportRepository(db),
+    memberBlocks: createMemberBlockRepository(db),
     notifications: createNotificationRepository(db),
     fanoutJobs: createNotificationFanoutJobRepository(db),
     notificationChannels: [
@@ -1003,6 +1102,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
+    impersonations,
+    auditEvents,
+    impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
+    secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),
     importContent: createImportContentRepository(db),
     importUsersReader,
@@ -1082,7 +1185,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
+    customDomainTarget:
+      env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname,
     devEndpoints,
+    ...(platformReset === undefined ? {} : { platformReset }),
     authConfig: { googleEnabled: google !== null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketing: {
@@ -1099,6 +1205,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       suppressions,
       unsubscribes,
       sesSettings,
+      snsDeliveries,
       platformTransactionalPool,
       documents,
       idempotency,

@@ -23,12 +23,15 @@ import {
   marketingSuppressionQuerySchema,
   normalizeEmail,
   ok,
+  snsWebhookMessageType,
   tenantNotFound,
   unauthorized,
   validation,
   type AppError,
   type Identity,
   type Result,
+  type SnsWebhookDeliveryOutcome,
+  type SnsWebhookMessageType,
   type Tenant,
   type TenantApiKey,
 } from '#core/domain/index.js';
@@ -85,6 +88,7 @@ const apiIdentity = (tenant: Tenant): Identity => ({
   tenantId: tenant.id, tenantSlug: tenant.slug, tenantName: tenant.name,
   staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 const tokenCtx = (tenant: Tenant): Ctx => ({
@@ -391,7 +395,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
       confirmationBaseUrl: tenantUrl(authenticated.value.tenant.slug, '/marketing/confirm', deps),
     }, {
       definitions: marketing.value.definitions, consents: marketing.value.marketingConsents,
-      confirmations: marketing.value.confirmations, outbox: deps.emailOutbox, ids: deps.ids,
+      confirmations: marketing.value.confirmations, members: deps.members, tenants: deps.tenants,
+      outbox: deps.emailOutbox, ids: deps.ids,
       tokens: { nextToken: () => randomBytes(24).toString('base64url') },
       clock: deps.clock,
     }), 201);
@@ -527,26 +532,109 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
 
 };
 
+const snsDeliveryFailures: readonly SnsWebhookDeliveryOutcome[] = [
+  'signature_failed',
+  'unknown_token',
+  'confirm_failed',
+  'apply_failed',
+];
+
+const logSnsDelivery = (deps: AppDeps, input: {
+  tenantId: string | null;
+  outcome: SnsWebhookDeliveryOutcome | 'topic_mismatch';
+  messageType: SnsWebhookMessageType;
+  topicArn?: string;
+  errorMessage?: string;
+}): void => {
+  deps.logger.error([
+    '[ses-webhook]',
+    `outcome=${input.outcome}`,
+    `tenant=${input.tenantId ?? 'unresolved'}`,
+    `type=${input.messageType}`,
+    `topic=${input.topicArn ?? 'unknown'}`,
+    `error=${input.errorMessage ?? 'none'}`,
+  ].join(' '));
+};
+
+const snsDeliveryRecorder = (deps: AppDeps, marketing: MarketingAppDeps, c: Context) =>
+  async (input: {
+    tenantId: string | null;
+    outcome: SnsWebhookDeliveryOutcome;
+    messageType?: SnsWebhookMessageType;
+    topicArn?: string;
+    errorMessage?: string;
+  }): Promise<void> => {
+    const messageType = input.messageType
+      ?? snsWebhookMessageType(c.req.header('x-amz-sns-message-type'));
+    if (snsDeliveryFailures.includes(input.outcome)) {
+      logSnsDelivery(deps, { ...input, messageType });
+    }
+    if (input.tenantId === null) return;
+    await marketing.snsDeliveries.record(input.tenantId, {
+      tenantId: input.tenantId,
+      receivedAt: deps.clock.nowIso(),
+      messageType,
+      outcome: input.outcome,
+      errorMessage: input.errorMessage ?? null,
+      sourceIp: c.req.header('x-forwarded-for') ?? null,
+      userAgent: c.req.header('user-agent') ?? null,
+    });
+  };
+
 export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   app.post('/api/webhooks/ses/:webhookToken', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
+    const recordDelivery = snsDeliveryRecorder(deps, marketing.value, c);
     const settings = await marketing.value.sesSettings.findByWebhookToken(c.req.param('webhookToken'));
-    if (settings === null) return response(err(appError('not_found', 'Unknown SES webhook')));
+    if (settings === null) {
+      await recordDelivery({
+        tenantId: null,
+        outcome: 'unknown_token',
+        errorMessage: 'No tenant owns this SES webhook token',
+      });
+      return response(err(appError('not_found', 'Unknown SES webhook')));
+    }
     const credentials = await marketing.value.marketingCredentials.resolve(settings.tenantId);
     if (!credentials.ok) return response(credentials);
     const rawBody = await c.req.text();
     const verified = await marketing.value.sns.verify({
       rawBody, headers: Object.fromEntries(c.req.raw.headers.entries()), region: credentials.value.region,
     });
-    if (!verified.ok) return response(verified);
+    if (!verified.ok) {
+      await recordDelivery({
+        tenantId: settings.tenantId, outcome: 'signature_failed', errorMessage: verified.error.message,
+      });
+      return response(verified);
+    }
     if (verified.value.topicArn !== settings.snsTopicArn) {
+      logSnsDelivery(deps, {
+        tenantId: settings.tenantId,
+        outcome: 'topic_mismatch',
+        messageType: verified.value.type,
+        topicArn: verified.value.topicArn,
+        errorMessage: `Tenant is subscribed to ${settings.snsTopicArn ?? 'no topic'}`,
+      });
       return response(ok({ received: true }));
     }
     if (verified.value.type === 'SubscriptionConfirmation') {
       if (verified.value.subscribeUrl === null) return response(err(validation('SNS confirmation URL is missing')));
       const confirmed = await marketing.value.sns.confirmSubscription({ subscribeUrl: verified.value.subscribeUrl, region: credentials.value.region });
-      return confirmed.ok ? response(ok({ received: true })) : response(ok({ received: true }));
+      if (!confirmed.ok) {
+        await recordDelivery({
+          tenantId: settings.tenantId, outcome: 'confirm_failed', messageType: verified.value.type,
+          topicArn: verified.value.topicArn, errorMessage: confirmed.error.message,
+        });
+        return response(ok({ received: true }));
+      }
+      await marketing.value.sesSettings.upsert(settings.tenantId, {
+        ...settings, snsSubscriptionConfirmedAt: deps.clock.nowIso(),
+      });
+      await recordDelivery({
+        tenantId: settings.tenantId, outcome: 'verified',
+        messageType: verified.value.type, topicArn: verified.value.topicArn,
+      });
+      return response(ok({ received: true }));
     }
     const message: unknown = (() => { try { return JSON.parse(verified.value.message); } catch { return null; } })();
     const applyEvent = async (event: Parameters<typeof applyVerifiedSesEvent>[1]) => {
@@ -562,6 +650,13 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       if (applied.ok && settings.webhookVerifiedAt === null) {
         await marketing.value.sesSettings.upsert(settings.tenantId, { ...settings, webhookVerifiedAt: deps.clock.nowIso() });
       }
+      await recordDelivery({
+        tenantId: settings.tenantId,
+        outcome: applied.ok ? 'recorded' : 'apply_failed',
+        messageType: verified.value.type,
+        topicArn: verified.value.topicArn,
+        ...(applied.ok ? {} : { errorMessage: applied.error.message }),
+      });
       return response(ok({ received: true }));
     };
     const configurationSetEvent = sesConfigurationSetEventSchema.safeParse(message);
@@ -602,9 +697,14 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       return applyEvent(event);
     }
     if (!delivery.success) {
-      return sesEventDiscriminatorSchema.safeParse(message).success
-        ? response(ok({ received: true }))
-        : response(err(validation('Malformed SES notification', delivery.error.flatten())));
+      if (!sesEventDiscriminatorSchema.safeParse(message).success) {
+        return response(err(validation('Malformed SES notification', delivery.error.flatten())));
+      }
+      await recordDelivery({
+        tenantId: settings.tenantId, outcome: 'recorded',
+        messageType: verified.value.type, topicArn: verified.value.topicArn,
+      });
+      return response(ok({ received: true }));
     }
     const event = delivery.data.notificationType === 'Bounce'
       ? {
@@ -696,6 +796,8 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     }, {
       ...unsubscribeDeps(deps, marketing.value),
       confirmations: marketing.value.confirmations,
+      members: deps.members,
+      tenants: deps.tenants,
       outbox: deps.emailOutbox,
       tokens: { nextToken: () => randomBytes(24).toString('base64url') },
     });

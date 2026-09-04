@@ -24,6 +24,8 @@ import type {
 } from '../ports.js';
 import { resolveStorageConfiguration, storageAssetExpiresAt } from './storage-assets.js';
 
+const BRANDING_ASSET_KINDS: readonly ImageAssetKind[] = ['logo', 'logo-dark', 'favicon', 'share-image'];
+
 const IMAGE_ASSET_UPLOAD_TTL_SECONDS = 15 * 60;
 export const IMAGE_ASSET_GET_TTL_SECONDS = 60 * 60;
 
@@ -176,7 +178,7 @@ export const beginBrandingAssetUpload = async (
 ): Promise<Result<ImageAssetUploadStart, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
-  return beginUpload(tenant.value, ['logo', 'favicon'], input, deps);
+  return beginUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
 };
 
 export const completeBrandingAssetUpload = async (
@@ -186,7 +188,7 @@ export const completeBrandingAssetUpload = async (
 ): Promise<Result<{ url: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
-  return completeUpload(tenant.value, ['logo', 'favicon'], input, deps);
+  return completeUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
 };
 
 export const getPublicImageAssetUrl = async (

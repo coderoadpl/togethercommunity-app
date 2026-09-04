@@ -5,6 +5,7 @@ import {
   GetIdentityDkimAttributesCommand,
   GetIdentityVerificationAttributesCommand,
   GetSendQuotaCommand,
+  ListIdentitiesCommand,
   SendEmailCommand,
   SESClient,
   SetIdentityFeedbackForwardingEnabledCommand,
@@ -23,8 +24,17 @@ import {
   type Subscription,
 } from '@aws-sdk/client-sns';
 
-import { integrationUnavailable, ok, type AppError, type Result } from '#core/domain/index.js';
+import {
+  err,
+  integrationUnavailable,
+  normalizeSesWebhookEndpoint,
+  ok,
+  type AppError,
+  type Result,
+} from '#core/domain/index.js';
 import type {
+  SesAccountIdentities,
+  SesAccountIdentity,
   SesDkimRecord,
   SesMarketingCredentials,
   SesOnboardingControlPlane,
@@ -66,12 +76,97 @@ const dkimRecords = (identity: string, tokens: readonly string[] | undefined): S
 const isConfigurationSetMissing = (cause: unknown): boolean =>
   errorName(cause) === 'ConfigurationSetDoesNotExistException';
 
+const isAccessDenied = (cause: unknown): boolean => {
+  const name = errorName(cause);
+  return name === 'AccessDenied' || name === 'AccessDeniedException';
+};
+
+const identityAttributeBatchSize = 100;
+const SES_IDENTITY_LIMIT = 500;
+
+interface SesCallFailure {
+  deniedAction: string | null;
+  cause: unknown;
+}
+
+const attempt = async <T>(
+  action: string,
+  run: () => Promise<T>,
+): Promise<Result<T, SesCallFailure>> => {
+  try {
+    return ok(await run());
+  } catch (cause) {
+    return err({ deniedAction: isAccessDenied(cause) ? action : null, cause });
+  }
+};
+
+const listAllIdentities = async (
+  ses: SESClient,
+): Promise<Result<string[], SesCallFailure>> => {
+  const identities: string[] = [];
+  let nextToken: string | undefined;
+  do {
+    const page = await attempt('ses:ListIdentities', () => ses.send(new ListIdentitiesCommand({
+      MaxItems: identityAttributeBatchSize,
+      ...(nextToken === undefined ? {} : { NextToken: nextToken }),
+    })));
+    if (!page.ok) return page;
+    identities.push(...(page.value.Identities ?? []));
+    nextToken = page.value.NextToken;
+  } while (nextToken !== undefined && nextToken !== '' && identities.length < SES_IDENTITY_LIMIT);
+  return ok(identities.slice(0, SES_IDENTITY_LIMIT));
+};
+
+const describeIdentities = async (
+  ses: SESClient,
+  identities: readonly string[],
+): Promise<Result<SesAccountIdentity[], SesCallFailure>> => {
+  const described: SesAccountIdentity[] = [];
+  for (let offset = 0; offset < identities.length; offset += identityAttributeBatchSize) {
+    const batch = identities.slice(offset, offset + identityAttributeBatchSize);
+    const [verification, dkim] = await Promise.all([
+      attempt('ses:GetIdentityVerificationAttributes', () =>
+        ses.send(new GetIdentityVerificationAttributesCommand({ Identities: [...batch] }))),
+      attempt('ses:GetIdentityDkimAttributes', () =>
+        ses.send(new GetIdentityDkimAttributesCommand({ Identities: [...batch] }))),
+    ]);
+    if (!verification.ok) return verification;
+    if (!dkim.ok) return dkim;
+    described.push(...batch.map((identity) => ({
+      identity,
+      kind: identity.includes('@') ? 'email' as const : 'domain' as const,
+      verified: verification.value.VerificationAttributes?.[identity]?.VerificationStatus === 'Success',
+      dkimVerified: dkim.value.DkimAttributes?.[identity]?.DkimVerificationStatus === 'Success',
+    })));
+  }
+  return ok(described);
+};
+
+const identityListFailure = (failure: SesCallFailure): Result<SesAccountIdentities, AppError> =>
+  failure.deniedAction === null
+    ? failed('Could not list the SES identities of this AWS account', failure.cause)
+    : ok({ identities: [], accessDeniedAction: failure.deniedAction });
+
 const subscriptionArnState = (arn: string | undefined): { confirmed: boolean; arn: string | null } => {
   const confirmed = arn?.startsWith('arn:') === true;
   return {
     confirmed,
     arn: confirmed ? arn : null,
   };
+};
+
+const findHttpsSubscription = (
+  items: readonly Subscription[],
+  endpoints: readonly (string | null)[],
+): Subscription | undefined => {
+  const https = items.filter((item) => item.Protocol === 'https' && item.Endpoint !== undefined);
+  for (const endpoint of endpoints) {
+    if (endpoint === null) continue;
+    const normalized = normalizeSesWebhookEndpoint(endpoint);
+    const match = https.find((item) => normalizeSesWebhookEndpoint(item.Endpoint ?? '') === normalized);
+    if (match !== undefined) return match;
+  }
+  return undefined;
 };
 
 const configurationSetExists = async (
@@ -154,6 +249,19 @@ export const createSesOnboardingControlPlane = (
   factory: (credentials: SesMarketingCredentials) => { ses: SESClient; sns: SNSClient } = clientsFor,
   subscriptions: SnsSubscriptionOperations = snsSubscriptionOperations,
 ): SesOnboardingControlPlane => ({
+  listIdentities: async (credentials) => {
+    try {
+      const ses = factory(credentials).ses;
+      const listed = await listAllIdentities(ses);
+      if (!listed.ok) return identityListFailure(listed.error);
+      const described = await describeIdentities(ses, listed.value);
+      return described.ok
+        ? ok({ identities: described.value, accessDeniedAction: null })
+        : identityListFailure(described.error);
+    } catch (cause) {
+      return failed('Could not list the SES identities of this AWS account', cause);
+    }
+  },
   startDomainIdentity: async (credentials, identity) => {
     try {
       const output = await factory(credentials).ses.send(new VerifyDomainDkimCommand({ Domain: identity }));
@@ -224,17 +332,22 @@ export const createSesOnboardingControlPlane = (
   ensureSubscription: async (credentials, input) => {
     try {
       const sns = factory(credentials).sns;
-      const existing = (await subscriptions.list(sns, input.topicArn))
-        .find((subscription) => subscription.Protocol === 'https' && subscription.Endpoint === input.endpoint);
+      const existing = findHttpsSubscription(
+        await subscriptions.list(sns, input.topicArn),
+        [input.endpoint],
+      );
       if (existing !== undefined) {
-        return ok(subscriptionArnState(existing.SubscriptionArn));
+        return ok({
+          ...subscriptionArnState(existing.SubscriptionArn),
+          endpoint: existing.Endpoint ?? input.endpoint,
+        });
       }
       const created = await subscriptions.subscribe(sns, {
         TopicArn: input.topicArn,
         Protocol: 'https',
         Endpoint: input.endpoint,
       });
-      return ok(subscriptionArnState(created.SubscriptionArn));
+      return ok({ ...subscriptionArnState(created.SubscriptionArn), endpoint: input.endpoint });
     } catch (cause) {
       return failed('Could not subscribe the Together webhook to SNS', cause);
     }
@@ -272,8 +385,10 @@ export const createSesOnboardingControlPlane = (
       } catch (cause) {
         if (!isConfigurationSetMissing(cause)) throw cause;
       }
-      const subscription = (await subscriptions.list(sns, input.topicArn))
-        .find((item) => item.Protocol === 'https' && item.Endpoint === input.endpoint);
+      const subscription = findHttpsSubscription(
+        await subscriptions.list(sns, input.topicArn),
+        [input.subscribedEndpoint, input.endpoint],
+      );
       return ok({
         configurationSetReady,
         eventDestinationReady,

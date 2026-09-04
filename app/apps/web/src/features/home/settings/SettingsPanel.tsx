@@ -13,6 +13,7 @@ import {
   OutlinedInput,
   Select,
   Stack,
+  Switch,
   Tab,
   Tabs,
   Typography,
@@ -22,6 +23,11 @@ import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-rou
 
 import {
   accentColorSchema,
+  DEFAULT_LANGUAGE,
+  languageOrDefault,
+  LANGUAGES,
+  SHARE_IMAGE_RECOMMENDED_HEIGHT,
+  SHARE_IMAGE_RECOMMENDED_WIDTH,
   SOCIAL_LINK_LABEL_MAX_LENGTH,
   SOCIAL_LINKS_MAX_COUNT,
   TENANT_NAME_MAX_LENGTH,
@@ -29,7 +35,7 @@ import {
   TENANT_OG_TITLE_MAX_LENGTH,
   tenantSocialLinkSchema,
 } from '#core/domain/index.js';
-import type { ExemptionBasisKind, TenantSocialLink } from '#core/domain/index.js';
+import type { ExemptionBasisKind, Language, TenantSocialLink } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -75,6 +81,7 @@ const settingsSectionFromHash = (hash: string): SettingsSection => {
     case 'support':
     case 'public-access':
     case 'invoice':
+    case 'domains':
     default:
       return 'company';
   }
@@ -133,6 +140,56 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setUrl(event.target.value)}
         />
       </FormControl>
+      {update.isError ? <Alert severity="error">{localizePanelError(update.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
+const EmailLanguageSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [draft, setDraft] = useState<Language | null>(null);
+  const update = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+  const stored = settings.data?.settings.defaultLanguage ?? null;
+  const value = draft ?? stored ?? DEFAULT_LANGUAGE;
+  const unavailable = !settings.isSuccess || update.isPending;
+  return (
+    <SectionCard
+      title={t.emailLanguageSettings.heading}
+      description={t.emailLanguageSettings.intro}
+      actions={canEdit ? (
+        <Button type="submit" variant="contained" disabled={unavailable}>
+          {t.emailLanguageSettings.save}
+        </Button>
+      ) : undefined}
+      onSubmit={(event) => {
+        event.preventDefault();
+        update.mutate({ defaultLanguage: value });
+      }}
+    >
+      <FormControl fullWidth>
+        <FormLabel id="tenant-default-language-label">{t.emailLanguageSettings.label}</FormLabel>
+        <Select
+          labelId="tenant-default-language-label"
+          data-testid="tenant-default-language"
+          value={value}
+          disabled={!canEdit || unavailable}
+          onChange={(event) => setDraft(languageOrDefault(event.target.value))}
+        >
+          {LANGUAGES.map((option) => (
+            <MenuItem key={option} value={option}>{t.emailLanguageSettings.options[option]}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      {settings.isError ? (
+        <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
+      ) : null}
       {update.isError ? <Alert severity="error">{localizePanelError(update.error, t)}</Alert> : null}
     </SectionCard>
   );
@@ -486,12 +543,48 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
   );
 };
 
+const DirectMessagesPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+      await queryClient.invalidateQueries(actions.memberNavigationInvalidates());
+    },
+  });
+  const enabled = settings.data?.settings.directMessagesEnabled !== false;
+
+  return (
+    <SectionCard title={t.directMessages.heading} description={t.directMessages.intro}>
+      <FormControlLabel
+        control={
+          <Switch
+            checked={enabled}
+            disabled={!canEdit || !settings.isSuccess || updateSettings.isPending}
+            slotProps={{ input: { 'aria-label': t.directMessages.toggleLabel } }}
+            data-testid="direct-messages-toggle"
+            onChange={(event) => updateSettings.mutate({ directMessagesEnabled: event.target.checked })}
+          />
+        }
+        label={t.directMessages.toggleLabel}
+      />
+      <FormHelperText data-testid="direct-messages-status">
+        {updateSettings.isPending ? t.common.saving : updateSettings.isSuccess ? t.common.saved : ' '}
+      </FormHelperText>
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
 const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const settings = useQuery(actions.tenantSettings);
   const [name, setName] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoDarkUrl, setLogoDarkUrl] = useState<string | null>(null);
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
   const [ogTitle, setOgTitle] = useState<string | null>(null);
@@ -503,6 +596,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
 
   const nameValue = name ?? settings.data?.settings.name ?? '';
   const logoValue = logoUrl ?? settings.data?.settings.logoUrl ?? '';
+  const logoDarkValue = logoDarkUrl ?? settings.data?.settings.logoDarkUrl ?? '';
   const accentValue = accentColor ?? settings.data?.settings.accentColor ?? '';
   const faviconValue = faviconUrl ?? settings.data?.settings.faviconUrl ?? '';
   const ogTitleValue = ogTitle ?? settings.data?.settings.ogTitle ?? '';
@@ -546,6 +640,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       name: nameValue.trim(),
       socialLinks: normalizedSocialLinks,
       logoUrl: logoValue.trim() === '' ? null : logoValue.trim(),
+      logoDarkUrl: logoDarkValue.trim() === '' ? null : logoDarkValue.trim(),
       accentColor: accent === '' ? null : accent,
       faviconUrl: faviconValue.trim() === '' ? null : faviconValue.trim(),
       ogTitle: ogTitleValue.trim() === '' ? null : ogTitleValue.trim(),
@@ -591,12 +686,28 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <ImageAssetField
             id="branding-logo-url"
             label={t.branding.logoLabel}
+            hint={t.branding.logoHint}
             placeholder={t.branding.logoPlaceholder}
             value={logoValue}
             onChange={setLogoUrl}
             kind="logo"
             disabled={disabled}
             testId="branding-logo-url"
+            previewBackground="light"
+            removable
+          />
+          <ImageAssetField
+            id="branding-logo-dark-url"
+            label={t.branding.logoDarkLabel}
+            hint={t.branding.logoDarkHint}
+            placeholder={t.branding.logoPlaceholder}
+            value={logoDarkValue}
+            onChange={setLogoDarkUrl}
+            kind="logo-dark"
+            disabled={disabled}
+            testId="branding-logo-dark-url"
+            previewBackground="dark"
+            removable
           />
           <FormControl fullWidth error={accentError}>
             <FormLabel htmlFor="branding-accent-color">{t.branding.accentLabel}</FormLabel>
@@ -740,18 +851,19 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {t.branding.ogDescriptionHint}
             </Typography>
           </FormControl>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="branding-og-image-url">{t.branding.ogImageLabel}</FormLabel>
-            <OutlinedInput
-              id="branding-og-image-url"
-              type="url"
-              value={ogImageValue}
-              disabled={disabled}
-              onChange={(event) => setOgImageUrl(event.target.value)}
-              inputProps={{ 'data-testid': 'branding-og-image-url' }}
-            />
-            <Typography variant="caption" component="p">{t.branding.ogImageHint}</Typography>
-          </FormControl>
+          <ImageAssetField
+            id="branding-og-image-url"
+            label={t.branding.ogImageLabel}
+            hint={t.branding.ogImageHint({
+              width: SHARE_IMAGE_RECOMMENDED_WIDTH,
+              height: SHARE_IMAGE_RECOMMENDED_HEIGHT,
+            })}
+            value={ogImageValue}
+            onChange={setOgImageUrl}
+            kind="share-image"
+            disabled={disabled}
+            testId="branding-og-image-url"
+          />
         </>
       )}
       {settings.isError ? (
@@ -921,6 +1033,68 @@ const SecurityPanel = () => {
   );
 };
 
+const TenantDomainsPanel = () => {
+  const t = useTranslations();
+  const routing = useQuery(actions.tenantRouting);
+
+  if (routing.isError) {
+    return (
+      <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
+        <StatusView
+          surface={false}
+          state={{
+            kind: 'error',
+            message: localizePanelError(routing.error, t),
+            retry: { label: t.common.retry, onRetry: () => void routing.refetch() },
+          }}
+        />
+      </SectionCard>
+    );
+  }
+
+  if (!routing.isSuccess) {
+    return (
+      <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
+        <StatusView
+          surface={false}
+          state={{ kind: 'loading', label: t.common.loading }}
+          data-testid="tenant-domains-loading"
+        />
+      </SectionCard>
+    );
+  }
+
+  const { customDomains, tenantHost, customDomainTarget } = routing.data.routing;
+
+  return (
+    <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
+      <Stack useFlexGap spacing="1rem" data-testid="tenant-domains">
+        <Stack useFlexGap spacing="0.3rem">
+          <Eyebrow>{t.tenantDomains.workspaceAddress}</Eyebrow>
+          <Typography variant="body2">{tenantHost}</Typography>
+        </Stack>
+        <Stack useFlexGap spacing="0.3rem">
+          <Eyebrow>{t.tenantDomains.customDomains}</Eyebrow>
+          {customDomains.length === 0 ? (
+            <Typography variant="body2">{t.tenantDomains.none}</Typography>
+          ) : customDomains.map((entry) => (
+            <Stack key={entry.domain} useFlexGap spacing="0.2rem" data-testid={`tenant-domain-${entry.domain}`}>
+              <Typography variant="body2">
+                {entry.domain} · {entry.verified ? t.tenantDomains.verified : t.tenantDomains.pending}
+              </Typography>
+              {entry.verified ? null : (
+                <Typography variant="caption">
+                  {t.tenantDomains.dnsInstruction({ domain: entry.domain, target: customDomainTarget })}
+                </Typography>
+              )}
+            </Stack>
+          ))}
+        </Stack>
+      </Stack>
+    </SectionCard>
+  );
+};
+
 const BuildInfoPanel = () => {
   const t = useTranslations();
   const health = useQuery(actions.health);
@@ -1011,11 +1185,20 @@ export const SettingsPanel = () => {
           <Box id="support" sx={{ scrollMarginTop: '1rem' }}>
             <SupportSettingsPanel canEdit={canEdit} />
           </Box>
+          <Box id="email-language" sx={{ scrollMarginTop: '1rem' }}>
+            <EmailLanguageSettingsPanel canEdit={canEdit} />
+          </Box>
           <Box id="public-access" sx={{ scrollMarginTop: '1rem' }}>
             <PublicAccessPanel canEdit={canEdit} />
           </Box>
+          <Box id="direct-messages" sx={{ scrollMarginTop: '1rem' }}>
+            <DirectMessagesPanel canEdit={canEdit} />
+          </Box>
           <Box id="invoice" sx={{ scrollMarginTop: '1rem' }}>
             <InvoiceSettingsPanel canEdit={canEdit} />
+          </Box>
+          <Box id="domains" sx={{ scrollMarginTop: '1rem' }}>
+            <TenantDomainsPanel />
           </Box>
         </Stack>
       ) : null}

@@ -16,6 +16,8 @@ const headingFor = (error: unknown, t: Messages): string => {
       return t.errors.headingForbidden;
     case 'banned':
       return t.errors.headingForbidden;
+    case 'impersonation_read_only':
+      return t.errors.headingImpersonationReadOnly;
     case 'not_found':
       return t.errors.headingNotFound;
     case 'tenant_not_found':

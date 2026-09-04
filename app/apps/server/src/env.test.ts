@@ -1,17 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { isProductionEnvironment } from '#core/domain/index.js';
+
 import {
   createMultipleTenantsReporter,
+  memoizeHostCheck,
   selectAuthTrustedProxyHeader,
   selectDeploymentAuthOrigins,
   selectDeploymentIdentity,
   selectDevEndpoints,
   selectDevSinkPurge,
+  selectPlatformReset,
   selectTenantCreationMode,
   selectTenantRouting,
   selectTrustedAuthOrigins,
 } from './composition.js';
-import { envSchema, isLocalDevelopmentEnvironment, isProductionEnvironment } from './env.js';
+import { envSchema, isLocalDevelopmentEnvironment } from './env.js';
 
 const productionEnvironment = (overrides: Record<string, string | undefined> = {}) => ({
   NODE_ENV: 'production',
@@ -301,6 +305,23 @@ describe('tenant routing mode', () => {
 
     expect(write).toHaveBeenCalledTimes(1);
   });
+
+  it('reuses a host check within the cache window and re-runs it after expiry', async () => {
+    const check = vi.fn(async () => true);
+    let clock = 1_000;
+    const memoized = memoizeHostCheck(check, { ttlMs: 100, now: () => clock });
+
+    expect(await memoized('kurs.coderoad.example')).toBe(true);
+    expect(await memoized('kurs.coderoad.example')).toBe(true);
+    expect(check).toHaveBeenCalledTimes(1);
+
+    expect(await memoized('inna.coderoad.example')).toBe(true);
+    expect(check).toHaveBeenCalledTimes(2);
+
+    clock += 100;
+    expect(await memoized('kurs.coderoad.example')).toBe(true);
+    expect(check).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('deployed auth origin policy', () => {
@@ -323,7 +344,7 @@ describe('deployed auth origin policy', () => {
     expect(envSchema.safeParse({ APP_BASE_URL: 'https://together.example' }).success).toBe(true);
   });
 
-  it('allows HTTP tenant origins only on localhost and keeps custom domains HTTPS-only', () => {
+  it('allows HTTP tenant and custom-domain origins only on localhost', () => {
     const localOrigins = selectTrustedAuthOrigins({
       appBaseUrl: 'http://localhost:48730',
       baseDomain: 'localhost',
@@ -342,7 +363,8 @@ describe('deployed auth origin policy', () => {
     expect(localOrigins).toContain('http://*.localhost');
     expect(localOrigins).toContain('https://*.localhost');
     expect(localOrigins).toContain('https://courses.example');
-    expect(localOrigins).not.toContain('http://courses.example');
+    expect(localOrigins).toContain('http://courses.example:48730');
+    expect(deployedOrigins).toContain('https://courses.example');
     expect(deployedOrigins.some((origin) => origin.startsWith('http://'))).toBe(false);
   });
 });
@@ -515,6 +537,53 @@ describe('development sink policy', () => {
 
     expect(selectDevSinkPurge(env, create)).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('platform data reset policy', () => {
+  const adapters = () => ({
+    dataReset: { run: async () => ({ wiped: [] }) },
+    audit: { record: async () => undefined },
+  });
+
+  it.each([
+    ['production', { NODE_ENV: 'production', APP_ENV: 'production' }],
+    ['self-host', { NODE_ENV: 'production', APP_ENV: 'self-host' }],
+    ['unnamed production', { NODE_ENV: 'production', APP_ENV: undefined }],
+    ['local development', { NODE_ENV: 'development', APP_ENV: 'development' }],
+  ] as const)('composes nothing on %s', (_name, environment) => {
+    const create = vi.fn(adapters);
+
+    expect(selectPlatformReset(
+      { ...environment, PLATFORM_OWNER_EMAILS: 'owner@example.test', PRODUCTION_DATABASE_FINGERPRINT: undefined },
+      create,
+    )).toBeUndefined();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each(['staging', 'preview'] as const)('composes the reset surface on %s', (appEnv) => {
+    const composed = selectPlatformReset(
+      {
+        NODE_ENV: 'production',
+        APP_ENV: appEnv,
+        PLATFORM_OWNER_EMAILS: 'Owner@Example.test',
+        PRODUCTION_DATABASE_FINGERPRINT: 'deadbeef1234',
+      },
+      adapters,
+    );
+
+    expect(composed).toMatchObject({
+      environment: appEnv,
+      ownerEmails: ['owner@example.test'],
+      productionDatabaseFingerprint: 'deadbeef1234',
+    });
+  });
+
+  it('composes an empty owner allowlist when none is configured', () => {
+    expect(selectPlatformReset(
+      { NODE_ENV: 'production', APP_ENV: 'staging', PLATFORM_OWNER_EMAILS: undefined, PRODUCTION_DATABASE_FINGERPRINT: undefined },
+      adapters,
+    )).toMatchObject({ ownerEmails: [], productionDatabaseFingerprint: null });
   });
 });
 

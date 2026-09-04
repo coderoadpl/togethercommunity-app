@@ -25,6 +25,7 @@ import {
   type AppError,
   type Discussion,
   type DiscussionPost,
+  type Identity,
   type Language,
   type Notification,
   type Post,
@@ -44,6 +45,7 @@ import type {
   CourseRepository,
   DiscussionLinkPort,
   IdGenerator,
+  MemberBlockRepository,
   NotificationChannelPort,
   NotificationFanoutJobRepository,
   NotificationRepository,
@@ -53,6 +55,7 @@ import type {
   SpaceRepository,
   SpaceSubscriptionRepository,
   TenantAccessReader,
+  TenantRepository,
   ThreadSubscriptionRepository,
 } from '../ports.js';
 import { avatarUrlForAuthor, avatarUrlsFor, type AvatarUrlMap } from './avatar.js';
@@ -66,6 +69,7 @@ import {
   requireTenant,
   spaceContextAccess,
 } from './community-access.js';
+import { tenantEmailLanguage } from './email-language.js';
 import { openHeuristicReport } from './moderation-heuristics.js';
 import {
   buildNotificationFanoutJob,
@@ -78,6 +82,7 @@ export interface CommunityDeps {
   reports: PostReportRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
+  memberBlocks: MemberBlockRepository;
   spaces: SpaceRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
@@ -87,6 +92,7 @@ export interface CommunityDeps {
   lessons: CourseLessonRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
@@ -131,13 +137,7 @@ export const resolveAuthorDisplay = (
   return fromEmail.length > 0 ? fromEmail : PARTICIPANT_DISPLAY[language];
 };
 
-const sanitizeBody = (body: string): string =>
-  body
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\r\n/g, '\n')
-    .trim();
+const normalizeBody = (body: string): string => body.replace(/\r\n/g, '\n').trim();
 
 const contextAccess = async (
   ctx: Ctx,
@@ -181,6 +181,7 @@ const notifyLessonQuestionStaff = async (
   if (staff.length === 0) return ok(undefined);
   const context = await threadContextInfo(tenantId, post, deps, tenant.tenantSlug);
   const authorAvatarUrl = await avatarUrlForAuthor(tenantId, post.authorUserId, deps);
+  const tenantLanguage = await tenantEmailLanguage(tenantId, deps);
   for (const recipient of staff) {
     if (recipient.userId === post.authorUserId) continue;
     await deps.threadSubscriptions.upsert(tenantId, {
@@ -216,7 +217,7 @@ const notifyLessonQuestionStaff = async (
         tenantName: tenant.tenantName,
         contextName: context.contextName,
         contextUrl: context.contextUrl,
-        language: DEFAULT_LANGUAGE,
+        language: recipient.language ?? tenantLanguage,
       });
       if (!delivered.ok) return delivered;
     }
@@ -224,14 +225,17 @@ const notifyLessonQuestionStaff = async (
   return ok(undefined);
 };
 
-const resolvePostAuthorDisplay = async (ctx: Ctx, deps: CommunityDeps): Promise<string> => {
-  const tenantId = ctx.identity.tenantId;
-  if (tenantId !== null && ctx.identity.memberId !== null) {
-    const member = await deps.tenantAccess.findMember(tenantId, ctx.identity.userId);
+export const resolveActorDisplay = async (
+  identity: Identity,
+  deps: Pick<CommunityDeps, 'tenantAccess'>,
+): Promise<string> => {
+  const tenantId = identity.tenantId;
+  if (tenantId !== null && identity.memberId !== null) {
+    const member = await deps.tenantAccess.findMember(tenantId, identity.userId);
     const override = member?.displayName?.trim() ?? '';
     if (override.length > 0) return override;
   }
-  return resolveAuthorDisplay(ctx.identity);
+  return resolveAuthorDisplay(identity);
 };
 
 const postRateLimitExceeded = async (
@@ -259,8 +263,8 @@ export const createPost = async (
   if (!parsed.success) return err(validation('Invalid post payload', parsed.error.flatten()));
   const access = await contextAccess(ctx, parsed.data, deps);
   if (!access.ok) return access;
-  const body = sanitizeBody(parsed.data.body);
-  if (body.length === 0) return err(validation('Post body is required after sanitization'));
+  const body = normalizeBody(parsed.data.body);
+  if (body.length === 0) return err(validation('Post body cannot be blank'));
   let parentPost: Post | null = null;
   let rootPostId = deps.ids.nextId();
   if (parsed.data.parentPostId !== undefined) {
@@ -288,7 +292,7 @@ export const createPost = async (
     parentPostId: parentPost?.id ?? null,
     rootPostId,
     authorUserId: actor.value.userId,
-    authorDisplay: await resolvePostAuthorDisplay(ctx, deps),
+    authorDisplay: await resolveActorDisplay(ctx.identity, deps),
     authorIsStaff: ctx.identity.staffRole !== null,
     body,
     createdAt: now,
@@ -405,8 +409,8 @@ export const editPost = async (
   const access = await contextAccess(ctx, post, deps);
   if (!access.ok) return access;
   if (post.authorUserId !== actor.value.userId) return err(forbidden('Only the author can edit this post'));
-  const body = sanitizeBody(parsed.data.body);
-  if (body.length === 0) return err(validation('Post body is required after sanitization'));
+  const body = normalizeBody(parsed.data.body);
+  if (body.length === 0) return err(validation('Post body cannot be blank'));
   const now = deps.clock.nowIso();
   if (await postRateLimitExceeded(ctx, actor.value, now, deps)) {
     return err(rateLimited('You are posting too quickly — take a short break'));
@@ -542,6 +546,7 @@ export const listNotifications = async (
     await deps.notifications.listForRecipient(actor.value.tenantId, {
       recipientUserId: actor.value.userId,
       limit: parsed.data.limit,
+      excludeDms: ctx.impersonation !== undefined,
       ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
     }),
   );
@@ -584,5 +589,9 @@ export const unreadNotificationCount = async (
 ): Promise<Result<{ unread: number }, AppError>> => {
   const actor = requireActor(ctx, 'notification:read');
   if (!actor.ok) return actor;
-  return ok({ unread: await deps.notifications.unreadCount(actor.value.tenantId, actor.value.userId) });
+  return ok({
+    unread: await deps.notifications.unreadCount(actor.value.tenantId, actor.value.userId, {
+      excludeDms: ctx.impersonation !== undefined,
+    }),
+  });
 };

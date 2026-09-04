@@ -71,6 +71,8 @@ export const NotificationBell = ({
   const t = useTranslations();
   const { language } = useLanguage();
   const navigateToTarget = useNotificationNavigation();
+  const me = useQuery(actions.me);
+  const impersonating = (me.data?.impersonation ?? null) !== null;
   const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const { streamless, reportStreamless, reportStreaming } = useNotificationsTransport();
@@ -107,7 +109,7 @@ export const NotificationBell = ({
 
   const openNotification = (notification: Notification) => {
     setAnchorEl(null);
-    if (notification.readAt === null) markRead.mutate({ id: notification.id });
+    if (notification.readAt === null && !impersonating) markRead.mutate({ id: notification.id });
     navigateToTarget(notificationTarget(notification));
   };
 
@@ -227,7 +229,7 @@ export const NotificationBell = ({
           <Button
             size="small"
             data-testid="notifications-popover-mark-all-read"
-            disabled={markAllRead.isPending || unreadCount === 0}
+            disabled={markAllRead.isPending || impersonating || unreadCount === 0}
             onClick={() => markAllRead.mutate()}
           >
             {t.notifications.markAllRead}

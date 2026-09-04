@@ -62,6 +62,9 @@ here first, then use it.
 | reaction (emoji on a post) | **reakcja** | **reaction** | Closed emoji set: 👍 ❤️ 🎉 💡 😂. Verb: „zareaguj" / "react". |
 | follow a space | **obserwuj przestrzeń** | **follow space** | Same verb as thread follow; unfollow = „przestań obserwować" / "unfollow". |
 | ban a member | **ban** (verb: **zbanuj** / **zdejmij bana**) | **ban** | DECIDED: the colloquial noun is intentional and reaches the confirmation dialogs too („Zbanować {e-mail}?", „Zdjąć bana z {e-mail}?") — never „blokada"/„zablokuj" for this action. Badge „Zbanowany" / "Banned". |
+| block another member (private messages) | **zablokuj** / **odblokuj** | **block** / **unblock** | DECIDED: „zablokuj" is reserved for this member-to-member action and is never a synonym for the staff ban above. It is a private, symmetric cut-off between two people („Ta osoba jest zablokowana. Odblokuj ją, aby znowu pisać."), so copy never names who blocked whom. |
+| report a private conversation | **zgłoś rozmowę** | **report conversation** | Same verb as the post report („zgłoś" / "report"); the staff surface is „Zgłoszone rozmowy prywatne" / "Reported direct conversations" and closing one is „Zamknij zgłoszenie" / "Close report". |
+| direct messages (the member surface) | **wiadomości** | **messages** | DECIDED: one bare noun in the member surface, matching the navigation entry („Wiadomości" / "Messages") — never „wiadomości prywatne" or "direct messages" there. A single item is „wiadomość" / "message", the pair of people „rozmowa" / "conversation". |
 
 ## Platform
 
@@ -76,10 +79,11 @@ here first, then use it.
 | import key (short-lived migration key) | **klucz importu** | **import key** | Section heading „Klucze importu" / "Import keys" — never „klucz API migracji" / "migration API key". |
 | configured / not configured (status pair) | **Skonfigurowane / Nieskonfigurowane** | **Configured / Not configured** | One adjectival pair in the setup checklist and in Integrations — never „Skonfigurowano", „Nie ustawiono", „Brak konfiguracji" or "Not set". |
 | iFirma (invoicing vendor) | **iFirma** | **iFirma** | Trademark casing: lowercase „i", capital „F" — in every heading, label and provider option, both languages. |
-| notification | **powiadomienie** | **notification** | Kinds so far: thread reply = „odpowiedź w dyskusji" / "reply in the discussion". |
+| notification | **powiadomienie** | **notification** | Kinds so far: thread reply = „odpowiedź w dyskusji" / "reply in the discussion"; conversation report (`dm-report`, staff only) = „{osoba} zgłosił(a) rozmowę prywatną" / "{person} reported a direct conversation". |
 | manage notifications (e-mail footer) | **zarządzaj powiadomieniami** | **manage notifications** | Opt-out footer in community notification e-mails; links the thread/space surface that owns the mute/unfollow toggle. |
 | terms of service | **regulamin** | **terms of service** | Tenant-configured BYO URL (panel Settings). Consent copy: „Akceptuję regulamin i politykę prywatności" / "I accept the terms of service and privacy policy". |
 | privacy policy | **polityka prywatności** | **privacy policy** | Same consent surface as regulamin; inflected „politykę prywatności" in the checkbox copy. |
+| member view (staff sees the community as a member) | **podgląd uczestnika** | **member view** | DECIDED: „podgląd" is free for this concept — the free-sample row forbids „darmowy podgląd"/„lekcja podglądowa" for a lesson, not the noun itself. The entry CTA is „Zobacz jako" / "View as", the banner „Oglądasz jako {imię}" / "Viewing as {name}", the exit „Wróć do panelu" / "Back to the panel". Never „impersonacja", „podszywanie się" or "impersonation" in user-facing copy. |
 | integration | **integracja** | **integration** | Third-party proper nouns (Stripe, Bunny Stream, restricted key, webhook) stay untranslated; PL may gloss them in parentheses. |
 
 ## Action verbs (buttons)
@@ -87,6 +91,7 @@ here first, then use it.
 | Action | PL | EN | Notes |
 |---|---|---|---|
 | cancel (a dialog/flow) | **Anuluj** | **Cancel** | Never „Przerwij". A canceled payment/subscription = „anulowana" / "canceled". |
+| close (dismiss a finished dialog) | **Zamknij** | **Close** | `common.close`. Replaces „Anuluj" once the dialog's action has succeeded and there is nothing left to cancel. |
 | save | **Zapisz** | **Save** | |
 | create | **Utwórz** | **Create** | |
 | add | **Dodaj** | **Add** | |
@@ -218,3 +223,17 @@ key, PDF, HTML, CSV, JSON) — gloss in parentheses when a PL label exists
 29. Setup errors are member-safe by default; the creator panel appends its own
     hint (`errors.panelHint*`, `localizeErrorCodeForPanel`) so „Integracje →
     E-mail" reaches the creator without leaking into member surfaces.
+30. Member-to-member cut-off in private messages = **zablokuj/odblokuj** /
+    **block/unblock**, kept apart from the staff **ban** of 27; conversation
+    report = „zgłoś rozmowę"/"report conversation" with the new `dm-report`
+    notification kind. The DM report copy says **zespół** like the post-report
+    copy („Dzięki — zespół to sprawdzi.") — never „zespół społeczności".
+31. Dialog dismissal after a successful action = **Zamknij** / **Close**
+    (`common.close`), so a finished dialog no longer offers „Anuluj".
+32. member view = **podgląd uczestnika** / **member view** (rejected:
+    „impersonacja", „podszywanie się" — jargon; „tryb podglądu" — names a mode,
+    not whose view it is). „Podgląd" stays forbidden only in the free-sample
+    wording.
+33. The member messages surface is **wiadomości** / **messages** in every
+    sentence (fixed „wiadomości prywatne" and "direct messages" in the
+    member-view copy).

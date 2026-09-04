@@ -9,6 +9,7 @@ const ACCENT = '#0E7490';
 
 const branding = (accentColor: string | null): TenantBranding => ({
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor,
   faviconUrl: null,
 });

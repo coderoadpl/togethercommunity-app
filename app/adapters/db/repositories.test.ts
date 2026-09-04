@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  NO_DM_BLOCKS,
   deletedMemberDisplay,
   err,
   invoiceVatTreatmentsEqual,
@@ -16,7 +17,9 @@ import type {
   Course,
   DmConversation,
   DmMessage,
+  DmReport,
   Member,
+  MemberBlock,
   MemberSubscription,
   Notification,
   Order,
@@ -48,6 +51,8 @@ import {
   createDmConversationRepository,
   createDmConversationStateRepository,
   createDmMessageRepository,
+  createDmReportRepository,
+  createMemberBlockRepository,
   createMemberSubscriptionRepository,
   createNotificationRepository,
   createOrderRepository,
@@ -88,6 +93,7 @@ import {
   consents,
   couponRedemptions,
   couponCheckoutSessions,
+  dmReports,
   coupons,
   courses,
   devEmails,
@@ -96,6 +102,7 @@ import {
   emailEvents,
   invoices,
   erasedMemberImports,
+  memberBlocks,
   memberCourseProgress,
   memberEvents,
   memberSubscriptions,
@@ -1063,6 +1070,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
       logoUrl: null,
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: null,
@@ -1118,7 +1126,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const tenants = await reader.listTenantsForStaff('user-acme-owner');
     expect(tenants.map((t) => t.tenant.slug)).toEqual(['acme']);
     expect(await reader.listStaffForTenant(ACME)).toEqual([
-      { userId: 'user-acme-owner', email: 'owner-acme@together.dev' },
+      { userId: 'user-acme-owner', email: 'owner-acme@together.dev', language: null },
     ]);
     expect(await reader.findStaffGrant('user-acme-owner', { tenantSlug: 'globex' })).toBeNull();
     expect(await reader.findMember(ACME, 'user-acme-member')).toMatchObject({ id: 'mem-acme' });
@@ -2350,6 +2358,51 @@ describe('notification repository', () => {
     expect(third.nextCursor).toBeNull();
   });
 
+  it('hides every dm-context notification when direct messages are excluded', async () => {
+    const repository = createNotificationRepository(db);
+    const recipientUserId = 'user-acme-dm-filter';
+    const row = (
+      id: string,
+      kind: Notification['kind'],
+      contextKind: 'space' | 'dm',
+    ): Notification => ({
+      id,
+      tenantId: ACME,
+      recipientUserId,
+      kind,
+      payload: {
+        rootPostId: `root-${id}`,
+        postId: `post-${id}`,
+        contextKind,
+        contextId: `context-${id}`,
+        courseId: null,
+        eventId: null,
+        lessonName: 'DM filter',
+        authorDisplay: 'Author',
+        authorAvatarUrl: null,
+        snippet: id,
+      },
+      sourceKey: null,
+      readAt: null,
+      createdAt: NOW,
+    });
+    await repository.insertMany(ACME, [
+      row('dm-message-hidden', 'dm-message', 'dm'),
+      row('dm-report-hidden', 'dm-report', 'dm'),
+      row('space-post-visible', 'space-post', 'space'),
+    ]);
+
+    const page = await repository.listForRecipient(ACME, {
+      recipientUserId,
+      limit: 50,
+      excludeDms: true,
+    });
+
+    expect(page.notifications.map((item) => item.id)).toEqual(['space-post-visible']);
+    expect(await repository.unreadCount(ACME, recipientUserId, { excludeDms: true })).toBe(1);
+    expect(await repository.unreadCount(ACME, recipientUserId)).toBe(3);
+  });
+
   it('bulk insert skips rows already carrying the same fan-out source key', async () => {
     const repository = createNotificationRepository(db);
     const row = (id: string, recipientUserId: string, sourceKey: string | null): Notification => ({
@@ -2668,6 +2721,143 @@ describe('direct message repositories', () => {
     expect(clearedForOtherTenant).toBeNull();
     expect(cleared?.dmOptOutAt).toBeNull();
   });
+
+  it('keeps member blocks idempotent, directional and tenant-scoped', async () => {
+    const repository = createMemberBlockRepository(db);
+    const block = (over: Partial<MemberBlock> = {}): MemberBlock => ({
+      tenantId: ACME,
+      blockerUserId: 'user-acme-member',
+      blockedUserId: 'user-acme-owner',
+      createdAt: NOW,
+      ...over,
+    });
+
+    const first = await repository.block(ACME, block());
+    const repeated = await repository.block(ACME, block());
+    const otherTenant = await repository.block(GLOBEX, block({ tenantId: GLOBEX }));
+    const blockerView = await repository.findDirections(ACME, {
+      viewerUserId: 'user-acme-member',
+      otherUserIds: ['user-acme-owner', 'user-acme-second'],
+    });
+    const blockedView = await repository.findDirections(ACME, {
+      viewerUserId: 'user-acme-owner',
+      otherUserIds: ['user-acme-member'],
+    });
+    const otherTenantView = await repository.findDirections(GLOBEX, {
+      viewerUserId: 'user-acme-member',
+      otherUserIds: ['user-acme-owner'],
+    });
+
+    expect([first, repeated, otherTenant]).toEqual([true, false, true]);
+    expect(blockerView.get('user-acme-owner')).toEqual({ blockedByViewer: true, blocksViewer: false });
+    expect(blockerView.get('user-acme-second')).toEqual(NO_DM_BLOCKS);
+    expect(blockedView.get('user-acme-member')).toEqual({ blockedByViewer: false, blocksViewer: true });
+    expect(otherTenantView.get('user-acme-owner')).toEqual({
+      blockedByViewer: true,
+      blocksViewer: false,
+    });
+
+    const removed = await repository.unblock(ACME, {
+      blockerUserId: 'user-acme-member',
+      blockedUserId: 'user-acme-owner',
+    });
+    const removedAgain = await repository.unblock(ACME, {
+      blockerUserId: 'user-acme-member',
+      blockedUserId: 'user-acme-owner',
+    });
+    const afterUnblock = await repository.findDirections(ACME, {
+      viewerUserId: 'user-acme-member',
+      otherUserIds: ['user-acme-owner'],
+    });
+
+    expect([removed, removedAgain]).toEqual([true, false]);
+    expect(afterUnblock.get('user-acme-owner')).toEqual(NO_DM_BLOCKS);
+    expect(await repository.unblock(GLOBEX, {
+      blockerUserId: 'user-acme-member',
+      blockedUserId: 'user-acme-owner',
+    })).toBe(true);
+  });
+
+  it('allows one open report per reporter and conversation, then resolves it once', async () => {
+    const repository = createDmReportRepository(db);
+    const dmReport = (id: string, over: Partial<DmReport> = {}): DmReport => ({
+      id,
+      tenantId: ACME,
+      conversationId: 'dm-conversation-1',
+      reporterUserId: 'user-acme-member',
+      reporterDisplay: 'Acme Member',
+      reportedUserId: 'user-acme-owner',
+      reportedDisplay: 'Acme Owner',
+      reason: 'harassment',
+      snapshot: [
+        {
+          id: 'dm-message-1',
+          senderDisplay: 'Acme Member',
+          senderIsReporter: true,
+          body: 'Body dm-message-1',
+          createdAt: NOW,
+        },
+      ],
+      status: 'open',
+      createdAt: NOW,
+      resolvedAt: null,
+      resolvedByUserId: null,
+      ...over,
+    });
+
+    const opened = await repository.open(ACME, dmReport('dm-report-1'));
+    const duplicate = await repository.open(ACME, dmReport('dm-report-duplicate'));
+    const otherReporter = await repository.open(
+      ACME,
+      dmReport('dm-report-2', {
+        reporterUserId: 'user-acme-owner',
+        reportedUserId: 'user-acme-member',
+        createdAt: '1998-07-14T10:05:00.000Z',
+      }),
+    );
+    const otherTenant = await repository.countOpen(GLOBEX);
+
+    expect(opened?.snapshot).toHaveLength(1);
+    expect(duplicate).toBeNull();
+    expect(otherReporter?.id).toBe('dm-report-2');
+    expect(await repository.countOpen(ACME)).toBe(2);
+    expect(otherTenant).toBe(0);
+
+    const firstPage = await repository.listByStatus(ACME, { status: 'open', limit: 1 });
+    if (firstPage.nextCursor === null) throw new Error('Expected a second report page');
+    const secondPage = await repository.listByStatus(ACME, {
+      status: 'open',
+      cursor: firstPage.nextCursor,
+      limit: 1,
+    });
+
+    expect(firstPage.reports.map((row) => row.id)).toEqual(['dm-report-2']);
+    expect(secondPage.reports.map((row) => row.id)).toEqual(['dm-report-1']);
+    expect(secondPage.nextCursor).toBeNull();
+
+    const resolveInput = {
+      id: 'dm-report-1',
+      resolvedAt: '1998-07-14T12:00:00.000Z',
+      resolvedByUserId: 'user-acme-owner',
+    };
+    const resolved = await repository.resolve(ACME, resolveInput);
+    const resolvedTwice = await repository.resolve(ACME, resolveInput);
+    const crossTenant = await repository.resolve(GLOBEX, {
+      ...resolveInput,
+      id: 'dm-report-2',
+    });
+    const reopened = await repository.open(ACME, dmReport('dm-report-3'));
+
+    expect(resolved).toMatchObject({ status: 'resolved', resolvedAt: '1998-07-14T12:00:00.000Z' });
+    expect(resolvedTwice).toBeNull();
+    expect(crossTenant).toBeNull();
+    expect(reopened?.id).toBe('dm-report-3');
+    expect(
+      (await repository.listByStatus(ACME, { status: 'resolved', limit: 10 })).reports.map(
+        (row) => row.id,
+      ),
+    ).toEqual(['dm-report-1']);
+  });
 });
 
 describe('health port', () => {
@@ -2857,6 +3047,59 @@ describe('member erasure repository', () => {
       resolvedAt: null,
       resolvedByUserId: null,
     });
+    await createDmConversationRepository(db).insert(RODO, {
+      id: 'dm-conversation-rodo',
+      tenantId: RODO,
+      participantLowUserId: 'user-rodo-buyer',
+      participantHighUserId: 'user-rodo-shared',
+      createdByUserId: 'user-rodo-buyer',
+      createdAt: NOW,
+      lastMessageId: null,
+      lastMessageAt: NOW,
+      lastMessageSnippet: '',
+      lastMessageSenderUserId: 'user-rodo-buyer',
+    });
+    const rodoSnapshot = [
+      { id: 'dm-rodo-1', senderDisplay: 'Jan Kowalski', senderIsReporter: true, body: 'Pierwsza', createdAt: NOW },
+      { id: 'dm-rodo-2', senderDisplay: 'Anna Shared', senderIsReporter: false, body: 'Druga', createdAt: NOW },
+    ];
+    await db.insert(dmReports).values([
+      {
+        id: 'dm-report-rodo-by',
+        tenantId: RODO,
+        conversationId: 'dm-conversation-rodo',
+        reporterUserId: 'user-rodo-buyer',
+        reporterDisplay: 'Jan Kowalski',
+        reportedUserId: 'user-rodo-shared',
+        reportedDisplay: 'Anna Shared',
+        reason: 'harassment',
+        snapshot: rodoSnapshot,
+        status: 'open',
+        createdAt: NOW,
+        resolvedAt: null,
+        resolvedByUserId: null,
+      },
+      {
+        id: 'dm-report-rodo-about',
+        tenantId: RODO,
+        conversationId: 'dm-conversation-rodo',
+        reporterUserId: 'user-rodo-shared',
+        reporterDisplay: 'Anna Shared',
+        reportedUserId: 'user-rodo-buyer',
+        reportedDisplay: 'Jan Kowalski',
+        reason: 'spam',
+        snapshot: rodoSnapshot.map((entry) => ({ ...entry, senderIsReporter: !entry.senderIsReporter })),
+        status: 'open',
+        createdAt: NOW,
+        resolvedAt: null,
+        resolvedByUserId: null,
+      },
+    ]);
+    await db.insert(memberBlocks).values([
+      { tenantId: RODO, blockerUserId: 'user-rodo-buyer', blockedUserId: 'user-rodo-shared', createdAt: NOW },
+      { tenantId: RODO, blockerUserId: 'user-rodo-shared', blockedUserId: 'user-rodo-buyer', createdAt: NOW },
+      { tenantId: RODO, blockerUserId: 'user-rodo-owner', blockedUserId: 'user-rodo-dollar', createdAt: NOW },
+    ]);
     await createCourseRepository(db).create(RODO, {
       id: 'course-rodo',
       tenantId: RODO,
@@ -2999,6 +3242,34 @@ describe('member erasure repository', () => {
       reporterUserId: 'user-rodo-buyer',
       reporterDisplay: deletedMemberDisplay(),
     });
+
+    const dmReportRows = await db
+      .select()
+      .from(dmReports)
+      .where(eq(dmReports.tenantId, RODO))
+      .orderBy(asc(dmReports.id));
+    expect(dmReportRows[0]).toMatchObject({
+      id: 'dm-report-rodo-about',
+      reporterDisplay: 'Anna Shared',
+      reportedDisplay: deletedMemberDisplay(),
+    });
+    expect(dmReportRows[0]?.snapshot).toEqual([
+      { id: 'dm-rodo-1', senderDisplay: deletedMemberDisplay(), senderIsReporter: false, body: 'Pierwsza', createdAt: NOW },
+      { id: 'dm-rodo-2', senderDisplay: 'Anna Shared', senderIsReporter: true, body: 'Druga', createdAt: NOW },
+    ]);
+    expect(dmReportRows[1]).toMatchObject({
+      id: 'dm-report-rodo-by',
+      reporterDisplay: deletedMemberDisplay(),
+      reportedDisplay: 'Anna Shared',
+    });
+    expect(dmReportRows[1]?.snapshot.map((entry) => entry.senderDisplay)).toEqual([
+      deletedMemberDisplay(),
+      'Anna Shared',
+    ]);
+
+    expect(await db.select().from(memberBlocks).where(eq(memberBlocks.tenantId, RODO))).toEqual([
+      { tenantId: RODO, blockerUserId: 'user-rodo-owner', blockedUserId: 'user-rodo-dollar', createdAt: NOW },
+    ]);
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));
     expect(consentRows[0]).toMatchObject({

@@ -25,11 +25,12 @@ import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
-import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
+import { EmailLanguagePicker, useEmailLanguagePreference } from '../../EmailLanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
+import { useImpersonation } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -65,6 +66,8 @@ export const MemberAccountPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const me = useQuery(actions.me);
+  const impersonating = useImpersonation() !== null;
+  const ownAccount = me.data !== undefined && me.data.impersonation === null;
   const billingOrders = useQuery(actions.memberBillingOrders);
   const tenantSettings = useQuery(actions.tenantSettings);
   const dataExport = useQuery({ ...actions.myDataExport, enabled: false });
@@ -96,6 +99,7 @@ export const MemberAccountPage = () => {
       await queryClient.invalidateQueries(actions.meInvalidates());
     },
   });
+  const emailLanguagePreference = useEmailLanguagePreference();
   const [supportSubject, setSupportSubject] = useState('');
   const [supportBody, setSupportBody] = useState('');
   const support = useMutation({
@@ -105,7 +109,7 @@ export const MemberAccountPage = () => {
       setSupportBody('');
     },
   });
-  const accountSessions = useQuery(actions.accountSessions);
+  const accountSessions = useQuery({ ...actions.accountSessions, enabled: ownAccount });
   const revokeAccountSession = useMutation({
     ...actions.revokeAccountSession,
     onSuccess: async () => {
@@ -118,7 +122,7 @@ export const MemberAccountPage = () => {
       await queryClient.invalidateQueries(actions.accountSessionsInvalidates());
     },
   });
-  const passkeys = useQuery(actions.passkeys);
+  const passkeys = useQuery({ ...actions.passkeys, enabled: ownAccount });
   const registerPasskey = useMutation({
     ...actions.registerPasskey,
     onSuccess: async () => {
@@ -172,6 +176,7 @@ export const MemberAccountPage = () => {
   const email = me.data.email;
   const savedDisplayName = me.data.tenant?.displayName ?? '';
   const dmOptOut = me.data.tenant?.dmOptOut ?? false;
+  const emailLanguage = me.data.tenant?.language ?? null;
   const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
@@ -251,136 +256,139 @@ export const MemberAccountPage = () => {
           <StatusView state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} />
         ) : null}
 
-        <SectionCard title={t.emailVerification.heading}>
-          <EmailVerificationStatus
-            email={email}
-            emailVerified={me.data.emailVerified}
-            resendPending={resendVerification.isPending}
-            resendSent={resendVerification.isSuccess}
-            resendError={resendVerification.isError}
-            onResend={() => resendVerification.mutate({
-              email,
-              callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),
-              language,
-            })}
-          />
-        </SectionCard>
+        {impersonating ? null : (
+          <>
+            <SectionCard title={t.emailVerification.heading}>
+              <EmailVerificationStatus
+                email={email}
+                emailVerified={me.data.emailVerified}
+                resendPending={resendVerification.isPending}
+                resendSent={resendVerification.isSuccess}
+                resendError={resendVerification.isError}
+                onResend={() => resendVerification.mutate({
+                  email,
+                  callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),
+                  language,
+                })}
+              />
+            </SectionCard>
 
-        <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
-            <ChangePasswordForm
-              pending={changePassword.isPending}
-              success={changePassword.isSuccess}
-              error={changePassword.error}
-              onSubmit={(input) => changePassword.mutate(input)}
-            />
-            <Box>
-              <Button
-                variant="outlined"
-                data-testid="account-reset-password"
-                disabled={requestPasswordReset.isPending}
-                onClick={() => requestPasswordReset.mutate(passwordSetupInput)}
-              >
-                {requestPasswordReset.isPending
-                  ? t.account.resetSending
-                  : t.account.setOrResetPassword}
-              </Button>
-            </Box>
-            {requestPasswordReset.isSuccess ? (
-              <Typography variant="caption" component="p" data-testid="account-reset-sent">
-                {t.account.resetSent}
-              </Typography>
-            ) : null}
-            {requestPasswordReset.isError ? (
-              <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert>
-            ) : null}
-        </SectionCard>
+            <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
+                <ChangePasswordForm
+                  pending={changePassword.isPending}
+                  success={changePassword.isSuccess}
+                  error={changePassword.error}
+                  onSubmit={(input) => changePassword.mutate(input)}
+                />
+                <Box>
+                  <Button
+                    variant="outlined"
+                    data-testid="account-reset-password"
+                    disabled={requestPasswordReset.isPending}
+                    onClick={() => requestPasswordReset.mutate(passwordSetupInput)}
+                  >
+                    {requestPasswordReset.isPending
+                      ? t.account.resetSending
+                      : t.account.setOrResetPassword}
+                  </Button>
+                </Box>
+                {requestPasswordReset.isSuccess ? (
+                  <Typography variant="caption" component="p" data-testid="account-reset-sent">
+                    {t.account.resetSent}
+                  </Typography>
+                ) : null}
+                {requestPasswordReset.isError ? (
+                  <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert>
+                ) : null}
+            </SectionCard>
 
-        <SectionCard title={t.security.heading} data-testid="account-security-methods">
-          <AuthenticationMethods
-            passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error, retry: () => void passkeys.refetch() }}
-            registerPasskey={{
-              pending: registerPasskey.isPending,
-              success: registerPasskey.isSuccess,
-              error: registerPasskey.error,
-              run: registerPasskey.mutate,
-            }}
-            removePasskey={{
-              pending: removePasskey.isPending,
-              success: removePasskey.isSuccess,
-              error: removePasskey.error,
-              run: removePasskey.mutate,
-            }}
-            requestPasswordSetup={{
-              pending: requestPasskeyPasswordSetup.isPending,
-              success: requestPasskeyPasswordSetup.isSuccess,
-              error: requestPasskeyPasswordSetup.error,
-              run: () => requestPasskeyPasswordSetup.mutate(passwordSetupInput),
-            }}
-            enableTwoFactor={{
-              data: enableTwoFactor.data,
-              submittedAt: enableTwoFactor.submittedAt,
-              pending: enableTwoFactor.isPending,
-              success: enableTwoFactor.isSuccess,
-              error: enableTwoFactor.error,
-              run: enableTwoFactor.mutate,
-            }}
-            verifyTotp={{
-              pending: verifyTotp.isPending,
-              success: verifyTotp.isSuccess,
-              error: verifyTotp.error,
-              run: verifyTotp.mutate,
-            }}
-            disableTwoFactor={{
-              submittedAt: disableTwoFactor.submittedAt,
-              pending: disableTwoFactor.isPending,
-              success: disableTwoFactor.isSuccess,
-              error: disableTwoFactor.error,
-              run: disableTwoFactor.mutate,
-            }}
-            regenerateBackupCodes={{
-              data: regenerateBackupCodes.data,
-              submittedAt: regenerateBackupCodes.submittedAt,
-              pending: regenerateBackupCodes.isPending,
-              success: regenerateBackupCodes.isSuccess,
-              error: regenerateBackupCodes.error,
-              run: regenerateBackupCodes.mutate,
-            }}
-          />
-          <ActiveSessions
-            sessions={{
-              data: accountSessions.data?.sessions,
-              pending: accountSessions.isPending,
-              error: accountSessions.error,
-              retry: () => void accountSessions.refetch(),
-            }}
-            revokeSession={{
-              pending: revokeAccountSession.isPending,
-              success: revokeAccountSession.isSuccess,
-              error: revokeAccountSession.error,
-              run: revokeAccountSession.mutate,
-            }}
-            revokeOtherSessions={{
-              pending: revokeOtherAccountSessions.isPending,
-              success: revokeOtherAccountSessions.isSuccess,
-              error: revokeOtherAccountSessions.error,
-              run: () => revokeOtherAccountSessions.mutate(undefined),
-            }}
-          />
-        </SectionCard>
+            <SectionCard title={t.security.heading} data-testid="account-security-methods">
+              <AuthenticationMethods
+                passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error, retry: () => void passkeys.refetch() }}
+                registerPasskey={{
+                  pending: registerPasskey.isPending,
+                  success: registerPasskey.isSuccess,
+                  error: registerPasskey.error,
+                  run: registerPasskey.mutate,
+                }}
+                removePasskey={{
+                  pending: removePasskey.isPending,
+                  success: removePasskey.isSuccess,
+                  error: removePasskey.error,
+                  run: removePasskey.mutate,
+                }}
+                requestPasswordSetup={{
+                  pending: requestPasskeyPasswordSetup.isPending,
+                  success: requestPasskeyPasswordSetup.isSuccess,
+                  error: requestPasskeyPasswordSetup.error,
+                  run: () => requestPasskeyPasswordSetup.mutate(passwordSetupInput),
+                }}
+                enableTwoFactor={{
+                  data: enableTwoFactor.data,
+                  submittedAt: enableTwoFactor.submittedAt,
+                  pending: enableTwoFactor.isPending,
+                  success: enableTwoFactor.isSuccess,
+                  error: enableTwoFactor.error,
+                  run: enableTwoFactor.mutate,
+                }}
+                verifyTotp={{
+                  pending: verifyTotp.isPending,
+                  success: verifyTotp.isSuccess,
+                  error: verifyTotp.error,
+                  run: verifyTotp.mutate,
+                }}
+                disableTwoFactor={{
+                  submittedAt: disableTwoFactor.submittedAt,
+                  pending: disableTwoFactor.isPending,
+                  success: disableTwoFactor.isSuccess,
+                  error: disableTwoFactor.error,
+                  run: disableTwoFactor.mutate,
+                }}
+                regenerateBackupCodes={{
+                  data: regenerateBackupCodes.data,
+                  submittedAt: regenerateBackupCodes.submittedAt,
+                  pending: regenerateBackupCodes.isPending,
+                  success: regenerateBackupCodes.isSuccess,
+                  error: regenerateBackupCodes.error,
+                  run: regenerateBackupCodes.mutate,
+                }}
+              />
+              <ActiveSessions
+                sessions={{
+                  data: accountSessions.data?.sessions,
+                  pending: accountSessions.isPending,
+                  error: accountSessions.error,
+                  retry: () => void accountSessions.refetch(),
+                }}
+                revokeSession={{
+                  pending: revokeAccountSession.isPending,
+                  success: revokeAccountSession.isSuccess,
+                  error: revokeAccountSession.error,
+                  run: revokeAccountSession.mutate,
+                }}
+                revokeOtherSessions={{
+                  pending: revokeOtherAccountSessions.isPending,
+                  success: revokeOtherAccountSessions.isSuccess,
+                  error: revokeOtherAccountSessions.error,
+                  run: () => revokeOtherAccountSessions.mutate(undefined),
+                }}
+              />
+            </SectionCard>
+          </>
+        )}
 
-        {me.data.tenant?.memberId ? (
-          <SectionCard title={t.messages.privacyHeading} description={t.messages.optOutHint}>
+        {!impersonating && me.data.tenant?.memberId !== undefined && me.data.tenant.memberId !== null ? (
+          <SectionCard
+            title={t.messages.privacyHeading}
+            description={t.messages.optOutHint}
+            data-testid="account-dm-privacy"
+          >
             <FormControlLabel
               control={(
                 <Switch
                   checked={dmOptOut}
                   disabled={updatePrivacy.isPending}
-                  onChange={(event) =>
-                    updatePrivacy.mutate({
-                      displayName: savedDisplayName.trim() === '' ? null : savedDisplayName.trim(),
-                      dmOptOut: event.target.checked,
-                    })
-                  }
+                  onChange={(event) => updatePrivacy.mutate({ dmOptOut: event.target.checked })}
                 />
               )}
               label={t.messages.optOutLabel}
@@ -393,9 +401,30 @@ export const MemberAccountPage = () => {
 
         <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
-            <LanguageSwitcher inline />
+            <EmailLanguagePicker preference={emailLanguagePreference} />
             <ColorSchemeSwitcher />
           </Stack>
+          {me.data.tenant?.memberId == null ? null : (
+            <>
+              <Typography variant="body2" data-testid="member-email-language">
+                {emailLanguage === null
+                  ? t.account.emailLanguage.unset
+                  : t.account.emailLanguage[emailLanguage]}
+              </Typography>
+              {emailLanguage === null ? null : (
+                <Box>
+                  <Button
+                    variant="text"
+                    data-testid="member-email-language-reset"
+                    disabled={!emailLanguagePreference.storable}
+                    onClick={() => emailLanguagePreference.store(null)}
+                  >
+                    {t.account.emailLanguage.reset}
+                  </Button>
+                </Box>
+              )}
+            </>
+          )}
         </SectionCard>
 
         {billingPortalUrl ? (
@@ -509,26 +538,28 @@ export const MemberAccountPage = () => {
           </Button>
         ) : null}
 
-        <SectionCard
-          title={t.account.dataExportHeading}
-          description={t.account.dataExportIntro}
-        >
-          <Box>
-            <Button
-              variant="outlined"
-              data-testid="account-data-export"
-              disabled={dataExport.isFetching}
-              onClick={() => void downloadDataExport()}
-            >
-              {dataExport.isFetching ? t.account.dataExportPreparing : t.account.dataExportButton}
-            </Button>
-          </Box>
-          {dataExport.isError ? (
-            <StatusView
-              state={{ kind: 'error', message: localizeError(dataExport.error, t), retry: { label: t.common.retry, onRetry: () => void downloadDataExport() } }}
-            />
-          ) : null}
-        </SectionCard>
+        {impersonating ? null : (
+          <SectionCard
+            title={t.account.dataExportHeading}
+            description={t.account.dataExportIntro}
+          >
+            <Box>
+              <Button
+                variant="outlined"
+                data-testid="account-data-export"
+                disabled={dataExport.isFetching}
+                onClick={() => void downloadDataExport()}
+              >
+                {dataExport.isFetching ? t.account.dataExportPreparing : t.account.dataExportButton}
+              </Button>
+            </Box>
+            {dataExport.isError ? (
+              <StatusView
+                state={{ kind: 'error', message: localizeError(dataExport.error, t), retry: { label: t.common.retry, onRetry: () => void downloadDataExport() } }}
+              />
+            ) : null}
+          </SectionCard>
+        )}
 
         <SectionCard
           title={t.account.erasureHeading}

@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
+import type { PreviewBackground } from '../../theme.js';
 import { CoverPreview } from './CoverPreview.js';
 
 export interface ImageAssetFieldProps {
@@ -28,6 +29,9 @@ export interface ImageAssetFieldProps {
   uploading?: boolean;
   uploadError?: string | null;
   storageMissing?: boolean;
+  previewBackground?: PreviewBackground;
+  removable?: boolean;
+  invalidTypeMessage?: string;
   onUpload: (file: File) => void;
 }
 
@@ -46,6 +50,9 @@ export const ImageAssetField = ({
   uploading = false,
   uploadError = null,
   storageMissing = false,
+  previewBackground,
+  removable = false,
+  invalidTypeMessage,
   onUpload,
 }: ImageAssetFieldProps) => {
   const t = useTranslations();
@@ -61,7 +68,7 @@ export const ImageAssetField = ({
     }
     const contentType = allowedContentTypes.find((candidate) => candidate === file.type);
     if (contentType === undefined) {
-      setLocalError(t.imageAssets.invalidType);
+      setLocalError(invalidTypeMessage ?? t.imageAssets.invalidType);
       return;
     }
     setLocalError(null);
@@ -100,6 +107,17 @@ export const ImageAssetField = ({
             data-testid={`${testId}-file-input`}
           />
         </Button>
+        {removable && previewUrl !== '' ? (
+          <Button
+            type="button"
+            color="error"
+            disabled={disabled || uploading}
+            onClick={() => onChange('')}
+            data-testid={`${testId}-remove`}
+          >
+            {t.imageAssets.remove}
+          </Button>
+        ) : null}
       </Stack>
       {hint === undefined ? null : <FormHelperText>{hint}</FormHelperText>}
       {previewUrl === '' ? null : (
@@ -108,6 +126,7 @@ export const ImageAssetField = ({
           src={previewUrl}
           label={label}
           testId={`${testId}-preview`}
+          {...(previewBackground === undefined ? {} : { background: previewBackground })}
         />
       )}
       {localError === null ? null : <Alert severity="error">{localError}</Alert>}

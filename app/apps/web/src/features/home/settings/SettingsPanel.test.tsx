@@ -28,6 +28,7 @@ interface StoredSettings {
   bunnyStreamLibraryId: string | null;
   bunnyStreamCdnHostname: string | null;
   logoUrl: string | null;
+  logoDarkUrl: string | null;
   accentColor: string | null;
   faviconUrl: string | null;
   ogTitle?: string | null;
@@ -41,6 +42,8 @@ interface StoredSettings {
   invoiceExemptionBasisKind?: 'art_113_1' | 'art_113_9' | 'art_43_1' | 'other_statute' | 'other' | null;
   invoiceExemptionBasis?: string | null;
   defaultHomeSpaceId?: string | null;
+  directMessagesEnabled?: boolean;
+  defaultLanguage?: 'pl' | 'en';
 }
 
 interface StubSpace {
@@ -72,6 +75,7 @@ const EMPTY_SETTINGS: StoredSettings = {
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
   termsUrl: null,
@@ -92,6 +96,19 @@ const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = [
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('/api/tenant/routing', () => HttpResponse.json({
+      ok: true,
+      data: {
+        routing: {
+          tenantHost: 'akademia.together.example',
+          customDomains: [
+            { domain: 'kurs.coderoad.example', verified: true },
+            { domain: 'nowa.coderoad.example', verified: false },
+          ],
+          customDomainTarget: 'cname.vercel-dns.com',
+        },
+      },
+    })),
     http.get('/api/spaces/staff', () =>
       HttpResponse.json({ ok: true, data: { spaces: spaces.map(staffSpace) } }),
     ),
@@ -167,6 +184,17 @@ describe('SettingsPanel information architecture', () => {
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'settings-panel-company');
     expect(document.querySelector('#support')).not.toBeNull();
     expect(screen.queryByTestId('billing-portal-url')).not.toBeInTheDocument();
+  });
+
+  it('shows the workspace address with verified and pending custom domains', async () => {
+    renderPanel();
+
+    expect(await screen.findByText('akademia.together.example')).toBeInTheDocument();
+    expect(await screen.findByTestId('tenant-domain-kurs.coderoad.example'))
+      .toHaveTextContent(pl.tenantDomains.verified);
+    const pending = await screen.findByTestId('tenant-domain-nowa.coderoad.example');
+    expect(pending).toHaveTextContent(pl.tenantDomains.pending);
+    expect(pending).toHaveTextContent('cname.vercel-dns.com');
   });
 
   it('sends the retired billing deep link to the integrations stripe tab', async () => {
@@ -416,6 +444,64 @@ describe('SettingsPanel public access', () => {
   });
 });
 
+describe('SettingsPanel direct messages', () => {
+  const findToggle = () => screen.findByRole('switch', { name: pl.directMessages.toggleLabel });
+
+  it('shows the switch on for tenants that never touched it', async () => {
+    renderPanel(EMPTY_SETTINGS);
+
+    const toggle = await findToggle();
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(toggle).toBeChecked();
+  });
+
+  it('turns direct messages off', async () => {
+    const { updates } = renderPanel(EMPTY_SETTINGS);
+
+    const toggle = await findToggle();
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await userEvent.click(toggle);
+
+    await waitFor(() => expect(updates).toContainEqual({ directMessagesEnabled: false }));
+  });
+
+  it('turns direct messages back on', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, directMessagesEnabled: false });
+
+    const toggle = await findToggle();
+    await waitFor(() => expect(toggle).not.toBeChecked());
+    await userEvent.click(toggle);
+
+    await waitFor(() => expect(updates).toContainEqual({ directMessagesEnabled: true }));
+  });
+});
+
+describe('SettingsPanel e-mail language', () => {
+  it('labels the picker and saves the chosen platform default', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'pl' });
+
+    const picker = await screen.findByRole('combobox', { name: pl.emailLanguageSettings.label });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await userEvent.click(picker);
+    await userEvent.click(
+      screen.getByRole('option', { name: pl.emailLanguageSettings.options.en }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: pl.emailLanguageSettings.save }));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'en' }));
+  });
+
+  it('saves the stored default back instead of the Polish fallback', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'en' });
+
+    const picker = await screen.findByRole('combobox', { name: pl.emailLanguageSettings.label });
+    await waitFor(() => expect(picker).toHaveTextContent(pl.emailLanguageSettings.options.en));
+    await userEvent.click(screen.getByRole('button', { name: pl.emailLanguageSettings.save }));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'en' }));
+  });
+});
+
 describe('SettingsPanel direct KSeF', () => {
   it('points the KSeF credentials at the invoicing integration instead of duplicating them', async () => {
     renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
@@ -473,7 +559,7 @@ describe('SettingsPanel branding', () => {
     const { updates } = renderPanel();
     await openSettingsSection(pl.settingsNavigation.brand);
 
-    expect(await screen.findAllByRole('button', { name: pl.imageAssets.upload })).toHaveLength(2);
+    expect(await screen.findAllByRole('button', { name: pl.imageAssets.upload })).toHaveLength(4);
     await userEvent.type(await screen.findByTestId('branding-logo-url'), 'https://cdn.example.com/logo.svg');
     await userEvent.type(screen.getByTestId('branding-accent-color'), '#0E7490');
     await userEvent.type(screen.getByTestId('branding-favicon-url'), 'https://cdn.example.com/favicon.svg');
@@ -484,6 +570,7 @@ describe('SettingsPanel branding', () => {
       name: 'Akademia',
       socialLinks: [],
       logoUrl: 'https://cdn.example.com/logo.svg',
+      logoDarkUrl: null,
       accentColor: '#0E7490',
       faviconUrl: 'https://cdn.example.com/favicon.svg',
       ogTitle: null,
@@ -509,6 +596,7 @@ describe('SettingsPanel branding', () => {
       name: 'Akademia',
       socialLinks: [],
       logoUrl: null,
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: 'Akademia Acme',
@@ -603,11 +691,106 @@ describe('SettingsPanel branding', () => {
       name: 'Akademia',
       socialLinks: [],
       logoUrl: null,
+      logoDarkUrl: null,
       accentColor: null,
       faviconUrl: null,
       ogTitle: null,
       ogDescription: null,
       ogImageUrl: null,
     });
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('saves the dark logo variant beside the light one', async () => {
+    const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    await userEvent.type(
+      await screen.findByTestId('branding-logo-url'),
+      'https://cdn.example.com/light.svg',
+    );
+    await userEvent.type(
+      screen.getByTestId('branding-logo-dark-url'),
+      'https://cdn.example.com/dark.svg',
+    );
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual(expect.objectContaining({
+      logoUrl: 'https://cdn.example.com/light.svg',
+      logoDarkUrl: 'https://cdn.example.com/dark.svg',
+    }));
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('previews each logo slot on its matching background swatch', async () => {
+    renderPanel({
+      ...EMPTY_SETTINGS,
+      logoUrl: 'https://cdn.example.com/light.svg',
+      logoDarkUrl: 'https://cdn.example.com/dark.svg',
+    });
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    expect(await screen.findByTestId('branding-logo-url-preview-surface'))
+      .toHaveAttribute('data-background', 'light');
+    expect(screen.getByTestId('branding-logo-dark-url-preview-surface'))
+      .toHaveAttribute('data-background', 'dark');
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('removes the dark logo without touching the light one', async () => {
+    const { updates } = renderPanel({
+      ...EMPTY_SETTINGS,
+      logoUrl: 'https://cdn.example.com/light.svg',
+      logoDarkUrl: 'https://cdn.example.com/dark.svg',
+    });
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    await userEvent.click(await screen.findByTestId('branding-logo-dark-url-remove'));
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual(expect.objectContaining({
+      logoUrl: 'https://cdn.example.com/light.svg',
+      logoDarkUrl: null,
+    }));
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('fills the share image field from an upload and still accepts a typed URL', async () => {
+    const servePath = '/api/public/assets/share-image/6f1c0f2e-2b8a-4c3d-8e5f-9a0b1c2d3e4f.png';
+    server.use(
+      http.post('/api/image-assets/branding/upload', () => HttpResponse.json({
+        ok: true,
+        data: {
+          key: 'image-assets/tenant-akademia/share-image/6f1c0f2e-2b8a-4c3d-8e5f-9a0b1c2d3e4f.png',
+          servePath,
+          upload: {
+            url: 'https://storage.example.com/put',
+            headers: { 'content-type': 'image/png' },
+            expiresAt: '2026-09-03T12:00:00.000Z',
+          },
+        },
+      })),
+      http.put('https://storage.example.com/put', () => new HttpResponse(null, { status: 200 })),
+      http.post('/api/image-assets/branding/complete', () =>
+        HttpResponse.json({ ok: true, data: { url: servePath } })),
+    );
+    const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    const shareImageInput = await screen.findByTestId('branding-og-image-url');
+    await userEvent.upload(
+      screen.getByTestId('branding-og-image-url-file-input'),
+      new File(['x'], 'share.png', { type: 'image/png' }),
+    );
+    await waitFor(() => {
+      expect(shareImageInput).toHaveValue(servePath);
+    });
+
+    await userEvent.clear(shareImageInput);
+    await userEvent.type(shareImageInput, 'https://cdn.example.com/share.png');
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual(expect.objectContaining({
+      ogImageUrl: 'https://cdn.example.com/share.png',
+    }));
   }, BRANDING_TEST_TIMEOUT);
 });

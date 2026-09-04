@@ -55,6 +55,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...over,
 });
 
@@ -208,6 +209,7 @@ const tenantSettings: TenantSettings = {
   bunnyStreamLibraryId: 'lib-77',
   bunnyStreamCdnHostname: null,
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
   ogTitle: null,

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { staffRoleSchema } from './identity.js';
-import { DEFAULT_LANGUAGE, type Language } from './language.js';
+import { DEFAULT_LANGUAGE, languageSchema, type Language } from './language.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
 const tenantStatusSchema = z.enum(['active', 'suspended']);
@@ -55,6 +55,7 @@ export const accentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 export const tenantBrandingSchema = z.object({
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
+  logoDarkUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
 });
@@ -63,9 +64,25 @@ export type TenantBranding = z.output<typeof tenantBrandingSchema>;
 
 export const EMPTY_TENANT_BRANDING: TenantBranding = {
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
 };
+
+export type LogoBackground = 'light' | 'dark';
+
+/** A tenant that uploaded only one variant gets it on both backgrounds. */
+export const resolveTenantLogo = (
+  branding: { logoUrl: string | null; logoDarkUrl?: string | null | undefined },
+  background: LogoBackground,
+): string | null => {
+  const dark = branding.logoDarkUrl ?? null;
+  return background === 'dark' ? dark ?? branding.logoUrl : branding.logoUrl ?? dark;
+};
+
+/** Branding assets may be stored as app-relative paths; e-mail and OG consumers need absolute URLs. */
+export const absoluteBrandingAssetUrl = (value: string | null, baseUrl: string): string | null =>
+  value === null ? null : new URL(value, baseUrl).toString();
 
 export const TENANT_OG_TITLE_MAX_LENGTH = 70;
 export const TENANT_OG_DESCRIPTION_MAX_LENGTH = 200;
@@ -114,11 +131,13 @@ export type InvoiceVatResolution =
 
 export const tenantSettingsSchema = z.object({
   name: tenantSchema.shape.name,
+  defaultLanguage: languageSchema.optional(),
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).default([]),
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
   bunnyStreamCdnHostname: z.string().nullable().default(null),
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
+  logoDarkUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
   supportEmail: z.string().email().nullable().default(null),
@@ -127,6 +146,7 @@ export const tenantSettingsSchema = z.object({
   termsUrl: z.string().url().nullable().default(null),
   privacyUrl: z.string().url().nullable().default(null),
   defaultHomeSpaceId: z.string().min(1).nullable().default(null),
+  directMessagesEnabled: z.boolean().optional(),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
@@ -167,6 +187,7 @@ const clearableText = (max: number) => z
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
   name: tenantSchema.shape.name.optional(),
+  defaultLanguage: languageSchema.optional(),
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).optional(),
   billingPortalUrl: clearableUrl,
   bunnyStreamLibraryId: z
@@ -187,6 +208,7 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   logoUrl: clearableBrandingAssetUrl,
+  logoDarkUrl: clearableBrandingAssetUrl,
   accentColor: z
     .union([accentColorSchema, z.literal('')])
     .nullable()
@@ -205,6 +227,7 @@ export const updateTenantSettingsInputSchema = z.object({
     .nullable()
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
+  directMessagesEnabled: z.boolean().optional(),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
@@ -217,6 +240,10 @@ export const updateTenantSettingsInputSchema = z.object({
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;
+
+/** Tenants created before the switch existed keep direct messages on. */
+export const directMessagesEnabled = (settings: TenantSettings): boolean =>
+  settings.directMessagesEnabled !== false;
 
 export const resolveInvoiceVat = (settings: TenantSettings): InvoiceVatResolution => {
   if (settings.invoiceVatMode === null) return { ok: false, reason: 'unset' };
@@ -259,10 +286,13 @@ export const invoiceVatTreatmentsEqual = (
 export const resolveTenantSocial = (
   tenant: Tenant,
   settings: TenantSettings | null,
+  baseUrl: string,
 ): { title: string; description: string | null; imageUrl: string | null } => ({
   title: settings?.ogTitle ?? tenant.name,
   description: settings?.ogDescription ?? null,
-  imageUrl: settings?.ogImageUrl ?? settings?.logoUrl ?? null,
+  imageUrl: settings === null
+    ? null
+    : absoluteBrandingAssetUrl(settings.ogImageUrl ?? resolveTenantLogo(settings, 'light'), baseUrl),
 });
 
 export const tenantSupportPublicSchema = z.object({
@@ -284,6 +314,7 @@ export const memberSchema = z.object({
   userId: z.string(),
   email: z.string(),
   displayName: z.string().nullable(),
+  language: languageSchema.nullable().optional(),
   tags: z.array(z.string()),
   marketingConsents: z.record(z.boolean()),
   externalCustomerIds: z.record(z.string()),
@@ -360,3 +391,15 @@ export type TenantDomain = {
   kind: 'subdomain' | 'custom';
   verified: boolean;
 };
+
+export const tenantRoutingSchema = z.object({
+  tenantHost: z.string(),
+  customDomains: z.array(z.object({
+    domain: z.string(),
+    verified: z.boolean(),
+  })),
+  /** Value a creator points the custom domain at with a CNAME record. */
+  customDomainTarget: z.string(),
+});
+
+export type TenantRouting = z.infer<typeof tenantRoutingSchema>;

@@ -3,7 +3,12 @@ import { Box, Link, Stack } from '@mui/material';
 import { ThemeProvider, useTheme, type Theme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 
-import type { TenantBranding, TenantSocialLink } from '#core/domain/index.js';
+import {
+  EMPTY_TENANT_BRANDING,
+  resolveTenantLogo,
+  type TenantBranding,
+  type TenantSocialLink,
+} from '#core/domain/index.js';
 
 import { actions } from './api.js';
 import { useTranslations } from './i18n/index.js';
@@ -31,6 +36,15 @@ const useTenantOffer = (enabled = !isConfiguredBaseDomainHost(window.location.ho
 
 export const useTenantBranding = (): TenantBranding | null =>
   useTenantOffer()?.branding ?? null;
+
+/**
+ * The active MUI palette mode already carries the resolved colour scheme, so the
+ * variant follows a live theme toggle without reading the preference again.
+ */
+const useThemedLogo = (branding: TenantBranding): string | null => {
+  const theme = useTheme();
+  return resolveTenantLogo(branding, theme.palette.mode === 'dark' ? 'dark' : 'light');
+};
 
 export const TenantSocialLinks = ({
   links: providedLinks,
@@ -61,8 +75,9 @@ export const TenantSocialLinks = ({
 
 export const TenantLogo = () => {
   const tenant = useTenantOffer();
+  const logoUrl = useThemedLogo(tenant?.branding ?? EMPTY_TENANT_BRANDING);
   if (tenant === null) return null;
-  if (tenant.branding.logoUrl === null) {
+  if (logoUrl === null) {
     return (
       <ShellWordmark component="p" variant="h3" noWrap data-testid="tenant-name-mark">
         {tenant.name}
@@ -72,7 +87,7 @@ export const TenantLogo = () => {
   return (
     <Box
       component="img"
-      src={tenant.branding.logoUrl}
+      src={logoUrl}
       alt={tenant.name}
       data-testid="tenant-logo"
       sx={{
@@ -95,6 +110,7 @@ export const BrandMark = ({
 }) => {
   const theme = useTheme();
   const tenant = useTenantOffer(tenantAware);
+  const logoUrl = useThemedLogo(tenant?.branding ?? EMPTY_TENANT_BRANDING);
   const compact = size === 'compact';
   if (tenant === null) {
     return (
@@ -106,7 +122,7 @@ export const BrandMark = ({
       />
     );
   }
-  if (tenant.branding.logoUrl === null) {
+  if (logoUrl === null) {
     if (compact) {
       return (
         <CompactWordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
@@ -123,7 +139,7 @@ export const BrandMark = ({
   return (
     <Box
       component="img"
-      src={tenant.branding.logoUrl}
+      src={logoUrl}
       alt={tenant.name}
       data-testid="tenant-brand-logo"
       sx={{

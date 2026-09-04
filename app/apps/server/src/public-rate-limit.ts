@@ -8,7 +8,7 @@ import {
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
-import { err, type AppError } from '#core/domain/index.js';
+import { err, isProductionEnvironment, type AppError } from '#core/domain/index.js';
 import {
   claimRateLimitWindow,
   resolveTenant,
@@ -20,7 +20,7 @@ import {
 
 import { trustedClientIp } from './auth-network.js';
 import { isPublicFormPath } from './body-limits.js';
-import { isProductionEnvironment, type Env } from './env.js';
+import { type Env } from './env.js';
 import { respond } from './respond.js';
 
 export interface PublicRateLimitPolicies {
@@ -45,15 +45,15 @@ const PRODUCTION_LIMITS = {
   writesPerIp: 30,
   writesPerTenant: 300,
   authLinksPerEmail: 5,
-  authResolvesPerIp: 20,
-  authResolvesPerTenant: 200,
+  authResolvesPerIp: 60,
+  authResolvesPerTenant: 1_000,
 };
 const DEVELOPMENT_LIMITS = {
   writesPerIp: 3_000,
   writesPerTenant: 30_000,
   authLinksPerEmail: 500,
-  authResolvesPerIp: 2_000,
-  authResolvesPerTenant: 20_000,
+  authResolvesPerIp: 6_000,
+  authResolvesPerTenant: 100_000,
 };
 
 export type PublicRateLimitEnv = Pick<

@@ -6,9 +6,14 @@ Potential vulnerabilities must be reported privately through the repository
 Together serves its SPA and API on the same origin. Session-backed API routes do
 not expose CORS headers. Better Auth validates `Origin` on its authentication
 POST routes, and its session cookies remain `HttpOnly` and `SameSite=Lax`;
-production enables the `Secure` flag. Sessions span tenant subdomains on a real
-base domain, while each custom domain remains a separate cookie world.
-Non-local authentication origins are HTTPS-only. HTTP origins are composed only
+production enables the `Secure` flag. Cookie scope and the passkey relying
+party are derived from the host of each request: a host under the base domain
+gets `Domain=.<baseDomain>` and the base domain as its relying party, so one
+session and one passkey cover the platform host and every tenant subdomain,
+while a verified custom domain gets host-only cookies and its own relying
+party and therefore remains a separate credential world. A `localhost` base
+domain and single-tenant deployments keep host-only cookies and the configured
+host as the relying party. Non-local authentication origins are HTTPS-only. HTTP origins are composed only
 for `localhost`, and boot rejects an HTTP `APP_BASE_URL` outside local
 development.
 
@@ -51,13 +56,15 @@ with shorter passwords may still sign in, but any replacement password must
 meet the current floor.
 
 Open CORS covers public offer and payment configuration reads, coupon
-validation, checkout-session start, auth configuration, sign-in method
-resolution (`/api/public/auth-resolve`), and free lesson previews so external
-creator sites can use the public checkout contract. Sign-in method resolution
-reveals only whether a tenant member or admin holds a password credential —
-unknown addresses and passwordless accounts are indistinguishable — and
-enumeration of that signal is bounded by the auth-resolve per-address and
-per-tenant limits recorded in the
+validation, checkout-session start, auth configuration, and free lesson
+previews so external creator sites can use the public checkout contract.
+Sign-in method resolution (`/api/public/auth-resolve`) is excluded: it answers
+CORS only to the platform host, the tenant subdomains of `APP_BASE_DOMAIN` and
+the verified custom domains held in `tenant_domains`, never with a wildcard, and
+a preflight from any other origin is refused. The lookup reveals only whether a
+tenant member or admin holds a password credential — unknown addresses and
+passwordless accounts are indistinguishable — and enumeration of that signal is
+bounded by the auth-resolve per-address and per-tenant limits recorded in the
 [go-live checklist](go-live-checklist.md).
 Webhook, unsubscribe, confirmation, and authenticated routes do not inherit
 that policy. The lesson read resolves a session when one is present and falls

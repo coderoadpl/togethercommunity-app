@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity } from '#core/domain/index.js';
+import type { Identity, ImpersonationPrincipal } from '#core/domain/index.js';
 
 import { authorize, authorizeRequiredTenant, authorizeTenant } from './authorize.js';
 
@@ -18,6 +18,7 @@ const identity = (tenantId: string | null): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 describe('authorize', () => {
@@ -87,6 +88,96 @@ describe('authorizeTenant', () => {
       ok: false,
       error: { code: 'tenant_not_found' },
     });
+  });
+});
+
+const subjectIdentity: Identity = {
+  ...identity('tenant-1'),
+  userId: 'user-2',
+  email: 'member@example.test',
+  name: 'Member',
+  staffRole: null,
+  memberId: 'member-1',
+};
+
+const impersonation: ImpersonationPrincipal = {
+  id: 'imp-1',
+  actorUserId: 'user-1',
+  actorEmail: 'person@example.test',
+  actorName: 'Person',
+  actorStaffRole: 'owner',
+  subjectMemberId: 'member-1',
+  subjectName: 'Member',
+  expiresAt: '1998-08-14T11:00:00.000Z',
+};
+
+describe('authorize under impersonation', () => {
+  it('passes allowlisted reads through the ordinary subject checks', () => {
+    expect(authorize({ identity: subjectIdentity, impersonation }, 'community:read')).toBeNull();
+    expect(authorize({ identity: subjectIdentity, impersonation }, 'lesson:play')).toBeNull();
+  });
+
+  it('refuses every mutation with the impersonation code', () => {
+    expect(authorize({ identity: subjectIdentity, impersonation }, 'community:write')).toEqual({
+      code: 'impersonation_read_only',
+      message: 'community:write is blocked while viewing as a member',
+    });
+    expect(authorize({ identity: subjectIdentity, impersonation }, 'member:profile:self-write'))
+      .toMatchObject({ code: 'impersonation_read_only' });
+  });
+
+  it('refuses the whole direct-message surface', () => {
+    for (const capability of ['dm:read', 'dm:write'] as const) {
+      expect(authorize({ identity: subjectIdentity, impersonation }, capability)).toMatchObject({
+        code: 'impersonation_read_only',
+      });
+    }
+  });
+
+  it('decides the leave path against the acting staff account', () => {
+    const asActor = { asImpersonationActor: true };
+    expect(
+      authorize({ identity: subjectIdentity, impersonation }, 'member:impersonate', asActor),
+    ).toBeNull();
+    expect(
+      authorize(
+        { identity: subjectIdentity, impersonation: { ...impersonation, actorStaffRole: 'admin' } },
+        'member:impersonate',
+        asActor,
+      ),
+    ).toBeNull();
+    expect(authorize({ identity: subjectIdentity }, 'member:impersonate')).toMatchObject({
+      code: 'forbidden',
+    });
+  });
+
+  it('keeps the staff-only reads behind member:impersonate out of the member view', () => {
+    expect(
+      authorize({ identity: subjectIdentity, impersonation }, 'member:impersonate'),
+    ).toMatchObject({ code: 'impersonation_read_only' });
+  });
+
+  it('refuses the personal-data export', () => {
+    expect(
+      authorize({ identity: subjectIdentity, impersonation }, 'member:data-export:self-read'),
+    ).toMatchObject({ code: 'impersonation_read_only' });
+  });
+
+  it('refuses cross-tenant and platform-account reads outside the member surface', () => {
+    for (const capability of ['tenant:list-own', 'account:session:self-read'] as const) {
+      expect(authorize({ identity: subjectIdentity, impersonation }, capability)).toMatchObject({
+        code: 'impersonation_read_only',
+      });
+    }
+  });
+
+  it('refuses a capability the context declares but the allowlist omits', () => {
+    expect(
+      authorize(
+        { identity: subjectIdentity, capabilities: ['community:write'], impersonation },
+        'community:write',
+      ),
+    ).toMatchObject({ code: 'impersonation_read_only' });
   });
 });
 

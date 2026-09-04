@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
+import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
 
 export const transactionalLanguageSchema = languageSchema;
 
@@ -35,12 +36,13 @@ const escapeHtmlCharacter = (character: string): string => {
 
 const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, escapeHtmlCharacter);
 
-const polishDateFormatter = new Intl.DateTimeFormat('pl-PL', {
-  dateStyle: 'long',
-  timeZone: 'Europe/Warsaw',
-});
+const dateFormatters: Record<TransactionalLanguage, Intl.DateTimeFormat> = {
+  pl: new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long', timeZone: 'Europe/Warsaw' }),
+  en: new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'Europe/Warsaw' }),
+};
 
-const polishDate = (isoDateTime: string): string => polishDateFormatter.format(new Date(isoDateTime));
+const localizedDate = (language: TransactionalLanguage, isoDateTime: string): string =>
+  dateFormatters[language].format(new Date(isoDateTime));
 
 const link = (href: string, label: string): string =>
   `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
@@ -71,16 +73,17 @@ export interface EmailBranding {
   socialLinks?: Array<{ label: string; url: string }> | undefined;
 }
 
-/** Branding assets may be stored as app-relative paths; mail clients need absolute URLs. */
+/** Mail renders on a white background, so it always takes the light-background logo variant. */
 export const emailBrandingFrom = (
   settings: {
     logoUrl: string | null;
+    logoDarkUrl?: string | null | undefined;
     accentColor: string | null;
     socialLinks?: Array<{ label: string; url: string }> | undefined;
   },
   baseUrl: string,
 ): EmailBranding => ({
-  logoUrl: settings.logoUrl === null ? null : new URL(settings.logoUrl, baseUrl).toString(),
+  logoUrl: absoluteBrandingAssetUrl(resolveTenantLogo(settings, 'light'), baseUrl),
   accentColor: settings.accentColor,
   socialLinks: settings.socialLinks,
 });
@@ -363,29 +366,30 @@ export const subscriptionPaymentFailed = (
     branding?: EmailBranding;
   },
 ): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
   const tenantName = escapeHtml(input.tenantName);
   const productTitle = escapeHtml(input.productTitle);
-  const accessEndsAt = escapeHtml(input.accessEndsAt);
-  const accessEndsAtPl = escapeHtml(polishDate(input.accessEndsAt));
+  const accessEndsAtText = localizedDate(resolvedLanguage, input.accessEndsAt);
+  const accessEndsAt = escapeHtml(accessEndsAtText);
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
   const portal =
     input.billingPortalUrl === null
       ? ''
-      : `<p>${link(input.billingPortalUrl, languageOrDefault(language) === 'en' ? 'Update billing details' : 'Zaktualizuj dane płatności')}</p>`;
+      : `<p>${link(input.billingPortalUrl, resolvedLanguage === 'en' ? 'Update billing details' : 'Zaktualizuj dane płatności')}</p>`;
 
-  if (languageOrDefault(language) === 'en') {
+  if (resolvedLanguage === 'en') {
     return emailMessageSchema.parse({
       subject: `Payment failed for ${input.productTitle}`,
       html: `${header}<p>Hello!</p><p>We could not collect payment for ${productTitle} on ${tenantName}.</p><p>Your access ends on ${accessEndsAt}.</p>${portal}${socialLinks.html}`,
-      text: `Hello!\n\nWe could not collect payment for ${input.productTitle} on ${input.tenantName}.\n\nYour access ends on ${input.accessEndsAt}.${input.billingPortalUrl === null ? '' : `\n\nUpdate billing details: ${input.billingPortalUrl}`}${socialLinks.text}`,
+      text: `Hello!\n\nWe could not collect payment for ${input.productTitle} on ${input.tenantName}.\n\nYour access ends on ${accessEndsAtText}.${input.billingPortalUrl === null ? '' : `\n\nUpdate billing details: ${input.billingPortalUrl}`}${socialLinks.text}`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Nie udało się pobrać płatności za „${input.productTitle}”`,
-    html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za „${productTitle}” na platformie ${tenantName}.</p><p>Bez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtPl}.</p>${portal}${socialLinks.html}`,
-    text: `Cześć!\n\nNie udało się pobrać płatności za „${input.productTitle}” na platformie ${input.tenantName}.\n\nBez opłacenia subskrypcji dostęp wygaśnie ${polishDate(input.accessEndsAt)}.${input.billingPortalUrl === null ? '' : `\n\nZaktualizuj dane płatności: ${input.billingPortalUrl}`}${socialLinks.text}`,
+    html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za „${productTitle}” na platformie ${tenantName}.</p><p>Bez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAt}.</p>${portal}${socialLinks.html}`,
+    text: `Cześć!\n\nNie udało się pobrać płatności za „${input.productTitle}” na platformie ${input.tenantName}.\n\nBez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtText}.${input.billingPortalUrl === null ? '' : `\n\nZaktualizuj dane płatności: ${input.billingPortalUrl}`}${socialLinks.text}`,
   });
 };
 
@@ -399,25 +403,26 @@ export const subscriptionEnded = (
     branding?: EmailBranding;
   },
 ): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
   const tenantName = escapeHtml(input.tenantName);
   const productTitle = escapeHtml(input.productTitle);
-  const accessEndsAt = escapeHtml(input.accessEndsAt);
-  const accessEndsAtPl = escapeHtml(polishDate(input.accessEndsAt));
+  const accessEndsAtText = localizedDate(resolvedLanguage, input.accessEndsAt);
+  const accessEndsAt = escapeHtml(accessEndsAtText);
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
 
-  if (languageOrDefault(language) === 'en') {
+  if (resolvedLanguage === 'en') {
     return emailMessageSchema.parse({
       subject: `Your ${input.productTitle} subscription has ended`,
       html: `${header}<p>Hello!</p><p>Your subscription to ${productTitle} on ${tenantName} has ended.</p><p>Your access ends on ${accessEndsAt}.</p><p>${link(input.offerUrl, 'View the offer')}</p>${socialLinks.html}`,
-      text: `Hello!\n\nYour subscription to ${input.productTitle} on ${input.tenantName} has ended.\n\nYour access ends on ${input.accessEndsAt}.\n\nView the offer: ${input.offerUrl}${socialLinks.text}`,
+      text: `Hello!\n\nYour subscription to ${input.productTitle} on ${input.tenantName} has ended.\n\nYour access ends on ${accessEndsAtText}.\n\nView the offer: ${input.offerUrl}${socialLinks.text}`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Subskrypcja „${input.productTitle}” została zakończona`,
-    html: `${header}<p>Cześć!</p><p>Twoja subskrypcja „${productTitle}” na platformie ${tenantName} została zakończona.</p><p>Dostęp do materiałów zachowasz do ${accessEndsAtPl}.</p><p>${link(input.offerUrl, 'Zobacz ofertę')}</p>${socialLinks.html}`,
-    text: `Cześć!\n\nTwoja subskrypcja „${input.productTitle}” na platformie ${input.tenantName} została zakończona.\n\nDostęp do materiałów zachowasz do ${polishDate(input.accessEndsAt)}.\n\nZobacz ofertę: ${input.offerUrl}${socialLinks.text}`,
+    html: `${header}<p>Cześć!</p><p>Twoja subskrypcja „${productTitle}” na platformie ${tenantName} została zakończona.</p><p>Dostęp do materiałów zachowasz do ${accessEndsAt}.</p><p>${link(input.offerUrl, 'Zobacz ofertę')}</p>${socialLinks.html}`,
+    text: `Cześć!\n\nTwoja subskrypcja „${input.productTitle}” na platformie ${input.tenantName} została zakończona.\n\nDostęp do materiałów zachowasz do ${accessEndsAtText}.\n\nZobacz ofertę: ${input.offerUrl}${socialLinks.text}`,
   });
 };
 
@@ -462,19 +467,24 @@ export const memberErasureRequestEmail = (
     panelUrl: string;
   },
 ): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
   const memberEmail = escapeHtml(input.memberEmail);
   const panelUrl = escapeHtml(input.panelUrl);
-  if (languageOrDefault(language) === 'en') {
+  const requestedAtText = localizedDate(resolvedLanguage, input.requestedAt);
+  const dueAtText = localizedDate(resolvedLanguage, input.dueAt);
+  const requestedAt = escapeHtml(requestedAtText);
+  const dueAt = escapeHtml(dueAtText);
+  if (resolvedLanguage === 'en') {
     return emailMessageSchema.parse({
       subject: `[${input.tenantName}] Member erasure request`,
-      html: `<p>${memberEmail} requested account erasure.</p><p>Requested: ${input.requestedAt}<br>Due: ${input.dueAt}</p><p><a href="${panelUrl}">Review request</a></p>`,
-      text: `${input.memberEmail} requested account erasure.\nRequested: ${input.requestedAt}\nDue: ${input.dueAt}\n${input.panelUrl}`,
+      html: `<p>${memberEmail} requested account erasure.</p><p>Requested: ${requestedAt}<br>Due: ${dueAt}</p><p><a href="${panelUrl}">Review request</a></p>`,
+      text: `${input.memberEmail} requested account erasure.\nRequested: ${requestedAtText}\nDue: ${dueAtText}\n${input.panelUrl}`,
     });
   }
   return emailMessageSchema.parse({
     subject: `[${input.tenantName}] Wniosek o usunięcie danych`,
-    html: `<p>${memberEmail} złożył(a) wniosek o usunięcie konta i danych.</p><p>Złożono: ${polishDate(input.requestedAt)}<br>Termin realizacji: ${polishDate(input.dueAt)}</p><p><a href="${panelUrl}">Otwórz wniosek w panelu</a></p>`,
-    text: `${input.memberEmail} złożył(a) wniosek o usunięcie konta i danych.\nZłożono: ${polishDate(input.requestedAt)}\nTermin realizacji: ${polishDate(input.dueAt)}\n${input.panelUrl}`,
+    html: `<p>${memberEmail} złożył(a) wniosek o usunięcie konta i danych.</p><p>Złożono: ${requestedAt}<br>Termin realizacji: ${dueAt}</p><p><a href="${panelUrl}">Otwórz wniosek w panelu</a></p>`,
+    text: `${input.memberEmail} złożył(a) wniosek o usunięcie konta i danych.\nZłożono: ${requestedAtText}\nTermin realizacji: ${dueAtText}\n${input.panelUrl}`,
   });
 };
 
@@ -497,9 +507,9 @@ export const emailTransportTest = (
   });
 };
 
-const REPUTATION_STATUS_PL: Record<'warn' | 'critical', string> = {
-  warn: 'ostrzeżenie',
-  critical: 'stan krytyczny',
+const REPUTATION_STATUS_LABEL: Record<TransactionalLanguage, Record<'warn' | 'critical', string>> = {
+  pl: { warn: 'ostrzeżenie', critical: 'stan krytyczny' },
+  en: { warn: 'warning', critical: 'critical' },
 };
 
 export const reputationAlertEmail = (
@@ -514,29 +524,30 @@ export const reputationAlertEmail = (
     dashboardUrl: string;
   },
 ): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
   const tenantName = escapeHtml(input.tenantName);
   const dashboardUrl = escapeHtml(input.dashboardUrl);
-  const hardBounceRate =
-    input.hardBounceRate === null
-      ? 'n/a'
-      : `${(input.hardBounceRate * 100).toFixed(3)}%`;
-  const complaintRate =
-    input.complaintRate === null
-      ? 'n/a'
-      : `${(input.complaintRate * 100).toFixed(3)}%`;
-  if (languageOrDefault(language) === 'en') {
+  const status = REPUTATION_STATUS_LABEL[resolvedLanguage][input.status];
+  const windowStartText = localizedDate(resolvedLanguage, input.windowStart);
+  const windowEndText = localizedDate(resolvedLanguage, input.windowEnd);
+  const windowStart = escapeHtml(windowStartText);
+  const windowEnd = escapeHtml(windowEndText);
+  const rate = (value: number | null, missing: string): string =>
+    value === null ? missing : `${(value * 100).toFixed(3)}%`;
+  if (resolvedLanguage === 'en') {
+    const hardBounceRate = rate(input.hardBounceRate, 'n/a');
+    const complaintRate = rate(input.complaintRate, 'n/a');
     return emailMessageSchema.parse({
-      subject: `[${input.tenantName}] E-mail reputation ${input.status}`,
-      html: `<p>E-mail reputation for ${tenantName} is <strong>${input.status}</strong>.</p><p>Hard bounce rate: ${hardBounceRate}<br>Complaint rate: ${complaintRate}<br>Window: ${input.windowStart} – ${input.windowEnd}</p><p><a href="${dashboardUrl}">Review reputation</a></p>`,
-      text: `E-mail reputation for ${input.tenantName} is ${input.status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${input.windowStart} – ${input.windowEnd}\n${input.dashboardUrl}`,
+      subject: `[${input.tenantName}] E-mail reputation: ${status}`,
+      html: `<p>E-mail reputation for ${tenantName}: <strong>${status}</strong>.</p><p>Hard bounce rate: ${hardBounceRate}<br>Complaint rate: ${complaintRate}<br>Window: ${windowStart} – ${windowEnd}</p><p><a href="${dashboardUrl}">Review reputation</a></p>`,
+      text: `E-mail reputation for ${input.tenantName}: ${status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${windowStartText} – ${windowEndText}\n${input.dashboardUrl}`,
     });
   }
-  const statusPl = REPUTATION_STATUS_PL[input.status];
-  const hardBounceRatePl = input.hardBounceRate === null ? 'brak danych' : hardBounceRate;
-  const complaintRatePl = input.complaintRate === null ? 'brak danych' : complaintRate;
+  const hardBounceRate = rate(input.hardBounceRate, 'brak danych');
+  const complaintRate = rate(input.complaintRate, 'brak danych');
   return emailMessageSchema.parse({
-    subject: `[${input.tenantName}] Reputacja nadawcy: ${statusPl}`,
-    html: `<p>Reputacja nadawcy e-mail platformy ${tenantName}: <strong>${statusPl}</strong>.</p><p>Odsetek twardych odbić (hard bounce): ${hardBounceRatePl}<br>Odsetek zgłoszeń spamu: ${complaintRatePl}<br>Okres: ${polishDate(input.windowStart)} – ${polishDate(input.windowEnd)}</p><p><a href="${dashboardUrl}">Sprawdź reputację</a></p>`,
-    text: `Reputacja nadawcy e-mail platformy ${input.tenantName}: ${statusPl}.\nOdsetek twardych odbić (hard bounce): ${hardBounceRatePl}\nOdsetek zgłoszeń spamu: ${complaintRatePl}\nOkres: ${polishDate(input.windowStart)} – ${polishDate(input.windowEnd)}\n${input.dashboardUrl}`,
+    subject: `[${input.tenantName}] Reputacja nadawcy: ${status}`,
+    html: `<p>Reputacja nadawcy e-mail platformy ${tenantName}: <strong>${status}</strong>.</p><p>Odsetek twardych odbić (hard bounce): ${hardBounceRate}<br>Odsetek zgłoszeń spamu: ${complaintRate}<br>Okres: ${windowStart} – ${windowEnd}</p><p><a href="${dashboardUrl}">Sprawdź reputację</a></p>`,
+    text: `Reputacja nadawcy e-mail platformy ${input.tenantName}: ${status}.\nOdsetek twardych odbić (hard bounce): ${hardBounceRate}\nOdsetek zgłoszeń spamu: ${complaintRate}\nOkres: ${windowStartText} – ${windowEndText}\n${input.dashboardUrl}`,
   });
 };

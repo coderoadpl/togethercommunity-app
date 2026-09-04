@@ -27,12 +27,15 @@ import {
 } from '#core/contract/index.js';
 import {
   capabilitiesForPrincipal,
+  DEFAULT_LANGUAGE,
   emailBrandingFrom,
   err,
   internal,
   languageSchema,
   MAGIC_LINK_LANGUAGE_HEADER,
+  normalizeEmail,
   ok,
+  resolveEmailLanguage,
   tenantNotFound,
   unauthorized,
   unavailable,
@@ -70,6 +73,7 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
+import type { AppVars } from './app-vars.js';
 import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
@@ -78,11 +82,10 @@ import {
   respond,
   respondNotModified,
 } from './respond.js';
-
-type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
+import { registerTenantScopedCors } from './tenant-cors.js';
 
 const registerOpenCors = (
-  app: Hono<Vars>,
+  app: Hono<AppVars>,
   path: string,
   method: 'GET' | 'POST',
   excludedPath?: string,
@@ -145,6 +148,20 @@ const EMAIL_MAX_LENGTH = 254;
 
 const authEmailBodySchema = z.object({ email: z.string().email().max(EMAIL_MAX_LENGTH) });
 
+const authEmailLanguage = async (
+  email: string,
+  resolved: ResolvedTenant | null,
+  requested: Language | null,
+  deps: AppDeps,
+): Promise<Language> => {
+  if (resolved === null) return requested ?? DEFAULT_LANGUAGE;
+  const [member, settings] = await Promise.all([
+    deps.members.findByEmail(resolved.tenant.id, normalizeEmail(email)),
+    deps.tenants.findSettings(resolved.tenant.id),
+  ]);
+  return resolveEmailLanguage(member?.language, requested, settings?.defaultLanguage);
+};
+
 const withAuthDeliveryContext = async (
   c: Context,
   deps: AppDeps,
@@ -177,7 +194,12 @@ const withAuthDeliveryContext = async (
       email,
       resolved,
       baseUrl: authLinkBaseUrl(resolved, deps),
-      language: headerLanguage.success ? headerLanguage.data : 'pl',
+      language: await authEmailLanguage(
+        email,
+        resolved,
+        headerLanguage.success ? headerLanguage.data : null,
+        deps,
+      ),
     });
   }
   try {
@@ -208,6 +230,7 @@ const anonymousIdentity = (
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 const recordCheckoutConsents = async (
@@ -246,6 +269,8 @@ const recordCheckoutConsents = async (
         definitions: deps.marketing.definitions,
         consents: deps.marketing.marketingConsents,
         confirmations: deps.marketing.confirmations,
+        members: deps.members,
+        tenants: deps.tenants,
         outbox: deps.emailOutbox,
         ids: deps.ids,
         tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
@@ -312,7 +337,7 @@ const recordFulfilledCheckoutConsents = async (
   });
 };
 
-export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
+export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
 
   registerManifestRoute(app, deps);
@@ -353,7 +378,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
   registerOpenCors(app, API_PATHS.authConfig, 'GET');
-  registerOpenCors(app, API_PATHS.authResolve, 'POST');
+  registerTenantScopedCors(app, API_PATHS.authResolve, deps);
 
   app.get(API_PATHS.publicImageAsset, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
@@ -527,12 +552,17 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
 
-    const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
-    const identity = await resolveIdentity(
-      user,
-      { host: c.req.header('host') ?? '', tenantHeader: c.req.header(TENANT_HEADER) ?? null },
-      deps,
-    );
+    const actorAuth = c.get('actorAuth');
+    const user = actorAuth?.user ?? await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
+    const identity = actorAuth === undefined
+      ? await resolveIdentity(
+        user,
+        { host: c.req.header('host') ?? '', tenantHeader: c.req.header(TENANT_HEADER) ?? null },
+        deps,
+      )
+      : ok(actorAuth.identity);
+    const impersonation = c.get('impersonation');
+    const impersonationIdentity = c.get('impersonationIdentity');
     let authenticated = false;
     let ctx: Parameters<typeof getPlayableLesson>[0] = {
       identity: anonymousIdentity('Preview', tenant.value.tenant),
@@ -545,7 +575,9 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         }
       } else {
         authenticated = true;
-        ctx = { identity: identity.value };
+        ctx = impersonation === undefined || impersonationIdentity === undefined
+          ? { identity: identity.value }
+          : { identity: impersonationIdentity, impersonation };
       }
     }
     const result = await getPlayableLesson(ctx, c.req.param('lessonId'), deps);
@@ -707,16 +739,20 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     return respondPublic(session);
   });
 
-  app.get(API_PATHS.authConfig, async () =>
-    respondPublic(
+  app.get(API_PATHS.authConfig, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    // The Google callback is pinned to APP_BASE_URL, so its session cookie never
+    // reaches a custom host; offering the button there would dead-end the sign-in.
+    const onCustomDomain = tenant.ok && tenant.value?.source === 'custom-domain';
+    return respondPublic(
       ok({
-        googleEnabled: deps.authConfig.googleEnabled,
+        googleEnabled: deps.authConfig.googleEnabled && !onCustomDomain,
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
       }),
-    ),
-  );
+    );
+  });
 
   app.post(API_PATHS.authResolve, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);

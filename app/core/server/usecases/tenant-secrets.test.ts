@@ -29,6 +29,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   } satisfies Identity,
 });
 
@@ -124,6 +125,17 @@ describe('setTenantSecret', () => {
     const result = await setTenantSecret(ctx('owner'), { key: 'stripe.webhookSecret', value: '  ' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
+
+  it.each(['s3.configuration', 's3.accessKeyId', 's3.secretAccessKey'] as const)(
+    'rejects %s and points at the storage configuration flow',
+    async (key) => {
+      const h = harness();
+      const result = await setTenantSecret(ctx('owner'), { key, value: 'value-1234' }, h.deps);
+      expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(JSON.stringify(result)).toContain('/api/integrations/storage/configure');
+      expect(h.rows).toHaveLength(0);
+    },
+  );
 
   it('requires a selected tenant', async () => {
     const h = harness();

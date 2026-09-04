@@ -18,7 +18,7 @@ describe('product metadata migration', () => {
       row('p2', 'Żółw & Łódź', 'tenant-2'),
     ])).toEqual([
       { id: 'p1', slug: 'wstep-do-programowania' },
-      { id: 'p2', slug: 'zo-w-odz' },
+      { id: 'p2', slug: 'zolw-lodz' },
     ]);
   });
 

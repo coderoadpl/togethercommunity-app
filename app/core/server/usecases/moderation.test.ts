@@ -1,20 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  DM_REPORT_SNAPSHOT_SIZE,
+  NO_DM_BLOCKS,
   postReportSchema,
+  tenantSettingsSchema,
   type Identity,
   type Post,
   type PostReport,
   type PostReportEvent,
+  type DmConversation,
+  type DmMessage,
+  type DmReport,
+  type DmReportStatus,
+  type Language,
   type Space,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { PostReportRepository } from '../ports.js';
+import type { DmReportRepository, PostReportRepository, RealtimeEvent } from '../ports.js';
 import {
+  listDmReports,
   listReports,
   openHeuristicReport,
+  reportDmConversation,
   reportPost,
+  resolveDmReport,
   resolveReport,
   type ModerationDeps,
 } from './moderation.js';
@@ -35,6 +46,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...overrides,
 });
 
@@ -200,12 +212,77 @@ const report = (overrides: Partial<PostReport> = {}): PostReport => postReportSc
   ...overrides,
 });
 
+class FakeDmReports implements DmReportRepository {
+  readonly rows: DmReport[] = [];
+
+  async open(tenantId: string, report: DmReport): Promise<DmReport | null> {
+    const duplicate = this.rows.some(
+      (row) =>
+        row.tenantId === tenantId &&
+        row.conversationId === report.conversationId &&
+        row.reporterUserId === report.reporterUserId &&
+        row.status === 'open',
+    );
+    if (duplicate) return null;
+    const stored = { ...report, tenantId };
+    this.rows.push(stored);
+    return stored;
+  }
+
+  async listByStatus(
+    tenantId: string,
+    query: { status: DmReportStatus; cursor?: string; limit: number },
+  ): Promise<{ reports: DmReport[]; nextCursor: string | null }> {
+    return {
+      reports: this.rows.filter((row) => row.tenantId === tenantId && row.status === query.status),
+      nextCursor: null,
+    };
+  }
+
+  async countOpen(tenantId: string): Promise<number> {
+    return this.rows.filter((row) => row.tenantId === tenantId && row.status === 'open').length;
+  }
+
+  async resolve(
+    tenantId: string,
+    input: { id: string; resolvedAt: string; resolvedByUserId: string },
+  ): Promise<DmReport | null> {
+    const index = this.rows.findIndex(
+      (row) => row.tenantId === tenantId && row.id === input.id && row.status === 'open',
+    );
+    const current = this.rows[index];
+    if (index === -1 || current === undefined) return null;
+    const next: DmReport = {
+      ...current,
+      status: 'resolved',
+      resolvedAt: input.resolvedAt,
+      resolvedByUserId: input.resolvedByUserId,
+    };
+    this.rows[index] = next;
+    return next;
+  }
+}
+
+interface DmOptions {
+  dmReports?: FakeDmReports;
+  dmConversations?: DmConversation[];
+  dmMessages?: DmMessage[];
+  directMessagesEnabled?: boolean;
+  staff?: Array<{ userId: string; email: string; language: Language | null }>;
+  published?: RealtimeEvent[];
+}
+
 const makeDeps = (
   reports = new FakeReports(),
   posts: Post[] = [post()],
   spaces: Space[] = [space()],
+  options: DmOptions = {},
 ): ModerationDeps => {
   const ids = new SequenceIds();
+  const dmReports = options.dmReports ?? new FakeDmReports();
+  const dmConversations = options.dmConversations ?? [];
+  const dmMessages = options.dmMessages ?? [];
+  const published = options.published ?? [];
   return {
     reports,
     posts: {
@@ -262,6 +339,7 @@ const makeDeps = (
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateLanguage: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,
@@ -277,6 +355,12 @@ const makeDeps = (
       unfollow: async () => false,
       listFollowersPage: async () => [],
       listForUser: async () => [],
+    },
+    memberBlocks: {
+      block: async () => true,
+      unblock: async () => true,
+      findDirections: async (_tenantId, query) =>
+        new Map(query.otherUserIds.map((userId) => [userId, NO_DM_BLOCKS])),
     },
     notifications: {
       insert: async (_tenantId, notification) => notification,
@@ -317,7 +401,7 @@ const makeDeps = (
     },
     tenantAccess: {
       listTenantsForStaff: async () => [],
-      listStaffForTenant: async () => [],
+      listStaffForTenant: async () => options.staff ?? [],
       findStaffGrant: async () => null,
       findMember: async () => null,
     },
@@ -326,6 +410,53 @@ const makeDeps = (
       eventUrl: () => '',
       lessonDiscussionUrl: () => '',
       spaceUrl: () => '',
+    },
+    dmReports,
+    dmConversations: {
+      findById: async (tenantId: string, id: string) =>
+        dmConversations.find((row) => row.tenantId === tenantId && row.id === id) ?? null,
+      findByParticipants: async () => null,
+      insert: async (_tenantId, conversation) => conversation,
+      listForParticipant: async () => ({ conversations: [], nextCursor: null }),
+      countCreatedBySince: async () => 0,
+      countUnreadForParticipant: async () => 0,
+      applyLastMessage: async () => null,
+    },
+    dmMessages: {
+      insert: async (_tenantId, message) => message,
+      listForConversation: async (tenantId: string, query) => ({
+        messages: dmMessages
+          .filter((row) => row.tenantId === tenantId && row.conversationId === query.conversationId)
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+          .slice(0, query.limit),
+        nextCursor: null,
+      }),
+      countRecentBySender: async () => 0,
+    },
+    tenants: {
+      findById: async () => null,
+      findBySlug: async () => null,
+      findSole: async () => null,
+      findSettings: async () =>
+        tenantSettingsSchema.parse({
+          name: 'Tenant',
+          billingPortalUrl: null,
+          bunnyStreamLibraryId: null,
+          directMessagesEnabled: options.directMessagesEnabled ?? true,
+        }),
+      updateSettings: async (_tenantId, settings) => settings,
+      createTenantWithOwnerGrant: async () => null,
+      hasAny: async () => true,
+    },
+    userDisplays: {
+      findDisplayNames: async (_tenantId, userIds: string[]) =>
+        new Map(userIds.map((userId) => [userId, `Osoba ${userId}`])),
+    },
+    realtimeBus: {
+      publish: (event) => {
+        published.push(event);
+      },
+      subscribe: () => () => undefined,
     },
     ids,
     clock: { nowIso: () => NOW },
@@ -503,5 +634,231 @@ describe('moderation use-cases', () => {
 
     expect(reports.rows).toMatchObject([{ source: 'heuristic', signals: ['link-flood'] }]);
     expect(reports.events).toHaveLength(1);
+  });
+});
+
+const dmConversation = (overrides: Partial<DmConversation> = {}): DmConversation => ({
+  id: 'conversation-1',
+  tenantId: 'tenant-1',
+  participantLowUserId: 'member-user',
+  participantHighUserId: 'other-user',
+  createdByUserId: 'member-user',
+  createdAt: NOW,
+  lastMessageId: 'dm-2',
+  lastMessageAt: NOW,
+  lastMessageSnippet: 'Ostatnia',
+  lastMessageSenderUserId: 'other-user',
+  ...overrides,
+});
+
+const dmMessage = (id: string, senderUserId: string, createdAt: string): DmMessage => ({
+  id,
+  tenantId: 'tenant-1',
+  conversationId: 'conversation-1',
+  senderUserId,
+  body: `Treść ${id}`,
+  createdAt,
+});
+
+describe('direct message reports', () => {
+  it('snapshots the conversation tail chronologically and notifies staff', async () => {
+    const published: RealtimeEvent[] = [];
+    const dmReports = new FakeDmReports();
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmReports,
+      published,
+      dmConversations: [dmConversation()],
+      dmMessages: [
+        dmMessage('dm-1', 'member-user', '2026-07-29T00:00:01.000Z'),
+        dmMessage('dm-2', 'other-user', '2026-07-29T00:00:02.000Z'),
+      ],
+      staff: [{ userId: 'staff-user', email: 'staff@example.com', language: null }],
+    });
+
+    const result = await reportDmConversation(
+      ctx(),
+      { conversationId: 'conversation-1', reason: 'harassment' },
+      deps,
+    );
+
+    const stored = dmReports.rows[0];
+    expect(stored?.snapshot.map((message) => message.id)).toEqual(['dm-1', 'dm-2']);
+    expect(stored?.snapshot.map((message) => message.senderIsReporter)).toEqual([true, false]);
+    expect(stored).toMatchObject({ status: 'open', reportedUserId: 'other-user' });
+    expect(result.ok && result.value).toEqual({
+      id: stored?.id,
+      conversationId: 'conversation-1',
+      reason: 'harassment',
+      status: 'open',
+      createdAt: stored?.createdAt,
+    });
+    expect(published.map((event) => event.kind)).toEqual(['notification']);
+  });
+
+  it('keeps participant user ids and the evidence snapshot out of the reporter response', async () => {
+    const dmReports = new FakeDmReports();
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmReports,
+      dmConversations: [dmConversation()],
+      dmMessages: [dmMessage('dm-1', 'other-user', '2026-07-29T00:00:01.000Z')],
+    });
+
+    const result = await reportDmConversation(
+      ctx(),
+      { conversationId: 'conversation-1', reason: 'harassment' },
+      deps,
+    );
+
+    const serialized = JSON.stringify(result.ok ? result.value : {});
+    expect(serialized).not.toContain('member-user');
+    expect(serialized).not.toContain('other-user');
+    expect(Object.keys(result.ok ? result.value : {}).sort()).toEqual([
+      'conversationId',
+      'createdAt',
+      'id',
+      'reason',
+      'status',
+    ]);
+  });
+
+  it('stores a reporter display derived like a post author, never the raw e-mail', async () => {
+    const dmReports = new FakeDmReports();
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmReports,
+      dmConversations: [dmConversation()],
+      dmMessages: [dmMessage('dm-1', 'member-user', '2026-07-29T00:00:01.000Z')],
+    });
+
+    await reportDmConversation(
+      ctx({ name: '   ', email: 'jan.kowalski@example.com' }),
+      { conversationId: 'conversation-1', reason: 'spam' },
+      deps,
+    );
+
+    expect(dmReports.rows[0]?.reporterDisplay).toBe('Jan Kowalski');
+    expect(dmReports.rows[0]?.snapshot[0]?.senderDisplay).toBe('Jan Kowalski');
+  });
+
+  it('keeps the receipt once the report row is durable even if the staff notification fails', async () => {
+    const dmReports = new FakeDmReports();
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmReports,
+      dmConversations: [dmConversation()],
+      dmMessages: [dmMessage('dm-1', 'other-user', '2026-07-29T00:00:01.000Z')],
+      staff: [{ userId: 'staff-user', email: 'staff@example.com', language: null }],
+    });
+    deps.notifications = {
+      ...deps.notifications,
+      insertMany: async () => {
+        throw new Error('notification store down');
+      },
+    };
+
+    const result = await reportDmConversation(
+      ctx(),
+      { conversationId: 'conversation-1', reason: 'spam' },
+      deps,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(dmReports.rows).toHaveLength(1);
+  });
+
+  it('caps the snapshot at the configured window', async () => {
+    const dmReports = new FakeDmReports();
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmReports,
+      dmConversations: [dmConversation()],
+      dmMessages: Array.from({ length: DM_REPORT_SNAPSHOT_SIZE + 5 }, (_value, index) =>
+        dmMessage(
+          `dm-${String(index)}`,
+          'other-user',
+          `2026-07-29T00:00:${String(index).padStart(2, '0')}.000Z`,
+        ),
+      ),
+    });
+
+    await reportDmConversation(ctx(), { conversationId: 'conversation-1', reason: 'spam' }, deps);
+
+    expect(dmReports.rows[0]?.snapshot).toHaveLength(DM_REPORT_SNAPSHOT_SIZE);
+    expect(dmReports.rows[0]?.snapshot[0]?.id).toBe('dm-5');
+  });
+
+  it('lets only conversation participants report it', async () => {
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmConversations: [dmConversation()],
+    });
+
+    const stranger = await reportDmConversation(
+      ctx({ userId: 'stranger-user', memberId: 'member-9' }),
+      { conversationId: 'conversation-1', reason: 'spam' },
+      deps,
+    );
+    const otherTenant = await reportDmConversation(
+      ctx({ tenantId: 'tenant-2' }),
+      { conversationId: 'conversation-1', reason: 'spam' },
+      deps,
+    );
+
+    expect(stranger.ok ? null : stranger.error.code).toBe('not_found');
+    expect(otherTenant.ok ? null : otherTenant.error.code).toBe('not_found');
+  });
+
+  it('refuses a second open report from the same reporter', async () => {
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmConversations: [dmConversation()],
+    });
+    const input = { conversationId: 'conversation-1', reason: 'spam' as const };
+
+    await reportDmConversation(ctx(), input, deps);
+    const duplicate = await reportDmConversation(ctx(), input, deps);
+
+    expect(duplicate.ok ? null : duplicate.error.code).toBe('conflict');
+  });
+
+  it('refuses a report when the tenant turned direct messages off', async () => {
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmConversations: [dmConversation()],
+      directMessagesEnabled: false,
+    });
+
+    const result = await reportDmConversation(
+      ctx(),
+      { conversationId: 'conversation-1', reason: 'spam' },
+      deps,
+    );
+
+    expect(result.ok ? null : result.error.code).toBe('forbidden');
+  });
+
+  it('keeps the queue and the resolve action for staff only', async () => {
+    const dmReports = new FakeDmReports();
+    const deps = makeDeps(new FakeReports(), [post()], [space()], {
+      dmReports,
+      dmConversations: [dmConversation()],
+    });
+    const opened = await reportDmConversation(
+      ctx(),
+      { conversationId: 'conversation-1', reason: 'spam' },
+      deps,
+    );
+    const reportId = opened.ok ? opened.value.id : '';
+    const staff = ctx({ staffRole: 'admin', memberId: null });
+
+    const memberQueue = await listDmReports(ctx(), {}, deps);
+    const memberResolve = await resolveDmReport(ctx(), { reportId }, deps);
+    const staffQueue = await listDmReports(staff, {}, deps);
+    const staffResolve = await resolveDmReport(staff, { reportId }, deps);
+    const resolvedTwice = await resolveDmReport(staff, { reportId }, deps);
+
+    expect(memberQueue.ok ? null : memberQueue.error.code).toBe('forbidden');
+    expect(memberResolve.ok ? null : memberResolve.error.code).toBe('forbidden');
+    expect(staffQueue.ok && staffQueue.value).toMatchObject({ openCount: 1 });
+    expect(staffQueue.ok && staffQueue.value.reports.map((report) => report.id)).toEqual([reportId]);
+    expect(staffResolve.ok && staffResolve.value).toMatchObject({
+      status: 'resolved',
+      resolvedByUserId: 'member-user',
+    });
+    expect(resolvedTwice.ok ? null : resolvedTwice.error.code).toBe('not_found');
   });
 });

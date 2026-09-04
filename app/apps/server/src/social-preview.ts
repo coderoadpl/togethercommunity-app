@@ -81,8 +81,8 @@ export const registerSocialPreviewRoute = (app: Hono<Vars>, deps: AppDeps): void
     }
     const { tenant } = resolved.value;
     const settings = await deps.tenants.findSettings(tenant.id);
-    const social = resolveTenantSocial(tenant, settings);
     const requestUrl = new URL(c.req.url);
+    const social = resolveTenantSocial(tenant, settings, requestUrl.origin);
     const canonicalUrl = `${requestUrl.origin}${requestUrl.pathname}`;
     return c.html(renderSocialPreview({
       tenantName: tenant.name,

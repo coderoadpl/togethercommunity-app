@@ -34,6 +34,7 @@ const ctx = (staffRole: StaffRole | null = 'owner', tenantId: string | null = 't
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   } satisfies Identity,
 });
 
@@ -44,6 +45,7 @@ const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
   logoUrl: null,
+  logoDarkUrl: null,
   accentColor: null,
   faviconUrl: null,
   ogTitle: null,
@@ -82,6 +84,8 @@ const senderSettings = (overrides: Partial<TenantSesSettings> = {}): TenantSesSe
   identityCheckError: null,
   configurationSet: null,
   snsTopicArn: null,
+  snsSubscriptionEndpoint: null,
+  snsSubscriptionConfirmedAt: null,
   trackingEnabled: true,
   autoPauseOnCritical: true,
   webhookToken: 'token-token-token-token',
@@ -208,6 +212,7 @@ describe('getTenantSetupReadiness', () => {
         termsUrl: 'https://acme.test/terms',
         billingPortalUrl: 'https://billing.acme.test',
         logoUrl: '/assets/logo.png',
+        logoDarkUrl: null,
         accentColor: '#112233',
       }),
     });

@@ -1,17 +1,19 @@
 import {
-  DEFAULT_LANGUAGE,
   DM_CONVERSATION_RATE_LIMIT,
   DM_MESSAGE_RATE_LIMIT,
+  NO_DM_BLOCKS,
   canonicalDmParticipants,
   dmConversationRefSchema,
   dmConversationSchema,
   dmMessageSchema,
   dmParticipants,
+  directMessagesEnabled,
   err,
   forbidden,
   internal,
   listDmConversationsInputSchema,
   listDmMessagesInputSchema,
+  memberBlockSchema,
   notFound,
   ok,
   otherDmParticipant,
@@ -19,10 +21,12 @@ import {
   rateLimited,
   sendDmMessageInputSchema,
   startDmConversationInputSchema,
+  tenantNotFound,
   toPublicDmConversation,
   toPublicDmMessage,
   validation,
   type AppError,
+  type DmBlockDirections,
   type DmConversation,
   type Member,
   type Notification,
@@ -45,6 +49,7 @@ import type {
   DmConversationStateRepository,
   DmMessageRepository,
   IdGenerator,
+  MemberBlockRepository,
   MemberRepository,
   NotificationChannelPort,
   NotificationRepository,
@@ -53,6 +58,7 @@ import type {
   RealtimeBusPort,
   SpaceRepository,
   TenantAccessReader,
+  TenantRepository,
   UserDisplayReader,
 } from '../ports.js';
 import { avatarUrlsFor } from './avatar.js';
@@ -63,11 +69,14 @@ import {
   spaceContextAccess,
 } from './community-access.js';
 import { resolveAuthorDisplay } from './community.js';
+import { tenantEmailLanguage } from './email-language.js';
 
 export interface DirectMessagesDeps {
   dmConversations: DmConversationRepository;
   dmMessages: DmMessageRepository;
   dmConversationStates: DmConversationStateRepository;
+  memberBlocks: MemberBlockRepository;
+  tenants: TenantRepository;
   members: MemberRepository;
   posts: PostRepository;
   spaces: SpaceRepository;
@@ -108,27 +117,46 @@ const loadCounterpart = async (
   return { userId, member, isStaff: staffGrant !== null };
 };
 
+const UNREACHABLE_RECIPIENT = 'This member cannot be messaged right now';
+
+const isReachableRecipient = (recipient: Counterpart, senderIsStaff: boolean): boolean => {
+  const member = recipient.member;
+  if (member === null || member.deletedAt !== null) return recipient.isStaff;
+  if (recipient.isStaff) return true;
+  return member.bannedAt === null && (senderIsStaff || member.dmOptOutAt === null);
+};
+
 /**
- * Recipients must be reachable people in this tenant; staff grants keep the
- * support channel open in both directions. Strangers and other tenants get the
- * same `not_found`, and a ban is indistinguishable from an opt-out, so the
- * endpoint is no existence or moderation-state oracle.
+ * Recipients must be reachable people in this tenant. A block closes the thread
+ * in both directions for everyone, staff included; a staff grant only overrides
+ * a member's DM opt-out. Strangers and other tenants get the same `not_found`,
+ * and a ban, an opt-out and either block direction are indistinguishable, so the
+ * endpoint is no existence, moderation-state or block-direction oracle.
  */
 const requireReachableRecipient = (
   recipient: Counterpart,
   senderIsStaff: boolean,
+  blocks: DmBlockDirections,
 ): Result<Counterpart, AppError> => {
+  if (blocks.blockedByViewer || blocks.blocksViewer) return err(forbidden(UNREACHABLE_RECIPIENT));
   const member = recipient.member;
   if (member === null || member.deletedAt !== null) {
     return recipient.isStaff ? ok(recipient) : err(notFound('Recipient not found in this community'));
   }
-  if (
-    !recipient.isStaff &&
-    (member.bannedAt !== null || (!senderIsStaff && member.dmOptOutAt !== null))
-  ) {
-    return err(forbidden('This member cannot be messaged right now'));
-  }
-  return ok(recipient);
+  return isReachableRecipient(recipient, senderIsStaff)
+    ? ok(recipient)
+    : err(forbidden(UNREACHABLE_RECIPIENT));
+};
+
+export const requireDirectMessages = async (
+  tenantId: string,
+  deps: { tenants: TenantRepository },
+): Promise<Result<void, AppError>> => {
+  const settings = await deps.tenants.findSettings(tenantId);
+  if (settings === null) return err(tenantNotFound());
+  return directMessagesEnabled(settings)
+    ? ok(undefined)
+    : err(forbidden('Direct messages are turned off in this community'));
 };
 
 const postAuthorAccessible = async (
@@ -206,29 +234,44 @@ const resolveParticipant = async (
 
 const projectConversations = async (
   tenantId: string,
-  viewerUserId: string,
+  viewer: { userId: string; isStaff: boolean },
   conversations: readonly DmConversation[],
   deps: DirectMessagesDeps,
 ): Promise<PublicDmConversation[]> => {
   if (conversations.length === 0) return [];
+  const otherUserIds = [
+    ...new Set(conversations.map((conversation) => otherDmParticipant(conversation, viewer.userId))),
+  ];
   const counterparts = await Promise.all(
-    [...new Set(conversations.map((conversation) => otherDmParticipant(conversation, viewerUserId)))].map(
-      (userId) => loadCounterpart(tenantId, userId, deps),
-    ),
+    otherUserIds.map((userId) => loadCounterpart(tenantId, userId, deps)),
   );
-  const participants = await participantProjection(tenantId, counterparts, deps);
-  const states = await deps.dmConversationStates.findForViewer(tenantId, {
-    userId: viewerUserId,
-    conversationIds: conversations.map((conversation) => conversation.id),
-  });
+  const reachableByUserId = new Map(
+    counterparts.map((counterpart) => [
+      counterpart.userId,
+      isReachableRecipient(counterpart, viewer.isStaff),
+    ]),
+  );
+  const [participants, blocks, states] = await Promise.all([
+    participantProjection(tenantId, counterparts, deps),
+    deps.memberBlocks.findDirections(tenantId, { viewerUserId: viewer.userId, otherUserIds }),
+    deps.dmConversationStates.findForViewer(tenantId, {
+      userId: viewer.userId,
+      conversationIds: conversations.map((conversation) => conversation.id),
+    }),
+  ]);
   const lastReadByConversation = new Map(states.map((state) => [state.conversationId, state.lastReadAt]));
-  return conversations.map((conversation) =>
-    toPublicDmConversation(
+  return conversations.map((conversation) => {
+    const otherUserId = otherDmParticipant(conversation, viewer.userId);
+    return toPublicDmConversation(
       conversation,
-      { userId: viewerUserId, lastReadAt: lastReadByConversation.get(conversation.id) ?? null },
-      participants.get(otherDmParticipant(conversation, viewerUserId)) ?? UNKNOWN_PARTICIPANT,
-    ),
-  );
+      { userId: viewer.userId, lastReadAt: lastReadByConversation.get(conversation.id) ?? null },
+      participants.get(otherUserId) ?? UNKNOWN_PARTICIPANT,
+      {
+        blocks: blocks.get(otherUserId) ?? NO_DM_BLOCKS,
+        recipientReachable: reachableByUserId.get(otherUserId) ?? false,
+      },
+    );
+  });
 };
 
 const participantConversation = async (
@@ -244,6 +287,24 @@ const participantConversation = async (
   return ok(conversation);
 };
 
+const viewerOf = (ctx: Ctx, userId: string): { userId: string; isStaff: boolean } => ({
+  userId,
+  isStaff: ctx.identity.staffRole !== null,
+});
+
+const blocksBetween = async (
+  tenantId: string,
+  viewerUserId: string,
+  otherUserId: string,
+  deps: DirectMessagesDeps,
+): Promise<DmBlockDirections> => {
+  const directions = await deps.memberBlocks.findDirections(tenantId, {
+    viewerUserId,
+    otherUserIds: [otherUserId],
+  });
+  return directions.get(otherUserId) ?? NO_DM_BLOCKS;
+};
+
 export const startDmConversation = async (
   ctx: Ctx,
   input: unknown,
@@ -251,6 +312,8 @@ export const startDmConversation = async (
 ): Promise<Result<PublicDmConversation, AppError>> => {
   const actor = requireUnbannedMember(ctx, 'dm:write');
   if (!actor.ok) return actor;
+  const enabled = await requireDirectMessages(actor.value.tenantId, deps);
+  if (!enabled.ok) return enabled;
   const parsed = startDmConversationInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid conversation payload', parsed.error.flatten()));
   const recipientUserId = await resolveRecipientUserId(
@@ -263,17 +326,31 @@ export const startDmConversation = async (
   if (recipientUserId.value === actor.value.userId) {
     return err(validation('You cannot message yourself'));
   }
-  const recipient = await requireReachableRecipient(
-    await loadCounterpart(actor.value.tenantId, recipientUserId.value, deps),
-    ctx.identity.staffRole !== null,
+  const blocks = await blocksBetween(
+    actor.value.tenantId,
+    actor.value.userId,
+    recipientUserId.value,
+    deps,
   );
-  if (!recipient.ok) return recipient;
-  const pair = canonicalDmParticipants(actor.value.userId, recipient.value.userId);
+  const pair = canonicalDmParticipants(actor.value.userId, recipientUserId.value);
   const existing = await deps.dmConversations.findByParticipants(actor.value.tenantId, pair);
+  /**
+   * A blocker landing on their own thread learns nothing the conversation list
+   * does not already show them, so send them there instead of the neutral
+   * rejection meant for the other side.
+   */
+  if (existing === null || !blocks.blockedByViewer) {
+    const recipient = requireReachableRecipient(
+      await loadCounterpart(actor.value.tenantId, recipientUserId.value, deps),
+      ctx.identity.staffRole !== null,
+      blocks,
+    );
+    if (!recipient.ok) return recipient;
+  }
   if (existing !== null) {
     const [projected] = await projectConversations(
       actor.value.tenantId,
-      actor.value.userId,
+      viewerOf(ctx, actor.value.userId),
       [existing],
       deps,
     );
@@ -303,7 +380,7 @@ export const startDmConversation = async (
   const created = await deps.dmConversations.insert(actor.value.tenantId, record.data);
   const [projected] = await projectConversations(
     actor.value.tenantId,
-    actor.value.userId,
+    viewerOf(ctx, actor.value.userId),
     [created],
     deps,
   );
@@ -361,13 +438,15 @@ const notifyDmRecipient = async (
     tenantSlug: tenant.tenantSlug,
     conversationId: input.conversationId,
   });
+  const language =
+    input.recipient.member?.language ?? (await tenantEmailLanguage(tenantId, deps));
   for (const channel of deps.notificationChannels) {
     const delivered = await channel.deliver(inserted, {
       recipientEmail: input.recipient.member?.email ?? null,
       tenantName: tenant.tenantName,
       contextName: input.senderDisplay,
       contextUrl: conversationUrl,
-      language: DEFAULT_LANGUAGE,
+      language,
     });
     if (!delivered.ok) return delivered;
   }
@@ -381,6 +460,8 @@ export const sendDmMessage = async (
 ): Promise<Result<PublicDmMessage, AppError>> => {
   const actor = requireUnbannedMember(ctx, 'dm:write');
   if (!actor.ok) return actor;
+  const enabled = await requireDirectMessages(actor.value.tenantId, deps);
+  if (!enabled.ok) return enabled;
   const parsed = sendDmMessageInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid message payload', parsed.error.flatten()));
   const conversation = await participantConversation(
@@ -390,13 +471,11 @@ export const sendDmMessage = async (
     deps,
   );
   if (!conversation.ok) return conversation;
-  const recipient = await requireReachableRecipient(
-    await loadCounterpart(
-      actor.value.tenantId,
-      otherDmParticipant(conversation.value, actor.value.userId),
-      deps,
-    ),
+  const recipientUserId = otherDmParticipant(conversation.value, actor.value.userId);
+  const recipient = requireReachableRecipient(
+    await loadCounterpart(actor.value.tenantId, recipientUserId, deps),
     ctx.identity.staffRole !== null,
+    await blocksBetween(actor.value.tenantId, actor.value.userId, recipientUserId, deps),
   );
   if (!recipient.ok) return recipient;
   const now = deps.clock.nowIso();
@@ -454,6 +533,8 @@ export const listDmConversations = async (
 ): Promise<Result<{ conversations: PublicDmConversation[]; nextCursor: string | null }, AppError>> => {
   const actor = requireMemberOrStaff(ctx, 'dm:read');
   if (!actor.ok) return actor;
+  const enabled = await requireDirectMessages(actor.value.tenantId, deps);
+  if (!enabled.ok) return enabled;
   const parsed = listDmConversationsInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid conversations query', parsed.error.flatten()));
   const listed = await deps.dmConversations.listForParticipant(actor.value.tenantId, {
@@ -464,7 +545,7 @@ export const listDmConversations = async (
   return ok({
     conversations: await projectConversations(
       actor.value.tenantId,
-      actor.value.userId,
+      viewerOf(ctx, actor.value.userId),
       listed.conversations,
       deps,
     ),
@@ -479,6 +560,8 @@ export const getDmConversation = async (
 ): Promise<Result<PublicDmConversation, AppError>> => {
   const actor = requireMemberOrStaff(ctx, 'dm:read');
   if (!actor.ok) return actor;
+  const enabled = await requireDirectMessages(actor.value.tenantId, deps);
+  if (!enabled.ok) return enabled;
   const parsed = dmConversationRefSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid conversation query', parsed.error.flatten()));
   const conversation = await participantConversation(
@@ -490,7 +573,7 @@ export const getDmConversation = async (
   if (!conversation.ok) return conversation;
   const [projected] = await projectConversations(
     actor.value.tenantId,
-    actor.value.userId,
+    viewerOf(ctx, actor.value.userId),
     [conversation.value],
     deps,
   );
@@ -504,6 +587,8 @@ export const listDmMessages = async (
 ): Promise<Result<{ messages: PublicDmMessage[]; nextCursor: string | null }, AppError>> => {
   const actor = requireMemberOrStaff(ctx, 'dm:read');
   if (!actor.ok) return actor;
+  const enabled = await requireDirectMessages(actor.value.tenantId, deps);
+  if (!enabled.ok) return enabled;
   const parsed = listDmMessagesInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid messages query', parsed.error.flatten()));
   const conversation = await participantConversation(
@@ -531,6 +616,8 @@ export const markDmConversationRead = async (
 ): Promise<Result<{ conversationId: string; lastReadAt: string }, AppError>> => {
   const actor = requireMemberOrStaff(ctx, 'dm:write');
   if (!actor.ok) return actor;
+  const enabled = await requireDirectMessages(actor.value.tenantId, deps);
+  if (!enabled.ok) return enabled;
   const parsed = dmConversationRefSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid conversation payload', parsed.error.flatten()));
   const conversation = await participantConversation(
@@ -560,10 +647,93 @@ export const dmUnreadCount = async (
 ): Promise<Result<{ unread: number }, AppError>> => {
   const actor = requireMemberOrStaff(ctx, 'dm:read');
   if (!actor.ok) return actor;
+  const enabled = await requireDirectMessages(actor.value.tenantId, deps);
+  if (!enabled.ok) return enabled;
   return ok({
     unread: await deps.dmConversations.countUnreadForParticipant(
       actor.value.tenantId,
       actor.value.userId,
     ),
   });
+};
+
+interface BlockTarget {
+  tenantId: string;
+  userId: string;
+  otherUserId: string;
+  conversation: DmConversation;
+}
+
+const resolveBlockTarget = async (
+  actor: { tenantId: string; userId: string },
+  input: unknown,
+  deps: DirectMessagesDeps,
+): Promise<Result<BlockTarget, AppError>> => {
+  const enabled = await requireDirectMessages(actor.tenantId, deps);
+  if (!enabled.ok) return enabled;
+  const parsed = dmConversationRefSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid conversation payload', parsed.error.flatten()));
+  const conversation = await participantConversation(
+    actor.tenantId,
+    actor.userId,
+    parsed.data.conversationId,
+    deps,
+  );
+  if (!conversation.ok) return conversation;
+  return ok({
+    tenantId: actor.tenantId,
+    userId: actor.userId,
+    otherUserId: otherDmParticipant(conversation.value, actor.userId),
+    conversation: conversation.value,
+  });
+};
+
+const projectBlockTarget = async (
+  ctx: Ctx,
+  target: BlockTarget,
+  deps: DirectMessagesDeps,
+): Promise<Result<PublicDmConversation, AppError>> => {
+  const [projected] = await projectConversations(
+    target.tenantId,
+    viewerOf(ctx, target.userId),
+    [target.conversation],
+    deps,
+  );
+  return projected === undefined ? err(internal('Could not project the conversation')) : ok(projected);
+};
+
+export const blockDmParticipant = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: DirectMessagesDeps,
+): Promise<Result<PublicDmConversation, AppError>> => {
+  const actor = requireMemberOrStaff(ctx, 'dm:write');
+  if (!actor.ok) return actor;
+  const target = await resolveBlockTarget(actor.value, input, deps);
+  if (!target.ok) return target;
+  const block = memberBlockSchema.safeParse({
+    tenantId: target.value.tenantId,
+    blockerUserId: target.value.userId,
+    blockedUserId: target.value.otherUserId,
+    createdAt: deps.clock.nowIso(),
+  });
+  if (!block.success) return err(internal('Could not create a valid block'));
+  await deps.memberBlocks.block(target.value.tenantId, block.data);
+  return projectBlockTarget(ctx, target.value, deps);
+};
+
+export const unblockDmParticipant = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: DirectMessagesDeps,
+): Promise<Result<PublicDmConversation, AppError>> => {
+  const actor = requireMemberOrStaff(ctx, 'dm:write');
+  if (!actor.ok) return actor;
+  const target = await resolveBlockTarget(actor.value, input, deps);
+  if (!target.ok) return target;
+  await deps.memberBlocks.unblock(target.value.tenantId, {
+    blockerUserId: target.value.userId,
+    blockedUserId: target.value.otherUserId,
+  });
+  return projectBlockTarget(ctx, target.value, deps);
 };

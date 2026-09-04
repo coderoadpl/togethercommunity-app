@@ -157,6 +157,7 @@ const harness = (options: {
         bunnyStreamLibraryId: null,
         bunnyStreamCdnHostname: null,
         logoUrl: null,
+        logoDarkUrl: null,
         accentColor: null,
         faviconUrl: null,
         ogTitle: null,
@@ -276,6 +277,7 @@ const ctx = {
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
   },
 };
 

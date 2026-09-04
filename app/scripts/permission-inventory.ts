@@ -58,6 +58,7 @@ const operatorSecret = ['operator-secret'] as const;
 const webhook = ['webhook'] as const;
 const token = ['token'] as const;
 const authenticated = ['authenticated'] as const;
+const platformOwner = ['platform-owner'] as const;
 
 const principalsForCapability = (capability: Capability): readonly Principal[] =>
   PRINCIPALS.filter((principal) => ROLE_CAPABILITIES[principal].includes(capability));
@@ -127,6 +128,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/marketing/audience-preview') return 'marketing:campaign:read';
   if (path.startsWith('/api/marketing/documents')) return method === 'GET' ? 'marketing:document:read' : 'marketing:document:write';
   if (path.startsWith('/api/marketing/layouts')) return method === 'GET' ? 'marketing:layout:read' : 'marketing:layout:write';
+  if (path === '/api/marketing/ses-onboarding/identities') return 'marketing:ses:write';
   if (path.startsWith('/api/marketing/ses-') || path === '/api/marketing/smtp/test') return method === 'GET' ? 'marketing:ses:read' : 'marketing:ses:write';
   if (path === '/api/marketing/reputation') return 'marketing:reputation:read';
   if (path === '/api/marketing/suppressions') return method === 'GET' ? 'marketing:suppression:read' : 'marketing:suppression:write';
@@ -148,6 +150,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/my/products') return 'member:product:read';
   if (path.startsWith('/api/my/products/')) return 'member:product:read';
   if (path === '/api/members/ban') return 'member:ban';
+  if (path.startsWith('/api/impersonation/') || path === '/api/tenant/audit-events') return 'member:impersonate';
   if (path === '/api/members') return 'member:read';
   if (path === '/api/members/erasure-requests') return 'member:erasure:read';
   if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';
@@ -164,7 +167,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
+  if (path === '/api/tenant/routing') return 'tenant:domain:read';
   if (path === '/api/support/message') return 'support:request';
+  if (path === '/api/platform/data-reset') return 'platform:data:reset';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
@@ -204,6 +209,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/posts/report') return 'community:report';
   if (path === '/api/reports') return 'community:report:read';
   if (path === '/api/reports/resolve') return 'community:moderate';
+  if (path === '/api/dm-reports') return 'community:report:read';
+  if (path === '/api/dm-reports/resolve') return 'community:moderate';
+  if (path === '/api/messages/report') return 'community:report';
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads')) {
     return method === 'GET' ? 'community:read' : 'community:write';
   }
@@ -257,7 +265,9 @@ const beforeForRoute = (
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
+  if (path === '/api/tenant/routing') return staff;
   if (path === '/api/support/message') return tenantActors;
+  if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
   if (path === '/api/posts/pin') return staff;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications') || path.startsWith('/api/messages')) return tenantActors;
@@ -284,6 +294,7 @@ const reachableForRoute = (
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) return beforeForRoute(method, path);
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
+  if (path === '/api/platform/data-reset') return platformOwner;
   return tenantActors;
 };
 
@@ -492,6 +503,7 @@ const beforeForUseCase = (
   if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'lesson-playback.ts') return tenantActors;
+  if (file === 'tenant-domains.ts') return staff;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
@@ -508,6 +520,7 @@ const beforeForUseCase = (
   if (file === 'events.ts') return capability === 'event:write' ? staff : tenantActors;
   if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
   if (file === 'support.ts') return tenantActors;
+  if (file === 'platform-data-reset.ts') return platformOwner;
   if (file === 'spaces.ts') {
     return name === 'listSpacesForStaff' || capability === 'space:write' || capability === 'community:pin'
       ? staff
@@ -522,13 +535,15 @@ const useCaseRows = (): PermissionRow[] =>
     const before = beforeForUseCase(file, name, capability);
     const reachable = before === allHumans
       ? allHumans
-      : before === transactionalApiKey
-        ? transactionalApiKey
-        : before === importContentApiKey
-          ? importContentApiKey
-          : before === importUsersApiKey
-            ? importUsersApiKey
-            : tenantActors;
+      : before === platformOwner
+        ? platformOwner
+        : before === transactionalApiKey
+          ? transactionalApiKey
+          : before === importContentApiKey
+            ? importContentApiKey
+            : before === importUsersApiKey
+              ? importUsersApiKey
+              : tenantActors;
     return {
       subject: `${file}#${name}`,
       capability,

@@ -117,6 +117,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/marketing/reputation` | authenticated | read | marketing reputation |
 | `POST /api/marketing/ses-settings` | authenticated | mutating | marketing ses settings update |
 | `POST /api/marketing/ses-onboarding/poll` | authenticated | mutating | marketing ses onboarding |
+| `GET /api/marketing/ses-onboarding/identities` | authenticated | read | marketing ses identities |
 | `POST /api/marketing/ses-onboarding/identity` | authenticated | mutating | marketing ses identity start |
 | `POST /api/marketing/ses-onboarding/infrastructure` | authenticated | mutating | marketing ses provision |
 | `POST /api/marketing/ses-onboarding/simulator` | authenticated | mutating | marketing ses simulator |
@@ -127,6 +128,9 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/members/:id/emails` | authenticated | read | member email sends |
 | `POST /api/marketing/suppressions` | authenticated | mutating | marketing staff suppressions create |
 | `GET /api/me` | authenticated | read | me |
+| `POST /api/impersonation/start` | authenticated | mutating | impersonation start |
+| `POST /api/impersonation/stop` | authenticated | mutating | impersonation stop |
+| `GET /api/tenant/audit-events` | authenticated | read | tenant audit events |
 | `POST /api/me/profile` | authenticated | mutating | me profile |
 | `GET /api/me/sessions` | authenticated | read | account sessions |
 | `POST /api/me/sessions/revoke` | authenticated | mutating | account session revoke |
@@ -173,6 +177,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |
 | `GET /api/tenant/settings` | authenticated | read | tenant settings |
+| `GET /api/tenant/routing` | authenticated | read | tenant routing |
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |
@@ -241,10 +246,13 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/student/progress` | authenticated | read | student progress |
 | `POST /api/posts` | authenticated | mutating | posts create |
 | `POST /api/support/message` | authenticated | mutating | support message |
+| `POST /api/platform/data-reset` | authenticated | mutating | platform data reset |
 | `POST /api/posts/pin` | authenticated | mutating | posts pin |
 | `POST /api/posts/report` | authenticated | mutating | posts report |
 | `GET /api/reports` | authenticated | read | reports |
 | `POST /api/reports/resolve` | authenticated | mutating | report resolve |
+| `GET /api/dm-reports` | authenticated | read | dm reports |
+| `POST /api/dm-reports/resolve` | authenticated | mutating | dm report resolve |
 | `POST /api/posts/update` | authenticated | mutating | posts update |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |
@@ -280,6 +288,9 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/messages/start` | authenticated | mutating | messages start |
 | `POST /api/messages/send` | authenticated | mutating | messages send |
 | `POST /api/messages/read` | authenticated | mutating | messages read |
+| `POST /api/messages/block` | authenticated | mutating | messages block |
+| `POST /api/messages/unblock` | authenticated | mutating | messages unblock |
+| `POST /api/messages/report` | authenticated | mutating | messages report |
 | `GET /api/messages/:conversationId` | authenticated | read | messages thread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
 | `GET /*` | public | read | Tenant social preview for link crawlers |

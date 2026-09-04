@@ -12,10 +12,12 @@ import {
   BETTER_AUTH_EMAIL_VERIFICATION_PATH,
   BETTER_AUTH_MAGIC_LINK_PATH,
   BETTER_AUTH_PASSWORD_RESET_PATH,
+  BETTER_AUTH_SIGN_OUT_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
+import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
-import { selectDevEndpoints } from './composition.js';
+import { selectDevEndpoints, selectPlatformReset } from './composition.js';
 import { buildApp } from './app.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
 import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
@@ -23,6 +25,9 @@ import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-rout
 import {
   err,
   emailEventSchema,
+  forbidden,
+  impersonationCookieName,
+  integrationUnavailable,
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
   notFound,
@@ -30,7 +35,9 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type ImpersonationSession,
   type ImportAuditEvent,
+  type TenantAuditEventInput,
   type Member,
   type Membership,
   type LessonAttachment,
@@ -45,6 +52,7 @@ import {
   type Tenant,
   type TenantApiKey,
   type TenantDomain,
+  type TenantSesSettings,
   type TermsConsent,
   type TenantApiKeyScope,
 } from '#core/domain/index.js';
@@ -73,6 +81,7 @@ import {
   InMemorySchedulerRunRepository,
   InMemoryMarketingThrottleRepository,
   InMemorySuppressionRepository,
+  InMemorySnsWebhookDeliveryRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
 } from '#core/server/testing/marketing-fakes.js';
@@ -131,6 +140,7 @@ const deps = (input: {
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
   passwordAccounts?: readonly string[];
+  members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
   const domains = input.domains ?? [];
@@ -140,7 +150,7 @@ const deps = (input: {
     product({ id: 'globex-published', tenantId: 't-globex', title: 'Globex Published', published: true }),
   ];
   const memberships: Membership[] = [];
-  const members: Member[] = [];
+  const members: Member[] = input.members ?? [];
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
   const appDeps: AppDeps = {
@@ -166,10 +176,11 @@ const deps = (input: {
     },
     members: {
       findById: async () => null,
-      findByEmail: async () => null,
+      findByEmail: async (_tenantId, email) => members.find((member) => member.email === email) ?? null,
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateLanguage: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,
@@ -295,6 +306,23 @@ const deps = (input: {
       generateSecret: () => 'secret',
       hash: (secret) => `hash:${secret}`,
     },
+    impersonations: {
+      open: async () => undefined,
+      findById: async () => null,
+      end: async () => null,
+      endLapsed: async () => 0,
+      listLapsedTenantIds: async () => [],
+    },
+    auditEvents: {
+      list: async () => ({ events: [], nextCursor: null }),
+    },
+    impersonationTokens: {
+      issue: (sessionId) => ({ token: `token:${sessionId}`, tokenHash: `hash:${sessionId}` }),
+      verify: (token) => token.startsWith('token:')
+        ? { sessionId: token.slice('token:'.length), tokenHash: `hash:${token.slice('token:'.length)}` }
+        : null,
+    },
+    secureCookies: false,
     tenantSecrets: {
       listByTenant: async () => [],
       findByKey: async () => null,
@@ -421,6 +449,7 @@ const deps = (input: {
           listWithProductIds: async () => [],
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
+          updateLanguage: async () => null,
           updateDisplayName: async () => null,
           updateDmOptOut: async () => null,
         setBanned: async () => null,
@@ -648,6 +677,18 @@ const deps = (input: {
       findForViewer: async () => [],
       markRead: async (tenantId, input) => ({ tenantId, ...input }),
     },
+    dmReports: {
+      open: async (_tenantId, report) => report,
+      listByStatus: async () => ({ reports: [], nextCursor: null }),
+      countOpen: async () => 0,
+      resolve: async () => null,
+    },
+    memberBlocks: {
+      block: async () => true,
+      unblock: async () => true,
+      findDirections: async (_tenantId, query) =>
+        new Map(query.otherUserIds.map((userId) => [userId, { blockedByViewer: false, blocksViewer: false }])),
+    },
     fanoutJobs: { claimDue: async () => [], save: async () => undefined },
     notifications: {
       insert: async (_tenantId, notification) => notification,
@@ -674,6 +715,7 @@ const deps = (input: {
     tenantDomains: {
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
       listVerifiedDomains: async () => domains,
+      listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
     },
     tenants: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
@@ -684,7 +726,7 @@ const deps = (input: {
         tenants.some((tenant) => tenant.id === tenantId) ? {
           name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
           socialLinks: [],
-          billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null,
+          billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
           privacyUrl: null,
@@ -745,6 +787,7 @@ const deps = (input: {
     platformHost: 'start.localhost',
     singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
+    customDomainTarget: 'start.localhost',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
     authTrustedProxyHeader: null,
@@ -913,6 +956,7 @@ const marketingDeps = (): MarketingAppDeps => ({
   suppressions: new InMemorySuppressionRepository(),
   unsubscribes: new InMemoryUnsubscribeTokenRepository(),
   sesSettings: new InMemoryTenantSesSettingsRepository(),
+  snsDeliveries: new InMemorySnsWebhookDeliveryRepository(),
   platformTransactionalPool: {
     usage: async () => ({ sent: 0, reserved: 0 }),
     reserve: async () => true,
@@ -951,8 +995,11 @@ const marketingDeps = (): MarketingAppDeps => ({
   }),
 });
 
-const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> => {
-  const configured = deps();
+const marketingApp = (
+  marketing = marketingDeps(),
+  logger?: AppDeps['logger'],
+): ReturnType<typeof buildApp> => {
+  const configured = deps(logger === undefined ? {} : { logger });
   configured.marketing = marketing;
   configured.tenantApiKeys = {
     listByTenant: async () => [],
@@ -1491,6 +1538,7 @@ describe('marketing HTTP surfaces', () => {
         tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
         identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
         identityCheckError: null, configurationSet: null, snsTopicArn: 'topic',
+        snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
         trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token',
         quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0,
         quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
@@ -1805,7 +1853,8 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: 'marketing',
-      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      snsTopicArn: null, snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
+      trackingEnabled: false, autoPauseOnCritical: false,
       webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '1998-07-22T00:00:00.000Z', footerLegalName: 'Acme',
@@ -1837,7 +1886,8 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: 'marketing',
-      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      snsTopicArn: null, snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
+      trackingEnabled: false, autoPauseOnCritical: false,
       webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '1998-07-22T00:00:00.000Z', footerLegalName: 'Acme',
@@ -1933,7 +1983,8 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: null,
-      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false,
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme',
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null, trackingEnabled: false,
       autoPauseOnCritical: false, webhookToken: 'webhook-token',
       quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '1998-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
@@ -1956,6 +2007,7 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
@@ -2006,6 +2058,7 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: true, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
@@ -2058,6 +2111,7 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
@@ -2082,6 +2136,200 @@ describe('marketing HTTP surfaces', () => {
     }
     expect(await sends.correlateBySesMessageId('t-acme', 'ses-delivery'))
       .toMatchObject({ deliveryStatus: 'delivered' });
+  });
+
+  describe('SNS webhook diagnostics', () => {
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const now = '1998-07-22T00:00:00.000Z';
+    const snsSettings = (): TenantSesSettings => ({
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: 'https://start.localhost/api/webhooks/ses/webhook-token',
+      snsSubscriptionConfirmedAt: null,
+      trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token',
+      quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now,
+      inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: false, reputationAlertStatus: null, reputationAlertedAt: null,
+    });
+
+    it('records a confirm_failed diagnostic and logs instead of swallowing a failed SNS confirmation', async () => {
+      const marketing = marketingDeps();
+      const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sesSettings = settings;
+      marketing.sns = new FakeSnsVerifier(
+        ok({ type: 'SubscriptionConfirmation', topicArn, message: '{}', subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription' }),
+        err(integrationUnavailable('SNS confirmation returned HTTP 503')),
+      );
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'SubscriptionConfirmation',
+        outcome: 'confirm_failed',
+        errorMessage: 'SNS confirmation returned HTTP 503',
+      });
+      expect((await settings.findByTenant('t-acme'))?.snsSubscriptionConfirmedAt).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=confirm_failed'));
+    });
+
+    it('persists the confirmed subscription timestamp when SNS accepts the confirmation', async () => {
+      const marketing = marketingDeps();
+      const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sesSettings = settings;
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'SubscriptionConfirmation', topicArn, message: '{}',
+        subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription',
+      }));
+
+      const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
+      });
+
+      expect(response.status).toBe(200);
+      expect((await settings.findByTenant('t-acme'))?.snsSubscriptionConfirmedAt)
+        .toBe('1998-07-12T00:00:00.000Z');
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        outcome: 'verified', errorMessage: null,
+      });
+    });
+
+    it('records a signature_failed diagnostic when the SNS envelope does not verify', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(err(forbidden('Invalid SNS signature')));
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(403);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'Notification', outcome: 'signature_failed', errorMessage: 'Invalid SNS signature',
+      });
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=signature_failed'));
+    });
+
+    it('logs an unknown token without writing diagnostics into the host tenant', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/other-token', {
+        method: 'POST', body: '{}',
+        headers: { host: 'acme.localhost:48730', 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=unknown_token'));
+    });
+
+    it('keeps an unrecognised message type out of the diagnostics row', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(err(forbidden('Invalid SNS signature')));
+
+      await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'x'.repeat(5000) },
+      });
+
+      expect(await marketing.snsDeliveries.findByTenant('t-acme'))
+        .toMatchObject({ messageType: 'unknown' });
+    });
+
+    it('reports the verified envelope type rather than the unverified header', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'SubscriptionConfirmation', topicArn, message: '{}',
+        subscribeUrl: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription',
+      }));
+
+      await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(await marketing.snsDeliveries.findByTenant('t-acme'))
+        .toMatchObject({ messageType: 'SubscriptionConfirmation', outcome: 'verified' });
+    });
+
+    it('logs a topic mismatch that it acknowledges without recording', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn: 'arn:aws:sns:eu-central-1:123:other', message: '{}',
+        subscribeUrl: null,
+      }));
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=topic_mismatch'));
+    });
+
+    it('records a recorded diagnostic for a verified SES notification', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn,
+        message: JSON.stringify({
+          eventType: 'Bounce',
+          mail: { messageId: 'ses-simulator-message', timestamp: now },
+          bounce: {
+            timestamp: now, bounceType: 'Permanent',
+            bouncedRecipients: [{ emailAddress: 'bounce@simulator.amazonses.com', status: '5.1.1' }],
+          },
+        }),
+        subscribeUrl: null,
+      }));
+
+      const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'Notification', outcome: 'recorded',
+      });
+    });
+
+    it('records an apply_failed diagnostic and logs when the event cannot be applied', async () => {
+      const marketing = marketingDeps();
+      const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sesSettings = settings;
+      vi.spyOn(settings, 'findByTenant').mockResolvedValue(null);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn,
+        message: JSON.stringify({
+          eventType: 'Delivery',
+          mail: { messageId: 'ses-simulator-message', timestamp: now },
+          delivery: { timestamp: now },
+        }),
+        subscribeUrl: null,
+      }));
+      const logger = { error: vi.fn(), warn: vi.fn() };
+
+      const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'Notification', outcome: 'apply_failed',
+        errorMessage: 'SNS topic does not match this tenant',
+      });
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=apply_failed'));
+    });
   });
 });
 
@@ -2172,6 +2420,30 @@ describe('public rate limiting', () => {
     })).status).toBe(200);
 
     expect(scopes).toEqual(['auth-resolve:ip', 'auth-resolve:tenant']);
+  });
+
+  it('claims the production lookup budget of 60 per address and 1000 per tenant', async () => {
+    const claims: { scope: string; limit: number }[] = [];
+    const app = buildApp({
+      ...deps({
+        rateLimitBuckets: {
+          claim: async ({ scope, limit }) => { claims.push({ scope, limit }); return true; },
+          purgeExpired: async () => 0,
+        },
+      }),
+      publicRateLimitPolicies: selectPublicRateLimitPolicies({ NODE_ENV: 'production' }),
+    });
+
+    await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' },
+      body: JSON.stringify({ email: 'buyer@together.dev' }),
+    });
+
+    expect(claims).toEqual([
+      { scope: 'auth-resolve:ip', limit: 60 },
+      { scope: 'auth-resolve:tenant', limit: 1_000 },
+    ]);
   });
 
   it('keeps an exhausted lookup budget away from checkout and the other way round', async () => {
@@ -2658,6 +2930,7 @@ describe('student lesson playback route', () => {
             bunnyStreamLibraryId: 'library-1',
             bunnyStreamCdnHostname: 'vz-demo.b-cdn.net',
             logoUrl: null,
+            logoDarkUrl: null,
             accentColor: null,
             faviconUrl: null,
             ogTitle: null,
@@ -3463,6 +3736,88 @@ describe('public route manifest', () => {
   });
 });
 
+describe('platform data reset route', () => {
+  const platformReset = (overrides: Partial<NonNullable<AppDeps['platformReset']>> = {}) => ({
+    environment: 'staging' as const,
+    ownerEmails: ['user@acme.test'],
+    productionDatabaseFingerprint: null,
+    dataReset: { run: async () => ({ wiped: [{ table: 'members', rows: 3 }] }) },
+    audit: { record: async () => undefined },
+    ...overrides,
+  });
+
+  const postReset = (overrides: Partial<AppDeps>, confirmation = 'staging') =>
+    scopedApp('none', { overrides }).request(API_PATHS.platformDataReset, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ confirmation }),
+    });
+
+  it('is absent when the deployment composes no reset surface', async () => {
+    const response = await postReset({});
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('is absent from the route table when no reset surface is composed', () => {
+    const paths = buildApp(deps()).routes.map((route) => route.path);
+
+    expect(paths).not.toContain(API_PATHS.platformDataReset);
+  });
+
+  const routeTableFor = (environment: { NODE_ENV: string; APP_ENV: string }) => {
+    const composed = selectPlatformReset(
+      {
+        ...environment,
+        PLATFORM_OWNER_EMAILS: 'user@acme.test',
+        PRODUCTION_DATABASE_FINGERPRINT: undefined,
+      },
+      () => {
+        const { dataReset, audit } = platformReset();
+        return { dataReset, audit };
+      },
+    );
+    return buildApp(composed === undefined ? deps() : { ...deps(), platformReset: composed })
+      .routes
+      .map((route) => route.path);
+  };
+
+  it('is absent from the route table when APP_ENV is production', () => {
+    expect(routeTableFor({ NODE_ENV: 'production', APP_ENV: 'production' }))
+      .not.toContain(API_PATHS.platformDataReset);
+  });
+
+  it.each(['staging', 'preview'])('is registered when APP_ENV is %s', (appEnv) => {
+    expect(routeTableFor({ NODE_ENV: 'production', APP_ENV: appEnv }))
+      .toContain(API_PATHS.platformDataReset);
+  });
+
+  it('forbids an authenticated caller outside the owner allowlist', async () => {
+    const response = await postReset({
+      platformReset: platformReset({ ownerEmails: ['someone-else@acme.test'] }),
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('reseeds for a platform owner who confirms the environment name', async () => {
+    const response = await postReset({ platformReset: platformReset() });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { environment: 'staging', wiped: [{ table: 'members', rows: 3 }] },
+    });
+  });
+
+  it('rejects a confirmation that is not the environment name', async () => {
+    const response = await postReset({ platformReset: platformReset() }, 'production');
+
+    expect(response.status).toBe(400);
+  });
+});
+
 describe('development-only route table', () => {
   const devRoutesFor = (environment: { NODE_ENV: string; APP_ENV: string }) =>
     buildApp({
@@ -4246,7 +4601,16 @@ describe('anonymous public surface routes', () => {
       && selfAuthenticatingRouteManifestEntry(route) === undefined);
 
     it('answers unauthorized on every member API route without a session', async () => {
-      const app = buildApp(deps({ authenticated: true }));
+      const app = buildApp({
+        ...deps({ authenticated: true }),
+        platformReset: {
+          environment: 'staging',
+          ownerEmails: [],
+          productionDatabaseFingerprint: null,
+          dataReset: { run: async () => ({ wiped: [] }) },
+          audit: { record: async () => undefined },
+        },
+      });
 
       const verdicts = await Promise.all(memberRoutes.map(async (route) => {
         const response = await app.request(route.path.replace(/:[^/]+/g, 'probe'), {
@@ -4429,6 +4793,26 @@ describe('public auth-config route', () => {
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
   });
 
+  it('hides Google on a verified custom domain the OAuth callback cannot return to', async () => {
+    const app = buildApp({
+      ...deps({
+        domains: [{
+          id: 'domain-acme',
+          tenantId: acme.id,
+          domain: 'learn.acme.example',
+          kind: 'custom',
+          verified: true,
+        }],
+      }),
+      authConfig: { googleEnabled: true },
+    });
+
+    const response = await app.request(API_PATHS.authConfig, { headers: { host: 'learn.acme.example' } });
+    const body: unknown = await response.json();
+
+    expect(body).toMatchObject({ ok: true, data: { googleEnabled: false, passkeysEnabled: true } });
+  });
+
 });
 
 describe('public auth-resolve route', () => {
@@ -4470,17 +4854,83 @@ describe('public auth-resolve route', () => {
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('handles auth-resolve preflight before auth middleware', async () => {
-    const response = await buildApp(deps()).request(API_PATHS.authResolve, {
+  const verifiedDomain = {
+    id: 'domain-acme',
+    tenantId: acme.id,
+    domain: 'learn.acme.example',
+    kind: 'custom' as const,
+    verified: true,
+  };
+
+  const preflight = (app: ReturnType<typeof buildApp>, origin: string) =>
+    app.request(API_PATHS.authResolve, {
       method: 'OPTIONS',
       headers: {
-        origin: 'https://creator.example',
+        host: 'acme.localhost:48730',
+        origin,
         'access-control-request-method': 'POST',
       },
     });
 
-    expect(response.status).toBe(204);
-    expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+  it('answers the preflight of a tenant subdomain, the platform host and a verified domain', async () => {
+    const app = buildApp(deps({ domains: [verifiedDomain] }));
+
+    for (const origin of [
+      'http://acme.localhost:48730',
+      'http://start.localhost:48730',
+      'https://learn.acme.example',
+    ]) {
+      const response = await preflight(app, origin);
+      expect([origin, response.status]).toEqual([origin, 204]);
+      expect(response.headers.get('access-control-allow-origin')).toBe(origin);
+      expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+      expect(response.headers.get('vary')).toContain('Origin');
+    }
+  });
+
+  it('refuses the preflight of a foreign origin, an unverified domain and a missing origin', async () => {
+    const app = buildApp(deps({
+      domains: [{ ...verifiedDomain, id: 'domain-pending', domain: 'pending.acme.example', verified: false }],
+    }));
+
+    for (const origin of ['https://creator.example', 'https://pending.acme.example']) {
+      const response = await preflight(app, origin);
+      expect([origin, response.status]).toEqual([origin, 403]);
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    }
+    const bare = await app.request(API_PATHS.authResolve, {
+      method: 'OPTIONS',
+      headers: { host: 'acme.localhost:48730', 'access-control-request-method': 'POST' },
+    });
+    expect(bare.status).toBe(403);
+  });
+
+  it('never answers the lookup with a wildcard and withholds it from a foreign origin', async () => {
+    const app = buildApp(deps());
+
+    const allowed = await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        origin: 'http://acme.localhost:48730',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'kursant@together.dev' }),
+    });
+    const foreign = await app.request(API_PATHS.authResolve, {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        origin: 'https://creator.example',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'kursant@together.dev' }),
+    });
+
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('http://acme.localhost:48730');
+    expect(foreign.status).toBe(200);
+    expect(foreign.headers.get('access-control-allow-origin')).toBeNull();
+    expect(foreign.headers.get('vary')).toContain('Origin');
   });
 });
 
@@ -4591,6 +5041,7 @@ const consentApp = (simulatedPayments: boolean, authTrustedProxyHeader: string |
               bunnyStreamLibraryId: null,
               bunnyStreamCdnHostname: null,
               logoUrl: null,
+              logoDarkUrl: null,
               accentColor: null,
               faviconUrl: null,
               ogTitle: null,
@@ -4893,6 +5344,7 @@ describe('checkout consent ordering', () => {
                 bunnyStreamLibraryId: null,
                 bunnyStreamCdnHostname: null,
                 logoUrl: null,
+                logoDarkUrl: null,
                 accentColor: null,
                 faviconUrl: null,
                 ogTitle: null,
@@ -5325,6 +5777,29 @@ describe('tenant-host magic links on login', () => {
     });
   });
 
+  it('keeps the stored member preference ahead of the requested UI language', async () => {
+    const { app, captured } = capturingApp({
+      members: [{
+        id: 'member-login', tenantId: acme.id, userId: 'user-login', email: 'login@together.dev',
+        displayName: 'Login', language: 'pl', tags: [], marketingConsents: {}, externalCustomerIds: {},
+        createdAt: '1998-07-12T00:00:00.000Z', deletedAt: null, bannedAt: null, bannedReason: null,
+        bannedByUserId: null, dmOptOutAt: null,
+      }],
+    });
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'acme.localhost:48730',
+        [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
+      },
+      body: JSON.stringify({ email: 'login@together.dev', callbackURL: 'http://acme.localhost:48730/my' }),
+    });
+
+    expect(captured.context?.context).toMatchObject({ language: 'pl' });
+  });
+
   it('falls back to Polish and the base host on the bare domain', async () => {
     const { app, captured } = capturingApp();
 
@@ -5651,5 +6126,268 @@ describe('scheduler operator routes', () => {
         tenants: [{ tenantId: 't-acme', budgetUsed: 4, errors: ['SES rejected'] }],
       },
     });
+  });
+});
+
+describe('impersonation HTTP surface', () => {
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+
+  const impersonatingApp = (extraOverrides: Partial<AppDeps> = {}) => {
+    const sessions = new Map<string, ImpersonationSession & { tokenHash: string }>();
+    const audit: TenantAuditEventInput[] = [];
+    const overrides: Partial<AppDeps> = {
+      ...extraOverrides,
+      impersonations: {
+        open: async (tenantId, session, tokenHash, appendAudit) => {
+          const superseded = [...sessions.values()].filter(
+            (candidate) => candidate.tenantId === tenantId
+              && candidate.actorSessionId === session.actorSessionId
+              && candidate.endedAt === null,
+          );
+          for (const previous of superseded) {
+            sessions.set(previous.id, { ...previous, endedAt: session.createdAt });
+          }
+          sessions.set(session.id, { ...session, tenantId, tokenHash });
+          audit.push(...appendAudit(
+            superseded.map((previous) => ({ ...previous, endedAt: session.createdAt })),
+          ));
+        },
+        findById: async (tenantId, id) => {
+          const found = sessions.get(id);
+          return found !== undefined && found.tenantId === tenantId ? found : null;
+        },
+        end: async (tenantId, id, endedAt, appendAudit) => {
+          const found = sessions.get(id);
+          if (found === undefined || found.tenantId !== tenantId || found.endedAt !== null) {
+            return null;
+          }
+          const ended = { ...found, endedAt };
+          sessions.set(id, ended);
+          audit.push(appendAudit(ended));
+          return ended;
+        },
+        endLapsed: async () => 0,
+        listLapsedTenantIds: async () => [],
+      },
+      auditEvents: {
+        list: async () => ({
+          events: [...audit].reverse().map((event) => ({ ...event, subjectLabel: 'User' })),
+          nextCursor: null,
+        }),
+      },
+    };
+    return { app: scopedApp('owner', { overrides }), audit };
+  };
+
+  const cookieOf = (response: Response): string =>
+    (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+  it('opens a read-only member view and blocks every write and direct message', async () => {
+    const { app, audit } = impersonatingApp();
+
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: 'support ticket 42' }),
+    });
+    expect(started.status).toBe(200);
+    expect(await started.json()).toMatchObject({
+      data: { impersonation: { subjectMemberId: 'member-1' } },
+    });
+    const cookie = cookieOf(started);
+    expect(cookie.startsWith(`${impersonationCookieName(false)}=`)).toBe(true);
+    expect(started.headers.get('set-cookie')).toContain('HttpOnly');
+
+    const impersonated = { ...headers, cookie };
+
+    const me = await app.request(API_PATHS.me, { headers: impersonated });
+    expect(await me.json()).toMatchObject({
+      data: { tenant: { memberId: 'member-1', staffRole: null }, impersonation: { subjectMemberId: 'member-1' } },
+    });
+
+    const write = await app.request(API_PATHS.postsCreate, {
+      method: 'POST',
+      headers: impersonated,
+      body: JSON.stringify({ contextKind: 'space', contextId: 'space-1', body: 'hello' }),
+    });
+    expect(write.status).toBe(403);
+    expect(await write.json()).toMatchObject({ error: { code: 'impersonation_read_only' } });
+
+    const messages = await app.request(API_PATHS.messagesList, { headers: impersonated });
+    expect(messages.status).toBe(403);
+    expect(await messages.json()).toMatchObject({ error: { code: 'impersonation_read_only' } });
+
+    const audits = await app.request(API_PATHS.tenantAuditEvents, { headers: impersonated });
+    expect(audits.status).toBe(403);
+    expect(await audits.json()).toMatchObject({ error: { code: 'impersonation_read_only' } });
+
+    const dataExport = await app.request(API_PATHS.memberDataExport, { headers: impersonated });
+    expect(dataExport.status).toBe(403);
+    expect(await dataExport.json()).toMatchObject({ error: { code: 'impersonation_read_only' } });
+
+    const stopped = await app.request(API_PATHS.impersonationStop, {
+      method: 'POST',
+      headers: impersonated,
+    });
+    expect(stopped.status).toBe(200);
+    expect(await stopped.json()).toMatchObject({ data: { ended: true } });
+    expect(audit.map((event) => event.kind)).toEqual([
+      'impersonation_started',
+      'impersonation_ended',
+    ]);
+
+    const afterExit = await app.request(API_PATHS.me, { headers: impersonated });
+    expect(await afterExit.json()).toMatchObject({
+      data: { tenant: { staffRole: 'owner' }, impersonation: null },
+    });
+  });
+
+  it('takes the __Host- prefix once cookies are secure', async () => {
+    const { app } = impersonatingApp({ secureCookies: true });
+
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+
+    const setCookie = started.headers.get('set-cookie') ?? '';
+    expect(setCookie.startsWith('__Host-together_impersonation=')).toBe(true);
+    expect(setCookie).toContain('Secure');
+    const me = await app.request(API_PATHS.me, { headers: { ...headers, cookie: cookieOf(started) } });
+    expect(await me.json()).toMatchObject({
+      data: { impersonation: { subjectMemberId: 'member-1' } },
+    });
+  });
+
+  it('plays a lesson with the subject entitlements, not the operator staff bypass', async () => {
+    const paidLesson: CourseLesson = {
+      id: 'lesson-paid',
+      tenantId: acme.id,
+      name: 'Paid lesson',
+      isPreview: false,
+      contents: [{ type: 'html', html: '<p>paid</p>' }],
+      legacyId: null,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const paidCourse: Course = {
+      id: 'course-paid',
+      tenantId: acme.id,
+      name: 'Paid course',
+      description: '',
+      imageUrl: null,
+      moduleOrder: ['module-paid'],
+      publiclyVisible: false,
+      legacyId: null,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const paidModule: CourseModule = {
+      id: 'module-paid',
+      tenantId: acme.id,
+      courseIds: [paidCourse.id],
+      title: 'Paid module',
+      prefix: null,
+      name: 'Paid module',
+      chapters: [{
+        id: 'chapter-paid',
+        name: 'Paid chapter',
+        contents: [{ id: 'content-paid', name: paidLesson.name, lessonId: paidLesson.id }],
+      }],
+      legacyId: null,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const base = deps({ lessons: [paidLesson] });
+    const { app } = impersonatingApp({
+      lessons: base.lessons,
+      courses: { ...base.courses, list: async () => [paidCourse] },
+      modules: { ...base.modules, list: async () => [paidModule] },
+    });
+    const lessonPath = API_PATHS.studentLesson.replace(':lessonId', paidLesson.id);
+
+    const asOperator = await app.request(lessonPath, { headers });
+    expect(asOperator.status).toBe(200);
+
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+    const asSubject = await app.request(lessonPath, {
+      headers: { ...headers, cookie: cookieOf(started) },
+    });
+
+    expect(asSubject.status).toBe(403);
+    expect(await asSubject.json()).toMatchObject({ error: { code: 'forbidden' } });
+  });
+
+  it('runs the guard before the handler of every mutating route in the table', async () => {
+    const { app } = impersonatingApp({
+      devEndpoints: { simulatedPayments: true, exposeMagicLinks: true },
+      platformReset: {
+        environment: 'staging',
+        ownerEmails: [],
+        productionDatabaseFingerprint: null,
+        dataReset: { run: async () => ({ wiped: [] }) },
+        audit: { record: async () => undefined },
+      },
+    });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+    const impersonated = { ...headers, cookie: cookieOf(started) };
+    const mutations = collectRuntimeRoutes().filter(
+      (route) => !['GET', 'HEAD', 'OPTIONS'].includes(route.method)
+        && route.path !== API_PATHS.impersonationStop,
+    );
+
+    expect(mutations.length).toBeGreaterThan(100);
+    for (const route of mutations) {
+      const path = route.path.replaceAll(/:[^/]+/g, 'x').replaceAll('*', 'x');
+      const response = await app.request(path, { method: route.method, headers: impersonated });
+      expect(response.status, `${route.method} ${path}`).toBe(403);
+      expect(await response.json(), `${route.method} ${path}`).toMatchObject({
+        error: { code: 'impersonation_read_only' },
+      });
+    }
+  });
+
+  it('lets the operator sign out and closes the view on the way', async () => {
+    const { app, audit } = impersonatingApp();
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+
+    const signedOut = await app.request(BETTER_AUTH_SIGN_OUT_PATH, {
+      method: 'POST',
+      headers: { ...headers, cookie: cookieOf(started) },
+    });
+
+    expect(signedOut.status).not.toBe(403);
+    expect(signedOut.headers.get('set-cookie')).toContain(`${impersonationCookieName(false)}=;`);
+    expect(audit.map((event) => event.kind)).toEqual([
+      'impersonation_started',
+      'impersonation_ended',
+    ]);
+  });
+
+  it('ignores a forged impersonation cookie and keeps the staff session', async () => {
+    const { app } = impersonatingApp();
+    const forged = { ...headers, cookie: `${impersonationCookieName(false)}=forged` };
+
+    const me = await app.request(API_PATHS.me, { headers: forged });
+    expect(await me.json()).toMatchObject({ data: { tenant: { staffRole: 'owner' }, impersonation: null } });
+  });
+
+  it('refuses to open a member view for a member session', async () => {
+    const response = await scopedApp('member').request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: null }),
+    });
+    expect(response.status).toBe(403);
   });
 });

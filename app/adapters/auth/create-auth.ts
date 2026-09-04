@@ -7,6 +7,7 @@ import {
   sensitiveSessionMiddleware,
 } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { createCookieGetter, getCookies } from 'better-auth/cookies';
 import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
 import { z } from 'zod';
 
@@ -39,6 +40,8 @@ export interface AuthSettings {
   defaultTenantName: string;
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
+  /** Resolves whether a request host is a tenant's verified custom domain. */
+  isVerifiedCustomHost?(host: string): Promise<boolean>;
   validateSignUpConsent?(input: {
     request: Request;
     accepted: boolean | undefined;
@@ -50,6 +53,8 @@ export interface AuthSettings {
 }
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
+
+export const BETTER_AUTH_SIGN_OUT_PATH = '/api/auth/sign-out';
 
 export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
 
@@ -181,6 +186,107 @@ const passkeyWithSensitiveManagement = () => {
     passkeyProofMiddleware,
   );
   return plugin;
+};
+
+export interface HostRouting {
+  baseUrl: string;
+  baseDomain: string;
+  singleTenantMode: boolean;
+}
+
+/** `Domain=.localhost` is invalid, and single-tenant deployments own one host only. */
+const sharesBaseDomain = (routing: HostRouting): boolean =>
+  !routing.singleTenantMode && routing.baseDomain !== 'localhost';
+
+export const sharedCookieDomain = (routing: HostRouting): string | null =>
+  sharesBaseDomain(routing) ? `.${routing.baseDomain}` : null;
+
+/**
+ * A passkey is bound to a relying party rather than an origin, so tenant subdomains
+ * answer for the base domain and one credential covers the platform host and every
+ * tenant. A base domain a browser accepts no registrable suffix for — `localhost`,
+ * or a single-tenant host — would be rejected, so it keeps the configured host.
+ */
+export const baseRelyingPartyId = (routing: HostRouting): string =>
+  sharesBaseDomain(routing) ? routing.baseDomain : new URL(routing.baseUrl).hostname;
+
+/** Mirrors tenant resolution: only a single label in front of the base domain routes by slug. */
+export const hostServedByBaseDomain = (host: string, baseDomain: string): boolean => {
+  if (host === baseDomain) return true;
+  if (!host.endsWith(`.${baseDomain}`)) return false;
+  return !host.slice(0, -(baseDomain.length + 1)).includes('.');
+};
+
+const passkeyCeremonyPaths = new Set([
+  '/passkey/generate-register-options',
+  '/passkey/generate-authenticate-options',
+  '/passkey/verify-registration',
+  '/passkey/verify-authentication',
+]);
+
+export const isPasskeyCeremonyPath = (path: string | undefined): boolean =>
+  path !== undefined && passkeyCeremonyPaths.has(path);
+
+export const authRequestHost = (
+  source: { request?: Request | undefined; headers?: Headers | undefined },
+): string | null => {
+  const header = (source.request?.headers ?? source.headers)?.get('host');
+  const host = header ?? (source.request === undefined ? null : new URL(source.request.url).host);
+  if (host === null) return null;
+  const withoutPort = host.split(':')[0]?.toLowerCase() ?? '';
+  return withoutPort === '' ? null : withoutPort;
+};
+
+type AuthOptions = Parameters<typeof getCookies>[0];
+
+const withoutSharedCookieDomain = (options: AuthOptions): AuthOptions => {
+  const advanced = { ...options.advanced };
+  delete advanced.crossSubDomainCookies;
+  return { ...options, advanced };
+};
+
+/**
+ * Better Auth freezes the cookie domain and the passkey relying party into the
+ * instance it is constructed with, so both are re-derived here from the host that
+ * is actually being served: a verified custom domain is its own cookie world and
+ * relying party, every other host keeps the base-domain scope. Better Auth hands
+ * each dispatch its own copy of the auth context, so replacing these fields in a
+ * before hook stays confined to the request being served.
+ */
+const hostScopedCredentials = (settings: AuthSettings) => {
+  const routing = {
+    baseUrl: settings.baseUrl,
+    baseDomain: settings.baseDomain,
+    singleTenantMode: settings.singleTenantMode,
+  };
+  const fallbackRelyingParty = baseRelyingPartyId(routing);
+  const verifiedCustomHost = async (host: string | null): Promise<string | null> => {
+    if (host === null || settings.isVerifiedCustomHost === undefined) return null;
+    if (hostServedByBaseDomain(host, settings.baseDomain)) return null;
+    return (await settings.isVerifiedCustomHost(host)) ? host : null;
+  };
+  return {
+    id: 'host-scoped-credentials',
+    hooks: {
+      before: [{
+        matcher: () => true,
+        handler: createAuthMiddleware(async (ctx) => {
+          const customHost = await verifiedCustomHost(authRequestHost(ctx));
+          const ceremony = isPasskeyCeremonyPath(ctx.path);
+          if (customHost === null && !ceremony) return;
+          const scoped = customHost === null
+            ? ctx.context.options
+            : withoutSharedCookieDomain(ctx.context.options);
+          ctx.context.options = ceremony
+            ? { ...scoped, baseURL: `https://${customHost ?? fallbackRelyingParty}` }
+            : scoped;
+          if (customHost === null) return;
+          ctx.context.authCookies = getCookies(ctx.context.options);
+          ctx.context.createAuthCookie = createCookieGetter(ctx.context.options);
+        }),
+      }],
+    },
+  };
 };
 
 const additionalTwoFactorPaths = new Set([
@@ -324,6 +430,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES,
   );
   const capturedLinks = new Map<string, { url: string; token: string }>();
+  const cookieDomain = sharedCookieDomain(settings);
 
   const auth = betterAuth({
     database: drizzleAdapter(db, { provider: 'pg' }),
@@ -431,6 +538,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       ? { socialProviders: { google: settings.google } }
       : {}),
     plugins: [
+      hostScopedCredentials(settings),
       bearer(),
       resetRedirectConfinement(),
       // Magic-link auto-signup intentionally defers consent until first checkout because enrollment and login share this path.
@@ -484,10 +592,9 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     advanced: {
       useSecureCookies: settings.secureCookies,
       ipAddress: { ipAddressHeaders: [...AUTH_IP_ADDRESS_HEADERS] },
-      // Domain=.localhost is invalid, and single-tenant sessions must stay host-only.
-      ...(settings.singleTenantMode || settings.baseDomain === 'localhost'
+      ...(cookieDomain === null
         ? {}
-        : { crossSubDomainCookies: { enabled: true, domain: `.${settings.baseDomain}` } }),
+        : { crossSubDomainCookies: { enabled: true, domain: cookieDomain } }),
     },
   });
   return {

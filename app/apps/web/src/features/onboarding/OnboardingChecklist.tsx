@@ -6,9 +6,10 @@ import { useNavigate } from '@tanstack/react-router';
 import type { OnboardingStepId } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { ChecklistDoneLabel } from '../../theme.js';
+import { ChecklistSection } from './ChecklistSection.js';
 
 const DONE_ICON_PATH =
   'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z';
@@ -55,7 +56,7 @@ export const OnboardingChecklist = () => {
   const stepsVisible = !complete || expanded;
 
   return (
-    <SectionCard
+    <ChecklistSection
       title={t.onboarding.title}
       description={t.onboarding.progress({ done, total: steps.length })}
       data-testid="onboarding-checklist"
@@ -114,6 +115,6 @@ export const OnboardingChecklist = () => {
           {dismiss.isError ? <Alert severity="error">{localizeError(dismiss.error, t)}</Alert> : null}
         </>
       ) : null}
-    </SectionCard>
+    </ChecklistSection>
   );
 };

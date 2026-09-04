@@ -26,6 +26,7 @@ const identity: Identity = {
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 };
 
 const fakeTenants = (initialTenants: Tenant[] = []) => {
@@ -39,7 +40,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
     hasAny: async () => tenants.length > 0,
     findSettings: async () => ({
       name: 'Acme', socialLinks: [],
-      billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null,
+      billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
       accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
       ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
       privacyUrl: null,

@@ -4,9 +4,12 @@ import type {
   CourseLesson,
   LessonAttachment,
   CourseModule,
+  DmBlockDirections,
   DmConversation,
   DmConversationState,
   DmMessage,
+  DmReport,
+  DmReportStatus,
   EntityHistoryEntry,
   EntityKind,
   EmailBranding,
@@ -22,6 +25,7 @@ import type {
   EmailOutboxPayload,
   Member,
   MemberBanEvent,
+  MemberBlock,
   MemberEvent,
   MemberGrant,
   MemberCourseProgress,
@@ -36,6 +40,7 @@ import type {
   OrderListItem,
   PaidWithoutGrantRow,
   OrderStatus,
+  PlatformAuditEvent,
   PriceKind,
   Product,
   ProductDownloadAsset,
@@ -93,6 +98,7 @@ import type {
   SchedulerRunTenantItem,
   SchedulerRunTenantSummary,
   SchedulerRunTotals,
+  SnsWebhookDelivery,
   TenantSesSettings,
   TenantDocument,
   TenantDocumentVersion,
@@ -101,11 +107,17 @@ import type {
   Invoice,
   InvoiceEvent,
   InvoiceVatTreatment,
+  ImpersonationSession,
+  TenantAuditEventInput,
+  TenantAuditEventListQuery,
+  TenantAuditEventPage,
   ImportAuditEvent,
   ImportAuditResourceType,
   FiscalArtifact,
   KsefEnvironment,
   KsefStatus,
+  Language,
+  WipedTable,
 } from '#core/domain/index.js';
 
 /**
@@ -459,17 +471,46 @@ export interface DmConversationStateRepository {
   ): Promise<DmConversationState>;
 }
 
+export interface MemberBlockRepository {
+  /** Idempotent: returns false when the pair is already blocked in this direction. */
+  block(tenantId: string, block: MemberBlock): Promise<boolean>;
+  /** Idempotent: returns false when there was nothing to remove. */
+  unblock(tenantId: string, input: { blockerUserId: string; blockedUserId: string }): Promise<boolean>;
+  findDirections(
+    tenantId: string,
+    query: { viewerUserId: string; otherUserIds: string[] },
+  ): Promise<Map<string, DmBlockDirections>>;
+}
+
+export interface DmReportRepository {
+  /** Returns null when the reporter already has an open report on the conversation. */
+  open(tenantId: string, report: DmReport): Promise<DmReport | null>;
+  listByStatus(
+    tenantId: string,
+    query: { status: DmReportStatus; cursor?: string; limit: number },
+  ): Promise<{ reports: DmReport[]; nextCursor: string | null }>;
+  countOpen(tenantId: string): Promise<number>;
+  resolve(
+    tenantId: string,
+    input: { id: string; resolvedAt: string; resolvedByUserId: string },
+  ): Promise<DmReport | null>;
+}
+
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
   /** Returns only the rows this call created, so a retried fan-out re-delivers nothing. */
   insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;
   listForRecipient(
     tenantId: string,
-    query: { recipientUserId: string; cursor?: string; limit: number },
+    query: { recipientUserId: string; cursor?: string; limit: number; excludeDms?: boolean },
   ): Promise<{ notifications: Notification[]; nextCursor: string | null }>;
   markRead(tenantId: string, input: { id: string; recipientUserId: string; readAt: string }): Promise<Notification | null>;
   markAllRead(tenantId: string, input: { recipientUserId: string; readAt: string }): Promise<number>;
-  unreadCount(tenantId: string, recipientUserId: string): Promise<number>;
+  unreadCount(
+    tenantId: string,
+    recipientUserId: string,
+    options?: { excludeDms?: boolean },
+  ): Promise<number>;
   /** Collapse guard: one bell item and one e-mail per conversation burst. */
   hasUnreadDmNotification(
     tenantId: string,
@@ -503,7 +544,7 @@ export interface NotificationDeliveryContext {
   /** Lesson name for lesson contexts, space name for space contexts. */
   contextName: string;
   contextUrl: string;
-  language: string;
+  language: Language;
 }
 
 export interface NotificationChannelPort {
@@ -521,6 +562,8 @@ export interface RealtimeNotificationEvent {
   tenantId: string;
   recipientUserId: string;
   notificationId: string;
+  /** Optional so an event published by an instance that predates the field still delivers. */
+  notificationKind?: Notification['kind'];
   createdAt: string;
 }
 
@@ -585,6 +628,11 @@ export interface MemberRepository {
     tenantId: string,
     memberId: string,
     displayName: string | null,
+  ): Promise<Member | null>;
+  updateLanguage(
+    tenantId: string,
+    memberId: string,
+    language: Language | null,
   ): Promise<Member | null>;
   updateDmOptOut(
     tenantId: string,
@@ -1551,6 +1599,7 @@ export interface DevSinkPurge {
 export interface TenantDomainRepository {
   findByDomain(domain: string): Promise<TenantDomain | null>;
   listVerifiedDomains(): Promise<TenantDomain[]>;
+  listByTenant(tenantId: string): Promise<TenantDomain[]>;
 }
 
 /** The only persisted onboarding state; every checklist step is recomputed on read. */
@@ -1734,6 +1783,11 @@ export interface TenantSesSettingsRepository {
   upsert(tenantId: string, settings: TenantSesSettings): Promise<TenantSesSettings>;
 }
 
+export interface SnsWebhookDeliveryRepository {
+  findByTenant(tenantId: string): Promise<SnsWebhookDelivery | null>;
+  record(tenantId: string, delivery: SnsWebhookDelivery): Promise<void>;
+}
+
 export interface SesMarketingCredentials {
   accessKeyId: string;
   secretAccessKey: string;
@@ -1768,7 +1822,22 @@ export interface SesDkimRecord {
   value: string;
 }
 
+export interface SesAccountIdentity {
+  identity: string;
+  kind: 'domain' | 'email';
+  verified: boolean;
+  dkimVerified: boolean;
+}
+
+export interface SesAccountIdentities {
+  identities: SesAccountIdentity[];
+  accessDeniedAction: string | null;
+}
+
 export interface SesOnboardingControlPlane {
+  listIdentities(
+    credentials: SesMarketingCredentials,
+  ): Promise<Result<SesAccountIdentities, AppError>>;
   startDomainIdentity(
     credentials: SesMarketingCredentials,
     identity: string,
@@ -1792,7 +1861,7 @@ export interface SesOnboardingControlPlane {
   ensureSubscription(
     credentials: SesMarketingCredentials,
     input: { topicArn: string; endpoint: string },
-  ): Promise<Result<{ confirmed: boolean; arn: string | null }, AppError>>;
+  ): Promise<Result<{ confirmed: boolean; arn: string | null; endpoint: string }, AppError>>;
   readInfrastructure(
     credentials: SesMarketingCredentials,
     input: {
@@ -1800,6 +1869,7 @@ export interface SesOnboardingControlPlane {
       transactionalConfigurationSet: string;
       topicArn: string;
       endpoint: string;
+      subscribedEndpoint: string | null;
     },
   ): Promise<Result<{ configurationSetReady: boolean; eventDestinationReady: boolean; subscriptionConfirmed: boolean }, AppError>>;
   ensureEventDestination(
@@ -1910,7 +1980,9 @@ export interface AutomationIdempotencyRepository {
 
 export interface TenantAccessReader {
   listTenantsForStaff(userId: string): Promise<Membership[]>;
-  listStaffForTenant(tenantId: string): Promise<Array<{ userId: string; email: string }>>;
+  listStaffForTenant(
+    tenantId: string,
+  ): Promise<Array<{ userId: string; email: string; language: Language | null }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
   findMember(tenantId: string, userId: string): Promise<Member | null>;
 }
@@ -1983,6 +2055,57 @@ export interface HealthPort {
     schemaFingerprint: string | null;
     schemaFingerprintMatch: boolean | null;
   }>;
+}
+
+/**
+ * Every method takes the audit entries its own write implies and commits both
+ * together: a start with no `impersonation_started`, or an ended row with no
+ * `impersonation_ended`, is a hole the sweep cannot fill afterwards.
+ */
+export interface ImpersonationSessionRepository {
+  /**
+   * Opening supersedes and inserts in one step: the one-view-per-login invariant
+   * cannot survive two callers interleaving the end and the insert.
+   */
+  open(
+    tenantId: string,
+    session: ImpersonationSession,
+    tokenHash: string,
+    audit: (superseded: ImpersonationSession[]) => TenantAuditEventInput[],
+  ): Promise<void>;
+  findById(tenantId: string, id: string): Promise<(ImpersonationSession & { tokenHash: string }) | null>;
+  end(
+    tenantId: string,
+    id: string,
+    endedAt: string,
+    audit: (ended: ImpersonationSession) => TenantAuditEventInput,
+  ): Promise<ImpersonationSession | null>;
+  endLapsed(
+    tenantId: string,
+    now: string,
+    audit: (
+      lapsed: Array<{ session: ImpersonationSession; actorEmail: string }>,
+    ) => TenantAuditEventInput[],
+  ): Promise<number>;
+  listLapsedTenantIds(now: string): Promise<string[]>;
+}
+
+/** Append-only tenant audit trail; entries are never updated or deleted. */
+export interface TenantAuditEventRepository {
+  list(tenantId: string, query: TenantAuditEventListQuery): Promise<TenantAuditEventPage>;
+}
+
+export interface ImpersonationTokenCodec {
+  issue(sessionId: string): { token: string; tokenHash: string };
+  verify(token: string): { sessionId: string; tokenHash: string } | null;
+}
+
+export interface PlatformDataResetPort {
+  run(): Promise<{ wiped: WipedTable[] }>;
+}
+
+export interface PlatformAuditRepository {
+  record(event: PlatformAuditEvent): Promise<void>;
 }
 
 export interface IdGenerator {

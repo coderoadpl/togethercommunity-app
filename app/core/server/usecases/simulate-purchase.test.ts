@@ -132,6 +132,7 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
         members.push(member);
       },
       updateEmail: async () => null,
+      updateLanguage: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
     setBanned: async () => null,

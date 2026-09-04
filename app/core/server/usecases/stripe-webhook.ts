@@ -1,7 +1,6 @@
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
   appError,
-  DEFAULT_LANGUAGE,
   emailBrandingFrom,
   err,
   graceExpiresAt,
@@ -9,6 +8,7 @@ import {
   nextPeriodEnd,
   normalizeEmail,
   ok,
+  resolveEmailLanguage,
   validation,
   type AppError,
   type ProcessedPaymentEvent,
@@ -125,11 +125,12 @@ const enqueueSubscriptionNotice = async (
   if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
   const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
   const branding = settings === null ? undefined : emailBrandingFrom(settings, tenantBaseUrl);
+  const language = resolveEmailLanguage(member.language, settings?.defaultLanguage);
   const payload =
     kind === 'subscription-payment-failed'
       ? {
           kind,
-          language: DEFAULT_LANGUAGE,
+          language,
           tenantName: tenant.name,
           productTitle: product.title,
           accessEndsAt,
@@ -138,7 +139,7 @@ const enqueueSubscriptionNotice = async (
         }
       : {
           kind,
-          language: DEFAULT_LANGUAGE,
+          language,
           tenantName: tenant.name,
           productTitle: product.title,
           accessEndsAt,
@@ -374,7 +375,7 @@ const applyCheckoutCompleted = async (
       email,
       productId: metadata.productId,
       expiresAt: periodEnd === null ? null : graceExpiresAt(periodEnd),
-      language: metadata.language ?? 'pl',
+      language: metadata.language ?? null,
       source: provider,
       sendEmail: true,
       allowUnpublished: true,

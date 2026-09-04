@@ -15,7 +15,11 @@ import {
   consentConfirmationTokenSchema,
   marketingConsentConfirmation,
   marketingConsentCreatorSchema,
+  normalizeSesWebhookEndpoint,
   renderMarketingTemplate,
+  snsWebhookDeliverySchema,
+  snsWebhookDeliverySupersedes,
+  snsWebhookMessageType,
   requiresConsentVersionBump,
   sesIdentityFreshness,
   suppressionMatchesEmail,
@@ -25,6 +29,8 @@ import {
   validateRenderedMarketingOutput,
   type ConsentDefinition,
   type MarketingConsent,
+  type SnsWebhookDelivery,
+  type SnsWebhookDeliveryOutcome,
   type Suppression,
   type UnsubscribeToken,
 } from './marketing-email.js';
@@ -283,6 +289,8 @@ describe('SES identity freshness', () => {
     identityCheckError: null,
     configurationSet: null,
     snsTopicArn: null,
+    snsSubscriptionEndpoint: null,
+    snsSubscriptionConfirmedAt: null,
     trackingEnabled: false,
     autoPauseOnCritical: false,
     webhookToken: 'webhook_token_123456789012345',
@@ -338,5 +346,68 @@ describe('marketingConsentConfirmation', () => {
   it('falls back to Polish for an unsupported language', () => {
     expect(marketingConsentConfirmation({ ...input, language: 'de' }).subject)
       .toBe('Potwierdź zgodę na wiadomości e-mail');
+  });
+});
+
+describe('SNS webhook diagnostics', () => {
+  it.each([
+    ['HTTPS://Start.Together.Test/api/webhooks/ses/token', 'https://start.together.test/api/webhooks/ses/token'],
+    ['https://start.together.test:443/api/webhooks/ses/token/', 'https://start.together.test/api/webhooks/ses/token'],
+    ['not-a-url  ', 'not-a-url'],
+  ])('normalizes %s for endpoint comparison', (endpoint, expected) => {
+    expect(normalizeSesWebhookEndpoint(endpoint)).toBe(expected);
+  });
+
+  it('truncates the recorded error message and the caller-supplied headers', () => {
+    const parsed = snsWebhookDeliverySchema.parse({
+      tenantId: 'tenant-1',
+      receivedAt: '2026-07-27T10:00:00.000Z',
+      messageType: 'SubscriptionConfirmation',
+      outcome: 'confirm_failed',
+      errorMessage: 'x'.repeat(900),
+      sourceIp: 'y'.repeat(900),
+      userAgent: 'z'.repeat(900),
+    });
+
+    expect(parsed.errorMessage).toHaveLength(500);
+    expect(parsed.sourceIp).toHaveLength(200);
+    expect(parsed.userAgent).toHaveLength(200);
+  });
+
+  it.each([
+    ['x-amz-sns-message-type: Notification', 'Notification', 'Notification'],
+    ['an unlisted type', 'Delivery', 'unknown'],
+    ['a missing header', undefined, 'unknown'],
+  ])('maps %s to a known message type', (_case, header, expected) => {
+    expect(snsWebhookMessageType(header)).toBe(expected);
+  });
+
+  it.each<{
+    reason: string;
+    stored: SnsWebhookDeliveryOutcome | null;
+    outcome: SnsWebhookDeliveryOutcome;
+    receivedAt: string;
+    supersedes: boolean;
+  }>([
+    { reason: 'no row is stored yet', stored: null, outcome: 'recorded', receivedAt: '2026-07-27T10:00:00.000Z', supersedes: true },
+    { reason: 'the outcome changed', stored: 'signature_failed', outcome: 'recorded', receivedAt: '2026-07-27T10:00:00.000Z', supersedes: true },
+    { reason: 'the stored row aged out', stored: 'recorded', outcome: 'recorded', receivedAt: '2026-07-27T10:02:00.000Z', supersedes: true },
+    { reason: 'the same outcome is still fresh', stored: 'recorded', outcome: 'recorded', receivedAt: '2026-07-27T10:00:30.000Z', supersedes: false },
+  ])('overwrites the diagnostics row when $reason', ({ stored, outcome, receivedAt, supersedes }) => {
+    const delivery = (overrides: Partial<SnsWebhookDelivery>): SnsWebhookDelivery => ({
+      tenantId: 'tenant-1',
+      receivedAt: '2026-07-27T10:00:00.000Z',
+      messageType: 'Notification',
+      outcome: 'recorded',
+      errorMessage: null,
+      sourceIp: null,
+      userAgent: null,
+      ...overrides,
+    });
+
+    expect(snsWebhookDeliverySupersedes(
+      stored === null ? null : delivery({ outcome: stored }),
+      delivery({ outcome, receivedAt }),
+    )).toBe(supersedes);
   });
 });

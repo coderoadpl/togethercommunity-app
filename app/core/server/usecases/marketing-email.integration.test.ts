@@ -111,6 +111,7 @@ const settings: TenantSesSettings = {
   tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
   identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
   configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
+  snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
   trackingEnabled: true,
   autoPauseOnCritical: false,
   webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,

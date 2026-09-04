@@ -146,6 +146,8 @@ const sesSettings = (): TenantSesSettings => ({
   identityCheckError: null,
   configurationSet: 'marketing',
   snsTopicArn: 'arn:topic',
+  snsSubscriptionEndpoint: null,
+  snsSubscriptionConfirmedAt: null,
   trackingEnabled: false,
   autoPauseOnCritical: false,
   webhookToken: 'webhook_token_123456789012345',

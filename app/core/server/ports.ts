@@ -98,6 +98,7 @@ import type {
   SchedulerRunTenantItem,
   SchedulerRunTenantSummary,
   SchedulerRunTotals,
+  SnsWebhookDelivery,
   TenantSesSettings,
   TenantDocument,
   TenantDocumentVersion,
@@ -1782,6 +1783,11 @@ export interface TenantSesSettingsRepository {
   upsert(tenantId: string, settings: TenantSesSettings): Promise<TenantSesSettings>;
 }
 
+export interface SnsWebhookDeliveryRepository {
+  findByTenant(tenantId: string): Promise<SnsWebhookDelivery | null>;
+  record(tenantId: string, delivery: SnsWebhookDelivery): Promise<void>;
+}
+
 export interface SesMarketingCredentials {
   accessKeyId: string;
   secretAccessKey: string;
@@ -1855,7 +1861,7 @@ export interface SesOnboardingControlPlane {
   ensureSubscription(
     credentials: SesMarketingCredentials,
     input: { topicArn: string; endpoint: string },
-  ): Promise<Result<{ confirmed: boolean; arn: string | null }, AppError>>;
+  ): Promise<Result<{ confirmed: boolean; arn: string | null; endpoint: string }, AppError>>;
   readInfrastructure(
     credentials: SesMarketingCredentials,
     input: {
@@ -1863,6 +1869,7 @@ export interface SesOnboardingControlPlane {
       transactionalConfigurationSet: string;
       topicArn: string;
       endpoint: string;
+      subscribedEndpoint: string | null;
     },
   ): Promise<Result<{ configurationSetReady: boolean; eventDestinationReady: boolean; subscriptionConfirmed: boolean }, AppError>>;
   ensureEventDestination(

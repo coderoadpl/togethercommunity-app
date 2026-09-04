@@ -2177,6 +2177,22 @@ export const en: Messages = {
     wizardDocs: 'Open the SES production-access guide',
     wizardFeedbackDisabled: 'Identity feedback forwarding is disabled because SNS is confirmed.',
     wizardAwsRejected: 'AWS rejected the operation',
+    wizardProvisionDone: 'SES + SNS infrastructure is in place',
+    wizardProvisionSummary: ({ configurationSet, topicArn, endpoint }: { configurationSet: string; topicArn: string; endpoint: string }) =>
+      `Configuration set: ${configurationSet} · SNS topic: ${topicArn} · Subscription endpoint: ${endpoint}`,
+    wizardSubscriptionConfirmed: 'The SNS subscription is confirmed.',
+    wizardSubscriptionPending: 'The SNS subscription is still pending. AWS delivers the confirmation to the webhook endpoint — watch the status below.',
+    snsLastDeliveryNone: 'Nothing has arrived yet',
+    snsLastDelivery: ({ messageType, when, outcome }: { messageType: string; when: string; outcome: string }) =>
+      `Last SNS event: ${messageType} · ${when} · ${outcome}`,
+    snsOutcome: {
+      verified: 'subscription confirmed',
+      signature_failed: 'signature rejected',
+      unknown_token: 'unknown webhook token',
+      confirm_failed: 'confirmation failed',
+      apply_failed: 'event rejected while saving',
+      recorded: 'event recorded',
+    },
     configurationSetLabel: 'Configuration set', snsTopicLabel: 'SNS topic ARN', trackingEnabledLabel: 'Track marketing opens and clicks',
     autoPauseOnCriticalLabel: 'Pause broadcasts when reputation is critical',
     autoPauseOnCriticalHint: 'Paused campaigns must be resumed manually after the sending problem is resolved.',

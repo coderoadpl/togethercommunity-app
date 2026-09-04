@@ -1,4 +1,9 @@
-import type { ImportAuditAction, ImportAuditResourceType, MemberEventType } from '#core/domain/index.js';
+import type {
+  ImportAuditAction,
+  ImportAuditResourceType,
+  MemberEventType,
+  SnsWebhookDeliveryOutcome,
+} from '#core/domain/index.js';
 
 export type MessageParams = Record<string, string | number>;
 
@@ -2104,6 +2109,13 @@ export interface Messages {
     wizardDocs: string;
     wizardFeedbackDisabled: string;
     wizardAwsRejected: string;
+    wizardProvisionDone: string;
+    wizardProvisionSummary: (input: { configurationSet: string; topicArn: string; endpoint: string }) => string;
+    wizardSubscriptionConfirmed: string;
+    wizardSubscriptionPending: string;
+    snsLastDeliveryNone: string;
+    snsLastDelivery: (input: { messageType: string; when: string; outcome: string }) => string;
+    snsOutcome: Record<SnsWebhookDeliveryOutcome, string>;
     configurationSetLabel: string;
     snsTopicLabel: string;
     trackingEnabledLabel: string;

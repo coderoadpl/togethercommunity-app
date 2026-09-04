@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -17,6 +17,7 @@ const sesSettings = {
     resendConfigured: true,
     platformPool: { used: 25, limit: 1000 },
     webhookUrl: 'https://app.test/api/webhooks/ses/webhook-token',
+    lastSnsDelivery: null,
     settings: {
       tenantId: 'tenant-1',
       fromAddress: 'news@tenant.test',
@@ -27,6 +28,8 @@ const sesSettings = {
       identityCheckError: null,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123:together-tenant-1',
+      snsSubscriptionEndpoint: 'https://app.test/api/webhooks/ses/webhook-token',
+      snsSubscriptionConfirmedAt: now,
       trackingEnabled: false,
       autoPauseOnCritical: false,
       webhookToken: 'webhook_token_123456789012345',
@@ -65,6 +68,7 @@ const unconfiguredSender = {
     platformPool: { used: 0, limit: 1000 },
     webhookUrl: null,
     settings: null,
+    lastSnsDelivery: null,
   },
 };
 
@@ -130,6 +134,91 @@ describe('email transport wizard', () => {
 
     expect(await screen.findAllByText(/Transport przeszedł diagnostykę/)).toHaveLength(3);
     expect(testedTransports).toEqual(['ses', 'smtp', 'resend']);
+  }, 15_000);
+
+  it('derives SNS readiness from the confirmed subscription instead of the topic ARN', async () => {
+    server.use(
+      http.get('/api/marketing/ses-settings', () => HttpResponse.json({
+        ...sesSettings,
+        data: {
+          ...sesSettings.data,
+          settings: { ...sesSettings.data.settings, snsSubscriptionConfirmedAt: null },
+          lastSnsDelivery: {
+            tenantId: 'tenant-1',
+            receivedAt: new Date(Date.now() - 120_000).toISOString(),
+            messageType: 'SubscriptionConfirmation',
+            outcome: 'confirm_failed',
+            errorMessage: 'SNS confirmation returned HTTP 503',
+            sourceIp: null,
+            userAgent: null,
+          },
+        },
+      })),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+    );
+    renderWithProviders(<EmailTab />);
+
+    const subscriptionRow = (await screen.findByText('Subskrypcja SNS')).closest('li') ?? document.body;
+    expect(within(subscriptionRow).getByText('Wymaga działania')).toBeInTheDocument();
+    expect(await screen.findByTestId('marketing-sns-last-delivery')).toHaveTextContent(
+      /Ostatnie zdarzenie z SNS: SubscriptionConfirmation · .* · potwierdzenie nie powiodło się/,
+    );
+  }, 15_000);
+
+  it('reports what provisioning created and polls AWS again without a page reload', async () => {
+    let settingsReads = 0;
+    server.use(
+      http.get('/api/marketing/ses-settings', () => {
+        settingsReads += 1;
+        return HttpResponse.json(sesSettings);
+      }),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+      http.post('/api/marketing/ses-onboarding/infrastructure', () => HttpResponse.json({
+        ok: true,
+        data: {
+          configurationSet: 'together-tenant-1',
+          topicArn: 'arn:aws:sns:eu-central-1:123:together-tenant-1',
+          subscriptionEndpoint: 'https://app.test/api/webhooks/ses/webhook-token',
+          subscriptionConfirmed: false,
+          feedbackForwardingDisabled: false,
+        },
+      })),
+      http.post('/api/marketing/ses-onboarding/poll', () => HttpResponse.json({
+        ok: true,
+        data: {
+          identityVerified: true,
+          dkimVerified: true,
+          identityRegressed: false,
+          records: [],
+          configurationSetReady: true,
+          eventDestinationReady: true,
+          subscriptionConfirmed: false,
+          feedbackForwardingDisabled: false,
+          checklist: {
+            credentials: true, identity: true, configurationSet: true, snsSubscription: false,
+            webhook: false, footer: true, productionAccess: true,
+          },
+        },
+      })),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EmailTab />);
+
+    await user.click(await screen.findByRole('button', { name: 'Utwórz infrastrukturę SES + SNS' }));
+
+    expect(await screen.findByText('Infrastruktura SES + SNS jest utworzona')).toBeInTheDocument();
+    expect(screen.getByText(/Endpoint subskrypcji: https:\/\/app\.test\/api\/webhooks\/ses\/webhook-token/))
+      .toBeInTheDocument();
+    await screen.findByText(/Subskrypcja SNS czeka na potwierdzenie/);
+    await vi.waitFor(() => {
+      expect(settingsReads).toBeGreaterThan(1);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Sprawdź status w AWS' }));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText('Infrastruktura SES + SNS jest utworzona')).not.toBeInTheDocument();
+    });
   }, 15_000);
 
   it('shows the AWS message verbatim when provisioning fails as integration_unavailable', async () => {

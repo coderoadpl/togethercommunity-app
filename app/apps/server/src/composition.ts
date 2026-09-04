@@ -35,6 +35,7 @@ import {
   createMarketingConsentRepository,
   createMarketingJobRepository,
   createMarketingThrottleRepository,
+  createSnsWebhookDeliveryRepository,
   createSuppressionRepository,
   createTenantDocumentRepository,
   createTenantSesSettingsRepository,
@@ -253,6 +254,7 @@ import type {
   SesMarketingQuotaReader,
   SesOnboardingControlPlane,
   SnsVerifier,
+  SnsWebhookDeliveryRepository,
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
@@ -471,6 +473,7 @@ export interface MarketingAppDeps {
   suppressions: SuppressionRepository;
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
+  snsDeliveries: SnsWebhookDeliveryRepository;
   platformTransactionalPool: PlatformTransactionalPool;
   documents: TenantDocumentRepository;
   idempotency: AutomationIdempotencyRepository;
@@ -758,6 +761,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const suppressions = createSuppressionRepository(db);
   const unsubscribes = createUnsubscribeTokenRepository(db);
   const sesSettings = createTenantSesSettingsRepository(db);
+  const snsDeliveries = createSnsWebhookDeliveryRepository(db);
   const documents = createTenantDocumentRepository(db);
   const idempotency = createAutomationIdempotencyRepository(db);
   const marketingJobs = createMarketingJobRepository(db);
@@ -1201,6 +1205,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       suppressions,
       unsubscribes,
       sesSettings,
+      snsDeliveries,
       platformTransactionalPool,
       documents,
       idempotency,

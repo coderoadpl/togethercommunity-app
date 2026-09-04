@@ -24,7 +24,14 @@ import {
   type Subscription,
 } from '@aws-sdk/client-sns';
 
-import { err, integrationUnavailable, ok, type AppError, type Result } from '#core/domain/index.js';
+import {
+  err,
+  integrationUnavailable,
+  normalizeSesWebhookEndpoint,
+  ok,
+  type AppError,
+  type Result,
+} from '#core/domain/index.js';
 import type {
   SesAccountIdentities,
   SesAccountIdentity,
@@ -146,6 +153,20 @@ const subscriptionArnState = (arn: string | undefined): { confirmed: boolean; ar
     confirmed,
     arn: confirmed ? arn : null,
   };
+};
+
+const findHttpsSubscription = (
+  items: readonly Subscription[],
+  endpoints: readonly (string | null)[],
+): Subscription | undefined => {
+  const https = items.filter((item) => item.Protocol === 'https' && item.Endpoint !== undefined);
+  for (const endpoint of endpoints) {
+    if (endpoint === null) continue;
+    const normalized = normalizeSesWebhookEndpoint(endpoint);
+    const match = https.find((item) => normalizeSesWebhookEndpoint(item.Endpoint ?? '') === normalized);
+    if (match !== undefined) return match;
+  }
+  return undefined;
 };
 
 const configurationSetExists = async (
@@ -311,17 +332,22 @@ export const createSesOnboardingControlPlane = (
   ensureSubscription: async (credentials, input) => {
     try {
       const sns = factory(credentials).sns;
-      const existing = (await subscriptions.list(sns, input.topicArn))
-        .find((subscription) => subscription.Protocol === 'https' && subscription.Endpoint === input.endpoint);
+      const existing = findHttpsSubscription(
+        await subscriptions.list(sns, input.topicArn),
+        [input.endpoint],
+      );
       if (existing !== undefined) {
-        return ok(subscriptionArnState(existing.SubscriptionArn));
+        return ok({
+          ...subscriptionArnState(existing.SubscriptionArn),
+          endpoint: existing.Endpoint ?? input.endpoint,
+        });
       }
       const created = await subscriptions.subscribe(sns, {
         TopicArn: input.topicArn,
         Protocol: 'https',
         Endpoint: input.endpoint,
       });
-      return ok(subscriptionArnState(created.SubscriptionArn));
+      return ok({ ...subscriptionArnState(created.SubscriptionArn), endpoint: input.endpoint });
     } catch (cause) {
       return failed('Could not subscribe the Together webhook to SNS', cause);
     }
@@ -359,8 +385,10 @@ export const createSesOnboardingControlPlane = (
       } catch (cause) {
         if (!isConfigurationSetMissing(cause)) throw cause;
       }
-      const subscription = (await subscriptions.list(sns, input.topicArn))
-        .find((item) => item.Protocol === 'https' && item.Endpoint === input.endpoint);
+      const subscription = findHttpsSubscription(
+        await subscriptions.list(sns, input.topicArn),
+        [input.subscribedEndpoint, input.endpoint],
+      );
       return ok({
         configurationSetReady,
         eventDestinationReady,

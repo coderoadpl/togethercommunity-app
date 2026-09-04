@@ -1,6 +1,6 @@
 {
-  "hash": "d2343b66b4a9a3c836dca624080d1a4fe2396f142b13ffbab2b37007f9dc6751",
-  "shortId": "d2343b66b4a9",
+  "hash": "e0f9113a2b4ce0c12c287871a29845afaac22bb9d5a7a42360700ac03f807664",
+  "shortId": "e0f9113a2b4c",
   "schema": {
     "constraints": [
       {
@@ -14,6 +14,11 @@
         "table": "orders"
       },
       {
+        "definition": "CHECK (((language IS NULL) OR (language = ANY (ARRAY['pl'::text, 'en'::text]))))",
+        "name": "members_language_check",
+        "table": "members"
+      },
+      {
         "definition": "CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at < ends_at)))",
         "name": "coupons_validity_check",
         "table": "coupons"
@@ -22,6 +27,11 @@
         "definition": "CHECK (((value >= 0) AND ((kind <> 'percent'::text) OR (value <= 100))))",
         "name": "coupons_value_check",
         "table": "coupons"
+      },
+      {
+        "definition": "CHECK ((default_language = ANY (ARRAY['pl'::text, 'en'::text])))",
+        "name": "tenants_default_language_check",
+        "table": "tenants"
       },
       {
         "definition": "CHECK ((invoice_vat_mode = ANY (ARRAY['rate'::text, 'exempt'::text])))",
@@ -2866,6 +2876,14 @@
             "type": "text"
           },
           {
+            "default": "'pl'::text",
+            "generated": "",
+            "identity": "",
+            "name": "default_language",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "'rate'::text",
             "generated": "",
             "identity": "",
@@ -3204,6 +3222,14 @@
             "identity": "",
             "name": "id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "language",
+            "notNull": false,
             "type": "text"
           },
           {

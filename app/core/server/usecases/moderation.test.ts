@@ -13,6 +13,7 @@ import {
   type DmMessage,
   type DmReport,
   type DmReportStatus,
+  type Language,
   type Space,
 } from '#core/domain/index.js';
 
@@ -45,6 +46,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...overrides,
 });
 
@@ -266,7 +268,7 @@ interface DmOptions {
   dmConversations?: DmConversation[];
   dmMessages?: DmMessage[];
   directMessagesEnabled?: boolean;
-  staff?: Array<{ userId: string; email: string }>;
+  staff?: Array<{ userId: string; email: string; language: Language | null }>;
   published?: RealtimeEvent[];
 }
 
@@ -337,6 +339,7 @@ const makeDeps = (
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateLanguage: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,
@@ -669,7 +672,7 @@ describe('direct message reports', () => {
         dmMessage('dm-1', 'member-user', '2026-07-29T00:00:01.000Z'),
         dmMessage('dm-2', 'other-user', '2026-07-29T00:00:02.000Z'),
       ],
-      staff: [{ userId: 'staff-user', email: 'staff@example.com' }],
+      staff: [{ userId: 'staff-user', email: 'staff@example.com', language: null }],
     });
 
     const result = await reportDmConversation(
@@ -742,7 +745,7 @@ describe('direct message reports', () => {
       dmReports,
       dmConversations: [dmConversation()],
       dmMessages: [dmMessage('dm-1', 'other-user', '2026-07-29T00:00:01.000Z')],
-      staff: [{ userId: 'staff-user', email: 'staff@example.com' }],
+      staff: [{ userId: 'staff-user', email: 'staff@example.com', language: null }],
     });
     deps.notifications = {
       ...deps.notifications,

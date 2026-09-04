@@ -78,6 +78,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...overrides,
 });
 
@@ -710,6 +711,7 @@ const deps = (
         ? staffUserIds.map((userId) => ({
             userId,
             email: members.find((member) => member.userId === userId)?.email ?? `${userId}@example.com`,
+            language: members.find((member) => member.userId === userId)?.language ?? null,
           }))
         : [],
     findStaffGrant: async (userId, lookup) =>
@@ -743,6 +745,7 @@ const deps = (
     modules: modulesRepo,
     lessons: lessonsRepo,
     grants: grantRepo(accessGrants, accessProducts),
+    tenants: { findSettings: async () => null },
     tenantAccess,
     links: {
       lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>

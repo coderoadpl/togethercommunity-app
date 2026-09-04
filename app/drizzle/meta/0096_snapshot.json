@@ -1,5 +1,5 @@
 {
-  "id": "bca97185-6b2b-4b5c-a933-7061d452323d",
+  "id": "98bed4e0-2c70-4796-806e-a088edb1bc78",
   "prevId": "66000286-e0e8-490b-b409-6ebb16650e32",
   "version": "7",
   "dialect": "postgresql",
@@ -7180,6 +7180,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "language": {
+          "name": "language",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "legacy_id": {
           "name": "legacy_id",
           "type": "text",
@@ -7367,7 +7373,12 @@
       },
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "members_language_check": {
+          "name": "members_language_check",
+          "value": "\"members\".\"language\" IS NULL OR \"members\".\"language\" IN ('pl', 'en')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.notification_fanout_jobs": {
@@ -11776,6 +11787,13 @@
           "notNull": true,
           "default": "'self_hosted'"
         },
+        "default_language": {
+          "name": "default_language",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pl'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "text",
@@ -11995,6 +12013,10 @@
         "tenants_plan_check": {
           "name": "tenants_plan_check",
           "value": "\"tenants\".\"plan\" IN ('self_hosted', 'hosted', 'hosted_pro')"
+        },
+        "tenants_default_language_check": {
+          "name": "tenants_default_language_check",
+          "value": "\"tenants\".\"default_language\" IN ('pl', 'en')"
         },
         "tenants_invoice_vat_mode_check": {
           "name": "tenants_invoice_vat_mode_check",

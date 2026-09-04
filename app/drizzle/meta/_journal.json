@@ -670,8 +670,15 @@
     {
       "idx": 95,
       "version": "7",
-      "when": 1788523896039,
-      "tag": "0095_ses_sns_subscription_state",
+      "when": 1788552000000,
+      "tag": "0095_email_language_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1788560000000,
+      "tag": "0096_ses_sns_subscription_state",
       "breakpoints": true
     }
   ]

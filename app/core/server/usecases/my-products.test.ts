@@ -20,6 +20,7 @@ const identity = (tenantId: string | null, memberId: string | null): Identity =>
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 const granted: Product = {

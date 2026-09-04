@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { staffRoleSchema } from './identity.js';
-import { DEFAULT_LANGUAGE, type Language } from './language.js';
+import { DEFAULT_LANGUAGE, languageSchema, type Language } from './language.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
 const tenantStatusSchema = z.enum(['active', 'suspended']);
@@ -131,6 +131,7 @@ export type InvoiceVatResolution =
 
 export const tenantSettingsSchema = z.object({
   name: tenantSchema.shape.name,
+  defaultLanguage: languageSchema.optional(),
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).default([]),
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
@@ -186,6 +187,7 @@ const clearableText = (max: number) => z
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
   name: tenantSchema.shape.name.optional(),
+  defaultLanguage: languageSchema.optional(),
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).optional(),
   billingPortalUrl: clearableUrl,
   bunnyStreamLibraryId: z
@@ -312,6 +314,7 @@ export const memberSchema = z.object({
   userId: z.string(),
   email: z.string(),
   displayName: z.string().nullable(),
+  language: languageSchema.nullable().optional(),
   tags: z.array(z.string()),
   marketingConsents: z.record(z.boolean()),
   externalCustomerIds: z.record(z.string()),

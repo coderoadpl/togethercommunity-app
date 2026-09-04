@@ -31,6 +31,7 @@ image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
+memberLanguage: null,
 });
 
 const entry = (over: Partial<EntityHistoryEntry> & { tenantId: string }): EntityHistoryEntry & { tenantId: string } => ({

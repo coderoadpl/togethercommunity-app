@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { emailOutboxPayloadSchema, ok, type EmailOutboxPayload, type Identity } from '#core/domain/index.js';
+import {
+  emailOutboxPayloadSchema,
+  ok,
+  type EmailOutboxPayload,
+  type Identity,
+  type Language,
+} from '#core/domain/index.js';
 
 import { sendSupportMessage, type SupportMessageDeps } from './support.js';
 
@@ -18,9 +24,10 @@ const identity: Identity = {
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 };
 
-const harness = (supportEmail: string | null) => {
+const harness = (supportEmail: string | null, defaultLanguage?: Language) => {
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const deps: SupportMessageDeps = {
     appBaseUrl: 'https://app.together.test',
@@ -33,6 +40,7 @@ const harness = (supportEmail: string | null) => {
       hasAny: async () => false,
       findSettings: async () => ({
         name: 'Acme',
+        ...(defaultLanguage === undefined ? {} : { defaultLanguage }),
         socialLinks: [],
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,
@@ -76,6 +84,7 @@ const harness = (supportEmail: string | null) => {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateLanguage: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
     setBanned: async () => null,
@@ -122,6 +131,16 @@ describe('sendSupportMessage', () => {
         }),
       },
     ]);
+  });
+
+  it('sends the creator notice in the tenant default language', async () => {
+    const polish = harness('support@alpha.test');
+    await sendSupportMessage({ identity }, { subject: 'Help', body: 'Body' }, polish.deps);
+    expect(polish.queued[0]?.payload).toMatchObject({ kind: 'support-message', language: 'pl' });
+
+    const english = harness('support@alpha.test', 'en');
+    await sendSupportMessage({ identity }, { subject: 'Help', body: 'Body' }, english.deps);
+    expect(english.queued[0]?.payload).toMatchObject({ kind: 'support-message', language: 'en' });
   });
 
   it('reports missing configuration and rejects oversized messages', async () => {

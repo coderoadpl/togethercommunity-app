@@ -58,6 +58,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...overrides,
 });
 
@@ -446,6 +447,7 @@ const fixture = (input: {
         grants.filter((row) => row.tenantId === tenantId && row.memberId === memberId),
       listGrantedProducts: async () => products,
     },
+    tenants: { findSettings: async () => null },
     tenantAccess: {
       listTenantsForStaff: async () => [],
       listStaffForTenant: async () => [],

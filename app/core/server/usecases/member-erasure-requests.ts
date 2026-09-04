@@ -1,6 +1,5 @@
 import {
   appError,
-  DEFAULT_LANGUAGE,
   erasureRequestDueAt,
   err,
   forbidden,
@@ -95,17 +94,17 @@ export const requestMyErasure = async (
   }
   if (deps.notifications !== undefined) {
     try {
-      const recipients = await tenantStaffRecipients(tenant.value, deps.notifications);
+      const staff = await tenantStaffRecipients(tenant.value, deps.notifications);
       const panelUrl = tenantUrl(ctx.identity.tenantSlug, '/panel/members', deps.notifications);
       let queuedCount = 0;
-      for (const recipient of recipients) {
+      for (const recipient of staff) {
         const queued = await deps.notifications.emailOutbox.enqueue({
           id: deps.ids.nextId(),
           tenantId: tenant.value,
-          to: recipient,
+          to: recipient.email,
           payload: {
             kind: 'member-erasure-request',
-            language: DEFAULT_LANGUAGE,
+            language: recipient.language,
             tenantName: ctx.identity.tenantName ?? '',
             memberEmail: member.value.email,
             requestedAt,

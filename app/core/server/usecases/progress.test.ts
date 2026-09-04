@@ -52,6 +52,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...over,
 });
 
@@ -351,6 +352,7 @@ const membersRepo = (rows: Member[]): MemberRepository => ({
   listWithProductIds: async () => [],
   create: async () => undefined,
   updateEmail: async () => null,
+  updateLanguage: async () => null,
   updateDisplayName: async () => null,
   updateDmOptOut: async () => null,
 setBanned: async () => null,

@@ -43,6 +43,7 @@ image: null,
 memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
+memberLanguage: null,
 } satisfies Identity };
 const clock = { nowIso: () => NOW };
 const sequence = () => {

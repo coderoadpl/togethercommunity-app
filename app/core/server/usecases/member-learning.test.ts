@@ -43,6 +43,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...over,
 });
 
@@ -212,6 +213,7 @@ const deps = (input: {
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateLanguage: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
   setBanned: async () => null,

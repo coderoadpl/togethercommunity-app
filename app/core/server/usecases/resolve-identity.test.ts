@@ -94,6 +94,7 @@ const deps = (
       memberRows[index] = refreshed;
       return refreshed;
     },
+    updateLanguage: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,

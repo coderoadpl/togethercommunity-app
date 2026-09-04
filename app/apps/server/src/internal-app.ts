@@ -541,6 +541,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): Identity => ({
@@ -557,6 +558,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
 });
 
 const recordCheckoutConsents = async (
@@ -595,6 +597,8 @@ const recordCheckoutConsents = async (
         definitions: deps.marketing.definitions,
         consents: deps.marketing.marketingConsents,
         confirmations: deps.marketing.confirmations,
+        members: deps.members,
+        tenants: deps.tenants,
         outbox: deps.emailOutbox,
         ids: deps.ids,
         tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
@@ -1461,6 +1465,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
               displayName: identity.memberDisplayName,
               banned: identity.memberBannedAt !== null,
               dmOptOut: identity.memberDmOptOutAt !== null,
+              language: identity.memberLanguage,
             }
             : null,
         impersonation: impersonationOf(c.get('impersonation')),
@@ -2016,6 +2021,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         emailTransports: deps.emailTransports,
         payment: deps.payment,
         storage: deps.storage,
+        tenants: deps.tenants,
       },
     ));
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Member } from '#core/domain/index.js';
+import type { Language, Member } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { MemberRepository } from '../ports.js';
@@ -39,6 +39,7 @@ const context = (overrides: Partial<Ctx['identity']> = {}): Ctx => ({
     memberDisplayName: null,
     memberBannedAt: null,
     memberDmOptOutAt: null,
+    memberLanguage: null,
     ...overrides,
   },
 });
@@ -46,6 +47,7 @@ const context = (overrides: Partial<Ctx['identity']> = {}): Ctx => ({
 const harness = (stored: Member | null = member) => {
   const calls: Array<{ tenantId: string; memberId: string; displayName: string | null }> = [];
   const optOutCalls: Array<string | null> = [];
+  const languageCalls: Array<Language | null> = [];
   let current = stored;
   const members: MemberRepository = {
     findById: async () => current,
@@ -53,6 +55,11 @@ const harness = (stored: Member | null = member) => {
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    updateLanguage: async (_tenantId, _memberId, language) => {
+      languageCalls.push(language);
+      current = current === null ? null : { ...current, language };
+      return current;
+    },
     updateDisplayName: async (tenantId, memberId, displayName) => {
       calls.push({ tenantId, memberId, displayName });
       current = current === null ? null : { ...current, displayName };
@@ -65,7 +72,7 @@ const harness = (stored: Member | null = member) => {
     },
     setBanned: async () => null,
   };
-  return { calls, optOutCalls, deps: { members, clock: { nowIso: () => now } } };
+  return { calls, optOutCalls, languageCalls, deps: { members, clock: { nowIso: () => now } } };
 };
 
 describe('updateMyProfile', () => {
@@ -74,7 +81,7 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { displayName: 'Ada L.' }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: 'Ada L.', dmOptOut: false },
+      value: { displayName: 'Ada L.', dmOptOut: false, language: null },
     });
     expect(calls).toEqual([
       { tenantId: 'tenant-1', memberId: 'member-1', displayName: 'Ada L.' },
@@ -86,9 +93,19 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { displayName: null }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: null, dmOptOut: false },
+      value: { displayName: null, dmOptOut: false, language: null },
     });
     expect(calls[0]?.displayName).toBeNull();
+  });
+
+  it('leaves the stored display name untouched when the update omits it', async () => {
+    const { calls, deps } = harness({ ...member, displayName: 'Ada L.' });
+
+    await expect(updateMyProfile(context(), { language: 'en' }, deps)).resolves.toEqual({
+      ok: true,
+      value: { displayName: 'Ada L.', dmOptOut: false, language: 'en' },
+    });
+    expect(calls).toEqual([]);
   });
 
   it('records and clears the direct-message opt-out beside the display name', async () => {
@@ -96,11 +113,36 @@ describe('updateMyProfile', () => {
 
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', dmOptOut: true }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: true } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: true, language: null } });
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', dmOptOut: false }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null } });
     expect(optOutCalls).toEqual([now, null]);
+  });
+
+  it('stores the e-mail language preference the member picked', async () => {
+    const { languageCalls, deps } = harness();
+
+    await expect(
+      updateMyProfile(context(), { displayName: 'Ada L.', language: 'en' }, deps),
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: 'en' } });
+    expect(languageCalls).toEqual(['en']);
+  });
+
+  it('clears the stored language back to the tenant default', async () => {
+    const { languageCalls, deps } = harness();
+
+    await expect(
+      updateMyProfile(context(), { displayName: 'Ada L.', language: null }, deps),
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null } });
+    expect(languageCalls).toEqual([null]);
+  });
+
+  it('leaves the stored language untouched when the update omits it', async () => {
+    const { languageCalls, deps } = harness();
+
+    await updateMyProfile(context(), { displayName: 'Ada L.' }, deps);
+    expect(languageCalls).toEqual([]);
   });
 
   it('refuses an identity without a tenant', async () => {

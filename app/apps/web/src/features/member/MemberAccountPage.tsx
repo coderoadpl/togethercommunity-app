@@ -25,7 +25,7 @@ import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
-import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
+import { EmailLanguagePicker, useEmailLanguagePreference } from '../../EmailLanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
@@ -99,6 +99,7 @@ export const MemberAccountPage = () => {
       await queryClient.invalidateQueries(actions.meInvalidates());
     },
   });
+  const emailLanguagePreference = useEmailLanguagePreference();
   const [supportSubject, setSupportSubject] = useState('');
   const [supportBody, setSupportBody] = useState('');
   const support = useMutation({
@@ -175,6 +176,7 @@ export const MemberAccountPage = () => {
   const email = me.data.email;
   const savedDisplayName = me.data.tenant?.displayName ?? '';
   const dmOptOut = me.data.tenant?.dmOptOut ?? false;
+  const emailLanguage = me.data.tenant?.language ?? null;
   const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
@@ -386,12 +388,7 @@ export const MemberAccountPage = () => {
                 <Switch
                   checked={dmOptOut}
                   disabled={updatePrivacy.isPending}
-                  onChange={(event) =>
-                    updatePrivacy.mutate({
-                      displayName: savedDisplayName.trim() === '' ? null : savedDisplayName.trim(),
-                      dmOptOut: event.target.checked,
-                    })
-                  }
+                  onChange={(event) => updatePrivacy.mutate({ dmOptOut: event.target.checked })}
                 />
               )}
               label={t.messages.optOutLabel}
@@ -404,9 +401,30 @@ export const MemberAccountPage = () => {
 
         <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
-            <LanguageSwitcher inline />
+            <EmailLanguagePicker preference={emailLanguagePreference} />
             <ColorSchemeSwitcher />
           </Stack>
+          {me.data.tenant?.memberId == null ? null : (
+            <>
+              <Typography variant="body2" data-testid="member-email-language">
+                {emailLanguage === null
+                  ? t.account.emailLanguage.unset
+                  : t.account.emailLanguage[emailLanguage]}
+              </Typography>
+              {emailLanguage === null ? null : (
+                <Box>
+                  <Button
+                    variant="text"
+                    data-testid="member-email-language-reset"
+                    disabled={!emailLanguagePreference.storable}
+                    onClick={() => emailLanguagePreference.store(null)}
+                  >
+                    {t.account.emailLanguage.reset}
+                  </Button>
+                </Box>
+              )}
+            </>
+          )}
         </SectionCard>
 
         {billingPortalUrl ? (

@@ -226,7 +226,91 @@ describe('MemberAccountPage', () => {
     expect(await screen.findByTestId('account-dm-opt-out-saved')).toHaveTextContent(
       pl.messages.optOutSaved,
     );
-    expect(body).toEqual({ displayName: 'Ada', dmOptOut: true });
+    expect(body).toEqual({ dmOptOut: true });
+  });
+
+  it('stores the picked e-mail language and states the stored one', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(true, { displayName: 'Ada', language: 'pl' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ ok: true, data: { displayName: 'Ada', language: 'en' } });
+      }),
+    );
+    await renderAccount();
+
+    expect(await screen.findByTestId('member-email-language')).toHaveTextContent(
+      pl.account.emailLanguage.pl,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'en' }));
+
+    await waitFor(() => expect(body).toEqual({ language: 'en' }));
+  });
+
+  it('names the platform default when the member has no stored e-mail language', async () => {
+    server.use(stubMe(true, { displayName: 'Ada' }), stubSettings(null), stubBillingOrders());
+    await renderAccount();
+
+    expect(await screen.findByTestId('member-email-language')).toHaveTextContent(
+      pl.account.emailLanguage.unset,
+    );
+    expect(screen.queryByTestId('member-email-language-reset')).not.toBeInTheDocument();
+  });
+
+  it('clears the stored e-mail language back to the platform default', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(true, { displayName: 'Ada', language: 'en' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ ok: true, data: { displayName: 'Ada', language: null } });
+      }),
+    );
+    await renderAccount();
+
+    await userEvent.click(await screen.findByTestId('member-email-language-reset'));
+
+    await waitFor(() => expect(body).toEqual({ language: null }));
+  });
+
+  it('surfaces a failed e-mail language write', async () => {
+    server.use(
+      stubMe(true, { displayName: 'Ada', language: 'pl' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })),
+    );
+    await renderAccount();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'en' }));
+
+    expect(await screen.findByTestId('email-language-error')).toBeInTheDocument();
+  });
+
+  it('states that the picker only changes the panel language without a member row', async () => {
+    let posted = false;
+    server.use(
+      stubMe(true, { staffRole: 'owner', memberId: null }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', () => {
+        posted = true;
+        return HttpResponse.json({ ok: true, data: { displayName: null, language: 'en' } });
+      }),
+    );
+    await renderAccount();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'en' }));
+
+    expect(await screen.findByRole('tooltip'))
+      .toHaveTextContent(pl.account.emailLanguage.panelOnly);
+    expect(posted).toBe(false);
   });
 
   it('reflects an active opt-out and hides the privacy card without a member row', async () => {

@@ -140,6 +140,7 @@ const deps = (input: {
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
   passwordAccounts?: readonly string[];
+  members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
   const domains = input.domains ?? [];
@@ -149,7 +150,7 @@ const deps = (input: {
     product({ id: 'globex-published', tenantId: 't-globex', title: 'Globex Published', published: true }),
   ];
   const memberships: Membership[] = [];
-  const members: Member[] = [];
+  const members: Member[] = input.members ?? [];
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
   const appDeps: AppDeps = {
@@ -175,10 +176,11 @@ const deps = (input: {
     },
     members: {
       findById: async () => null,
-      findByEmail: async () => null,
+      findByEmail: async (_tenantId, email) => members.find((member) => member.email === email) ?? null,
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateLanguage: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,
@@ -447,6 +449,7 @@ const deps = (input: {
           listWithProductIds: async () => [],
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
+          updateLanguage: async () => null,
           updateDisplayName: async () => null,
           updateDmOptOut: async () => null,
         setBanned: async () => null,
@@ -5772,6 +5775,29 @@ describe('tenant-host magic links on login', () => {
       mode: 'email',
       baseUrl: 'http://acme.localhost:48730',
     });
+  });
+
+  it('keeps the stored member preference ahead of the requested UI language', async () => {
+    const { app, captured } = capturingApp({
+      members: [{
+        id: 'member-login', tenantId: acme.id, userId: 'user-login', email: 'login@together.dev',
+        displayName: 'Login', language: 'pl', tags: [], marketingConsents: {}, externalCustomerIds: {},
+        createdAt: '1998-07-12T00:00:00.000Z', deletedAt: null, bannedAt: null, bannedReason: null,
+        bannedByUserId: null, dmOptOutAt: null,
+      }],
+    });
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'acme.localhost:48730',
+        [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
+      },
+      body: JSON.stringify({ email: 'login@together.dev', callbackURL: 'http://acme.localhost:48730/my' }),
+    });
+
+    expect(captured.context?.context).toMatchObject({ language: 'pl' });
   });
 
   it('falls back to Polish and the base host on the bare domain', async () => {

@@ -11,6 +11,7 @@ import {
   type DmMessage,
   type MemberBlock,
   type Identity,
+  type Language,
   type Member,
   type Notification,
   type Post,
@@ -61,6 +62,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   memberDisplayName: null,
   memberBannedAt: null,
   memberDmOptOutAt: null,
+  memberLanguage: null,
   ...overrides,
 });
 
@@ -435,7 +437,7 @@ interface Fixture {
   messages: FakeDmMessages;
   states: FakeDmConversationStates;
   notifications: FakeNotifications;
-  delivered: Array<{ recipientUserId: string; email: string | null; url: string }>;
+  delivered: Array<{ recipientUserId: string; email: string | null; url: string; language: Language }>;
   published: RealtimeEvent[];
 }
 
@@ -445,6 +447,7 @@ const fixture = (
     staffUserIds?: string[];
     posts?: Post[];
     directMessagesEnabled?: boolean;
+    tenantDefaultLanguage?: Language;
   } = {},
 ): Fixture => {
   const conversations = new FakeDmConversations();
@@ -465,6 +468,7 @@ const fixture = (
         recipientUserId: notification.recipientUserId,
         email: context.recipientEmail,
         url: context.contextUrl,
+        language: context.language,
       });
       return { ok: true, value: undefined };
     },
@@ -474,7 +478,12 @@ const fixture = (
     findBySlug: async () => null,
     findSole: async () => null,
     findSettings: async () =>
-      tenantSettings({ directMessagesEnabled: input.directMessagesEnabled ?? true }),
+      tenantSettings({
+        directMessagesEnabled: input.directMessagesEnabled ?? true,
+        ...(input.tenantDefaultLanguage === undefined
+          ? {}
+          : { defaultLanguage: input.tenantDefaultLanguage }),
+      }),
     updateSettings: async (_tenantId, settings) => settings,
     createTenantWithOwnerGrant: async () => null,
     hasAny: async () => true,
@@ -492,6 +501,7 @@ const fixture = (
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      updateLanguage: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,
@@ -777,8 +787,25 @@ describe('sendDmMessage', () => {
         recipientUserId: 'u2',
         email: 'u2@example.com',
         url: `http://tenant.localhost/messages/${conversation.id}`,
+        language: 'pl',
       },
     ]);
+  });
+
+  it('delivers in the recipient language, falling back to the tenant default', async () => {
+    const preferred = fixture({
+      members: [member({ id: 'm1', userId: 'u1' }), member({ id: 'm2', userId: 'u2', language: 'en' })],
+      tenantDefaultLanguage: 'pl',
+    });
+    const inherited = fixture({ tenantDefaultLanguage: 'en' });
+
+    for (const fx of [preferred, inherited]) {
+      const conversation = await startWith(fx);
+      await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    }
+
+    expect(preferred.delivered.map((row) => row.language)).toEqual(['en']);
+    expect(inherited.delivered.map((row) => row.language)).toEqual(['en']);
   });
 
   it('publishes a live dm event for the recipient on every message', async () => {

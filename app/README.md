@@ -150,7 +150,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->334<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->336<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -286,6 +286,12 @@ or renews access and sends the welcome magic link.
 
 Checkout supports one-time and recurring prices. Stripe subscription webhooks
 renew access, handle payment failures, and end grants when subscriptions are canceled.
+
+## Versioning
+
+The version every surface reports is counted from the commit graph at build
+time — MINOR per production promotion, PATCH per pull request merged since it.
+See the [versioning guide](docs/versioning.md).
 
 ## Ports
 

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 60" width="480" height="60" role="img" aria-label="Akademia Samouka">
+  <rect x="0" y="0" width="60" height="60" rx="13" fill="#0E7490" />
+  <path d="M17 43 L30 15 L43 43 H36.6 L30 26.6 L23.4 43 Z" fill="#ffffff" />
+  <text x="76" y="41" textLength="392" lengthAdjust="spacingAndGlyphs" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="600" letter-spacing="3" fill="#0E7490">AKADEMIA SAMOUKA</text>
+</svg>

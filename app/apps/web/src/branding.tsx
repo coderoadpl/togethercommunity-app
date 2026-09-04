@@ -1,5 +1,4 @@
 import { useEffect, type ReactNode } from 'react';
-import { Box } from '@mui/material';
 import { ThemeProvider, useTheme, type Theme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 
@@ -12,6 +11,7 @@ import {
 
 import { actions } from './api.js';
 import { SocialLinksFooter } from './branding-social.js';
+import { LogoImage } from './components/ui/LogoImage.js';
 import { useTranslations } from './i18n/index.js';
 import { isConfiguredBaseDomainHost } from './lib/tenant.js';
 import { applyBranding } from './theme-branding.js';
@@ -70,21 +70,7 @@ export const TenantLogo = () => {
       </ShellWordmark>
     );
   }
-  return (
-    <Box
-      component="img"
-      src={logoUrl}
-      alt={tenant.name}
-      data-testid="tenant-logo"
-      sx={{
-        display: 'block',
-        height: '2rem',
-        maxWidth: '14rem',
-        objectFit: 'contain',
-        objectPosition: 'left center',
-      }}
-    />
-  );
+  return <LogoImage surface="sidebar" src={logoUrl} alt={tenant.name} data-testid="tenant-logo" />;
 };
 
 export const BrandMark = ({
@@ -98,13 +84,14 @@ export const BrandMark = ({
   const tenant = useTenantOffer(tenantAware);
   const logoUrl = useThemedLogo(tenant?.branding ?? EMPTY_TENANT_BRANDING);
   const compact = size === 'compact';
+  const surface = compact ? 'compact' : 'card';
   if (tenant === null) {
     return (
-      <Box
-        component="img"
+      <LogoImage
+        surface={surface}
         src={`/brand/together-horizontal-${theme.palette.mode}.svg`}
         alt="Together"
-        sx={{ display: 'block', height: compact ? '1.5rem' : '2.5rem', mb: compact ? '0.2rem' : '0.6rem' }}
+        sx={{ mb: compact ? '0.2rem' : '0.6rem' }}
       />
     );
   }
@@ -123,19 +110,12 @@ export const BrandMark = ({
     );
   }
   return (
-    <Box
-      component="img"
+    <LogoImage
+      surface={surface}
       src={logoUrl}
       alt={tenant.name}
       data-testid="tenant-brand-logo"
-      sx={{
-        display: 'block',
-        height: compact ? '1.5rem' : '2.25rem',
-        maxWidth: '16rem',
-        objectFit: 'contain',
-        objectPosition: 'left center',
-        mb: '0.45rem',
-      }}
+      sx={{ mb: '0.45rem' }}
     />
   );
 };

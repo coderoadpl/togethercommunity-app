@@ -29,6 +29,7 @@ import { ApiError } from '#core/client/index.js';
 import { useTenantBranding } from '../../branding.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
+import { LogoImage } from '../../components/ui/LogoImage.js';
 import { EmailLanguageSwitcher } from '../../EmailLanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
@@ -41,7 +42,6 @@ import { applyBranding } from '../../theme-branding.js';
 import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
 import {
   AppBarTitle,
-  AppBarWordmark,
   BreakAllText,
   createThemeForMode,
   Eyebrow,
@@ -517,12 +517,14 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
           <AppBarTitle component="span" noWrap data-testid="tenant-name">
             {tenant.name}
           </AppBarTitle>
-          <AppBarWordmark
+          <LogoImage
+            surface="appbar"
             src={theme.palette.mode === 'dark'
               ? '/brand/together-horizontal-dark.svg'
               : '/brand/together-horizontal-light.svg'}
             alt={t.common.appName}
             data-testid="panel-brand-lockup"
+            sx={{ alignSelf: 'flex-start', opacity: 0.62 }}
           />
         </Box>
       }
@@ -592,11 +594,13 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
       )}
       brand={
         <Box sx={{ display: 'flex', minWidth: 0, px: '1.25rem', pt: '0.9rem', pb: '0.75rem' }}>
-          <AppBarWordmark
+          <LogoImage
+            surface="appbar"
             src={theme.palette.mode === 'dark'
               ? '/brand/together-horizontal-dark.svg'
               : '/brand/together-horizontal-light.svg'}
             alt={t.common.appName}
+            sx={{ alignSelf: 'flex-start', opacity: 0.62 }}
           />
         </Box>
       }

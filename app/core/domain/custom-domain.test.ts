@@ -36,6 +36,18 @@ describe('normalizeCustomDomain', () => {
     expect(normalizeCustomDomain('together.example', null))
       .toEqual({ ok: true, value: 'together.example' });
   });
+
+  it.each([
+    ['.'.repeat(10_000) + 'a', 'dots then a non-dot'],
+    ['a' + '.'.repeat(10_000), 'a label then dots'],
+    ['a'.repeat(10_000) + ':', 'a long label then a bare colon'],
+    ['http://' + 'a.'.repeat(5000) + '-', 'a scheme then repeated labels'],
+  ])('rejects a 10k-character input in under 10 ms (%#: %s)', (input) => {
+    const startedAt = performance.now();
+    const result = normalizeCustomDomain(input, 'together.example');
+    expect(performance.now() - startedAt).toBeLessThan(10);
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
 });
 
 describe('customDomainRecords', () => {

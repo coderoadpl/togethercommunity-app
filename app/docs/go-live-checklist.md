@@ -248,9 +248,10 @@ client address and 300 per minute per resolved tenant; magic-link,
 password-reset, sign-up and verification requests share that per-address budget
 and allow 5 per ten minutes per e-mail address. The sign-in method lookup
 (`/api/public/auth-resolve`) spends its own `auth-resolve:ip` and
-`auth-resolve:tenant` windows — 20 per minute per client address and 200 per
+`auth-resolve:tenant` windows — 60 per minute per client address and 1000 per
 minute per resolved tenant — so a shared address exhausting the lookup cannot
-block checkout. The five limits are configurable
+block checkout, and a cohort behind one NAT address still reaches the lookup.
+The five limits are configurable
 (`PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE`,
 `PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE`,
 `PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES`,
@@ -266,6 +267,13 @@ than a request limiter (`adapters/db/app-schema.ts:1387`).
 Before launch, add an edge or WAF rule in front of `/api/auth/*` and
 `POST /api/public/auth-resolve`. The durable application limiter is defense in
 depth and does not replace the launch edge control.
+
+`POST /api/public/auth-resolve` answers CORS only to the platform host, the
+tenant subdomains of `APP_BASE_DOMAIN` and the `custom` `tenant_domains` rows
+already marked verified (`apps/server/src/tenant-cors.ts`). A preflight from any
+other origin answers `403` and no response ever carries a wildcard
+`Access-Control-Allow-Origin`, so pointing a new custom domain at Together also
+requires verifying it before a browser on that domain can read the lookup.
 
 ### 11. Real Stripe verification runbook
 

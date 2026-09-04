@@ -78,6 +78,7 @@ import {
   respond,
   respondNotModified,
 } from './respond.js';
+import { registerTenantScopedCors } from './tenant-cors.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
 
@@ -353,7 +354,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
   registerOpenCors(app, API_PATHS.authConfig, 'GET');
-  registerOpenCors(app, API_PATHS.authResolve, 'POST');
+  registerTenantScopedCors(app, API_PATHS.authResolve, deps);
 
   app.get(API_PATHS.publicImageAsset, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);

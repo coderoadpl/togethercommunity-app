@@ -2145,7 +2145,7 @@ export const platformAuditEvents = pgTable(
   'platform_audit_events',
   {
     id: text('id').primaryKey(),
-    action: text('action', { enum: ['platform:data-reset'] }).notNull(),
+    action: text('action', { enum: ['platform:data-reset', 'reseed-acme'] }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
     actorEmail: text('actor_email').notNull(),
     environment: text('environment').notNull(),

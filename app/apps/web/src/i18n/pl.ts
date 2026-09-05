@@ -1236,6 +1236,7 @@ export const pl: Messages = {
     videoPickerNextPage: 'Następna strona',
     videoPickerManualHint: 'Możesz też wpisać identyfikatory ręcznie w polach poniżej.',
     embedUrlLabel: 'Adres wideo (YouTube, Vimeo lub inny adres osadzania)',
+    embedCollapsedLabel: 'Edytor zwinięty domyślnie (ostrzeżenie o alert/prompt)',
     embedPreviewTitle: 'Podgląd wideo',
     embedInvalidUrl: 'Podaj pełny adres wideo lub osadzenia, zaczynający się od https://.',
     embedInvalidYoutubeUrl:
@@ -1613,6 +1614,10 @@ export const pl: Messages = {
     mailHint: '(otwiera program pocztowy)',
     videoTitle: 'Wideo lekcji',
     embedTitle: 'Osadzona treść',
+    collapsedEmbedWarning:
+      'Ten przykład używa funkcji alert, confirm lub prompt, dlatego edytor jest domyślnie zwinięty — okienka nie wyskoczą zaraz po wejściu do lekcji. Rozwiń edytor przyciskiem poniżej albo otwórz przykład w nowej karcie.',
+    expandEmbed: 'Rozwiń edytor',
+    collapseEmbed: 'Zwiń edytor',
     pdfTitle: 'PDF lekcji',
     attachmentsHeading: 'Pliki do pobrania',
     downloadAttachment: ({ name }) => format('Pobierz {name}', { name }),

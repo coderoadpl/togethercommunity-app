@@ -78,10 +78,10 @@ The display name is computed from `prefix` and `title`; it is never accepted as 
 ### Lesson
 
 ```jsonl
-{"kind":"lesson","importKey":"lesson-l1","legacyId":"l1","name":"Flex container","isPreview":false,"durationMinutes":12,"contents":[{"type":"video","storageKey":"lessons/l1.mp4","streamVideoId":"vid-1","streamCollectionId":"col-1"},{"type":"embed","embedUrl":"https://youtu.be/xxxxxxxxxxx"},{"type":"pdf","pdfUrl":"https://cdn.example.com/l1.pdf","name":"Worksheet"},{"type":"link","url":"https://example.com/docs","description":"Reference"},{"type":"html","html":"<p>Notes.</p>"}],"createdAt":"2020-02-01T00:00:00Z"}
+{"kind":"lesson","importKey":"lesson-l1","legacyId":"l1","name":"Flex container","isPreview":false,"durationMinutes":12,"contents":[{"type":"video","storageKey":"lessons/l1.mp4","streamVideoId":"vid-1","streamCollectionId":"col-1"},{"type":"embed","embedUrl":"https://youtu.be/xxxxxxxxxxx"},{"type":"embed","embedUrl":"https://codesandbox.io/s/alert-demo-abc123","collapsed":true},{"type":"pdf","pdfUrl":"https://cdn.example.com/l1.pdf","name":"Worksheet"},{"type":"link","url":"https://example.com/docs","description":"Reference"},{"type":"html","html":"<p>Notes.</p>"}],"createdAt":"2020-02-01T00:00:00Z"}
 ```
 
-Nothing is fetched, copied, or re-hosted. Video blocks require `storageKey` and `streamVideoId`; `streamLibraryId` and `streamCollectionId` are optional. Embed blocks take `embedUrl`, PDF blocks take `pdfUrl` and an optional `name`, link blocks take `url` and an optional `description`, and HTML blocks take non-empty `html`. Existing URLs and stream identifiers must stay usable.
+Nothing is fetched, copied, or re-hosted. Video blocks require `storageKey` and `streamVideoId`; `streamLibraryId` and `streamCollectionId` are optional. Embed blocks take `embedUrl` and an optional `collapsed` boolean — set it for sandboxes whose code calls `alert`, `confirm` or `prompt`, and the member sees a warning plus an expand button instead of an iframe that fires dialogs on load. PDF blocks take `pdfUrl` and an optional `name`, link blocks take `url` and an optional `description`, and HTML blocks take non-empty `html`. Existing URLs and stream identifiers must stay usable.
 
 ### Product
 

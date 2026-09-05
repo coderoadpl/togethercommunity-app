@@ -1225,6 +1225,7 @@ export const en: Messages = {
     videoPickerNextPage: 'Next page',
     videoPickerManualHint: 'You can also type the ids manually in the fields below.',
     embedUrlLabel: 'Video URL (YouTube, Vimeo, or another embed)',
+    embedCollapsedLabel: 'Collapse the editor by default (warns about alert/prompt)',
     embedPreviewTitle: 'Video preview',
     embedInvalidUrl: 'Enter a valid absolute video or embed URL.',
     embedInvalidYoutubeUrl: 'Enter a valid YouTube watch, short, Shorts, live, or embed URL.',
@@ -1595,6 +1596,10 @@ export const en: Messages = {
     mailHint: '(opens your mail app)',
     videoTitle: 'Lesson video',
     embedTitle: 'Embedded content',
+    collapsedEmbedWarning:
+      'This example uses alert, confirm or prompt, so the editor starts collapsed and no dialogs pop up as the lesson loads. Expand the editor with the button below, or open the example in a new tab.',
+    expandEmbed: 'Expand the editor',
+    collapseEmbed: 'Collapse the editor',
     pdfTitle: 'Lesson PDF',
     attachmentsHeading: 'Downloads',
     downloadAttachment: ({ name }) => format('Download {name}', { name }),

@@ -1113,6 +1113,7 @@ export interface Messages {
     videoPickerNextPage: string;
     videoPickerManualHint: string;
     embedUrlLabel: string;
+    embedCollapsedLabel: string;
     embedPreviewTitle: string;
     embedInvalidUrl: string;
     embedInvalidYoutubeUrl: string;
@@ -1425,6 +1426,9 @@ export interface Messages {
     mailHint: string;
     videoTitle: string;
     embedTitle: string;
+    collapsedEmbedWarning: string;
+    expandEmbed: string;
+    collapseEmbed: string;
     pdfTitle: string;
     attachmentsHeading: string;
     downloadAttachment: (params: { name: string }) => string;

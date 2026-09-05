@@ -219,6 +219,16 @@ export interface CourseLessonRepository {
   delete(tenantId: string, id: string): Promise<boolean>;
 }
 
+/**
+ * Imported content keeps the identifier of the system it came from in `legacyId`;
+ * row ids are allocated independently, so links minted by that system resolve here.
+ */
+export interface LegacyContentLocator {
+  findCourse(tenantId: string, legacyId: string): Promise<Course | null>;
+  findModule(tenantId: string, legacyId: string): Promise<CourseModule | null>;
+  findLesson(tenantId: string, legacyId: string): Promise<CourseLesson | null>;
+}
+
 export interface CourseLessonPreview {
   id: string;
   name: string;

@@ -96,6 +96,7 @@ import type {
   EntityVersionRepository,
   HealthPort,
   EmailHmac,
+  LegacyContentLocator,
   MemberErasurePort,
   MemberRepository,
   MemberCourseProgressRepository,
@@ -700,6 +701,36 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
       .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, id)))
       .returning({ id: courseLessons.id });
     return rows.length > 0;
+  },
+});
+
+export const createLegacyContentLocator = (db: Db): LegacyContentLocator => ({
+  findCourse: async (tenantId, legacyId) => {
+    const rows = await db
+      .select()
+      .from(courses)
+      .where(and(eq(courses.tenantId, tenantId), eq(courses.legacyId, legacyId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseCourse(row) : null;
+  },
+  findModule: async (tenantId, legacyId) => {
+    const rows = await db
+      .select()
+      .from(courseModules)
+      .where(and(eq(courseModules.tenantId, tenantId), eq(courseModules.legacyId, legacyId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseModule(row) : null;
+  },
+  findLesson: async (tenantId, legacyId) => {
+    const rows = await db
+      .select()
+      .from(courseLessons)
+      .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.legacyId, legacyId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseLesson(row) : null;
   },
 });
 

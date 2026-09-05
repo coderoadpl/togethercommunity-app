@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 110. Route rows: 293. Exported `Ctx` use-case rows: 240.
+Closed capability count: 110. Route rows: 294. Exported `Ctx` use-case rows: 240.
 
 ## Human-readable diff
 
@@ -63,6 +63,7 @@ no changes
 | `POST /api/auth/send-verification-email` | auth:use | public | public | yes | public route manifest |
 | `GET /api/auth/*` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/*` | auth:use | public | public | yes | public route manifest |
+| `GET /courses/*` | offer:read | public | public | yes | public route manifest |
 | `POST /api/webhooks/ses/:webhookToken` | webhook:process | webhook | webhook | yes | public route manifest |
 | `POST /u/:token` | marketing:consent:write | token | token | yes | public route manifest |
 | `POST /u/:token/confirm` | marketing:consent:write | token | token | yes | public route manifest |

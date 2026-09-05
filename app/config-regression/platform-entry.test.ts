@@ -45,6 +45,14 @@ describe('Vercel platform entry boundary', () => {
     expect(vercel.functions['api/index.ts']?.maxDuration).toBe(30);
   });
 
+  it('sends legacy course links to the function ahead of the static fallbacks', () => {
+    const rewrites = vercel.rewrites.map(({ source }) => source);
+
+    expect(vercel.rewrites).toContainEqual({ source: '/courses/(.*)', destination: '/api/index' });
+    expect(rewrites.indexOf('/courses/(.*)')).toBeLessThan(rewrites.indexOf('/(.*)'));
+    expect(vercel.rewrites.at(-1)).toEqual({ source: '/(.*)', destination: '/index.html' });
+  });
+
   it('keeps API, public pages, static security headers, and Frankfurt routing explicit', () => {
     expect(vercel.regions).toEqual(['fra1']);
     expect(vercel.rewrites).toEqual(

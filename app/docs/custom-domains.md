@@ -58,6 +58,49 @@ A custom domain is a separate credential world:
 Passwords, magic links and TOTP secrets are unaffected. The workspace
 subdomain keeps working, so the switch can be gradual.
 
+## Legacy URL compatibility
+
+A domain moved onto Together usually carries years of links that were minted by
+the site it used to serve: links inside lesson content, bookmarks, and search
+results. The server answers the URL shapes of the previous course platform on
+every tenant host — custom domains and workspace subdomains alike — so those
+links keep landing on the right page instead of a not-found screen.
+
+| Legacy URL | Redirected to | Status |
+|---|---|---|
+| `/courses/<courseId>` | the member course page | `301` |
+| `/courses/<courseId>/modules/<moduleId>` | the first lesson of that module | `302` |
+| `/courses/<courseId>/modules/<moduleId>/chapters/<chapterId>` | the first lesson of that chapter | `302` |
+| `/courses/<courseId>/modules/<moduleId>/chapters/<chapterId>/lessons/<lessonId>` | the member lesson page | `301` |
+| anything else under `/courses/` | the member course list | `302` |
+| `/login`, `/register`, `/reset-password` | unchanged — Together serves the same paths | — |
+
+A course and a lesson keep their identity across a move, so those two hops are
+permanent. The first lesson of a module or of a chapter is looked up at request
+time and changes when the content changes, so those hops — and every fallback —
+are temporary: a reader who followed the link during the cutover is never pinned
+to a stale destination by their own browser cache. The query string is carried
+over, so campaign parameters survive the hop.
+
+Links resolve through the identifier of the system the content came from, which
+the import stores alongside every course, module and lesson; row identifiers are
+allocated independently, so nothing depends on reconstructing them. Three rules
+keep the redirect honest:
+
+- **the course must belong to the workspace the host resolves to.** A link for
+  another workspace's course lands on the course list, exactly like an unknown
+  one, so one workspace can never probe another's catalogue through the shape of
+  a legacy URL;
+- **a lesson must sit in the module the link names.** A lesson that has moved
+  away, or that never belonged there, falls back to the course page instead of
+  opening a player on content the link never pointed at;
+- **nothing under `/courses/` dead-ends.** An unknown course, a malformed
+  identifier, or a shape the previous site never minted lands on the member
+  course list, which sends signed-out readers to the sign-in page.
+
+The platform host is untouched: it resolves to no workspace, so a legacy shape
+is never redirected there.
+
 ## Limits
 
 - three custom domains per workspace;

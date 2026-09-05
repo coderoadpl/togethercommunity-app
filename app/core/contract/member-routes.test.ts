@@ -6,18 +6,22 @@ import {
   communityPostPath,
   communitySpacePath,
   conversationPath,
+  coursePath,
   lessonPath,
 } from './member-routes.js';
 
 describe('member route paths', () => {
   it('pins notification and email destinations to registered SPA routes', () => {
     expect(MEMBER_ROUTE_PATHS).toEqual({
+      courseList: '/my',
+      course: '/my/courses/$courseId',
       lesson: '/my/courses/$courseId/lessons/$lessonId',
       communitySpace: '/community/$spaceId',
       communityPost: '/community/$spaceId/posts/$postId',
       communityEvent: '/community/$spaceId/events/$eventId',
       conversation: '/messages/$conversationId',
     });
+    expect(coursePath('course-1')).toBe('/my/courses/course-1');
     expect(lessonPath('course-1', 'lesson-1')).toBe('/my/courses/course-1/lessons/lesson-1');
     expect(communitySpacePath('space-1')).toBe('/community/space-1');
     expect(communityPostPath('space-1', 'post-1')).toBe('/community/space-1/posts/post-1');

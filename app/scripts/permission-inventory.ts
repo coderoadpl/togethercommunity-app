@@ -93,6 +93,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/u/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/marketing/confirm/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/legal/')) return 'legal:read';
+  if (path.startsWith('/courses/')) return 'offer:read';
   if (
     path === '/api/internal/dispatch-email'
     || path === '/api/internal/dispatch-auto-invoices'

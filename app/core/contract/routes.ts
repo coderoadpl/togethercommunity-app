@@ -63,8 +63,12 @@ import {
   creatorOnboardingSchema,
   tenantSetupReadinessSchema,
   tenantRoutingSchema,
+  contentVersionRestoreSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
+  restoreContentVersionInputSchema,
+  versionPreviewFieldNameSchema,
+  versionPreviewSchema,
   grantProductToMemberInputSchema,
   grantWindowStatusSchema,
   imageAssetUploadInputSchema,
@@ -939,6 +943,17 @@ export const contentHistoryOutputSchema = z.object({
 
 export const contentVersionOutputSchema = z.object({
   version: entityVersionDetailSchema,
+  preview: versionPreviewSchema,
+  current: versionPreviewSchema.nullable(),
+  changedFields: z.array(versionPreviewFieldNameSchema),
+});
+
+export const contentVersionRestoreInputSchema = restoreContentVersionInputSchema;
+
+export type ContentVersionRestoreInput = z.input<typeof contentVersionRestoreInputSchema>;
+
+export const contentVersionRestoreOutputSchema = z.object({
+  restored: contentVersionRestoreSchema,
 });
 
 export const studentCoursesOutputSchema = z.object({
@@ -1754,6 +1769,7 @@ export const API_ROUTES = {
   coursesUpdate: { method: 'POST', path: '/api/courses/update' },
   coursesHistory: { method: 'GET', path: '/api/courses/history' },
   coursesHistoryVersion: { method: 'GET', path: '/api/courses/history/version' },
+  coursesHistoryRestore: { method: 'POST', path: '/api/courses/history/restore' },
   modules: { method: 'GET', path: '/api/modules' },
   modulesCreate: { method: 'POST', path: '/api/modules' },
   modulesUpdate: { method: 'POST', path: '/api/modules/update' },
@@ -2015,6 +2031,7 @@ export const API_PATHS = {
   coursesUpdate: API_ROUTES.coursesUpdate.path,
   coursesHistory: API_ROUTES.coursesHistory.path,
   coursesHistoryVersion: API_ROUTES.coursesHistoryVersion.path,
+  coursesHistoryRestore: API_ROUTES.coursesHistoryRestore.path,
   modules: API_ROUTES.modules.path,
   modulesCreate: API_ROUTES.modulesCreate.path,
   modulesUpdate: API_ROUTES.modulesUpdate.path,

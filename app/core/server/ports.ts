@@ -143,12 +143,17 @@ export interface EntityVersionRecord {
   createdBy: string | null;
 }
 
+/** A stored row, carrying its 1-based position among the entity's versions. */
+export interface StoredEntityVersion extends EntityVersionRecord {
+  ordinal: number;
+}
+
 export interface EntityVersionRepository {
   list(
     tenantId: string,
     query: { entityKind: EntityKind; entityId: string; limit: number },
   ): Promise<EntityHistoryEntry[]>;
-  findById(tenantId: string, id: string): Promise<EntityVersionRecord | null>;
+  findById(tenantId: string, id: string): Promise<StoredEntityVersion | null>;
 }
 
 export interface UserDisplayReader {
@@ -773,11 +778,16 @@ export interface ImportAuditEventRepository {
   ): Promise<{ events: ImportAuditEvent[]; nextCursor: string | null }>;
 }
 
-export type ImportContentMutation =
+/**
+ * `version` carries the snapshot of the state the import writes; it is absent
+ * for an unchanged record and inserted in the same transaction as the write.
+ */
+export type ImportContentMutation = { version?: EntityVersionRecord } & (
   | { kind: 'course'; action: 'created' | 'updated' | 'unchanged'; resource: Course; event: ImportAuditEvent }
   | { kind: 'module'; action: 'created' | 'updated' | 'unchanged'; resource: CourseModule; event: ImportAuditEvent }
   | { kind: 'lesson'; action: 'created' | 'updated' | 'unchanged'; resource: CourseLesson; event: ImportAuditEvent }
-  | { kind: 'product'; action: 'created' | 'updated' | 'unchanged'; resource: Product; event: ImportAuditEvent };
+  | { kind: 'product'; action: 'created' | 'updated' | 'unchanged'; resource: Product; event: ImportAuditEvent }
+);
 
 export interface ImportContentRepository {
   commit(
@@ -2199,6 +2209,7 @@ export interface ImpersonationSessionRepository {
 /** Append-only tenant audit trail; entries are never updated or deleted. */
 export interface TenantAuditEventRepository {
   list(tenantId: string, query: TenantAuditEventListQuery): Promise<TenantAuditEventPage>;
+  record(tenantId: string, event: TenantAuditEventInput): Promise<void>;
 }
 
 export interface ImpersonationTokenCodec {

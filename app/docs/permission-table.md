@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 110. Route rows: 295. Exported `Ctx` use-case rows: 240.
+Closed capability count: 110. Route rows: 296. Exported `Ctx` use-case rows: 241.
 
 ## Human-readable diff
 
@@ -246,6 +246,7 @@ no changes
 | `POST /api/courses` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/courses/update` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/courses/history/version` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/courses/history/restore` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/courses/history` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/modules` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/modules` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -353,6 +354,7 @@ no changes
 | `configure-stripe.ts#configureStripe` | tenant:secret:write | owner | owner | yes | core/server/usecases/configure-stripe.ts authorization call |
 | `content-history.ts#getContentHistory` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `content-history.ts#getContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
+| `content-history.ts#restoreContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `coupon-management.ts#createCoupon` | coupon:write | owner, admin | owner, admin | yes | core/server/usecases/coupon-management.ts authorization call |
 | `coupon-management.ts#archiveCoupon` | coupon:write | owner, admin | owner, admin | yes | core/server/usecases/coupon-management.ts authorization call |
 | `coupon-stats.ts#listCouponOptions` | coupon:read | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts authorization call |
@@ -574,11 +576,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:163` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1014` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1016` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1484` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1484` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:164` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1016` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1018` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1486` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1486` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:85` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

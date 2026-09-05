@@ -92,3 +92,4 @@ export * from './usecases/marketing-email.js';
 export * from './usecases/marketing-management.js';
 export * from './usecases/marketing-ses-onboarding.js';
 export * from './usecases/ses-webhook-url.js';
+export * from './usecases/deep-health.js';

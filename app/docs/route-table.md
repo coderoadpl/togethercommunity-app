@@ -10,6 +10,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/health/live` | public | read | Process liveness check |
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
+| `GET /api/health/deep` | public | read | Aggregated production readiness probe over every tenant |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
 | `OPTIONS /api/public/navigation` | public | read | Anonymous tenant-home navigation |
 | `OPTIONS /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |

@@ -1718,6 +1718,10 @@ export interface TenantRepository {
   hasAny(): Promise<boolean>;
 }
 
+export interface TenantDirectory {
+  listAll(): Promise<Tenant[]>;
+}
+
 /** Append-only: consent records are audit evidence and are never updated or deleted. */
 export interface TermsConsentRepository {
   record(tenantId: string, consent: TermsConsent): Promise<void>;

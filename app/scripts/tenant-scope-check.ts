@@ -62,6 +62,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'TenantDomainRepository.findAnyByDomain': 'Domain uniqueness spans the platform, so the check runs before the owning tenant is known.',
   'TenantDomainRepository.listVerifiedDomains': 'Domain routing builds a platform-wide verified-domain index.',
   'TenantDomainRepository.listOldestPendingPerTenant': 'A platform worker leases pending domains across all tenants.',
+  'TenantDirectory.listAll': 'The platform deep-health probe enumerates every tenant before any tenant ID exists.',
   'TenantRepository.createTenantWithOwnerGrant': 'Tenant provisioning creates the tenant boundary and its first grant atomically.',
   'TenantRepository.findBySlug': 'Tenant resolution must look up a tenant before a tenant ID exists.',
   'TenantRepository.findSole': 'Single-tenant resolution must identify the sole tenant before a tenant ID exists.',

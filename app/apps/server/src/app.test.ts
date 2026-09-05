@@ -5,6 +5,8 @@ import {
   API_PATHS,
   API_ROUTES,
   capabilitiesForPrincipal,
+  deepHealthOutputSchema,
+  envelopeSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   TENANT_HEADER,
 } from '#core/contract/index.js';
@@ -21,6 +23,7 @@ import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs'
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
 import { buildApp } from './app.js';
+import { DEEP_HEALTH_CACHE_TTL_MS } from './deep-health-route.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
 import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
@@ -751,6 +754,9 @@ const deps = (input: {
         plan: 'self_hosted',
         contentVersion: 1,
       }),
+    },
+    tenantDirectory: {
+      listAll: async () => tenants,
     },
     consents: {
       record: async () => undefined,
@@ -2747,6 +2753,110 @@ describe('health route', () => {
       ok: false,
       error: { code: 'unavailable', message: 'Database is not reachable' },
     });
+  });
+});
+
+describe('deep health route', () => {
+  const deepHealthEnvelopeSchema = envelopeSchema(deepHealthOutputSchema);
+
+  const countingDirectory = (configured: AppDeps): { calls: () => number } => {
+    let calls = 0;
+    const listAll = configured.tenantDirectory.listAll;
+    configured.tenantDirectory = {
+      listAll: async () => {
+        calls += 1;
+        return listAll();
+      },
+    };
+    return { calls: () => calls };
+  };
+
+  it('answers 200 with a green report that discloses no tenant or subject counts', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.healthDeep);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: {
+        ok: true,
+        checkedAt: expect.any(String),
+        failing: [],
+        checks: [
+          { name: 'tenant-directory', ok: true, ms: expect.any(Number), error: null },
+          { name: 'scheduler-freshness', ok: true, ms: expect.any(Number), error: null },
+          { name: 'tenant-settings', ok: true, ms: expect.any(Number), error: null },
+          { name: 'public-offer', ok: true, ms: expect.any(Number), error: null },
+          { name: 'course-content', ok: true, ms: expect.any(Number), error: null },
+          { name: 'tenant-secret-decryption', ok: true, ms: expect.any(Number), error: null },
+          { name: 'email-transport', ok: true, ms: expect.any(Number), error: null },
+          { name: 'storage-presign', ok: true, ms: expect.any(Number), error: null },
+        ],
+      },
+    });
+  });
+
+  it('serves the cached report for a minute and recomputes afterwards', async () => {
+    const configured = deps();
+    const directory = countingDirectory(configured);
+    const app = buildApp(configured);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+
+    try {
+      await app.request(API_PATHS.healthDeep);
+      await app.request(API_PATHS.healthDeep);
+      expect(directory.calls()).toBe(1);
+
+      clock.mockReturnValue(1_000_000 + DEEP_HEALTH_CACHE_TTL_MS - 1);
+      await app.request(API_PATHS.healthDeep);
+      expect(directory.calls()).toBe(1);
+
+      clock.mockReturnValue(1_000_000 + DEEP_HEALTH_CACHE_TTL_MS);
+      await app.request(API_PATHS.healthDeep);
+      expect(directory.calls()).toBe(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('answers 500 naming the failing checks without leaking the stored row', async () => {
+    const configured = deps();
+    configured.tenants = {
+      ...configured.tenants,
+      findSettings: async (tenantId) => {
+        const settings = await deps().tenants.findSettings(tenantId);
+        return settings === null ? null : { ...settings, billingPortalUrl: 'portal.acme.test' };
+      },
+    };
+
+    const response = await buildApp(configured).request(API_PATHS.healthDeep);
+
+    expect(response.status).toBe(500);
+    const payload = deepHealthEnvelopeSchema.parse(await response.json());
+    if (!payload.ok) throw new Error('the deep health route must answer with a report');
+    expect(payload.data.ok).toBe(false);
+    expect(payload.data.failing).toEqual(['tenant-settings']);
+    expect(JSON.stringify(payload)).not.toContain('portal.acme.test');
+  });
+
+  it('spends a dedicated per-address bucket and throttles with 429', async () => {
+    const scopes: string[] = [];
+    const counted = await buildApp(deps({
+      rateLimitBuckets: {
+        claim: async (input) => { scopes.push(input.scope); return true; },
+        purgeExpired: async () => 0,
+      },
+    })).request(API_PATHS.healthDeep);
+    expect(counted.status).toBe(200);
+    expect(scopes).toEqual(['deep-health:ip']);
+
+    const throttled = await buildApp(deps({
+      rateLimitBuckets: { claim: async () => false, purgeExpired: async () => 0 },
+    })).request(API_PATHS.healthDeep);
+
+    expect(throttled.status).toBe(429);
+    expect(Number(throttled.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(await throttled.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
   });
 });
 

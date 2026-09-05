@@ -14,12 +14,17 @@ import {
   TENANT_HEADER,
 } from '#core/contract/index.js';
 
+export type MemberCredentials =
+  | { status: 'configured'; email: string; password: string }
+  | { status: 'absent' }
+  | { status: 'incomplete'; missing: string };
+
 export interface RemoteSmokeOptions {
   baseUrl: string;
   tenant: string;
   publicPagePath: string;
   expectedSha?: string;
-  member?: { email: string; password: string };
+  member: MemberCredentials;
 }
 
 export interface RemoteSmokeCheck {
@@ -43,6 +48,19 @@ export interface RemoteSmokeResult {
  */
 const STUDIO_SETTINGS_SKIP_REASON =
   'no tenant API key scope grants tenant:settings:read';
+
+const MEMBER_CREDENTIALS_SKIP_REASON =
+  'SMOKE_MEMBER_EMAIL and SMOKE_MEMBER_PASSWORD are not configured';
+
+const MEMBER_CREDENTIALS_NOTICE =
+  'smoke:remote: NOTICE member checks skipped — set SMOKE_MEMBER_EMAIL and SMOKE_MEMBER_PASSWORD';
+
+const MEMBER_CHECKS = [
+  'member-sign-in',
+  'member-identity',
+  'student-courses',
+  'lesson-playback',
+] as const;
 
 type Fetch = typeof fetch;
 
@@ -115,9 +133,11 @@ const createRun = (options: RemoteSmokeOptions, request: Fetch) => {
   };
 };
 
-const signIn = async (options: RemoteSmokeOptions, request: Fetch): Promise<string> => {
-  const member = options.member;
-  if (member === undefined) throw new Error('SMOKE_MEMBER_EMAIL/SMOKE_MEMBER_PASSWORD are absent');
+const signIn = async (
+  options: RemoteSmokeOptions,
+  member: { email: string; password: string },
+  request: Fetch,
+): Promise<string> => {
   const auth = createAuthE2eClient({
     connectUrl: options.baseUrl,
     origin: new URL(options.baseUrl).origin,
@@ -182,7 +202,19 @@ export const runRemoteSmoke = async (
     await response.text();
   });
 
-  const token = await run.step('member-sign-in', () => signIn(options, request));
+  const member = options.member;
+  if (member.status === 'absent') {
+    for (const name of MEMBER_CHECKS) run.skip(name, MEMBER_CREDENTIALS_SKIP_REASON);
+    run.skip('studio-tenant-settings', STUDIO_SETTINGS_SKIP_REASON);
+    return run.result();
+  }
+
+  const token = await run.step('member-sign-in', () => {
+    if (member.status === 'incomplete') {
+      throw new Error(`${member.missing} is absent while the other member credential is set`);
+    }
+    return signIn(options, member, request);
+  });
   if (token === null) {
     run.skip('member-identity', 'member sign-in failed');
     run.skip('student-courses', 'member sign-in failed');
@@ -262,18 +294,27 @@ const provided = (env: Environment, name: string): string | null => {
   return value === undefined || value === '' ? null : value;
 };
 
+const memberFromEnv = (env: Environment): MemberCredentials => {
+  const email = provided(env, 'SMOKE_MEMBER_EMAIL');
+  const password = provided(env, 'SMOKE_MEMBER_PASSWORD');
+  if (email !== null && password !== null) return { status: 'configured', email, password };
+  if (email === null && password === null) return { status: 'absent' };
+  return {
+    status: 'incomplete',
+    missing: email === null ? 'SMOKE_MEMBER_EMAIL' : 'SMOKE_MEMBER_PASSWORD',
+  };
+};
+
 export const remoteSmokeOptionsFromEnv = (env: Environment): RemoteSmokeOptions | null => {
   const baseUrl = provided(env, 'BASE_URL');
   if (baseUrl === null) return null;
   const expectedSha = provided(env, 'EXPECTED_SHA');
-  const email = provided(env, 'SMOKE_MEMBER_EMAIL');
-  const password = provided(env, 'SMOKE_MEMBER_PASSWORD');
   return {
     baseUrl,
     tenant: provided(env, 'SMOKE_TENANT') ?? 'acme',
     publicPagePath: provided(env, 'PUBLIC_PAGE_PATH') ?? '/',
     ...(expectedSha === null ? {} : { expectedSha }),
-    ...(email === null || password === null ? {} : { member: { email, password } }),
+    member: memberFromEnv(env),
   };
 };
 
@@ -293,6 +334,9 @@ const main = async (): Promise<void> => {
     process.stdout.write(
       `  [${check.status}] ${check.name} (${String(check.ms)}ms)${detail}\n`,
     );
+  }
+  if (options.member.status === 'absent') {
+    process.stdout.write(`${MEMBER_CREDENTIALS_NOTICE}\n`);
   }
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   if (result.ok) {

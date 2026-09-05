@@ -102,6 +102,7 @@ describe('MemberAccountPage', () => {
           pl.security.heading,
           pl.messages.privacyHeading,
           pl.account.preferencesHeading,
+          pl.account.playbackHeading,
           pl.account.billingHeading,
           pl.account.invoiceOrdersHeading,
           pl.support.heading,
@@ -227,6 +228,48 @@ describe('MemberAccountPage', () => {
       pl.messages.optOutSaved,
     );
     expect(body).toEqual({ dmOptOut: true });
+  });
+
+  it('turns video autoplay on from the playback section and leaves it off by default', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({
+          ok: true,
+          data: { displayName: 'Ada', dmOptOut: false, language: null, videoAutoplay: true },
+        });
+      }),
+    );
+    await renderAccount();
+
+    const toggle = await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel });
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+
+    expect(await screen.findByTestId('account-video-autoplay-saved')).toHaveTextContent(
+      pl.account.videoAutoplaySaved,
+    );
+    expect(body).toEqual({ videoAutoplay: true });
+  });
+
+  it('reflects a stored video autoplay preference and hides playback without a member row', async () => {
+    server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null), stubBillingOrders());
+    const { unmount } = await renderAccount();
+    expect(await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel })).toBeChecked();
+    unmount();
+
+    server.use(
+      stubMe(true, { staffRole: 'owner', memberId: null }),
+      stubSettings(null),
+      stubBillingOrders(),
+    );
+    await renderAccount();
+    await screen.findByTestId('account-email');
+    expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
   });
 
   it('stores the picked e-mail language and states the stored one', async () => {

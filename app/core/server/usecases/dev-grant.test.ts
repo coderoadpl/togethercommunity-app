@@ -75,6 +75,7 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
     },
     updateEmail: async () => null,
     updateLanguage: async () => null,
+    updateVideoAutoplay: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
   setBanned: async () => null,

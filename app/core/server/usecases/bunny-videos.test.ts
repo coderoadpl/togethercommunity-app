@@ -23,6 +23,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
   } satisfies Identity,
 });
 

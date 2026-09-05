@@ -53,6 +53,7 @@ const identity = (over: Partial<Identity> = {}): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
   ...over,
 });
 
@@ -271,7 +272,7 @@ describe('getLessonPlayback', () => {
         storageKey: 'videos/one',
         videoId: VIDEO_ID,
         libraryId: 'lib-1',
-        embedUrl: `https://iframe.mediadelivery.net/embed/lib-1/${VIDEO_ID}?token=embed-${VIDEO_ID}-${expires}&expires=${expires}`,
+        embedUrl: `https://iframe.mediadelivery.net/embed/lib-1/${VIDEO_ID}?autoplay=false&preload=false&token=embed-${VIDEO_ID}-${expires}&expires=${expires}`,
         hlsUrl: `https://vz-demo.b-cdn.net/${VIDEO_ID}/playlist.m3u8?expires=${expires}`,
         signed: true,
       }],
@@ -326,7 +327,7 @@ describe('getLessonPlayback', () => {
       storageKey: 'videos/one',
       videoId: VIDEO_ID,
       libraryId: 'lib-1',
-      embedUrl: `https://iframe.mediadelivery.net/embed/lib-1/${VIDEO_ID}`,
+      embedUrl: `https://iframe.mediadelivery.net/embed/lib-1/${VIDEO_ID}?autoplay=false&preload=false`,
       hlsUrl: null,
       signed: false,
     }]);
@@ -364,6 +365,22 @@ describe('getLessonPlayback', () => {
 
     expect(result.value.videos[0]).toEqual({ kind: 'external', embedUrl: EMBED_URL });
     expect(result.value.videos[1]).toMatchObject({ kind: 'bunny', videoId: VIDEO_ID });
+  });
+
+  it('stops an authored Bunny embed block from autoplaying', async () => {
+    const authoredEmbed = `https://iframe.mediadelivery.net/embed/lib-9/${VIDEO_ID}?autoplay=true`;
+    const embedLesson: CourseLesson = {
+      ...lesson,
+      contents: [{ type: 'embed', embedUrl: authoredEmbed }],
+    };
+    const { deps } = dependencies({ lesson: embedLesson });
+    const result = await getLessonPlayback(ctx(), lesson.id, deps);
+    if (!result.ok) throw new Error(result.error.message);
+
+    expect(result.value.videos[0]).toEqual({
+      kind: 'external',
+      embedUrl: `https://iframe.mediadelivery.net/embed/lib-9/${VIDEO_ID}?autoplay=false&preload=false`,
+    });
   });
 
   it('marks video blocks without a library id unavailable', async () => {

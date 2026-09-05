@@ -20,6 +20,7 @@ memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
 memberLanguage: null,
+memberVideoAutoplay: false,
 });
 
 const orderItem = (id: string, over: Partial<OrderListItem> = {}): OrderListItem => ({

@@ -216,6 +216,15 @@ describe('CourseTree', () => {
     expect(within(untouchedChapter).getByText('0/2')).toBeInTheDocument();
   });
 
+  it('stretches the module, chapter and lesson rows across the full sidebar width', async () => {
+    await renderTree();
+
+    await screen.findByTestId('lesson-button-l1');
+    for (const testId of ['module-toggle-m1', 'chapter-toggle-c1', 'lesson-button-l1']) {
+      expect(screen.getByTestId(testId)).toHaveStyle({ width: '100%' });
+    }
+  });
+
   it('exposes module disclosure state and toggles it from the keyboard', async () => {
     const user = userEvent.setup();
     await renderTree();

@@ -40,6 +40,7 @@ const context = (overrides: Partial<Ctx['identity']> = {}): Ctx => ({
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
     ...overrides,
   },
 });
@@ -48,6 +49,7 @@ const harness = (stored: Member | null = member) => {
   const calls: Array<{ tenantId: string; memberId: string; displayName: string | null }> = [];
   const optOutCalls: Array<string | null> = [];
   const languageCalls: Array<Language | null> = [];
+  const autoplayCalls: boolean[] = [];
   let current = stored;
   const members: MemberRepository = {
     findById: async () => current,
@@ -65,6 +67,11 @@ const harness = (stored: Member | null = member) => {
       current = current === null ? null : { ...current, displayName };
       return current;
     },
+    updateVideoAutoplay: async (_tenantId, _memberId, videoAutoplay) => {
+      autoplayCalls.push(videoAutoplay);
+      current = current === null ? null : { ...current, videoAutoplay };
+      return current;
+    },
     updateDmOptOut: async (_tenantId, _memberId, dmOptOutAt) => {
       optOutCalls.push(dmOptOutAt);
       current = current === null ? null : { ...current, dmOptOutAt };
@@ -72,7 +79,13 @@ const harness = (stored: Member | null = member) => {
     },
     setBanned: async () => null,
   };
-  return { calls, optOutCalls, languageCalls, deps: { members, clock: { nowIso: () => now } } };
+  return {
+    calls,
+    optOutCalls,
+    languageCalls,
+    autoplayCalls,
+    deps: { members, clock: { nowIso: () => now } },
+  };
 };
 
 describe('updateMyProfile', () => {
@@ -81,7 +94,7 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { displayName: 'Ada L.' }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: 'Ada L.', dmOptOut: false, language: null },
+      value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: false },
     });
     expect(calls).toEqual([
       { tenantId: 'tenant-1', memberId: 'member-1', displayName: 'Ada L.' },
@@ -93,7 +106,7 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { displayName: null }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: null, dmOptOut: false, language: null },
+      value: { displayName: null, dmOptOut: false, language: null, videoAutoplay: false },
     });
     expect(calls[0]?.displayName).toBeNull();
   });
@@ -103,7 +116,7 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { language: 'en' }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: 'Ada L.', dmOptOut: false, language: 'en' },
+      value: { displayName: 'Ada L.', dmOptOut: false, language: 'en', videoAutoplay: false },
     });
     expect(calls).toEqual([]);
   });
@@ -113,10 +126,10 @@ describe('updateMyProfile', () => {
 
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', dmOptOut: true }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: true, language: null } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: true, language: null, videoAutoplay: false } });
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', dmOptOut: false }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: false } });
     expect(optOutCalls).toEqual([now, null]);
   });
 
@@ -125,7 +138,7 @@ describe('updateMyProfile', () => {
 
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', language: 'en' }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: 'en' } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: 'en', videoAutoplay: false } });
     expect(languageCalls).toEqual(['en']);
   });
 
@@ -134,7 +147,7 @@ describe('updateMyProfile', () => {
 
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', language: null }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: false } });
     expect(languageCalls).toEqual([null]);
   });
 
@@ -143,6 +156,31 @@ describe('updateMyProfile', () => {
 
     await updateMyProfile(context(), { displayName: 'Ada L.' }, deps);
     expect(languageCalls).toEqual([]);
+  });
+
+  it('stores the video autoplay preference the member picked', async () => {
+    const { autoplayCalls, deps } = harness();
+
+    await expect(
+      updateMyProfile(context(), { videoAutoplay: true }, deps),
+    ).resolves.toEqual({
+      ok: true,
+      value: { displayName: null, dmOptOut: false, language: null, videoAutoplay: true },
+    });
+    await expect(
+      updateMyProfile(context(), { videoAutoplay: false }, deps),
+    ).resolves.toEqual({
+      ok: true,
+      value: { displayName: null, dmOptOut: false, language: null, videoAutoplay: false },
+    });
+    expect(autoplayCalls).toEqual([true, false]);
+  });
+
+  it('leaves the stored video autoplay preference untouched when the update omits it', async () => {
+    const { autoplayCalls, deps } = harness();
+
+    await updateMyProfile(context(), { displayName: 'Ada L.' }, deps);
+    expect(autoplayCalls).toEqual([]);
   });
 
   it('refuses an identity without a tenant', async () => {

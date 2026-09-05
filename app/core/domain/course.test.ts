@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  bunnyEmbedUrl,
   courseSchema,
   DOCUMENT_URL_MESSAGE,
   lessonBlockSchema,
   newCourseSchema,
   updateCourseInputSchema,
   VIDEO_EMBED_URL_MESSAGE,
+  withVideoAutoplay,
 } from './course.js';
 
 describe('course image URLs', () => {
@@ -135,5 +137,34 @@ describe('lesson document and link URLs', () => {
     ['mailto:teacher@example.test', true],
   ])('accepts %s as a link block URL: %s', (url, accepted) => {
     expect(lessonBlockSchema.safeParse({ type: 'link', url }).success).toBe(accepted);
+  });
+});
+
+describe('bunny playback parameters', () => {
+  const BUNNY_EMBED = 'https://iframe.mediadelivery.net/embed/12345/6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
+
+  it('builds embed URLs that neither autoplay nor preload', () => {
+    expect(bunnyEmbedUrl('12345', '6a7b8c9d-1e2f-4a5b-8c9d-0e1f2a3b4c5d').toString()).toBe(
+      `${BUNNY_EMBED}?autoplay=false&preload=false`,
+    );
+  });
+
+  it('pins autoplay and preload off while keeping the signing parameters', () => {
+    expect(withVideoAutoplay(`${BUNNY_EMBED}?token=abc&expires=1&autoplay=true`, false)).toBe(
+      `${BUNNY_EMBED}?token=abc&expires=1&autoplay=false&preload=false`,
+    );
+  });
+
+  it('turns both autoplay and preload on for members who opted in', () => {
+    expect(withVideoAutoplay(`${BUNNY_EMBED}?autoplay=false&preload=false`, true)).toBe(
+      `${BUNNY_EMBED}?autoplay=true&preload=true`,
+    );
+  });
+
+  it('leaves other providers and unparseable values untouched', () => {
+    expect(withVideoAutoplay('https://player.vimeo.com/video/76979871', false)).toBe(
+      'https://player.vimeo.com/video/76979871',
+    );
+    expect(withVideoAutoplay('not-a-url', false)).toBe('not-a-url');
   });
 });

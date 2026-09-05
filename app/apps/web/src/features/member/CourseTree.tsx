@@ -37,9 +37,10 @@ import { Caret, CompletionFull, CompletionPartial, LockClosed, LockOpen } from '
 
 const TITLE_TOOLTIP_DELAY_MS = 500;
 
-const MODULE_ROW_SX = { pl: '0.75rem', pr: '0.75rem', py: '0.5rem', minHeight: 46, columnGap: '0.4rem' } as const;
-const CHAPTER_ROW_SX = { pl: '1.4rem', pr: '0.75rem', py: '0.45rem', minHeight: 44, columnGap: '0.4rem' } as const;
-const LESSON_ROW_SX = { pl: '2rem', pr: '0.75rem', py: '0.4rem', minHeight: 44 } as const;
+const ROW_SX = { width: '100%', pr: '0.75rem' } as const;
+const MODULE_ROW_SX = { ...ROW_SX, pl: '0.75rem', py: '0.5rem', minHeight: 46, columnGap: '0.4rem' } as const;
+const CHAPTER_ROW_SX = { ...ROW_SX, pl: '1.4rem', py: '0.45rem', minHeight: 44, columnGap: '0.4rem' } as const;
+const LESSON_ROW_SX = { ...ROW_SX, pl: '2rem', py: '0.4rem', minHeight: 44 } as const;
 
 const RowTooltip = ({ title, children }: { title: string; children: ReactElement }) => (
   <Tooltip describeChild title={title} enterDelay={TITLE_TOOLTIP_DELAY_MS} enterNextDelay={TITLE_TOOLTIP_DELAY_MS}>

@@ -55,6 +55,7 @@ memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
 memberLanguage: null,
+memberVideoAutoplay: false,
 });
 
 const course = (

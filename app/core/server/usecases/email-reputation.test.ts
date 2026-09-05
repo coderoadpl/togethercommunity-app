@@ -45,6 +45,7 @@ const ctx: Ctx = { identity: {
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 } satisfies Identity };
 
 const event = (

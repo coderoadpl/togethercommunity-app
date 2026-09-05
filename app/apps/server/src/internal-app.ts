@@ -547,6 +547,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): Identity => ({
@@ -564,6 +565,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const recordCheckoutConsents = async (
@@ -1490,6 +1492,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
               banned: identity.memberBannedAt !== null,
               dmOptOut: identity.memberDmOptOutAt !== null,
               language: identity.memberLanguage,
+              videoAutoplay: identity.memberVideoAutoplay,
             }
             : null,
         impersonation: impersonationOf(c.get('impersonation')),

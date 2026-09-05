@@ -25,4 +25,5 @@ export interface Identity {
   memberBannedAt: string | null;
   memberDmOptOutAt: string | null;
   memberLanguage: Language | null;
+  memberVideoAutoplay: boolean;
 }

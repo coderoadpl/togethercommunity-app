@@ -453,6 +453,7 @@ const executeAdapterE2e = async (
         memberBannedAt: null,
         memberDmOptOutAt: null,
         memberLanguage: null,
+        memberVideoAutoplay: false,
       },
     },
     orderId,

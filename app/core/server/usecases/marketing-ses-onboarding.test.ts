@@ -47,6 +47,7 @@ const ctx = {
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   },
 };
 

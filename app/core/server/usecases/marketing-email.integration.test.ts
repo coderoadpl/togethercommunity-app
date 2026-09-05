@@ -78,6 +78,7 @@ memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
 memberLanguage: null,
+memberVideoAutoplay: false,
 } };
 const anonymousCtx: Ctx = { identity: {
   userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantId: 'tenant-1',
@@ -87,6 +88,7 @@ memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
 memberLanguage: null,
+memberVideoAutoplay: false,
 } };
 const clock = { nowIso: () => NOW };
 const ids = (() => { let value = 0; return { nextId: () => `generated-${String(++value)}` }; })();
@@ -151,6 +153,7 @@ const languagePreferences = (tenantDefault?: Language): {
     updateEmail: async () => null,
     updateDisplayName: async () => null,
     updateLanguage: async () => null,
+    updateVideoAutoplay: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,
   },
@@ -879,7 +882,7 @@ describe('marketing e-mail use-case integration', () => {
     const member = { id: 'member-1', tenantId: 'tenant-1', userId: 'user-1', email: 'member@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null };
     const members = {
       findById: async () => member, findByEmail: async () => member, listWithProductIds: async () => [],
-      create: async () => undefined, updateEmail: async () => member, updateDisplayName: async () => member, updateLanguage: async () => member, updateDmOptOut: async () => member, setBanned: async () => null,
+      create: async () => undefined, updateEmail: async () => member, updateDisplayName: async () => member, updateLanguage: async () => member, updateVideoAutoplay: async () => member, updateDmOptOut: async () => member, setBanned: async () => null,
     };
     const erased = await removeMember(ctx, { memberId: 'member-1' }, {
       members,

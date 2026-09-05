@@ -97,6 +97,7 @@ const deps = (
       return refreshed;
     },
     updateLanguage: async () => null,
+    updateVideoAutoplay: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,

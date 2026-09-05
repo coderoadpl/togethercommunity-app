@@ -63,8 +63,12 @@ import {
   creatorOnboardingSchema,
   tenantSetupReadinessSchema,
   tenantRoutingSchema,
+  contentVersionRestoreSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
+  restoreContentVersionInputSchema,
+  versionPreviewFieldNameSchema,
+  versionPreviewSchema,
   grantProductToMemberInputSchema,
   grantWindowStatusSchema,
   imageAssetUploadInputSchema,
@@ -939,6 +943,17 @@ export const contentHistoryOutputSchema = z.object({
 
 export const contentVersionOutputSchema = z.object({
   version: entityVersionDetailSchema,
+  preview: versionPreviewSchema,
+  current: versionPreviewSchema.nullable(),
+  changedFields: z.array(versionPreviewFieldNameSchema),
+});
+
+export const contentVersionRestoreInputSchema = restoreContentVersionInputSchema;
+
+export type ContentVersionRestoreInput = z.input<typeof contentVersionRestoreInputSchema>;
+
+export const contentVersionRestoreOutputSchema = z.object({
+  restored: contentVersionRestoreSchema,
 });
 
 export const studentCoursesOutputSchema = z.object({
@@ -1697,6 +1712,7 @@ export const API_ROUTES = {
   autoInvoiceDispatch: { method: 'POST', path: '/api/internal/dispatch-auto-invoices' },
   tenantDomainDispatch: { method: 'POST', path: '/api/internal/domain-check' },
   ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
+  smokeTenantReseed: { method: 'POST', path: '/api/internal/reseed-acme' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicNavigation: { method: 'GET', path: '/api/public/navigation' },
   publicCourseStructure: { method: 'GET', path: '/api/public/courses/:courseId/structure' },
@@ -1754,6 +1770,7 @@ export const API_ROUTES = {
   coursesUpdate: { method: 'POST', path: '/api/courses/update' },
   coursesHistory: { method: 'GET', path: '/api/courses/history' },
   coursesHistoryVersion: { method: 'GET', path: '/api/courses/history/version' },
+  coursesHistoryRestore: { method: 'POST', path: '/api/courses/history/restore' },
   modules: { method: 'GET', path: '/api/modules' },
   modulesCreate: { method: 'POST', path: '/api/modules' },
   modulesUpdate: { method: 'POST', path: '/api/modules/update' },
@@ -2015,6 +2032,7 @@ export const API_PATHS = {
   coursesUpdate: API_ROUTES.coursesUpdate.path,
   coursesHistory: API_ROUTES.coursesHistory.path,
   coursesHistoryVersion: API_ROUTES.coursesHistoryVersion.path,
+  coursesHistoryRestore: API_ROUTES.coursesHistoryRestore.path,
   modules: API_ROUTES.modules.path,
   modulesCreate: API_ROUTES.modulesCreate.path,
   modulesUpdate: API_ROUTES.modulesUpdate.path,
@@ -2195,6 +2213,7 @@ export const API_PATHS = {
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   supportMessage: API_ROUTES.supportMessage.path,
   platformDataReset: API_ROUTES.platformDataReset.path,
+  smokeTenantReseed: API_ROUTES.smokeTenantReseed.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
   onboardingSetup: API_ROUTES.onboardingSetup.path,

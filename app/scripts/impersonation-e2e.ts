@@ -284,11 +284,11 @@ const leaveMemberView = async (page: Page, baseUrl: string): Promise<void> => {
     'The impersonation banner survived the exit',
   );
 
-  const log = page.getByTestId('impersonation-log');
+  const log = page.getByTestId('audit-log');
   await log.waitFor(visible);
   const entries = (await log.textContent())?.trim() ?? '';
-  assert(entries.includes('Started'), `Audit log is missing the start entry: "${entries}"`);
-  assert(entries.includes('Ended'), `Audit log is missing the exit entry: "${entries}"`);
+  assert(entries.includes('Member view started'), `Audit log is missing the start entry: "${entries}"`);
+  assert(entries.includes('Member view ended'), `Audit log is missing the exit entry: "${entries}"`);
   assert(entries.includes('E2E support check'), `Audit log dropped the reason: "${entries}"`);
 
   await page.goto(`${baseUrl}/panel/members/${subjectMemberId}`, { waitUntil: 'domcontentloaded' });

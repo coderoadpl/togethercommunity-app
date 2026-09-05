@@ -3,6 +3,11 @@ import type { z } from 'zod';
 
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import {
+  SMOKE_TENANT_COURSE_TITLE,
+  SMOKE_TENANT_MEMBER_EMAIL,
+  SMOKE_TENANT_SLUG,
+} from '#core/domain/index.js';
+import {
   courseStructureOutputSchema,
   deepHealthOutputSchema,
   envelopeSchema,
@@ -25,6 +30,8 @@ export interface RemoteSmokeOptions {
   publicPagePath: string;
   expectedSha?: string;
   member: MemberCredentials;
+  /** Absent on a foreign tenant, whose content the smoke cannot know. */
+  expectedCourseTitle?: string;
 }
 
 export interface RemoteSmokeCheck {
@@ -183,7 +190,7 @@ export const runRemoteSmoke = async (
   });
 
   await run.step('public-offer', async () => {
-    unwrap(
+    const offer = unwrap(
       await envelopeOf(
         await run.get('/api/public/offer'),
         envelopeSchema(publicOfferOutputSchema),
@@ -191,6 +198,9 @@ export const runRemoteSmoke = async (
       ),
       'public offer',
     );
+    if (options.expectedCourseTitle !== undefined && offer.products.length === 0) {
+      throw new Error('the public offer lists no published product');
+    }
   });
 
   await run.step('public-page', async () => {
@@ -245,8 +255,15 @@ export const runRemoteSmoke = async (
       ),
       'student courses',
     );
-    const course = courses.courses[0];
-    if (course === undefined) throw new Error('the smoke member sees no course');
+    const expectedTitle = options.expectedCourseTitle;
+    const course = expectedTitle === undefined
+      ? courses.courses[0]
+      : courses.courses.find((candidate) => candidate.name === expectedTitle);
+    if (course === undefined) {
+      throw new Error(expectedTitle === undefined
+        ? 'the smoke member sees no course'
+        : `the smoke member does not see the seeded course "${expectedTitle}"`);
+    }
     const structure = unwrap(
       await envelopeOf(
         await run.get(`/api/student/courses/${encodeURIComponent(course.id)}/structure`, authenticated),
@@ -279,6 +296,9 @@ export const runRemoteSmoke = async (
       if (unavailable !== undefined) {
         throw new Error(`lesson playback is unavailable: ${unavailable.reason}`);
       }
+      if (options.expectedCourseTitle === undefined) return;
+      const playable = playback.videos.find((video) => video.kind === 'bunny' && video.embedUrl !== '');
+      if (playable === undefined) throw new Error('the seeded lesson resolved no playback URL');
     });
   }
 
@@ -294,8 +314,9 @@ const provided = (env: Environment, name: string): string | null => {
   return value === undefined || value === '' ? null : value;
 };
 
-const memberFromEnv = (env: Environment): MemberCredentials => {
-  const email = provided(env, 'SMOKE_MEMBER_EMAIL');
+const memberFromEnv = (env: Environment, tenant: string): MemberCredentials => {
+  const email = provided(env, 'SMOKE_MEMBER_EMAIL')
+    ?? (tenant === SMOKE_TENANT_SLUG ? SMOKE_TENANT_MEMBER_EMAIL : null);
   const password = provided(env, 'SMOKE_MEMBER_PASSWORD');
   if (email !== null && password !== null) return { status: 'configured', email, password };
   if (email === null && password === null) return { status: 'absent' };
@@ -309,12 +330,14 @@ export const remoteSmokeOptionsFromEnv = (env: Environment): RemoteSmokeOptions 
   const baseUrl = provided(env, 'BASE_URL');
   if (baseUrl === null) return null;
   const expectedSha = provided(env, 'EXPECTED_SHA');
+  const tenant = provided(env, 'SMOKE_TENANT') ?? SMOKE_TENANT_SLUG;
   return {
     baseUrl,
-    tenant: provided(env, 'SMOKE_TENANT') ?? 'acme',
+    tenant,
     publicPagePath: provided(env, 'PUBLIC_PAGE_PATH') ?? '/',
     ...(expectedSha === null ? {} : { expectedSha }),
-    member: memberFromEnv(env),
+    member: memberFromEnv(env, tenant),
+    ...(tenant === SMOKE_TENANT_SLUG ? { expectedCourseTitle: SMOKE_TENANT_COURSE_TITLE } : {}),
   };
 };
 

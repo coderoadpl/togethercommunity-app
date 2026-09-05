@@ -36,9 +36,10 @@ at `http://localhost:48980`.
 
 Open **http://studio.localhost:48730** and **http://acme.localhost:48730** —
 sign in as `creator@together.dev` / `demo-password-15` on studio, or
-`creator2@together.dev` / `demo-password-15` on acme. Each tenant domain opens
-the panel with its own isolated courses, products and members; branding (logo,
-accent color) is per tenant too — in the seed only `akademia` is branded. Note:
+`kontakt+smoke-creator@togethercommunity.app` / `demo-password-15` on acme.
+Each tenant domain opens the panel with its own isolated courses, products and
+members; branding (logo, accent color) is per tenant too — in the seed only
+`akademia` is branded. Note:
 on `localhost` browsers reject cross-subdomain cookies, so you sign in per
 tenant domain; on a real base domain one session spans all tenant subdomains.
 
@@ -54,10 +55,10 @@ exactly the canonical state. Other tenants (e.g. imported ones) are untouched.
 
 **Tenants and owners** (owners sign in with password `demo-password-15`):
 
-| Tenant     | Subdomain                        | Owner                     |
-| ---------- | -------------------------------- | ------------------------- |
-| Studio Demo | http://studio.localhost:48730   | `creator@together.dev`    |
-| Acme Courses | http://acme.localhost:48730    | `creator2@together.dev`   |
+| Tenant | Subdomain | Owner |
+| --- | --- | --- |
+| Studio Demo | http://studio.localhost:48730 | `creator@together.dev` |
+| Acme Courses | http://acme.localhost:48730 | `kontakt+smoke-creator@togethercommunity.app` |
 | Akademia Samouka | http://akademia.localhost:48730 | `creator3@together.dev` |
 
 **Courses**
@@ -102,7 +103,7 @@ entirely, while `student structure <courseId>` still resolves it as
 ## CLI — the agent feedback loop
 
 ```bash
-pnpm --silent run cli login --email creator2@together.dev --password demo-password-15
+pnpm --silent run cli login --email kontakt+smoke-creator@togethercommunity.app --password demo-password-15
 pnpm --silent run cli tenant list
 pnpm --silent run cli tenant switch acme
 pnpm --silent run cli product list
@@ -150,7 +151,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->342<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->349<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

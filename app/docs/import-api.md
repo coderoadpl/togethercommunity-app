@@ -19,6 +19,8 @@ An owner creates import keys in the panel at `/panel/integrations`, under **Inte
 - An expired key behaves exactly like a revoked one: `401` on every import endpoint. Revocation takes effect immediately.
 - Every successful record write, including an `unchanged` result, is recorded in an append-only audit journal per key: kind, `importKey`, resource id, action, payload hash, and timestamp. `GET /api/api-keys/:id/import-audit?cursor=&limit=` (owner session auth, newest first) enumerates the journal so a leaked token can be investigated and cleaned up.
 
+- Every created or updated course, module, lesson, and product also stores a content version — the state the import wrote — in the same transaction as the write, so studio staff can read and restore it from the course change history. The version's author is the key's name, or `import` when the key has none. An `unchanged` record stores no version.
+
 Send the key in `x-api-key`. Resolve the tenant through its normal tenant hostname, or send the tenant slug in `x-tenant` on a shared host — the same as the [transactional e-mail API](transactional-m2m-email.md).
 
 ## Endpoints

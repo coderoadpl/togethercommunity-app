@@ -99,6 +99,12 @@ export const MemberAccountPage = () => {
       await queryClient.invalidateQueries(actions.meInvalidates());
     },
   });
+  const updatePlayback = useMutation({
+    ...actions.updateMyProfile,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.meInvalidates());
+    },
+  });
   const emailLanguagePreference = useEmailLanguagePreference();
   const [supportSubject, setSupportSubject] = useState('');
   const [supportBody, setSupportBody] = useState('');
@@ -177,6 +183,7 @@ export const MemberAccountPage = () => {
   const savedDisplayName = me.data.tenant?.displayName ?? '';
   const dmOptOut = me.data.tenant?.dmOptOut ?? false;
   const emailLanguage = me.data.tenant?.language ?? null;
+  const videoAutoplay = me.data.tenant?.videoAutoplay ?? false;
   const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
@@ -427,6 +434,29 @@ export const MemberAccountPage = () => {
           )}
         </SectionCard>
 
+        {!impersonating && me.data.tenant?.memberId != null ? (
+          <SectionCard
+            title={t.account.playbackHeading}
+            description={t.account.playbackIntro}
+            data-testid="account-playback"
+          >
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={videoAutoplay}
+                  disabled={updatePlayback.isPending}
+                  onChange={(event) => updatePlayback.mutate({ videoAutoplay: event.target.checked })}
+                />
+              )}
+              label={t.account.videoAutoplayLabel}
+            />
+            <FormHelperText>{t.account.videoAutoplayHint}</FormHelperText>
+            {updatePlayback.isError ? (
+              <Alert severity="error">{localizeError(updatePlayback.error, t)}</Alert>
+            ) : null}
+          </SectionCard>
+        ) : null}
+
         {billingPortalUrl ? (
           <SectionCard title={t.account.billingHeading} description={t.account.billingIntro}>
               <Box>
@@ -656,6 +686,16 @@ export const MemberAccountPage = () => {
         >
           <Alert severity="success" data-testid="account-dm-opt-out-saved">
             {t.messages.optOutSaved}
+          </Alert>
+        </Snackbar>
+
+        <Snackbar
+          open={updatePlayback.isSuccess}
+          autoHideDuration={4000}
+          onClose={() => updatePlayback.reset()}
+        >
+          <Alert severity="success" data-testid="account-video-autoplay-saved">
+            {t.account.videoAutoplaySaved}
           </Alert>
         </Snackbar>
       </Stack>

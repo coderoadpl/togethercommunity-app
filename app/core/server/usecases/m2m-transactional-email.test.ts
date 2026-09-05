@@ -55,6 +55,7 @@ const ctx = (key: TenantApiKey): Ctx => ({
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   },
   capabilities: capabilitiesForApiKey(key),
 });

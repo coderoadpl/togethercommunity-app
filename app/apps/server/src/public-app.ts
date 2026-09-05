@@ -231,6 +231,7 @@ const anonymousIdentity = (
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const recordCheckoutConsents = async (

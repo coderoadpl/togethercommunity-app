@@ -2472,6 +2472,18 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .returning();
     return rows[0] ?? null;
   },
+  updateVideoAutoplay: async (tenantId, memberId, videoAutoplay) => {
+    const rows = await db
+      .update(members)
+      .set({ videoAutoplay })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.id, memberId),
+        isNull(members.deletedAt),
+      ))
+      .returning();
+    return rows[0] ?? null;
+  },
   updateDmOptOut: async (tenantId, memberId, dmOptOutAt) => {
     const rows = await db
       .update(members)

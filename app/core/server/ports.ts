@@ -637,6 +637,11 @@ export interface MemberRepository {
     memberId: string,
     language: Language | null,
   ): Promise<Member | null>;
+  updateVideoAutoplay(
+    tenantId: string,
+    memberId: string,
+    videoAutoplay: boolean,
+  ): Promise<Member | null>;
   updateDmOptOut(
     tenantId: string,
     memberId: string,

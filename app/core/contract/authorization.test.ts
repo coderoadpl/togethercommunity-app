@@ -33,6 +33,7 @@ const identity = (
   memberBannedAt,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 describe('authorization contract', () => {

@@ -56,6 +56,7 @@ const context = (kind: 'member' | 'staff'): Ctx => ({
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   },
 });
 
@@ -95,6 +96,7 @@ const harness = (selectedMember: Member | null = member) => {
     create: async () => undefined,
     updateEmail: async () => null,
     updateLanguage: async () => null,
+    updateVideoAutoplay: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,

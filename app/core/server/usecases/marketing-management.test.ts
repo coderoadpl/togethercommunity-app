@@ -44,6 +44,7 @@ memberDisplayName: null,
 memberBannedAt: null,
 memberDmOptOutAt: null,
 memberLanguage: null,
+memberVideoAutoplay: false,
 } satisfies Identity };
 const clock = { nowIso: () => NOW };
 const sequence = () => {

@@ -1,4 +1,10 @@
-import { ok, type AppError, type Result } from '#core/domain/index.js';
+import {
+  bunnyEmbedUrl,
+  ok,
+  withVideoAutoplay,
+  type AppError,
+  type Result,
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
@@ -63,7 +69,9 @@ export const getLessonPlayback = async (
 
   const expires = Math.floor(Date.parse(deps.clock.nowIso()) / 1000) + deps.playbackTokenTtlSeconds;
   const videos = blocks.map((block): PlaybackVideo => {
-    if (block.type === 'embed') return { kind: 'external', embedUrl: block.embedUrl };
+    if (block.type === 'embed') {
+      return { kind: 'external', embedUrl: withVideoAutoplay(block.embedUrl, false) };
+    }
     if (block.streamLibraryId === undefined) {
       return {
         kind: 'unavailable',
@@ -72,9 +80,7 @@ export const getLessonPlayback = async (
       };
     }
 
-    const embedUrl = new URL(
-      `https://iframe.mediadelivery.net/embed/${block.streamLibraryId}/${block.streamVideoId}`,
-    );
+    const embedUrl = bunnyEmbedUrl(block.streamLibraryId, block.streamVideoId);
     if (securityKey === null) {
       return {
         kind: 'bunny',

@@ -47,6 +47,7 @@ const staff = (tenantId: string | null, tenantSlug: string | null): Identity => 
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const plainMember = (tenantId: string): Identity => ({
@@ -64,6 +65,7 @@ const plainMember = (tenantId: string): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): MemberWithProductIds => ({
@@ -90,6 +92,7 @@ const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRep
   listWithProductIds: async (tenantId) => byTenant[tenantId] ?? [],
   updateEmail: async () => null,
   updateLanguage: async () => null,
+  updateVideoAutoplay: async () => null,
   updateDisplayName: async () => null,
   updateDmOptOut: async () => null,
   setBanned: async () => null,
@@ -259,6 +262,7 @@ describe('setMemberBanned', () => {
       create: async () => undefined,
       updateEmail: async () => stored,
       updateLanguage: async () => null,
+      updateVideoAutoplay: async () => null,
       updateDisplayName: async () => stored,
       updateDmOptOut: async () => stored,
       setBanned: async (_tenantId, input, event) => {
@@ -320,6 +324,7 @@ describe('setMemberBanned', () => {
       create: async () => undefined,
       updateEmail: async () => null,
       updateLanguage: async () => null,
+      updateVideoAutoplay: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,

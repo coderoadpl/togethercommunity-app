@@ -40,6 +40,7 @@ const staff = (tenantId: string | null): Ctx => ({
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   },
 });
 
@@ -59,6 +60,7 @@ const plainMember = (tenantId: string): Ctx => ({
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   },
 });
 
@@ -125,6 +127,7 @@ const harness = (options: { members?: Member[]; products?: Product[]; grants?: P
     create: async () => undefined,
     updateEmail: async () => null,
     updateLanguage: async () => null,
+    updateVideoAutoplay: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
   setBanned: async () => null,

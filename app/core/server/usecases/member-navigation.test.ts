@@ -51,6 +51,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
   ...over,
 });
 

@@ -1,6 +1,6 @@
 {
-  "hash": "b429382b78d702450cbed4ef0fa9a663e3bbf9e2fa77a870aeb9c9b4d6acd327",
-  "shortId": "b429382b78d7",
+  "hash": "ffdd056a8235c3065a0c7777f64bea2641a3ead74ceffc10cbf1c73d8c1bd3d0",
+  "shortId": "ffdd056a8235",
   "schema": {
     "constraints": [
       {
@@ -3171,6 +3171,14 @@
             "name": "marketing_consents",
             "notNull": true,
             "type": "jsonb"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "video_autoplay",
+            "notNull": true,
+            "type": "boolean"
           },
           {
             "default": null,

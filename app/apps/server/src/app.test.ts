@@ -184,6 +184,7 @@ const deps = (input: {
       create: async () => undefined,
       updateEmail: async () => null,
       updateLanguage: async () => null,
+      updateVideoAutoplay: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,
@@ -453,6 +454,7 @@ const deps = (input: {
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
           updateLanguage: async () => null,
+          updateVideoAutoplay: async () => null,
           updateDisplayName: async () => null,
           updateDmOptOut: async () => null,
         setBanned: async () => null,
@@ -1366,7 +1368,7 @@ describe('migration import HTTP surfaces', () => {
     expect(userMutations[0]).toMatchObject({
       kind: 'member',
       resource: { email: 'user@example.test' },
-      authUser: { emailVerified: false },
+      authUser: { emailVerified: true },
     });
     expect(userMutations).toHaveLength(1);
     expect(userMutations[0]).not.toHaveProperty('authUser.legacyPasswordHash');

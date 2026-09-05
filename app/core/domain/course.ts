@@ -55,7 +55,8 @@ const youtubeHosts = new Set([
   'www.youtube-nocookie.com',
 ]);
 const vimeoHosts = new Set(['vimeo.com', 'www.vimeo.com', 'player.vimeo.com']);
-const bunnyHosts = new Set(['iframe.mediadelivery.net']);
+const BUNNY_EMBED_HOST = 'iframe.mediadelivery.net';
+const bunnyHosts = new Set([BUNNY_EMBED_HOST]);
 const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 const vimeoVideoIdSchema = z.string().regex(/^\d+$/);
 const vimeoPrivacyHashSchema = z.string().regex(/^[A-Fa-f0-9]{6,16}$/);
@@ -116,6 +117,24 @@ const inspectVimeoUrl = (url: URL): VideoEmbedUrlInspection => {
   return { kind: 'supported', provider: 'vimeo', embedUrl: embedUrl.toString() };
 };
 
+/** Bunny bills streamed bytes from the moment the iframe mounts, so playback stays opt-in. */
+export const withVideoAutoplay = (embedUrl: string, autoplay: boolean): string => {
+  const parsed = z.string().url().safeParse(embedUrl);
+  if (!parsed.success) return embedUrl;
+  const url = new URL(parsed.data);
+  if (url.hostname.toLowerCase() !== BUNNY_EMBED_HOST) return embedUrl;
+  url.searchParams.set('autoplay', String(autoplay));
+  url.searchParams.set('preload', String(autoplay));
+  return url.toString();
+};
+
+export const bunnyEmbedUrl = (libraryId: string, videoId: string): URL => {
+  const url = new URL(`https://${BUNNY_EMBED_HOST}/embed/${libraryId}/${videoId}`);
+  url.searchParams.set('autoplay', 'false');
+  url.searchParams.set('preload', 'false');
+  return url;
+};
+
 /** Bunny signs playback with `token`/`expires` query parameters, so the query survives normalization. */
 const inspectBunnyUrl = (url: URL): VideoEmbedUrlInspection => {
   const segments = url.pathname.split('/').filter((segment) => segment.length > 0);
@@ -128,7 +147,7 @@ const inspectBunnyUrl = (url: URL): VideoEmbedUrlInspection => {
   ) {
     return { kind: 'invalid-provider', provider: 'bunny' };
   }
-  const embedUrl = new URL(`https://iframe.mediadelivery.net/embed/${libraryId}/${videoId}`);
+  const embedUrl = new URL(`https://${BUNNY_EMBED_HOST}/embed/${libraryId}/${videoId}`);
   embedUrl.search = url.search;
   return { kind: 'supported', provider: 'bunny', embedUrl: embedUrl.toString() };
 };

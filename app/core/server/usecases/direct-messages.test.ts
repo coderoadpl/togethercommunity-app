@@ -63,6 +63,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
   ...overrides,
 });
 
@@ -502,6 +503,7 @@ const fixture = (
       create: async () => undefined,
       updateEmail: async () => null,
       updateLanguage: async () => null,
+      updateVideoAutoplay: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,

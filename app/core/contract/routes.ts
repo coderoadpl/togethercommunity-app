@@ -266,6 +266,7 @@ export const meOutputSchema = z.object({
       banned: z.boolean(),
       dmOptOut: z.boolean().default(false),
       language: languageSchema.nullable().default(null),
+      videoAutoplay: z.boolean().default(false),
     })
     .nullable(),
   impersonation: impersonationViewSchema.nullable().default(null),
@@ -275,6 +276,7 @@ export const meProfileUpdateInputSchema = z.object({
   displayName: z.string().trim().min(1).max(200).nullable().optional(),
   dmOptOut: z.boolean().optional(),
   language: languageSchema.nullable().optional(),
+  videoAutoplay: z.boolean().optional(),
 });
 export type MeProfileUpdateInput = z.infer<typeof meProfileUpdateInputSchema>;
 
@@ -282,6 +284,7 @@ export const meProfileUpdateOutputSchema = z.object({
   displayName: z.string().nullable(),
   dmOptOut: z.boolean().default(false),
   language: languageSchema.nullable().default(null),
+  videoAutoplay: z.boolean().default(false),
 });
 
 export const accountSessionsOutputSchema = z.object({

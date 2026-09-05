@@ -23,11 +23,65 @@ export const isProductionEnvironment = (
   env.APP_ENV === 'production'
   || (env.NODE_ENV === 'production' && resettableEnvironment(env.APP_ENV) === null);
 
+export interface DeploymentIdentityEnv {
+  NODE_ENV?: string | undefined;
+  APP_ENV?: string | undefined;
+  VERCEL_ENV?: string | undefined;
+  VERCEL?: string | undefined;
+  VERCEL_URL?: string | undefined;
+}
+
+const buildsOnVercel = (env: DeploymentIdentityEnv): boolean =>
+  env.VERCEL !== undefined || env.VERCEL_URL !== undefined;
+
+/**
+ * `VERCEL_ENV` names the deployment slot the platform built, `APP_ENV` names the
+ * posture the app boots with, and a deployment is production only when both
+ * agree. On Vercel an absent `VERCEL_ENV` is a misconfigured slot rather than a
+ * production one, so it downgrades to non-production; off Vercel (self-host,
+ * local build) there is no slot to name and the app posture decides alone.
+ */
+export const isProductionDeployment = (env: DeploymentIdentityEnv): boolean =>
+  (env.VERCEL_ENV === undefined ? !buildsOnVercel(env) : env.VERCEL_ENV === 'production')
+  && isProductionEnvironment(env);
+
+export const unnamedDeploymentSlotWarning = (env: DeploymentIdentityEnv): string | null => {
+  if (env.VERCEL_ENV !== undefined) return null;
+  return buildsOnVercel(env)
+    ? 'VERCEL_ENV is absent on a Vercel build, so this deployment is treated as non-production'
+    : 'VERCEL_ENV is absent, so the deployment posture is taken from APP_ENV and NODE_ENV alone';
+};
+
 export interface DeploymentResetMarkers {
   production: boolean;
   databaseFingerprint: string | null;
   productionDatabaseFingerprint: string | null;
 }
+
+export type DeploymentDatabaseVerdict =
+  | { decision: 'allowed' }
+  | { decision: 'warned'; message: string }
+  | { decision: 'refused'; message: string };
+
+export const deploymentDatabaseVerdict = (
+  markers: DeploymentResetMarkers,
+): DeploymentDatabaseVerdict => {
+  if (markers.production) return { decision: 'allowed' };
+  if (markers.productionDatabaseFingerprint === null) {
+    return {
+      decision: 'warned',
+      message:
+        'PRODUCTION_DATABASE_FINGERPRINT is unset, so this non-production deployment cannot tell whether DATABASE_URL is the production database',
+    };
+  }
+  return markers.databaseFingerprint === markers.productionDatabaseFingerprint
+    ? {
+        decision: 'refused',
+        message:
+          'this deployment is not production but DATABASE_URL is the production database',
+      }
+    : { decision: 'allowed' };
+};
 
 export const productionResetRefusal = (markers: DeploymentResetMarkers): string | null => {
   if (markers.production) return 'the deployment identity reports production';

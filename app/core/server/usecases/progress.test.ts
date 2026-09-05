@@ -53,6 +53,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
   ...over,
 });
 
@@ -353,6 +354,7 @@ const membersRepo = (rows: Member[]): MemberRepository => ({
   create: async () => undefined,
   updateEmail: async () => null,
   updateLanguage: async () => null,
+  updateVideoAutoplay: async () => null,
   updateDisplayName: async () => null,
   updateDmOptOut: async () => null,
 setBanned: async () => null,

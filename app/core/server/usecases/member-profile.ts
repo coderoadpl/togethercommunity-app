@@ -22,12 +22,14 @@ export interface MemberProfileInput {
   displayName?: string | null | undefined;
   dmOptOut?: boolean | undefined;
   language?: Language | null | undefined;
+  videoAutoplay?: boolean | undefined;
 }
 
 export interface MemberProfile {
   displayName: string | null;
   dmOptOut: boolean;
   language: Language | null;
+  videoAutoplay: boolean;
 }
 
 export const updateMyProfile = async (
@@ -55,10 +57,18 @@ export const updateMyProfile = async (
           ctx.identity.memberId,
           input.dmOptOut ? deps.clock.nowIso() : null,
         );
-  const updated =
+  const withLanguage =
     input.language === undefined
       ? withOptOut
       : await deps.members.updateLanguage(tenant.value, ctx.identity.memberId, input.language);
+  const updated =
+    input.videoAutoplay === undefined
+      ? withLanguage
+      : await deps.members.updateVideoAutoplay(
+          tenant.value,
+          ctx.identity.memberId,
+          input.videoAutoplay,
+        );
   if (updated === null || updated.deletedAt !== null) {
     return err(notFound(`No member "${ctx.identity.memberId}" in this tenant`));
   }
@@ -66,5 +76,6 @@ export const updateMyProfile = async (
     displayName: updated.displayName,
     dmOptOut: updated.dmOptOutAt !== null,
     language: updated.language ?? null,
+    videoAutoplay: updated.videoAutoplay ?? false,
   });
 };

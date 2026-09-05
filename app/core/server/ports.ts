@@ -647,6 +647,11 @@ export interface MemberRepository {
     memberId: string,
     language: Language | null,
   ): Promise<Member | null>;
+  updateVideoAutoplay(
+    tenantId: string,
+    memberId: string,
+    videoAutoplay: boolean,
+  ): Promise<Member | null>;
   updateDmOptOut(
     tenantId: string,
     memberId: string,
@@ -806,7 +811,7 @@ export type ImportUsersMutation =
       authUser: {
         action: 'create' | 'keep';
         name: string;
-        emailVerified: false;
+        emailVerified: true;
       };
       event: ImportAuditEvent;
     }

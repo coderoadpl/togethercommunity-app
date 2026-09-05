@@ -251,12 +251,13 @@ and allow 5 per ten minutes per e-mail address. The sign-in method lookup
 `auth-resolve:tenant` windows — 60 per minute per client address and 1000 per
 minute per resolved tenant — so a shared address exhausting the lookup cannot
 block checkout, and a cohort behind one NAT address still reaches the lookup.
-The five limits are configurable
+The six limits are configurable
 (`PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE`,
 `PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE`,
 `PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES`,
 `PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE`,
-`PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE`), relax outside
+`PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE`,
+`PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE`), relax outside
 production so the end-to-end suites are unaffected, and switch off per bucket
 at `0`. Rejections answer `429` with `Retry-After`, and the hourly KSeF
 dispatch run deletes expired windows.

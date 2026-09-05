@@ -24,6 +24,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/api/health', methods: ['GET'], mutating: false, why: 'Runtime health check' },
   { path: '/api/health/live', methods: ['GET'], mutating: false, why: 'Process liveness check' },
   { path: '/api/health/ready', methods: ['GET'], mutating: false, why: 'Database readiness check' },
+  { path: API_PATHS.healthDeep, methods: ['GET'], mutating: false, why: 'Aggregated production readiness probe over every tenant' },
   { path: '/api/public/offer', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Public offer discovery' },
   { path: API_PATHS.publicNavigation, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Anonymous tenant-home navigation' },
   { path: API_PATHS.publicCourseStructure, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Public course program without lesson content' },

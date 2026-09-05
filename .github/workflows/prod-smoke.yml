@@ -1,0 +1,101 @@
+name: prod-smoke
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Deployment to smoke; defaults to the CodeRoad production host
+        type: string
+        default: https://coderoad.togethercommunity.app
+      expected_sha:
+        description: Commit the deployment must report from /api/health; empty skips the match
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: prod-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment_status.environment == 'Production')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Resolve the deployment under test
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_BASE_URL: ${{ inputs.base_url }}
+          DISPATCH_SHA: ${{ inputs.expected_sha }}
+          DEPLOYMENT_SHA: ${{ github.event.deployment.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "base_url=$DISPATCH_BASE_URL" >> "$GITHUB_OUTPUT"
+            echo "expected_sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "base_url=https://coderoad.togethercommunity.app" >> "$GITHUB_OUTPUT"
+            echo "expected_sha=$DEPLOYMENT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Smoke the deployment
+        id: smoke
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
+          EXPECTED_SHA: ${{ steps.target.outputs.expected_sha }}
+          SMOKE_TENANT: coderoad
+          SMOKE_MEMBER_EMAIL: ${{ secrets.SMOKE_MEMBER_EMAIL }}
+          SMOKE_MEMBER_PASSWORD: ${{ secrets.SMOKE_MEMBER_PASSWORD }}
+        run: |
+          set -o pipefail
+          if [ -n "$EXPECTED_SHA" ]; then
+            served=""
+            for _ in $(seq 1 30); do
+              served=$(curl -sS --max-time 15 "$BASE_URL/api/health" | jq -r '.data.sha // ""') || served=""
+              [ "$served" = "$EXPECTED_SHA" ] && break
+              sleep 10
+            done
+            if [ "$served" != "$EXPECTED_SHA" ]; then
+              echo "$BASE_URL still serves \"$served\" instead of $EXPECTED_SHA"
+              echo "failing=deployment-alias" >> "$GITHUB_OUTPUT"
+              echo "failed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          if pnpm run smoke:remote 2>&1 | tee smoke.log; then
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          failing=$(sed -n 's/^smoke:remote: FAIL failing=//p' smoke.log | head -1)
+          echo "failing=${failing:-unreachable}" >> "$GITHUB_OUTPUT"
+          echo "failed=true" >> "$GITHUB_OUTPUT"
+      - name: Send an SMS alert
+        if: steps.smoke.outputs.failed == 'true'
+        uses: ./.github/actions/alert-sms
+        with:
+          message: 'Together prod smoke FAILED on ${{ steps.target.outputs.base_url }}: ${{ steps.smoke.outputs.failing }}'
+          aws-access-key-id: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          phone-number: ${{ secrets.ALERT_SMS_PHONE }}
+      - name: Fail the run on a failing smoke
+        if: steps.smoke.outputs.failed == 'true'
+        run: |
+          echo "::error::prod smoke failing checks: ${{ steps.smoke.outputs.failing }}"
+          exit 1

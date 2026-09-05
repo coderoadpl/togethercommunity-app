@@ -128,6 +128,7 @@ import type {
   SignInMethodReader,
   TenantAccessReader,
   TenantApiKeyRepository,
+  TenantDirectory,
   TenantDomainEventRepository,
   TenantDomainRepository,
   TenantRepository,
@@ -4140,6 +4141,10 @@ export const createTenantRepository = (
     const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
     return rows.length > 0;
   },
+});
+
+export const createTenantDirectory = (db: Db): TenantDirectory => ({
+  listAll: async () => db.select().from(tenants).orderBy(asc(tenants.slug)),
 });
 
 export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({

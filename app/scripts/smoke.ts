@@ -8,8 +8,16 @@ import pg from 'pg';
 import { z } from 'zod';
 
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
-import { API_PATHS, EXIT_CODE_BY_ERROR_CODE, TENANT_HEADER } from '#core/contract/index.js';
+import {
+  API_PATHS,
+  deepHealthOutputSchema,
+  EMAIL_DISPATCH_SECRET_HEADER,
+  envelopeSchema,
+  EXIT_CODE_BY_ERROR_CODE,
+  TENANT_HEADER,
+} from '#core/contract/index.js';
 
+import { DEV_EMAIL_DISPATCH_SECRET } from '../apps/server/src/env.js';
 import {
   bootServer,
   delay,
@@ -460,6 +468,22 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   assert(
     health.status === 'ok' && health.database === 'up',
     `health degraded: status=${health.status} database=${health.database}`,
+  );
+
+  // Deep health reads the scheduler's last-run age; the seeded demo history is
+  // deliberately aged, so drive one real dispatch before probing it.
+  const dispatched = await fetch(`${url}${API_PATHS.emailDispatch}`, {
+    method: 'POST',
+    headers: { [EMAIL_DISPATCH_SECRET_HEADER]: DEV_EMAIL_DISPATCH_SECRET },
+  });
+  assert(dispatched.ok, `email dispatch returned HTTP ${dispatched.status}`);
+
+  const deepResponse = await fetch(`${url}${API_PATHS.healthDeep}`);
+  const deep = envelopeSchema(deepHealthOutputSchema).parse(await deepResponse.json());
+  assert(deep.ok, 'deep health returned an error envelope');
+  assert(
+    deepResponse.status === 200 && deep.data.ok,
+    `deep health failed: ${deep.data.failing.join(', ')}`,
   );
 
   expectOk(

@@ -19,22 +19,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
       - name: Send a test SMS
         if: inputs.test_sms
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: eu-central-1
-          ALERT_SMS_PHONE: ${{ secrets.ALERT_SMS_PHONE }}
-        run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
-            echo "::error::SMS secrets absent - cannot send the test SMS"
-            exit 1
-          fi
-          aws sns publish \
-            --phone-number "$ALERT_SMS_PHONE" \
-            --message "Together prod-health: test SMS - the alert channel works" \
-            --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}'
+        uses: ./.github/actions/alert-sms
+        with:
+          message: 'Together prod-health: test SMS - the alert channel works'
+          aws-access-key-id: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          phone-number: ${{ secrets.ALERT_SMS_PHONE }}
+          required: 'true'
       - name: Probe production health
         id: probe
         run: |
@@ -48,12 +44,24 @@ jobs:
           database=$(echo "$body" | jq -r '.data.database')
           schema=$(echo "$body" | jq -r '.data.schemaCurrent')
           fingerprint=$(echo "$body" | jq -r '.data.schemaFingerprintMatch // "absent"')
-          if [ "$ok" = "true" ] && [ "$database" = "up" ] && [ "$schema" = "true" ] && [ "$fingerprint" != "false" ]; then
-            echo "failed=false" >> "$GITHUB_OUTPUT"
-          else
+          if [ "$ok" != "true" ] || [ "$database" != "up" ] || [ "$schema" != "true" ] || [ "$fingerprint" = "false" ]; then
             echo "reason=ok=$ok database=$database schemaCurrent=$schema fingerprintMatch=$fingerprint" >> "$GITHUB_OUTPUT"
             echo "failed=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          deep_status=$(curl -sS -o deep.json -w '%{http_code}' --max-time 30 --retry 2 --retry-delay 5 https://coderoad.togethercommunity.app/api/health/deep) || {
+            echo "reason=deep health endpoint unreachable" >> "$GITHUB_OUTPUT"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          head -c 800 deep.json
+          if [ "$deep_status" != "200" ]; then
+            failing=$(jq -r '(.data.failing // []) | join(",")' deep.json)
+            echo "reason=deep health $deep_status failing=${failing:-unknown}" >> "$GITHUB_OUTPUT"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "failed=false" >> "$GITHUB_OUTPUT"
       - name: Check whether this failure is a fresh incident
         id: incident
         if: steps.probe.outputs.failed == 'true'
@@ -68,21 +76,12 @@ jobs:
           fi
       - name: Send an SMS alert
         if: steps.probe.outputs.failed == 'true' && steps.incident.outputs.fresh == 'true' && !inputs.test_sms
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: eu-central-1
-          ALERT_SMS_PHONE: ${{ secrets.ALERT_SMS_PHONE }}
-          REASON: ${{ steps.probe.outputs.reason }}
-        run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
-            echo "SMS secrets absent - skipping the SMS alert"
-            exit 0
-          fi
-          aws sns publish \
-            --phone-number "$ALERT_SMS_PHONE" \
-            --message "Together prod health FAILED: $REASON" \
-            --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}'
+        uses: ./.github/actions/alert-sms
+        with:
+          message: 'Together prod health FAILED: ${{ steps.probe.outputs.reason }}'
+          aws-access-key-id: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          phone-number: ${{ secrets.ALERT_SMS_PHONE }}
       - name: Fail the run on unhealthy production
         if: steps.probe.outputs.failed == 'true'
         run: |

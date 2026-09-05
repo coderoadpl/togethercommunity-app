@@ -75,6 +75,7 @@ import {
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
+import { registerDeepHealthRoute } from './deep-health-route.js';
 import { registerLegacyUrlRedirects } from './legacy-url-redirects.js';
 import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
@@ -367,6 +368,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       }),
     ),
   );
+
+  registerDeepHealthRoute(app, deps);
 
   registerOpenCors(app, API_PATHS.publicOffer, 'GET');
   registerOpenCors(app, API_PATHS.publicNavigation, 'GET');

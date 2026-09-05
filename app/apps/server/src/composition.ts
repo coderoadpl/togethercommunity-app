@@ -97,6 +97,7 @@ import {
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
   createPublicRateLimitRepository,
+  createTenantDirectory,
   createTenantDomainEventRepository,
   createTenantDomainRepository,
   createTenantRepository,
@@ -251,6 +252,7 @@ import type {
   ApiKeyRateLimitRepository,
   PublicRateLimitRepository,
   DomainProvisioner,
+  TenantDirectory,
   TenantDomainEventRepository,
   TenantDomainRepository,
   TenantRepository,
@@ -447,6 +449,7 @@ export interface AppDeps {
   tenantDomainEvents: TenantDomainEventRepository;
   domainProvisioner: DomainProvisioner;
   tenants: TenantRepository;
+  tenantDirectory: TenantDirectory;
   consents: TermsConsentRepository;
   onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
@@ -1230,6 +1233,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     tenantDomainEvents,
     domainProvisioner,
     tenants,
+    tenantDirectory: createTenantDirectory(db),
     consents,
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess,

@@ -15,6 +15,7 @@ export interface AuthE2eTransport {
   connectUrl: string;
   /** The Origin header Better Auth checks for CSRF (a trusted origin). */
   origin: string;
+  request?: typeof fetch;
 }
 
 const requestJson = async (
@@ -28,7 +29,10 @@ const requestJson = async (
   const requestInit: RequestInit = { method: init.method, headers };
   if (init.body !== undefined) requestInit.body = JSON.stringify(init.body);
 
-  const response = await fetch(new URL(path, transport.connectUrl), requestInit);
+  const response = await (transport.request ?? fetch)(
+    new URL(path, transport.connectUrl),
+    requestInit,
+  );
   const token = response.headers.get('set-auth-token');
   let json: unknown = null;
   try {

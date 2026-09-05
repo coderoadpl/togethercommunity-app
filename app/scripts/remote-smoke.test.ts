@@ -141,7 +141,7 @@ const unpinnedOptions: RemoteSmokeOptions = {
   baseUrl: 'https://coderoad.togethercommunity.app/',
   tenant: 'coderoad',
   publicPagePath: '/',
-  member: { email: 'smoke@together.dev', password: 'smoke-password' },
+  member: { status: 'configured', email: 'smoke@together.dev', password: 'smoke-password' },
 };
 
 const options: RemoteSmokeOptions = { ...unpinnedOptions, expectedSha: SHA };
@@ -263,13 +263,35 @@ describe('remote smoke', () => {
       .toBe('lesson playback is unavailable: missing_library_id');
   });
 
-  it('reports missing member credentials as a failing sign-in without printing them', async () => {
+  it('skips the member checks when neither credential is configured', async () => {
+    const request = stubbedFetch();
+    const result = await runRemoteSmoke({ ...options, member: { status: 'absent' } }, request);
+
+    expect(result.ok).toBe(true);
+    expect(result.failing).toEqual([]);
+    expect(result.skipped).toEqual([
+      'member-sign-in',
+      'member-identity',
+      'student-courses',
+      'lesson-playback',
+      'studio-tenant-settings',
+    ]);
+    expect(result.checks.find((check) => check.name === 'member-sign-in')?.detail)
+      .toBe('SMOKE_MEMBER_EMAIL and SMOKE_MEMBER_PASSWORD are not configured');
+    expect(request.mock.calls.some(([input]) => String(input).includes('/sign-in/email')))
+      .toBe(false);
+  });
+
+  it('fails when only one of the two member credentials is configured', async () => {
     const result = await runRemoteSmoke(
-      { baseUrl: options.baseUrl, tenant: options.tenant, publicPagePath: options.publicPagePath },
+      { ...options, member: { status: 'incomplete', missing: 'SMOKE_MEMBER_PASSWORD' } },
       stubbedFetch(),
     );
 
+    expect(result.ok).toBe(false);
     expect(result.failing).toEqual(['member-sign-in']);
+    expect(result.checks.find((check) => check.name === 'member-sign-in')?.detail)
+      .toBe('SMOKE_MEMBER_PASSWORD is absent while the other member credential is set');
     expect(JSON.stringify(result)).not.toContain('smoke-password');
   });
 });
@@ -289,7 +311,7 @@ describe('remoteSmokeOptionsFromEnv', () => {
       tenant: 'coderoad',
       publicPagePath: '/',
       expectedSha: SHA,
-      member: { email: 'smoke@together.dev', password: 'smoke-password' },
+      member: { status: 'configured', email: 'smoke@together.dev', password: 'smoke-password' },
     });
   });
 
@@ -302,7 +324,14 @@ describe('remoteSmokeOptionsFromEnv', () => {
     });
 
     expect(options).not.toHaveProperty('expectedSha');
-    expect(options).not.toHaveProperty('member');
+    expect(options?.member).toEqual({ status: 'absent' });
+  });
+
+  it('names the missing variable when only one credential is configured', () => {
+    expect(remoteSmokeOptionsFromEnv({ ...environment, SMOKE_MEMBER_PASSWORD: '' })?.member)
+      .toEqual({ status: 'incomplete', missing: 'SMOKE_MEMBER_PASSWORD' });
+    expect(remoteSmokeOptionsFromEnv({ ...environment, SMOKE_MEMBER_EMAIL: '' })?.member)
+      .toEqual({ status: 'incomplete', missing: 'SMOKE_MEMBER_EMAIL' });
   });
 
   it('reports a missing base URL', () => {

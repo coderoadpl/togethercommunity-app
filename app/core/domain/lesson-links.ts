@@ -221,6 +221,7 @@ type LessonSandboxGroup = {
   embedUrl: string;
   canonicalUrl: string;
   caption: string | null;
+  collapsed: boolean;
 };
 
 export type LessonContentGroup =
@@ -235,6 +236,7 @@ type PendingEntry = { kind: 'block'; block: RenderableLessonBlock } | LessonSand
 const sandboxGroup = (
   inspection: Extract<SandboxEmbedInspection, { kind: 'embeddable' }>,
   caption: string | null,
+  collapsed: boolean,
 ): LessonSandboxGroup => ({
   kind: 'sandbox',
   provider: inspection.provider,
@@ -242,6 +244,7 @@ const sandboxGroup = (
   embedUrl: inspection.embedUrl,
   canonicalUrl: inspection.canonicalUrl,
   caption,
+  collapsed,
 });
 
 const describedLabel = (description: string | undefined, url: string): string | null =>
@@ -251,12 +254,14 @@ const classifyBlock = (block: PlayableLessonBlock): PendingEntry => {
   if (block.type === 'link') {
     const inspection = inspectSandboxEmbedUrl(block.url);
     const label = describedLabel(block.description, block.url);
-    if (inspection.kind === 'embeddable') return sandboxGroup(inspection, label);
+    if (inspection.kind === 'embeddable') return sandboxGroup(inspection, label, false);
     return { kind: 'link', url: block.url, label, ...linkTarget(block.url) };
   }
   if (block.type === 'embed') {
     const inspection = inspectSandboxEmbedUrl(block.embedUrl);
-    if (inspection.kind === 'embeddable') return sandboxGroup(inspection, null);
+    if (inspection.kind === 'embeddable') {
+      return sandboxGroup(inspection, null, block.collapsed ?? false);
+    }
   }
   return { kind: 'block', block };
 };

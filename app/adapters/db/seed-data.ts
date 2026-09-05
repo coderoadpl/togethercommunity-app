@@ -1,13 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm';
 
-import { createAuth } from '#adapters/auth/create-auth.js';
 import type { AccessItem, Chapter, LessonBlock, ProductType } from '#core/domain/index.js';
 
 import type { Db } from './client.js';
-import { createEmailOutboxRepository } from './email-outbox.js';
 import { SAMPLE_LESSON_PDF_URL } from './sample-assets.js';
+import { createSeedUsers } from './seed-users.js';
+import { applySmokeTenantSeed, DEMO_SEED_PASSWORD } from './smoke-tenant-seed.js';
 import {
-  account,
   campaigns,
   campaignSends,
   courseLessons,
@@ -49,7 +48,6 @@ import {
   tenants,
   threadSubscriptions,
   unsubscribeTokens,
-  user,
 } from './schema.js';
 
 export interface SeedSummary {
@@ -74,9 +72,7 @@ export const printSeedSummary = (summary: SeedSummary): void => {
 };
 
 export const applySeed = async (db: Db): Promise<SeedSummary> => {
-  const seedIds = { nextId: () => crypto.randomUUID() };
-
-  const PASSWORD = 'demo-password-15';
+  const PASSWORD = DEMO_SEED_PASSWORD;
 
   /**
    * SEED_BASE_TIME (ISO timestamp) pins all relative seed dates, so the visual
@@ -95,21 +91,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   const nextIso = (): string => new Date(baseTime + sequence++ * 1000).toISOString();
   const seedClock = { nowIso: () => new Date(baseTime).toISOString() };
 
-  const auth = createAuth(db, {
-    secret: process.env['BETTER_AUTH_SECRET'] ?? 'dev-only-secret-do-not-use-in-prod',
-    baseUrl: 'http://localhost:48730',
-    baseDomain: 'localhost',
-    singleTenantMode: false,
-    trustedOrigins: () => ['http://localhost:48730'],
-    secureCookies: false,
-    exposeMagicLinks: false,
-    emailOutbox: createEmailOutboxRepository(db),
-    ids: seedIds,
-    clock: seedClock,
-    dispatchEmail: () => undefined,
-    defaultTenantName: 'Together',
-    google: null,
-  });
+  const users = createSeedUsers(db, seedClock);
 
   const DAY_MS = 24 * 60 * 60 * 1000;
   const relativeIso = (days: number): string => new Date(baseTime + days * DAY_MS).toISOString();
@@ -127,56 +109,17 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       tenant: { id: 'tenant-studio', slug: 'studio', name: 'Studio Demo' },
     },
     {
-      email: 'creator2@together.dev',
-      name: 'Acme Creator',
-      tenant: { id: 'tenant-acme', slug: 'acme', name: 'Acme Courses' },
-    },
-    {
       email: 'creator3@together.dev',
       name: 'Akademia Creator',
       tenant: { id: 'tenant-akademia', slug: 'akademia', name: 'Akademia Samouka' },
     },
   ];
 
-  const ensureCreator = async (email: string, name: string): Promise<string> => {
-    const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
-    if (existing.length === 0) {
-      await auth.api.signUpEmail({ body: { name, email, password: PASSWORD } });
-    } else {
-      const password = await (await auth.$context).password.hash(PASSWORD);
-      await db
-        .update(account)
-        .set({ password })
-        .where(and(
-          eq(account.userId, existing[0]?.id ?? ''),
-          eq(account.providerId, 'credential'),
-        ));
-    }
-    const [row] = await db.select().from(user).where(eq(user.email, email)).limit(1);
-    if (!row) throw new Error(`Seeded creator not found: ${email}`);
-    const seededAt = new Date(seedClock.nowIso());
-    await db.update(user).set({ emailVerified: true, createdAt: seededAt, updatedAt: seededAt }).where(eq(user.id, row.id));
-    await db.update(account).set({ createdAt: seededAt, updatedAt: seededAt }).where(eq(account.userId, row.id));
-    return row.id;
-  };
+  const ensureCreator = (email: string, name: string): Promise<string> =>
+    users.ensurePassworded(email, name, PASSWORD);
 
-  const ensurePasswordlessUser = async (id: string, email: string, name: string): Promise<string> => {
-    const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
-    const found = existing[0];
-    const now = new Date(seedClock.nowIso());
-    if (found) {
-      await db.update(user).set({ createdAt: now, updatedAt: now }).where(eq(user.id, found.id));
-      return found.id;
-    }
-    await db
-      .insert(user)
-      .values({ id, name, email, emailVerified: true, createdAt: now, updatedAt: now })
-      .onConflictDoNothing({ target: user.email });
-    const rows = await db.select().from(user).where(eq(user.email, email)).limit(1);
-    const row = rows[0];
-    if (!row) throw new Error(`Seeded member user not found: ${email}`);
-    return row.id;
-  };
+  const ensurePasswordlessUser = (id: string, email: string, name: string): Promise<string> =>
+    users.ensurePasswordless(id, email, name);
 
   const embed = (videoId: string): LessonBlock => ({
     type: 'embed',
@@ -1111,14 +1054,6 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         displayName: 'Student One',
         createdAt: nextIso(),
       },
-      {
-        id: 'member-acme-student2',
-        tenantId: 'tenant-acme',
-        userId: 'student2-opaque',
-        email: 'student2@together.dev',
-        displayName: 'Student Two',
-        createdAt: nextIso(),
-      },
     ])
     .onConflictDoNothing();
 
@@ -1148,19 +1083,6 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         priceCents: 49900,
         currency: 'PLN',
         published: false,
-        accessItems: [],
-        createdAt: nextIso(),
-      },
-      {
-        id: 'product-acme-course',
-        tenantId: 'tenant-acme',
-        type: 'course',
-        slug: 'acme-course',
-        title: 'Acme Course',
-        description: '',
-        priceCents: 9900,
-        currency: 'PLN',
-        published: true,
         accessItems: [],
         createdAt: nextIso(),
       },
@@ -1443,7 +1365,6 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   const oneTimePriceDefs: PriceDef[] = [
     { id: 'price-product-studio-kurs-101', tenantId: 'tenant-studio', productId: 'product-studio-kurs-101', kind: 'one_time', interval: null, amountCents: 19900 },
     { id: 'price-product-studio-warsztat', tenantId: 'tenant-studio', productId: 'product-studio-warsztat', kind: 'one_time', interval: null, amountCents: 49900 },
-    { id: 'price-product-acme-course', tenantId: 'tenant-acme', productId: 'product-acme-course', kind: 'one_time', interval: null, amountCents: 9900 },
     ...demoProducts
       .filter((product) => product.id !== 'product-club')
       .map((product) => ({
@@ -2291,15 +2212,28 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     )
     .onConflictDoNothing();
 
+  const smokeTenant = await applySmokeTenantSeed(db, {
+    users,
+    passwords: { member: PASSWORD, creator: PASSWORD },
+    nextIso,
+    relativeIso,
+  });
+
   return {
     password: PASSWORD,
-    creators: creators.map((creator) => ({
-      email: creator.email,
-      tenantSlug: creator.tenant.slug,
-    })),
-    members: memberSpecs.map((member) => ({
-      email: member.email,
-      tenantId: member.tenantId,
-    })),
+    creators: [
+      ...creators.map((creator) => ({
+        email: creator.email,
+        tenantSlug: creator.tenant.slug,
+      })),
+      smokeTenant.creator,
+    ],
+    members: [
+      ...memberSpecs.map((member) => ({
+        email: member.email,
+        tenantId: member.tenantId,
+      })),
+      ...smokeTenant.members,
+    ],
   };
 };

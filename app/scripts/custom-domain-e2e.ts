@@ -8,6 +8,7 @@ import { chromium, type Browser, type BrowserContext } from 'playwright-core';
 import { z } from 'zod';
 
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
+import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
 import {
   bootServer,
@@ -26,7 +27,6 @@ const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
 const CUSTOM_HOST = 'kurs.coderoad.localhost';
 const TENANT_HOST = 'acme.localhost';
-const CREATOR_EMAIL = 'creator2@together.dev';
 const CREATOR_PASSWORD = 'demo-password-15';
 
 const E2E_DB = uniqueTestDatabaseName('together_custom_domain_e2e');
@@ -109,7 +109,7 @@ const runCustomHostSignIn = async (customBaseUrl: string, tenantBaseUrl: string)
     const page = await context.newPage();
 
     await page.goto(`${customBaseUrl}/login`, { waitUntil: 'networkidle' });
-    await signInWithPassword(page, CREATOR_EMAIL, CREATOR_PASSWORD);
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
@@ -153,7 +153,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     });
 
     await page.goto(`${customBaseUrl}/login`, { waitUntil: 'networkidle' });
-    await signInWithPassword(page, CREATOR_EMAIL, CREATOR_PASSWORD);
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 
     await page.getByTestId('section-settings').click();
@@ -260,7 +260,7 @@ const runSelfServeAdd = async (input: {
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto(`${input.tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
-    await signInWithPassword(page, CREATOR_EMAIL, CREATOR_PASSWORD);
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
 
@@ -329,7 +329,7 @@ const runStudioDomainStatus = async (tenantBaseUrl: string): Promise<void> => {
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto(`${tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
-    await signInWithPassword(page, CREATOR_EMAIL, CREATOR_PASSWORD);
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
     const row = page.getByTestId(`tenant-domain-${CUSTOM_HOST}`);

@@ -92,6 +92,13 @@ export const productionResetRefusal = (markers: DeploymentResetMarkers): string 
   return null;
 };
 
+/**
+ * A script run from an operator laptop has no production environment variables,
+ * so the process identity alone cannot tell where `DATABASE_URL` points.
+ */
+export const targetsProductionData = (markers: DeploymentResetMarkers): boolean =>
+  productionResetRefusal(markers) !== null;
+
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
 export const parsePlatformOwnerEmails = (raw: string | undefined): readonly string[] =>
@@ -104,7 +111,7 @@ export const isPlatformOwner = (email: string, owners: readonly string[]): boole
 
 export interface PlatformAuditEvent {
   id: string;
-  action: 'platform:data-reset';
+  action: 'platform:data-reset' | 'reseed-acme';
   actorUserId: string;
   actorEmail: string;
   environment: string;

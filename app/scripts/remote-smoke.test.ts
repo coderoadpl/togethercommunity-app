@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  SMOKE_TENANT_COURSE_TITLE,
+  SMOKE_TENANT_MEMBER_EMAIL,
+} from '#core/domain/index.js';
+
+import {
   remoteSmokeOptionsFromEnv,
   runRemoteSmoke,
   type RemoteSmokeOptions,
@@ -38,19 +43,29 @@ const deepHealthPayload = (failing: string[] = []) => ({
   },
 });
 
-const offerPayload = {
+const offerPayload = (products: unknown[] = [{
+  id: 'product-acme-course',
+  type: 'course',
+  slug: 'acme-course',
+  title: SMOKE_TENANT_COURSE_TITLE,
+  description: '',
+  coverUrl: null,
+  priceCents: 9900,
+  currency: 'PLN',
+  prices: [],
+}]) => ({
   ok: true,
   data: {
     tenant: {
-      slug: 'coderoad',
-      name: 'CodeRoad',
+      slug: 'acme',
+      name: 'Acme Courses',
       branding: { logoUrl: null, accentColor: null, faviconUrl: null },
       legal: { termsUrl: null, privacyUrl: null },
     },
     contentVersion: 1,
-    products: [],
+    products,
   },
-};
+});
 
 const mePayload = {
   ok: true,
@@ -76,7 +91,7 @@ const coursesPayload = {
     courses: [{
       id: 'course-1',
       tenantId: 't-coderoad',
-      name: 'Course',
+      name: SMOKE_TENANT_COURSE_TITLE,
       description: '',
       imageUrl: null,
       moduleOrder: [],
@@ -139,9 +154,10 @@ const playbackPayload = (kind: 'bunny' | 'unavailable') => ({
 
 const unpinnedOptions: RemoteSmokeOptions = {
   baseUrl: 'https://coderoad.togethercommunity.app/',
-  tenant: 'coderoad',
+  tenant: 'acme',
   publicPagePath: '/',
-  member: { status: 'configured', email: 'smoke@together.dev', password: 'smoke-password' },
+  member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: 'smoke-password' },
+  expectedCourseTitle: SMOKE_TENANT_COURSE_TITLE,
 };
 
 const options: RemoteSmokeOptions = { ...unpinnedOptions, expectedSha: SHA };
@@ -156,6 +172,8 @@ const stubbedFetch = (overrides: {
   deep?: { payload: unknown; status: number };
   signInStatus?: number;
   playback?: unknown;
+  offer?: unknown;
+  courses?: unknown;
 } = {}) =>
   vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -164,7 +182,7 @@ const stubbedFetch = (overrides: {
       const deep = overrides.deep ?? { payload: deepHealthPayload(), status: 200 };
       return Response.json(deep.payload, { status: deep.status });
     }
-    if (url.pathname === '/api/public/offer') return Response.json(offerPayload);
+    if (url.pathname === '/api/public/offer') return Response.json(overrides.offer ?? offerPayload());
     if (url.pathname.endsWith('/sign-in/email')) {
       const status = overrides.signInStatus ?? 200;
       expect(init?.method).toBe('POST');
@@ -179,7 +197,7 @@ const stubbedFetch = (overrides: {
       expect(new Headers(init?.headers).get('authorization')).toBe('Bearer session-token');
       return Response.json(mePayload);
     }
-    if (url.pathname === '/api/student/courses') return Response.json(coursesPayload);
+    if (url.pathname === '/api/student/courses') return Response.json(overrides.courses ?? coursesPayload);
     if (url.pathname === '/api/student/courses/course-1/structure') {
       return Response.json(structurePayload);
     }
@@ -263,6 +281,27 @@ describe('remote smoke', () => {
       .toBe('lesson playback is unavailable: missing_library_id');
   });
 
+  it('fails when the smoke tenant publishes no product', async () => {
+    const result = await runRemoteSmoke(options, stubbedFetch({ offer: offerPayload([]) }));
+
+    expect(result.failing).toEqual(['public-offer']);
+    expect(result.checks.find((check) => check.name === 'public-offer')?.detail)
+      .toBe('the public offer lists no published product');
+  });
+
+  it('fails when the seeded course is missing from the student course list', async () => {
+    const result = await runRemoteSmoke(options, stubbedFetch({
+      courses: {
+        ok: true,
+        data: { courses: [{ ...coursesPayload.data.courses[0], name: 'Something else' }] },
+      },
+    }));
+
+    expect(result.failing).toEqual(['student-courses']);
+    expect(result.checks.find((check) => check.name === 'student-courses')?.detail)
+      .toContain(`does not see the seeded course "${SMOKE_TENANT_COURSE_TITLE}"`);
+  });
+
   it('skips the member checks when neither credential is configured', async () => {
     const request = stubbedFetch();
     const result = await runRemoteSmoke({ ...options, member: { status: 'absent' } }, request);
@@ -313,6 +352,38 @@ describe('remoteSmokeOptionsFromEnv', () => {
       expectedSha: SHA,
       member: { status: 'configured', email: 'smoke@together.dev', password: 'smoke-password' },
     });
+  });
+
+  it('defaults to the smoke tenant and its seeded member address', () => {
+    expect(remoteSmokeOptionsFromEnv({
+      BASE_URL: environment.BASE_URL,
+      SMOKE_MEMBER_PASSWORD: 'production-only-member-password',
+    })).toEqual({
+      baseUrl: environment.BASE_URL,
+      tenant: 'acme',
+      publicPagePath: '/',
+      member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: 'production-only-member-password' },
+      expectedCourseTitle: SMOKE_TENANT_COURSE_TITLE,
+    });
+  });
+
+  it('keeps the member address override above the seeded default', () => {
+    expect(remoteSmokeOptionsFromEnv({
+      BASE_URL: environment.BASE_URL,
+      SMOKE_MEMBER_EMAIL: 'other@together.dev',
+      SMOKE_MEMBER_PASSWORD: 'other-password',
+    })?.member).toEqual({ status: 'configured', email: 'other@together.dev', password: 'other-password' });
+  });
+
+  it('signs nobody in without the member password', () => {
+    expect(remoteSmokeOptionsFromEnv({
+      BASE_URL: environment.BASE_URL,
+      SMOKE_MEMBER_EMAIL: 'real-member@coderoad.pl',
+    })?.member).toEqual({ status: 'incomplete', missing: 'SMOKE_MEMBER_PASSWORD' });
+  });
+
+  it('asserts on known content only on the smoke tenant', () => {
+    expect(remoteSmokeOptionsFromEnv(environment)).not.toHaveProperty('expectedCourseTitle');
   });
 
   it('treats an empty variable as absent, as a manual dispatch exports it', () => {

@@ -52,6 +52,8 @@ import { createNotificationFanoutJobRepository } from '#adapters/db/notification
 import { createPlatformAuditRepository } from '#adapters/db/platform-audit.js';
 import { reseedMarkers } from '#adapters/db/reseed-guard.js';
 import { runReseed } from '#adapters/db/reseed-run.js';
+import { runSmokeTenantReseed } from '#adapters/db/smoke-tenant-reseed.js';
+import { DEMO_SEED_PASSWORD } from '#adapters/db/smoke-tenant-seed.js';
 import {
   createAvatarSourceReader,
   createCourseLessonRepository,
@@ -127,6 +129,7 @@ import { createVercelDomainProvisioner } from '#adapters/domains/vercel.js';
 import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
+import { createSinkEmailPort } from '#adapters/email/sink.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
 import { createInAppNotificationChannel } from '#adapters/notifications/in-app.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
@@ -274,15 +277,18 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import {
   isProductionEnvironment,
   ok,
   parsePlatformOwnerEmails,
   resettableEnvironment,
+  resolveSmokeTenantPasswords,
+  targetsProductionData,
   type AppError,
   type KsefEnvironment,
   type ResettableEnvironment,
+  type SmokeTenantPasswords,
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
@@ -441,6 +447,8 @@ export interface AppDeps {
   emailDispatchCronSecret: string;
   autoInvoiceDispatchSecret: string;
   domainCheckSecret: string;
+  smokeTenantReseedSecret: string;
+  smokeTenantReseed?: SmokeTenantReseedDeps;
   checkTenantDomains(): Promise<Result<TenantDomainCheckResult, AppError>>;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
@@ -536,6 +544,30 @@ export const selectPlatformReset = (
     ownerEmails: parsePlatformOwnerEmails(env.PLATFORM_OWNER_EMAILS),
     productionDatabaseFingerprint: env.PRODUCTION_DATABASE_FINGERPRINT ?? null,
     ...create(),
+  };
+};
+
+export const selectSmokeTenantReseed = (
+  env: Pick<
+    Env,
+    | 'NODE_ENV'
+    | 'APP_ENV'
+    | 'SMOKE_MEMBER_PASSWORD'
+    | 'SMOKE_CREATOR_PASSWORD'
+    | 'DATABASE_URL'
+    | 'PRODUCTION_DATABASE_FINGERPRINT'
+  >,
+  create: (passwords: SmokeTenantPasswords) => Omit<SmokeTenantReseedDeps, 'environment'>,
+): SmokeTenantReseedDeps | undefined => {
+  const resolved = resolveSmokeTenantPasswords({
+    production: targetsProductionData(reseedMarkers(env)),
+    demoPassword: DEMO_SEED_PASSWORD,
+    configured: { member: env.SMOKE_MEMBER_PASSWORD, creator: env.SMOKE_CREATOR_PASSWORD },
+  });
+  if (!resolved.ok) return undefined;
+  return {
+    ...create(resolved.passwords),
+    environment: env.APP_ENV ?? env.NODE_ENV ?? 'development',
   };
 };
 
@@ -812,11 +844,21 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   });
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = isProductionEnvironment(env);
+  const writeLog = (message: string): void => {
+    process.stderr.write(`${message}\n`);
+  };
+  const logger = { error: writeLog, warn: writeLog };
   const devEndpoints = selectDevEndpoints(env);
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
   const platformReset = selectPlatformReset(env, () => ({
     dataReset: { run: () => runReseed(db, reseedMarkers(env)) },
     audit: createPlatformAuditRepository(db),
+  }));
+  const smokeTenantReseed = selectSmokeTenantReseed(env, (passwords) => ({
+    reseed: { run: () => runSmokeTenantReseed(db, { passwords, nowIso: clock.nowIso }) },
+    platformAudit: createPlatformAuditRepository(db),
+    ids,
+    clock,
   }));
   const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
   const dispatchAutoInvoices = () => dispatchAutoInvoiceJobs({
@@ -867,9 +909,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     platform: email,
     pool: platformTransactionalPool,
     platformLimit: 1000,
+    ...(production ? { smokeTenantSink: createSinkEmailPort(writeLog) } : {}),
   });
   const marketingCredentials: MarketingSesCredentialResolver = production
-    ? tenantMarketingCredentials
+    ? createSmokeTenantSilencedCredentials(tenantMarketingCredentials)
     : { resolve: async () => ok({ accessKeyId: 'dev', secretAccessKey: 'dev', region: 'eu-central-1' }) };
   const marketingSes = production
     ? createSesMarketingSender()
@@ -884,10 +927,6 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     ? { read: (credentials) => readSesQuota(credentials) }
     : undefined;
   const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
-  const writeLog = (message: string): void => {
-    process.stderr.write(`${message}\n`);
-  };
-  const logger = { error: writeLog, warn: writeLog };
   const dispatchDeps = {
     emailOutbox,
     events: emailEvents,
@@ -940,6 +979,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
       unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler, runs: schedulerRuns,
+      ...(production ? { silenceSmokeTenant: true } : {}),
     });
   };
   devScheduler?.setCampaignHandler(async (tenantId, campaignId) => {
@@ -1225,6 +1265,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     emailDispatchCronSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     domainCheckSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
+    smokeTenantReseedSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
+    ...(smokeTenantReseed === undefined ? {} : { smokeTenantReseed }),
     checkTenantDomains: () => runTenantDomainChecks(tenantDomainDeps),
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
@@ -1233,7 +1275,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     tenantDomainEvents,
     domainProvisioner,
     tenants,
-    tenantDirectory: createTenantDirectory(db),
+    tenantDirectory: createTenantDirectory(db, production),
     consents,
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess,

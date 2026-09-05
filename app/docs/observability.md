@@ -110,11 +110,27 @@ Checks, in order:
 8. `lesson-playback` — the first accessible lesson resolves a playback URL that is not `unavailable`.
 9. `studio-tenant-settings` — **skipped**. Tenant API key scopes cover marketing, transactional, enrollment and import capabilities only; none of them grants `tenant:settings:read`, so a Studio settings read cannot be authenticated by a key from a workflow. No `SMOKE_STUDIO_API_KEY` secret is needed today. Re-enable this check by adding a read scope to `capabilitiesByScope` in `core/domain/api-key.ts` first.
 
+### Member checks without credentials
+
+Checks 5–8 need the synthetic member. When **both** `SMOKE_MEMBER_EMAIL` and
+`SMOKE_MEMBER_PASSWORD` are absent the smoke reports all four as `skipped` with
+the reason `SMOKE_MEMBER_EMAIL and SMOKE_MEMBER_PASSWORD are not configured`,
+prints `smoke:remote: NOTICE member checks skipped — set SMOKE_MEMBER_EMAIL and
+SMOKE_MEMBER_PASSWORD`, and exits 0. The public surface is still smoked, the run
+stays green and no SMS is sent.
+
+When only **one** of the two is set the smoke fails `member-sign-in` with the
+name of the missing variable: a half-configured secret pair is a
+misconfiguration, not a deliberate opt-out, and it pages like any other failure.
+
+Every run appends its check list — statuses and skip reasons — to the job
+summary, so a green run still shows what was not exercised.
+
 On failure the workflow sends one SMS through the shared
 `.github/actions/alert-sms` composite action — the same SNS credentials
-`prod-health.yml` uses — carrying only the failing check names. Credentials are
-never printed: the script reports check names and messages, never request
-bodies or headers.
+`prod-health.yml` uses — carrying only the failing check names. Skipped checks
+never trigger an SMS. Credentials are never printed: the script reports check
+names and messages, never request bodies or headers.
 
 ### Repository secrets the owner must add
 
@@ -125,8 +141,8 @@ Settings → Secrets and variables → Actions → repository secrets:
 | `ALERT_AWS_ACCESS_KEY_ID` | prod-health, prod-smoke | IAM user allowed to `sns:Publish` only. |
 | `ALERT_AWS_SECRET_ACCESS_KEY` | prod-health, prod-smoke | Its secret key. |
 | `ALERT_SMS_PHONE` | prod-health, prod-smoke | On-call number in E.164 form. |
-| `SMOKE_MEMBER_EMAIL` | prod-smoke | E-mail of the synthetic member. |
-| `SMOKE_MEMBER_PASSWORD` | prod-smoke | Its password. |
+| `SMOKE_MEMBER_EMAIL` | prod-smoke | E-mail of the synthetic member. Absent → member checks skipped. |
+| `SMOKE_MEMBER_PASSWORD` | prod-smoke | Its password. Set exactly one of the pair and the smoke fails. |
 
 The first three already exist for `prod-health.yml`; the smoke reuses them.
 

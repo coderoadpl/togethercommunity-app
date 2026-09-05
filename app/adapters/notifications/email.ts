@@ -1,5 +1,41 @@
-import { ok } from '#core/domain/index.js';
-import type { Clock, EmailOutboxRepository, IdGenerator, NotificationChannelPort } from '#core/server/index.js';
+import { ok, type EmailOutboxPayload, type Notification } from '#core/domain/index.js';
+import type {
+  Clock,
+  EmailOutboxRepository,
+  IdGenerator,
+  NotificationChannelPort,
+  NotificationDeliveryContext,
+} from '#core/server/index.js';
+
+/** `null` marks a notification kind that has no e-mail template and stays in-app. */
+const emailPayloadFor = (
+  notification: Notification,
+  context: NotificationDeliveryContext,
+): EmailOutboxPayload | null => {
+  const shared = {
+    language: context.language,
+    tenantName: context.tenantName,
+    snippet: notification.payload.snippet,
+    url: context.contextUrl,
+  };
+  const authored = { ...shared, authorDisplay: notification.payload.authorDisplay ?? '' };
+  switch (notification.kind) {
+    case 'space-post':
+      return { kind: 'space-post', ...authored, spaceName: context.contextName };
+    case 'space-event':
+      return { kind: 'space-event', ...authored, spaceName: context.contextName };
+    case 'lesson-question':
+      return { kind: 'lesson-question', ...authored, lessonName: context.contextName };
+    case 'dm-message':
+      return { kind: 'direct-message', ...shared, senderDisplay: context.contextName };
+    case 'thread-reply':
+    case 'dm-report':
+      return { kind: 'thread-reply', ...authored, lessonName: context.contextName };
+    case 'tenant-domain-verified':
+    case 'tenant-domain-error':
+      return null;
+  }
+};
 
 export const createEmailNotificationChannel = (
   emailOutbox: EmailOutboxRepository,
@@ -9,26 +45,8 @@ export const createEmailNotificationChannel = (
 ): NotificationChannelPort => ({
   deliver: async (notification, context) => {
     if (context.recipientEmail === null) return ok(undefined);
-    const shared = {
-      language: context.language,
-      tenantName: context.tenantName,
-      snippet: notification.payload.snippet,
-      url: context.contextUrl,
-    };
-    const authored = {
-      ...shared,
-      authorDisplay: notification.payload.authorDisplay,
-    };
-    const payload =
-      notification.kind === 'space-post'
-        ? { kind: 'space-post' as const, ...authored, spaceName: context.contextName }
-        : notification.kind === 'space-event'
-          ? { kind: 'space-event' as const, ...authored, spaceName: context.contextName }
-          : notification.kind === 'lesson-question'
-            ? { kind: 'lesson-question' as const, ...authored, lessonName: context.contextName }
-            : notification.kind === 'dm-message'
-              ? { kind: 'direct-message' as const, ...shared, senderDisplay: context.contextName }
-              : { kind: 'thread-reply' as const, ...authored, lessonName: context.contextName };
+    const payload = emailPayloadFor(notification, context);
+    if (payload === null) return ok(undefined);
     const queued = await emailOutbox.enqueue({
       id: ids.nextId(),
       tenantId: notification.tenantId,

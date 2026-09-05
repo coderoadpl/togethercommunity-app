@@ -165,3 +165,60 @@ jobs:
       - run: pnpm run e2e:${{ matrix.suite }}
         env:
           PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+
+  release-tag:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check, smoke, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - id: derive
+        run: |
+          pnpm --silent exec tsx scripts/derive-version.ts --json > "$RUNNER_TEMP/version.json"
+          cat "$RUNNER_TEMP/version.json"
+          {
+            echo "version=$(jq -r .version "$RUNNER_TEMP/version.json")"
+            echo "promotion=$(jq -r .promotion "$RUNNER_TEMP/version.json")"
+            echo "complete=$(jq -r .complete "$RUNNER_TEMP/version.json")"
+          } >> "$GITHUB_OUTPUT"
+      - name: tag the promotion and publish its changelog
+        if: steps.derive.outputs.promotion == 'true' && steps.derive.outputs.complete == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN || secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.derive.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag already exists — release tags are immutable, nothing to do"
+            exit 0
+          fi
+          changelog="$RUNNER_TEMP/CHANGELOG.md"
+          pnpm --silent exec tsx scripts/changelog.ts --version "$VERSION" > "$changelog"
+          cat "$changelog"
+          jq -n \
+            --arg tag "$tag" \
+            --arg message "$(cat "$changelog")" \
+            --arg object "$GITHUB_SHA" \
+            '{ tag: $tag, message: $message, object: $object, type: "commit" }' \
+            > "$RUNNER_TEMP/tag.json"
+          object="$(gh api "repos/$GITHUB_REPOSITORY/git/tags" --input "$RUNNER_TEMP/tag.json" --jq .sha)"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$object"
+          gh release create "$tag" --title "$tag" --notes-file "$changelog"

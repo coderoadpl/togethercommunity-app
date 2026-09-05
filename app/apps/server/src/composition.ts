@@ -69,6 +69,7 @@ import {
   createDmReportRepository,
   createEntityVersionRepository,
   createHealthPort,
+  createLegacyContentLocator,
   createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
@@ -96,6 +97,8 @@ import {
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
   createPublicRateLimitRepository,
+  createTenantDirectory,
+  createTenantDomainEventRepository,
   createTenantDomainRepository,
   createTenantRepository,
   createTenantSecretRepository,
@@ -119,6 +122,8 @@ import { createKsefClient } from '#adapters/invoicing/ksef.js';
 import { createKsefInvoicePdf } from '#adapters/invoicing/ksef-pdf.js';
 import { createFa3XsdValidator } from '#adapters/invoicing/fa3-validator.js';
 import { createBunnyVideoLibrary } from '#adapters/video/bunny.js';
+import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
+import { createVercelDomainProvisioner } from '#adapters/domains/vercel.js';
 import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
@@ -181,6 +186,7 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
+  LegacyContentLocator,
   ImpersonationSessionRepository,
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
@@ -245,6 +251,9 @@ import type {
   TenantApiKeyRepository,
   ApiKeyRateLimitRepository,
   PublicRateLimitRepository,
+  DomainProvisioner,
+  TenantDirectory,
+  TenantDomainEventRepository,
   TenantDomainRepository,
   TenantRepository,
   TermsConsentRepository,
@@ -265,7 +274,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import {
   isProductionEnvironment,
   ok,
@@ -347,6 +356,7 @@ export interface AppDeps {
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
+  legacyContent: LegacyContentLocator;
   attachments: LessonAttachmentRepository;
   downloadAssets: ProductDownloadAssetRepository;
   entityVersions: EntityVersionRepository;
@@ -430,11 +440,16 @@ export interface AppDeps {
   emailDispatchSecret: string;
   emailDispatchCronSecret: string;
   autoInvoiceDispatchSecret: string;
+  domainCheckSecret: string;
+  checkTenantDomains(): Promise<Result<TenantDomainCheckResult, AppError>>;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
   devSinkPurge?: DevSinkPurge;
   tenantDomains: TenantDomainRepository;
+  tenantDomainEvents: TenantDomainEventRepository;
+  domainProvisioner: DomainProvisioner;
   tenants: TenantRepository;
+  tenantDirectory: TenantDirectory;
   consents: TermsConsentRepository;
   onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
@@ -529,6 +544,24 @@ export const selectDevSinkPurge = (
   create: () => DevSinkPurge,
 ): DevSinkPurge | undefined =>
   isProductionEnvironment(env) ? undefined : create();
+
+export const selectDomainProvisioner = (
+  env: Pick<
+    Env,
+    | 'DOMAIN_PROVISIONER_TOKEN'
+    | 'DOMAIN_PROVISIONER_PROJECT_ID'
+    | 'DOMAIN_PROVISIONER_TEAM_ID'
+    | 'DOMAIN_PROVISIONER_GIT_BRANCH'
+  >,
+): DomainProvisioner =>
+  env.DOMAIN_PROVISIONER_TOKEN === undefined || env.DOMAIN_PROVISIONER_PROJECT_ID === undefined
+    ? createManualDomainProvisioner()
+    : createVercelDomainProvisioner({
+        token: env.DOMAIN_PROVISIONER_TOKEN,
+        projectId: env.DOMAIN_PROVISIONER_PROJECT_ID,
+        teamId: env.DOMAIN_PROVISIONER_TEAM_ID,
+        gitBranch: env.DOMAIN_PROVISIONER_GIT_BRANCH,
+      });
 
 export const selectTenantRouting = (
   env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL' | 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
@@ -670,6 +703,12 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
+  const tenantDomainEvents = createTenantDomainEventRepository(db);
+  const domainProvisioner = selectDomainProvisioner(env);
+  const customDomainTarget =
+    env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname;
+  const notificationRepository = createNotificationRepository(db);
+  const publicRateLimitBuckets = createPublicRateLimitRepository(db);
   const tenants = createTenantRepository(db, singleTenantMode
     ? {
         onMultipleTenants: createMultipleTenantsReporter(),
@@ -893,6 +932,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
         memberDmOptOutAt: null,
         memberLanguage: null,
+        memberVideoAutoplay: false,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
@@ -912,6 +952,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
     return tenantUrl(tenantSlug, '/panel/marketing', {
@@ -983,6 +1024,19 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     return marketing;
   };
   const realtimeBus = createRealtimeTransport({ env, db, logger });
+  const tenantDomainDeps = {
+    tenantDomains,
+    domainEvents: tenantDomainEvents,
+    provisioner: domainProvisioner,
+    rateLimit: publicRateLimitBuckets,
+    notifications: notificationRepository,
+    tenantAccess,
+    realtimeBus,
+    ids,
+    clock,
+    routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
+    customDomainTarget,
+  };
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const links: DiscussionLinkPort = {
     lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
@@ -1065,6 +1119,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
+    legacyContent: createLegacyContentLocator(db),
     attachments: createLessonAttachmentRepository(db),
     downloadAssets: createProductDownloadAssetRepository(db),
     entityVersions: createEntityVersionRepository(db),
@@ -1089,7 +1144,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dmConversationStates: createDmConversationStateRepository(db),
     dmReports: createDmReportRepository(db),
     memberBlocks: createMemberBlockRepository(db),
-    notifications: createNotificationRepository(db),
+    notifications: notificationRepository,
     fanoutJobs: createNotificationFanoutJobRepository(db),
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),
@@ -1117,7 +1172,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     importUsers,
     contentHash,
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
-    rateLimitBuckets: createPublicRateLimitRepository(db),
+    rateLimitBuckets: publicRateLimitBuckets,
     publicRateLimitPolicies: selectPublicRateLimitPolicies(env),
     m2mTransactionalRateLimits: {
       perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,
@@ -1169,11 +1224,16 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
     emailDispatchCronSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
+    domainCheckSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
+    checkTenantDomains: () => runTenantDomainChecks(tenantDomainDeps),
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
     ...(devSinkPurge === undefined ? {} : { devSinkPurge }),
     tenantDomains,
+    tenantDomainEvents,
+    domainProvisioner,
     tenants,
+    tenantDirectory: createTenantDirectory(db),
     consents,
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess,
@@ -1190,8 +1250,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
-    customDomainTarget:
-      env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname,
+    customDomainTarget,
     devEndpoints,
     ...(platformReset === undefined ? {} : { platformReset }),
     authConfig: { googleEnabled: google !== null },

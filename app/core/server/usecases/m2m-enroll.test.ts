@@ -102,6 +102,7 @@ const harness = (options: {
     },
     updateEmail: async () => null,
     updateLanguage: async () => null,
+    updateVideoAutoplay: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
   setBanned: async () => null,

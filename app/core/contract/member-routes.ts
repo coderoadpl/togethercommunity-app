@@ -1,10 +1,15 @@
 export const MEMBER_ROUTE_PATHS = {
+  courseList: '/my',
+  course: '/my/courses/$courseId',
   lesson: '/my/courses/$courseId/lessons/$lessonId',
   communitySpace: '/community/$spaceId',
   communityPost: '/community/$spaceId/posts/$postId',
   communityEvent: '/community/$spaceId/events/$eventId',
   conversation: '/messages/$conversationId',
 } as const;
+
+export const coursePath = (courseId: string): string =>
+  MEMBER_ROUTE_PATHS.course.replace('$courseId', courseId);
 
 export const lessonPath = (courseId: string, lessonId: string): string =>
   MEMBER_ROUTE_PATHS.lesson.replace('$courseId', courseId).replace('$lessonId', lessonId);

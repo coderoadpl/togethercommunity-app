@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Member, Membership, Tenant, TenantDomain } from '#core/domain/index.js';
 
 import type { TenantAccessReader, TenantDomainRepository, TenantRepository } from '../ports.js';
+import { tenantDomainFixture, tenantDomainRepositoryStub } from '../testing/tenant-domain-fakes.js';
 import { resolveIdentity } from './resolve-identity.js';
 
 const user = { sessionId: 's1', userId: 'u1', email: 'demo@example.com', name: 'Demo', emailVerified: true, image: null };
@@ -42,11 +43,12 @@ const fakeTenantAccess = (memberships: Membership[], members: Member[] = []): Te
     members.find((candidate) => candidate.tenantId === tenantId) ?? null,
 });
 
-const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
-  findByDomain: async (domain) => domains.find((d) => d.domain === domain) ?? null,
-  listVerifiedDomains: async () => domains,
-  listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
-});
+const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository =>
+  tenantDomainRepositoryStub({
+    findByDomain: async (domain) => domains.find((d) => d.domain === domain) ?? null,
+    listVerifiedDomains: async () => domains,
+    listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
+  });
 
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   findById: async (tenantId) => tenantList.find((tenant) => tenant.id === tenantId) ?? null,
@@ -95,6 +97,7 @@ const deps = (
       return refreshed;
     },
     updateLanguage: async () => null,
+    updateVideoAutoplay: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,
@@ -144,13 +147,13 @@ describe('resolveIdentity', () => {
   });
 
   it('resolves tenant from a custom domain and requires membership', async () => {
-    const domain: TenantDomain = {
+    const domain: TenantDomain = tenantDomainFixture({
       id: 'd1',
       tenantId: 't-acme',
       domain: 'todo.example.com',
       kind: 'custom',
       verified: true,
-    };
+    });
     const okResult = await resolveIdentity(
       user,
       { host: 'todo.example.com', tenantHeader: null },

@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-router';
 import { screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { CourseStructureWithAccess, MemberNavigation } from '#core/domain/index.js';
 
@@ -52,13 +52,53 @@ const structure: CourseStructureWithAccess = {
         },
       ],
     },
+    {
+      id: 'm2',
+      name: '02 - Functions',
+      accessStatus: 'fully-accessible',
+      completionStatus: 'not-completed',
+      chapters: [
+        {
+          id: 'c2',
+          name: 'Declaring functions',
+          accessStatus: 'fully-accessible',
+          completionStatus: 'not-completed',
+          lessons: [
+            {
+              contentId: 'ct3',
+              lessonId: 'l3',
+              name: 'Arrow Functions',
+              accessStatus: 'fully-accessible',
+              completionStatus: 'not-completed',
+            },
+          ],
+        },
+      ],
+    },
   ],
 };
 
-const okStructure = () =>
+const okStructure = (body: CourseStructureWithAccess = structure) =>
   http.get('/api/student/courses/:courseId/structure', () =>
-    HttpResponse.json({ ok: true, data: { structure } }),
+    HttpResponse.json({ ok: true, data: { structure: body } }),
   );
+
+const okProgress = (lastViewedLessonId?: string) =>
+  http.get('/api/student/progress', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        progress: {
+          courseId: 'course-1',
+          completedLessonIds: ['l1'],
+          ...(lastViewedLessonId === undefined ? {} : { lastViewedLessonId }),
+        },
+      },
+    }),
+  );
+
+const pendingProgress = () =>
+  http.get('/api/student/progress', () => new Promise<never>(() => undefined));
 
 const spaceEntry = (
   id: string,
@@ -114,7 +154,7 @@ const renderSidebar = async (currentLessonId: string | null) => {
 
 describe('CourseSidebar', () => {
   it('leads with a way back home and the course progress header', async () => {
-    server.use(okStructure(), okNavigation(), noNotifications());
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
 
     await renderSidebar(null);
 
@@ -126,12 +166,12 @@ describe('CourseSidebar', () => {
     expect(header).toHaveTextContent('JavaScript Foundations');
     expect(within(header).getByTestId('progress-ring')).toHaveAttribute('data-done', 'false');
     expect(screen.getByTestId('course-sidebar-totals')).toHaveTextContent(
-      `50% · ${pl.shell.lessonsOf({ done: 1, total: 2 })}`,
+      `33% · ${pl.shell.lessonsOf({ done: 1, total: 3 })}`,
     );
   });
 
   it('marks the course overview as the current page on the overview route', async () => {
-    server.use(okStructure(), okNavigation(), noNotifications());
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
 
     await renderSidebar(null);
 
@@ -142,7 +182,7 @@ describe('CourseSidebar', () => {
   });
 
   it('highlights the open lesson in the program instead of the overview', async () => {
-    server.use(okStructure(), okNavigation(), noNotifications());
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
 
     await renderSidebar('l2');
 
@@ -152,8 +192,83 @@ describe('CourseSidebar', () => {
     expect(screen.getByTestId('course-sidebar-overview')).not.toHaveAttribute('aria-current');
   });
 
+  it('opens only the branch of the lesson being played', async () => {
+    server.use(okStructure(), okProgress('l3'), okNavigation(), noNotifications());
+
+    await renderSidebar('l2');
+
+    expect(await screen.findByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('lesson-button-l3')).not.toBeInTheDocument();
+  });
+
+  it('opens the branch of the last viewed lesson on the course overview', async () => {
+    server.use(okStructure(), okProgress('l3'), okNavigation(), noNotifications());
+
+    await renderSidebar(null);
+
+    expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('lesson-button-l1')).not.toBeInTheDocument();
+  });
+
+  it('opens the branch of the first lesson when nothing was viewed yet', async () => {
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
+
+    await renderSidebar(null);
+
+    expect(await screen.findByTestId('lesson-button-l1')).toBeInTheDocument();
+    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('opens a deep-linked lesson branch without waiting for the progress query', async () => {
+    server.use(okStructure(), pendingProgress(), okNavigation(), noNotifications());
+
+    await renderSidebar('l3');
+
+    expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('holds every module closed on the overview until the last viewed lesson is known', async () => {
+    server.use(okStructure(), pendingProgress(), okNavigation(), noNotifications());
+
+    await renderSidebar(null);
+
+    expect(await screen.findByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('lesson-button-l1')).not.toBeInTheDocument();
+  });
+
+  it('scrolls the program to the lesson being played', async () => {
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    await renderSidebar('l3');
+
+    const current = await screen.findByTestId('lesson-button-l3');
+    expect(scrollIntoView.mock.instances).toEqual([current]);
+    scrollIntoView.mockRestore();
+  });
+
+  it('scrolls the module list alone, with the header and filter pinned above it', async () => {
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
+
+    await renderSidebar('l1');
+
+    const scroller = await screen.findByTestId('course-tree-scroll');
+    expect(scroller).toContainElement(screen.getByTestId('course-tree'));
+    expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-pinned'));
+    expect(scroller).not.toContainElement(screen.getByTestId('lesson-search'));
+    expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-back'));
+  });
+
   it('keeps notifications and the account within reach while the course owns the bar', async () => {
-    server.use(okStructure(), okNavigation(), noNotifications());
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
 
     await renderSidebar('l2');
 
@@ -164,6 +279,7 @@ describe('CourseSidebar', () => {
   it('links to the space of the course below the overview entry', async () => {
     server.use(
       okStructure(),
+      okProgress(),
       okNavigation([spaceEntry('s1', 'Kurs JS', ['course-1'])]),
       noNotifications(),
     );
@@ -179,6 +295,7 @@ describe('CourseSidebar', () => {
   it('names each space when the course has more than one', async () => {
     server.use(
       okStructure(),
+      okProgress(),
       okNavigation([
         spaceEntry('s1', 'Kurs JS', ['course-1']),
         spaceEntry('s2', 'Zadania JS', ['course-1']),
@@ -195,6 +312,7 @@ describe('CourseSidebar', () => {
   it('links to a space shared with another course as well', async () => {
     server.use(
       okStructure(),
+      okProgress(),
       okNavigation([spaceEntry('s1', 'Kurs JS', ['course-1', 'course-2'])]),
       noNotifications(),
     );
@@ -210,6 +328,7 @@ describe('CourseSidebar', () => {
   it('hides the space entry when no space belongs to the course', async () => {
     server.use(
       okStructure(),
+      okProgress(),
       okNavigation([spaceEntry('s1', 'Inny kurs', ['course-9'])]),
       noNotifications(),
     );
@@ -229,6 +348,7 @@ describe('CourseSidebar', () => {
           { status: 500 },
         ),
       ),
+      okProgress(),
       okNavigation(),
       noNotifications(),
     );

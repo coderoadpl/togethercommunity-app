@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 110. Route rows: 288. Exported `Ctx` use-case rows: 237.
+Closed capability count: 110. Route rows: 295. Exported `Ctx` use-case rows: 240.
 
 ## Human-readable diff
 
@@ -30,6 +30,7 @@ no changes
 | `GET /api/health/live` | health:read | public | public | yes | public route manifest |
 | `GET /api/health/ready` | health:read | public | public | yes | public route manifest |
 | `GET /api/health` | health:read | public | public | yes | public route manifest |
+| `GET /api/health/deep` | health:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/offer` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/navigation` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/courses/:courseId/structure` | offer:read | public | public | yes | public route manifest |
@@ -63,6 +64,7 @@ no changes
 | `POST /api/auth/send-verification-email` | auth:use | public | public | yes | public route manifest |
 | `GET /api/auth/*` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/*` | auth:use | public | public | yes | public route manifest |
+| `GET /courses/*` | offer:read | public | public | yes | public route manifest |
 | `POST /api/webhooks/ses/:webhookToken` | webhook:process | webhook | webhook | yes | public route manifest |
 | `POST /u/:token` | marketing:consent:write | token | token | yes | public route manifest |
 | `POST /u/:token/confirm` | marketing:consent:write | token | token | yes | public route manifest |
@@ -78,6 +80,8 @@ no changes
 | `GET /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
 | `POST /api/internal/dispatch-auto-invoices` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/dispatch-auto-invoices` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
+| `POST /api/internal/domain-check` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
+| `GET /api/internal/domain-check` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/internal/dispatch-ksef` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/dispatch-ksef` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/scheduler-runs` | scheduler:read | operator-secret | operator-secret | yes | Scheduler operator secret |
@@ -198,6 +202,9 @@ no changes
 | `DELETE /api/tenant-secrets/:key` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/tenant/settings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/tenant/routing` | tenant:domain:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/tenant/domains` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/tenant/domains/check` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/tenant/domains/remove` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/settings` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/onboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/onboarding/dismiss` | tenant:onboarding:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -549,6 +556,9 @@ no changes
 | `storage-configuration.ts#configureStorageConnection` | tenant:secret:write | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
 | `support.ts#sendSupportMessage` | support:request | owner, admin, member | owner, admin, member | yes | core/server/usecases/support.ts authorization call |
 | `tenant-domains.ts#getTenantRouting` | tenant:domain:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-domains.ts authorization call |
+| `tenant-domains.ts#addTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
+| `tenant-domains.ts#checkTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
+| `tenant-domains.ts#removeTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-secrets.ts#setTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
@@ -564,19 +574,19 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:162` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:994` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:996` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1464` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1464` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:163` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1014` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1016` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1484` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1484` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:85` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
-| api-key | `apps/server/src/marketing-routes.ts:95` | `identity: apiIdentity(tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:106` | `const key = headers.get(API_KEY_HEADER);` |
-| api-key | `apps/server/src/marketing-routes.ts:108` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
-| api-key | `apps/server/src/marketing-routes.ts:114` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:642` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| api-key | `apps/server/src/marketing-routes.ts:96` | `identity: apiIdentity(tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:107` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/marketing-routes.ts:109` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
+| api-key | `apps/server/src/marketing-routes.ts:115` | `identity: apiIdentity(resolved.value.tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:643` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -586,9 +596,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
 | staff-role | `core/server/usecases/community-access.ts:248` | `if (ctx.identity.staffRole) return ok(space);` |
 | staff-role | `core/server/usecases/community-access.ts:264` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:233` | `if (tenantId !== null && identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:247` | `if (ctx.identity.staffRole !== null) return false;` |
-| staff-role | `core/server/usecases/community.ts:442` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| member-scope | `core/server/usecases/community.ts:234` | `if (tenantId !== null && identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:248` | `if (ctx.identity.staffRole !== null) return false;` |
+| staff-role | `core/server/usecases/community.ts:443` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
@@ -598,7 +608,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/entitlements.ts:198` | `} else if (ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/entitlements.ts:232` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
 | member-scope | `core/server/usecases/entitlements.ts:258` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/invoices.ts:456` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
+| member-scope | `core/server/usecases/invoices.ts:459` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/member-data-export.ts:46` | `if (ctx.identity.memberId === null) {` |
@@ -608,14 +618,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/member-navigation.ts:76` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
 | member-scope | `core/server/usecases/member-navigation.ts:76` | `ctx.identity.staffRole === null && ctx.identity.memberId !== null` |
 | member-scope | `core/server/usecases/member-navigation.ts:77` | `? { tenantId, memberId: ctx.identity.memberId }` |
-| member-scope | `core/server/usecases/member-profile.ts:40` | `if (ctx.identity.memberId === null) {` |
-| member-scope | `core/server/usecases/member-profile.ts:48` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
-| member-scope | `core/server/usecases/member-profile.ts:63` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
+| member-scope | `core/server/usecases/member-profile.ts:42` | `if (ctx.identity.memberId === null) {` |
+| member-scope | `core/server/usecases/member-profile.ts:50` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
+| member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/resolve-identity.ts:84` | `staffRole: staffGrant?.staffRole ?? null,` |
+| staff-role | `core/server/usecases/resolve-identity.ts:85` | `staffRole: staffGrant?.staffRole ?? null,` |
 
 ## Suspicious but preserved
 

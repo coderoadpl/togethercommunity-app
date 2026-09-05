@@ -175,7 +175,7 @@ const searchRoute = createRoute({
 });
 const myCoursesRoute = createRoute({
   getParentRoute: () => memberShellRoute,
-  path: '/my',
+  path: MEMBER_ROUTE_PATHS.courseList,
   component: MyCoursesRoute,
 });
 const myProductsRoute = createRoute({
@@ -190,7 +190,7 @@ const courseRoute = createRoute({
 });
 const courseStructureRoute = createRoute({
   getParentRoute: () => memberShellRoute,
-  path: '/my/courses/$courseId',
+  path: MEMBER_ROUTE_PATHS.course,
   component: CourseStructureRoute,
 });
 const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {

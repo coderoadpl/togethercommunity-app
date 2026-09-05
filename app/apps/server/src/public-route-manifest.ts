@@ -9,6 +9,8 @@ import {
 } from '#adapters/auth/create-auth.js';
 import { API_PATHS } from '#core/contract/index.js';
 
+import { LEGACY_COURSE_ROUTE } from './legacy-url-redirects.js';
+
 export type PublicRouteManifestEntry = {
   path: string;
   methods: readonly string[];
@@ -22,6 +24,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/api/health', methods: ['GET'], mutating: false, why: 'Runtime health check' },
   { path: '/api/health/live', methods: ['GET'], mutating: false, why: 'Process liveness check' },
   { path: '/api/health/ready', methods: ['GET'], mutating: false, why: 'Database readiness check' },
+  { path: API_PATHS.healthDeep, methods: ['GET'], mutating: false, why: 'Aggregated production readiness probe over every tenant' },
   { path: '/api/public/offer', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Public offer discovery' },
   { path: API_PATHS.publicNavigation, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Anonymous tenant-home navigation' },
   { path: API_PATHS.publicCourseStructure, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Public course program without lesson content' },
@@ -54,6 +57,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/marketing/confirm/:token', methods: ['POST'], mutating: true, why: 'Double opt-in confirmation' },
   { path: '/legal/:slug', methods: ['GET'], mutating: false, why: 'Latest public legal document' },
   { path: '/legal/:slug/v/:version', methods: ['GET'], mutating: false, why: 'Versioned public legal document' },
+  { path: LEGACY_COURSE_ROUTE, methods: ['GET'], mutating: false, why: 'Legacy course, module, chapter and lesson links redirected to their member pages' },
 ] as const;
 
 export const publicRouteManifestEntry = (

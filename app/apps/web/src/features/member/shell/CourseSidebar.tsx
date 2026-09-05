@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Box, Divider, List, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -11,6 +12,7 @@ import { NotificationBell } from '../../../NotificationBell.js';
 import { RailProgressBar } from '../../../theme.js';
 import { AccountIcon } from '../account-icons.js';
 import { courseTotals } from '../CourseRail.js';
+import { focusLesson } from '../course-tree-state.js';
 import { CourseTree } from '../CourseTree.js';
 import { spacesForCourse } from './course-spaces.js';
 import { memberHomePath } from './member-nav.js';
@@ -27,7 +29,7 @@ const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) =
     <Box sx={{ px: '0.6rem', pb: '0.75rem' }} data-testid="course-sidebar-header">
       <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.5rem' }}>
         <ProgressRing value={totals.percent} done={done} />
-        <Typography variant="body2" component="p" noWrap sx={{ minWidth: 0 }}>
+        <Typography variant="subtitle1" component="p" noWrap sx={{ minWidth: 0 }}>
           {structure.name}
         </Typography>
       </Stack>
@@ -38,7 +40,7 @@ const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) =
         aria-label={t.courseOverview.progressTitle}
       />
       <Typography
-        variant="caption"
+        variant="body2"
         component="p"
         color="text.secondary"
         sx={{ mt: '0.35rem' }}
@@ -88,6 +90,17 @@ export const CourseSidebar = ({
 }) => {
   const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
+  const progress = useQuery(actions.studentProgress(courseId));
+  const tree = structure.data?.structure;
+  const lastViewedLessonId = progress.data?.progress.lastViewedLessonId;
+  const waitingForLastViewed = currentLessonId === null && progress.isPending;
+  const focusLessonId = useMemo(
+    () =>
+      tree === undefined || waitingForLastViewed
+        ? null
+        : focusLesson(tree, { currentLessonId, lastViewedLessonId }),
+    [tree, waitingForLastViewed, currentLessonId, lastViewedLessonId],
+  );
 
   return (
     <Box
@@ -99,6 +112,7 @@ export const CourseSidebar = ({
         flexDirection: 'column',
         flex: 1,
         minHeight: 0,
+        overflowY: 'auto',
         px: '0.6rem',
         pt: '0.5rem',
         pb: '0.75rem',
@@ -108,21 +122,26 @@ export const CourseSidebar = ({
         component={Link}
         to={memberHomePath()}
         data-testid="course-sidebar-back"
-        sx={{ px: '0.6rem', pb: '0.9rem', columnGap: '0.4rem' }}
+        sx={{ px: '0.6rem', pb: '0.9rem', columnGap: '0.4rem', flexShrink: 0 }}
       >
         <BackIcon />
-        <Typography variant="body2" component="span" noWrap>
+        <Typography variant="body1" component="span" noWrap>
           {t.shell.backTo({ name: tenantName })}
         </Typography>
       </BrandLink>
-      <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        {structure.isPending ? <SidebarLoading /> : null}
-        {structure.isError ? (
-          <SidebarError error={structure.error} onRetry={() => void structure.refetch()} />
-        ) : null}
-        {structure.isSuccess ? (
-          <>
-            <CourseHeader structure={structure.data.structure} />
+      {structure.isPending || structure.isError ? (
+        <Box sx={{ flex: 1, minHeight: 0 }}>
+          {structure.isError ? (
+            <SidebarError error={structure.error} onRetry={() => void structure.refetch()} />
+          ) : (
+            <SidebarLoading />
+          )}
+        </Box>
+      ) : null}
+      {tree === undefined ? null : (
+        <>
+          <Box sx={{ flexShrink: 0 }} data-testid="course-sidebar-pinned">
+            <CourseHeader structure={tree} />
             <List component="div" disablePadding>
               <LinkRow
                 to={`/my/courses/${encodeURIComponent(courseId)}`}
@@ -133,19 +152,25 @@ export const CourseSidebar = ({
               />
               <CourseSpaceRows courseId={courseId} />
             </List>
-            <Typography variant="overline" component="p" sx={{ px: '0.6rem', pt: '0.75rem' }}>
+            <Typography
+              variant="overline"
+              component="p"
+              sx={{ px: '0.6rem', pt: '0.75rem', pb: '0.35rem' }}
+            >
               {t.courseOverview.curriculum}
             </Typography>
-            <CourseTree
-              courseId={courseId}
-              structure={structure.data.structure}
-              {...(currentLessonId === null ? {} : { currentLessonId })}
-            />
-          </>
-        ) : null}
-      </Box>
+          </Box>
+          <CourseTree
+            courseId={courseId}
+            structure={tree}
+            focusLessonId={focusLessonId}
+            scrollFocusIntoView
+            {...(currentLessonId === null ? {} : { currentLessonId })}
+          />
+        </>
+      )}
       {variant === 'drawer' ? (
-        <>
+        <Box sx={{ flexShrink: 0 }}>
           <Divider sx={{ my: '0.5rem' }} />
           <List component="div" disablePadding>
             <NotificationBell navLabel={t.notifications.bell} />
@@ -157,7 +182,7 @@ export const CourseSidebar = ({
               testId="course-sidebar-account"
             />
           </List>
-        </>
+        </Box>
       ) : null}
     </Box>
   );

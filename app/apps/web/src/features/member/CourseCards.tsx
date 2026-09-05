@@ -3,44 +3,23 @@ import { Link } from '@tanstack/react-router';
 
 import type { Course } from '#core/domain/index.js';
 
+import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
 import { useTranslations } from '../../i18n/index.js';
-import {
-  CourseCardCover,
-  CourseCardCoverFallback,
-  CourseCardInitials,
-  CourseCardRoot,
-  RailProgressBar,
-} from '../../theme.js';
+import { CourseCardRoot, RailProgressBar } from '../../theme.js';
 import { coursePercent, type CourseLessonCounts } from './course-progress.js';
 
 export type CourseCardCourse = Pick<Course, 'id' | 'name' | 'description' | 'imageUrl'>;
 
-const courseInitials = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter((word) => word.length > 0)
-    .slice(0, 2)
-    .map((word) => (word[0] ?? '').toLocaleUpperCase())
-    .join('');
-
 const CourseCardMedia = ({ course }: { course: CourseCardCourse }) => {
   const t = useTranslations();
-  if (course.imageUrl !== null) {
-    return (
-      <CourseCardCover
-        src={course.imageUrl}
-        alt={t.courseOverview.coverAlt({ name: course.name })}
-        loading="lazy"
-        data-testid={`course-cover-${course.id}`}
-      />
-    );
-  }
-  return (
-    <CourseCardCoverFallback data-testid={`course-cover-fallback-${course.id}`}>
-      <CourseCardInitials component="span" aria-hidden>
-        {courseInitials(course.name)}
-      </CourseCardInitials>
-    </CourseCardCoverFallback>
+  return course.imageUrl === null ? (
+    <CoverPlaceholder title={course.name} testId={`course-cover-fallback-${course.id}`} />
+  ) : (
+    <CoverImage
+      src={course.imageUrl}
+      alt={t.courseOverview.coverAlt({ name: course.name })}
+      testId={`course-cover-${course.id}`}
+    />
   );
 };
 

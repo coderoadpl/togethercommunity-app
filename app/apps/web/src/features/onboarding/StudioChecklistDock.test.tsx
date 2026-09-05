@@ -67,7 +67,11 @@ const renderDock = async (scope = 'tenant-akademia:creator3@together.dev') => {
   const dashboardRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/panel',
-    component: () => <StudioChecklistDock scope={scope} />,
+    component: () => (
+      <main tabIndex={-1}>
+        <StudioChecklistDock scope={scope} />
+      </main>
+    ),
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([dashboardRoute]),
@@ -91,15 +95,16 @@ describe('StudioChecklistDock', () => {
     expect(screen.queryByTestId('studio-checklist-launcher')).not.toBeInTheDocument();
   });
 
-  it('starts as the launcher below sm so the dashboard stays visible on a phone', async () => {
+  it('starts as the bottom bar below sm so the dashboard stays visible on a phone', async () => {
     stubViewport(false);
     await renderDock();
 
-    expect(await screen.findByTestId('studio-checklist-launcher')).toBeInTheDocument();
+    expect(await screen.findByTestId('studio-checklist-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('studio-checklist-launcher')).toBeInTheDocument();
     expect(screen.queryByTestId('studio-checklist-panel')).not.toBeInTheDocument();
   });
 
-  it('collapses to a launcher, moves focus to it and re-opens on click', async () => {
+  it('collapses to a titled bottom bar, moves focus to its launcher and re-opens on click', async () => {
     stubViewport(true);
     const user = userEvent.setup();
     await renderDock();
@@ -110,6 +115,8 @@ describe('StudioChecklistDock', () => {
 
     await user.click(collapse);
 
+    const bar = screen.getByTestId('studio-checklist-bar');
+    expect(bar).toHaveTextContent(pl.studioSetup.panelTitle);
     const launcher = screen.getByTestId('studio-checklist-launcher');
     expect(launcher).toHaveAttribute('aria-expanded', 'false');
     expect(launcher).not.toHaveAttribute('aria-controls');
@@ -123,6 +130,51 @@ describe('StudioChecklistDock', () => {
     expect(panel).toHaveFocus();
   });
 
+  it('closes the dock to a launcher pill and keeps it closed across mounts', async () => {
+    stubViewport(true);
+    const user = userEvent.setup();
+    const closer = 'tenant-akademia:closer@together.dev';
+    const first = await renderDock(closer);
+
+    await user.click(await screen.findByTestId('studio-checklist-close'));
+
+    expect(screen.queryByTestId('studio-checklist-panel')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('studio-checklist-bar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('studio-checklist-reopen')).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveFocus();
+
+    first.unmount();
+    const second = await renderDock(closer);
+
+    expect(await screen.findByTestId('studio-checklist-reopen')).toBeInTheDocument();
+    expect(screen.queryByTestId('studio-checklist-panel')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('studio-checklist-bar')).not.toBeInTheDocument();
+
+    second.unmount();
+    await renderDock('tenant-akademia:closer-other@together.dev');
+
+    expect(await screen.findByTestId('studio-checklist-panel')).toBeInTheDocument();
+  });
+
+  it('reopens a closed dock from the launcher pill and keeps it open across mounts', async () => {
+    stubViewport(true);
+    const user = userEvent.setup();
+    const closer = 'tenant-akademia:reopener@together.dev';
+    const first = await renderDock(closer);
+
+    await user.click(await screen.findByTestId('studio-checklist-close'));
+    await user.click(screen.getByTestId('studio-checklist-reopen'));
+
+    const panel = await screen.findByTestId('studio-checklist-panel');
+    expect(panel).toHaveFocus();
+    expect(screen.queryByTestId('studio-checklist-reopen')).not.toBeInTheDocument();
+
+    first.unmount();
+    await renderDock(closer);
+
+    expect(await screen.findByTestId('studio-checklist-panel')).toBeInTheDocument();
+  });
+
   it('collapses on Escape and keeps the collapsed state across mounts', async () => {
     stubViewport(true);
     const user = userEvent.setup();
@@ -131,12 +183,12 @@ describe('StudioChecklistDock', () => {
     (await screen.findByTestId('studio-checklist-panel')).focus();
     await user.keyboard('{Escape}');
 
-    expect(screen.getByTestId('studio-checklist-launcher')).toBeInTheDocument();
+    expect(screen.getByTestId('studio-checklist-bar')).toBeInTheDocument();
 
     unmount();
     await renderDock();
 
-    expect(await screen.findByTestId('studio-checklist-launcher')).toBeInTheDocument();
+    expect(await screen.findByTestId('studio-checklist-bar')).toBeInTheDocument();
     expect(screen.queryByTestId('studio-checklist-panel')).not.toBeInTheDocument();
   });
 

@@ -42,10 +42,12 @@ The visual harness masks the browser build stamp for every route capture.
 Version bumps therefore do not change goldens unless the version surface's
 layout or presence changes.
 
-## Deferred
+## Superseded deferral
 
-Release-cut procedure is deferred to the first public release and tracked in
-the backlog. That procedure includes reviewed version bumps, changelog markers,
-and release tags. Until that decision is made, the version remains
+The release-cut procedure this ADR deferred is decided by
+[ADR-0017](0017-version-derived-from-git-history.md): the number every surface
+here displays is derived from the commit graph at build time, so there is no
+reviewed manifest bump left to defer. `app/package.json` keeps
 <!--release-version-->`0.1.0`<!--/release-version-->
-and only these surfaces ship.
+as the value these surfaces fall back to when a build cannot read the promotion
+history, and the surfaces themselves are unchanged.

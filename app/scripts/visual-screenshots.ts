@@ -188,6 +188,41 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByTestId('marketing-confirmation-expired').waitFor(visible),
   },
   {
+    name: 'anon-home-branded',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    path: '/',
+    ready: async (page) => {
+      await page.getByRole('heading', { name: 'Zajrzyj do środka' }).waitFor(visible);
+      await page.getByTestId('tenant-logo').first().waitFor(visible);
+    },
+  },
+  {
+    name: 'anon-home-tiles',
+    auth: 'public',
+    path: '/',
+    ready: async (page) => {
+      await page.getByTestId('anon-home-feed').waitFor(visible);
+      await page.getByTestId('anon-courses').waitFor(visible);
+      await page.getByTestId('anon-locked').waitFor(visible);
+      await page.getByTestId('course-cover-course-js').waitFor(visible);
+    },
+    settled: async (page) => {
+      await page
+        .getByTestId('anon-courses')
+        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+    },
+  },
+  {
+    name: 'anon-course',
+    auth: 'public',
+    path: '/my/courses/course-js',
+    ready: async (page) => {
+      await page.getByTestId('anon-course-program').waitFor(visible);
+      await page.getByTestId('course-cover').waitFor(visible);
+    },
+  },
+  {
     // Waits target the LAST async element of each screen (waterfall queries),
     // otherwise a shot can land mid-load and produce a flaky golden.
     name: 'start',
@@ -288,7 +323,7 @@ const SCREENS: ScreenSpec[] = [
     path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
     ready: async (page) => {
       await page.getByTestId('member-breadcrumbs').waitFor(visible);
-      await page.getByTestId('discussion-composer').waitFor(visible);
+      await page.getByTestId('discussion-composer-open').waitFor(visible);
       await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor(visible);
     },
   },

@@ -274,13 +274,15 @@ describe('importer', () => {
       .select()
       .from(tenantDomains)
       .where(eq(tenantDomains.tenantId, tenantId));
-    expect(domainRows).toEqual([
+    expect(domainRows).toMatchObject([
       {
         id: `domain-${tenantSlug}`,
         tenantId,
         domain: `${tenantSlug}.localhost`,
         kind: 'subdomain',
         verified: true,
+        provider: 'manual',
+        verification: [],
       },
     ]);
 

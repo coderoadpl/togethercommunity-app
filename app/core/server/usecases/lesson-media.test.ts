@@ -56,6 +56,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
   ...over,
 });
 
@@ -329,7 +330,7 @@ describe('getPlayableLesson', () => {
     );
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.contents).toEqual([
-      { ...video, embedUrl: 'https://iframe.mediadelivery.net/embed/lib-77/video-1' },
+      { ...video, embedUrl: 'https://iframe.mediadelivery.net/embed/lib-77/video-1?autoplay=false&preload=false' },
     ]);
   });
 
@@ -353,7 +354,7 @@ describe('getPlayableLesson', () => {
     const expires = Math.floor(Date.parse(NOW) / 1000) + BUNNY_EMBED_URL_TTL_SECONDS;
     expect(result.value.contents).toEqual([{
       ...video,
-      embedUrl: `https://iframe.mediadelivery.net/embed/lib-77/imported-video?token=security-key-imported-video-${expires}&expires=${expires}`,
+      embedUrl: `https://iframe.mediadelivery.net/embed/lib-77/imported-video?autoplay=false&preload=false&token=security-key-imported-video-${expires}&expires=${expires}`,
     }]);
   });
 

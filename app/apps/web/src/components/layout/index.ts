@@ -1,4 +1,5 @@
 export { AppShell } from './AppShell.js';
+export { useReserveBottomInset } from './bottom-inset.js';
 export { BrandLoader } from './BrandLoader.js';
 export { ConfirmDialog } from './ConfirmDialog.js';
 export { ListSection, ResponsiveTable } from './ListSection.js';

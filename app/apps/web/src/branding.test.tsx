@@ -102,6 +102,17 @@ describe('TenantLogo', () => {
     expect(logo).toHaveAttribute('alt', 'Akademia Samouka');
   });
 
+  it('keeps a wide logo inside the sidebar header', async () => {
+    server.use(offerHandler(BRANDED));
+    renderWithProviders(<TenantLogo />);
+
+    expect(await screen.findByTestId('tenant-logo')).toHaveStyle({
+      maxWidth: '100%',
+      maxHeight: '2rem',
+      objectFit: 'contain',
+    });
+  });
+
   it('renders the tenant name without a logo', async () => {
     server.use(offerHandler({ logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null }));
     renderWithProviders(<TenantLogo />);
@@ -144,7 +155,17 @@ describe('BrandMark', () => {
     server.use(offerHandler(BRANDED));
     renderWithProviders(<BrandMark size="compact" />);
 
-    expect(await screen.findByTestId('tenant-brand-logo')).toHaveStyle({ height: '1.5rem' });
+    expect(await screen.findByTestId('tenant-brand-logo')).toHaveStyle({ maxHeight: '1.5rem' });
+  });
+
+  it('keeps a wide logo inside the auth card', async () => {
+    server.use(offerHandler(BRANDED));
+    renderWithProviders(<BrandMark />);
+
+    expect(await screen.findByTestId('tenant-brand-logo')).toHaveStyle({
+      maxWidth: '100%',
+      maxHeight: '2.5rem',
+    });
   });
 
   it('falls back to the stock wordmark when the offer is not found', async () => {
@@ -189,6 +210,26 @@ describe('TenantSocialLinks', () => {
 
     expect(await screen.findByRole('navigation', { name: 'Profile społecznościowe' }))
       .toContainElement(screen.getByRole('link', { name: 'Instagram' }));
+  });
+
+  it('gives every profile a recognisable icon and keeps the label as the accessible name', async () => {
+    server.use(offerHandler(BRANDED, [
+      { label: 'LinkedIn', url: 'https://www.linkedin.com/company/akademia' },
+      { label: 'Blog', url: 'https://akademia.example/blog' },
+    ]));
+    renderWithProviders(
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki">
+        <TenantSocialLinks />
+      </MemberPage>,
+    );
+
+    const footer = await screen.findByTestId('tenant-social-links');
+    expect(footer).toContainElement(screen.getByTestId('social-icon-linkedin'));
+    expect(footer).toContainElement(screen.getByTestId('social-icon-generic'));
+    expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/company/akademia',
+    );
   });
 });
 

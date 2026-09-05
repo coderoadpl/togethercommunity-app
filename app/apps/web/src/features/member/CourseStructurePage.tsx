@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Box, Link as MuiLink, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
@@ -9,9 +9,9 @@ import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
+import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import {
-  CourseCoverImage,
   CourseStatTile,
   Eyebrow,
   StatTileLabel,
@@ -19,6 +19,7 @@ import {
 } from '../../theme.js';
 import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseRail.js';
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
+import { focusLesson } from './course-tree-state.js';
 import { CourseTree } from './CourseTree.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyCourseIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
@@ -110,6 +111,16 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const theme = useTheme();
   const isCompact = useMediaQuery(theme.breakpoints.down('md'));
   const unauthorized = isUnauthorized(structure.error);
+  const loadedStructure = structure.data?.structure;
+  const lastViewedLessonId = progress.data?.progress.lastViewedLessonId;
+  const waitingForLastViewed = progress.isPending;
+  const focusLessonId = useMemo(
+    () =>
+      loadedStructure === undefined || waitingForLastViewed
+        ? null
+        : focusLesson(loadedStructure, { lastViewedLessonId }),
+    [loadedStructure, waitingForLastViewed, lastViewedLessonId],
+  );
 
   useEffect(() => {
     if (unauthorized) void navigate({ to: '/login' });
@@ -166,14 +177,14 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
           <CourseProgressCard
             courseId={courseId}
             structure={course}
-            lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
+            lastViewedLessonId={lastViewedLessonId}
           />
           {hasModules && isCompact ? (
             <Box data-testid="course-tree-inline">
               <Typography variant="overline" component="h2">
                 {t.courseOverview.curriculum}
               </Typography>
-              <CourseTree courseId={courseId} structure={course} initiallyCollapsed />
+              <CourseTree courseId={courseId} structure={course} focusLessonId={focusLessonId} />
             </Box>
           ) : null}
         </>
@@ -184,11 +195,14 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
         {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
         {courses.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} /> : null}
         <CourseStatTiles structure={course} />
-        {catalogEntry?.imageUrl != null && (
-          <CourseCoverImage
+        {catalogEntry === undefined ? null : catalogEntry.imageUrl === null ? (
+          <CoverPlaceholder title={course.name} frame="standalone" testId="course-cover-fallback" />
+        ) : (
+          <CoverImage
             src={catalogEntry.imageUrl}
             alt={t.courseOverview.coverAlt({ name: course.name })}
-            data-testid="course-cover"
+            frame="standalone"
+            testId="course-cover"
           />
         )}
         {catalogEntry !== undefined && catalogEntry.description !== '' && (

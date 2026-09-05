@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Tenant, TenantDomain } from '#core/domain/index.js';
 
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
+import { tenantDomainFixture, tenantDomainRepositoryStub } from '../testing/tenant-domain-fakes.js';
 import { authLinkBaseUrl, resolveTenant } from './resolve-tenant.js';
 
 const acme: Tenant = {
@@ -22,11 +23,12 @@ const globex: Tenant = {
   contentVersion: 5,
 };
 
-const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
-  findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
-  listVerifiedDomains: async () => domains,
-  listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
-});
+const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository =>
+  tenantDomainRepositoryStub({
+    findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
+    listVerifiedDomains: async () => domains,
+    listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
+  });
 
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   findById: async (tenantId) => tenantList.find((tenant) => tenant.id === tenantId) ?? null,
@@ -54,13 +56,13 @@ const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
 
 describe('resolveTenant', () => {
   it('prefers a verified custom domain', async () => {
-    const domain: TenantDomain = {
+    const domain: TenantDomain = tenantDomainFixture({
       id: 'domain-acme',
       tenantId: 't-acme',
       domain: 'offer.example.com',
       kind: 'custom',
       verified: true,
-    };
+    });
 
     const result = await resolveTenant('offer.example.com:48730', 'globex', {
       tenantDomains: fakeDomains([domain]),
@@ -76,14 +78,37 @@ describe('resolveTenant', () => {
     });
   });
 
-  it('exposes the matched custom domain so link generation can gate on verification', async () => {
-    const domain: TenantDomain = {
+  it('matches a fully qualified host that carries the root dot', async () => {
+    const domain: TenantDomain = tenantDomainFixture({
       id: 'domain-acme',
       tenantId: 't-acme',
       domain: 'offer.example.com',
       kind: 'custom',
       verified: true,
-    };
+    });
+
+    const result = await resolveTenant('Offer.Example.com.:48730', null, {
+      tenantDomains: fakeDomains([domain]),
+      tenants: fakeTenants([acme]),
+      baseDomain: 'localhost',
+      platformHost: 'start.localhost',
+      singleTenantMode: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { tenant: { id: 't-acme' }, source: 'custom-domain' },
+    });
+  });
+
+  it('exposes the matched custom domain so link generation can gate on verification', async () => {
+    const domain: TenantDomain = tenantDomainFixture({
+      id: 'domain-acme',
+      tenantId: 't-acme',
+      domain: 'offer.example.com',
+      kind: 'custom',
+      verified: true,
+    });
 
     const result = await resolveTenant('offer.example.com:48730', null, {
       tenantDomains: fakeDomains([domain]),
@@ -194,13 +219,13 @@ describe('resolveTenant', () => {
   it('refuses a suspended tenant resolved through a custom domain', async () => {
     const suspended: Tenant = { ...acme, status: 'suspended' };
     const result = await resolveTenant('learn.example.com', null, {
-      tenantDomains: fakeDomains([{
+      tenantDomains: fakeDomains([tenantDomainFixture({
         id: 'domain-acme',
         tenantId: acme.id,
         domain: 'learn.example.com',
         kind: 'custom',
         verified: true,
-      }]),
+      })]),
       tenants: fakeTenants([suspended]),
       baseDomain: 'localhost',
       platformHost: 'start.localhost',
@@ -215,13 +240,13 @@ describe('resolveTenant', () => {
 
   it('returns the no-tenant platform result on the derived start host', async () => {
     const result = await resolveTenant('START.TOGETHERCOMMUNITY.APP:443', 'acme', {
-      tenantDomains: fakeDomains([{
+      tenantDomains: fakeDomains([tenantDomainFixture({
         id: 'domain-acme',
         tenantId: acme.id,
         domain: 'start.togethercommunity.app',
         kind: 'custom',
         verified: true,
-      }]),
+      })]),
       tenants: fakeTenants([acme]),
       baseDomain: 'togethercommunity.app',
       platformHost: 'start.togethercommunity.app',
@@ -265,13 +290,13 @@ describe('authLinkBaseUrl', () => {
     baseDomain: 'localhost',
     singleTenantMode: false,
   };
-  const customDomain: TenantDomain = {
+  const customDomain: TenantDomain = tenantDomainFixture({
     id: 'domain-acme',
     tenantId: acme.id,
     domain: 'learn.acme.example',
     kind: 'custom',
     verified: true,
-  };
+  });
 
   it('uses the tenant subdomain origin for subdomain routing', () => {
     expect(authLinkBaseUrl({ tenant: acme, source: 'subdomain' }, routing))

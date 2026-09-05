@@ -204,11 +204,16 @@ const runReadOnlyJourney = async (
     await page.locator('.MuiAlert-colorError').count() === 0,
     'The lesson player raised an error alert while viewing as a member',
   );
+  await page.getByTestId('discussion-section').waitFor(visible);
+  assert(
+    await page.locator('[data-testid^="discussion-composer"]').count() === 0,
+    'The lesson discussion composer stayed visible while viewing as a member',
+  );
 
   await page.goto(`${baseUrl}/community/${studioSpaceId}`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('impersonation-banner').waitFor(visible);
   assert(
-    await page.getByTestId('space-composer').count() === 0,
+    await page.locator('[data-testid^="space-composer"]').count() === 0,
     'The space composer stayed visible while viewing as a member',
   );
   assert(

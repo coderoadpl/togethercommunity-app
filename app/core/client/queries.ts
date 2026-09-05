@@ -113,6 +113,7 @@ import type {
   StorageProbeInput,
   StripeConfigureInput,
   TenantSecretSetInput,
+  TenantDomainInput,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
 import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
@@ -1584,6 +1585,26 @@ export const updateTenantSettingsMutation = (api: ApiClient) =>
   });
 
 export const tenantSettingsInvalidates = () => ({ queryKey: tenantSettingsScopes.all() });
+
+export const addTenantDomainMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRoutingScopes.all(), 'add'],
+    call: (input: TenantDomainInput) => api.addTenantDomain(input),
+  });
+
+export const checkTenantDomainMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRoutingScopes.all(), 'check'],
+    call: (input: TenantDomainInput) => api.checkTenantDomain(input),
+  });
+
+export const removeTenantDomainMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRoutingScopes.all(), 'remove'],
+    call: (input: TenantDomainInput) => api.removeTenantDomain(input),
+  });
+
+export const tenantRoutingInvalidates = () => ({ queryKey: tenantRoutingScopes.all() });
 
 export const sendSupportMessageMutation = (api: ApiClient) =>
   defineMutation({

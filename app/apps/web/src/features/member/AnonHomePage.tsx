@@ -10,6 +10,7 @@ import { CourseCard } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
 import { PublicFeedList } from './PublicFeed.js';
+import { PUBLIC_OFFER_ANCHOR } from './shell/member-nav.js';
 import { LockedSpaceCard, SpaceCard } from './SpaceCards.js';
 import { TileSection } from './StartPage.js';
 
@@ -73,6 +74,9 @@ export const AnonHomePage = () => {
   const { defaultHomeSpaceId, spaces, courses, lockedSpaces } = navigation.data.navigation;
   const homeSpace = spaces.find((space) => space.id === defaultHomeSpaceId);
   const tileSpaces = spaces.filter((space) => space.id !== homeSpace?.id);
+  const offerSection = tileSpaces.length > 0 ? 'spaces' : courses.length > 0 ? 'courses' : 'locked';
+  const anchorFor = (section: typeof offerSection) =>
+    section === offerSection ? PUBLIC_OFFER_ANCHOR : undefined;
 
   if (spaces.length === 0 && courses.length === 0 && lockedSpaces.length === 0) {
     return (
@@ -98,21 +102,21 @@ export const AnonHomePage = () => {
           <HomeSpaceFeed spaceId={homeSpace.id} name={homeSpace.name} />
         )}
         {tileSpaces.length === 0 ? null : (
-          <TileSection title={t.anon.spacesSection} testId="anon-spaces">
+          <TileSection title={t.anon.spacesSection} id={anchorFor('spaces')} testId="anon-spaces">
             {tileSpaces.map((space) => (
               <SpaceCard key={space.id} space={space} />
             ))}
           </TileSection>
         )}
         {courses.length === 0 ? null : (
-          <TileSection title={t.anon.coursesSection} testId="anon-courses">
+          <TileSection title={t.anon.coursesSection} id={anchorFor('courses')} testId="anon-courses">
             {courses.map((course) => (
               <CourseCard key={course.id} course={course} />
             ))}
           </TileSection>
         )}
         {lockedSpaces.length === 0 ? null : (
-          <TileSection title={t.start.lockedSection} testId="anon-locked">
+          <TileSection title={t.start.lockedSection} id={anchorFor('locked')} testId="anon-locked">
             {lockedSpaces.map((space) => (
               <LockedSpaceCard key={space.id} space={space} />
             ))}

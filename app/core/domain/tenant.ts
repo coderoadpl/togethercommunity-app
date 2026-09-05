@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+import {
+  dnsRecordSchema,
+  tenantDomainStatusSchema,
+  type DnsRecord,
+  type TenantDomainProvider,
+} from './custom-domain.js';
 import { staffRoleSchema } from './identity.js';
 import { DEFAULT_LANGUAGE, languageSchema, type Language } from './language.js';
 
@@ -153,7 +159,7 @@ export const tenantSettingsSchema = z.object({
   invoiceVatMode: invoiceVatModeSchema.nullable().optional(),
   invoiceExemptionBasisKind: exemptionBasisKindSchema.nullable().optional(),
   invoiceExemptionBasis: z.string().trim().min(1).max(EXEMPTION_BASIS_MAX_LENGTH).nullable().optional(),
-  invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
+  invoicingProvider: z.enum(['ifirma', 'ksef']).nullable().optional(),
   invoiceSellerName: z.string().nullable().optional(),
   invoiceSellerAddress: z.string().nullable().optional(),
 }).extend(tenantSocialSchema.shape);
@@ -315,6 +321,7 @@ export const memberSchema = z.object({
   email: z.string(),
   displayName: z.string().nullable(),
   language: languageSchema.nullable().optional(),
+  videoAutoplay: z.boolean().optional(),
   tags: z.array(z.string()),
   marketingConsents: z.record(z.boolean()),
   externalCustomerIds: z.record(z.string()),
@@ -390,6 +397,12 @@ export type TenantDomain = {
   domain: string;
   kind: 'subdomain' | 'custom';
   verified: boolean;
+  provider: TenantDomainProvider;
+  verification: DnsRecord[];
+  createdAt: string;
+  verifiedAt: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
 };
 
 export const tenantRoutingSchema = z.object({
@@ -397,9 +410,14 @@ export const tenantRoutingSchema = z.object({
   customDomains: z.array(z.object({
     domain: z.string(),
     verified: z.boolean(),
+    status: tenantDomainStatusSchema,
+    records: z.array(dnsRecordSchema),
+    lastCheckedAt: z.string().datetime().nullable(),
+    lastError: z.string().nullable(),
   })),
   /** Value a creator points the custom domain at with a CNAME record. */
   customDomainTarget: z.string(),
+  canAddCustomDomain: z.boolean(),
 });
 
 export type TenantRouting = z.infer<typeof tenantRoutingSchema>;

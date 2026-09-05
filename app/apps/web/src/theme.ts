@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -2883,14 +2883,6 @@ export const AppBarTitle = styled(Typography)<AsElement>({
   lineHeight: 1.2,
 });
 
-export const AppBarWordmark = styled('img')({
-  display: 'block',
-  height: 20,
-  width: 'auto',
-  alignSelf: 'flex-start',
-  opacity: 0.62,
-});
-
 export const TenantListItemText = styled(ListItemText)({
   '& .MuiListItemText-primary': { fontWeight: 700 },
 });
@@ -3023,10 +3015,25 @@ export const TreeChapterTitle = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const TreeLessonTitle = styled(Typography)<AsElement>({ fontSize: '0.8125rem' });
+export const CourseTreeModuleTitle = styled(TreeModuleTitle)<AsElement>({
+  fontSize: '0.875rem',
+  lineHeight: 1.4,
+});
+
+export const CourseTreeChapterTitle = styled(TreeChapterTitle)<AsElement>({
+  fontSize: '0.875rem',
+  lineHeight: 1.4,
+});
+
+export const TreeLessonTitle = styled(Typography)<AsElement>({
+  fontSize: '0.875rem',
+  lineHeight: 1.45,
+});
 
 export const TreeProgressCount = styled(Typography)<AsElement>(({ theme }) => ({
-  fontSize: '0.6875rem',
+  fontSize: '0.75rem',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
   color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
@@ -3095,38 +3102,49 @@ export const VisuallyHidden = styled('span')({
   border: 0,
 });
 
-export const CourseCardCover = styled('img')(({ theme }) => ({
+export type CoverFrame = 'card' | 'standalone';
+
+/** Wider than the member course column, so a page cover never shrinks below the member reference. */
+const COVER_STANDALONE_MAX_WIDTH = '45rem';
+
+const coverBox = (theme: Theme, frame: CoverFrame) => ({
   display: 'block',
   width: '100%',
   aspectRatio: '16 / 9',
-  objectFit: 'cover',
-  borderBottom: `1px solid ${theme.palette.divider}`,
-}));
+  ...(frame === 'standalone'
+    ? {
+        maxWidth: COVER_STANDALONE_MAX_WIDTH,
+        border: `1px solid ${theme.palette.divider}`,
+        borderRadius: theme.shape.borderRadius,
+      }
+    : { borderBottom: `1px solid ${theme.palette.divider}` }),
+});
 
-export const CourseCardCoverFallback = styled(Box)(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  aspectRatio: '16 / 9',
-  backgroundColor: alpha(theme.palette.text.primary, 0.06),
-  color: theme.palette.text.primary,
-  borderBottom: `1px solid ${theme.palette.divider}`,
-}));
+const forwardExceptFrame = { shouldForwardProp: (prop: PropertyKey) => prop !== 'frame' };
 
-export const CourseCardInitials = styled(Typography)<AsElement>({
+export const CoverImageElement = styled('img', forwardExceptFrame)<{ frame: CoverFrame }>(
+  ({ theme, frame }) => ({
+    ...coverBox(theme, frame),
+    objectFit: 'cover',
+  }),
+);
+
+export const CoverPlaceholderBox = styled(Box, forwardExceptFrame)<{ frame: CoverFrame }>(
+  ({ theme, frame }) => ({
+    ...coverBox(theme, frame),
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: alpha(theme.palette.text.primary, 0.06),
+    color: theme.palette.text.primary,
+  }),
+);
+
+export const CoverPlaceholderInitials = styled(Typography)<AsElement>({
   fontSize: '2.1rem',
   fontWeight: 700,
   letterSpacing: '0.12em',
 });
-
-export const CourseCoverImage = styled('img')(({ theme }) => ({
-  display: 'block',
-  width: '100%',
-  aspectRatio: '16 / 9',
-  objectFit: 'cover',
-  border: `1px solid ${theme.palette.divider}`,
-  borderRadius: theme.shape.borderRadius,
-}));
 
 /** Fixed page backgrounds a logo has to sit on, so a preview shows its real contrast. */
 const PREVIEW_SWATCH = {
@@ -3136,6 +3154,8 @@ const PREVIEW_SWATCH = {
 
 export type PreviewBackground = keyof typeof PREVIEW_SWATCH;
 
+const COVER_PREVIEW_MAX_WIDTH = '30rem';
+
 export const CoverPreviewSurface = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'swatch',
 })<{ swatch?: PreviewBackground | undefined }>(({ theme, swatch }) => ({
@@ -3144,7 +3164,7 @@ export const CoverPreviewSurface = styled(Box, {
   alignItems: 'center',
   justifyContent: 'center',
   width: '100%',
-  maxWidth: '30rem',
+  maxWidth: COVER_PREVIEW_MAX_WIDTH,
   aspectRatio: '16 / 9',
   overflow: 'hidden',
   border: `1px solid ${theme.palette.divider}`,
@@ -3286,7 +3306,7 @@ export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({
 export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
   flexShrink: 0,
-  fontSize: '0.6875rem',
+  fontSize: '0.75rem',
   color: theme.palette.text.disabled,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
@@ -3319,6 +3339,44 @@ export const LESSON_CARD_PADDING_X = { xs: '0.75rem', sm: '1.5rem' } as const;
 export const LESSON_CARD_OUTDENT_X = { xs: '-0.5rem', sm: 0 } as const;
 
 export const LESSON_CARD_BLEED_X = { xs: `-${LESSON_CARD_PADDING_X.xs}`, sm: 0 } as const;
+
+/**
+ * Media stops short of the viewport so the next block still peeks in below it;
+ * a player that exactly fills the screen reads as the end of the lesson. The
+ * floor keeps short and landscape viewports, where the chrome eats most of the
+ * height, from collapsing the media instead.
+ */
+const LESSON_MEDIA_HEIGHT_FLOOR = '60vh';
+
+const LESSON_MEDIA_VIEWPORT_HEIGHT = '100vh - 14rem';
+
+const LESSON_MEDIA_MAX_HEIGHT = `max(${LESSON_MEDIA_HEIGHT_FLOOR}, ${LESSON_MEDIA_VIEWPORT_HEIGHT})`;
+
+/** A fixed-ratio frame takes its height from its width, so its cap is a max width. */
+const ratioWidthAtMaxHeight = (ratioWidth: number, ratioHeight: number) => {
+  const scaled = (height: string) => `(${height}) * ${ratioWidth} / ${ratioHeight}`;
+  return `max(${scaled(LESSON_MEDIA_HEIGHT_FLOOR)}, ${scaled(LESSON_MEDIA_VIEWPORT_HEIGHT)})`;
+};
+
+export const LESSON_VIDEO_FRAME_SX = {
+  aspectRatio: '16 / 9',
+  maxWidth: ratioWidthAtMaxHeight(16, 9),
+  mx: 'auto',
+} as const;
+
+export const LESSON_DOCUMENT_FRAME_SX = {
+  aspectRatio: '10 / 7',
+  minHeight: `min(24rem, ${LESSON_MEDIA_MAX_HEIGHT})`,
+  maxWidth: ratioWidthAtMaxHeight(10, 7),
+  mx: 'auto',
+} as const;
+
+export const LESSON_SANDBOX_FRAME_SX = {
+  height: '70vh',
+  maxHeight: LESSON_MEDIA_MAX_HEIGHT,
+  minHeight: { sm: `min(600px, ${LESSON_MEDIA_MAX_HEIGHT})` },
+  width: 'auto',
+} as const;
 
 export const LessonMediaFrame = styled(Box)(({ theme }) => ({
   position: 'relative',
@@ -3360,6 +3418,7 @@ export const LessonPlaceholder = styled(Box)(({ theme }) => ({
 export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   overflowWrap: 'anywhere',
   maxWidth: '44rem',
+  marginInline: 'auto',
   '& img': { maxWidth: '100%', height: 'auto' },
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
@@ -3390,6 +3449,48 @@ export const DiscussionThread = styled(Box)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.background.paper,
 }));
+
+export const ComposerPrompt = styled(Button)(({ theme }) => ({
+  justifyContent: 'flex-start',
+  textAlign: 'left',
+  textTransform: 'none',
+  fontWeight: 400,
+  padding: '0.65rem 0.9rem',
+  color: theme.palette.text.secondary,
+  borderColor: theme.palette.divider,
+  backgroundColor: theme.palette.background.default,
+  '&:hover': {
+    borderColor: theme.palette.text.disabled,
+    backgroundColor: theme.palette.background.default,
+  },
+}));
+
+export const SocialFooterBar = styled(Box)<AsElement>(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.35rem 1.25rem',
+  marginTop: '2.5rem',
+  paddingTop: '1rem',
+  borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const SocialFooterLink = styled(Link)(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  color: theme.palette.text.secondary,
+  textDecoration: 'none',
+  fontSize: '0.8125rem',
+  '&:hover': {
+    color: theme.palette.text.primary,
+    textDecoration: 'underline',
+  },
+}));
+
+export const SocialLinkIcon = styled(SvgIcon)({
+  fontSize: '1rem',
+});
 
 export const ConversationCard = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'block',

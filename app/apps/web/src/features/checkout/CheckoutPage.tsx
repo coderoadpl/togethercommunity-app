@@ -1,7 +1,6 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
-  Box,
   Button,
   Checkbox,
   FormControl,
@@ -25,6 +24,7 @@ import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
+import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -347,13 +347,18 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
               </DataValue>
             </CheckoutPrice>
           ) : null}
-          {product.coverUrl === null ? null : (
-            <Box
-              component="img"
+          {product.coverUrl === null ? (
+            <CoverPlaceholder
+              title={product.title}
+              frame="standalone"
+              testId="checkout-product-cover-fallback"
+            />
+          ) : (
+            <CoverImage
               src={product.coverUrl}
               alt={product.title}
-              data-testid="checkout-product-cover"
-              sx={{ width: '100%', maxHeight: 360, objectFit: 'cover' }}
+              frame="standalone"
+              testId="checkout-product-cover"
             />
           )}
           <RichTextContent html={product.description} />

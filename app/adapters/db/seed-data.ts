@@ -891,10 +891,11 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   // Only akademia is branded; studio and acme stay on the stock look so the
   // unbranded visual goldens keep proving the no-branding identity property.
+  // Its logo is a wide 8:1 wordmark: the shape that overflows narrow headers.
   await db
     .update(tenants)
     .set({
-      logoUrl: '/assets/akademia-logo.svg',
+      logoUrl: '/assets/akademia-wordmark.svg',
       accentColor: '#0E7490',
       faviconUrl: '/assets/akademia-logo.svg',
     })

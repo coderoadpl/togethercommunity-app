@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -6,12 +7,14 @@ import {
 } from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
+import { server } from '../../test/server.js';
 import { CourseTree } from './CourseTree.js';
 
 const structure: CourseStructureWithAccess = {
@@ -102,10 +105,8 @@ const structure: CourseStructureWithAccess = {
   ],
 };
 
-const renderTree = async (body: CourseStructureWithAccess = structure) => {
-  const rootRoute = createRootRoute({
-    component: () => <CourseTree courseId="course-1" structure={body} />,
-  });
+const renderNode = async (node: ReactNode) => {
+  const rootRoute = createRootRoute({ component: () => node });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ['/my/courses/course-1'] }),
@@ -113,6 +114,22 @@ const renderTree = async (body: CourseStructureWithAccess = structure) => {
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
 };
+
+const renderTree = async (body: CourseStructureWithAccess = structure) =>
+  renderNode(<CourseTree courseId="course-1" structure={body} expandAll />);
+
+const renderFocusedTree = async (focusLessonId: string | null) =>
+  renderNode(
+    <CourseTree
+      courseId="course-1"
+      structure={structure}
+      focusLessonId={focusLessonId}
+      scrollFocusIntoView
+    />,
+  );
+
+const renderCollapsedTree = async () =>
+  renderNode(<CourseTree courseId="course-1" structure={structure} focusLessonId="l1" />);
 
 describe('CourseTree', () => {
   it('renders every node as a teaser regardless of access', async () => {
@@ -199,6 +216,15 @@ describe('CourseTree', () => {
     expect(within(untouchedChapter).getByText('0/2')).toBeInTheDocument();
   });
 
+  it('stretches the module, chapter and lesson rows across the full sidebar width', async () => {
+    await renderTree();
+
+    await screen.findByTestId('lesson-button-l1');
+    for (const testId of ['module-toggle-m1', 'chapter-toggle-c1', 'lesson-button-l1']) {
+      expect(screen.getByTestId(testId)).toHaveStyle({ width: '100%' });
+    }
+  });
+
   it('exposes module disclosure state and toggles it from the keyboard', async () => {
     const user = userEvent.setup();
     await renderTree();
@@ -260,6 +286,117 @@ describe('CourseTree', () => {
     expect(timed).toHaveTextContent('12 min');
     expect(screen.getByTestId('lesson-duration-l4')).toHaveTextContent('30 min');
     expect(screen.queryByTestId('lesson-duration-l3')).not.toBeInTheDocument();
+  });
+
+  it('opens only the module and chapter of the focused lesson', async () => {
+    await renderFocusedTree('l3');
+
+    expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
+    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('chapter-toggle-c2')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('chapter-toggle-c1')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument();
+    expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
+  });
+
+  it('keeps every module closed when there is no lesson to focus', async () => {
+    await renderFocusedTree(null);
+
+    expect(await screen.findByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('scrolls the focused lesson into view', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    await renderFocusedTree('l3');
+
+    const focused = await screen.findByTestId('lesson-button-l3');
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollIntoView.mock.instances).toEqual([focused]);
+    scrollIntoView.mockRestore();
+  });
+
+  it('leaves scrolling to callers that own a scroll container', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    await renderCollapsedTree();
+
+    expect(await screen.findByTestId('lesson-button-l1')).toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    scrollIntoView.mockRestore();
+  });
+
+  it('reveals a collapsed module with its marks and unlock link on demand', async () => {
+    const user = userEvent.setup();
+    await renderCollapsedTree();
+
+    expect(await screen.findByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    await user.click(screen.getByTestId('module-toggle-m2'));
+
+    const chapter = await screen.findByTestId('chapter-toggle-c3');
+    expect(chapter).toHaveAttribute('aria-expanded', 'false');
+    expect(within(chapter).getByText('0/2')).toBeInTheDocument();
+    await user.click(chapter);
+
+    const locked = await screen.findByTestId('lesson-button-l4');
+    expect(within(locked).getByTestId('lock-closed')).toBeInTheDocument();
+    expect(screen.getByTestId('unlock-lesson-l4')).toHaveAttribute('href', '/checkout/prod-advanced');
+  });
+
+  it('lets the reader collapse the focused module and expand another one', async () => {
+    const user = userEvent.setup();
+    await renderFocusedTree('l1');
+
+    await screen.findByText('Intro to Variables');
+    await user.click(screen.getByTestId('module-toggle-m1'));
+    await waitFor(() => expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument());
+
+    await user.click(screen.getByTestId('module-toggle-m2'));
+    expect(await screen.findByTestId('chapter-toggle-c3')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('expands every match while filtering and restores the focused branch afterwards', async () => {
+    const user = userEvent.setup();
+    await renderFocusedTree('l1');
+
+    await user.type(screen.getByTestId('lesson-search'), 'Closures');
+    expect(await screen.findByTestId('lesson-button-l4')).toBeInTheDocument();
+
+    await user.clear(screen.getByTestId('lesson-search'));
+    expect(await screen.findByText('Intro to Variables')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByTestId('lesson-button-l4')).not.toBeInTheDocument());
+  });
+
+  it('describes each row with its full title and the lock reason', async () => {
+    await renderTree();
+
+    expect(await screen.findByTestId('lesson-button-l1')).toHaveAttribute(
+      'title',
+      'Intro to Variables',
+    );
+    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('title', '01 - Fundamentals');
+    expect(screen.getByTestId('chapter-toggle-c1')).toHaveAttribute('title', 'Getting started');
+    expect(screen.getByTestId('lesson-button-l4').parentElement).toHaveAttribute(
+      'title',
+      pl.courseTree.lockedLessonTooltip({ name: 'Closures Deep Dive' }),
+    );
+  });
+
+  it('shows the full title in a tooltip on hover', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'x' } }, { status: 404 }),
+      ),
+    );
+    await renderTree();
+
+    await user.hover(await screen.findByTestId('lesson-button-l1'));
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Intro to Variables');
   });
 
   it('offers an unlock link only for locked lessons covered by a product', async () => {

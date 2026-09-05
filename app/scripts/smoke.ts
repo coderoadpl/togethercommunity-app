@@ -8,8 +8,16 @@ import pg from 'pg';
 import { z } from 'zod';
 
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
-import { API_PATHS, EXIT_CODE_BY_ERROR_CODE, TENANT_HEADER } from '#core/contract/index.js';
+import {
+  API_PATHS,
+  deepHealthOutputSchema,
+  EMAIL_DISPATCH_SECRET_HEADER,
+  envelopeSchema,
+  EXIT_CODE_BY_ERROR_CODE,
+  TENANT_HEADER,
+} from '#core/contract/index.js';
 
+import { DEV_EMAIL_DISPATCH_SECRET } from '../apps/server/src/env.js';
 import {
   bootServer,
   delay,
@@ -460,6 +468,22 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   assert(
     health.status === 'ok' && health.database === 'up',
     `health degraded: status=${health.status} database=${health.database}`,
+  );
+
+  // Deep health reads the scheduler's last-run age; the seeded demo history is
+  // deliberately aged, so drive one real dispatch before probing it.
+  const dispatched = await fetch(`${url}${API_PATHS.emailDispatch}`, {
+    method: 'POST',
+    headers: { [EMAIL_DISPATCH_SECRET_HEADER]: DEV_EMAIL_DISPATCH_SECRET },
+  });
+  assert(dispatched.ok, `email dispatch returned HTTP ${dispatched.status}`);
+
+  const deepResponse = await fetch(`${url}${API_PATHS.healthDeep}`);
+  const deep = envelopeSchema(deepHealthOutputSchema).parse(await deepResponse.json());
+  assert(deep.ok, 'deep health returned an error envelope');
+  assert(
+    deepResponse.status === 200 && deep.data.ok,
+    `deep health failed: ${deep.data.failing.join(', ')}`,
   );
 
   expectOk(
@@ -1810,6 +1834,94 @@ const driveAnonymousPublicFlow = async (port: number, homes: string[]): Promise<
   );
 };
 
+const driveLegacyUrlRedirects = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const creatorHome = mkdtempSync(join(tmpdir(), 'smoke-legacy-creator-'));
+  homes.push(creatorHome);
+  const cli = (args: string[]): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: creatorHome });
+  const acme = (args: string[]): Promise<Run> =>
+    cli(['--json', '--api-url', url, '--tenant', 'acme', ...args]);
+  const sourceId = (suffix: string): string => randomUUID().replaceAll('-', '').slice(0, 20) + suffix;
+  const legacyCourseId = sourceId('c');
+  const legacyModuleId = sourceId('m');
+  const legacyLessonId = sourceId('l');
+
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo-password-15']),
+    'legacy links: creator login',
+  );
+  const lesson = lessonSchema.parse(
+    expectOk(
+      await acme(['lesson', 'create', '--data', `{"name":"Legacy lesson","legacyId":"${legacyLessonId}"}`]),
+      'legacy links: create the imported lesson',
+    ),
+  );
+  const course = courseSchema.parse(
+    expectOk(
+      await acme(['course', 'create', '--name', `Legacy course ${randomUUID()}`, '--legacy-id', legacyCourseId]),
+      'legacy links: create the imported course',
+    ),
+  );
+  const chapterId = randomUUID();
+  const modulePayload = JSON.stringify({
+    courseIds: [course.course.id],
+    title: 'Legacy module',
+    legacyId: legacyModuleId,
+    chapters: [{ id: chapterId, name: 'Legacy chapter', contents: [{ id: randomUUID(), name: 'Legacy lesson', lessonId: lesson.lesson.id }] }],
+  });
+  expectOk(
+    await acme(['module', 'create', '--data', modulePayload]),
+    'legacy links: create the imported module',
+  );
+
+  const coursePage = `/my/courses/${course.course.id}`;
+  const lessonPage = `${coursePage}/lessons/${lesson.lesson.id}`;
+  const legacyPath = `/courses/${legacyCourseId}`;
+  const hop = async (path: string, tenant: string): Promise<Response> =>
+    fetch(`${url}${path}`, { headers: { [TENANT_HEADER]: tenant }, redirect: 'manual' });
+  const expectHop = async (
+    path: string,
+    expected: { status: number; location: string },
+    label: string,
+    tenant = 'acme',
+  ): Promise<void> => {
+    const response = await hop(path, tenant);
+    assert(
+      response.status === expected.status,
+      `${label}: expected ${expected.status}, got ${response.status}`,
+    );
+    const location = response.headers.get('location');
+    assert(
+      location === expected.location,
+      `${label}: expected a hop to ${expected.location}, got ${String(location)}`,
+    );
+  };
+
+  await expectHop(legacyPath, { status: 301, location: coursePage }, 'legacy links: course link');
+  await expectHop(
+    `${legacyPath}/modules/${legacyModuleId}`,
+    { status: 302, location: lessonPage },
+    'legacy links: module link',
+  );
+  await expectHop(
+    `${legacyPath}/modules/${legacyModuleId}/chapters/${chapterId}`,
+    { status: 302, location: lessonPage },
+    'legacy links: chapter link',
+  );
+  await expectHop(
+    `${legacyPath}/modules/${legacyModuleId}/chapters/${chapterId}/lessons/${legacyLessonId}?utm_source=newsletter`,
+    { status: 301, location: `${lessonPage}?utm_source=newsletter` },
+    'legacy links: lesson link',
+  );
+  await expectHop(legacyPath, { status: 302, location: '/my' }, 'legacy links: another workspace', 'studio');
+  await expectHop(
+    `/courses/${sourceId('x')}`,
+    { status: 302, location: '/my' },
+    'legacy links: unknown course',
+  );
+};
+
 const startedAt = Date.now();
 const homes: string[] = [];
 let server: ChildProcess | null = null;
@@ -1857,6 +1969,8 @@ try {
   await driveEventsFlow(port, homes);
   console.log('smoke: driving the anonymous public surface...');
   await driveAnonymousPublicFlow(port, homes);
+  console.log('smoke: following legacy course links...');
+  await driveLegacyUrlRedirects(port, homes);
   console.log('smoke: proving password rotation with two isolated CLI homes...');
   await proveCliPasswordRotation(port, homes);
   console.log('smoke: proving provider-validated email verification resend...');

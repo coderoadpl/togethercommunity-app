@@ -11,7 +11,7 @@ import { ThreadHeadline } from '../../theme.js';
 import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicThreadView } from './PublicFeed.js';
-import { anonHomePath } from './shell/member-nav.js';
+import { anonHomePath, anonOfferLink } from './shell/member-nav.js';
 
 const threadHeadline = (body: string): string | null => {
   const condensed = body.replaceAll(/\s+/gu, ' ').trim();
@@ -118,8 +118,13 @@ export const PublicSpaceThreadPage = ({
           <PublicThreadView root={root} />
         )}
         <Box>
-          <Button component={Link} to="/login" variant="contained" data-testid="anon-join-cta">
-            {t.anon.joinDiscussionCta}
+          <Button
+            component={Link}
+            {...anonOfferLink(navigation.data.navigation.defaultHomeSpaceId === spaceId)}
+            variant="contained"
+            data-testid="anon-join-cta"
+          >
+            {t.anon.joinOfferCta}
           </Button>
         </Box>
       </Stack>

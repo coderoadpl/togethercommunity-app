@@ -5,6 +5,8 @@ import {
   API_PATHS,
   API_ROUTES,
   capabilitiesForPrincipal,
+  deepHealthOutputSchema,
+  envelopeSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   TENANT_HEADER,
 } from '#core/contract/index.js';
@@ -15,10 +17,13 @@ import {
   BETTER_AUTH_SIGN_OUT_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
+import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
+import { tenantDomainFixture, tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 import { collectRuntimeRoutes } from '../../../scripts/generate-route-table.mjs';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
-import { selectDevEndpoints, selectPlatformReset } from './composition.js';
+import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
 import { buildApp } from './app.js';
+import { DEEP_HEALTH_CACHE_TTL_MS } from './deep-health-route.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
 import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
@@ -135,6 +140,7 @@ const deps = (input: {
   schemaStatus?: Awaited<ReturnType<AppDeps['health']['schemaStatus']>>;
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
+  checkTenantDomains?: AppDeps['checkTenantDomains'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
   paymentRefunds?: AppDeps['paymentRefunds'];
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
@@ -181,6 +187,7 @@ const deps = (input: {
       create: async () => undefined,
       updateEmail: async () => null,
       updateLanguage: async () => null,
+      updateVideoAutoplay: async () => null,
       updateDisplayName: async () => null,
       updateDmOptOut: async () => null,
       setBanned: async () => null,
@@ -450,6 +457,7 @@ const deps = (input: {
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
           updateLanguage: async () => null,
+          updateVideoAutoplay: async () => null,
           updateDisplayName: async () => null,
           updateDmOptOut: async () => null,
         setBanned: async () => null,
@@ -506,6 +514,11 @@ const deps = (input: {
     emailDispatchSecret: 'test-email-dispatch-secret',
     emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
     autoInvoiceDispatchSecret: 'test-auto-invoice-dispatch-secret',
+    domainCheckSecret: 'test-domain-check-secret',
+    checkTenantDomains: input.checkTenantDomains
+      ?? (async () => ok({ checked: 0, verified: 0, failed: 0, alerted: 0 })),
+    tenantDomainEvents: { append: async () => undefined },
+    domainProvisioner: createManualDomainProvisioner(),
     devEmails: {
       findByRecipient: async () => null,
     },
@@ -552,6 +565,11 @@ const deps = (input: {
       create: async () => undefined,
       update: async () => null,
       delete: async () => false,
+    },
+    legacyContent: {
+      findCourse: async () => null,
+      findModule: async () => null,
+      findLesson: async () => null,
     },
     attachments: {
       create: async () => undefined,
@@ -712,11 +730,11 @@ const deps = (input: {
       spaceUrl: ({ spaceId, rootPostId }) =>
         `http://localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
-    tenantDomains: {
+    tenantDomains: tenantDomainRepositoryStub({
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
       listVerifiedDomains: async () => domains,
       listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
-    },
+    }),
     tenants: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
@@ -741,6 +759,9 @@ const deps = (input: {
         plan: 'self_hosted',
         contentVersion: 1,
       }),
+    },
+    tenantDirectory: {
+      listAll: async () => tenants,
     },
     consents: {
       record: async () => undefined,
@@ -1353,7 +1374,7 @@ describe('migration import HTTP surfaces', () => {
     expect(userMutations[0]).toMatchObject({
       kind: 'member',
       resource: { email: 'user@example.test' },
-      authUser: { emailVerified: false },
+      authUser: { emailVerified: true },
     });
     expect(userMutations).toHaveLength(1);
     expect(userMutations[0]).not.toHaveProperty('authUser.legacyPasswordHash');
@@ -2601,6 +2622,48 @@ describe('automatic invoice dispatch route', () => {
   });
 });
 
+describe('tenant domain check route', () => {
+  const summary = { checked: 2, verified: 1, failed: 0, alerted: 0 };
+
+  it('runs the scheduled check only for the configured operator secret', async () => {
+    const checkTenantDomains = vi.fn(async () => ok(summary));
+    const app = buildApp(deps({ checkTenantDomains }));
+
+    const refused = await app.request(API_PATHS.tenantDomainDispatch, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-secret' },
+    });
+    expect(refused.status).toBe(401);
+    expect(checkTenantDomains).not.toHaveBeenCalled();
+
+    const response = await app.request(API_PATHS.tenantDomainDispatch, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-domain-check-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, data: summary });
+  });
+
+  it('accepts the cron GET only with the same secret as a bearer token', async () => {
+    const checkTenantDomains = vi.fn(async () => ok(summary));
+    const app = buildApp(deps({ checkTenantDomains }));
+
+    expect((await app.request(API_PATHS.tenantDomainDispatch)).status).toBe(401);
+    expect((await app.request(API_PATHS.tenantDomainDispatch, {
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-domain-check-secret' },
+    })).status).toBe(401);
+    expect(checkTenantDomains).not.toHaveBeenCalled();
+
+    const response = await app.request(API_PATHS.tenantDomainDispatch, {
+      headers: { authorization: 'Bearer test-domain-check-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(checkTenantDomains).toHaveBeenCalledOnce();
+  });
+});
+
 describe('health route', () => {
   it('keeps the compatibility endpoint and exposes deploy attestation', async () => {
     const up = await buildApp(deps()).request(API_PATHS.health);
@@ -2695,6 +2758,110 @@ describe('health route', () => {
       ok: false,
       error: { code: 'unavailable', message: 'Database is not reachable' },
     });
+  });
+});
+
+describe('deep health route', () => {
+  const deepHealthEnvelopeSchema = envelopeSchema(deepHealthOutputSchema);
+
+  const countingDirectory = (configured: AppDeps): { calls: () => number } => {
+    let calls = 0;
+    const listAll = configured.tenantDirectory.listAll;
+    configured.tenantDirectory = {
+      listAll: async () => {
+        calls += 1;
+        return listAll();
+      },
+    };
+    return { calls: () => calls };
+  };
+
+  it('answers 200 with a green report that discloses no tenant or subject counts', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.healthDeep);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: {
+        ok: true,
+        checkedAt: expect.any(String),
+        failing: [],
+        checks: [
+          { name: 'tenant-directory', ok: true, ms: expect.any(Number), error: null },
+          { name: 'scheduler-freshness', ok: true, ms: expect.any(Number), error: null },
+          { name: 'tenant-settings', ok: true, ms: expect.any(Number), error: null },
+          { name: 'public-offer', ok: true, ms: expect.any(Number), error: null },
+          { name: 'course-content', ok: true, ms: expect.any(Number), error: null },
+          { name: 'tenant-secret-decryption', ok: true, ms: expect.any(Number), error: null },
+          { name: 'email-transport', ok: true, ms: expect.any(Number), error: null },
+          { name: 'storage-presign', ok: true, ms: expect.any(Number), error: null },
+        ],
+      },
+    });
+  });
+
+  it('serves the cached report for a minute and recomputes afterwards', async () => {
+    const configured = deps();
+    const directory = countingDirectory(configured);
+    const app = buildApp(configured);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+
+    try {
+      await app.request(API_PATHS.healthDeep);
+      await app.request(API_PATHS.healthDeep);
+      expect(directory.calls()).toBe(1);
+
+      clock.mockReturnValue(1_000_000 + DEEP_HEALTH_CACHE_TTL_MS - 1);
+      await app.request(API_PATHS.healthDeep);
+      expect(directory.calls()).toBe(1);
+
+      clock.mockReturnValue(1_000_000 + DEEP_HEALTH_CACHE_TTL_MS);
+      await app.request(API_PATHS.healthDeep);
+      expect(directory.calls()).toBe(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('answers 500 naming the failing checks without leaking the stored row', async () => {
+    const configured = deps();
+    configured.tenants = {
+      ...configured.tenants,
+      findSettings: async (tenantId) => {
+        const settings = await deps().tenants.findSettings(tenantId);
+        return settings === null ? null : { ...settings, billingPortalUrl: 'portal.acme.test' };
+      },
+    };
+
+    const response = await buildApp(configured).request(API_PATHS.healthDeep);
+
+    expect(response.status).toBe(500);
+    const payload = deepHealthEnvelopeSchema.parse(await response.json());
+    if (!payload.ok) throw new Error('the deep health route must answer with a report');
+    expect(payload.data.ok).toBe(false);
+    expect(payload.data.failing).toEqual(['tenant-settings']);
+    expect(JSON.stringify(payload)).not.toContain('portal.acme.test');
+  });
+
+  it('spends a dedicated per-address bucket and throttles with 429', async () => {
+    const scopes: string[] = [];
+    const counted = await buildApp(deps({
+      rateLimitBuckets: {
+        claim: async (input) => { scopes.push(input.scope); return true; },
+        purgeExpired: async () => 0,
+      },
+    })).request(API_PATHS.healthDeep);
+    expect(counted.status).toBe(200);
+    expect(scopes).toEqual(['deep-health:ip']);
+
+    const throttled = await buildApp(deps({
+      rateLimitBuckets: { claim: async () => false, purgeExpired: async () => 0 },
+    })).request(API_PATHS.healthDeep);
+
+    expect(throttled.status).toBe(429);
+    expect(Number(throttled.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(await throttled.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
   });
 });
 
@@ -3599,6 +3766,7 @@ describe('notifications stream route', () => {
       contextId: 'lesson-1',
       courseId: 'course-1',
       eventId: null,
+      domain: null,
       lessonName: 'Lesson',
       authorDisplay: 'Author',
       authorAvatarUrl: null,
@@ -3818,6 +3986,26 @@ describe('platform data reset route', () => {
   });
 });
 
+describe('domain provisioner selection', () => {
+  it('stays manual until both the provisioner token and project are configured', () => {
+    expect(selectDomainProvisioner({
+      DOMAIN_PROVISIONER_TOKEN: undefined,
+      DOMAIN_PROVISIONER_PROJECT_ID: undefined,
+      DOMAIN_PROVISIONER_TEAM_ID: undefined,
+      DOMAIN_PROVISIONER_GIT_BRANCH: undefined,
+    }).provider).toBe('manual');
+  });
+
+  it('hands provisioning to the provider once the project credentials are present', () => {
+    expect(selectDomainProvisioner({
+      DOMAIN_PROVISIONER_TOKEN: 'token',
+      DOMAIN_PROVISIONER_PROJECT_ID: 'prj_1',
+      DOMAIN_PROVISIONER_TEAM_ID: 'team_1',
+      DOMAIN_PROVISIONER_GIT_BRANCH: 'staging',
+    }).provider).toBe('vercel');
+  });
+});
+
 describe('development-only route table', () => {
   const devRoutesFor = (environment: { NODE_ENV: string; APP_ENV: string }) =>
     buildApp({
@@ -3875,6 +4063,152 @@ describe('social preview route', () => {
 
     expect(response.status).toBe(404);
   });
+});
+
+describe('legacy URL redirects', () => {
+  const legacyCourseId = '656b8fa6e74246956889b096';
+  const legacyModuleId = '65a52510b5bd26b9d2ab3aa1';
+  const legacyChapterId = '65a52510b5bd26b9d2ab3ccc';
+  const legacyLessonId = '65a52510b5bd26b9d2ab3b77';
+  const coursePagePath = '/my/courses/acme-course-js';
+  const lessonPagePath = `${coursePagePath}/lessons/acme-lesson-let`;
+  const courseListPath = '/my';
+  const modulePath = `/courses/${legacyCourseId}/modules/${legacyModuleId}`;
+  const chapterPath = `${modulePath}/chapters/${legacyChapterId}`;
+  const lessonPath = `${chapterPath}/lessons/${legacyLessonId}`;
+
+  const legacyApp = (owner: Tenant = acme) => {
+    const base = deps({
+      domains: [tenantDomainFixture({
+        id: 'domain-acme',
+        tenantId: acme.id,
+        domain: 'kurs.acme.example',
+        kind: 'custom',
+        verified: true,
+      })],
+    });
+    const course: Course = {
+      id: 'acme-course-js',
+      tenantId: owner.id,
+      name: 'JavaScript',
+      description: '',
+      imageUrl: null,
+      moduleOrder: ['acme-module-variables'],
+      publiclyVisible: false,
+      legacyId: legacyCourseId,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const courseModule: CourseModule = {
+      id: 'acme-module-variables',
+      tenantId: owner.id,
+      courseIds: [course.id],
+      title: 'Variables',
+      prefix: null,
+      name: 'Variables',
+      chapters: [{
+        id: legacyChapterId,
+        name: 'Basics',
+        contents: [{ id: 'content-1', name: 'let', lessonId: 'acme-lesson-let' }],
+      }],
+      legacyId: legacyModuleId,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const lesson: CourseLesson = {
+      id: 'acme-lesson-let',
+      tenantId: owner.id,
+      name: 'let',
+      isPreview: false,
+      contents: [],
+      legacyId: legacyLessonId,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    return buildApp({
+      ...base,
+      legacyContent: {
+        findCourse: async (tenantId, legacyId) =>
+          tenantId === course.tenantId && legacyId === course.legacyId ? course : null,
+        findModule: async (tenantId, legacyId) =>
+          tenantId === courseModule.tenantId && legacyId === courseModule.legacyId ? courseModule : null,
+        findLesson: async (tenantId, legacyId) =>
+          tenantId === lesson.tenantId && legacyId === lesson.legacyId ? lesson : null,
+      },
+    });
+  };
+
+  const legacyGet = (path: string, host = 'acme.localhost:48730') =>
+    legacyApp().request(path, { headers: { host } });
+
+  it.each([
+    ['course', `/courses/${legacyCourseId}`, coursePagePath],
+    ['lesson', lessonPath, lessonPagePath],
+  ])('redirects a legacy %s link for good on a tenant subdomain', async (_shape, path, destination) => {
+    const response = await legacyGet(path);
+
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe(destination);
+  });
+
+  it.each([
+    ['module', modulePath, lessonPagePath],
+    ['chapter', chapterPath, lessonPagePath],
+  ])('redirects a legacy %s link temporarily, because its target is derived', async (_shape, path, destination) => {
+    const response = await legacyGet(path);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(destination);
+  });
+
+  it('redirects on a verified custom domain and keeps the query string', async () => {
+    const response = await legacyGet(`${lessonPath}?utm_source=newsletter`, 'kurs.acme.example');
+
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}?utm_source=newsletter`);
+  });
+
+  it('redirects a link that carries a trailing slash', async () => {
+    const response = await legacyGet(`/courses/${legacyCourseId}/`);
+
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe(coursePagePath);
+  });
+
+  it('falls back to the course page when the module is unknown', async () => {
+    const response = await legacyGet(`/courses/${legacyCourseId}/modules/65a52510b5bd26b9d2ab3fff`);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(coursePagePath);
+  });
+
+  it.each([
+    ['a course owned by another workspace', `/courses/${legacyCourseId}`, globex],
+    ['an unknown course', '/courses/deadbeefdeadbeefdeadbeef', acme],
+    ['a path that is not a legacy shape', `/courses/${legacyCourseId}/modules`, acme],
+  ])('sends %s to the course list', async (_case, path, owner) => {
+    const response = await legacyApp(owner).request(path, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(courseListPath);
+  });
+
+  it('leaves the platform host alone', async () => {
+    const response = await legacyGet(`/courses/${legacyCourseId}`, 'start.localhost');
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
+  it.each(['/login', '/register', '/reset-password'])(
+    'claims no server route for %s, leaving the path to the web app',
+    async (path) => {
+      const response = await legacyGet(path);
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('location')).toBeNull();
+      expect(legacyApp().routes.some((route) => route.path === path)).toBe(false);
+    },
+  );
 });
 
 describe('single-tenant mode', () => {
@@ -4796,13 +5130,13 @@ describe('public auth-config route', () => {
   it('hides Google on a verified custom domain the OAuth callback cannot return to', async () => {
     const app = buildApp({
       ...deps({
-        domains: [{
+        domains: [tenantDomainFixture({
           id: 'domain-acme',
           tenantId: acme.id,
           domain: 'learn.acme.example',
           kind: 'custom',
           verified: true,
-        }],
+        })],
       }),
       authConfig: { googleEnabled: true },
     });
@@ -4854,13 +5188,13 @@ describe('public auth-resolve route', () => {
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  const verifiedDomain = {
+  const verifiedDomain = tenantDomainFixture({
     id: 'domain-acme',
     tenantId: acme.id,
     domain: 'learn.acme.example',
     kind: 'custom' as const,
     verified: true,
-  };
+  });
 
   const preflight = (app: ReturnType<typeof buildApp>, origin: string) =>
     app.request(API_PATHS.authResolve, {
@@ -5844,13 +6178,13 @@ describe('tenant-host email verification', () => {
     'rebases %s delivery to a verified custom domain',
     async (path) => {
       const { app, captured } = capturingApp({
-        domains: [{
+        domains: [tenantDomainFixture({
           id: 'domain-acme',
           tenantId: acme.id,
           domain: 'learn.acme.example',
           kind: 'custom',
           verified: true,
-        }],
+        })],
       });
 
       await app.request(path, {
@@ -5985,7 +6319,7 @@ describe('auth link host trust', () => {
   it('keeps the scheme and port of the seeded subdomain domain row', async () => {
     const { app, captured } = capturingApp({
       domains: [
-        { id: 'domain-acme', tenantId: acme.id, domain: 'acme.localhost', kind: 'subdomain', verified: true },
+        tenantDomainFixture({ id: 'domain-acme', tenantId: acme.id, domain: 'acme.localhost', kind: 'subdomain', verified: true }),
       ],
     });
 
@@ -6001,7 +6335,7 @@ describe('auth link host trust', () => {
   it('builds the magic-link base on a verified custom domain over HTTPS', async () => {
     const { app, captured } = capturingApp({
       domains: [
-        { id: 'domain-learn', tenantId: acme.id, domain: 'learn.acme.example', kind: 'custom', verified: true },
+        tenantDomainFixture({ id: 'domain-learn', tenantId: acme.id, domain: 'learn.acme.example', kind: 'custom', verified: true }),
       ],
     });
 

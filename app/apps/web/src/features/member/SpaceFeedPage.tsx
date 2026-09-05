@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Box, Button, Chip, Link as MuiLink, Paper, Stack } from '@mui/material';
+import { Alert, Box, Button, Chip, Link as MuiLink, Stack } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
@@ -29,7 +29,7 @@ import { LockedSpaceCard } from './SpaceCards.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
-import { useViewerKind } from './viewer.js';
+import { useImpersonation, useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -164,6 +164,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const me = useQuery(actions.me);
   const feed = useQuery(actions.spaceFeed({ spaceId }));
   const banned = me.data?.tenant?.banned === true;
+  const impersonating = useImpersonation() !== null;
   const ownVisit = me.data !== undefined && me.data.impersonation === null;
 
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
@@ -332,21 +333,20 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
         <LiveNowBanner spaceId={spaceId} />
-        <Paper elevation={1} sx={{ p: '1.25rem' }}>
-          <PostComposer
-            label={t.community.composerLabel}
-            placeholder={t.community.composerPlaceholder}
-            submitLabel={t.community.post}
-            pendingLabel={t.community.posting}
-            busy={create.isPending}
-            disabled={banned}
-            collapsible
-            onSubmit={(body, reset) =>
-              create.mutate({ contextKind: 'space', contextId: spaceId, body }, { onSuccess: () => reset() })
-            }
-            testId="space-composer"
-          />
-        </Paper>
+        <PostComposer
+          label={t.community.composerLabel}
+          placeholder={t.community.composerPlaceholder}
+          collapsedPrompt={t.community.composerPrompt}
+          submitLabel={t.community.post}
+          pendingLabel={t.community.posting}
+          busy={create.isPending}
+          disabled={banned}
+          surface
+          onSubmit={(body, reset) =>
+            create.mutate({ contextKind: 'space', contextId: spaceId, body }, { onSuccess: () => reset() })
+          }
+          testId="space-composer"
+        />
 
         {create.isError ? <Alert severity="error">{create.error instanceof ApiError && create.error.appError.code === 'rate_limited' ? t.community.postTooFast : localizeError(create.error, t)}</Alert> : null}
         {pin.isError ? <Alert severity="error">{localizeError(pin.error, t)}</Alert> : null}
@@ -369,7 +369,11 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           />
         ) : items.length === 0 && pinned.length === 0 ? (
           <StatusView
-            state={{ kind: 'empty', icon: <EmptyFeedIcon />, title: t.community.emptyFeed }}
+            state={{
+              kind: 'empty',
+              icon: <EmptyFeedIcon />,
+              title: impersonating ? t.community.emptyFeedReadOnly : t.community.emptyFeed,
+            }}
             data-testid="feed-empty-state"
           />
         ) : (

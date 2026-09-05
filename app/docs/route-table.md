@@ -10,6 +10,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/health/live` | public | read | Process liveness check |
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
+| `GET /api/health/deep` | public | read | Aggregated production readiness probe over every tenant |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
 | `OPTIONS /api/public/navigation` | public | read | Anonymous tenant-home navigation |
 | `OPTIONS /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
@@ -43,6 +44,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/auth/send-verification-email` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `GET /api/auth/*` | public | read | Authentication callbacks and session reads |
 | `POST /api/auth/*` | public | mutating | Login, recovery, and magic-link authentication surface |
+| `GET /courses/*` | public | read | Legacy course, module, chapter and lesson links redirected to their member pages |
 | `POST /api/webhooks/ses/:webhookToken` | public | mutating | Amazon SNS delivery webhook |
 | `POST /u/:token` | public | mutating | Unsubscribe preference changes |
 | `POST /u/:token/confirm` | public | mutating | Unsubscribe preference changes |
@@ -58,6 +60,8 @@ Local-development-only routes are registered exclusively when the process runs l
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
 | `POST /api/internal/dispatch-auto-invoices` | self-authenticating | mutating | auto invoice dispatch |
 | `GET /api/internal/dispatch-auto-invoices` | self-authenticating | read | api internal dispatch-auto-invoices |
+| `POST /api/internal/domain-check` | self-authenticating | mutating | tenant domain dispatch |
+| `GET /api/internal/domain-check` | self-authenticating | read | api internal domain-check |
 | `POST /api/internal/dispatch-ksef` | self-authenticating | mutating | ksef dispatch |
 | `GET /api/internal/dispatch-ksef` | self-authenticating | read | api internal dispatch-ksef |
 | `GET /api/internal/scheduler-runs` | self-authenticating | read | global scheduler runs |
@@ -178,6 +182,9 @@ Local-development-only routes are registered exclusively when the process runs l
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |
 | `GET /api/tenant/settings` | authenticated | read | tenant settings |
 | `GET /api/tenant/routing` | authenticated | read | tenant routing |
+| `POST /api/tenant/domains` | authenticated | mutating | tenant domain add |
+| `POST /api/tenant/domains/check` | authenticated | mutating | tenant domain check |
+| `POST /api/tenant/domains/remove` | authenticated | mutating | tenant domain remove |
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |

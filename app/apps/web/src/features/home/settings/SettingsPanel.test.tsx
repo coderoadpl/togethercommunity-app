@@ -5,12 +5,17 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
-import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+import {
+  PASSWORD_MIN_LENGTH,
+  TENANT_OG_DESCRIPTION_MAX_LENGTH,
+  TENANT_OG_TITLE_MAX_LENGTH,
+} from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
@@ -68,6 +73,24 @@ const staffSpace = ({ id, name, publicReadOnly, archivedAt }: StubSpace) => ({
   stats: { posts: 0, followers: 0 },
 });
 
+interface StubCourse {
+  id: string;
+  name: string;
+  publiclyVisible: boolean;
+}
+
+const staffCourse = ({ id, name, publiclyVisible }: StubCourse) => ({
+  id,
+  tenantId: 'tenant-akademia',
+  name,
+  description: '',
+  imageUrl: null,
+  moduleOrder: [],
+  publiclyVisible,
+  legacyId: null,
+  createdAt: '2026-07-20T08:00:00.000Z',
+});
+
 const EMPTY_SETTINGS: StoredSettings = {
   name: 'Akademia',
   socialLinks: [],
@@ -90,25 +113,97 @@ const PANEL_TENANT = {
   memberId: null,
 };
 
-const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = []) => {
+const domainRequestSchema = z.object({ domain: z.string() });
+
+const customDomainEntry = (input: {
+  domain: string;
+  status: 'active' | 'pending-dns' | 'provider-verification' | 'error';
+}) => ({
+  domain: input.domain,
+  verified: input.status === 'active',
+  status: input.status,
+  records: [{ type: 'CNAME' as const, name: input.domain, value: 'cname.vercel-dns.com' }],
+  lastCheckedAt: null,
+  lastError: null,
+});
+
+const initialRouting = () => ({
+  tenantHost: 'akademia.together.example',
+  customDomains: [
+    customDomainEntry({ domain: 'kurs.coderoad.example', status: 'active' }),
+    customDomainEntry({ domain: 'nowa.coderoad.example', status: 'pending-dns' }),
+  ],
+  customDomainTarget: 'cname.vercel-dns.com',
+  canAddCustomDomain: true,
+});
+
+const installSettingsBackend = (
+  initial: StoredSettings,
+  spaces: StubSpace[] = [],
+  courses: StubCourse[] | 'unavailable' = [],
+) => {
   let settings = { ...initial };
   const updates: unknown[] = [];
+  const courseUpdates: unknown[] = [];
+  const courseList = courses === 'unavailable' ? [] : courses;
+  const domainCalls: string[] = [];
+  let routingState = initialRouting();
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('/api/courses', () =>
+      courses === 'unavailable'
+        ? HttpResponse.json({ ok: false, error: { code: 'internal' } }, { status: 500 })
+        : HttpResponse.json({ ok: true, data: { courses: courseList.map(staffCourse) } }),
+    ),
+    http.post('/api/courses/update', async ({ request }) => {
+      const body = await request.json();
+      courseUpdates.push(body);
+      return HttpResponse.json({
+        ok: true,
+        data: { course: staffCourse(courseList[0] ?? { id: 'c1', name: 'Kurs', publiclyVisible: true }) },
+      });
+    }),
     http.get('/api/tenant/routing', () => HttpResponse.json({
       ok: true,
-      data: {
-        routing: {
-          tenantHost: 'akademia.together.example',
-          customDomains: [
-            { domain: 'kurs.coderoad.example', verified: true },
-            { domain: 'nowa.coderoad.example', verified: false },
-          ],
-          customDomainTarget: 'cname.vercel-dns.com',
-        },
-      },
+      data: { routing: routingState },
     })),
+    http.post('/api/tenant/domains', async ({ request }) => {
+      const body = domainRequestSchema.parse(await request.json());
+      domainCalls.push(`add:${body.domain}`);
+      routingState = {
+        ...routingState,
+        customDomains: [
+          ...routingState.customDomains,
+          customDomainEntry({ domain: body.domain, status: 'pending-dns' }),
+        ],
+      };
+      return HttpResponse.json({ ok: true, data: { routing: routingState } });
+    }),
+    http.post('/api/tenant/domains/check', async ({ request }) => {
+      const body = domainRequestSchema.parse(await request.json());
+      domainCalls.push(`check:${body.domain}`);
+      routingState = {
+        ...routingState,
+        customDomains: routingState.customDomains.map((entry) =>
+          entry.domain === body.domain
+            ? { ...entry, verified: true, status: 'active' as const }
+            : entry),
+      };
+      return HttpResponse.json({ ok: true, data: { routing: routingState } });
+    }),
+    http.post('/api/tenant/domains/remove', async ({ request }) => {
+      const body = domainRequestSchema.parse(await request.json());
+      domainCalls.push(`remove:${body.domain}`);
+      routingState = {
+        ...routingState,
+        customDomains: routingState.customDomains.filter((entry) => entry.domain !== body.domain),
+      };
+      return HttpResponse.json({
+        ok: true,
+        data: { routing: routingState, redirectTo: null },
+      });
+    }),
     http.get('/api/spaces/staff', () =>
       HttpResponse.json({ ok: true, data: { spaces: spaces.map(staffSpace) } }),
     ),
@@ -126,11 +221,16 @@ const installSettingsBackend = (initial: StoredSettings, spaces: StubSpace[] = [
     }),
   );
 
-  return { updates };
+  return { updates, courseUpdates, domainCalls };
 };
 
-const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true, spaces: StubSpace[] = []) => {
-  const { updates } = installSettingsBackend(initial, spaces);
+const renderPanel = (
+  initial: StoredSettings = EMPTY_SETTINGS,
+  emailVerified = true,
+  spaces: StubSpace[] = [],
+  courses: StubCourse[] | 'unavailable' = [],
+) => {
+  const { updates, courseUpdates, domainCalls } = installSettingsBackend(initial, spaces, courses);
 
   const rootRoute = createRootRoute();
   const settingsRoute = createRoute({
@@ -158,7 +258,7 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = t
 
   const { queryClient } = renderWithProviders(<RouterProvider router={router} />);
 
-  return { queryClient, router, updates };
+  return { queryClient, router, updates, courseUpdates, domainCalls };
 };
 
 const openSettingsSection = async (label: string) => {
@@ -190,11 +290,173 @@ describe('SettingsPanel information architecture', () => {
     renderPanel();
 
     expect(await screen.findByText('akademia.together.example')).toBeInTheDocument();
-    expect(await screen.findByTestId('tenant-domain-kurs.coderoad.example'))
-      .toHaveTextContent(pl.tenantDomains.verified);
+    expect(await screen.findByTestId('tenant-domain-status-kurs.coderoad.example'))
+      .toHaveTextContent(pl.tenantDomains.statusActive);
     const pending = await screen.findByTestId('tenant-domain-nowa.coderoad.example');
-    expect(pending).toHaveTextContent(pl.tenantDomains.pending);
+    expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(pending).toHaveTextContent('cname.vercel-dns.com');
+  });
+
+  it('warns about signing in again until a custom domain is verified', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPanel();
+
+    await screen.findByTestId('tenant-domain-kurs.coderoad.example');
+    expect(screen.queryByTestId('tenant-domain-warning')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.coderoad.example'));
+
+    expect(await screen.findByTestId('tenant-domain-warning'))
+      .toHaveTextContent(pl.tenantDomains.firstDomainWarning);
+    expect(screen.getByTestId('tenant-domain-nowa.coderoad.example')).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('reports a refused domain with one message that names no other workspace', async () => {
+    renderPanel();
+
+    await screen.findByTestId('tenant-domain-input');
+    server.use(http.post('/api/tenant/domains', () => HttpResponse.json(
+      { ok: false, error: { code: 'conflict', message: 'This domain cannot be connected' } },
+      { status: 409 },
+    )));
+
+    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.coderoad.example');
+    await userEvent.click(screen.getByTestId('tenant-domain-add'));
+
+    expect(await screen.findByTestId('tenant-domain-error'))
+      .toHaveTextContent(pl.tenantDomains.conflict);
+  });
+
+  it('quotes the provider when it refuses the domain for good', async () => {
+    renderPanel();
+
+    await screen.findByTestId('tenant-domain-input');
+    server.use(http.post('/api/tenant/domains', () => HttpResponse.json(
+      {
+        ok: false,
+        error: {
+          code: 'integration_unavailable',
+          message: 'Vercel: Domain is already in use by another project',
+        },
+      },
+      { status: 502 },
+    )));
+
+    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.coderoad.example');
+    await userEvent.click(screen.getByTestId('tenant-domain-add'));
+
+    expect(await screen.findByTestId('tenant-domain-error'))
+      .toHaveTextContent('Vercel: Domain is already in use by another project');
+  });
+
+  it('shows the recorded error after a check the provider failed', async () => {
+    renderPanel();
+
+    await screen.findByTestId('tenant-domain-check-nowa.coderoad.example');
+    let checked = false;
+    server.use(
+      http.get('/api/tenant/routing', () => HttpResponse.json({
+        ok: true,
+        data: {
+          routing: {
+            tenantHost: 'akademia.together.example',
+            customDomains: [{
+              domain: 'nowa.coderoad.example',
+              verified: false,
+              status: checked ? 'error' : 'pending-dns',
+              records: [],
+              lastCheckedAt: null,
+              lastError: checked ? 'Vercel is unreachable' : null,
+            }],
+            customDomainTarget: 'cname.vercel-dns.com',
+            canAddCustomDomain: true,
+          },
+        },
+      })),
+      http.post('/api/tenant/domains/check', () => {
+        checked = true;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'integration_unavailable', message: 'Vercel is unreachable' } },
+          { status: 502 },
+        );
+      }),
+    );
+
+    await userEvent.click(screen.getByTestId('tenant-domain-check-nowa.coderoad.example'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tenant-domain-status-nowa.coderoad.example'))
+        .toHaveTextContent(pl.tenantDomains.statusError);
+    });
+    expect(screen.getByTestId('tenant-domain-nowa.coderoad.example'))
+      .toHaveTextContent('Vercel is unreachable');
+  });
+
+  it('adds a domain and lists it as waiting for DNS', async () => {
+    const { domainCalls } = renderPanel();
+
+    await userEvent.type(await screen.findByTestId('tenant-domain-input'), 'sklep.coderoad.example');
+    await userEvent.click(screen.getByTestId('tenant-domain-add'));
+
+    const added = await screen.findByTestId('tenant-domain-sklep.coderoad.example');
+    expect(added).toHaveTextContent(pl.tenantDomains.statusPendingDns);
+    expect(added).toHaveTextContent('cname.vercel-dns.com');
+    expect(domainCalls).toEqual(['add:sklep.coderoad.example']);
+  });
+
+  it('checks a pending domain and shows it as active', async () => {
+    const { domainCalls } = renderPanel();
+
+    await userEvent.click(await screen.findByTestId('tenant-domain-check-nowa.coderoad.example'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tenant-domain-status-nowa.coderoad.example'))
+        .toHaveTextContent(pl.tenantDomains.statusActive);
+    });
+    expect(domainCalls).toEqual(['check:nowa.coderoad.example']);
+  });
+
+  it('confirms a copied DNS record only when the clipboard accepts it', async () => {
+    const writeText = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderPanel();
+
+    const record = await screen.findByTestId('dns-record-CNAME-nowa.coderoad.example');
+    await userEvent.click(within(record).getByRole('button'));
+
+    expect(writeText).toHaveBeenCalledWith('cname.vercel-dns.com');
+    expect(within(record).getByRole('button')).toHaveTextContent(pl.tenantDomains.copied);
+  });
+
+  it('keeps the copy label when the clipboard refuses the record', async () => {
+    const writeText = vi.fn<(value: string) => Promise<void>>()
+      .mockRejectedValue(new Error('Clipboard denied'));
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderPanel();
+
+    const record = await screen.findByTestId('dns-record-CNAME-nowa.coderoad.example');
+    await userEvent.click(within(record).getByRole('button'));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(within(record).getByRole('button')).toHaveTextContent(pl.tenantDomains.copy);
+  });
+
+  it('removes a domain only after the owner confirms', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { domainCalls } = renderPanel();
+
+    await userEvent.click(await screen.findByTestId('tenant-domain-remove-kurs.coderoad.example'));
+    expect(domainCalls).toEqual([]);
+
+    confirm.mockReturnValue(true);
+    await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.coderoad.example'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('tenant-domain-kurs.coderoad.example')).not.toBeInTheDocument();
+    });
+    expect(domainCalls).toEqual(['remove:kurs.coderoad.example']);
+    confirm.mockRestore();
   });
 
   it('sends the retired billing deep link to the integrations stripe tab', async () => {
@@ -427,20 +689,72 @@ describe('SettingsPanel public access', () => {
     await userEvent.click(picker);
 
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      pl.publicAccess.homeSpaceNone,
+      pl.publicAccess.homeSpaceUnset,
       'Ogólna',
     ]);
   });
 
-  it('saves the picked home space and clears it again', async () => {
+  it('only saves the picked home space once the section is submitted', async () => {
     const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultHomeSpaceId: 's1' }, true, spaces);
 
     const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
     await waitFor(() => expect(picker).toHaveTextContent('Ogólna'));
     await userEvent.click(picker);
-    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceNone }));
+    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceUnset }));
 
-    await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: '' }));
+    expect(updates).toHaveLength(0);
+
+    await userEvent.click(screen.getByTestId('public-access-save'));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: null }));
+    expect(await screen.findByTestId('public-access-status')).toHaveTextContent(pl.publicAccess.saved);
+  });
+
+  it('keeps a dormant home space when the section is saved for other reasons', async () => {
+    const { updates, courseUpdates } = renderPanel(
+      { ...EMPTY_SETTINGS, defaultHomeSpaceId: 's3' },
+      true,
+      spaces,
+      [{ id: 'c1', name: 'Kamper od zera', publiclyVisible: false }],
+    );
+
+    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toHaveTextContent(pl.publicAccess.homeSpaceUnset));
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Kamper od zera' }));
+    await userEvent.click(screen.getByTestId('public-access-save'));
+
+    await waitFor(() => expect(courseUpdates).toEqual([{ id: 'c1', publiclyVisible: true }]));
+    expect(updates).toEqual([]);
+  });
+
+  it('manages course public visibility next to the home space picker', async () => {
+    const { courseUpdates } = renderPanel(EMPTY_SETTINGS, true, spaces, [
+      { id: 'c1', name: 'Kamper od zera', publiclyVisible: false },
+      { id: 'c2', name: 'Trasy', publiclyVisible: true },
+    ]);
+
+    const toggle = await screen.findByRole('switch', { name: 'Kamper od zera' });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(screen.getByRole('switch', { name: 'Trasy' })).toBeChecked();
+
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByTestId('public-access-save'));
+
+    await waitFor(() =>
+      expect(courseUpdates).toEqual([{ id: 'c1', publiclyVisible: true }]));
+  });
+
+  it('still saves the home space when the course list fails to load', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultHomeSpaceId: 's1' }, true, spaces, 'unavailable');
+
+    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await userEvent.click(picker);
+    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceUnset }));
+    await userEvent.click(screen.getByTestId('public-access-save'));
+
+    await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: null }));
   });
 });
 
@@ -513,6 +827,15 @@ describe('SettingsPanel direct KSeF', () => {
     );
     expect(screen.queryByTestId('secret-input-ksef.token')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ksef-test-connection')).not.toBeInTheDocument();
+  });
+
+  it('leaves the invoice provider unset until the owner picks one', async () => {
+    renderPanel(EMPTY_SETTINGS);
+
+    const picker = await screen.findByRole('combobox', { name: pl.billing.invoicingProvider });
+    expect(picker).toHaveTextContent(pl.billing.providerUnset);
+    expect(picker).not.toHaveTextContent(pl.billing.providerIfirma);
+    expect(screen.queryByText(pl.billing.ksefConfiguredInIntegrations)).not.toBeInTheDocument();
   });
 });
 
@@ -603,6 +926,24 @@ describe('SettingsPanel branding', () => {
       ogDescription: 'Praktyczna nauka',
       ogImageUrl: 'https://cdn.example.com/social.png',
     });
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('counts share preview characters and warns once the limit is reached', async () => {
+    renderPanel({
+      ...EMPTY_SETTINGS,
+      ogTitle: 'x'.repeat(TENANT_OG_TITLE_MAX_LENGTH),
+      ogDescription: 'opis',
+    });
+    await openSettingsSection(pl.settingsNavigation.brand);
+
+    expect(await screen.findByTestId('branding-og-description-count')).toHaveTextContent(
+      pl.branding.charCount({ used: 4, limit: TENANT_OG_DESCRIPTION_MAX_LENGTH }),
+    );
+    const titleCount = screen.getByTestId('branding-og-title-count');
+    expect(titleCount).toHaveTextContent(
+      pl.branding.charCount({ used: TENANT_OG_TITLE_MAX_LENGTH, limit: TENANT_OG_TITLE_MAX_LENGTH }),
+    );
+    expect(titleCount).toHaveTextContent(pl.branding.charLimitReached);
   }, BRANDING_TEST_TIMEOUT);
 
   it('renames the tenant and round-trips social profiles without a slug field', async () => {

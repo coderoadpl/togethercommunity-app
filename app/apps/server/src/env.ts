@@ -12,6 +12,8 @@ const optionalHeaderName = z.preprocess(
   z.string().regex(/^[a-z0-9-]+$/).optional(),
 );
 
+export const DEV_EMAIL_DISPATCH_SECRET = 'dev-email-dispatch-secret';
+
 const optionalCount = z.preprocess(
   (value) => value === '' ? undefined : value,
   z.coerce.number().int().min(0).optional(),
@@ -61,6 +63,16 @@ export const envSchema = z
     /** DNS target creators point a custom domain at; defaults to the platform host. */
     APP_CUSTOM_DOMAIN_TARGET: optionalNonEmptyString,
     APP_COMMIT_SHA: optionalNonEmptyString,
+    /**
+     * Token and project together hand custom-domain provisioning to the provider; unset keeps
+     * manual mode. Never name these `VERCEL_*`: the platform injects its own variables under that
+     * prefix, so a system-provided project id would read as half-configured provisioning.
+     */
+    DOMAIN_PROVISIONER_TOKEN: optionalNonEmptyString,
+    DOMAIN_PROVISIONER_PROJECT_ID: optionalNonEmptyString,
+    DOMAIN_PROVISIONER_TEAM_ID: optionalNonEmptyString,
+    /** Routes tenant domains at a preview branch instead of production (staging: "staging"). */
+    DOMAIN_PROVISIONER_GIT_BRANCH: optionalNonEmptyString,
     VERCEL_URL: optionalNonEmptyString,
     VERCEL_BRANCH_URL: optionalNonEmptyString,
     AUTH_TRUSTED_PROXY_HEADER: optionalHeaderName,
@@ -104,7 +116,7 @@ export const envSchema = z
       .transform((value) => value === 'true'),
     SMTP_USER: optionalNonEmptyString,
     SMTP_PASSWORD: optionalNonEmptyString,
-    EMAIL_DISPATCH_SECRET: z.string().min(16).default('dev-email-dispatch-secret'),
+    EMAIL_DISPATCH_SECRET: z.string().min(16).default(DEV_EMAIL_DISPATCH_SECRET),
     MARKETING_TICK_SECRET: z.string().min(16).default('dev-marketing-tick-secret'),
     CRON_SECRET: z.string().min(16).optional(),
     SNS_TEST_CERT_PEM_BASE64: optionalNonEmptyString,
@@ -123,6 +135,7 @@ export const envSchema = z
     PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES: optionalCount,
     PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE: optionalCount,
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: z.coerce.number().int().positive().default(60),
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY: z.coerce.number().int().positive().default(5000),
     NOTIFY_EMAIL: z
@@ -134,6 +147,20 @@ export const envSchema = z
     WEB_DIST_DIR: z.string().default('dist/web'),
   })
   .superRefine((env, ctx) => {
+    if (
+      (env.DOMAIN_PROVISIONER_TOKEN === undefined)
+      !== (env.DOMAIN_PROVISIONER_PROJECT_ID === undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [
+          env.DOMAIN_PROVISIONER_TOKEN === undefined
+            ? 'DOMAIN_PROVISIONER_TOKEN'
+            : 'DOMAIN_PROVISIONER_PROJECT_ID',
+        ],
+        message: 'DOMAIN_PROVISIONER_TOKEN and DOMAIN_PROVISIONER_PROJECT_ID must be set together',
+      });
+    }
     if ((env.SMTP_USER === undefined) !== (env.SMTP_PASSWORD === undefined)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -236,7 +263,7 @@ export const envSchema = z
         message: 'EMAIL_FROM must be set when EMAIL_PROVIDER=ses',
       });
     }
-    if (env.EMAIL_DISPATCH_SECRET === 'dev-email-dispatch-secret') {
+    if (env.EMAIL_DISPATCH_SECRET === DEV_EMAIL_DISPATCH_SECRET) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['EMAIL_DISPATCH_SECRET'],

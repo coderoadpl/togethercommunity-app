@@ -89,6 +89,7 @@ const apiIdentity = (tenant: Tenant): Identity => ({
   staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const tokenCtx = (tenant: Tenant): Ctx => ({

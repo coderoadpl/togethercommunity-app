@@ -114,6 +114,7 @@ import {
   tenantCreateInputSchema,
   tenantSecretDeleteInputSchema,
   tenantSecretSetInputSchema,
+  tenantDomainInputSchema,
   tenantSettingsUpdateInputSchema,
   impersonationStartRequestSchema,
   tenantAuditEventsQuerySchema,
@@ -242,7 +243,10 @@ import {
   getSchedulerRunForTenant,
   getSpaceFeed,
   getTenantDocument,
+  addTenantDomain,
+  checkTenantDomain,
   getTenantRouting,
+  removeTenantDomain,
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
@@ -543,6 +547,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): Identity => ({
@@ -560,6 +565,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const recordCheckoutConsents = async (
@@ -649,6 +655,20 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(unauthorized('Invalid automatic invoice dispatch secret')));
     }
     return respond(await deps.dispatchAutoInvoices());
+  });
+
+  app.post(API_PATHS.tenantDomainDispatch, async (c) => {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.domainCheckSecret)) {
+      return respond(err(unauthorized('Invalid domain check secret')));
+    }
+    return respond(await deps.checkTenantDomains());
+  });
+
+  app.get(API_PATHS.tenantDomainDispatch, async (c) => {
+    if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.domainCheckSecret}`)) {
+      return respond(err(unauthorized('Invalid domain check secret')));
+    }
+    return respond(await deps.checkTenantDomains());
   });
 
   const purgeRateLimitWindows = async (): Promise<void> => {
@@ -1472,6 +1492,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
               banned: identity.memberBannedAt !== null,
               dmOptOut: identity.memberDmOptOutAt !== null,
               language: identity.memberLanguage,
+              videoAutoplay: identity.memberVideoAutoplay,
             }
             : null,
         impersonation: impersonationOf(c.get('impersonation')),
@@ -1971,17 +1992,60 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(result.ok ? ok({ settings: result.value }) : result);
   });
 
+  const tenantRoutingDeps = {
+    tenantDomains: deps.tenantDomains,
+    routing: {
+      appBaseUrl: deps.appBaseUrl,
+      baseDomain: deps.baseDomain,
+      singleTenantMode: deps.singleTenantMode,
+    },
+    customDomainTarget: deps.customDomainTarget,
+  };
+  const tenantDomainDeps = {
+    ...tenantRoutingDeps,
+    domainEvents: deps.tenantDomainEvents,
+    provisioner: deps.domainProvisioner,
+    rateLimit: deps.rateLimitBuckets,
+    notifications: deps.notifications,
+    tenantAccess: deps.tenantAccess,
+    realtimeBus: deps.realtimeBus,
+    ids: deps.ids,
+    clock: deps.clock,
+  };
+
   app.get(API_PATHS.tenantRouting, async (c) => {
-    const result = await getTenantRouting({ identity: c.get('identity') }, {
-      tenantDomains: deps.tenantDomains,
-      routing: {
-        appBaseUrl: deps.appBaseUrl,
-        baseDomain: deps.baseDomain,
-        singleTenantMode: deps.singleTenantMode,
-      },
-      customDomainTarget: deps.customDomainTarget,
-    });
+    const result = await getTenantRouting({ identity: c.get('identity') }, tenantRoutingDeps);
     return respond(result.ok ? ok({ routing: result.value }) : result);
+  });
+
+  const parseTenantDomainInput = async (c: Context<AppVars>) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return tenantDomainInputSchema.safeParse(body);
+  };
+
+  app.post(API_PATHS.tenantDomainAdd, async (c) => {
+    const parsed = await parseTenantDomainInput(c);
+    if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
+    const result = await addTenantDomain(ctxOf(c), parsed.data, tenantDomainDeps);
+    return respond(result.ok ? ok({ routing: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantDomainCheck, async (c) => {
+    const parsed = await parseTenantDomainInput(c);
+    if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
+    const result = await checkTenantDomain(ctxOf(c), parsed.data, tenantDomainDeps);
+    return respond(result.ok ? ok({ routing: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantDomainRemove, async (c) => {
+    const parsed = await parseTenantDomainInput(c);
+    if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
+    const result = await removeTenantDomain(
+      ctxOf(c),
+      { ...parsed.data, requestHost: new URL(c.req.url).hostname },
+      tenantDomainDeps,
+    );
+    return respond(result.ok ? ok(result.value) : result);
   });
 
   app.post(API_PATHS.tenantSettingsUpdate, async (c) => {

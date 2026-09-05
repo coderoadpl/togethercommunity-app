@@ -319,6 +319,7 @@ export interface Messages {
     panelTitle: string;
     expand: (params: { title: string }) => string;
     collapse: (params: { title: string }) => string;
+    close: (params: { title: string }) => string;
   };
   tenantSetup: {
     title: string;
@@ -498,6 +499,8 @@ export interface Messages {
     dmMessage: (params: { author: string }) => string;
     dmReport: (params: { reporter: string }) => string;
     spaceEvent: (params: { space: string }) => string;
+    tenantDomainVerified: (params: { domain: string }) => string;
+    tenantDomainError: (params: { domain: string }) => string;
   };
   messages: {
     navLabel: string;
@@ -1216,6 +1219,8 @@ export interface Messages {
     revoking: string;
     sourceManual: string;
     sourceSimulated: string;
+    sourceStripe: string;
+    sourceImport: string;
     revokeAccess: string;
     revokeConfirm: (params: { product: string; email: string }) => string;
     learningHeading: string;
@@ -1293,8 +1298,10 @@ export interface Messages {
     homeTitle: string;
     coursesSection: string;
     spacesSection: string;
-    joinDiscussionCta: string;
+    guestHeading: string;
+    joinOfferCta: string;
     readOnlyBanner: string;
+    emptyFeed: string;
     lockedCourseHint: string;
     unlockCta: string;
     emptyTitle: string;
@@ -1348,6 +1355,7 @@ export interface Messages {
   };
   courseTree: {
     lockedTooltip: string;
+    lockedLessonTooltip: (params: { name: string }) => string;
     courseSyllabus: string;
     noPublishedContent: string;
     emptyCourseTitle: string;
@@ -1400,6 +1408,7 @@ export interface Messages {
     unmarkCompletedHint: string;
     completeContinue: string;
     previousLesson: string;
+    nextLesson: string;
     firstLesson: string;
     nextLocked: string;
     courseCompleted: string;
@@ -1429,9 +1438,11 @@ export interface Messages {
     retry: string;
     retrying: string;
     empty: string;
+    emptyReadOnly: string;
     lockedNote: string;
     composerLabel: string;
     composerPlaceholder: string;
+    composerPrompt: string;
     post: string;
     posting: string;
     reply: string;
@@ -1483,10 +1494,12 @@ export interface Messages {
     unfollow: string;
     composerLabel: string;
     composerPlaceholder: string;
+    composerPrompt: string;
     post: string;
     posting: string;
     loadingFeed: string;
     emptyFeed: string;
+    emptyFeedReadOnly: string;
     openThread: string;
     reactAria: (params: { emoji: string }) => string;
     addReaction: string;
@@ -1556,6 +1569,7 @@ export interface Messages {
     statusArchived: string;
     membersOnlyChip: string;
     productGatedChip: string;
+    publicChip: string;
     postsNoun: (params: { count: number }) => string;
     followersNoun: (params: { count: number }) => string;
     archive: string;
@@ -1594,6 +1608,11 @@ export interface Messages {
     preferencesHeading: string;
     preferencesIntro: string;
     emailLanguage: { pl: string; en: string; unset: string; reset: string; panelOnly: string };
+    playbackHeading: string;
+    playbackIntro: string;
+    videoAutoplayLabel: string;
+    videoAutoplayHint: string;
+    videoAutoplaySaved: string;
     dataExportHeading: string;
     dataExportIntro: string;
     dataExportButton: string;
@@ -1687,6 +1706,7 @@ export interface Messages {
     b2bOnly: string;
     allBuyers: string;
     vatRateUnset: string;
+    vatRateHint: string;
     vatTreatment: string;
     vatTreatmentRate: string;
     vatTreatmentExempt: string;
@@ -1702,6 +1722,7 @@ export interface Messages {
     exemptionBasisArt43Help: string;
     exemptNote: string;
     invoicingProvider: string;
+    providerUnset: string;
     providerIfirma: string;
     providerKsef: string;
     sellerName: string;
@@ -1712,8 +1733,15 @@ export interface Messages {
     heading: string;
     intro: string;
     homeSpaceLabel: string;
-    homeSpaceNone: string;
+    homeSpaceUnset: string;
     homeSpaceHint: string;
+    coursesHeading: string;
+    coursesHint: string;
+    coursesEmpty: string;
+    coursesLoading: string;
+    save: string;
+    saving: string;
+    saved: string;
   };
   directMessages: {
     heading: string;
@@ -1762,6 +1790,8 @@ export interface Messages {
     ogTitleHint: string;
     ogDescriptionLabel: string;
     ogDescriptionHint: string;
+    charCount: (input: { used: number; limit: number }) => string;
+    charLimitReached: string;
     ogImageLabel: string;
     ogImageHint: (input: { width: number; height: number }) => string;
     save: string;
@@ -1774,9 +1804,31 @@ export interface Messages {
     workspaceAddress: string;
     customDomains: string;
     none: string;
-    verified: string;
-    pending: string;
-    dnsInstruction: (params: { domain: string; target: string }) => string;
+    addLabel: string;
+    addPlaceholder: string;
+    add: string;
+    adding: string;
+    limitReached: (params: { max: number }) => string;
+    statusActive: string;
+    statusPendingDns: string;
+    statusProviderVerification: string;
+    statusError: string;
+    recordsHeading: string;
+    recordType: string;
+    recordName: string;
+    recordValue: string;
+    copy: string;
+    copied: string;
+    check: string;
+    checking: string;
+    remove: string;
+    removeConfirm: (params: { domain: string }) => string;
+    removing: string;
+    removedRedirect: string;
+    lastChecked: (params: { at: string }) => string;
+    conflict: string;
+    firstDomainWarning: string;
+    docsLink: string;
   };
   buildInfo: {
     heading: string;

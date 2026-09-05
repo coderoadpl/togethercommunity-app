@@ -118,6 +118,28 @@ describe('spaces panel', () => {
     expect(await screen.findByText('Klub')).toBeInTheDocument();
   });
 
+  it('badges publicly readable spaces so the public layer is visible at a glance', async () => {
+    server.use(
+      noProducts(),
+      http.get('/api/spaces/staff', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            spaces: [
+              staffSpace({ id: 's1', name: 'Ogólna', publicReadOnly: true }),
+              staffSpace({ id: 's2', name: 'Zamknięta' }),
+            ],
+          },
+        }),
+      ),
+    );
+
+    await renderPanel();
+
+    expect(await screen.findByTestId('space-public-s1')).toHaveTextContent(pl.spacesPanel.publicChip);
+    expect(screen.queryByTestId('space-public-s2')).not.toBeInTheDocument();
+  });
+
   it('archives a space through the confirm dialog', async () => {
     let spaces = [staffSpace({ id: 's1', name: 'Ogólna' })];
     const archived: unknown[] = [];

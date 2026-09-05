@@ -24,6 +24,7 @@ const identity = (tenantId: string | null = 'tenant-a'): Identity => ({
   memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
+  memberVideoAutoplay: false,
 });
 
 const seedRun = async (

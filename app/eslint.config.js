@@ -210,7 +210,7 @@ export default tseslint.config(
         { type: 'adapter-db', pattern: 'adapters/db/**', mode: 'full' },
         { type: 'adapter-auth', pattern: 'adapters/auth/**', mode: 'full' },
         { type: 'adapter-crypto', pattern: 'adapters/crypto/**', mode: 'full' },
-        { type: 'adapter-domains', pattern: 'adapters/domain-provisioning/**', mode: 'full' },
+        { type: 'adapter-domains', pattern: 'adapters/domains/**', mode: 'full' },
         { type: 'adapter-email', pattern: 'adapters/email/**', mode: 'full' },
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
@@ -428,6 +428,7 @@ export default tseslint.config(
                 'web-branding',
                 'web-api',
                 'web-layout',
+                'web-ui',
                 'web-lib',
                 'web-theme',
                 'web-i18n',
@@ -503,6 +504,10 @@ export default tseslint.config(
             {
               from: ['adapter-payment'],
               allow: ['node:crypto', 'stripe'],
+            },
+            {
+              from: ['adapter-domains'],
+              allow: ['zod'],
             },
             {
               from: ['adapter-video'],
@@ -760,6 +765,19 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [{ from: ['adapter-payment'], allow: ['node:crypto', 'stripe', 'vitest'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/domains/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['adapter-domains'], allow: ['vitest', 'zod'] }],
         },
       ],
     },

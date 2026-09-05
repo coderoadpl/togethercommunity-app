@@ -56,6 +56,7 @@ const context = (kind: 'member' | 'staff'): Ctx => ({
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   },
 });
 
@@ -95,6 +96,7 @@ const harness = (selectedMember: Member | null = member) => {
     create: async () => undefined,
     updateEmail: async () => null,
     updateLanguage: async () => null,
+    updateVideoAutoplay: async () => null,
     updateDisplayName: async () => null,
     updateDmOptOut: async () => null,
     setBanned: async () => null,
@@ -164,8 +166,8 @@ describe('member erasure requests', () => {
       tenantAccess: {
         listTenantsForStaff: async () => [],
         listStaffForTenant: async () => [
-          { userId: 'staff-1', email: 'first@example.com', language: null },
-          { userId: 'staff-2', email: 'second@example.com', language: 'en' },
+          { userId: 'staff-1', email: 'first@example.com', staffRole: 'owner', language: null },
+          { userId: 'staff-2', email: 'second@example.com', staffRole: 'admin', language: 'en' },
         ],
         findStaffGrant: async () => null,
         findMember: async () => null,
@@ -235,7 +237,7 @@ describe('member erasure requests', () => {
       tenantAccess: {
         listTenantsForStaff: async () => [],
         listStaffForTenant: async () => [
-          { userId: 'staff-1', email: 'staff@example.com', language: null },
+          { userId: 'staff-1', email: 'staff@example.com', staffRole: 'owner', language: null },
         ],
         findStaffGrant: async () => null,
         findMember: async () => null,

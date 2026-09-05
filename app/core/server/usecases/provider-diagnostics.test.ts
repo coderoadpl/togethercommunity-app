@@ -27,6 +27,7 @@ const ctx = (
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage,
+    memberVideoAutoplay: false,
   } satisfies Identity,
 });
 

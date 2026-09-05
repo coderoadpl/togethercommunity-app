@@ -34,6 +34,10 @@
       "destination": "/api/index"
     },
     {
+      "source": "/courses/(.*)",
+      "destination": "/api/index"
+    },
+    {
       "source": "/(.*)",
       "has": [
         {
@@ -85,6 +89,10 @@
     {
       "path": "/api/internal/dispatch-ksef",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/internal/domain-check",
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/internal/dispatch-email",

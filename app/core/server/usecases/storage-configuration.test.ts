@@ -44,6 +44,7 @@ const ctx = (role: 'owner' | 'admin'): Ctx => ({
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
+    memberVideoAutoplay: false,
   } satisfies Identity,
 });
 

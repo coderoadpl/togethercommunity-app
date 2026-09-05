@@ -2,16 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import type { Tenant, TenantDomain } from '#core/domain/index.js';
 import type { TenantDomainRepository, TenantRepository } from '#core/server/index.js';
+import { tenantDomainFixture, tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 
 import { buildCaddyDomainCheckApp } from './caddy-domain-check.js';
 
-const verified: TenantDomain = {
+const verified: TenantDomain = tenantDomainFixture({
   id: 'domain-1',
   tenantId: 'tenant-1',
   domain: 'courses.example.com',
   kind: 'custom',
   verified: true,
-};
+});
 
 const unverified: TenantDomain = {
   ...verified,
@@ -20,12 +21,12 @@ const unverified: TenantDomain = {
   verified: false,
 };
 
-const repository: TenantDomainRepository = {
+const repository: TenantDomainRepository = tenantDomainRepositoryStub({
   findByDomain: async (domain) =>
     [verified, unverified].find((candidate) => candidate.domain === domain) ?? null,
   listVerifiedDomains: async () => [verified],
   listByTenant: async () => [verified, unverified],
-};
+});
 
 const tenant: Tenant = {
   id: 'tenant-1',

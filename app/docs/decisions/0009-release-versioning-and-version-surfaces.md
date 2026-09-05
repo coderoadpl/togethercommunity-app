@@ -2,6 +2,10 @@
 
 Status: accepted, 2026-07-29. Builds on
 [ADR-0003](0003-vercel-environments.md), which defines production promotion.
+Decision 3 and the deferred release hygiene below are superseded by
+[ADR-0017](0017-version-derived-from-git-history.md), which derives the version
+from the commit graph at build time; the single version source, the surfaces
+and the `1.0.0` boundary decided here still stand.
 
 ## Context
 

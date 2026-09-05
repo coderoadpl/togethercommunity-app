@@ -24,7 +24,7 @@ import type {
 } from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
-import { stylesAt } from '../../test/css.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LessonPlayerPage } from './LessonPlayerPage.js';
@@ -188,7 +188,7 @@ describe('LessonPlayerPage', () => {
     const video = await screen.findByTestId('lesson-video');
     expect(video).toHaveAttribute(
       'src',
-      'https://iframe.mediadelivery.net/embed/424242/vid-1',
+      'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=false&preload=false',
     );
     expect(video).toHaveAttribute('allowfullscreen');
 
@@ -279,6 +279,7 @@ describe('LessonPlayerPage', () => {
     const frame = (await screen.findByTestId('lesson-sandbox')).parentElement?.parentElement;
     expect(stylesAt(frame, phone)).toMatchObject({
       height: '70vh',
+      'max-height': 'max(60vh, 100vh - 14rem)',
       width: 'auto',
       'margin-left': '-0.75rem',
       'margin-right': '-0.75rem',
@@ -286,7 +287,8 @@ describe('LessonPlayerPage', () => {
     expect(stylesAt(frame, phone)).not.toHaveProperty('min-height');
     expect(stylesAt(frame, tablet)).toMatchObject({
       height: '70vh',
-      'min-height': '600px',
+      'max-height': 'max(60vh, 100vh - 14rem)',
+      'min-height': 'min(600px, max(60vh, 100vh - 14rem))',
       'margin-left': '0px',
       'margin-right': '0px',
     });
@@ -518,7 +520,47 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByTestId('lesson-video')).toHaveAttribute('src', embedUrl);
+    expect(await screen.findByTestId('lesson-video')).toHaveAttribute(
+      'src',
+      `${embedUrl}&autoplay=false&preload=false`,
+    );
+  });
+
+  it('starts the Bunny embed only for a member who turned autoplay on', async () => {
+    const videoBlock = allBlocks[0];
+    if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u1',
+            email: 'user@example.com',
+            emailVerified: true,
+            name: 'Jan Uczestnik',
+            tenant: {
+              id: 't1',
+              slug: 'acme',
+              name: 'Acme',
+              staffRole: null,
+              memberId: 'mem-1',
+              banned: false,
+              videoAutoplay: true,
+            },
+          },
+        }),
+      ),
+      okStructure(),
+      okProgress(),
+      okLesson([{ ...videoBlock, embedUrl: 'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=false&preload=false' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('lesson-video')).toHaveAttribute(
+        'src',
+        'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=true&preload=true',
+      ));
   });
 
   it('strips a script tag from html content', async () => {
@@ -627,6 +669,45 @@ describe('LessonPlayerPage', () => {
     expect(primary.className).toContain('MuiButton-contained');
     expect(screen.getByTestId('mark-complete').className).toContain('MuiButton-text');
     expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
+  });
+
+  it('offers a neutral next-lesson link that leaves the lesson unfinished', async () => {
+    let completions = 0;
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          entry('l2', 'Advanced Variables'),
+          entry('l3', 'Scopes'),
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+      http.post('/api/student/lessons/complete', () => {
+        completions += 1;
+        return HttpResponse.json({ ok: true, data: { progress: progress(['l2']) } });
+      }),
+    );
+    const user = userEvent.setup();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    const neutral = await screen.findByTestId('skip-to-next-lesson');
+    expect(neutral).toHaveTextContent(pl.lesson.nextLesson);
+    expect(neutral).toHaveAttribute('href', '/my/courses/course-1/lessons/l3');
+    const muiClasses = (element: HTMLElement) =>
+      [...element.classList].filter((name) => name.startsWith('MuiButton'));
+    expect(muiClasses(neutral)).toEqual(muiClasses(screen.getByTestId('prev-lesson')));
+
+    await user.click(neutral);
+    expect(completions).toBe(0);
+  });
+
+  it('drops the neutral next-lesson link once the primary next-lesson action appears', async () => {
+    server.use(okStructure(), okProgress(['l1']), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('next-lesson');
+    expect(screen.queryByTestId('skip-to-next-lesson')).not.toBeInTheDocument();
   });
 
   it('promotes the next lesson and demotes the undo once the lesson is completed', async () => {
@@ -837,6 +918,39 @@ describe('LessonPlayerPage', () => {
 
     expect(await screen.findByTestId('lesson-html')).toBeInTheDocument();
     expect(screen.queryByTestId('curriculum-card')).not.toBeInTheDocument();
+  });
+
+  it('caps the video and the document to the viewport height and widens the reading column', async () => {
+    const desktop = 1440;
+    const belowContainerLg = 1100;
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const videoFrame = (await screen.findByTestId('lesson-video')).parentElement?.parentElement;
+    expect(stylesAt(videoFrame, desktop)).toMatchObject({
+      'aspect-ratio': '16/9',
+      'max-width': 'max((60vh) * 16 / 9, (100vh - 14rem) * 16 / 9)',
+      'margin-left': 'auto',
+      'margin-right': 'auto',
+    });
+
+    const documentFrame = screen.getByTestId('lesson-pdf').parentElement?.parentElement;
+    expect(stylesAt(documentFrame, desktop)).toMatchObject({
+      'aspect-ratio': '10/7',
+      'max-width': 'max((60vh) * 10 / 7, (100vh - 14rem) * 10 / 7)',
+      'min-height': 'min(24rem, max(60vh, 100vh - 14rem))',
+    });
+
+    expect(stylesAt(screen.getByTestId('lesson-embed').parentElement?.parentElement, desktop))
+      .toMatchObject({ 'max-width': 'max((60vh) * 16 / 9, (100vh - 14rem) * 16 / 9)' });
+
+    const column = screen.getByTestId('lesson-block-0').closest('.MuiContainer-root');
+    expect(stylesAt(column, belowContainerLg)).toMatchObject({ 'max-width': '72rem' });
+
+    expect(stylesAt(screen.getByTestId('lesson-html'), desktop)).toMatchObject({
+      'max-width': '44rem',
+      'margin-inline': 'auto',
+    });
   });
 
   it('leaves the program to the shell sidebar from md up', async () => {

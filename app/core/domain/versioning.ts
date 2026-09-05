@@ -4,7 +4,7 @@ import { courseLessonSchema, courseModuleSchema, courseSchema } from './course.j
 import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
 import { productSchema, productSlugFromTitle } from './product.js';
-import { courseSnapshotV4Schema } from './snapshots/course/v4.js';
+import { courseSnapshotV4Schema, type CourseSnapshotV4 } from './snapshots/course/v4.js';
 import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
 import { upcastLegacyVideoEmbedUrlV4 } from './snapshots/course_lesson/v4.js';
 import { courseLessonSnapshotV5Schema } from './snapshots/course_lesson/v5.js';
@@ -12,9 +12,13 @@ import {
   courseLessonSnapshotV6Schema,
   upcastLegacyDocumentUrlV6,
   upcastLegacyLinkUrlV6,
+  type CourseLessonSnapshotV6,
 } from './snapshots/course_lesson/v6.js';
-import { courseModuleSnapshotV1Schema } from './snapshots/course_module/v1.js';
-import { productSnapshotV4Schema } from './snapshots/product/v4.js';
+import {
+  courseModuleSnapshotV1Schema,
+  type CourseModuleSnapshotV1,
+} from './snapshots/course_module/v1.js';
+import { productSnapshotV4Schema, type ProductSnapshotV4 } from './snapshots/product/v4.js';
 
 /**
  * Content versioning: every mutable content entity is snapshotted under a
@@ -35,6 +39,14 @@ const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
   course_module: courseModuleSnapshotV1Schema,
   course_lesson: courseLessonSnapshotV6Schema,
   product: productSnapshotV4Schema,
+};
+
+/** Typed readers for the current frozen schema; a bump repoints these too. */
+export const currentSnapshotParsers = {
+  course: (payload: unknown): CourseSnapshotV4 => courseSnapshotV4Schema.parse(payload),
+  course_module: (payload: unknown): CourseModuleSnapshotV1 => courseModuleSnapshotV1Schema.parse(payload),
+  course_lesson: (payload: unknown): CourseLessonSnapshotV6 => courseLessonSnapshotV6Schema.parse(payload),
+  product: (payload: unknown): ProductSnapshotV4 => productSnapshotV4Schema.parse(payload),
 };
 
 /** Live entity schemas the write-through path snapshots and the guard tracks. */
@@ -281,6 +293,8 @@ export const entityHistoryEntrySchema = z.object({
   id: z.string(),
   entityKind: entityKindSchema,
   entityId: z.string(),
+  /** 1-based position among the entity's own versions, oldest first. */
+  ordinal: z.number().int().positive(),
   schemaVersion: z.number().int().positive(),
   createdAt: z.string().datetime(),
   createdBy: z.string().nullable(),
@@ -297,11 +311,28 @@ export const courseHistoryEntrySchema = entityHistoryEntrySchema.extend({
 export type CourseHistoryEntry = z.infer<typeof courseHistoryEntrySchema>;
 
 export const entityVersionDetailSchema = entityHistoryEntrySchema.extend({
+  createdByDisplayName: z.string().min(1).nullable(),
   currentSchemaVersion: z.number().int().positive(),
   payload: z.unknown(),
 });
 
 export type EntityVersionDetail = z.infer<typeof entityVersionDetailSchema>;
+
+export const restoreContentVersionInputSchema = z.object({
+  versionId: z.string().min(1),
+});
+
+export const contentVersionRestoreSchema = z.object({
+  entityKind: entityKindSchema,
+  entityId: z.string(),
+  restoredFromVersionId: z.string(),
+  restoredFromOrdinal: z.number().int().positive(),
+});
+
+export type ContentVersionRestore = z.infer<typeof contentVersionRestoreSchema>;
+
+/** The `created_by` value the m2m import stamps when a key carries no label. */
+export const IMPORT_VERSION_AUTHOR_FALLBACK = 'import';
 
 export const shapeGuardInstructions = (kind: EntityKind): string =>
   [

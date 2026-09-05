@@ -66,6 +66,7 @@ import {
   dispatchAutoInvoiceJobs,
   type AutoInvoiceJob,
   type PaymentWebhookEvent,
+  type StoredEntityVersion,
 } from '#core/server/index.js';
 import { authenticateMarketingApiKey } from './marketing-routes.js';
 import {
@@ -322,6 +323,7 @@ const deps = (input: {
     },
     auditEvents: {
       list: async () => ({ events: [], nextCursor: null }),
+      record: async () => undefined,
     },
     impersonationTokens: {
       issue: (sessionId) => ({ token: `token:${sessionId}`, tokenHash: `hash:${sessionId}` }),
@@ -6508,6 +6510,7 @@ describe('impersonation HTTP surface', () => {
           events: [...audit].reverse().map((event) => ({ ...event, subjectLabel: 'User' })),
           nextCursor: null,
         }),
+        record: async () => undefined,
       },
     };
     return { app: scopedApp('owner', { overrides }), audit };
@@ -6722,6 +6725,136 @@ describe('impersonation HTTP surface', () => {
       headers,
       body: JSON.stringify({ memberId: 'member-1', reason: null }),
     });
+    expect(response.status).toBe(403);
+  });
+});
+
+describe('content history HTTP surface', () => {
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+
+  const historyCourse: Course = {
+    id: 'course-1',
+    tenantId: acme.id,
+    name: 'Current name',
+    description: 'Current copy',
+    imageUrl: null,
+    moduleOrder: [],
+    publiclyVisible: false,
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
+
+  const storedVersion: StoredEntityVersion = {
+    id: 'version-1',
+    entityKind: 'course',
+    entityId: historyCourse.id,
+    ordinal: 2,
+    schemaVersion: 4,
+    payload: { ...historyCourse, name: 'Older name' },
+    createdAt: '1998-07-13T00:00:00.000Z',
+    createdBy: 'user-1',
+  };
+
+  const historyApp = () => {
+    const saved: Course[] = [];
+    const recorded: TenantAuditEventInput[] = [];
+    const base = deps();
+    const app = scopedApp('owner', {
+      overrides: {
+        courses: {
+          ...base.courses,
+          findById: async (_tenantId, id) => (id === historyCourse.id ? historyCourse : null),
+          update: async (_tenantId, course) => {
+            saved.push(course);
+            return course;
+          },
+        },
+        entityVersions: {
+          list: async () => [
+            {
+              id: storedVersion.id,
+              entityKind: storedVersion.entityKind,
+              entityId: storedVersion.entityId,
+              ordinal: storedVersion.ordinal,
+              schemaVersion: storedVersion.schemaVersion,
+              createdAt: storedVersion.createdAt,
+              createdBy: storedVersion.createdBy,
+            },
+          ],
+          findById: async (_tenantId, id) => (id === storedVersion.id ? storedVersion : null),
+        },
+        auditEvents: {
+          list: async () => ({ events: [], nextCursor: null }),
+          record: async (_tenantId, event) => {
+            recorded.push(event);
+          },
+        },
+      },
+    });
+    return { app, saved, recorded };
+  };
+
+  it('lists versions with their ordinal', async () => {
+    const response = await historyApp().app.request(
+      `${API_PATHS.coursesHistory}?courseId=${historyCourse.id}`,
+      { headers },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { versions: [{ id: 'version-1', ordinal: 2, subjectKind: 'course' }] },
+    });
+  });
+
+  it('returns the snapshot preview and the fields that differ from the current state', async () => {
+    const response = await historyApp().app.request(
+      `${API_PATHS.coursesHistoryVersion}?id=${storedVersion.id}`,
+      { headers },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: {
+        version: { ordinal: 2, currentSchemaVersion: 4 },
+        preview: {
+          fields: expect.arrayContaining([
+            { name: 'title', value: { kind: 'text', value: 'Older name' } },
+          ]),
+        },
+        current: {
+          fields: expect.arrayContaining([
+            { name: 'title', value: { kind: 'text', value: 'Current name' } },
+          ]),
+        },
+        changedFields: ['title'],
+      },
+    });
+  });
+
+  it('restores a version as a new save and records the audit event', async () => {
+    const { app, saved, recorded } = historyApp();
+
+    const response = await app.request(API_PATHS.coursesHistoryRestore, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ versionId: storedVersion.id }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { restored: { entityKind: 'course', entityId: 'course-1', restoredFromOrdinal: 2 } },
+    });
+    expect(saved).toMatchObject([{ id: 'course-1', name: 'Older name' }]);
+    expect(recorded).toMatchObject([{ kind: 'content_version_restored' }]);
+  });
+
+  it('rejects a restore from a member session', async () => {
+    const response = await scopedApp('member').request(API_PATHS.coursesHistoryRestore, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ versionId: storedVersion.id }),
+    });
+
     expect(response.status).toBe(403);
   });
 });

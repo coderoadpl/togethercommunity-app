@@ -226,6 +226,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/courses` | authenticated | mutating | courses create |
 | `POST /api/courses/update` | authenticated | mutating | courses update |
 | `GET /api/courses/history/version` | authenticated | read | courses history version |
+| `POST /api/courses/history/restore` | authenticated | mutating | courses history restore |
 | `GET /api/courses/history` | authenticated | read | courses history |
 | `GET /api/modules` | authenticated | read | modules |
 | `POST /api/modules` | authenticated | mutating | modules create |

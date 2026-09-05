@@ -38,7 +38,6 @@ import {
   spaceSchema,
   productGrantSchema,
   productSchema,
-  snapshotPayloadsEqual,
   staffRoleSchema,
   tenantApiKeySchema,
   tenantSecretSchema,
@@ -92,8 +91,8 @@ import type {
   DmMessageRepository,
   DmReportRepository,
   MemberBlockRepository,
-  EntityVersionRecord,
   EntityVersionRepository,
+  StoredEntityVersion,
   HealthPort,
   EmailHmac,
   LegacyContentLocator,
@@ -141,6 +140,7 @@ import type {
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { insertEntityVersion } from './entity-versions.js';
 import { uniqueViolation } from './pg-errors.js';
 import { appendMemberEvent } from './member-events.js';
 import { insertFanoutJob } from './notification-fanout-jobs.js';
@@ -341,44 +341,6 @@ const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.p
 
 const parseSecret = (row: typeof tenantSecrets.$inferSelect): TenantSecret =>
   tenantSecretSchema.parse(row);
-
-/**
- * Writes a previous-state snapshot into `entity_versions`. Runs on whichever
- * executor (`db` or a `tx`) is passed so the write-through path is atomic with
- * the mutation that supersedes it.
- */
-const insertEntityVersion = async (executor: Db, tenantId: string, version: EntityVersionRecord): Promise<void> => {
-  const latest = await executor
-    .select({ schemaVersion: entityVersions.schemaVersion, payload: entityVersions.payload })
-    .from(entityVersions)
-    .where(
-      and(
-        eq(entityVersions.tenantId, tenantId),
-        eq(entityVersions.entityKind, version.entityKind),
-        eq(entityVersions.entityId, version.entityId),
-      ),
-    )
-    .orderBy(desc(entityVersions.createdAt))
-    .limit(1);
-  const latestRow = latest[0];
-  if (
-    latestRow &&
-    latestRow.schemaVersion === version.schemaVersion &&
-    snapshotPayloadsEqual(latestRow.payload, version.payload)
-  ) {
-    return;
-  }
-  await executor.insert(entityVersions).values({
-    id: version.id,
-    tenantId,
-    entityKind: version.entityKind,
-    entityId: version.entityId,
-    schemaVersion: version.schemaVersion,
-    payload: version.payload,
-    createdAt: version.createdAt,
-    createdBy: version.createdBy,
-  });
-};
 
 export const createProductRepository = (
   db: Db,
@@ -843,6 +805,14 @@ export const createProductDownloadAssetRepository = (db: Db): ProductDownloadAss
   },
 });
 
+/**
+ * Window functions run after `WHERE` and before `LIMIT`, so the ordinal counts
+ * every version of the entity even when the page shows only the newest few.
+ */
+const versionOrdinal = sql<number>`cast(row_number() over (
+  order by ${entityVersions.createdAt} asc, ${entityVersions.id} asc
+) as int)`;
+
 export const createEntityVersionRepository = (db: Db): EntityVersionRepository => ({
   list: async (tenantId, query) =>
     (
@@ -851,6 +821,7 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
           id: entityVersions.id,
           entityKind: entityVersions.entityKind,
           entityId: entityVersions.entityId,
+          ordinal: versionOrdinal,
           schemaVersion: entityVersions.schemaVersion,
           createdAt: entityVersions.createdAt,
           createdBy: entityVersions.createdBy,
@@ -863,7 +834,7 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
             eq(entityVersions.entityId, query.entityId),
           ),
         )
-        .orderBy(desc(entityVersions.createdAt))
+        .orderBy(desc(entityVersions.createdAt), desc(entityVersions.id))
         .limit(query.limit)
     ).map((row) => entityHistoryEntrySchema.parse(row)),
   findById: async (tenantId, id) => {
@@ -874,10 +845,22 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
       .limit(1);
     const row = rows[0];
     if (!row) return null;
-    const record: EntityVersionRecord = {
+    const [counted] = await db
+      .select({ ordinal: sql<number>`cast(count(*) as int)` })
+      .from(entityVersions)
+      .where(
+        and(
+          eq(entityVersions.tenantId, tenantId),
+          eq(entityVersions.entityKind, row.entityKind),
+          eq(entityVersions.entityId, row.entityId),
+          sql`(${entityVersions.createdAt}, ${entityVersions.id}) <= (${row.createdAt}, ${row.id})`,
+        ),
+      );
+    const record: StoredEntityVersion = {
       id: row.id,
       entityKind: row.entityKind,
       entityId: row.entityId,
+      ordinal: counted?.ordinal ?? 1,
       schemaVersion: row.schemaVersion,
       payload: row.payload,
       createdAt: row.createdAt,

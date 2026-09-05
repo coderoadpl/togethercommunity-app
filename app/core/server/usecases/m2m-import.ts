@@ -1,8 +1,10 @@
 import {
   appError,
+  buildSnapshot,
   canonicalImportPayload,
   computeCourseModuleName,
   err,
+  IMPORT_VERSION_AUTHOR_FALLBACK,
   importContentKindSchema,
   importKindSchema,
   importRecordSchema,
@@ -22,6 +24,7 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type EntityKind,
   type ImportBatchResponse,
   type ImportBatchResult,
   type ImportContentKind,
@@ -48,6 +51,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  EntityVersionRecord,
   IdGenerator,
   ImportAuditEventRepository,
   ImportContentMutation,
@@ -445,9 +449,41 @@ const summarize = (results: ImportBatchResult[]): ImportBatchResponse['summary']
   failed: results.filter((result) => result.action === 'error').length,
 });
 
+const ENTITY_KIND_BY_IMPORT_KIND: Record<ImportContentKind, EntityKind> = {
+  course: 'course',
+  module: 'course_module',
+  lesson: 'course_lesson',
+  product: 'product',
+};
+
+/**
+ * The import records the state it writes, so a batch leaves the same readable
+ * trail as a studio edit. An unchanged record writes nothing.
+ */
+const versionFor = (
+  prepared: PreparedContent,
+  apiKey: TenantApiKey,
+  deps: Pick<M2mImportContentDeps, 'ids' | 'clock'>,
+): Result<EntityVersionRecord | undefined, AppError> => {
+  if (prepared.action === 'unchanged') return ok(undefined);
+  const kind = ENTITY_KIND_BY_IMPORT_KIND[prepared.kind];
+  const built = buildSnapshot(kind, prepared.resource);
+  if (!built.ok) return built;
+  return ok({
+    id: deps.ids.nextId(),
+    entityKind: kind,
+    entityId: prepared.resource.id,
+    schemaVersion: built.value.schemaVersion,
+    payload: built.value.payload,
+    createdAt: deps.clock.nowIso(),
+    createdBy: apiKey.name.trim() === '' ? IMPORT_VERSION_AUTHOR_FALLBACK : apiKey.name.trim(),
+  });
+};
+
 const mutationFor = (
   prepared: PreparedContent,
   apiKey: TenantApiKey,
+  version: EntityVersionRecord | undefined,
   deps: Pick<M2mImportContentDeps, 'ids' | 'clock'>,
 ): ImportContentMutation => {
   const event = {
@@ -461,10 +497,11 @@ const mutationFor = (
     payloadHash: prepared.payloadHash,
     at: deps.clock.nowIso(),
   };
-  if (prepared.kind === 'course') return { kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
-  if (prepared.kind === 'module') return { kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
-  if (prepared.kind === 'lesson') return { kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
-  return { kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
+  const versioned = version === undefined ? {} : { version };
+  if (prepared.kind === 'course') return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
+  if (prepared.kind === 'module') return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
+  if (prepared.kind === 'lesson') return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
+  return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
 };
 
 export const importM2mContent = async (
@@ -519,9 +556,14 @@ export const importM2mContent = async (
       results.push({ importKey: parsed.data.importKey, action: 'error', error: prepared.error });
       continue;
     }
+    const version = versionFor(prepared.value, apiKey, deps);
+    if (!version.ok) {
+      results.push({ importKey: parsed.data.importKey, action: 'error', error: version.error });
+      continue;
+    }
     const committed = await deps.importContent.commit(
       tenantId.value,
-      mutationFor(prepared.value, apiKey, deps),
+      mutationFor(prepared.value, apiKey, version.value, deps),
     );
     if (committed !== 'saved') {
       results.push({

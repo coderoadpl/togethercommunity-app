@@ -34,6 +34,10 @@
       "destination": "/api/index"
     },
     {
+      "source": "/courses/(.*)",
+      "destination": "/api/index"
+    },
+    {
       "source": "/(.*)",
       "has": [
         {

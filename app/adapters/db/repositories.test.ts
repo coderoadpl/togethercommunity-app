@@ -45,6 +45,7 @@ import {
   createCheckoutConsentCaptureRepository,
   createDevSinkPurge,
   createHealthPort,
+  createLegacyContentLocator,
   createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
@@ -1904,6 +1905,32 @@ describe('course/module/lesson repositories', () => {
       { id: 'lesson-acme', name: 'L', courseId: 'course-acme' },
     ]);
     expect(await lessons.listPreviews(GLOBEX)).toEqual([]);
+  });
+
+  it('locates imported content by its source identifier, never across tenants', async () => {
+    const courses = createCourseRepository(db);
+    const modules = createCourseModuleRepository(db);
+    const lessons = createCourseLessonRepository(db);
+    const locator = createLegacyContentLocator(db);
+
+    const course: Course = { id: 'course-imported', tenantId: ACME, name: 'C', description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false, legacyId: '656b8fa6e74246956889b096', createdAt: NOW };
+    const module: CourseModule = {
+      id: 'module-imported', tenantId: ACME, courseIds: ['course-imported'], title: 'M', prefix: null, name: 'M',
+      chapters: [{ id: 'chapter-imported', name: 'Chapter', contents: [{ id: 'content-imported', name: 'L', lessonId: 'lesson-imported' }] }],
+      legacyId: '65a52510b5bd26b9d2ab3aa1', createdAt: NOW,
+    };
+    const lesson: CourseLesson = { id: 'lesson-imported', tenantId: ACME, name: 'L', isPreview: false, contents: [], legacyId: '65a52510b5bd26b9d2ab3b77', createdAt: NOW };
+    await courses.create(ACME, course);
+    await modules.create(ACME, module);
+    await lessons.create(ACME, lesson);
+
+    expect(await locator.findCourse(ACME, '656b8fa6e74246956889b096')).toMatchObject({ id: 'course-imported' });
+    expect(await locator.findModule(ACME, '65a52510b5bd26b9d2ab3aa1')).toMatchObject({ id: 'module-imported' });
+    expect(await locator.findLesson(ACME, '65a52510b5bd26b9d2ab3b77')).toMatchObject({ id: 'lesson-imported' });
+    expect(await locator.findCourse(GLOBEX, '656b8fa6e74246956889b096')).toBeNull();
+    expect(await locator.findModule(GLOBEX, '65a52510b5bd26b9d2ab3aa1')).toBeNull();
+    expect(await locator.findLesson(GLOBEX, '65a52510b5bd26b9d2ab3b77')).toBeNull();
+    expect(await locator.findCourse(ACME, 'course-imported')).toBeNull();
   });
 });
 

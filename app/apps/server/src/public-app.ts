@@ -76,6 +76,7 @@ import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerDeepHealthRoute } from './deep-health-route.js';
+import { registerLegacyUrlRedirects } from './legacy-url-redirects.js';
 import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
 import {
@@ -813,6 +814,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   app.on(['GET', 'POST'], BETTER_AUTH_API_PATH_PATTERN, (c) =>
     deps.auth.handler(trustedAuthRequest(c, c.req.raw, deps.authTrustedProxyHeader)),
   );
+
+  registerLegacyUrlRedirects(app, deps);
 
   registerPublicMarketingRoutes(app, deps);
 

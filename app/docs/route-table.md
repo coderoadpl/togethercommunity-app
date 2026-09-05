@@ -44,6 +44,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/auth/send-verification-email` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `GET /api/auth/*` | public | read | Authentication callbacks and session reads |
 | `POST /api/auth/*` | public | mutating | Login, recovery, and magic-link authentication surface |
+| `GET /courses/*` | public | read | Legacy course, module, chapter and lesson links redirected to their member pages |
 | `POST /api/webhooks/ses/:webhookToken` | public | mutating | Amazon SNS delivery webhook |
 | `POST /u/:token` | public | mutating | Unsubscribe preference changes |
 | `POST /u/:token/confirm` | public | mutating | Unsubscribe preference changes |

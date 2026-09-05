@@ -566,6 +566,11 @@ const deps = (input: {
       update: async () => null,
       delete: async () => false,
     },
+    legacyContent: {
+      findCourse: async () => null,
+      findModule: async () => null,
+      findLesson: async () => null,
+    },
     attachments: {
       create: async () => undefined,
       findById: async () => null,
@@ -4058,6 +4063,152 @@ describe('social preview route', () => {
 
     expect(response.status).toBe(404);
   });
+});
+
+describe('legacy URL redirects', () => {
+  const legacyCourseId = '656b8fa6e74246956889b096';
+  const legacyModuleId = '65a52510b5bd26b9d2ab3aa1';
+  const legacyChapterId = '65a52510b5bd26b9d2ab3ccc';
+  const legacyLessonId = '65a52510b5bd26b9d2ab3b77';
+  const coursePagePath = '/my/courses/acme-course-js';
+  const lessonPagePath = `${coursePagePath}/lessons/acme-lesson-let`;
+  const courseListPath = '/my';
+  const modulePath = `/courses/${legacyCourseId}/modules/${legacyModuleId}`;
+  const chapterPath = `${modulePath}/chapters/${legacyChapterId}`;
+  const lessonPath = `${chapterPath}/lessons/${legacyLessonId}`;
+
+  const legacyApp = (owner: Tenant = acme) => {
+    const base = deps({
+      domains: [tenantDomainFixture({
+        id: 'domain-acme',
+        tenantId: acme.id,
+        domain: 'kurs.acme.example',
+        kind: 'custom',
+        verified: true,
+      })],
+    });
+    const course: Course = {
+      id: 'acme-course-js',
+      tenantId: owner.id,
+      name: 'JavaScript',
+      description: '',
+      imageUrl: null,
+      moduleOrder: ['acme-module-variables'],
+      publiclyVisible: false,
+      legacyId: legacyCourseId,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const courseModule: CourseModule = {
+      id: 'acme-module-variables',
+      tenantId: owner.id,
+      courseIds: [course.id],
+      title: 'Variables',
+      prefix: null,
+      name: 'Variables',
+      chapters: [{
+        id: legacyChapterId,
+        name: 'Basics',
+        contents: [{ id: 'content-1', name: 'let', lessonId: 'acme-lesson-let' }],
+      }],
+      legacyId: legacyModuleId,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    const lesson: CourseLesson = {
+      id: 'acme-lesson-let',
+      tenantId: owner.id,
+      name: 'let',
+      isPreview: false,
+      contents: [],
+      legacyId: legacyLessonId,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    };
+    return buildApp({
+      ...base,
+      legacyContent: {
+        findCourse: async (tenantId, legacyId) =>
+          tenantId === course.tenantId && legacyId === course.legacyId ? course : null,
+        findModule: async (tenantId, legacyId) =>
+          tenantId === courseModule.tenantId && legacyId === courseModule.legacyId ? courseModule : null,
+        findLesson: async (tenantId, legacyId) =>
+          tenantId === lesson.tenantId && legacyId === lesson.legacyId ? lesson : null,
+      },
+    });
+  };
+
+  const legacyGet = (path: string, host = 'acme.localhost:48730') =>
+    legacyApp().request(path, { headers: { host } });
+
+  it.each([
+    ['course', `/courses/${legacyCourseId}`, coursePagePath],
+    ['lesson', lessonPath, lessonPagePath],
+  ])('redirects a legacy %s link for good on a tenant subdomain', async (_shape, path, destination) => {
+    const response = await legacyGet(path);
+
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe(destination);
+  });
+
+  it.each([
+    ['module', modulePath, lessonPagePath],
+    ['chapter', chapterPath, lessonPagePath],
+  ])('redirects a legacy %s link temporarily, because its target is derived', async (_shape, path, destination) => {
+    const response = await legacyGet(path);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(destination);
+  });
+
+  it('redirects on a verified custom domain and keeps the query string', async () => {
+    const response = await legacyGet(`${lessonPath}?utm_source=newsletter`, 'kurs.acme.example');
+
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}?utm_source=newsletter`);
+  });
+
+  it('redirects a link that carries a trailing slash', async () => {
+    const response = await legacyGet(`/courses/${legacyCourseId}/`);
+
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe(coursePagePath);
+  });
+
+  it('falls back to the course page when the module is unknown', async () => {
+    const response = await legacyGet(`/courses/${legacyCourseId}/modules/65a52510b5bd26b9d2ab3fff`);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(coursePagePath);
+  });
+
+  it.each([
+    ['a course owned by another workspace', `/courses/${legacyCourseId}`, globex],
+    ['an unknown course', '/courses/deadbeefdeadbeefdeadbeef', acme],
+    ['a path that is not a legacy shape', `/courses/${legacyCourseId}/modules`, acme],
+  ])('sends %s to the course list', async (_case, path, owner) => {
+    const response = await legacyApp(owner).request(path, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(courseListPath);
+  });
+
+  it('leaves the platform host alone', async () => {
+    const response = await legacyGet(`/courses/${legacyCourseId}`, 'start.localhost');
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
+  it.each(['/login', '/register', '/reset-password'])(
+    'claims no server route for %s, leaving the path to the web app',
+    async (path) => {
+      const response = await legacyGet(path);
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('location')).toBeNull();
+      expect(legacyApp().routes.some((route) => route.path === path)).toBe(false);
+    },
+  );
 });
 
 describe('single-tenant mode', () => {

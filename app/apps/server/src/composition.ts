@@ -69,6 +69,7 @@ import {
   createDmReportRepository,
   createEntityVersionRepository,
   createHealthPort,
+  createLegacyContentLocator,
   createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
@@ -185,6 +186,7 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
+  LegacyContentLocator,
   ImpersonationSessionRepository,
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
@@ -354,6 +356,7 @@ export interface AppDeps {
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
+  legacyContent: LegacyContentLocator;
   attachments: LessonAttachmentRepository;
   downloadAssets: ProductDownloadAssetRepository;
   entityVersions: EntityVersionRepository;
@@ -1116,6 +1119,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
+    legacyContent: createLegacyContentLocator(db),
     attachments: createLessonAttachmentRepository(db),
     downloadAssets: createProductDownloadAssetRepository(db),
     entityVersions: createEntityVersionRepository(db),

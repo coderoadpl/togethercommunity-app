@@ -3083,7 +3083,8 @@ export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
 }));
 
 export const CourseCardRoot = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
-  display: 'block',
+  display: 'flex',
+  flexDirection: 'column',
   height: '100%',
   overflow: 'hidden',
   textDecoration: 'none',

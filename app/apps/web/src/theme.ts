@@ -3052,6 +3052,17 @@ export const ReorderRow = styled(ListItem, {
   backgroundColor: dropTarget === true ? alpha(theme.palette.text.primary, 0.08) : undefined,
 }));
 
+export const VersionDiffRow = styled(Stack, {
+  shouldForwardProp: (prop) => prop !== 'changed',
+})<{ changed?: boolean }>(({ theme, changed }) => ({
+  padding: '0.6rem',
+  borderRadius: theme.shape.borderRadius,
+  borderLeft: `3px solid ${changed === true ? theme.palette.warning.main : 'transparent'}`,
+  backgroundColor: changed === true ? theme.palette.action.hover : undefined,
+}));
+
+export const BreakAnywhereText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
+
 export const ReorderDragHandle = styled('span', {
   shouldForwardProp: (prop) => prop !== 'pending',
 })<{ pending?: boolean }>(({ theme, pending }) => ({
@@ -3072,7 +3083,8 @@ export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
 }));
 
 export const CourseCardRoot = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
-  display: 'block',
+  display: 'flex',
+  flexDirection: 'column',
   height: '100%',
   overflow: 'hidden',
   textDecoration: 'none',

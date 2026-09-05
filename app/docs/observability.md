@@ -92,29 +92,53 @@ scheduled run fails and pages when the deep probe answers anything other than
 `.github/workflows/prod-smoke.yml` runs on a `deployment_status` event with
 state `success` and environment `Production`, and on `workflow_dispatch`. It
 waits until `https://coderoad.togethercommunity.app/api/health` reports the
-deployment's commit (up to five minutes), then runs
+deployment's commit (up to five minutes), reseeds the smoke tenant, then runs
 `pnpm run smoke:remote` (`app/scripts/remote-smoke.ts`) with
 `EXPECTED_SHA` set to that commit. A manual dispatch may leave `expected_sha`
 empty; the wait and the `health-attestation` match are then both skipped, so any
 commit the host serves is accepted.
 
+The wait comes first so the reseed always reaches the build under test — on the
+deployment the alias would otherwise still be answering from the previous one,
+which need not know the reseed route at all.
+
 Checks, in order:
 
 1. `health-attestation` — `sha` matches `EXPECTED_SHA`, database up, schema current.
 2. `health-deep` — `/api/health/deep` answers 200 with `ok: true`.
-3. `public-offer` — the anonymous offer for the tenant.
+3. `public-offer` — the anonymous offer for the tenant; on the smoke tenant it must list at least one published product.
 4. `public-page` — the tenant storefront returns HTML.
 5. `member-sign-in` — password sign-in of the synthetic member.
 6. `member-identity` — `/api/me` reports a membership on the tenant.
-7. `student-courses` — the member's course list and the structure of its first course.
-8. `lesson-playback` — the first accessible lesson resolves a playback URL that is not `unavailable`.
+7. `student-courses` — the member's course list; on the smoke tenant the seeded `Acme Course` must appear, and its structure must expose an accessible lesson.
+8. `lesson-playback` — the accessible lesson resolves a playback URL that is not `unavailable`; on the smoke tenant the seeded lesson carries a Bunny Stream video, so a `bunny` playback URL must resolve.
 9. `studio-tenant-settings` — **skipped**. Tenant API key scopes cover marketing, transactional, enrollment and import capabilities only; none of them grants `tenant:settings:read`, so a Studio settings read cannot be authenticated by a key from a workflow. No `SMOKE_STUDIO_API_KEY` secret is needed today. Re-enable this check by adding a read scope to `capabilitiesByScope` in `core/domain/api-key.ts` first.
+
+### Member checks without credentials
+
+Checks 5–8 need the synthetic member. When **both** `SMOKE_MEMBER_EMAIL` and
+`SMOKE_MEMBER_PASSWORD` are absent the smoke reports all four as `skipped` with
+the reason `SMOKE_MEMBER_EMAIL and SMOKE_MEMBER_PASSWORD are not configured`,
+prints `smoke:remote: NOTICE member checks skipped — set SMOKE_MEMBER_EMAIL and
+SMOKE_MEMBER_PASSWORD`, and exits 0. The public surface is still smoked, the run
+stays green and no SMS is sent.
+
+When only **one** of the two is set the smoke fails `member-sign-in` with the
+name of the missing variable: a half-configured secret pair is a
+misconfiguration, not a deliberate opt-out, and it pages like any other failure.
+
+Every run appends its check list — statuses and skip reasons — to the job
+summary, so a green run still shows what was not exercised.
 
 On failure the workflow sends one SMS through the shared
 `.github/actions/alert-sms` composite action — the same SNS credentials
-`prod-health.yml` uses — carrying only the failing check names. Credentials are
-never printed: the script reports check names and messages, never request
-bodies or headers.
+`prod-health.yml` uses — carrying only the failing check names. Skipped checks
+never trigger an SMS. Credentials are never printed: the script reports check
+names and messages, never request bodies or headers.
+
+The reseed step is `continue-on-error`, so a refused or unreachable reseed still
+lets the checks run; the run then fails and pages with `reseed` as the failing
+name. A broken reseed must never cost the deployment its smoke and its alert.
 
 ### Repository secrets the owner must add
 
@@ -125,29 +149,105 @@ Settings → Secrets and variables → Actions → repository secrets:
 | `ALERT_AWS_ACCESS_KEY_ID` | prod-health, prod-smoke | IAM user allowed to `sns:Publish` only. |
 | `ALERT_AWS_SECRET_ACCESS_KEY` | prod-health, prod-smoke | Its secret key. |
 | `ALERT_SMS_PHONE` | prod-health, prod-smoke | On-call number in E.164 form. |
-| `SMOKE_MEMBER_EMAIL` | prod-smoke | E-mail of the synthetic member. |
-| `SMOKE_MEMBER_PASSWORD` | prod-smoke | Its password. |
+| `SMOKE_MEMBER_EMAIL` | prod-smoke | Optional override; defaults to `kontakt+smoke-member@togethercommunity.app`. Absent (with no default) → member checks skipped. |
+| `SMOKE_MEMBER_PASSWORD` | prod-smoke | Password the smoke member is seeded with **and** signed in with. Must equal the deployment's `SMOKE_MEMBER_PASSWORD` environment variable. Set exactly one of the pair and the smoke fails. |
+| `PROD_OPERATOR_SECRET` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; equals the deployment's `CRON_SECRET`. Absent → the reseed step prints a notice and is skipped. Sent only to `PROD_BASE_URL`, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
 
-The first three already exist for `prod-health.yml`; the smoke reuses them.
+The creator account never signs in from the workflow, so its password lives on
+the deployment only, as `SMOKE_CREATOR_PASSWORD`.
 
-### Creating the synthetic member
+The first three already exist for `prod-health.yml`; the smoke reuses them. The
+tenant under test comes from the `SMOKE_TENANT` repository variable and defaults
+to `acme`. Pointing that variable at another tenant also skips the reseed with a
+notice: the route rebuilds `tenant-acme` only, and wiping it would serve no run
+that checks something else.
 
-The smoke signs in as a real member of the CodeRoad tenant. It never writes, so
-one free product is enough.
+## The smoke tenant
 
-1. In Studio on `coderoad.togethercommunity.app`, publish (or reuse) one free
-   product whose access items cover at least one course with one lesson.
-2. Create a member with a dedicated address, for example
-   `smoke+prod@togethercommunity.app`, and set a password on it (the smoke uses
-   password sign-in, not a magic link, so the account must have one).
-3. Grant that member the free product.
-4. Store the address in `SMOKE_MEMBER_EMAIL` and the password in
-   `SMOKE_MEMBER_PASSWORD`.
-5. Verify with a manual `workflow_dispatch` run of `prod-smoke` before relying
-   on it.
+Production carries one permanent synthetic tenant, `acme` (`tenant-acme`). It is
+the seed's acme fixture — the same rows local development and the e2e suites
+get — so smoke assertions can name known content:
 
-Keep the account out of marketing audiences and out of any staff role: the
-smoke must exercise the member surface, nothing wider.
+| Fixture | Value |
+| --- | --- |
+| Tenant | `tenant-acme`, slug `acme`, name `Acme Courses` |
+| Creator | `kontakt+smoke-creator@togethercommunity.app` |
+| Smoke member | `kontakt+smoke-member@togethercommunity.app`, granted `product-acme-course` |
+| Passwordless member | `student2@together.dev` |
+| Published product | `product-acme-course` — `Acme Course` |
+| Course | `course-acme` — `Acme Course`, one module, one lesson with a Bunny Stream video |
+
+Only the password source differs by environment. Locally and in e2e both
+accounts are seeded with the shared demo password; on production the seed reads
+`SMOKE_MEMBER_PASSWORD` and `SMOKE_CREATOR_PASSWORD` and refuses to run when
+either is unset or equal to the demo password, so the demo password can never
+reach a production database.
+
+### What is hidden
+
+The tenant is marked by its identity (`SMOKE_TENANT_ID` in
+`core/domain/smoke-tenant.ts`), not by a column — no migration, and the marking
+travels with the fixture:
+
+- **Tenant directory.** `createTenantDirectory(db, production)` drops it from
+  `listAll()`. That is the only cross-tenant enumeration reaching a public
+  surface (`/api/health/deep`), so on production the synthetic tenant is neither
+  listed nor probed there. The platform exposes no other public tenant listing;
+  `GET /api/tenants` returns the caller's own staff memberships.
+- **Marketing.** On production the marketing SES credential resolver refuses the
+  tenant with `broadcasts_disabled`, and every marketing send — campaign
+  dispatch, the M2M send API, the send-to-self test — resolves credentials
+  before it reaches SES, so none of them can leave the platform. `campaignTick`
+  additionally returns an empty, no-op result for the tenant so no campaign is
+  even leased. Off production the tenant is an ordinary demo tenant and
+  campaigns run.
+- **Transactional e-mail.** On production the layered sender routes its messages
+  to `createSinkEmailPort`, which logs `[email-sink] to=… subject=…` and drops
+  the message. Sends are recorded with the `platform` transport, because no
+  tenant integration ran.
+
+### Reseeding the smoke tenant
+
+`POST /api/internal/reseed-acme`, authenticated by the
+`x-scheduler-operator-secret` header (the deployment's `CRON_SECRET`), wipes and
+re-applies **only** `tenant-acme`. `prod-smoke.yml` calls it before the checks.
+
+The run is transactional, takes the same class of advisory lock as the full
+reseed, and writes a `reseed-acme` row into `platform_audit_events`. Unlike
+`POST /api/platform/data-reset` it is allowed on production by design — the
+tenant is synthetic — so it deliberately skips `productionResetRefusal`. The
+fingerprint guard still protects the full reset. Three checks stand in its place
+and refuse the run with a `conflict` error carrying the reason:
+
+- `tenant-acme` exists under a slug other than `acme`;
+- `tenant-acme` has any member whose e-mail is neither on `@together.dev` nor
+  one of the two smoke accounts;
+- `tenant-acme` holds a marketing consent from an address outside that same set
+  — a public surface the fixture never uses, so the row belongs to a real person
+  and its consent evidence must not be wiped.
+
+Alongside those refusals, note what the run rewrites beyond the tenant: the wipe
+is tenant-scoped, but the re-seed is not entirely. `user` and `account` carry no
+tenant column, so re-creating the fixture resets the password and timestamps of
+the global rows of both smoke accounts,
+`kontakt+smoke-creator@togethercommunity.app` and
+`kontakt+smoke-member@togethercommunity.app`. Both are platform-owned addresses
+the guard allow-lists, so no real person's credential is in reach — but the run
+is "only `tenant-acme`" in the tenant-scoped tables, not in the auth tables.
+
+Manually, against any database:
+
+```bash
+DATABASE_URL=… SMOKE_MEMBER_PASSWORD=… SMOKE_CREATOR_PASSWORD=… pnpm run reseed:acme
+```
+
+The script decides whether it is writing to production from the process
+environment **and** from the fingerprint of `DATABASE_URL` against
+`PRODUCTION_DATABASE_FINGERPRINT`, so an operator laptop with no `NODE_ENV` set
+still cannot write the demo password to the production database. On any other
+database both passwords may be omitted and the demo password is used.
+`pnpm run db:seed` uses the same test and refuses outright, because the full
+demo fixture has no business on production.
 
 ## External monitor (owner-side, no code)
 

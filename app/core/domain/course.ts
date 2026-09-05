@@ -186,6 +186,7 @@ const embedLessonBlockSchema = z
   .object({
     type: z.literal('embed'),
     embedUrl: videoEmbedUrlSchema,
+    collapsed: z.boolean().optional(),
   })
   .strict();
 

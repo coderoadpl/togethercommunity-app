@@ -24,6 +24,9 @@ jobs:
        github.event.deployment_status.environment == 'Production')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      PROD_BASE_URL: https://coderoad.togethercommunity.app
+      SMOKE_TENANT: ${{ vars.SMOKE_TENANT || 'acme' }}
     defaults:
       run:
         working-directory: app
@@ -52,33 +55,65 @@ jobs:
             echo "base_url=$DISPATCH_BASE_URL" >> "$GITHUB_OUTPUT"
             echo "expected_sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
           else
-            echo "base_url=https://coderoad.togethercommunity.app" >> "$GITHUB_OUTPUT"
+            echo "base_url=$PROD_BASE_URL" >> "$GITHUB_OUTPUT"
             echo "expected_sha=$DEPLOYMENT_SHA" >> "$GITHUB_OUTPUT"
           fi
-      - name: Smoke the deployment
-        id: smoke
+      - name: Wait for the deployment to serve the expected commit
+        id: alias
         env:
           BASE_URL: ${{ steps.target.outputs.base_url }}
           EXPECTED_SHA: ${{ steps.target.outputs.expected_sha }}
-          SMOKE_TENANT: coderoad
+        run: |
+          if [ -z "$EXPECTED_SHA" ]; then
+            echo "matched=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          served=""
+          for _ in $(seq 1 30); do
+            served=$(curl -sS --max-time 15 "$BASE_URL/api/health" | jq -r '.data.sha // ""') || served=""
+            [ "$served" = "$EXPECTED_SHA" ] && break
+            sleep 10
+          done
+          if [ "$served" != "$EXPECTED_SHA" ]; then
+            echo "$BASE_URL still serves \"$served\" instead of $EXPECTED_SHA"
+            echo "failing=deployment-alias" >> "$GITHUB_OUTPUT"
+            echo "matched=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "matched=true" >> "$GITHUB_OUTPUT"
+      - name: Reseed the smoke tenant
+        id: reseed
+        if: success() && steps.alias.outputs.matched == 'true'
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
+          PROD_OPERATOR_SECRET: ${{ secrets.PROD_OPERATOR_SECRET }}
+        run: |
+          if [ -z "$PROD_OPERATOR_SECRET" ]; then
+            echo "::notice::PROD_OPERATOR_SECRET is absent; smoking the tenant as it stands"
+            exit 0
+          fi
+          if [ "$BASE_URL" != "$PROD_BASE_URL" ]; then
+            echo "::notice::$BASE_URL is not the production host; the operator secret stays here"
+            exit 0
+          fi
+          if [ "$SMOKE_TENANT" != "acme" ]; then
+            echo "::notice::SMOKE_TENANT is $SMOKE_TENANT, so the acme reseed would wipe a tenant nothing here checks"
+            exit 0
+          fi
+          curl -sS --fail-with-body --max-time 60 -X POST \
+            -H "x-scheduler-operator-secret: $PROD_OPERATOR_SECRET" \
+            "$BASE_URL/api/internal/reseed-acme" > /dev/null
+      - name: Smoke the deployment
+        id: smoke
+        if: success() && steps.alias.outputs.matched == 'true'
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
+          EXPECTED_SHA: ${{ steps.target.outputs.expected_sha }}
           SMOKE_MEMBER_EMAIL: ${{ secrets.SMOKE_MEMBER_EMAIL }}
           SMOKE_MEMBER_PASSWORD: ${{ secrets.SMOKE_MEMBER_PASSWORD }}
         run: |
           set -o pipefail
-          if [ -n "$EXPECTED_SHA" ]; then
-            served=""
-            for _ in $(seq 1 30); do
-              served=$(curl -sS --max-time 15 "$BASE_URL/api/health" | jq -r '.data.sha // ""') || served=""
-              [ "$served" = "$EXPECTED_SHA" ] && break
-              sleep 10
-            done
-            if [ "$served" != "$EXPECTED_SHA" ]; then
-              echo "$BASE_URL still serves \"$served\" instead of $EXPECTED_SHA"
-              echo "failing=deployment-alias" >> "$GITHUB_OUTPUT"
-              echo "failed=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
           if pnpm run smoke:remote 2>&1 | tee smoke.log; then
             echo "failed=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -86,16 +121,30 @@ jobs:
           failing=$(sed -n 's/^smoke:remote: FAIL failing=//p' smoke.log | head -1)
           echo "failing=${failing:-unreachable}" >> "$GITHUB_OUTPUT"
           echo "failed=true" >> "$GITHUB_OUTPUT"
+      - name: Summarize the smoke checks
+        if: always()
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
+        run: |
+          [ -f smoke.log ] || exit 0
+          {
+            echo "### Post-deploy smoke"
+            echo ""
+            echo "Target: \`$BASE_URL\`"
+            echo ""
+            sed -n 's/^  \[/- [/p' smoke.log
+            sed -n 's/^smoke:remote: NOTICE /> NOTICE /p' smoke.log
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Send an SMS alert
-        if: steps.smoke.outputs.failed == 'true'
+        if: steps.alias.outputs.matched == 'false' || steps.smoke.outputs.failed == 'true' || steps.reseed.outcome == 'failure'
         uses: ./.github/actions/alert-sms
         with:
-          message: 'Together prod smoke FAILED on ${{ steps.target.outputs.base_url }}: ${{ steps.smoke.outputs.failing }}'
+          message: 'Together prod smoke FAILED on ${{ steps.target.outputs.base_url }}: ${{ steps.smoke.outputs.failing || steps.alias.outputs.failing || ''reseed'' }}'
           aws-access-key-id: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
           phone-number: ${{ secrets.ALERT_SMS_PHONE }}
       - name: Fail the run on a failing smoke
-        if: steps.smoke.outputs.failed == 'true'
+        if: steps.alias.outputs.matched == 'false' || steps.smoke.outputs.failed == 'true' || steps.reseed.outcome == 'failure'
         run: |
-          echo "::error::prod smoke failing checks: ${{ steps.smoke.outputs.failing }}"
+          echo "::error::prod smoke failing checks: ${{ steps.smoke.outputs.failing || steps.alias.outputs.failing || 'reseed' }}"
           exit 1

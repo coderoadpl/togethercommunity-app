@@ -39,6 +39,23 @@ const failSignInMethods = () =>
     ),
   );
 
+const rateLimitSignInMethods = (retryAfterSeconds?: number) =>
+  server.use(
+    http.post('*/api/public/auth-resolve', () =>
+      HttpResponse.json(
+        {
+          ok: false,
+          error: {
+            code: 'rate_limited',
+            message: 'too many',
+            ...(retryAfterSeconds === undefined ? {} : { details: { retryAfterSeconds } }),
+          },
+        },
+        { status: 429 },
+      ),
+    ),
+  );
+
 const renderLoginPage = async (
   exposeMagicLinks = false,
   initialEntry = '/login',
@@ -257,20 +274,105 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText(pl.auth.emailLabel)).toHaveValue('creator@together.dev');
   });
 
-  it('falls open to the magic link when the lookup fails', async () => {
+  it('names the failure and preselects nothing when the lookup fails', async () => {
     await renderLoginPage();
     failSignInMethods();
     await continueWithEmail();
 
-    expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.getByTestId('sign-in-methods-unavailable')).toHaveTextContent(
+    expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
       pl.auth.signInMethodsUnavailable,
     );
+    expect(screen.getByTestId('login-identity')).toHaveTextContent('creator@together.dev');
+    expect(screen.getByTestId('choose-magic-link')).toHaveTextContent(
+      pl.auth.signInMethodsChooseMagicLink,
+    );
+    expect(screen.getByTestId('choose-password')).toHaveTextContent(
+      pl.auth.signInMethodsChoosePassword,
+    );
+    expect(screen.queryByTestId('send-magic-link')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+  });
 
-    await userEvent.click(screen.getByTestId('use-password'));
+  it('quotes the retry delay when the resolver rate-limits the visitor', async () => {
+    await renderLoginPage();
+    rateLimitSignInMethods(42);
+    await continueWithEmail();
+
+    expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
+      pl.auth.signInMethodsRateLimitedRetryAfter({ seconds: 42 }),
+    );
+  });
+
+  it('states a rate limit without a delay when the resolver sends none', async () => {
+    await renderLoginPage();
+    rateLimitSignInMethods();
+    await continueWithEmail();
+
+    expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
+      pl.auth.signInMethodsRateLimited,
+    );
+  });
+
+  it('opens the password step from the failed lookup', async () => {
+    await renderLoginPage();
+    failSignInMethods();
+    await continueWithEmail();
+
+    await userEvent.click(await screen.findByTestId('choose-password'));
 
     expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
+  });
+
+  it('opens the magic-link step from the failed lookup', async () => {
+    await renderLoginPage();
+    failSignInMethods();
+    await continueWithEmail();
+
+    await userEvent.click(await screen.findByTestId('choose-magic-link'));
+
+    expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
+    expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
+  });
+
+  it('retries the lookup and lands on the resolved method', async () => {
+    await renderLoginPage();
+    failSignInMethods();
+    await continueWithEmail();
+    await screen.findByTestId('sign-in-methods-unavailable');
+    stubSignInMethods(['password', 'magic-link']);
+
+    await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
+
+    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
+  });
+
+  it('reuses the known password method when a later lookup for the same address fails', async () => {
+    await renderLoginPage();
+    await continueWithEmail();
+    await screen.findByLabelText(pl.auth.passwordLabel);
+    await userEvent.click(screen.getByTestId('login-change-email'));
+    failSignInMethods();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.auth.identifierContinue }));
+
+    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
+  });
+
+  it('does not carry a known password method over to another address', async () => {
+    await renderLoginPage();
+    await continueWithEmail();
+    await screen.findByLabelText(pl.auth.passwordLabel);
+    await userEvent.click(screen.getByTestId('login-change-email'));
+    await userEvent.clear(await screen.findByLabelText(pl.auth.emailLabel));
+    failSignInMethods();
+
+    await continueWithEmail('someone-else@together.dev');
+
+    expect(await screen.findByTestId('sign-in-methods-unavailable')).toBeInTheDocument();
+    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
   it('keeps the identifier fixed and focused while the lookup is in flight', async () => {

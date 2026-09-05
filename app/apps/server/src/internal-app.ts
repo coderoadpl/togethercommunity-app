@@ -8,6 +8,7 @@ import {
   apiKeyRevokeInputSchema,
   apiKeyImportAuditQuerySchema,
   bunnyVideosInputSchema,
+  contentVersionRestoreInputSchema,
   couponArchiveRequestSchema,
   couponCreateRequestSchema,
   couponStatsExportQuerySchema,
@@ -337,6 +338,7 @@ import {
   stopImpersonation,
   resolveReport,
   resolveTenant,
+  restoreContentVersion,
   revokeGrant,
   revokeTenantApiKey,
   saveEmailLayout,
@@ -349,6 +351,7 @@ import {
   setPostPinned,
   sendSupportMessage,
   resetPlatformData,
+  reseedSmokeTenant,
   setTenantSecret,
   simulatePurchase,
   simulateSubscriptionCycle,
@@ -662,6 +665,16 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(unauthorized('Invalid domain check secret')));
     }
     return respond(await deps.checkTenantDomains());
+  });
+
+  app.post(API_PATHS.smokeTenantReseed, async (c) => {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.smokeTenantReseedSecret)) {
+      return respond(err(unauthorized('Invalid smoke tenant reseed secret')));
+    }
+    if (deps.smokeTenantReseed === undefined) {
+      return respond(err(internal('The smoke tenant reseed is not configured')));
+    }
+    return respond(await reseedSmokeTenant(deps.smokeTenantReseed));
   });
 
   app.get(API_PATHS.tenantDomainDispatch, async (c) => {
@@ -2549,7 +2562,15 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const id = c.req.query('id');
     if (id === undefined) return respond(err(validation('Missing "id" query parameter')));
     const result = await getContentVersion(ctxOf(c), id, deps);
-    return respond(result.ok ? ok({ version: result.value }) : result);
+    return respond(result.ok ? ok(result.value) : result);
+  });
+
+  app.post(API_PATHS.coursesHistoryRestore, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = contentVersionRestoreInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid restore request', parsed.error.flatten())));
+    const result = await restoreContentVersion(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ restored: result.value }) : result);
   });
 
   app.get(API_PATHS.coursesHistory, async (c) => {

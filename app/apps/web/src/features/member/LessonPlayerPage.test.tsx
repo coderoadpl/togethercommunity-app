@@ -266,6 +266,66 @@ describe('LessonPlayerPage', () => {
     );
   });
 
+  it('mounts a collapsed sandbox only after the reader expands it, and collapses it again', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([{ type: 'embed', embedUrl: 'https://codesandbox.io/s/alert-demo', collapsed: true }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const toggle = await screen.findByTestId('lesson-embed-toggle');
+    expect(screen.getByTestId('lesson-embed-collapsed-warning')).toHaveTextContent(
+      pl.lesson.collapsedEmbedWarning,
+    );
+    expect(toggle).toHaveTextContent(pl.lesson.expandEmbed);
+    expect(screen.queryByTestId('lesson-sandbox')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — CodeSandbox / alert-demo` }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(toggle);
+
+    expect(await screen.findByTestId('lesson-sandbox')).toHaveAttribute(
+      'src',
+      'https://codesandbox.io/embed/alert-demo',
+    );
+    expect(screen.queryByTestId('lesson-embed-collapsed-warning')).not.toBeInTheDocument();
+    expect(screen.getByTestId('lesson-embed-toggle')).toHaveTextContent(pl.lesson.collapseEmbed);
+
+    await userEvent.click(screen.getByTestId('lesson-embed-toggle'));
+
+    expect(screen.queryByTestId('lesson-sandbox')).not.toBeInTheDocument();
+    expect(screen.getByTestId('lesson-embed-collapsed-warning')).toBeInTheDocument();
+  });
+
+  it('mounts a sandbox straight away when the embed is not collapsed', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([{ type: 'embed', embedUrl: 'https://codesandbox.io/s/alert-demo' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('lesson-sandbox')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-embed-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-embed-collapsed-warning')).not.toBeInTheDocument();
+  });
+
+  it('collapses a non-sandbox embed the author marked as collapsed', async () => {
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([{ type: 'embed', embedUrl: 'https://example.com/embed', collapsed: true }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(screen.queryByTestId('lesson-embed')).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByTestId('lesson-embed-toggle'));
+
+    expect(await screen.findByTestId('lesson-embed')).toHaveAttribute('src', 'https://example.com/embed');
+  });
+
   it('bleeds the sandbox past the lesson card on a phone and boxes it in from sm up', async () => {
     const phone = 375;
     const tablet = 600;

@@ -86,6 +86,20 @@ jobs:
           failing=$(sed -n 's/^smoke:remote: FAIL failing=//p' smoke.log | head -1)
           echo "failing=${failing:-unreachable}" >> "$GITHUB_OUTPUT"
           echo "failed=true" >> "$GITHUB_OUTPUT"
+      - name: Summarize the smoke checks
+        if: always()
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
+        run: |
+          [ -f smoke.log ] || exit 0
+          {
+            echo "### Post-deploy smoke"
+            echo ""
+            echo "Target: \`$BASE_URL\`"
+            echo ""
+            sed -n 's/^  \[/- [/p' smoke.log
+            sed -n 's/^smoke:remote: NOTICE /> NOTICE /p' smoke.log
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Send an SMS alert
         if: steps.smoke.outputs.failed == 'true'
         uses: ./.github/actions/alert-sms

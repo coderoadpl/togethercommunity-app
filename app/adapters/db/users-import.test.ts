@@ -63,7 +63,7 @@ const memberMutation = (): Extract<ImportUsersMutation, { kind: 'member' }> => (
   authUser: {
     action: 'create',
     name: 'Imported User',
-    emailVerified: false,
+    emailVerified: true,
   },
   event: {
     id: 'audit-member-created',
@@ -79,7 +79,7 @@ const memberMutation = (): Extract<ImportUsersMutation, { kind: 'member' }> => (
 });
 
 describe('users import repository', () => {
-  it('commits an unverified auth identity, member, and audit without a credential', async () => {
+  it('commits a verified auth identity, member, and audit without a credential', async () => {
     const repository = createImportUsersRepository(db);
     const result = await repository.commit(TENANT_ID, memberMutation());
     const [authUser] = await db.select().from(user).where(eq(user.id, 'user-source'));
@@ -91,7 +91,7 @@ describe('users import repository', () => {
       .where(eq(importAuditEvents.id, 'audit-member-created'));
 
     expect(result).toBe('saved');
-    expect(authUser).toMatchObject({ email: 'user@example.test', emailVerified: false });
+    expect(authUser).toMatchObject({ email: 'user@example.test', emailVerified: true });
     expect(credential).toBeUndefined();
     expect(member).toMatchObject({
       userId: 'user-source',

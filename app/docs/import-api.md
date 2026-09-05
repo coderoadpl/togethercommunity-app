@@ -250,7 +250,7 @@ After the data lands: review the drafts in the panel, attach pricing and deliver
 
 ## Importing members (passwordless)
 
-Every imported member is created without a password and with an unverified e-mail. The import sends no e-mail. Once e-mail delivery is configured, members reclaim access through a magic link or the forgot-password flow.
+Every imported member is created without a password and with a verified e-mail, because the address was already verified on the source platform. The import sends no e-mail. Once e-mail delivery is configured, members reclaim access through a magic link or the forgot-password flow, and both paths keep whatever credential they set.
 
 - An e-mail already belonging to a pre-existing platform identity cannot be adopted by an import. Deduplicate in your transform and resolve the identity through the normal account flow.
 

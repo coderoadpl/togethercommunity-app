@@ -1336,6 +1336,65 @@ describe('reset password email', () => {
     })).toBeNull();
     expect(consumed.status).toBe(400);
   });
+
+  it('proves the address, so a later magic-link sign-in keeps the credential and the session', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    const db = createDb('node-postgres', connectionString);
+    const email = `reset-verifies-${Date.now()}@together.dev`;
+    const { userId } = await authPort.ensureUser(email);
+    const { internalAdapter } = await auth.$context;
+
+    await auth.api.requestPasswordReset({
+      body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
+      headers: new Headers({ origin: 'http://studio.localhost:48730' }),
+    });
+    const tokens = await db
+      .select({ identifier: verification.identifier })
+      .from(verification)
+      .where(eq(verification.value, userId));
+    const token = tokens
+      .find((row) => row.identifier.startsWith('reset-password:'))
+      ?.identifier.slice('reset-password:'.length) ?? '';
+    const reset = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/reset-password', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.231',
+        },
+        body: JSON.stringify({ token, newPassword: NEW_PASSWORD }),
+      }),
+    );
+
+    expect(reset.status).toBe(200);
+    expect((await internalAdapter.findUserById(userId))?.emailVerified).toBe(true);
+
+    const signedIn = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          host: 'studio.localhost:48730',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.232',
+        },
+        body: JSON.stringify({ email, password: NEW_PASSWORD }),
+      }),
+    );
+    const sessionToken = signedIn.headers.get('set-auth-token');
+    await authPort.requestMagicLink({ email, callbackURL: 'http://localhost:48730/my' });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const consumedLink = await auth.handler(new Request(link?.url ?? ''));
+
+    expect(signedIn.status).toBe(200);
+    expect(consumedLink.status).toBe(302);
+    expect((await internalAdapter.findAccounts(userId)).map((row) => row.providerId))
+      .toContain('credential');
+    expect(await auth.api.getSession({
+      headers: new Headers({ authorization: `Bearer ${sessionToken ?? ''}` }),
+    })).not.toBeNull();
+  });
 });
 
 describe('change password', () => {

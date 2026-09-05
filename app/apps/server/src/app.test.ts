@@ -1363,7 +1363,7 @@ describe('migration import HTTP surfaces', () => {
     expect(userMutations[0]).toMatchObject({
       kind: 'member',
       resource: { email: 'user@example.test' },
-      authUser: { emailVerified: false },
+      authUser: { emailVerified: true },
     });
     expect(userMutations).toHaveLength(1);
     expect(userMutations[0]).not.toHaveProperty('authUser.legacyPasswordHash');

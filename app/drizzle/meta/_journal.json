@@ -701,6 +701,13 @@
       "when": 1788760000000,
       "tag": "0099_member_video_autoplay",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1788820000000,
+      "tag": "0100_verify_imported_member_emails",
+      "breakpoints": true
     }
   ]
 }

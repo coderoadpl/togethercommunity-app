@@ -74,6 +74,23 @@ production migrations are forward-only and use expand then contract across
 separate releases. A production release containing a constraint or destructive
 migration requires a recorded Neon restore point before promotion.
 
+Before it migrates or reseeds, the build compares the `DATABASE_URL` host
+fingerprint with `PRODUCTION_DATABASE_FINGERPRINT`. A deployment that is not
+production — `VERCEL_ENV` other than `production`, or an `APP_ENV` naming a
+disposable environment — and whose database fingerprint equals the production
+one fails the build instead of migrating. An absent `VERCEL_ENV` names no slot:
+on Vercel (`VERCEL` or `VERCEL_URL` set) the build is treated as
+non-production, off Vercel the posture falls back to `APP_ENV` and `NODE_ENV`,
+and either way the build log carries a warning line that the slot was unnamed.
+A non-production build with the fingerprint variable unset only prints a
+warning, so an environment that has not been configured yet still deploys; so
+does a build with no `DATABASE_URL`, which leaves the guard nothing to compare.
+Set `PRODUCTION_DATABASE_FINGERPRINT` in the Preview and Staging scopes to the
+`databaseFingerprint` that production's `/api/health` reports; production
+itself does not need it. `db:migrate` logs
+`Migrating database <fingerprint> (environment <VERCEL_ENV|APP_ENV>)`, so every
+build log names the database it touched.
+
 Staging and preview data is seeded from the deployed code rather than copied
 from production. A platform owner listed in `PLATFORM_OWNER_EMAILS` gets a
 "Reset data" action on the platform host that wipes the demo tenants and

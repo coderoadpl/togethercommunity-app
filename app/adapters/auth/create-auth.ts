@@ -9,6 +9,7 @@ import {
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { createCookieGetter, getCookies } from 'better-auth/cookies';
 import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -20,7 +21,7 @@ import {
 } from '#core/domain/index.js';
 import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator } from '#core/server/index.js';
 import type { Db } from '#adapters/db/client.js';
-import { devMagicLinks } from '#adapters/db/schema.js';
+import { devMagicLinks, user } from '#adapters/db/schema.js';
 
 export interface AuthSettings {
   secret: string;
@@ -507,6 +508,12 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         });
         if (!queued.ok) throw new Error(queued.error.message);
         settings.dispatchEmail();
+      },
+      // Completing a reset proves control of the mailbox the link was delivered
+      // to. Leaving the row unverified would let the next email-primary sign-in
+      // treat the just-created credential as unproven and delete it.
+      onPasswordReset: async ({ user: resetUser }) => {
+        await db.update(user).set({ emailVerified: true }).where(eq(user.id, resetUser.id));
       },
     },
     emailVerification: {

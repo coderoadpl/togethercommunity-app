@@ -801,7 +801,7 @@ export type ImportUsersMutation =
       authUser: {
         action: 'create' | 'keep';
         name: string;
-        emailVerified: false;
+        emailVerified: true;
       };
       event: ImportAuditEvent;
     }

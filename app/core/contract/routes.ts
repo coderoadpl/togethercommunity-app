@@ -18,6 +18,7 @@ import {
   deletePostInputSchema,
   deleteSpaceInputSchema,
   createEventInputSchema,
+  deepHealthReportSchema,
   dmConversationRefSchema,
   eventIcsSchema,
   eventRefSchema,
@@ -223,6 +224,8 @@ export const healthOutputSchema = attestationSchema.extend({
   schemaFingerprint: z.string().regex(/^[0-9a-f]{12}$/).nullable(),
   schemaFingerprintMatch: z.boolean().nullable(),
 });
+
+export const deepHealthOutputSchema = deepHealthReportSchema;
 
 export const emailDispatchOutputSchema = z.object({
   attemptsMade: z.number().int().nonnegative(),
@@ -1686,6 +1689,7 @@ export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
+  healthDeep: { method: 'GET', path: '/api/health/deep' },
   emailDispatch: { method: 'POST', path: '/api/internal/dispatch-email' },
   autoInvoiceDispatch: { method: 'POST', path: '/api/internal/dispatch-auto-invoices' },
   tenantDomainDispatch: { method: 'POST', path: '/api/internal/domain-check' },
@@ -1952,6 +1956,7 @@ export const API_PATHS = {
   health: API_ROUTES.health.path,
   healthLive: API_ROUTES.healthLive.path,
   healthReady: API_ROUTES.healthReady.path,
+  healthDeep: API_ROUTES.healthDeep.path,
   emailDispatch: API_ROUTES.emailDispatch.path,
   autoInvoiceDispatch: API_ROUTES.autoInvoiceDispatch.path,
   ksefDispatch: API_ROUTES.ksefDispatch.path,

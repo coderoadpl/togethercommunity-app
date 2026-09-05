@@ -1,0 +1,47 @@
+name: Alert SMS
+description: Publish an operational alert to the on-call phone through Amazon SNS.
+inputs:
+  message:
+    description: Alert body. Never pass a secret or tenant data.
+    required: true
+  aws-access-key-id:
+    description: Access key of the SNS-publishing IAM user.
+    required: true
+  aws-secret-access-key:
+    description: Secret key of the SNS-publishing IAM user.
+    required: true
+  phone-number:
+    description: Destination phone number in E.164 form.
+    required: true
+  aws-region:
+    description: Region hosting the SNS SMS sandbox or production origination number.
+    required: false
+    default: eu-central-1
+  required:
+    description: Fail the step when the SNS credentials are absent instead of skipping.
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+        AWS_DEFAULT_REGION: ${{ inputs.aws-region }}
+        ALERT_SMS_PHONE: ${{ inputs.phone-number }}
+        ALERT_MESSAGE: ${{ inputs.message }}
+        ALERT_REQUIRED: ${{ inputs.required }}
+      run: |
+        if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
+          if [ "$ALERT_REQUIRED" = "true" ]; then
+            echo "::error::SMS secrets absent - cannot send the SMS"
+            exit 1
+          fi
+          echo "SMS secrets absent - skipping the SMS"
+          exit 0
+        fi
+        aws sns publish \
+          --phone-number "$ALERT_SMS_PHONE" \
+          --message "$ALERT_MESSAGE" \
+          --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}'

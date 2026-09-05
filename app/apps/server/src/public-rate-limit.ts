@@ -29,6 +29,7 @@ export interface PublicRateLimitPolicies {
   authLinksPerEmail: RateLimitWindow;
   authResolvesPerIp: RateLimitWindow;
   authResolvesPerTenant: RateLimitWindow;
+  deepHealthPerIp: RateLimitWindow;
 }
 
 export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
@@ -47,6 +48,7 @@ const PRODUCTION_LIMITS = {
   authLinksPerEmail: 5,
   authResolvesPerIp: 60,
   authResolvesPerTenant: 1_000,
+  deepHealthPerIp: 12,
 };
 const DEVELOPMENT_LIMITS = {
   writesPerIp: 3_000,
@@ -54,6 +56,7 @@ const DEVELOPMENT_LIMITS = {
   authLinksPerEmail: 500,
   authResolvesPerIp: 6_000,
   authResolvesPerTenant: 100_000,
+  deepHealthPerIp: 1_200,
 };
 
 export type PublicRateLimitEnv = Pick<
@@ -65,6 +68,7 @@ export type PublicRateLimitEnv = Pick<
   | 'PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES'
   | 'PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE'
+  | 'PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE'
 >;
 
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {
@@ -88,6 +92,10 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
     },
     authResolvesPerTenant: {
       limit: env.PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE ?? fallback.authResolvesPerTenant,
+      windowMs: MINUTE_MS,
+    },
+    deepHealthPerIp: {
+      limit: env.PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE ?? fallback.deepHealthPerIp,
       windowMs: MINUTE_MS,
     },
   };
@@ -147,19 +155,23 @@ const rateLimitedResponse = (error: AppError): Response => {
 };
 
 const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareDeps): Promise<Response | null> => {
+  const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
+  const policies = deps.publicRateLimitPolicies;
+  const clientIp = (): string =>
+    trustedClientIp(c, deps.authTrustedProxyHeader) ?? UNATTRIBUTED_IP_KEY;
+  if (c.req.method === 'GET') {
+    if (c.req.path !== API_PATHS.healthDeep) return null;
+    const claimed = await claimRateLimitWindow(
+      { scope: 'deep-health:ip', key: clientIp(), window: policies.deepHealthPerIp },
+      limiter,
+    );
+    return claimed.ok ? null : rateLimitedResponse(claimed.error);
+  }
   if (c.req.method !== 'POST') return null;
   const kind = publicRateLimitKind(c.req.path);
   if (kind === null) return null;
-  const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
-  const policies = deps.publicRateLimitPolicies;
   const buckets = bucketsFor(kind, policies);
-  const perIp = await claimRateLimitWindow(
-    {
-      ...buckets.ip,
-      key: trustedClientIp(c, deps.authTrustedProxyHeader) ?? UNATTRIBUTED_IP_KEY,
-    },
-    limiter,
-  );
+  const perIp = await claimRateLimitWindow({ ...buckets.ip, key: clientIp() }, limiter);
   if (!perIp.ok) return rateLimitedResponse(perIp.error);
   if (kind === 'auth-link') {
     const email = await requestEmail(c);

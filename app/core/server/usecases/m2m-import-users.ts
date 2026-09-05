@@ -85,7 +85,7 @@ type PreparedUsersRecord =
       authUser: {
         action: 'create' | 'keep';
         name: string;
-        emailVerified: false;
+        emailVerified: true;
       };
     }
   | {
@@ -184,7 +184,7 @@ const prepareMember = async (
       authUser: {
         action: 'create',
         name: record.displayName,
-        emailVerified: false,
+        emailVerified: true,
       },
     });
   }
@@ -214,7 +214,7 @@ const prepareMember = async (
     authUser: {
       action: 'keep',
       name: record.displayName,
-      emailVerified: false,
+      emailVerified: true,
     },
   });
 };

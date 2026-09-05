@@ -183,7 +183,7 @@ const harness = () => {
 };
 
 describe('m2m users import', () => {
-  it('creates an unverified imported identity and makes exact replays unchanged', async () => {
+  it('creates a verified imported identity and makes exact replays unchanged', async () => {
     const h = harness();
     const created = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
@@ -202,7 +202,7 @@ describe('m2m users import', () => {
     });
     expect(h.commits[0]).toMatchObject({
       kind: 'member',
-      authUser: { action: 'create', emailVerified: false },
+      authUser: { action: 'create', emailVerified: true },
     });
     expect(h.commits[0]).not.toHaveProperty('authUser.legacyPasswordHash');
     expect(h.commits[0]).not.toHaveProperty('authUser.credentialAccountId');
@@ -308,7 +308,7 @@ describe('m2m users import', () => {
     expect(h.commits).toHaveLength(1);
     expect(h.commits[0]).toMatchObject({
       kind: 'member',
-      authUser: { emailVerified: false },
+      authUser: { emailVerified: true },
     });
     expect(h.commits[0]).not.toHaveProperty('authUser.legacyPasswordHash');
     expect(h.commits[0]).not.toHaveProperty('authUser.credentialAccountId');

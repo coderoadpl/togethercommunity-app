@@ -3,7 +3,7 @@ import { type Breakpoint } from '@mui/material/styles';
 
 import { useTranslations } from '../../i18n/index.js';
 import { LessonBlockIcon, LessonLinkButton, LESSON_SANDBOX_FRAME_SX } from '../../theme.js';
-import { LessonMediaEmbed } from './LessonMedia.js';
+import { CollapsibleEmbed, LessonMediaEmbed } from './LessonMedia.js';
 
 const SANDBOX_PERMISSIONS = 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals';
 
@@ -92,16 +92,30 @@ export const LessonSandboxEmbed = ({
   canonicalUrl,
   providerName,
   caption,
+  collapsed = false,
   outdentX = 0,
 }: {
   embedUrl: string;
   canonicalUrl: string;
   providerName: string;
   caption: string | null;
+  collapsed?: boolean;
   outdentX?: ResponsiveLength;
 }) => {
   const t = useTranslations();
   const title = sandboxTitle(providerName, canonicalUrl, caption);
+  const frame = (
+    <LessonMediaEmbed
+      frameSx={{ ...LESSON_SANDBOX_FRAME_SX, mx: outdentX }}
+      data-testid="lesson-sandbox"
+      src={embedUrl}
+      title={title}
+      sandbox={SANDBOX_PERMISSIONS}
+      loading="lazy"
+      referrerPolicy="strict-origin-when-cross-origin"
+      allowFullScreen
+    />
+  );
   return (
     <Stack useFlexGap spacing="0.5rem" sx={{ minWidth: 0 }}>
       {caption === null ? null : (
@@ -109,16 +123,7 @@ export const LessonSandboxEmbed = ({
           {caption}
         </Typography>
       )}
-      <LessonMediaEmbed
-        frameSx={{ ...LESSON_SANDBOX_FRAME_SX, mx: outdentX }}
-        data-testid="lesson-sandbox"
-        src={embedUrl}
-        title={title}
-        sandbox={SANDBOX_PERMISSIONS}
-        loading="lazy"
-        referrerPolicy="strict-origin-when-cross-origin"
-        allowFullScreen
-      />
+      {collapsed ? <CollapsibleEmbed>{frame}</CollapsibleEmbed> : frame}
       <Box>
         <MuiLink
           href={canonicalUrl}

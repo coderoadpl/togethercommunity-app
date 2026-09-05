@@ -91,6 +91,26 @@ describe('upcaster chain runner', () => {
     ]);
   });
 
+  it('reads a v6 lesson unchanged and preserves the v7 embed collapsed flag', () => {
+    const upcasted = readSnapshot('course_lesson', {
+      schemaVersion: 6,
+      payload: SNAPSHOT_FIXTURES.course_lesson[6],
+    });
+    expect(upcasted.ok && upcasted.value.payload).toEqual(SNAPSHOT_FIXTURES.course_lesson[6]);
+
+    const collapsed = readSnapshot('course_lesson', {
+      schemaVersion: 7,
+      payload: SNAPSHOT_FIXTURES.course_lesson[7],
+    });
+    expect(collapsed.ok).toBe(true);
+    if (!collapsed.ok) return;
+    const lesson = SNAPSHOT_CURRENT_SCHEMAS.course_lesson.parse(collapsed.value.payload);
+    expect(lesson.contents).toEqual([
+      { type: 'embed', embedUrl: 'https://codesandbox.io/s/alert-demo-abc123', collapsed: true },
+      { type: 'embed', embedUrl: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ' },
+    ]);
+  });
+
   it('parks unsafe legacy document and link URLs on an invalid host', () => {
     const result = readSnapshot('course_lesson', {
       schemaVersion: 5,

@@ -553,6 +553,59 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     });
   });
 
+  it('submits the collapsed flag from the embed block checkbox and collapses the preview', async () => {
+    let submitted: LessonBlock[] = [];
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.post('/api/lessons', async ({ request }) => {
+        const body = newCourseLessonSchema.parse(await request.json());
+        submitted = body.contents;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            lesson: {
+              id: 'lesson-new',
+              tenantId: 't1',
+              name: body.name,
+              isPreview: body.isPreview,
+              contents: body.contents,
+              legacyId: null,
+              createdAt: '2026-07-12T10:00:00.000Z',
+            },
+          },
+        });
+      }),
+    );
+
+    await renderLessonsAt('/panel/lessons/new');
+
+    await userEvent.type(await screen.findByLabelText(pl.common.name), 'Dialogs');
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    await userEvent.type(
+      await screen.findByLabelText(pl.lessons.embedUrlLabel),
+      'https://codesandbox.io/s/alert-demo',
+    );
+
+    expect(await screen.findByTestId('lesson-sandbox')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: pl.lessons.embedCollapsedLabel }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('lesson-sandbox')).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId('lesson-embed-collapsed-warning')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
+
+    await waitFor(() => {
+      expect(submitted).toEqual([
+        { type: 'embed', embedUrl: 'https://codesandbox.io/s/alert-demo', collapsed: true },
+      ]);
+    });
+  });
+
   it('filters lessons by name and by content type', async () => {
     const lessons: CourseLesson[] = [
       {

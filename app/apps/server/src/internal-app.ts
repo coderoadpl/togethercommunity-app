@@ -351,6 +351,7 @@ import {
   setPostPinned,
   sendSupportMessage,
   resetPlatformData,
+  reseedSmokeTenant,
   setTenantSecret,
   simulatePurchase,
   simulateSubscriptionCycle,
@@ -664,6 +665,16 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(unauthorized('Invalid domain check secret')));
     }
     return respond(await deps.checkTenantDomains());
+  });
+
+  app.post(API_PATHS.smokeTenantReseed, async (c) => {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.smokeTenantReseedSecret)) {
+      return respond(err(unauthorized('Invalid smoke tenant reseed secret')));
+    }
+    if (deps.smokeTenantReseed === undefined) {
+      return respond(err(internal('The smoke tenant reseed is not configured')));
+    }
+    return respond(await reseedSmokeTenant(deps.smokeTenantReseed));
   });
 
   app.get(API_PATHS.tenantDomainDispatch, async (c) => {

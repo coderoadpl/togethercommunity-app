@@ -5,6 +5,7 @@ import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' wi
 
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
+  SMOKE_TENANT_ID,
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
   billingDataSchema,
@@ -4126,8 +4127,17 @@ export const createTenantRepository = (
   },
 });
 
-export const createTenantDirectory = (db: Db): TenantDirectory => ({
-  listAll: async () => db.select().from(tenants).orderBy(asc(tenants.slug)),
+/**
+ * The directory is the only cross-tenant enumeration that reaches a public
+ * surface (`/api/health/deep`), so the synthetic smoke tenant is dropped from it
+ * on production rather than being listed or probed there.
+ */
+export const createTenantDirectory = (db: Db, hideSmokeTenant = false): TenantDirectory => ({
+  listAll: () => db
+    .select()
+    .from(tenants)
+    .where(hideSmokeTenant ? ne(tenants.id, SMOKE_TENANT_ID) : undefined)
+    .orderBy(asc(tenants.slug)),
 });
 
 export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({

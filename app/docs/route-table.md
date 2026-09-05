@@ -61,6 +61,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/internal/dispatch-auto-invoices` | self-authenticating | mutating | auto invoice dispatch |
 | `GET /api/internal/dispatch-auto-invoices` | self-authenticating | read | api internal dispatch-auto-invoices |
 | `POST /api/internal/domain-check` | self-authenticating | mutating | tenant domain dispatch |
+| `POST /api/internal/reseed-acme` | self-authenticating | mutating | smoke tenant reseed |
 | `GET /api/internal/domain-check` | self-authenticating | read | api internal domain-check |
 | `POST /api/internal/dispatch-ksef` | self-authenticating | mutating | ksef dispatch |
 | `GET /api/internal/dispatch-ksef` | self-authenticating | read | api internal dispatch-ksef |

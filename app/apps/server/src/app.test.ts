@@ -66,6 +66,7 @@ import {
   dispatchAutoInvoiceJobs,
   type AutoInvoiceJob,
   type PaymentWebhookEvent,
+  type SmokeTenantReseedPort,
   type StoredEntityVersion,
 } from '#core/server/index.js';
 import { authenticateMarketingApiKey } from './marketing-routes.js';
@@ -517,6 +518,7 @@ const deps = (input: {
     emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
     autoInvoiceDispatchSecret: 'test-auto-invoice-dispatch-secret',
     domainCheckSecret: 'test-domain-check-secret',
+    smokeTenantReseedSecret: 'test-smoke-tenant-reseed-secret',
     checkTenantDomains: input.checkTenantDomains
       ?? (async () => ok({ checked: 0, verified: 0, failed: 0, alerted: 0 })),
     tenantDomainEvents: { append: async () => undefined },
@@ -2621,6 +2623,52 @@ describe('automatic invoice dispatch route', () => {
       ok: true,
       data: { processed: true, processedCount: 1, orderId: 'order-1' },
     });
+  });
+});
+
+describe('smoke tenant reseed route', () => {
+  const smokeTenantReseed = (run: SmokeTenantReseedPort['run']) => ({
+    reseed: { run },
+    platformAudit: { record: vi.fn(async () => undefined) },
+    environment: 'production',
+    ids: { nextId: () => 'audit-1' },
+    clock: { nowIso: () => '2026-09-05T12:00:00.000Z' },
+  });
+
+  it('rebuilds the smoke tenant only for the configured operator secret', async () => {
+    const run = vi.fn<SmokeTenantReseedPort['run']>(async () => ({ tenantId: 'tenant-acme', wiped: [] }));
+    const composed = smokeTenantReseed(run);
+    const app = buildApp({ ...deps(), smokeTenantReseed: composed });
+
+    const refused = await app.request(API_PATHS.smokeTenantReseed, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-secret' },
+    });
+    expect(refused.status).toBe(401);
+    expect(run).not.toHaveBeenCalled();
+
+    const response = await app.request(API_PATHS.smokeTenantReseed, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-smoke-tenant-reseed-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { tenantId: 'tenant-acme', environment: 'production', durationMs: 0, wiped: [] },
+    });
+    expect(composed.platformAudit.record).toHaveBeenCalledOnce();
+  });
+
+  it('reports a deployment that composed no reseed', async () => {
+    const app = buildApp(deps());
+
+    const response = await app.request(API_PATHS.smokeTenantReseed, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-smoke-tenant-reseed-secret' },
+    });
+
+    expect(response.status).toBe(500);
   });
 });
 

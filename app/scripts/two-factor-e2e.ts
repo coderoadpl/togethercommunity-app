@@ -7,6 +7,7 @@ import pg from 'pg';
 import { chromium, type Browser, type Locator, type Page } from 'playwright-core';
 
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
+import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
 import { resolveE2eDatabaseUrl } from './e2e-config.js';
 import { signInWithPassword } from './login-flow.js';
@@ -29,7 +30,7 @@ const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
 const account = {
-  email: 'creator2@together.dev',
+  email: SMOKE_TENANT_CREATOR_EMAIL,
   password: 'demo-password-15',
   tenantName: 'Acme Courses',
 };

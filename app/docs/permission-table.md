@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 110. Route rows: 296. Exported `Ctx` use-case rows: 241.
+Closed capability count: 110. Route rows: 297. Exported `Ctx` use-case rows: 241.
 
 ## Human-readable diff
 
@@ -81,6 +81,7 @@ no changes
 | `POST /api/internal/dispatch-auto-invoices` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/dispatch-auto-invoices` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/internal/domain-check` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
+| `POST /api/internal/reseed-acme` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/domain-check` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/internal/dispatch-ksef` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/dispatch-ksef` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
@@ -577,10 +578,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:164` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1016` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1018` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1486` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1486` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1027` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1029` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1497` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1497` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:85` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

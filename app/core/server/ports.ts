@@ -2221,6 +2221,10 @@ export interface PlatformDataResetPort {
   run(): Promise<{ wiped: WipedTable[] }>;
 }
 
+export interface SmokeTenantReseedPort {
+  run(): Promise<{ tenantId: string; wiped: WipedTable[] }>;
+}
+
 export interface PlatformAuditRepository {
   record(event: PlatformAuditEvent): Promise<void>;
 }

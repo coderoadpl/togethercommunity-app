@@ -47,6 +47,10 @@ describe('i18n dictionaries', () => {
     ];
     const stepCopy = Object.values(dictionaries).flatMap((messages) => [
       messages.auth.signInMethodsUnavailable,
+      messages.auth.signInMethodsRateLimited,
+      messages.auth.signInMethodsChoosePrompt,
+      messages.auth.signInMethodsChooseMagicLink,
+      messages.auth.signInMethodsChoosePassword,
       messages.auth.magicLinkStepBody,
       messages.auth.magicLinkExpiredOnStep,
       messages.auth.usePasswordPrompt,

@@ -21,20 +21,29 @@ export const serverMessageOf = (error: unknown): string | null => {
   return typeof message === 'string' && message.trim() !== '' ? message : null;
 };
 
-const errorDetailOf = (error: unknown, key: string): string | null => {
+const errorDetailOf = (error: unknown, key: string): unknown => {
   if (typeof error !== 'object' || error === null || !('appError' in error)) return null;
   const { appError } = error;
   if (typeof appError !== 'object' || appError === null || !('details' in appError)) return null;
   const { details } = appError;
   if (typeof details !== 'object' || details === null || !(key in details)) return null;
-  const value: unknown = Reflect.get(details, key);
+  return Reflect.get(details, key);
+};
+
+const stringDetailOf = (error: unknown, key: string): string | null => {
+  const value = errorDetailOf(error, key);
   return typeof value === 'string' ? value : null;
 };
 
-export const providerCodeOf = (error: unknown): string | null => errorDetailOf(error, 'providerCode');
+export const providerCodeOf = (error: unknown): string | null => stringDetailOf(error, 'providerCode');
 
 export const rejectedCorsOriginOf = (error: unknown): string | null =>
-  errorDetailOf(error, 'corsOrigin');
+  stringDetailOf(error, 'corsOrigin');
+
+export const retryAfterSecondsOf = (error: unknown): number | null => {
+  const value = errorDetailOf(error, 'retryAfterSeconds');
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.ceil(value) : null;
+};
 
 export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
   switch (code) {

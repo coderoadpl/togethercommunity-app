@@ -7,11 +7,12 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
+import { navigateFresh } from '../../lib/navigation.js';
 import { BreakAllText, Eyebrow } from '../../theme.js';
 import { AccountIcon, ManageAccountIcon, SignOutIcon } from './account-icons.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 
-export const MemberAccountMenu = () => {
+export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: string } = {}) => {
   const t = useTranslations();
   const me = useQuery(actions.me);
   const navigate = useNavigate();
@@ -28,8 +29,22 @@ export const MemberAccountMenu = () => {
     },
   });
 
+  // The session under view-as-member is still the operator's, so signing out here
+  // would end their panel session; the control leaves the view instead.
+  const impersonating = (me.data?.impersonation ?? null) !== null;
+  const stopImpersonation = useMutation({
+    ...actions.stopImpersonation,
+    onSuccess: () => navigateFresh(panelUrl),
+  });
+
   const email = me.data?.email ?? null;
   const displayName = me.data?.tenant?.displayName ?? me.data?.name ?? '';
+  const leaving = signOut.isPending || stopImpersonation.isPending;
+  const failure = signOut.error ?? stopImpersonation.error;
+  const dismissFailure = () => {
+    signOut.reset();
+    stopImpersonation.reset();
+  };
 
   return (
     <>
@@ -81,20 +96,23 @@ export const MemberAccountMenu = () => {
         </MenuItem>
         <MenuItem
           data-testid="member-sign-out"
-          disabled={signOut.isPending}
+          disabled={leaving}
           onClick={() => {
             setAnchorEl(null);
-            signOut.mutate();
+            if (impersonating) stopImpersonation.mutate(undefined);
+            else signOut.mutate();
           }}
         >
           <ListItemIcon>
             <SignOutIcon />
           </ListItemIcon>
-          <ListItemText primary={t.tenant.signOut} />
+          <ListItemText primary={impersonating ? t.shell.impersonationExit : t.tenant.signOut} />
         </MenuItem>
       </Menu>
-      <Snackbar open={signOut.isError} autoHideDuration={6000} onClose={() => signOut.reset()}>
-        <Alert severity="error" onClose={() => signOut.reset()}>{signOut.isError ? localizeError(signOut.error, t) : ''}</Alert>
+      <Snackbar open={failure !== null} autoHideDuration={6000} onClose={dismissFailure}>
+        <Alert severity="error" onClose={dismissFailure}>
+          {failure === null ? '' : localizeError(failure, t)}
+        </Alert>
       </Snackbar>
     </>
   );

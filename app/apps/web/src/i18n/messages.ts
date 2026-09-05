@@ -150,6 +150,11 @@ export interface Messages {
     signingInAs: (params: { email: string }) => string;
     changeIdentifier: string;
     signInMethodsUnavailable: string;
+    signInMethodsRateLimited: string;
+    signInMethodsRateLimitedRetryAfter: (params: { seconds: number }) => string;
+    signInMethodsChoosePrompt: string;
+    signInMethodsChooseMagicLink: string;
+    signInMethodsChoosePassword: string;
     usePasswordPrompt: string;
     usePasswordInstead: string;
     useMagicLinkPrompt: string;
@@ -665,9 +670,13 @@ export interface Messages {
     sessionRevoke: string;
     sessionRevoking: string;
     sessionRevoked: string;
+    sessionRevokeConfirmTitle: string;
+    sessionRevokeConfirmBody: string;
     sessionsRevokeOthers: string;
     sessionsRevokingOthers: string;
     sessionsOthersRevoked: string;
+    sessionsRevokeOthersConfirmTitle: string;
+    sessionsRevokeOthersConfirmBody: string;
   };
   integrations: {
     heading: string;

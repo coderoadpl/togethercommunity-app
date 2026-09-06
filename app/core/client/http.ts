@@ -184,6 +184,7 @@ import {
   tenantSecretSetOutputSchema,
   tenantSecretDeleteOutputSchema,
   tenantSettingsOutputSchema,
+  tenantRedirectsOutputSchema,
   tenantRoutingOutputSchema,
   tenantDomainRemovalOutputSchema,
   termsConsentOutputSchema,
@@ -2279,6 +2280,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.tenantRouting.method,
       API_ROUTES.tenantRouting.path,
       tenantRoutingOutputSchema,
+      undefined,
+      signal,
+    ),
+  getTenantRedirects: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantRedirects.method,
+      API_ROUTES.tenantRedirects.path,
+      tenantRedirectsOutputSchema,
       undefined,
       signal,
     ),

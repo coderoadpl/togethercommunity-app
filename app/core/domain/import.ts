@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ERROR_CODES, type AppError } from './errors.js';
 import { chapterSchema, lessonBlockSchema } from './course.js';
 import { normalizeEmail } from './email.js';
+import { redirectPathSchema } from './tenant-redirect.js';
 import {
   currencySchema,
   productCoverUrlSchema,
@@ -28,6 +29,7 @@ export const importKindSchema = z.enum([
   'member',
   'grant',
   'progress',
+  'redirect',
 ]);
 
 export type ImportKind = z.output<typeof importKindSchema>;
@@ -230,6 +232,34 @@ export const importProgressRecordSchema = importProgressRecordObjectSchema.super
 
 export type ImportProgressRecord = z.output<typeof importProgressRecordSchema>;
 
+const importRedirectTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('course'), importKey: importKeySchema }).strict(),
+  z.object({ kind: z.literal('module-as-course'), importKey: importKeySchema }).strict(),
+  z
+    .object({
+      kind: z.literal('lesson'),
+      importKey: importKeySchema,
+      courseKey: importKeySchema,
+    })
+    .strict(),
+  z.object({ kind: z.literal('path'), path: redirectPathSchema }).strict(),
+]);
+
+export type ImportRedirectTarget = z.output<typeof importRedirectTargetSchema>;
+
+const importRedirectRecordObjectSchema = z
+  .object({
+    ...importedRecordFields,
+    fromPath: redirectPathSchema,
+    target: importRedirectTargetSchema,
+    permanent: z.boolean(),
+  })
+  .strict();
+
+export const importRedirectRecordSchema = importRedirectRecordObjectSchema;
+
+export type ImportRedirectRecord = z.output<typeof importRedirectRecordSchema>;
+
 const recordSchemas = {
   course: importCourseRecordSchema,
   module: importModuleRecordSchema,
@@ -238,6 +268,7 @@ const recordSchemas = {
   member: importMemberRecordSchema,
   grant: importGrantRecordSchema,
   progress: importProgressRecordSchema,
+  redirect: importRedirectRecordSchema,
 };
 
 export const importRecordSchema = z.discriminatedUnion('kind', [
@@ -248,6 +279,7 @@ export const importRecordSchema = z.discriminatedUnion('kind', [
   importMemberRecordSchema.extend({ kind: z.literal('member') }).strict(),
   importGrantRecordObjectSchema.extend({ kind: z.literal('grant') }).strict(),
   importProgressRecordObjectSchema.extend({ kind: z.literal('progress') }).strict(),
+  importRedirectRecordObjectSchema.extend({ kind: z.literal('redirect') }).strict(),
 ]).superRefine((record, ctx) => {
   if (record.kind === 'course') refineCourseRecord(record, ctx);
   if (record.kind === 'module') refineModuleRecord(record, ctx);

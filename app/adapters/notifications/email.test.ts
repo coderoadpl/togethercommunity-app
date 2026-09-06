@@ -158,7 +158,7 @@ describe('email notification channel', () => {
             postId: null,
             contextId: null,
             courseId: null,
-            domain: 'kurs.coderoad.example',
+            domain: 'kurs.acme.example',
             lessonName: '',
             authorDisplay: null,
           },

@@ -933,7 +933,7 @@ export const importAuditEvents = pgTable(
       .notNull()
       .references(() => tenantApiKeys.id, { onDelete: 'no action' }),
     kind: text('kind', {
-      enum: ['course', 'module', 'lesson', 'product', 'member', 'grant', 'progress'],
+      enum: ['course', 'module', 'lesson', 'product', 'member', 'grant', 'progress', 'redirect'],
     }).notNull(),
     importKey: text('import_key').notNull(),
     resourceId: text('resource_id').notNull(),
@@ -1775,6 +1775,25 @@ export const tenantDomains = pgTable(
     uniqueIndex('tenant_domains_domain_uidx').on(table.domain),
     index('tenant_domains_pending_idx').on(table.kind, table.verified, table.lastCheckedAt),
   ],
+);
+
+export const tenantRedirects = pgTable(
+  'tenant_redirects',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    fromPath: text('from_path').notNull(),
+    targetKind: text('target_kind', {
+      enum: ['course', 'lesson', 'module-as-course', 'path'],
+    }).notNull(),
+    targetId: text('target_id'),
+    targetPath: text('target_path').notNull(),
+    permanent: boolean('permanent').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('tenant_redirects_tenant_from_path_uidx').on(table.tenantId, table.fromPath)],
 );
 
 export const tenantDomainEvents = pgTable(

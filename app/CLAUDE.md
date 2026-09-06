@@ -16,8 +16,8 @@ provenance trail lives in the private notes.
 ## The two gates
 
 - `pnpm run check` = `typecheck` + `typecheck:islands` + `lint` + `lock-lint` +
-  `license-lint` + `migration-lint` + `tenant-scope-check` + `depcruise` + `knip` +
-  `doc-lint` + `test` —
+  `license-lint` + `migration-lint` + `tenant-scope-check` + `tenant-neutral-lint` +
+  `depcruise` + `knip` + `doc-lint` + `test` —
   the **static** gate.
 - `pnpm run smoke` = the **runtime** gate: it verifies the installed dependency
   tree matches `pnpm-lock.yaml`, drops+recreates an isolated
@@ -48,6 +48,27 @@ diagnose it before deciding whether the stage failed:
   `apps/web/src/features/home/courses/CoursesPanel.test.tsx`
 
 Visual verification has zero retries.
+
+## Tenant neutrality (owner decision 2026-09-06 — HARD RULE)
+
+This is a public multi-tenant platform. It must not contain references to any
+specific tenant: no tenant names, no tenant domains (production or legacy), no
+course titles, no legacy platform URL shapes or ids, no export logic written for
+one tenant's previous stack, and no tenant hosts hardcoded in CI.
+
+Allowed: the GitHub organisation name in remote and package metadata, the
+licence and copyright holder with its contact address, the platform's own
+domain (`togethercommunity.app`), and the seed and demo fixtures (`acme`,
+`studio`, `akademia`).
+
+Tenant specifics live outside the repository: in environment variables, in
+GitHub repository variables and secrets, or in import datasets produced by
+tooling the owner keeps privately. A tenant's legacy URLs reach the platform as
+`redirect` import records, never as code that knows their shape.
+
+`pnpm run tenant-neutral-lint` (part of `pnpm run check`) fails on the denied
+patterns across every tracked file. An exception needs a line in
+`.tenant-neutral-allow` with a written justification.
 
 ## Licensing & IP policy (owner decision 2026-07-21 — HARD RULES)
 

@@ -4,7 +4,7 @@ import { slugify } from './slug.js';
 
 describe('slugify', () => {
   it('maps Polish diacritics to their base letters', () => {
-    expect(slugify('Społeczność CodeRoad')).toBe('spolecznosc-coderoad');
+    expect(slugify('Społeczność Acme')).toBe('spolecznosc-acme');
     expect(slugify('Zażółć gęślą jaźń')).toBe('zazolc-gesla-jazn');
     expect(slugify('Łódź')).toBe('lodz');
   });

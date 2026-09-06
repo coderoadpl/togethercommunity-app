@@ -1865,6 +1865,12 @@ export interface Messages {
     conflict: string;
     firstDomainWarning: string;
     docsLink: string;
+    redirectsHeading: string;
+    redirectsIntro: string;
+    redirectsCount: (params: { count: number }) => string;
+    redirectsEmpty: string;
+    redirectsPermanent: string;
+    redirectsTemporary: string;
   };
   buildInfo: {
     heading: string;

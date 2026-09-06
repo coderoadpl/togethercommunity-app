@@ -68,6 +68,7 @@ export const emptyImportReferenceMaps = (): ImportReferenceMaps => ({
   member: new Map(),
   grant: new Map(),
   progress: new Map(),
+  redirect: new Map(),
 });
 
 type PredictedAction = {

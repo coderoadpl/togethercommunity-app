@@ -146,6 +146,11 @@ const harness = () => {
       findProgressById: async () => null,
       findProgressByPair: async () => null,
     },
+    redirects: {
+      findById: async () => null,
+      findByFromPath: async () => null,
+      listByTenant: async () => [],
+    },
     ids: { nextId: () => `id-${sequence += 1}` },
     clock: { nowIso: () => NOW },
     hash: { sha256: (content) => String(content) },
@@ -474,13 +479,13 @@ describe('m2m content import', () => {
       value: {
         plan: {
           create: {
-            course: 1, module: 1, lesson: 0, product: 1, member: 0, grant: 0, progress: 0,
+            course: 1, module: 1, lesson: 0, product: 1, member: 0, grant: 0, progress: 0, redirect: 0,
           },
           update: {
-            course: 0, module: 0, lesson: 0, product: 0, member: 0, grant: 0, progress: 0,
+            course: 0, module: 0, lesson: 0, product: 0, member: 0, grant: 0, progress: 0, redirect: 0,
           },
           unchanged: {
-            course: 0, module: 0, lesson: 0, product: 0, member: 0, grant: 0, progress: 0,
+            course: 0, module: 0, lesson: 0, product: 0, member: 0, grant: 0, progress: 0, redirect: 0,
           },
         },
         errors: [],

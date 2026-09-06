@@ -244,7 +244,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         html(
           '<h3>Projekt końcowy</h3><p>W tej lekcji łączymy zdobytą wiedzę i budujemy prostą aplikację listy zadań (to-do). Wykorzystamy manipulację DOM, obsługę zdarzeń oraz zapisywanie stanu w <code>localStorage</code>.</p><ul><li>Dodawanie i usuwanie zadań.</li><li>Oznaczanie zadań jako ukończone.</li><li>Trwałość danych po odświeżeniu strony.</li></ul>',
         ),
-        link('https://github.com/coderoad/todo-vanilla', 'Repozytorium startowe projektu na GitHub'),
+        link('https://github.com/acme-courses/todo-vanilla', 'Repozytorium startowe projektu na GitHub'),
       ],
     },
     {

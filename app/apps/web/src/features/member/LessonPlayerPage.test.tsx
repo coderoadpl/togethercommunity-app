@@ -239,7 +239,7 @@ describe('LessonPlayerPage', () => {
   });
 
   it('renders an embeddable link as a sandboxed editor with a new-tab link', async () => {
-    const sandboxUrl = 'https://codesandbox.io/embed/github/coderoadpl/task-1?autoresize=1';
+    const sandboxUrl = 'https://codesandbox.io/embed/github/acme-courses/task-1?autoresize=1';
     server.use(
       okStructure(),
       okProgress(),
@@ -260,7 +260,7 @@ describe('LessonPlayerPage', () => {
     expect(screen.getByTestId('lesson-media-skeleton')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — Zadanie 1 — flexbox` }),
-    ).toHaveAttribute('href', 'https://codesandbox.io/s/github/coderoadpl/task-1?autoresize=1');
+    ).toHaveAttribute('href', 'https://codesandbox.io/s/github/acme-courses/task-1?autoresize=1');
     expect(screen.getByTestId('lesson-block-0')).toHaveTextContent(
       pl.lesson.labelSandbox({ provider: 'CodeSandbox' }),
     );
@@ -432,7 +432,7 @@ describe('LessonPlayerPage', () => {
       okStructure(),
       okProgress(),
       okLesson([
-        { type: 'link', url: 'https://github.com/coderoadpl/task-1', description: 'GitHub' },
+        { type: 'link', url: 'https://github.com/acme-courses/task-1', description: 'GitHub' },
         { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/HTML' },
       ]),
     );
@@ -444,11 +444,11 @@ describe('LessonPlayerPage', () => {
     expect(within(section).getByText(pl.lesson.linksHeading)).toBeInTheDocument();
     expect(within(section).getAllByRole('listitem')).toHaveLength(2);
     const links = within(section).getAllByRole('link');
-    expect(links[0]).toHaveAttribute('title', 'https://github.com/coderoadpl/task-1');
+    expect(links[0]).toHaveAttribute('title', 'https://github.com/acme-courses/task-1');
     expect(links[0]).toHaveAccessibleName(`GitHub ${pl.lesson.newTabHint}`);
     expect(links[1]).toHaveAccessibleName(`developer.mozilla.org ${pl.lesson.newTabHint}`);
     expect(section.textContent).not.toContain('https://');
-    expect(section.textContent).not.toContain('/coderoadpl/');
+    expect(section.textContent).not.toContain('/acme-courses/');
   });
 
   it('keeps description-less links on one host distinguishable', async () => {
@@ -456,8 +456,8 @@ describe('LessonPlayerPage', () => {
       okStructure(),
       okProgress(),
       okLesson([
-        { type: 'link', url: 'https://github.com/coderoadpl/one' },
-        { type: 'link', url: 'https://github.com/coderoadpl/two' },
+        { type: 'link', url: 'https://github.com/acme-courses/one' },
+        { type: 'link', url: 'https://github.com/acme-courses/two' },
       ]),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
@@ -466,13 +466,13 @@ describe('LessonPlayerPage', () => {
     const names = within(section)
       .getAllByRole('link')
       .map((node) => node.getAttribute('title'));
-    expect(names).toEqual(['https://github.com/coderoadpl/one', 'https://github.com/coderoadpl/two']);
+    expect(names).toEqual(['https://github.com/acme-courses/one', 'https://github.com/acme-courses/two']);
     expect(within(section).getByRole('link', { name: `github.com / one ${pl.lesson.newTabHint}` })).toBeInTheDocument();
     expect(within(section).getByRole('link', { name: `github.com / two ${pl.lesson.newTabHint}` })).toBeInTheDocument();
   });
 
   it('leaves a single-anchor html block as html beside a link chip on the same target', async () => {
-    const repoUrl = 'https://github.com/coderoadpl/frontend--html-css-flexbox--task-1';
+    const repoUrl = 'https://github.com/acme-courses/frontend--html-css-flexbox--task-1';
     server.use(
       okStructure(),
       okProgress(),
@@ -498,7 +498,7 @@ describe('LessonPlayerPage', () => {
   });
 
   it('renders every repeated link block the author placed', async () => {
-    const repoUrl = 'https://github.com/coderoadpl/task-1';
+    const repoUrl = 'https://github.com/acme-courses/task-1';
     server.use(
       okStructure(),
       okProgress(),

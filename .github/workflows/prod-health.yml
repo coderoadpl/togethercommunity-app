@@ -18,6 +18,8 @@ jobs:
   probe:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      PROD_HEALTH_HOST: ${{ vars.PROD_HEALTH_HOST || format('{0}.togethercommunity.app', vars.SMOKE_TENANT || 'acme') }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
@@ -34,7 +36,7 @@ jobs:
       - name: Probe production health
         id: probe
         run: |
-          body=$(curl -sS --max-time 15 --retry 2 --retry-delay 5 https://coderoad.togethercommunity.app/api/health) || {
+          body=$(curl -sS --max-time 15 --retry 2 --retry-delay 5 "https://$PROD_HEALTH_HOST/api/health") || {
             echo "reason=health endpoint unreachable" >> "$GITHUB_OUTPUT"
             echo "failed=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -49,7 +51,7 @@ jobs:
             echo "failed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          deep_status=$(curl -sS -o deep.json -w '%{http_code}' --max-time 30 --retry 2 --retry-delay 5 https://coderoad.togethercommunity.app/api/health/deep) || {
+          deep_status=$(curl -sS -o deep.json -w '%{http_code}' --max-time 30 --retry 2 --retry-delay 5 "https://$PROD_HEALTH_HOST/api/health/deep") || {
             echo "reason=deep health endpoint unreachable" >> "$GITHUB_OUTPUT"
             echo "failed=true" >> "$GITHUB_OUTPUT"
             exit 0

@@ -37,6 +37,8 @@ export * from './member-navigation.js';
 export * from './public-navigation.js';
 export * from './space.js';
 export * from './custom-domain.js';
+export * from './member-routes.js';
+export * from './tenant-redirect.js';
 export * from './tenant.js';
 export * from './tenant-creation.js';
 export * from './support.js';

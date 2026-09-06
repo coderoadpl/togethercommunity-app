@@ -798,7 +798,7 @@ export const pl: Messages = {
     importKeysDescription:
       'Twórz krótkoterminowe klucze do importu roboczych treści i uczestników. Klucz importu nie pozwala wysyłać e-maili, zapisywać przez zwykłe API ani publikować treści.',
     importKeysNameLabel: 'Nazwa klucza',
-    importKeysNamePlaceholder: 'Migracja CodeRoad',
+    importKeysNamePlaceholder: 'Migracja z poprzedniej platformy',
     importKeysScopesLabel: 'Zakresy importu',
     importKeysContentScope: 'Treści — kursy, moduły, lekcje i robocze produkty',
     importKeysUsersScope: 'Uczestnicy — konta i dostępy do produktów',
@@ -831,6 +831,7 @@ export const pl: Messages = {
       member: 'Uczestnik',
       grant: 'Dostęp',
       progress: 'Postęp',
+      redirect: 'Przekierowanie',
     },
     importKeysAuditActions: {
       created: 'utworzono',
@@ -2117,6 +2118,15 @@ export const pl: Messages = {
     firstDomainWarning:
       'Po przełączeniu na własną domenę uczestnicy zalogują się ponownie, a klucze dostępu trzeba dodać na nowo. Logowanie przez Google nie działa na własnych domenach.',
     docsLink: 'Jak działają własne domeny',
+    redirectsHeading: 'Przekierowania',
+    redirectsIntro: 'Ścieżki, na które ten warsztat odpowiada przekierowaniem. Wgrywane przez API importu.',
+    redirectsCount: ({ count }) => format('{count} {noun}', {
+      count,
+      noun: plural(count, 'przekierowanie', 'przekierowania', 'przekierowań'),
+    }),
+    redirectsEmpty: 'Brak skonfigurowanych przekierowań.',
+    redirectsPermanent: 'Trwałe',
+    redirectsTemporary: 'Tymczasowe',
   },
   buildInfo: {
     heading: 'Wersja aplikacji',

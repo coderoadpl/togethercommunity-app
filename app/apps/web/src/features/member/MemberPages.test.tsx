@@ -196,7 +196,7 @@ describe('member pages', () => {
               {
                 id: 'c1',
                 tenantId: 't1',
-                name: 'Kurs front-end od A do Z',
+                name: 'Front-end Course',
                 description: '',
                 imageUrl: null,
                 moduleOrder: [],
@@ -222,7 +222,7 @@ describe('member pages', () => {
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
     expect(await screen.findByTestId('product-course-links')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Kurs front-end od A do Z' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Front-end Course' })).toHaveAttribute(
       'href',
       '/my/courses/c1',
     );

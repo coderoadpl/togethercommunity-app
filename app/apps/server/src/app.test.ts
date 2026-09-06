@@ -57,6 +57,7 @@ import {
   type Tenant,
   type TenantApiKey,
   type TenantDomain,
+  type TenantRedirect,
   type TenantSesSettings,
   type TermsConsent,
   type TenantApiKeyScope,
@@ -570,10 +571,11 @@ const deps = (input: {
       update: async () => null,
       delete: async () => false,
     },
-    legacyContent: {
-      findCourse: async () => null,
-      findModule: async () => null,
-      findLesson: async () => null,
+    redirects: {
+      findById: async () => null,
+      findByFromPath: async () => null,
+      listByTenant: async () => [],
+      commit: async () => 'saved' as const,
     },
     attachments: {
       create: async () => undefined,
@@ -4115,19 +4117,54 @@ describe('social preview route', () => {
   });
 });
 
-describe('legacy URL redirects', () => {
-  const legacyCourseId = '656b8fa6e74246956889b096';
-  const legacyModuleId = '65a52510b5bd26b9d2ab3aa1';
-  const legacyChapterId = '65a52510b5bd26b9d2ab3ccc';
-  const legacyLessonId = '65a52510b5bd26b9d2ab3b77';
+describe('tenant redirects', () => {
   const coursePagePath = '/my/courses/acme-course-js';
   const lessonPagePath = `${coursePagePath}/lessons/acme-lesson-let`;
-  const courseListPath = '/my';
-  const modulePath = `/courses/${legacyCourseId}/modules/${legacyModuleId}`;
-  const chapterPath = `${modulePath}/chapters/${legacyChapterId}`;
-  const lessonPath = `${chapterPath}/lessons/${legacyLessonId}`;
 
-  const legacyApp = (owner: Tenant = acme) => {
+  const storedRedirects: TenantRedirect[] = [
+    {
+      id: 'redirect-course',
+      tenantId: acme.id,
+      fromPath: '/kurs/javascript',
+      targetKind: 'course',
+      targetId: 'acme-course-js',
+      targetPath: coursePagePath,
+      permanent: true,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
+    {
+      id: 'redirect-lesson',
+      tenantId: acme.id,
+      fromPath: '/kurs/javascript/let',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      permanent: false,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
+    {
+      id: 'redirect-document',
+      tenantId: acme.id,
+      fromPath: '/kurs/lekcja-1.html',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      permanent: true,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
+    {
+      id: 'redirect-color-scheme',
+      tenantId: acme.id,
+      fromPath: '/color-scheme.js',
+      targetKind: 'course',
+      targetId: 'acme-course-js',
+      targetPath: coursePagePath,
+      permanent: true,
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
+  ];
+
+  const redirectApp = (owner: Tenant = acme) => {
     const base = deps({
       domains: [tenantDomainFixture({
         id: 'domain-acme',
@@ -4137,113 +4174,87 @@ describe('legacy URL redirects', () => {
         verified: true,
       })],
     });
-    const course: Course = {
-      id: 'acme-course-js',
-      tenantId: owner.id,
-      name: 'JavaScript',
-      description: '',
-      imageUrl: null,
-      moduleOrder: ['acme-module-variables'],
-      publiclyVisible: false,
-      legacyId: legacyCourseId,
-      createdAt: '1998-07-12T00:00:00.000Z',
-    };
-    const courseModule: CourseModule = {
-      id: 'acme-module-variables',
-      tenantId: owner.id,
-      courseIds: [course.id],
-      title: 'Variables',
-      prefix: null,
-      name: 'Variables',
-      chapters: [{
-        id: legacyChapterId,
-        name: 'Basics',
-        contents: [{ id: 'content-1', name: 'let', lessonId: 'acme-lesson-let' }],
-      }],
-      legacyId: legacyModuleId,
-      createdAt: '1998-07-12T00:00:00.000Z',
-    };
-    const lesson: CourseLesson = {
-      id: 'acme-lesson-let',
-      tenantId: owner.id,
-      name: 'let',
-      isPreview: false,
-      contents: [],
-      legacyId: legacyLessonId,
-      createdAt: '1998-07-12T00:00:00.000Z',
-    };
+    const owned = storedRedirects.map((redirect) => ({ ...redirect, tenantId: owner.id }));
     return buildApp({
       ...base,
-      legacyContent: {
-        findCourse: async (tenantId, legacyId) =>
-          tenantId === course.tenantId && legacyId === course.legacyId ? course : null,
-        findModule: async (tenantId, legacyId) =>
-          tenantId === courseModule.tenantId && legacyId === courseModule.legacyId ? courseModule : null,
-        findLesson: async (tenantId, legacyId) =>
-          tenantId === lesson.tenantId && legacyId === lesson.legacyId ? lesson : null,
+      redirects: {
+        ...base.redirects,
+        findByFromPath: async (tenantId, fromPath) =>
+          owned.find((redirect) =>
+            redirect.tenantId === tenantId && redirect.fromPath === fromPath) ?? null,
       },
     });
   };
 
-  const legacyGet = (path: string, host = 'acme.localhost:48730') =>
-    legacyApp().request(path, { headers: { host } });
+  const redirectGet = (path: string, host = 'acme.localhost:48730') =>
+    redirectApp().request(path, { headers: { host } });
 
-  it.each([
-    ['course', `/courses/${legacyCourseId}`, coursePagePath],
-    ['lesson', lessonPath, lessonPagePath],
-  ])('redirects a legacy %s link for good on a tenant subdomain', async (_shape, path, destination) => {
-    const response = await legacyGet(path);
+  it('redirects a permanent entry for good', async () => {
+    const response = await redirectGet('/kurs/javascript');
 
     expect(response.status).toBe(301);
-    expect(response.headers.get('location')).toBe(destination);
+    expect(response.headers.get('location')).toBe(coursePagePath);
   });
 
-  it.each([
-    ['module', modulePath, lessonPagePath],
-    ['chapter', chapterPath, lessonPagePath],
-  ])('redirects a legacy %s link temporarily, because its target is derived', async (_shape, path, destination) => {
-    const response = await legacyGet(path);
+  it('redirects a non-permanent entry temporarily', async () => {
+    const response = await redirectGet('/kurs/javascript/let');
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(destination);
+    expect(response.headers.get('location')).toBe(lessonPagePath);
   });
 
-  it('redirects on a verified custom domain and keeps the query string', async () => {
-    const response = await legacyGet(`${lessonPath}?utm_source=newsletter`, 'kurs.acme.example');
+  it.each([
+    ['a trailing slash', '/kurs/javascript/'],
+    ['upper case', '/Kurs/JavaScript'],
+    ['a repeated slash', '/kurs//javascript'],
+  ])('normalises %s before the lookup', async (_case, path) => {
+    const response = await redirectGet(path);
 
     expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe(coursePagePath);
+  });
+
+  it.each(['/kurs/lekcja-1.html', '/kurs/lekcja-1.HTML'])(
+    'redirects the document-extension source path %s',
+    async (path) => {
+      const response = await redirectGet(path);
+
+      expect(response.status).toBe(301);
+      expect(response.headers.get('location')).toBe(lessonPagePath);
+    },
+  );
+
+  it.each(['/assets/app.js', '/color-scheme.js'])(
+    'leaves the static asset %s to the web build',
+    async (path) => {
+      const response = await redirectGet(path);
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('location')).toBeNull();
+    },
+  );
+
+  it('redirects on a verified custom domain and keeps the query string', async () => {
+    const response = await redirectGet('/kurs/javascript/let?utm_source=newsletter', 'kurs.acme.example');
+
+    expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(`${lessonPagePath}?utm_source=newsletter`);
   });
 
-  it('redirects a link that carries a trailing slash', async () => {
-    const response = await legacyGet(`/courses/${legacyCourseId}/`);
-
-    expect(response.status).toBe(301);
-    expect(response.headers.get('location')).toBe(coursePagePath);
-  });
-
-  it('falls back to the course page when the module is unknown', async () => {
-    const response = await legacyGet(`/courses/${legacyCourseId}/modules/65a52510b5bd26b9d2ab3fff`);
-
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(coursePagePath);
-  });
-
   it.each([
-    ['a course owned by another workspace', `/courses/${legacyCourseId}`, globex],
-    ['an unknown course', '/courses/deadbeefdeadbeefdeadbeef', acme],
-    ['a path that is not a legacy shape', `/courses/${legacyCourseId}/modules`, acme],
-  ])('sends %s to the course list', async (_case, path, owner) => {
-    const response = await legacyApp(owner).request(path, {
+    ['an unconfigured path', '/kurs/python', acme],
+    ['a path configured for another workspace', '/kurs/javascript', globex],
+  ])('leaves %s to the web app', async (_case, path, owner) => {
+    const response = await redirectApp(owner).request(path, {
       headers: { host: 'acme.localhost:48730' },
     });
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(courseListPath);
+    expect(response.status).toBe(404);
+    expect(response.headers.get('location')).toBeNull();
   });
 
   it('leaves the platform host alone', async () => {
-    const response = await legacyGet(`/courses/${legacyCourseId}`, 'start.localhost');
+    const response = await redirectGet('/kurs/javascript', 'start.localhost');
 
     expect(response.status).toBe(404);
     expect(response.headers.get('location')).toBeNull();
@@ -4252,11 +4263,11 @@ describe('legacy URL redirects', () => {
   it.each(['/login', '/register', '/reset-password'])(
     'claims no server route for %s, leaving the path to the web app',
     async (path) => {
-      const response = await legacyGet(path);
+      const response = await redirectGet(path);
 
       expect(response.status).toBe(404);
       expect(response.headers.get('location')).toBeNull();
-      expect(legacyApp().routes.some((route) => route.path === path)).toBe(false);
+      expect(redirectApp().routes.some((route) => route.path === path)).toBe(false);
     },
   );
 });

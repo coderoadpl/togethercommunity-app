@@ -17,6 +17,7 @@ import {
   TENANT_OG_TITLE_MAX_LENGTH,
 } from '#core/domain/index.js';
 
+import { FONT_MONO } from '../../../theme.js';
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -306,13 +307,37 @@ describe('SettingsPanel information architecture', () => {
   it('shows the workspace address with verified and pending custom domains', async () => {
     renderPanel();
 
-    expect(await screen.findByText('akademia.together.example')).toBeInTheDocument();
+    const address = await screen.findByTestId('tenant-workspace-address');
+    expect(address).toHaveTextContent('akademia.together.example');
+    expect(address).toHaveStyle({ fontFamily: FONT_MONO });
     expect(await screen.findByTestId('tenant-domain-status-kurs.acme.example'))
       .toHaveTextContent(pl.tenantDomains.statusActive);
     const pending = await screen.findByTestId('tenant-domain-nowa.acme.example');
     expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example'))
-      .toHaveValue('cname.vercel-dns.com');
+      .toHaveTextContent('cname.vercel-dns.com');
+  });
+
+  it('copies the workspace address', async () => {
+    const writeText = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderPanel();
+
+    await userEvent.click(await screen.findByTestId('tenant-workspace-address-copy'));
+
+    expect(writeText).toHaveBeenCalledWith('akademia.together.example');
+  });
+
+  it('renders active domain checks as quiet links and pending checks as buttons', async () => {
+    const { domainCalls } = renderPanel();
+
+    const active = await screen.findByTestId('tenant-domain-check-kurs.acme.example');
+    expect(active).toHaveClass('MuiLink-root', 'MuiTypography-caption');
+    expect(active).not.toHaveClass('MuiButton-root');
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiButton-root');
+    await userEvent.click(active);
+
+    await waitFor(() => { expect(domainCalls).toEqual(['check:kurs.acme.example']); });
   });
 
   it('warns about signing in again until a custom domain is verified', async () => {
@@ -418,6 +443,7 @@ describe('SettingsPanel information architecture', () => {
     });
     expect(screen.getByTestId('tenant-domain-nowa.acme.example'))
       .toHaveTextContent('Vercel is unreachable');
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiButton-root');
   });
 
   it('adds a domain and lists it as waiting for DNS', async () => {
@@ -429,7 +455,7 @@ describe('SettingsPanel information architecture', () => {
     const added = await screen.findByTestId('tenant-domain-sklep.acme.example');
     expect(added).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-sklep.acme.example'))
-      .toHaveValue('cname.vercel-dns.com');
+      .toHaveTextContent('cname.vercel-dns.com');
     expect(domainCalls).toEqual(['add:sklep.acme.example']);
   });
 
@@ -443,6 +469,7 @@ describe('SettingsPanel information architecture', () => {
         .toHaveTextContent(pl.tenantDomains.statusActive);
     });
     expect(domainCalls).toEqual(['check:nowa.acme.example']);
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiLink-root');
   });
 
   it('offers the record name and value as separate copy fields', async () => {
@@ -452,7 +479,7 @@ describe('SettingsPanel information architecture', () => {
 
     const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
     expect(within(record).getByTestId('dns-record-name-CNAME-nowa.acme.example'))
-      .toHaveValue('nowa.acme.example');
+      .toHaveTextContent('nowa.acme.example');
 
     await userEvent.click(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copy'));
 

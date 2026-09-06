@@ -2777,6 +2777,19 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
+export const CopyFieldSurface = styled(Stack)(({ theme }) => ({
+  backgroundColor: theme.palette.action.hover,
+  borderRadius: theme.shape.borderRadius,
+}));
+
+export const CopyFieldText = styled('code')({
+  fontFamily: FONT_MONO,
+  fontSize: '0.875rem',
+  userSelect: 'text',
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+});
+
 export const PathText = styled(Typography)<AsElement>({
   fontFamily: FONT_MONO,
   fontSize: '0.8125rem',
@@ -3491,6 +3504,11 @@ export const SocialFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   marginTop: '2.5rem',
   paddingTop: '1rem',
   borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const QuietActionLink = styled(Link)<AsElement & { disabled?: boolean }>(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  '&:disabled': { color: theme.palette.text.disabled },
 }));
 
 export const SocialFooterLink = styled(Link)(({ theme }) => ({

@@ -1,9 +1,26 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MemberPage } from './MemberPage.js';
 
+const stubCompactViewport = () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('max-width'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 describe('MemberPage', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('renders the ledger header with title, eyebrow and children', () => {
     render(
       <MemberPage
@@ -39,6 +56,48 @@ describe('MemberPage', () => {
       'href',
       '/my/courses/course-js',
     );
+  });
+
+  it('keeps every ancestor and drops the current page on compact viewports', () => {
+    stubCompactViewport();
+    render(
+      <MemberPage
+        title="Nasłuchiwanie kliknięć"
+        eyebrow="lekcja"
+        breadcrumbLabel="Okruszki"
+        breadcrumbs={[
+          { label: 'Kurs JS', link: <a href="/my/courses/course-js">Kurs JS</a> },
+          { label: '02 - DOM' },
+          { label: 'Zdarzenia' },
+          { label: 'Nasłuchiwanie kliknięć' },
+        ]}
+      />,
+    );
+
+    const crumbs = screen.getByLabelText('Okruszki');
+    expect(within(crumbs).getByRole('link', { name: 'Kurs JS' })).toBeInTheDocument();
+    expect(within(crumbs).getByText('02 - DOM')).toBeInTheDocument();
+    expect(within(crumbs).getByText('Zdarzenia')).toBeInTheDocument();
+    expect(within(crumbs).queryByText('Nasłuchiwanie kliknięć')).not.toBeInTheDocument();
+  });
+
+  it('keeps only the root crumb of a two-item trail on compact viewports', () => {
+    stubCompactViewport();
+    render(
+      <MemberPage
+        title="Kurs JS"
+        eyebrow="kurs"
+        breadcrumbLabel="Okruszki"
+        breadcrumbs={[
+          { label: 'Moje kursy', link: <a href="/my/courses">Moje kursy</a> },
+          { label: 'Kurs JS' },
+        ]}
+      />,
+    );
+
+    const crumbs = screen.getByLabelText('Okruszki');
+    expect(within(crumbs).getByRole('link', { name: 'Moje kursy' })).toBeInTheDocument();
+    expect(within(crumbs).queryByText('Kurs JS')).not.toBeInTheDocument();
   });
 
   it('renders the rail alongside the content', () => {

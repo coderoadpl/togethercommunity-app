@@ -30,12 +30,14 @@ by `tsconfig.islands.json` remain DOM-free and node-tested.
 
 The carve-out in `eslint.config.js` exists because stories are development-only
 fixtures outside the layered runtime graph. For
-`apps/web/src/stories/**`, `boundaries/element-types`,
+`apps/web/src/stories/**/*.stories.tsx` and `apps/server/src/**/*.stories.tsx`, `boundaries/element-types`,
 `boundaries/external`, `together/query-descriptors-only`,
 `together/sx-layout-only`, and `no-restricted-globals` are disabled.
 For `.storybook/**`, the `boundaries/*` rules are disabled. These are the only
 repository locations where the layered graph is not enforced, and the exceptions
-are bounded to the story and Storybook configuration directories.
+are bounded to story files and Storybook configuration. Fixture helpers remain
+subject to the normal rules, with explicit edges for page composition and the
+fixture client construction site.
 
 ## Dependency freeze
 
@@ -53,13 +55,31 @@ Canonical route pixels belong to `tasks/visual-goldens/` and the deterministic
 Argos.
 
 Lost Pixel, its copied story baselines, and the replacement story-shot commands
-are retired. Storybook has no committed PNG baseline or screenshot comparison
-path. `pnpm run storybook:build` verifies that the catalogue compiles, while
-pixel ownership and authoring remain exclusively with `pnpm run visual` and
-`pnpm run visual:update`.
+are retired. Storybook has no separate committed PNG baseline. The experimental
+[page capture path](visual-regression.md#storybook) compares recorded page stories
+with the application goldens. `pnpm run storybook:build` verifies that the catalogue
+compiles; `pnpm run visual` remains the runtime visual gate and
+`pnpm run visual:update` remains the only baseline-authoring command.
 
 ## Merge gate
 
-`apps/web/src/stories/stories.test.tsx` eagerly imports every story module and
+`apps/web/src/stories/stories.test.tsx` eagerly imports the web story modules and
 checks its CSF exports during `pnpm run check`. CI then builds the complete
-Storybook. A story added without passing both checks cannot merge.
+Storybook. Server HTML stories are compiled by TypeScript and the Storybook build.
+
+## Recorded page fixtures
+
+The experimental page workflow records the isolated seed database with the visual harness clock:
+`pnpm exec tsx scripts/fixtures-record.ts`. An optional output directory keeps
+recordings outside the source tree. Recorded tracking and read-mark failures
+follow the same request policy as the application harness. Page stories keep
+an `auto` theme preference; use browser color-scheme emulation for light captures or dark previews.
+
+Run `pnpm exec tsx scripts/fixtures-check.ts` after `pnpm run db:up` to re-record
+into a temporary directory and fail on any byte or file-set drift. The default
+baseline is `apps/web/src/stories/fixtures`; an optional baseline directory supports
+drift-check diagnostics. Temporary recordings are removed on success and failure.
+A future CI step would use the pinned Node/pnpm toolchain, start Postgres, and run
+this command before the Storybook build. CI does not run this experimental capture path.
+
+For serial full-gate verification, use `TOGETHER_TEST_SERIAL=1 pnpm run check`.

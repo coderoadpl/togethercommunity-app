@@ -7,6 +7,10 @@ const harness = readFileSync(
   join(import.meta.dirname, '..', 'scripts', 'visual-screenshots.ts'),
   'utf8',
 );
+const browserSetup = readFileSync(
+  join(import.meta.dirname, '..', 'scripts', 'visual-browser-setup.ts'),
+  'utf8',
+);
 const comparator = readFileSync(
   join(import.meta.dirname, '..', 'scripts', 'visual-png-compare.ts'),
   'utf8',
@@ -24,11 +28,11 @@ describe('visual regression determinism', () => {
   });
 
   it('settles the page before every capture', () => {
-    expect(harness).toContain("Object.defineProperty(window, 'EventSource'");
-    expect(harness).toContain("page.waitForLoadState('networkidle')");
-    expect(harness).toContain('document.fonts.ready');
-    expect(harness).toContain('animation: none !important');
-    expect(harness).toContain('transition: none !important');
+    expect(browserSetup).toContain("Object.defineProperty(window, 'EventSource'");
+    expect(browserSetup).toContain("page.waitForLoadState('networkidle')");
+    expect(browserSetup).toContain('document.fonts.ready');
+    expect(browserSetup).toContain('animation: none !important');
+    expect(browserSetup).toContain('transition: none !important');
   });
 
   it('captures stable pixels with a bounded antialias tolerance', () => {

@@ -1,0 +1,205 @@
+{
+  "calls": {
+    "discussion:[{\"contextId\":\"lesson-acme-intro\",\"contextKind\":\"lesson\",\"limit\":20}]": {
+      "ok": true,
+      "value": {
+        "discussion": {
+          "nextCursor": null,
+          "threads": [],
+          "viewerSubscriptions": {}
+        }
+      }
+    },
+    "me:[]": {
+      "ok": true,
+      "value": {
+        "avatarUrl": "https://www.gravatar.com/avatar/f4c8ea3c4b395b3319842856b7e846e8926183f0724f8be620d3864a30536e51?d=404&s=160",
+        "email": "kontakt+smoke-member@togethercommunity.app",
+        "emailVerified": true,
+        "impersonation": null,
+        "name": "Smoke Member",
+        "tenant": {
+          "banned": false,
+          "displayName": "Smoke Member",
+          "dmOptOut": false,
+          "id": "tenant-acme",
+          "language": null,
+          "memberId": "member-acme-smoke",
+          "name": "Acme Courses",
+          "slug": "acme",
+          "staffRole": null,
+          "videoAutoplay": false
+        },
+        "userId": "fixture-user-f4c8ea3c4b395b33"
+      }
+    },
+    "memberNavigation:[]": {
+      "ok": true,
+      "value": {
+        "navigation": {
+          "courses": [
+            {
+              "accessibleLessonCount": 1,
+              "completedLessonCount": 0,
+              "courseId": "course-acme",
+              "courseName": "Acme Course",
+              "lastActivityAt": null
+            }
+          ],
+          "directMessagesEnabled": true,
+          "lockedSpaces": [],
+          "spaces": []
+        }
+      }
+    },
+    "publicOffer:[]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "",
+            "id": "product-acme-course",
+            "marketingConsents": [],
+            "priceCents": 9900,
+            "prices": [
+              {
+                "amountCents": 9900,
+                "currency": "PLN",
+                "id": "price-product-acme-course",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "acme-course",
+            "title": "Acme Course",
+            "type": "course"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": null,
+            "faviconUrl": null,
+            "logoDarkUrl": null,
+            "logoUrl": null
+          },
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Acme Courses",
+          "slug": "acme",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    },
+    "studentCourseStructure:[\"course-acme\"]": {
+      "ok": true,
+      "value": {
+        "structure": {
+          "accessStatus": "fully-accessible",
+          "completionStatus": "not-completed",
+          "courseId": "course-acme",
+          "modules": [
+            {
+              "accessStatus": "fully-accessible",
+              "chapters": [
+                {
+                  "accessStatus": "fully-accessible",
+                  "completionStatus": "not-completed",
+                  "id": "chapter-acme-1",
+                  "lessons": [
+                    {
+                      "accessStatus": "fully-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-acme-intro",
+                      "durationMinutes": 4,
+                      "lessonId": "lesson-acme-intro",
+                      "name": "Lekcja wprowadzająca"
+                    }
+                  ],
+                  "name": "Wprowadzenie"
+                }
+              ],
+              "completionStatus": "not-completed",
+              "id": "module-acme-1",
+              "name": "Część 1 - Moduł wprowadzający"
+            }
+          ],
+          "name": "Acme Course"
+        }
+      }
+    },
+    "studentLesson:[\"lesson-acme-intro\"]": {
+      "ok": true,
+      "value": {
+        "authenticated": true,
+        "lesson": {
+          "contents": [
+            {
+              "storageKey": "197133/dc48a09e-d9bb-420a-83d7-72dc2304c034",
+              "streamLibraryId": "197133",
+              "streamVideoId": "dc48a09e-d9bb-420a-83d7-72dc2304c034",
+              "type": "video"
+            },
+            {
+              "html": "<p>Lekcja demonstracyjna kursu Acme.</p>",
+              "type": "html"
+            }
+          ],
+          "createdAt": "2026-07-01T12:01:09.000Z",
+          "durationMinutes": 4,
+          "id": "lesson-acme-intro",
+          "isPreview": false,
+          "legacyId": null,
+          "name": "Lekcja wprowadzająca",
+          "tenantId": "tenant-acme"
+        }
+      }
+    },
+    "studentLessonAttachments:[\"lesson-acme-intro\"]": {
+      "ok": true,
+      "value": {
+        "attachments": []
+      }
+    },
+    "studentProgress:[\"course-acme\"]": {
+      "ok": true,
+      "value": {
+        "progress": {
+          "completedLessonIds": [],
+          "courseId": "course-acme"
+        }
+      }
+    },
+    "unreadMessageCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    },
+    "unreadNotificationCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    },
+    "updateLastViewed:[{\"chapterId\":\"chapter-acme-1\",\"courseId\":\"course-acme\",\"lessonId\":\"lesson-acme-intro\",\"moduleId\":\"module-acme-1\"}]": {
+      "error": {
+        "code": "internal",
+        "message": "Network error calling /api/student/progress/last-viewed: TypeError: Failed to fetch"
+      },
+      "ok": false
+    }
+  },
+  "principal": "kontakt+smoke-member@togethercommunity.app",
+  "route": "/my/courses/course-acme/lessons/lesson-acme-intro",
+  "scenario": "acme-lesson",
+  "tenant": "acme"
+}

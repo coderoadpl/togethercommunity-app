@@ -27,6 +27,7 @@ interface ComparePngOptions {
   currentPath: string;
   diffPath: string;
   missingBaselineReason: string;
+  onCompared?: (countedPixels: number) => void;
 }
 
 export const comparePng = ({
@@ -35,6 +36,7 @@ export const comparePng = ({
   currentPath,
   diffPath,
   missingBaselineReason,
+  onCompared,
 }: ComparePngOptions): PngComparisonFailure | null => {
   if (!existsSync(baselinePath)) return { file, reason: missingBaselineReason };
 
@@ -65,6 +67,7 @@ export const comparePng = ({
     throw new Error(result.stderr || result.stdout || `pixelmatch exited ${String(result.status)}`);
   }
   const mismatched = Number(match[1]);
+  onCompared?.(mismatched);
   if (mismatched <= maxDiffPixels) return null;
   const ratio = mismatched / (baseline.width * baseline.height);
   return {

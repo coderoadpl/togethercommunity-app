@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { z } from 'zod';
 
-import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
+import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, dropDatabase, migrateAndSeed } from './smoke-database.js';
 import {
   API_PATHS,
   deepHealthOutputSchema,
@@ -32,13 +32,6 @@ import {
 import { ensureWebBundleFresh } from './web-bundle-freshness.js';
 import { passwordFixture } from './password-fixture.js';
 
-const SMOKE_DB = uniqueTestDatabaseName('together_smoke');
-const baseDatabaseUrl =
-  process.env['DATABASE_URL'] ??
-  'postgres://together:together@localhost:48912/together';
-const smokeUrlObject = new URL(baseDatabaseUrl);
-smokeUrlObject.pathname = `/${SMOKE_DB}`;
-const smokeDatabaseUrl = smokeUrlObject.toString();
 class SmokeFailure extends Error {}
 const fail = (message: string): never => {
   throw new SmokeFailure(message);
@@ -76,39 +69,6 @@ const checkLockfileDrift = (): void => {
       'Installed dependency tree does not match pnpm-lock.yaml. Run: pnpm install --frozen-lockfile',
     );
   }
-};
-
-const setupDatabase = async (adminUrl: string): Promise<void> => {
-  const client = new pg.Client({ connectionString: adminUrl });
-  try {
-    await client.connect();
-    // Fresh, isolated database each run so smoke never touches the dev-seeded data.
-    await client.query(`DROP DATABASE IF EXISTS ${SMOKE_DB} WITH (FORCE)`);
-    await client.query(`CREATE DATABASE ${SMOKE_DB}`);
-  } catch (cause) {
-    fail(
-      `Could not prepare the smoke database "${SMOKE_DB}". Is the dev Postgres up (pnpm run db:up)?\n${String(cause)}`,
-    );
-  } finally {
-    await client.end();
-  }
-};
-
-const dropDatabase = async (adminUrl: string): Promise<void> => {
-  const client = new pg.Client({ connectionString: adminUrl });
-  await client.connect();
-  try {
-    await client.query(`DROP DATABASE IF EXISTS ${SMOKE_DB} WITH (FORCE)`);
-  } finally {
-    await client.end();
-  }
-};
-
-const migrateAndSeed = async (databaseUrl: string): Promise<void> => {
-  const migrate = await run(tsxBin, ['adapters/db/migrate.ts'], { DATABASE_URL: databaseUrl });
-  assert(migrate.code === 0, `Migration failed:\n${migrate.stdout}${migrate.stderr}`);
-  const seed = await run(tsxBin, ['adapters/db/seed.ts'], { DATABASE_URL: databaseUrl });
-  assert(seed.code === 0, `Seed failed:\n${seed.stdout}${seed.stderr}`);
 };
 
 const DEMO_TENANT_IDS = ['tenant-studio', 'tenant-acme', 'tenant-akademia'];

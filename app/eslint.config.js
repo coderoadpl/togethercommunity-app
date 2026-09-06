@@ -221,6 +221,11 @@ export default tseslint.config(
           mode: 'full',
         },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
+        { type: 'web-story-module-test', pattern: 'apps/web/src/stories/stories.test.tsx', mode: 'full' },
+        { type: 'visual-support', pattern: ['scripts/story-clock.ts', 'scripts/visual-request-policy.ts'], mode: 'full' },
+        { type: 'web-fixture', pattern: ['apps/web/src/stories/fixture-client.ts', 'apps/web/src/stories/fixture-key.ts'], mode: 'full' },
+        { type: 'web-page-decorator', pattern: 'apps/web/src/stories/page-decorators.tsx', mode: 'full' },
+        { type: 'web-fixture-api', pattern: 'apps/web/src/stories/api.fixtures.ts', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
@@ -279,6 +284,10 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import ${dependency.type} (see PRD §3.2)',
           rules: [
+            { from: ['web-page-decorator'], allow: ['visual-support', 'web-fixture', 'web-theme', 'web-i18n', 'web-ui', 'web-notifications', 'web-branding', 'web-features'] },
+            { from: ['visual-support'], allow: ['visual-support', 'core-client', 'core-contract'] },
+            { from: ['web-fixture'], allow: ['visual-support', 'web-fixture', 'core-client', 'core-contract'] },
+            { from: ['web-fixture-api'], allow: ['web-api', 'web-fixture'] },
             { from: ['core-domain'], allow: ['core-domain'] },
             { from: ['core-contract'], allow: ['core-domain', 'core-contract'] },
             { from: ['core-server'], allow: ['core-domain', 'core-server'] },
@@ -477,6 +486,9 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [
+            { from: ['web-story-module-test'], allow: ['node:fs', 'vite', 'vitest'] },
+            { from: ['web-fixture'], allow: ['zod'] },
+            { from: ['web-page-decorator'], allow: ['@storybook/react-vite', '@mui/material', '@tanstack/react-query', '@tanstack/react-router', 'react', 'zod'] },
             {
               from: ['core-domain', 'core-contract'],
               allow: ['zod'],
@@ -984,7 +996,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/web/src/query-client.ts'],
+    files: ['apps/web/src/query-client.ts', 'apps/web/src/stories/page-decorators.tsx'],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -997,7 +1009,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/web/src/api.ts'],
+    files: ['apps/web/src/api.ts', 'apps/web/src/stories/fixture-client.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -1053,7 +1065,7 @@ export default tseslint.config(
     // Storybook stories are dev-only visual fixtures, not part of the layered
     // runtime graph: they compose layout primitives with inline mock data and
     // therefore opt out of the app-web boundary and layout-sx conventions.
-    files: ['apps/web/src/stories/**/*.{ts,tsx}'],
+    files: ['apps/web/src/stories/**/*.stories.tsx', 'apps/server/src/**/*.stories.tsx'],
     rules: {
       'boundaries/element-types': 'off',
       'boundaries/external': 'off',

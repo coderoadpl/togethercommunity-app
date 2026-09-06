@@ -12,6 +12,7 @@ import {
   importLessonRecordSchema,
   importModuleRecordSchema,
   importProductRecordSchema,
+  importPublicAssetPathSchema,
   importRecordSchemaFor,
   importValidateRequestSchema,
   importWriteRequestSchema,
@@ -44,6 +45,7 @@ import {
 
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
+import { tenantUrl } from '../tenant-url.js';
 import type {
   ApiKeyRateLimitRepository,
   Clock,
@@ -57,6 +59,7 @@ import type {
   ImportContentMutation,
   ImportContentRepository,
   ProductRepository,
+  TenantDomainRepository,
 } from '../ports.js';
 import { aggregateAccessItems, buildAccessLookup } from './access.js';
 import {
@@ -78,12 +81,20 @@ type ImportReaders = {
   hash: ContentHash;
 };
 
+type ImportAssetUrlDeps = {
+  tenantDomains: Pick<TenantDomainRepository, 'listByTenant'>;
+  appBaseUrl: string;
+  baseDomain: string;
+  singleTenantMode: boolean;
+};
+
 export type M2mImportValidationDeps = ImportReaders
   & M2mImportUsersReaders
   & M2mImportRedirectReaders
+  & ImportAssetUrlDeps
   & { clock: Clock };
 
-export type M2mImportContentDeps = ImportReaders & {
+export type M2mImportContentDeps = ImportReaders & ImportAssetUrlDeps & {
   importContent: ImportContentRepository;
   ids: IdGenerator;
   clock: Clock;
@@ -119,6 +130,125 @@ type PublishedReachability = {
   courseIds: Set<string>;
   moduleIds: Set<string>;
   lessonIds: Set<string>;
+};
+
+type ImportNormalizationInfo = {
+  message: string;
+};
+
+type ImportAssetUrlNormalizer = (value: string | null) => Promise<{ value: string | null; changed: boolean }>;
+
+const hostnameOf = (value: string): string =>
+  value.replace(/\.+$/, '').toLowerCase();
+
+const tenantHostnames = async (
+  tenantId: string,
+  tenantSlug: string | null,
+  deps: ImportAssetUrlDeps,
+): Promise<Set<string>> => {
+  const hostnames = new Set<string>();
+  const tenantHost = deps.singleTenantMode
+    ? new URL(deps.appBaseUrl).hostname
+    : new URL(tenantUrl(tenantSlug, '/', deps)).hostname;
+  hostnames.add(hostnameOf(tenantHost));
+  const domains = await deps.tenantDomains.listByTenant(tenantId);
+  for (const domain of domains) {
+    if (domain.kind === 'custom' && domain.verified) hostnames.add(hostnameOf(domain.domain));
+  }
+  return hostnames;
+};
+
+const createImportAssetUrlNormalizer = (
+  tenantId: string,
+  tenantSlug: string | null,
+  deps: ImportAssetUrlDeps,
+): ImportAssetUrlNormalizer => {
+  let cachedHostnames: Promise<Set<string>> | undefined;
+  return async (value) => {
+    if (value === null) return { value, changed: false };
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return { value, changed: false };
+    }
+    if (!importPublicAssetPathSchema.safeParse(url.pathname).success) return { value, changed: false };
+    const hostnames = await (cachedHostnames ??= tenantHostnames(tenantId, tenantSlug, deps));
+    return hostnames.has(hostnameOf(url.hostname))
+      ? { value: url.pathname, changed: url.pathname !== value }
+      : { value, changed: false };
+  };
+};
+
+const normalizeField = async (
+  label: string,
+  value: string | null,
+  normalizeAssetUrl: ImportAssetUrlNormalizer,
+): Promise<{ value: string | null; info: ImportNormalizationInfo | null }> => {
+  const normalized = await normalizeAssetUrl(value);
+  return {
+    value: normalized.value,
+    info: normalized.changed ? { message: `${label} normalized to ${normalized.value ?? ''}` } : null,
+  };
+};
+
+const normalizeContentAssetUrls = async (
+  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord,
+  normalizeAssetUrl: ImportAssetUrlNormalizer,
+): Promise<{
+  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord;
+  infos: ImportNormalizationInfo[];
+}> => {
+  if ('imageUrl' in record) {
+    const imageUrl = await normalizeField('imageUrl', record.imageUrl, normalizeAssetUrl);
+    return {
+      record: { ...record, imageUrl: imageUrl.value },
+      infos: imageUrl.info === null ? [] : [imageUrl.info],
+    };
+  }
+  if ('coverUrl' in record) {
+    const coverUrl = await normalizeField('coverUrl', record.coverUrl, normalizeAssetUrl);
+    return {
+      record: { ...record, coverUrl: coverUrl.value },
+      infos: coverUrl.info === null ? [] : [coverUrl.info],
+    };
+  }
+  return { record, infos: [] };
+};
+
+const normalizeContentAssetUrlsForKind = async (
+  kind: ImportContentKind,
+  record: unknown,
+  normalizeAssetUrl: ImportAssetUrlNormalizer,
+): Promise<{
+  record: ImportCourseRecord | ImportModuleRecord | ImportLessonRecord | ImportProductRecord;
+  infos: ImportNormalizationInfo[];
+}> => {
+  if (kind === 'course') return normalizeContentAssetUrls(importCourseRecordSchema.parse(record), normalizeAssetUrl);
+  if (kind === 'module') return normalizeContentAssetUrls(importModuleRecordSchema.parse(record), normalizeAssetUrl);
+  if (kind === 'lesson') return normalizeContentAssetUrls(importLessonRecordSchema.parse(record), normalizeAssetUrl);
+  return normalizeContentAssetUrls(importProductRecordSchema.parse(record), normalizeAssetUrl);
+};
+
+const normalizeImportRecordAssetUrls = async (
+  record: ImportRecord,
+  normalizeAssetUrl: ImportAssetUrlNormalizer,
+): Promise<{ record: ImportRecord; infos: ImportNormalizationInfo[] }> => {
+  if (record.kind === 'course') {
+    const imageUrl = await normalizeField('imageUrl', record.imageUrl, normalizeAssetUrl);
+    return {
+      record: { ...record, imageUrl: imageUrl.value },
+      infos: imageUrl.info === null ? [] : [imageUrl.info],
+    };
+  }
+  if (record.kind === 'product') {
+    const coverUrl = await normalizeField('coverUrl', record.coverUrl, normalizeAssetUrl);
+    return {
+      record: { ...record, coverUrl: coverUrl.value },
+      infos: coverUrl.info === null ? [] : [coverUrl.info],
+    };
+  }
+  return { record, infos: [] };
 };
 
 const publishedReachability = async (
@@ -526,6 +656,11 @@ export const importM2mContent = async (
   const results: ImportBatchResult[] = [];
   const seen = new Map<string, string>();
   const references = emptyReferenceMaps();
+  const normalizeAssetUrl = createImportAssetUrlNormalizer(
+    tenantId.value,
+    ctx.identity.tenantSlug,
+    deps,
+  );
   for (let index = 0; index < envelope.data.records.length; index += 1) {
     const raw = envelope.data.records[index];
     const identity = recordIdentity(raw, index);
@@ -538,21 +673,22 @@ export const importM2mContent = async (
       });
       continue;
     }
-    const payloadHash = deps.hash.sha256(canonicalImportPayload(parsed.data));
-    const previousHash = seen.get(parsed.data.importKey);
+    const normalized = await normalizeContentAssetUrlsForKind(kind, parsed.data, normalizeAssetUrl);
+    const payloadHash = deps.hash.sha256(canonicalImportPayload(normalized.record));
+    const previousHash = seen.get(normalized.record.importKey);
     if (previousHash !== undefined && previousHash !== payloadHash) {
       results.push({
-        importKey: parsed.data.importKey,
+        importKey: normalized.record.importKey,
         action: 'error',
-        error: appError('conflict', `Import key "${parsed.data.importKey}" has different payloads in this batch`),
+        error: appError('conflict', `Import key "${normalized.record.importKey}" has different payloads in this batch`),
       });
       continue;
     }
-    seen.set(parsed.data.importKey, payloadHash);
+    seen.set(normalized.record.importKey, payloadHash);
     const prepared = await prepareRecord(
       tenantId.value,
       kind,
-      parsed.data,
+      normalized.record,
       payloadHash,
       references,
       deps,
@@ -560,12 +696,12 @@ export const importM2mContent = async (
       deps.clock.nowIso(),
     );
     if (!prepared.ok) {
-      results.push({ importKey: parsed.data.importKey, action: 'error', error: prepared.error });
+      results.push({ importKey: normalized.record.importKey, action: 'error', error: prepared.error });
       continue;
     }
     const version = versionFor(prepared.value, apiKey, deps);
     if (!version.ok) {
-      results.push({ importKey: parsed.data.importKey, action: 'error', error: version.error });
+      results.push({ importKey: normalized.record.importKey, action: 'error', error: version.error });
       continue;
     }
     const committed = await deps.importContent.commit(
@@ -578,12 +714,12 @@ export const importM2mContent = async (
         action: 'error',
         error: committed === 'slug_taken'
           ? slugReserved(`A product with slug "${prepared.value.kind === 'product' ? prepared.value.resource.slug : ''}" already exists`)
-          : appError('conflict', `Imported ${kind} "${parsed.data.importKey}" changed concurrently`),
+          : appError('conflict', `Imported ${kind} "${normalized.record.importKey}" changed concurrently`),
       });
       continue;
     }
     results.push({
-      importKey: parsed.data.importKey,
+      importKey: normalized.record.importKey,
       action: prepared.value.action,
       id: prepared.value.resource.id,
     });
@@ -620,12 +756,18 @@ const validateImportForTenant = async (
   const unchanged = emptyPlanCounts();
   const errors: ImportValidationResponse['errors'] = [];
   const warnings: ImportValidationResponse['warnings'] = [];
+  const infos: ImportValidationResponse['infos'] = [];
   const references = emptyImportReferenceMaps();
   const parsedRecords = new Map<number, ImportRecord>();
   const recordsByKey = new Map<string, ImportRecord>();
   const seen = new Set<string>();
   const memberEmails = new Map<string, string>();
   const claimedRedirectPaths = new Map<string, string>();
+  const normalizeAssetUrl = createImportAssetUrlNormalizer(
+    tenantId,
+    ctx.identity.tenantSlug,
+    deps,
+  );
   for (let index = 0; index < envelope.data.records.length; index += 1) {
     const raw = envelope.data.records[index];
     const identity = recordIdentity(raw, index);
@@ -639,46 +781,55 @@ const validateImportForTenant = async (
       });
       continue;
     }
+    const normalized = await normalizeImportRecordAssetUrls(parsed.data, normalizeAssetUrl);
     const requiredCapability = importContentKindSchema.safeParse(parsed.data.kind).success
       || parsed.data.kind === 'redirect'
       ? 'import:content-write'
       : 'import:users-write';
     if (ctx.capabilities?.includes(requiredCapability) !== true) {
       errors.push({
-        index,
-        kind: parsed.data.kind,
-        importKey: parsed.data.importKey,
-        error: appError('forbidden', `${requiredCapability} is required for ${parsed.data.kind} records`),
+          index,
+          kind: normalized.record.kind,
+          importKey: normalized.record.importKey,
+          error: appError('forbidden', `${requiredCapability} is required for ${normalized.record.kind} records`),
       });
       continue;
     }
-    if (parsed.data.kind === 'member') {
-      const emailOwner = memberEmails.get(parsed.data.email);
-      if (emailOwner !== undefined && emailOwner !== parsed.data.importKey) {
+    if (normalized.record.kind === 'member') {
+      const emailOwner = memberEmails.get(normalized.record.email);
+      if (emailOwner !== undefined && emailOwner !== normalized.record.importKey) {
         errors.push({
           index,
-          kind: parsed.data.kind,
-          importKey: parsed.data.importKey,
-          error: appError('conflict', `Another record in this call uses "${parsed.data.email}"`),
+          kind: normalized.record.kind,
+          importKey: normalized.record.importKey,
+          error: appError('conflict', `Another record in this call uses "${normalized.record.email}"`),
         });
         continue;
       }
-      memberEmails.set(parsed.data.email, parsed.data.importKey);
+      memberEmails.set(normalized.record.email, normalized.record.importKey);
     }
-    const uniqueKey = `${parsed.data.kind}:${parsed.data.importKey}`;
+    const uniqueKey = `${normalized.record.kind}:${normalized.record.importKey}`;
     if (seen.has(uniqueKey)) {
       errors.push({
         index,
-        kind: parsed.data.kind,
-        importKey: parsed.data.importKey,
-        error: appError('conflict', `Import key "${parsed.data.importKey}" is duplicated in this call`),
+        kind: normalized.record.kind,
+        importKey: normalized.record.importKey,
+        error: appError('conflict', `Import key "${normalized.record.importKey}" is duplicated in this call`),
       });
       continue;
     }
     seen.add(uniqueKey);
-    parsedRecords.set(index, parsed.data);
-    recordsByKey.set(uniqueKey, parsed.data);
-    references[parsed.data.kind].set(parsed.data.importKey, parsed.data.importKey);
+    parsedRecords.set(index, normalized.record);
+    recordsByKey.set(uniqueKey, normalized.record);
+    references[normalized.record.kind].set(normalized.record.importKey, normalized.record.importKey);
+    for (const info of normalized.infos) {
+      infos.push({
+        index,
+        kind: normalized.record.kind,
+        importKey: normalized.record.importKey,
+        message: info.message,
+      });
+    }
   }
   for (const [index, record] of parsedRecords) {
     const prepared = importContentKindSchema.safeParse(record.kind).success
@@ -737,6 +888,7 @@ const validateImportForTenant = async (
     plan: { create, update, unchanged },
     errors,
     warnings,
+    infos,
     valid: errors.length === 0,
   });
 };

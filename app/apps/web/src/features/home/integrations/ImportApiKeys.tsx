@@ -172,7 +172,6 @@ export const ImportApiKeys = () => {
             <Typography variant="body2">{t.integrations.importKeysSecretWarning}</Typography>
             <Box sx={{ mt: '0.6rem' }}>
               <CopyField
-                mono
                 label={t.integrations.importKeysSecretLabel}
                 value={create.data.secret}
                 testId="import-api-key-secret-value"

@@ -50,6 +50,7 @@
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:remote": "tsx scripts/remote-smoke.ts",
+    "smoke:staging": "tsx scripts/remote-smoke.ts --staging",
     "quickstart:probe": "tsx scripts/quickstart-probe.ts",
     "a11y": "tsx scripts/a11y-scan.ts",
     "shots:poc": "tsx scripts/poc-screenshots.ts",

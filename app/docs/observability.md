@@ -162,6 +162,69 @@ to `acme`. Pointing that variable at another tenant also skips the reseed with a
 notice: the route rebuilds `tenant-acme` only, and wiping it would serve no run
 that checks something else.
 
+## Staging smoke
+
+`.github/workflows/staging-smoke.yml` answers the question production's smoke
+cannot: *is staging still its own deployment?* It runs on a `deployment_status`
+event with state `success`, `github.event.deployment.ref == staging` and an
+environment that either starts with `Preview` (Vercel labels its previews, and
+has shipped suffixed variants of that label) or is exactly `staging` (the
+deployment `staging-links.yml` publishes on every push to the branch), on a
+daily `schedule`, and on `workflow_dispatch` with a `base_url` input. Two
+independent event sources and a cron mean a changed Vercel payload cannot
+silence the check unnoticed. It runs `pnpm run smoke:staging`
+(`app/scripts/remote-smoke.ts --staging`) against
+`https://coderoad.staging.togethercommunity.app`, the tenant coming from the
+same `SMOKE_TENANT` variable the production smoke uses.
+
+Checks, in order:
+
+1. `health-attestation` — `/api/health` answers a parseable attestation.
+2. `staging-environment` — the database is `up`, `environment` is `staging`, `production` is `false`, the schema is current.
+3. `database-fingerprint` — `databaseFingerprint` differs from `PRODUCTION_DATABASE_FINGERPRINT` **and** equals `STAGING_DATABASE_FINGERPRINT`.
+4. `health-deep` — `/api/health/deep` answers 200 with `ok: true`.
+
+A staging deployment wired to the production database therefore fails within a
+deploy instead of within days. The fingerprint is asserted against both ends:
+"not production" alone would pass on a third, unknown database, and "equals
+staging" alone would pass a variable someone pinned to the production value.
+
+Until `STAGING_DATABASE_FINGERPRINT` is set, `database-fingerprint` fails with
+`the staging database is unpinned: set STAGING_DATABASE_FINGERPRINT=<value>` and
+the job summary carries the observed fingerprint, so the owner pins it once from
+a failing run instead of reading it out of the database. That run fails red but
+sends no SMS: the smoke prints `smoke:staging: unpinned=true` when the missing
+pin is its only failure, and the workflow skips the alert on it — an unset
+variable is a configuration chore, not an incident. A fingerprint matching
+production still pages, pin or no pin.
+
+Staging sits behind Vercel Deployment Protection, so every request carries
+`x-vercel-protection-bypass` with the automation bypass secret. The smoke reads
+JSON APIs only, so it never needs the `x-vercel-set-bypass-cookie` companion
+header that a browser session would. The secret is sent only to
+`STAGING_HOST_URL`: a dispatch naming another host stops before the smoke with a
+notice instead of leaking the header to it.
+
+When `VERCEL_AUTOMATION_BYPASS_SECRET` is absent the job prints a notice and
+stops before installing anything: protection would answer every probe with its
+own challenge, and failing on that would page the owner about a missing secret
+rather than about staging. No SMS is sent. Any other failure sends one SMS
+through `.github/actions/alert-sms` — the credentials `prod-smoke.yml` uses —
+carrying `Together STAGING smoke FAILED: <failing checks>`.
+
+### Repository secret and variables the owner must add
+
+| Name | Kind | Purpose |
+| --- | --- | --- |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | secret | Bypasses staging deployment protection. Absent → the whole smoke is skipped with a notice. Sent only to `STAGING_HOST_URL`, so a dispatch against another host skips the smoke instead of leaking the secret to it. |
+| `PRODUCTION_DATABASE_FINGERPRINT` | variable | The fingerprint staging must **not** answer with. Unset → the workflow falls back to the recorded production value. |
+| `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the smoke fails with the value to pin, without an SMS. |
+
+Obtain the bypass secret in Vercel → Settings → Deployment Protection →
+Protection Bypass for Automation, then copy it into Settings → Secrets and
+variables → Actions → repository secrets. Regenerating it in Vercel invalidates
+the copy here.
+
 ## The smoke tenant
 
 Production carries one permanent synthetic tenant, `acme` (`tenant-acme`). It is

@@ -326,8 +326,8 @@ describe('SettingsPanel information architecture', () => {
     const ownership = await screen.findByTestId(`dns-record-TXT-_vercel.${host}`);
     expect(ownership).toHaveTextContent(pl.tenantDomains.recordVerified);
     expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(pl.tenantDomains.recordPending);
-    expect(within(ownership).getByTestId(`dns-record-name-TXT-_vercel.${host}`)).toHaveValue(`_vercel.${host}`);
-    expect(within(ownership).getByTestId(`dns-record-value-TXT-_vercel.${host}`)).toHaveValue('challenge');
+    expect(await within(ownership).findByTestId(`dns-record-name-TXT-_vercel.${host}`)).toHaveValue(`_vercel.${host}`);
+    expect(await within(ownership).findByTestId(`dns-record-value-TXT-_vercel.${host}`)).toHaveValue('challenge');
     routing.customDomains[0] = {
       domain: host, lastCheckedAt: null, lastError: null, verified: true, status: 'active',
       records: records.map((record) => ({ ...record, status: 'verified' })),

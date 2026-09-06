@@ -36,11 +36,8 @@ export interface MemberPageProps {
   'data-testid'?: string;
 }
 
-const crumbTrailToParent = (items: BreadcrumbItem[]): BreadcrumbItem[] => {
-  const parentIndex = items.reduce((deepest, item, index) => (item.link === undefined ? deepest : index), 0);
-  const parent = items[parentIndex];
-  return parentIndex === 0 || parent === undefined ? items.slice(0, 1) : [...items.slice(0, 1), parent];
-};
+const ancestorTrail = (items: BreadcrumbItem[]): BreadcrumbItem[] =>
+  items.length <= 1 ? items : items.slice(0, -1);
 
 const Crumb = ({ item, isCurrent }: { item: BreadcrumbItem; isCurrent: boolean }) => {
   if (item.link !== undefined) return item.link;
@@ -68,7 +65,7 @@ export const MemberPage = ({
 }: MemberPageProps) => {
   const theme = useTheme();
   const compactCrumbs = useMediaQuery(theme.breakpoints.down('sm'));
-  const crumbs = breadcrumbs === undefined || !compactCrumbs ? breadcrumbs : crumbTrailToParent(breadcrumbs);
+  const crumbs = breadcrumbs === undefined || !compactCrumbs ? breadcrumbs : ancestorTrail(breadcrumbs);
   const statusOnly = state !== undefined && state.kind !== 'ready';
   const body = state?.kind === 'loading'
     ? <BrandLoader scope="container" caption={state.label} />

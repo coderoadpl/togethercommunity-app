@@ -6,6 +6,7 @@ export const fixtureSchema = z.object({
   tenant: z.string(),
   route: z.string(),
   calls: z.record(z.unknown()),
+  pending: z.array(z.string()).default([]),
 });
 export type Fixture = z.infer<typeof fixtureSchema>;
 

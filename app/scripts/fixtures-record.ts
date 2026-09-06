@@ -8,7 +8,7 @@ import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { createCliAuthAdapter, createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import { createApiClient, type ApiClient } from '#core/client/index.js';
-import { SMOKE_TENANT_MEMBER_EMAIL, tenantSettingsSchema, tenantSchema } from '#core/domain/index.js';
+import { SMOKE_TENANT_MEMBER_EMAIL, tenantSettingsSchema, tenantSchema, type AppError } from '#core/domain/index.js';
 import { tenants, tenantDocuments, tenantDocumentVersions } from '#adapters/db/schema.js';
 import { canonicalJson, fixtureKey } from '../apps/web/src/stories/fixture-key.js';
 import { bootServer, ephemeralPort, killServer, rootDir } from './server-harness.js';
@@ -49,8 +49,13 @@ const login = async (baseUrl: string, email: string, tenant: string): Promise<Ap
   return api;
 };
 
-type Scenario = { name: string; principal: string; tenant: string; page: string; route?: string; extra?: (api: ApiClient) => Promise<void>; courseId: string; lessonId: string; spaceId: string };
+type Scenario = { name: string; principal: string; tenant: string; page: string; route?: string; extra?: (api: ApiClient) => Promise<void>; courseId: string; lessonId: string; spaceId: string; pending?: string[]; expectedErrors?: Record<string, AppError['code']> };
 const plan: Scenario[] = [
+  ...(['login', 'forgot-password', 'reset-password', 'reset-password-invalid'] as const).map((page) => ({ name: page, principal: 'anonymous', tenant: 'studio', page, route: page === 'reset-password' ? '/reset-password?token=visual-reset-token' : page === 'reset-password-invalid' ? '/reset-password?error=INVALID_TOKEN' : `/${page}`, courseId: '', lessonId: '', spaceId: '', extra: async (api: ApiClient) => { if (page === 'login') await api.authConfig(); } })),
+  { name: 'checkout', principal: 'anonymous', tenant: 'studio', page: 'checkout', route: '/checkout/product-studio-kurs-101', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicPaymentConfig(); } },
+  { name: 'boot-splash', principal: 'creator@together.dev', tenant: 'studio', page: 'boot-splash', route: '/panel', courseId: '', lessonId: '', spaceId: '', pending: [fixtureKey('me', [])] },
+  { name: 'course-not-found', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'course-not-found', route: '/my/courses/course-does-not-exist', courseId: '', lessonId: '', spaceId: '', expectedErrors: { [fixtureKey('studentCourseStructure', ['course-does-not-exist'])]: 'not_found' }, extra: async (api) => { await api.studentCourseStructure('course-does-not-exist'); await api.studentProgress('course-does-not-exist'); await api.studentCourses(); } },
+  { name: 'lesson-locked', principal: 'free@together.dev', tenant: 'studio', page: 'lesson-locked', route: '/my/courses/course-js/lessons/lesson-js-zmienne-2', courseId: '', lessonId: '', spaceId: '', expectedErrors: { [fixtureKey('studentLesson', ['lesson-js-zmienne-2'])]: 'forbidden' }, extra: async (api) => { await api.studentLesson('lesson-js-zmienne-2'); await api.studentLesson('lesson-js-dom-1'); await api.studentCourseStructure('course-js'); await api.studentProgress('course-js'); } },
   ...(['start', 'lesson'] as const).map((page) => ({ name: `acme-${page}`, principal: SMOKE_TENANT_MEMBER_EMAIL, tenant: 'acme', page, courseId: 'course-acme', lessonId: 'lesson-acme-intro', spaceId: '' })),
   ...(['start', 'space-feed', 'lesson'] as const).map((page) => ({ name: page, principal: 'kursant.aktywny@together.dev', tenant: 'studio', page, courseId: 'course-js', lessonId: 'lesson-js-zmienne-1', spaceId: 'space-studio-spolecznosc' })),
   { name: 'account', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'account', route: '/account', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.listMemberBillingOrders(1, 25); await api.getTenantSettings(); await api.getMyErasureRequest(); await api.listAccountSessions(); } },
@@ -91,9 +96,17 @@ const plan: Scenario[] = [
 ];
 const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Promise<void> => {
   const calls: Record<string, unknown> = {};
+  const validateResult = (method: string, args: unknown[], result: unknown): void => {
+    const expectedCode = scenario.expectedErrors?.[fixtureKey(method, args)];
+    if (expectedCode !== undefined) {
+      z.object({ ok: z.literal(false), error: z.object({ code: z.literal(expectedCode) }) }).parse(result);
+    } else if (!abortVisualMutation(method) && !(scenario.principal === 'anonymous' && method === 'me')) {
+      success.parse(result);
+    }
+  };
   const call = async <T>(method: keyof ApiClient, args: unknown[], invoke: () => Promise<T>): Promise<T> => {
     const result = await invoke();
-    if (!abortVisualMutation(method) && !(scenario.principal === 'anonymous' && method === 'me')) success.parse(result);
+    validateResult(method, args, result);
     calls[fixtureKey(method, args)] = result;
     return result;
   };
@@ -149,7 +162,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
         const method: unknown = Reflect.get(abortVisualMutation(String(property)) ? abortedApi : target, property);
         if (typeof method !== 'function') throw new Error(`Invalid recording method ${String(property)}`);
         return Promise.resolve(Reflect.apply(method, target, args)).then((result: unknown) => {
-          if (!abortVisualMutation(String(property))) success.parse(result);
+          validateResult(String(property), args, result);
           if (property === 'listAccountSessions') {
             const parsed = z.object({ ok: z.literal(true), value: z.object({ sessions: z.array(z.object({ current: z.boolean(), userAgent: z.string().nullable() })) }) }).parse(result);
             result = { ok: true, value: { sessions: parsed.value.sessions.map((session, index) => ({ ...session, id: `fixture-session-${index}`, createdAt: seedTime, lastActiveAt: seedTime })) } };
@@ -166,7 +179,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
     if (!recordPasskeys) throw new Error('Missing passkey recorder');
     calls[fixtureKey('listPasskeys', [])] = await recordPasskeys();
   }
-  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? value.replaceAll(baseUrl, 'http://localhost:48730') : value));
+  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? value.replaceAll(baseUrl, 'http://localhost:48730') : value));
   save(scenario.name, snapshot);
   console.log(`${scenario.name}: ${Object.keys(calls).length} calls`);
 };

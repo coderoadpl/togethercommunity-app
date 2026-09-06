@@ -5,10 +5,12 @@ import { fixtureKey, fixtureSchema, type Fixture } from './fixture-key.js';
 
 let active: Fixture | undefined;
 export const fixtureCalls = new Set<string>();
+export const fixturePendingCalls = new Set<string>();
 export const fixtureErrors = new Set<string>();
 export const selectFixture = (input: unknown): Fixture => {
   active = fixtureSchema.parse(input);
   fixtureCalls.clear();
+  fixturePendingCalls.clear();
   fixtureErrors.clear();
   return active;
 };
@@ -21,6 +23,10 @@ export const fixtureClient: ApiClient = new Proxy(createApiClient({ baseUrl: '',
       const message = `Missing fixture call ${key} in ${active?.scenario ?? 'unselected scenario'}`;
       fixtureErrors.add(message);
       throw new Error(message);
+    }
+    if (active.pending.includes(key)) {
+      fixturePendingCalls.add(key);
+      return new Promise<never>(() => undefined);
     }
     if (abortVisualMutation(String(property))) {
       const method: unknown = Reflect.get(target, property);

@@ -317,7 +317,8 @@ describe('SettingsPanel information architecture', () => {
       .toHaveTextContent(pl.tenantDomains.statusActive);
     const pending = await screen.findByTestId('tenant-domain-nowa.acme.example');
     expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
-    expect(pending).toHaveTextContent('cname.vercel-dns.com');
+    expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example'))
+      .toHaveValue('cname.vercel-dns.com');
   });
 
   it('warns about signing in again until a custom domain is verified', async () => {
@@ -424,7 +425,8 @@ describe('SettingsPanel information architecture', () => {
 
     const added = await screen.findByTestId('tenant-domain-sklep.acme.example');
     expect(added).toHaveTextContent(pl.tenantDomains.statusPendingDns);
-    expect(added).toHaveTextContent('cname.vercel-dns.com');
+    expect(screen.getByTestId('dns-record-value-CNAME-sklep.acme.example'))
+      .toHaveValue('cname.vercel-dns.com');
     expect(domainCalls).toEqual(['add:sklep.acme.example']);
   });
 
@@ -440,29 +442,37 @@ describe('SettingsPanel information architecture', () => {
     expect(domainCalls).toEqual(['check:nowa.acme.example']);
   });
 
-  it('confirms a copied DNS record only when the clipboard accepts it', async () => {
+  it('offers the record name and value as separate copy fields', async () => {
     const writeText = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderPanel();
 
     const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
-    await userEvent.click(within(record).getByRole('button'));
+    expect(within(record).getByTestId('dns-record-name-CNAME-nowa.acme.example'))
+      .toHaveValue('nowa.acme.example');
+
+    await userEvent.click(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copy'));
 
     expect(writeText).toHaveBeenCalledWith('cname.vercel-dns.com');
-    expect(within(record).getByRole('button')).toHaveTextContent(pl.tenantDomains.copied);
+    await waitFor(() => {
+      expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copied'))
+        .toHaveTextContent(pl.copyField.copied);
+    });
   });
 
-  it('keeps the copy label when the clipboard refuses the record', async () => {
+  it('stays silent about copying when the clipboard refuses the record', async () => {
     const writeText = vi.fn<(value: string) => Promise<void>>()
       .mockRejectedValue(new Error('Clipboard denied'));
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderPanel();
 
-    const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
-    await userEvent.click(within(record).getByRole('button'));
+    await userEvent.click(
+      await screen.findByTestId('dns-record-value-CNAME-nowa.acme.example-copy'),
+    );
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());
-    expect(within(record).getByRole('button')).toHaveTextContent(pl.tenantDomains.copy);
+    expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copied'))
+      .toHaveTextContent('');
   });
 
   it('removes a domain only after the owner confirms', async () => {

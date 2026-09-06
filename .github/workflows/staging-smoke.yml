@@ -16,6 +16,7 @@ on:
         default: ''
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: staging-smoke
   cancel-in-progress: true
@@ -117,16 +118,16 @@ jobs:
         continue-on-error: true
         env:
           STAGING_BASE_URL: ${{ steps.target.outputs.base_url }}
-          STAGING_OPERATOR_SECRET: ${{ secrets.STAGING_OPERATOR_SECRET }}
+          OPERATOR_SECRET: ${{ secrets.OPERATOR_SECRET_STAGING || secrets.STAGING_OPERATOR_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          if [ -z "$STAGING_OPERATOR_SECRET" ]; then
-            echo "::notice::STAGING_OPERATOR_SECRET is absent; smoking staging with the secrets it stands with"
+          if [ -z "$OPERATOR_SECRET" ]; then
+            echo "::notice::OPERATOR_SECRET_STAGING is absent; smoking staging with the secrets it stands with"
             exit 0
           fi
           curl -sS --fail-with-body --max-time 60 -X POST \
             -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
-            -H "x-scheduler-operator-secret: $STAGING_OPERATOR_SECRET" \
+            -H "x-scheduler-operator-secret: $OPERATOR_SECRET" \
             "$STAGING_BASE_URL/api/internal/sanitize-staging-secrets" > /dev/null
       - name: Smoke the staging deployment
         id: smoke
@@ -183,11 +184,53 @@ jobs:
               fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Collect the failing checks
+        id: failures
+        if: always()
+        env:
+          ALIAS_MATCHED: ${{ steps.alias.outputs.matched }}
+          SMOKE_FAILING: ${{ steps.smoke.outputs.failing }}
+          UNPINNED: ${{ steps.smoke.outputs.unpinned }}
+        run: |
+          failing=""
+          if [ "$ALIAS_MATCHED" = "false" ]; then
+            failing="deployment-alias"
+          fi
+          if [ -n "$SMOKE_FAILING" ] && [ "$UNPINNED" != "true" ]; then
+            failing="${failing:+$failing,}$SMOKE_FAILING"
+          fi
+          echo "failing=$failing" >> "$GITHUB_OUTPUT"
+          measured=""
+          if [ -n "$ALIAS_MATCHED" ]; then
+            measured="deployment-alias"
+          fi
+          for name in $(sed -n 's/^  \[[^]]*\] \([^ ]*\) .*/\1/p' staging-smoke.log 2>/dev/null); do
+            measured="${measured:+$measured,}$name"
+          done
+          echo "checks=$measured" >> "$GITHUB_OUTPUT"
+      - name: Gate the alert on a state change
+        id: alert
+        if: always() && steps.alias.outputs.matched != ''
+        uses: ./.github/actions/alert-gate
+        with:
+          monitor: staging-smoke.yml
+          environment: staging
+          failing: ${{ steps.failures.outputs.failing }}
+          checks: ${{ steps.failures.outputs.checks }}
+          github-token: ${{ github.token }}
       - name: Send an SMS alert
-        if: steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'
+        if: steps.alert.outputs.should_page == 'true'
         uses: ./.github/actions/alert-sms
         with:
-          message: 'Together STAGING smoke FAILED: ${{ steps.smoke.outputs.failing }}'
+          message: 'Together STAGING smoke FAILED: ${{ steps.alert.outputs.pageable }}'
+          aws-access-key-id: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
+          phone-number: ${{ secrets.ALERT_SMS_PHONE }}
+      - name: Send a recovery SMS
+        if: steps.alert.outputs.recovered == 'true'
+        uses: ./.github/actions/alert-sms
+        with:
+          message: 'Together STAGING smoke RECOVERED'
           aws-access-key-id: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
           phone-number: ${{ secrets.ALERT_SMS_PHONE }}

@@ -49,6 +49,17 @@ diagnose it before deciding whether the stage failed:
 
 Visual verification has zero retries.
 
+## Alerting (owner decision 2026-09-06 — HARD RULE)
+
+Every monitor that can page starts observe-only — summary and `::notice::`, no
+SMS — until its first green run on that environment, and a check added to an
+armed monitor inherits observe-only until it is green there too.
+A page needs a state change: the previous completed run was green, or the failing
+set changed; never two pages in a row for the same failing set, and a `RECOVERED`
+SMS closes every incident.
+Every SMS goes through `.github/actions/alert-gate`; a monitor that decides for
+itself when to page is a bug — see `app/docs/observability.md`.
+
 ## Tenant neutrality (owner decision 2026-09-06 — HARD RULE)
 
 This is a public multi-tenant platform. It must not contain references to any

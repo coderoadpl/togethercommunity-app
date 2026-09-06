@@ -94,8 +94,8 @@ describe('staging-smoke workflow', () => {
       .toBe("steps.gate.outputs.run == 'true' && steps.alias.outputs.matched == 'true'");
     expect(step('Fail the run on a stale staging alias').if)
       .toBe("steps.alias.outputs.matched == 'false'");
-    expect(step('Send an SMS alert').if)
-      .toBe("steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'");
+    expect(step('Collect the failing checks').run).toContain('failing="deployment-alias"');
+    expect(step('Send an SMS alert').if).toBe("steps.alert.outputs.should_page == 'true'");
   });
 
   it('smokes the staging tenant host against both database fingerprints', () => {
@@ -117,17 +117,17 @@ describe('staging-smoke workflow', () => {
       .toBeLessThan(job.steps.indexOf(step('Smoke the staging deployment')));
     expect(sanitize.if)
       .toBe("steps.gate.outputs.run == 'true' && steps.alias.outputs.matched == 'true'");
-    expect(sanitize.env?.['STAGING_OPERATOR_SECRET'])
-      .toBe('${{ secrets.STAGING_OPERATOR_SECRET }}');
+    expect(sanitize.env?.['OPERATOR_SECRET'])
+      .toBe('${{ secrets.OPERATOR_SECRET_STAGING || secrets.STAGING_OPERATOR_SECRET }}');
     expect(sanitize.run).toContain('x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET');
-    expect(sanitize.run).toContain('x-scheduler-operator-secret: $STAGING_OPERATOR_SECRET');
+    expect(sanitize.run).toContain('x-scheduler-operator-secret: $OPERATOR_SECRET');
     expect(sanitize.run).toContain(API_PATHS.sanitizeStagingSecrets);
   });
 
   it('skips the sanitize with a notice instead of failing when the operator secret is absent', () => {
     const sanitize = step('Sanitize the staging tenant secrets');
 
-    expect(sanitize.run).toContain('if [ -z "$STAGING_OPERATOR_SECRET" ]');
+    expect(sanitize.run).toContain('if [ -z "$OPERATOR_SECRET" ]');
     expect(sanitize.run).toContain('::notice::');
     expect(sanitize['continue-on-error']).toBe(true);
   });
@@ -161,13 +161,14 @@ describe('staging-smoke workflow', () => {
     expect(step('Fail the run on a failing smoke').if)
       .toBe("steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'");
     expect(step('Summarize the staging smoke').run).toContain('STAGING_DATABASE_FINGERPRINT');
+    expect(step('Collect the failing checks').run).toContain('[ "$UNPINNED" != "true" ]');
   });
 
   it('pages the on-call number with the failing checks', () => {
     const alert = step('Send an SMS alert');
 
     expect(String(alert.with?.['message']))
-      .toBe('Together STAGING smoke FAILED: ${{ steps.smoke.outputs.failing }}');
+      .toBe('Together STAGING smoke FAILED: ${{ steps.alert.outputs.pageable }}');
     expect(alert.with?.['aws-access-key-id']).toBe('${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}');
     expect(alert.with?.['aws-secret-access-key'])
       .toBe('${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}');

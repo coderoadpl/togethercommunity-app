@@ -6,7 +6,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -181,11 +181,12 @@ describe('RegisterPage', () => {
 
     const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).toBeRequired();
-    expect(screen.getByRole('link', { name: pl.consent.terms })).toHaveAttribute(
+    const consentField = within(checkbox.closest('label') as HTMLElement);
+    expect(consentField.getByRole('link', { name: pl.consent.terms })).toHaveAttribute(
       'href',
       'https://akademia.test/regulamin',
     );
-    expect(screen.getByRole('link', { name: pl.consent.privacy })).toHaveAttribute(
+    expect(consentField.getByRole('link', { name: pl.consent.privacy })).toHaveAttribute(
       'href',
       'https://akademia.test/prywatnosc',
     );

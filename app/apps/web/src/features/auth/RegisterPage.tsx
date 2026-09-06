@@ -16,7 +16,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
+import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 import { AuthButton, AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
 import { AuthShell } from './AuthShell.js';

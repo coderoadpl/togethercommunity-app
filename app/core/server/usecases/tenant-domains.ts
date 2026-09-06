@@ -5,6 +5,7 @@ import {
   CUSTOM_DOMAIN_CHECKS_PER_HOUR,
   err,
   MAX_CUSTOM_DOMAINS_PER_TENANT,
+  mergeDomainRecords,
   normalizeCustomDomain,
   notFound,
   ok,
@@ -63,6 +64,16 @@ const TENANT_DOMAIN_CHECK_BATCH = 25;
 export const TENANT_DOMAIN_REFRESH_BUDGET_MS = 12_000;
 export const TENANT_DOMAIN_CHECK_TIME_BUDGET_MS = 20_000;
 
+const domainRecords = (domain: TenantDomain, deps: TenantRoutingDeps) =>
+  mergeDomainRecords(
+    domain.records,
+    customDomainRecords({
+      domain: domain.domain,
+      target: deps.customDomainTarget,
+      verification: domain.verification,
+    }),
+  );
+
 const routingView = (
   tenantSlug: string | null,
   domains: TenantDomain[],
@@ -76,11 +87,13 @@ const routingView = (
       domain: domain.domain,
       verified: domain.verified,
       status: tenantDomainStatus(domain),
-      records: customDomainRecords({
-        domain: domain.domain,
-        target: deps.customDomainTarget,
-        verification: domain.verification,
-      }),
+      records: domainRecords(domain, deps).map((record) => ({
+        ...record,
+        status: domain.verified || (record.purpose === 'ownership' && (domain.providerVerified || !domain.verification.some(
+          (required) => required.type === record.type
+            && required.name === record.name && required.value === record.value,
+        ))) ? 'verified' as const : 'pending' as const,
+      })),
       lastCheckedAt: domain.lastCheckedAt,
       lastError: domain.lastError,
     })),
@@ -265,7 +278,11 @@ export const addTenantDomain = async (
     kind: 'custom',
     verified: false,
     provider: deps.provisioner.provider,
+    providerVerified: added.value.verified,
     verification: added.value.verification,
+    records: mergeDomainRecords(customDomainRecords({
+      domain, target: deps.customDomainTarget, verification: added.value.verification,
+    }), added.value.records),
     createdAt: now,
     verifiedAt: null,
     lastCheckedAt: null,
@@ -298,19 +315,29 @@ const refreshTenantDomain = async (
   const state = observed.ok && !observed.value.verified
     ? await deps.provisioner.verify(row.domain, { signal: deadline })
     : observed;
+  const records = mergeDomainRecords(
+    domainRecords(row, deps),
+    observed.ok ? observed.value.records : [],
+    state.ok ? state.value.records : [],
+  );
   const now = deps.clock.nowIso();
   if (!state.ok) {
-    // Our own deadline fired, so nothing was learned about the domain: recording a
-    // failure would blame the provider for a budget the caller ran out of. The stamp
-    // still moves, or the row this deadline keeps cutting short would be picked first
-    // by every following tick and starve every other tenant.
+    // Our own deadline fired: recording a failure would blame the provider for a
+    // budget the caller ran out of. The stamp still moves, or the row this deadline
+    // keeps cutting short would be picked first by every following tick and starve
+    // every other tenant.
     if (deadline.aborted) {
-      await deps.tenantDomains.patch(row.tenantId, row.id, { lastCheckedAt: now });
+      await deps.tenantDomains.patch(row.tenantId, row.id, {
+        lastCheckedAt: now, records,
+        ...(observed.ok ? { providerVerified: observed.value.verified, verification: observed.value.verification } : {}),
+      });
       return state;
     }
     await deps.tenantDomains.patch(row.tenantId, row.id, {
       lastCheckedAt: now,
       lastError: state.error.message,
+      records,
+      ...(observed.ok ? { providerVerified: observed.value.verified, verification: observed.value.verification } : {}),
     });
     // The trail is evidence, and a domain that keeps failing the same way would add
     // one row per tick to it, so only a change is worth recording.
@@ -328,7 +355,9 @@ const refreshTenantDomain = async (
   // A provisioner is never allowed to demote: manual mode has no opinion at all,
   // and an operator-verified row stays verified until an operator says otherwise.
   const progress = {
+    providerVerified: state.value.verified,
     verification: state.value.verification,
+    records,
     lastCheckedAt: now,
     lastError: null,
   } as const;

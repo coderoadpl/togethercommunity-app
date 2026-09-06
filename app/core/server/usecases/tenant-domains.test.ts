@@ -72,8 +72,8 @@ class FakeProvisioner implements DomainProvisioner {
     private readonly states: {
       provider?: TenantDomainProvider;
       add?: { verification: DnsRecord[]; verified: boolean };
-      status?: DomainProvisionState;
-      verify?: DomainProvisionState;
+      status?: Omit<DomainProvisionState, 'records'>;
+      verify?: Omit<DomainProvisionState, 'records'>;
       failure?: string;
     } = {},
   ) {
@@ -83,20 +83,23 @@ class FakeProvisioner implements DomainProvisioner {
   async add(domain: string) {
     this.calls.push(`add:${domain}`);
     if (this.states.failure !== undefined) return err(integrationUnavailable(this.states.failure));
-    return ok(this.states.add ?? { verification: [TXT_RECORD], verified: false });
+    const state = this.states.add ?? { verification: [TXT_RECORD], verified: false };
+    return ok({ ...state, records: state.verification.map((record) => ({ ...record, purpose: 'ownership' as const })) });
   }
 
   async status(domain: string, options?: { signal?: AbortSignal | undefined }) {
     this.calls.push(`status:${domain}`);
     this.statusSignals.push(options?.signal);
     if (this.states.failure !== undefined) return err(integrationUnavailable(this.states.failure));
-    return ok(this.states.status ?? { verified: false, misconfigured: true, verification: [TXT_RECORD] });
+    const state = this.states.status ?? { verified: false, misconfigured: true, verification: [TXT_RECORD] };
+    return ok({ ...state, records: state.verification.map((record) => ({ ...record, purpose: 'ownership' as const })) });
   }
 
   async verify(domain: string) {
     this.calls.push(`verify:${domain}`);
     if (this.states.failure !== undefined) return err(integrationUnavailable(this.states.failure));
-    return ok(this.states.verify ?? { verified: false, misconfigured: true, verification: [TXT_RECORD] });
+    const state = this.states.verify ?? { verified: false, misconfigured: true, verification: [TXT_RECORD] };
+    return ok({ ...state, records: state.verification.map((record) => ({ ...record, purpose: 'ownership' as const })) });
   }
 
   async remove(domain: string) {
@@ -232,7 +235,7 @@ describe('getTenantRouting', () => {
             domain: 'kurs.acme.example',
             verified: true,
             status: 'active',
-            records: [{ type: 'CNAME', name: 'kurs.acme.example', value: 'cname.vercel-dns.com' }],
+            records: [{ type: 'CNAME', name: 'kurs.acme.example', value: 'cname.vercel-dns.com', purpose: 'routing', status: 'verified' }],
             lastCheckedAt: null,
             lastError: null,
           },
@@ -241,8 +244,8 @@ describe('getTenantRouting', () => {
             verified: false,
             status: 'provider-verification',
             records: [
-              { type: 'CNAME', name: 'nowa.acme.example', value: 'cname.vercel-dns.com' },
-              TXT_RECORD,
+              { type: 'CNAME', name: 'nowa.acme.example', value: 'cname.vercel-dns.com', purpose: 'routing', status: 'pending' },
+              { ...TXT_RECORD, purpose: 'ownership', status: 'pending' },
             ],
             lastCheckedAt: null,
             lastError: null,
@@ -491,10 +494,11 @@ describe('checkTenantDomain', () => {
     const result = await checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: true });
-    expect(rows[0]).toMatchObject({ verified: false, verification: [TXT_RECORD] });
+    expect(rows[0]).toMatchObject({ verified: false, providerVerified: true, verification: [TXT_RECORD] });
+    expect(result).toMatchObject({ ok: true, value: { customDomains: [{ status: 'provider-verification' }] } });
     expect(result.ok && result.value.customDomains[0]?.records).toEqual([
-      { type: 'CNAME', name: 'kurs.acme.example', value: 'cname.vercel-dns.com' },
-      TXT_RECORD,
+      { type: 'CNAME', name: 'kurs.acme.example', value: 'cname.vercel-dns.com', purpose: 'routing', status: 'pending' },
+      { ...TXT_RECORD, purpose: 'ownership', status: 'verified' },
     ]);
   });
 
@@ -811,5 +815,114 @@ describe('runTenantDomainChecks', () => {
     expect(result).toEqual({ ok: true, value: { checked: 0, verified: 0, failed: 0, alerted: 0 } });
     expect(provisioner.calls).toEqual([]);
     expect(notifications).toEqual([]);
+  });
+});
+
+describe('retained DNS checklist', () => {
+  const host = 'courses.example.org';
+  const ownership = { type: 'TXT' as const, name: `_vercel.${host}`, value: 'challenge-one' };
+
+  it('preserves the domain chip when add confirms ownership but still returns its TXT record', async () => {
+    const { deps, rows } = harness({
+      provisioner: new FakeProvisioner({ add: { verified: true, verification: [ownership] } }),
+    });
+    expect(await addTenantDomain(ctx, { domain: host }, deps)).toMatchObject({
+      ok: true, value: { customDomains: [{
+        status: 'provider-verification', verified: false, records: [
+          { purpose: 'routing', status: 'pending' },
+          { ...ownership, purpose: 'ownership', status: 'verified' },
+        ],
+      }] },
+    });
+    expect(rows[0]).toMatchObject({ providerVerified: true, verification: [ownership] });
+  });
+
+  it('persists the initial records and merges new challenges without dropping or duplicating records', async () => {
+    const { deps, rows } = harness({
+      provisioner: new FakeProvisioner({ add: { verified: false, verification: [ownership] } }),
+    });
+    await addTenantDomain(ctx, { domain: host }, deps);
+    expect(rows[0]?.records).toEqual([
+      { type: 'CNAME', name: host, value: deps.customDomainTarget, purpose: 'routing' },
+      { ...ownership, purpose: 'ownership' },
+    ]);
+    const next = { ...ownership, value: 'challenge-two' };
+    deps.provisioner = new FakeProvisioner({
+      status: { verified: false, misconfigured: true, verification: [next] },
+      verify: { verified: false, misconfigured: true, verification: [next] },
+    });
+    await checkTenantDomain(ctx, { domain: host }, deps);
+    const checked = await checkTenantDomain(ctx, { domain: host }, deps);
+    expect(rows[0]?.records).toHaveLength(3);
+    expect(checked).toMatchObject({ ok: true, value: { customDomains: [{ records: [
+      { purpose: 'routing', status: 'pending' },
+      { ...ownership, purpose: 'ownership', status: 'verified' },
+      { ...next, purpose: 'ownership', status: 'pending' },
+    ] }] } });
+  });
+
+  it('shows the current routing target on read and retains both targets after re-checks', async () => {
+    const { deps, rows } = harness({
+      provisioner: new FakeProvisioner({
+        add: { verified: false, verification: [] },
+        status: { verified: false, misconfigured: true, verification: [] },
+        verify: { verified: false, misconfigured: true, verification: [] },
+      }),
+    });
+    deps.customDomainTarget = 'old.example.org';
+    await addTenantDomain(ctx, { domain: host }, deps);
+    deps.customDomainTarget = 'new.example.org';
+    const expected = ['old.example.org', 'new.example.org'].map((value) => ({
+      type: 'CNAME', name: host, value, purpose: 'routing', status: 'pending',
+    }));
+    expect(await getTenantRouting(ctx, deps)).toMatchObject({
+      ok: true, value: { customDomains: [{ records: expected }] },
+    });
+    await checkTenantDomain(ctx, { domain: host }, deps);
+    expect(await checkTenantDomain(ctx, { domain: host }, deps)).toMatchObject({
+      ok: true, value: { customDomains: [{ records: expected }] },
+    });
+    expect(rows[0]?.records).toEqual(expected.map((record) => ({
+      type: record.type, name: record.name, value: record.value, purpose: record.purpose,
+    })));
+  });
+
+  it.each([
+    { verified: false, misconfigured: true, verification: [] },
+    { verified: true, misconfigured: true, verification: [ownership] },
+    { verified: true, misconfigured: false, verification: [] },
+  ])('derives ownership and routing statuses for %j', async (state) => {
+    const { deps, rows } = harness({
+      provisioner: new FakeProvisioner({ add: { verified: false, verification: [ownership] } }),
+    });
+    await addTenantDomain(ctx, { domain: host }, deps);
+    deps.provisioner = new FakeProvisioner({ status: state, verify: state });
+    await checkTenantDomain(ctx, { domain: host }, deps);
+    expect(rows[0]?.records).toHaveLength(2);
+    expect(rows[0]?.verification).toEqual(state.verification);
+    const result = await getTenantRouting(ctx, deps);
+    expect(result).toMatchObject({ ok: true, value: { customDomains: [{ records: [
+      { purpose: 'routing', status: state.verified && !state.misconfigured ? 'verified' : 'pending' },
+      { ...ownership, purpose: 'ownership', status: 'verified' },
+    ] }] } });
+  });
+
+  it('retains records from the status call when verification fails', async () => {
+    const { deps, rows } = harness({
+      provisioner: new FakeProvisioner({ add: { verified: false, verification: [] } }),
+    });
+    await addTenantDomain(ctx, { domain: host }, deps);
+    deps.provisioner = new FakeProvisioner({
+      status: { verified: false, misconfigured: true, verification: [ownership] },
+    });
+    vi.spyOn(deps.provisioner, 'verify').mockResolvedValue(err(integrationUnavailable('Unavailable')));
+    await checkTenantDomain(ctx, { domain: host }, deps);
+    expect(rows[0]?.records).toContainEqual({ ...ownership, purpose: 'ownership' });
+    expect(await getTenantRouting(ctx, deps)).toMatchObject({
+      ok: true, value: { customDomains: [{ records: [
+        { purpose: 'routing', status: 'pending' },
+        { ...ownership, purpose: 'ownership', status: 'pending' },
+      ] }] },
+    });
   });
 });

@@ -6,6 +6,7 @@ import {
   ok,
   type AppError,
   type DnsRecord,
+  type DomainDnsRecord,
   type Result,
 } from '#core/domain/index.js';
 import type { DomainProvisionState, DomainProvisioner } from '#core/server/index.js';
@@ -129,7 +130,7 @@ export const createVercelDomainProvisioner = (
   const readProjectDomain = async (
     domain: string,
     deadline: AbortSignal | undefined,
-  ): Promise<Result<{ verified: boolean; verification: DnsRecord[] }, AppError>> => {
+  ): Promise<Result<{ verified: boolean; verification: DnsRecord[]; records: DomainDnsRecord[] }, AppError>> => {
     const payload = await call(`/v9/projects/${project}/domains/${encodeURIComponent(domain)}`, {
       method: 'GET',
       deadline,
@@ -140,8 +141,11 @@ export const createVercelDomainProvisioner = (
       ? ok({
         verified: parsed.data.verified,
         verification: toDnsRecords(parsed.data.verification),
+        records: toDnsRecords(parsed.data.verification).map((record) => ({
+          ...record, purpose: 'ownership' as const,
+        })),
       })
-      : ok({ verified: false, verification: [] });
+      : ok({ verified: false, verification: [], records: [] });
   };
 
   const readMisconfigured = async (
@@ -183,6 +187,9 @@ export const createVercelDomainProvisioner = (
         return ok({
           verified: parsed.data.verified,
           verification: toDnsRecords(parsed.data.verification),
+          records: toDnsRecords(parsed.data.verification).map((record) => ({
+            ...record, purpose: 'ownership' as const,
+          })),
         });
       }
       return readProjectDomain(domain, options?.signal);

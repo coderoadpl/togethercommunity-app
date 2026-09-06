@@ -1,4 +1,4 @@
-import type { TenantDomain } from '#core/domain/index.js';
+import { mergeDomainRecords, type TenantDomain } from '#core/domain/index.js';
 
 import type { TenantDomainRepository } from '../ports.js';
 
@@ -8,7 +8,9 @@ export const tenantDomainFixture = (
   kind: 'custom',
   verified: false,
   provider: 'manual',
+  providerVerified: false,
   verification: [],
+  records: [],
   createdAt: '2026-09-01T00:00:00.000Z',
   verifiedAt: null,
   lastCheckedAt: null,
@@ -36,7 +38,7 @@ export const createInMemoryTenantDomainRepository = (
     const index = rows.findIndex((row) => row.tenantId === tenantId && row.id === id);
     const existing = rows[index];
     if (existing === undefined) return null;
-    const next = { ...existing, ...patch };
+    const next = { ...existing, ...patch, records: mergeDomainRecords(existing.records, patch.records ?? []) };
     rows[index] = next;
     return next;
   },
@@ -46,7 +48,7 @@ export const createInMemoryTenantDomainRepository = (
     );
     const existing = rows[index];
     if (existing === undefined) return null;
-    const next = { ...existing, ...patch, verified: true };
+    const next = { ...existing, ...patch, records: mergeDomainRecords(existing.records, patch.records ?? []), verified: true };
     rows[index] = next;
     return next;
   },

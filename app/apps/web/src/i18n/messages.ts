@@ -1,8 +1,11 @@
 import type {
   ImportAuditAction,
   ImportAuditResourceType,
+  LessonBlockType,
   MemberEventType,
   SnsWebhookDeliveryOutcome,
+  TenantAuditEventKind,
+  VersionPreviewFieldName,
 } from '#core/domain/index.js';
 
 export type MessageParams = Record<string, string | number>;
@@ -150,6 +153,11 @@ export interface Messages {
     signingInAs: (params: { email: string }) => string;
     changeIdentifier: string;
     signInMethodsUnavailable: string;
+    signInMethodsRateLimited: string;
+    signInMethodsRateLimitedRetryAfter: (params: { seconds: number }) => string;
+    signInMethodsChoosePrompt: string;
+    signInMethodsChooseMagicLink: string;
+    signInMethodsChoosePassword: string;
     usePasswordPrompt: string;
     usePasswordInstead: string;
     useMagicLinkPrompt: string;
@@ -665,9 +673,13 @@ export interface Messages {
     sessionRevoke: string;
     sessionRevoking: string;
     sessionRevoked: string;
+    sessionRevokeConfirmTitle: string;
+    sessionRevokeConfirmBody: string;
     sessionsRevokeOthers: string;
     sessionsRevokingOthers: string;
     sessionsOthersRevoked: string;
+    sessionsRevokeOthersConfirmTitle: string;
+    sessionsRevokeOthersConfirmBody: string;
   };
   integrations: {
     heading: string;
@@ -1024,12 +1036,33 @@ export interface Messages {
     historyLoading: string;
     historyEmpty: string;
     historyEmptyBody: string;
-    historyRestoreNote: string;
+    historyHint: string;
     historyUnknownAuthor: string;
-    historyEntry: (params: { version: number; date: string; author: string }) => string;
-    historyEntryId: (params: { id: string }) => string;
+    historyEntry: (params: { ordinal: number; date: string; author: string }) => string;
+    historyEntrySchema: (params: { version: number }) => string;
     historySubjectCourse: (params: { name: string }) => string;
     historySubjectModule: (params: { name: string }) => string;
+    historyOpenAria: (params: { ordinal: number }) => string;
+    versionDialogTitle: (params: { ordinal: number }) => string;
+    versionDialogSubtitle: (params: { date: string; author: string }) => string;
+    versionLoading: string;
+    versionUnchanged: string;
+    versionChangedCount: (params: { count: number }) => string;
+    versionColumnStored: string;
+    versionColumnCurrent: string;
+    versionEmptyValue: string;
+    versionFlagOn: string;
+    versionFlagOff: string;
+    versionEmptyList: string;
+    versionCurrentMissing: string;
+    versionField: Record<VersionPreviewFieldName, string>;
+    versionBlockType: Record<LessonBlockType, string>;
+    versionRestore: string;
+    versionRestoreConfirmTitle: string;
+    versionRestoreConfirmBody: (params: { ordinal: number }) => string;
+    versionRestoreConfirm: string;
+    versionRestoreDone: (params: { ordinal: number }) => string;
+    versionClose: string;
     structureFilterAria: string;
     filterAll: string;
     filterWithModules: string;
@@ -1113,6 +1146,7 @@ export interface Messages {
     videoPickerNextPage: string;
     videoPickerManualHint: string;
     embedUrlLabel: string;
+    embedCollapsedLabel: string;
     embedPreviewTitle: string;
     embedInvalidUrl: string;
     embedInvalidYoutubeUrl: string;
@@ -1158,11 +1192,10 @@ export interface Messages {
     impersonateReasonLabel: string;
     impersonateConfirm: string;
     impersonateStarting: string;
-    impersonationLogHeading: string;
-    impersonationLogEmpty: string;
-    impersonationLogStarted: string;
-    impersonationLogEnded: string;
-    impersonationLogEntry: (params: { actor: string; subject: string }) => string;
+    auditLogHeading: string;
+    auditLogEmpty: string;
+    auditLogKind: Record<TenantAuditEventKind, string>;
+    auditLogEntry: (params: { actor: string; subject: string }) => string;
     erasureRequestsEmpty: string;
     erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
     erasureRejectNote: string;
@@ -1425,6 +1458,9 @@ export interface Messages {
     mailHint: string;
     videoTitle: string;
     embedTitle: string;
+    collapsedEmbedWarning: string;
+    expandEmbed: string;
+    collapseEmbed: string;
     pdfTitle: string;
     attachmentsHeading: string;
     downloadAttachment: (params: { name: string }) => string;

@@ -23,6 +23,7 @@ import {
   coursesListOutputSchema,
   contentHistoryOutputSchema,
   contentVersionOutputSchema,
+  contentVersionRestoreOutputSchema,
   devGrantOutputSchema,
   devEmailOutputSchema,
   devMagicLinkOutputSchema,
@@ -197,6 +198,7 @@ import {
   type CheckoutSessionRequest,
   type CouponCheckoutValidationRequest,
   type CouponArchiveRequest,
+  type ContentVersionRestoreInput,
   type CouponCreateRequest,
   type CouponStatsExportQueryInput,
   type CouponStatsQueryInput,
@@ -1383,6 +1385,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       `${API_ROUTES.coursesHistoryVersion.path}?id=${encodeURIComponent(id)}`,
       contentVersionOutputSchema,
       undefined,
+      signal,
+    ),
+  restoreContentVersion: (input: ContentVersionRestoreInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.coursesHistoryRestore.method,
+      API_ROUTES.coursesHistoryRestore.path,
+      contentVersionRestoreOutputSchema,
+      input,
       signal,
     ),
   listModules: (signal?: AbortSignal) =>

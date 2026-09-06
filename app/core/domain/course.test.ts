@@ -100,6 +100,31 @@ describe('lesson video embed URLs', () => {
       embedUrl: 'https://codesandbox.io/embed/example',
     });
   });
+
+  it('accepts an optional collapsed flag and still rejects unknown embed fields', () => {
+    expect(
+      lessonBlockSchema.parse({
+        type: 'embed',
+        embedUrl: 'https://codesandbox.io/embed/example',
+        collapsed: true,
+      }),
+    ).toEqual({ type: 'embed', embedUrl: 'https://codesandbox.io/embed/example', collapsed: true });
+
+    expect(
+      lessonBlockSchema.safeParse({
+        type: 'embed',
+        embedUrl: 'https://codesandbox.io/embed/example',
+        collapsed: 'yes',
+      }).success,
+    ).toBe(false);
+    expect(
+      lessonBlockSchema.safeParse({
+        type: 'embed',
+        embedUrl: 'https://codesandbox.io/embed/example',
+        folded: true,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('lesson document and link URLs', () => {

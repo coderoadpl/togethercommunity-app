@@ -119,6 +119,8 @@ export const envSchema = z
     EMAIL_DISPATCH_SECRET: z.string().min(16).default(DEV_EMAIL_DISPATCH_SECRET),
     MARKETING_TICK_SECRET: z.string().min(16).default('dev-marketing-tick-secret'),
     CRON_SECRET: z.string().min(16).optional(),
+    SMOKE_MEMBER_PASSWORD: optionalNonEmptyString,
+    SMOKE_CREATOR_PASSWORD: optionalNonEmptyString,
     SNS_TEST_CERT_PEM_BASE64: optionalNonEmptyString,
     EMAIL_DISPATCH_RATE_PER_SECOND: z.coerce.number().positive().default(5),
     EMAIL_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(2000).default(1000),

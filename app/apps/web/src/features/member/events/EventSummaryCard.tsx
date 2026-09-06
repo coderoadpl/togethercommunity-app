@@ -17,7 +17,7 @@ export const EventSummaryCard = ({ event }: { event: PublicSpaceEvent }) => {
       to={communityEventPath(event.spaceId, event.id)}
       data-testid={`event-card-${event.id}`}
     >
-      <Box sx={{ p: '1rem 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', height: '100%' }}>
+      <Box sx={{ p: '1rem 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', flexGrow: 1 }}>
         <Stack direction="row" useFlexGap sx={{ columnGap: '0.5rem', alignItems: 'center' }}>
           <Typography variant="h3" component="h3">
             {event.title}
@@ -34,8 +34,7 @@ export const EventSummaryCard = ({ event }: { event: PublicSpaceEvent }) => {
         <PostMetaText component="time" dateTime={event.startsAt}>
           {formatEventRange(event.startsAt, event.endsAt, language)}
         </PostMetaText>
-        <Box sx={{ flex: 1 }} />
-        <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem', flexWrap: 'wrap' }}>
+        <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem', flexWrap: 'wrap', marginTop: 'auto' }}>
           <FinePrint component="span" data-testid={`event-card-going-${event.id}`}>
             {t.events.goingCount({ count: event.goingCount })}
           </FinePrint>

@@ -11,7 +11,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { ImportContentMutation } from '../ports.js';
+import type { EntityVersionRecord, ImportContentMutation } from '../ports.js';
 import {
   claimM2mImportRateLimit,
   importM2mContent,
@@ -106,7 +106,9 @@ const harness = () => {
   const lessons = new Map<string, CourseLesson>();
   const products = new Map<string, Product>();
   const audits = new Map<string, ImportAuditEvent>();
+  const versions: EntityVersionRecord[] = [];
   const save = (mutation: ImportContentMutation): void => {
+    if (mutation.version !== undefined) versions.push(mutation.version);
     if (mutation.kind === 'course') courses.set(mutation.resource.id, mutation.resource);
     if (mutation.kind === 'module') modules.set(mutation.resource.id, mutation.resource);
     if (mutation.kind === 'lesson') lessons.set(mutation.resource.id, mutation.resource);
@@ -155,6 +157,7 @@ const harness = () => {
     lessons,
     products,
     audits,
+    versions,
     commitCalls: () => commitCalls,
     resetCommitCalls: () => {
       commitCalls = 0;
@@ -204,6 +207,45 @@ describe('m2m content import', () => {
     expect(unchanged).toMatchObject({ ok: true, value: { summary: { unchanged: 1 } } });
     expect(h.lessons.get('lesson-source')?.name).toBe('Updated lesson');
     expect(h.audits.get('lesson:lesson-source')?.action).toBe('unchanged');
+  });
+
+  it('records a version for every created and updated record, stamped with the key label', async () => {
+    const h = harness();
+    await importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1', records: [lessonRecord()],
+    }, h.deps);
+    await importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1', records: [lessonRecord('Updated lesson')],
+    }, h.deps);
+    await importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1', records: [lessonRecord('Updated lesson')],
+    }, h.deps);
+
+    expect(h.versions).toMatchObject([
+      {
+        entityKind: 'course_lesson',
+        entityId: 'lesson-source',
+        createdBy: 'Migration',
+        payload: expect.objectContaining({ name: 'Lesson' }),
+      },
+      {
+        entityKind: 'course_lesson',
+        entityId: 'lesson-source',
+        createdBy: 'Migration',
+        payload: expect.objectContaining({ name: 'Updated lesson' }),
+      },
+    ]);
+  });
+
+  it('names the version author "import" when the key carries no label', async () => {
+    const h = harness();
+    await importM2mContent(ctx, { ...apiKey, name: '  ' }, 'course', {
+      datasetVersion: 'together-import/v1', records: [courseRecord()],
+    }, h.deps);
+
+    expect(h.versions).toMatchObject([
+      { entityKind: 'course', entityId: 'course-source', createdBy: 'import' },
+    ]);
   });
 
   it('resolves tenant references and forces products to remain unpublished', async () => {

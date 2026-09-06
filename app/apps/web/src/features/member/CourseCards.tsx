@@ -30,7 +30,8 @@ const CourseCardProgress = ({ courseId, counts }: { courseId: string; counts: Co
     <Stack
       direction="row"
       useFlexGap
-      sx={{ alignItems: 'center', columnGap: '0.6rem' }}
+      data-testid={`course-progress-row-${courseId}`}
+      sx={{ alignItems: 'center', columnGap: '0.6rem', marginTop: 'auto' }}
     >
       <RailProgressBar
         variant="determinate"
@@ -48,11 +49,18 @@ const CourseCardProgress = ({ courseId, counts }: { courseId: string; counts: Co
 export const CourseCard = ({ course, counts }: { course: CourseCardCourse; counts?: CourseLessonCounts }) => (
   <CourseCardRoot component={Link} to={`/my/courses/${encodeURIComponent(course.id)}`} data-testid={`course-card-${course.id}`}>
     <CourseCardMedia course={course} />
-    <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+    <Box
+      data-testid={`course-card-body-${course.id}`}
+      sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', flexGrow: 1 }}
+    >
       <Typography variant="h2" component="h3" sx={{ minWidth: 0 }}>
         {course.name}
       </Typography>
-      {course.description ? <Typography variant="body2">{course.description}</Typography> : null}
+      {course.description ? (
+        <Typography variant="body2" sx={{ flexGrow: 1 }}>
+          {course.description}
+        </Typography>
+      ) : null}
       {counts === undefined ? null : <CourseCardProgress courseId={course.id} counts={counts} />}
     </Box>
   </CourseCardRoot>

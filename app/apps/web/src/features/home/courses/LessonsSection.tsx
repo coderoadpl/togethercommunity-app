@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import {
   Box,
   Button,
+  Checkbox,
   Chip,
   Divider,
   FormControl,
@@ -57,7 +58,7 @@ type BlockType = LessonBlock['type'];
 
 type BlockDraft =
   | { type: 'video'; storageKey: string; streamVideoId: string; streamLibraryId: string; streamCollectionId: string }
-  | { type: 'embed'; embedUrl: string }
+  | { type: 'embed'; embedUrl: string; collapsed: boolean }
   | { type: 'pdf'; pdfUrl: string; name: string }
   | { type: 'link'; url: string; description: string }
   | { type: 'html'; html: string };
@@ -86,7 +87,7 @@ const emptyBlock = (type: BlockType): BlockDraft => {
     case 'video':
       return { type: 'video', storageKey: '', streamVideoId: '', streamLibraryId: '', streamCollectionId: '' };
     case 'embed':
-      return { type: 'embed', embedUrl: '' };
+      return { type: 'embed', embedUrl: '', collapsed: false };
     case 'pdf':
       return { type: 'pdf', pdfUrl: '', name: '' };
     case 'link':
@@ -107,7 +108,7 @@ const toDraft = (block: LessonBlock): BlockDraft => {
         streamCollectionId: block.streamCollectionId ?? '',
       };
     case 'embed':
-      return { type: 'embed', embedUrl: block.embedUrl };
+      return { type: 'embed', embedUrl: block.embedUrl, collapsed: block.collapsed ?? false };
     case 'pdf':
       return { type: 'pdf', pdfUrl: block.pdfUrl, name: block.name ?? '' };
     case 'link':
@@ -128,7 +129,7 @@ const toBlock = (draft: BlockDraft): unknown => {
         ...(draft.streamCollectionId ? { streamCollectionId: draft.streamCollectionId } : {}),
       };
     case 'embed':
-      return { type: 'embed', embedUrl: draft.embedUrl };
+      return { type: 'embed', embedUrl: draft.embedUrl, ...(draft.collapsed ? { collapsed: true } : {}) };
     case 'pdf':
       return { type: 'pdf', pdfUrl: draft.pdfUrl, ...(draft.name ? { name: draft.name } : {}) };
     case 'link':
@@ -184,6 +185,7 @@ const MemberGroupPreview = ({ group }: { group: LessonContentGroup }) => {
         canonicalUrl={group.canonicalUrl}
         providerName={group.providerName}
         caption={group.caption}
+        collapsed={group.collapsed}
       />
     );
   }
@@ -301,7 +303,17 @@ const EmbedBlockFields = ({
         />
         {error === null ? null : <FormHelperText>{error}</FormHelperText>}
       </FormControl>
-      <MemberLinkPreview block={{ type: 'embed', embedUrl: draft.embedUrl }} />
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={draft.collapsed}
+            data-testid={`block-${index}-collapsed`}
+            onChange={(event) => onChange({ ...draft, collapsed: event.target.checked })}
+          />
+        }
+        label={t.lessons.embedCollapsedLabel}
+      />
+      <MemberLinkPreview block={{ type: 'embed', embedUrl: draft.embedUrl, collapsed: draft.collapsed }} />
       {inspection.kind === 'supported' ? (
         <LessonMediaFrame sx={{ aspectRatio: '16 / 9' }}>
           <LessonMediaClip>

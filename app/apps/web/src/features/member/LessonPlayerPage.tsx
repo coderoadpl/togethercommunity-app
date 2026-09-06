@@ -24,7 +24,7 @@ import {
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
-import { LessonMediaEmbed } from '../../components/ui/LessonMedia.js';
+import { CollapsibleEmbed, LessonMediaEmbed } from '../../components/ui/LessonMedia.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { formatOfferPrice } from '../../lib/format.js';
@@ -125,7 +125,7 @@ const BlockBody = ({ block, autoplay }: { block: RenderableLessonBlock; autoplay
   }
 
   if (block.type === 'embed') {
-    return (
+    const frame = (
       <LessonMediaEmbed
         frameSx={LESSON_VIDEO_FRAME_SX}
         data-testid="lesson-embed"
@@ -135,6 +135,7 @@ const BlockBody = ({ block, autoplay }: { block: RenderableLessonBlock; autoplay
         allowFullScreen
       />
     );
+    return block.collapsed === true ? <CollapsibleEmbed>{frame}</CollapsibleEmbed> : frame;
   }
 
   return <RichTextContent html={block.html} data-testid="lesson-html" />;
@@ -151,6 +152,7 @@ const GroupBody = ({ group, autoplay }: { group: LessonContentGroup; autoplay: b
           canonicalUrl={group.canonicalUrl}
           providerName={group.providerName}
           caption={group.caption}
+          collapsed={group.collapsed}
           outdentX={LESSON_CARD_BLEED_X}
         />
       );

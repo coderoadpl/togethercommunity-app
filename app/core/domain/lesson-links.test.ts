@@ -190,6 +190,7 @@ describe('groupLessonBlocks', () => {
         embedUrl: 'https://codesandbox.io/embed/github/coderoadpl/task-1?autoresize=1',
         canonicalUrl: 'https://codesandbox.io/s/github/coderoadpl/task-1?autoresize=1',
         caption: 'CodeSandbox',
+        collapsed: false,
       },
       {
         kind: 'sandbox',
@@ -198,6 +199,7 @@ describe('groupLessonBlocks', () => {
         embedUrl: 'https://codepen.io/coderoad/embed/abcDEF',
         canonicalUrl: 'https://codepen.io/coderoad/pen/abcDEF',
         caption: null,
+        collapsed: false,
       },
       { kind: 'block', block: { type: 'embed', embedUrl: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ' } },
     ]);
@@ -212,6 +214,20 @@ describe('groupLessonBlocks', () => {
     expect(groups.map((group) => (group.kind === 'sandbox' ? group.caption : group.kind))).toEqual([
       'Zadanie',
       null,
+    ]);
+  });
+
+  it('carries the collapsed flag from the embed block onto its sandbox group', () => {
+    const groups = groupLessonBlocks([
+      { type: 'embed', embedUrl: 'https://codesandbox.io/s/abc123', collapsed: true },
+      { type: 'embed', embedUrl: 'https://codesandbox.io/s/def456' },
+      { type: 'link', url: 'https://codesandbox.io/s/ghi789' },
+    ]);
+
+    expect(groups.map((group) => (group.kind === 'sandbox' ? group.collapsed : group.kind))).toEqual([
+      true,
+      false,
+      false,
     ]);
   });
 

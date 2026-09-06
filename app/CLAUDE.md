@@ -114,7 +114,7 @@ legitimate when rendered behavior matters.
 pnpm run db:up && pnpm run db:migrate && pnpm run db:seed
 pnpm run dev:server &          # port 48730
 pnpm --silent run cli --json health
-pnpm --silent run cli login --email creator2@together.dev --password demo-password-15
+pnpm --silent run cli login --email kontakt+smoke-creator@togethercommunity.app --password demo-password-15
 pnpm --silent run cli --tenant acme product list
 ```
 
@@ -136,4 +136,4 @@ resolves `--tenant` → `TOGETHER_CLI_TENANT` → the selected profile.
   `Domain=.localhost` cookies → per-subdomain login in dev only.
 - Better Auth CSRF requires an `Origin` header on auth POSTs (CLI sends its API URL).
 - Seed is idempotent; demo credentials `creator@together.dev` (studio) and
-  `creator2@together.dev` (acme), both `demo-password-15`.
+  `kontakt+smoke-creator@togethercommunity.app` (acme), both `demo-password-15`.

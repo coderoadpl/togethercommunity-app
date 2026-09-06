@@ -131,6 +131,7 @@ const harness = (overrides: { members?: Partial<MemberRepository>; now?: () => s
   };
 
   const auditEvents: TenantAuditEventRepository = {
+    record: async () => undefined,
     list: async (tenantId, query) => {
       const matching = audit
         .filter((event) => event.tenantId === tenantId)

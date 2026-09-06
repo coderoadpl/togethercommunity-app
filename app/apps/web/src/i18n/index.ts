@@ -7,6 +7,7 @@ export {
   localizePanelError,
   providerCodeOf,
   rejectedCorsOriginOf,
+  retryAfterSecondsOf,
   serverMessageOf,
 } from './errors.js';
 export type { Messages } from './messages.js';

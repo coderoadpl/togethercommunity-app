@@ -2,6 +2,8 @@ import pg from 'pg';
 import { hashPassword, verifyPassword } from 'better-auth/crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
+
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl =
@@ -11,6 +13,8 @@ const { join } = process.getBuiltinModule('node:path');
 const tsxBin = join(process.cwd(), 'node_modules/.bin/tsx');
 const DEMO_PASSWORD = 'demo-password-15';
 const PREVIOUS_DEMO_PASSWORD = 'demo1234';
+const passwordedCreators = (column: string): string =>
+  `(${column} LIKE 'creator%@together.dev' OR ${column} = '${SMOKE_TENANT_CREATOR_EMAIL}')`;
 let testDatabaseUrl: string;
 let closeTestDatabase: () => Promise<void>;
 
@@ -84,7 +88,6 @@ describe('demo seed lifecycle', () => {
       'tenant-studio',
     ]);
     expect(creators.rows.map(({ email }) => email)).toEqual([
-      'creator2@together.dev',
       'creator3@together.dev',
       'creator@together.dev',
     ]);
@@ -118,7 +121,7 @@ describe('demo seed lifecycle', () => {
       `UPDATE account
        SET password = $1
        WHERE provider_id = 'credential'
-         AND user_id IN (SELECT id FROM "user" WHERE email LIKE 'creator%@together.dev')`,
+         AND user_id IN (SELECT id FROM "user" WHERE ${passwordedCreators('email')})`,
       [previousHash],
     );
 
@@ -129,7 +132,7 @@ describe('demo seed lifecycle', () => {
       `SELECT a.password
        FROM account a
        JOIN "user" u ON u.id = a.user_id
-       WHERE a.provider_id = 'credential' AND u.email LIKE 'creator%@together.dev'
+       WHERE a.provider_id = 'credential' AND ${passwordedCreators('u.email')}
        ORDER BY u.email`,
     );
     expect(credentials.rows).toHaveLength(3);

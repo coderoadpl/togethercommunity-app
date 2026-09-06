@@ -75,6 +75,7 @@ import {
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
   createPublicRateLimitRepository,
+  createTenantDirectory,
   createTenantRepository,
   createTenantSecretRepository,
   createUserDisplayReader,
@@ -267,6 +268,20 @@ beforeAll(async () => {
 
   const subs = createMemberSubscriptionRepository(db);
   await subs.create(ACME, subscription({ id: 'sub-acme', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', priceId: 'price-acme', providerSubscriptionId: 'psub-acme' }));
+});
+
+describe('tenant directory', () => {
+  it('lists every tenant off production', async () => {
+    const listed = await createTenantDirectory(db).listAll();
+
+    expect(listed.map((tenant) => tenant.id).sort()).toEqual([ACME, GLOBEX]);
+  });
+
+  it('hides the smoke tenant on production', async () => {
+    const listed = await createTenantDirectory(db, true).listAll();
+
+    expect(listed.map((tenant) => tenant.id)).toEqual([GLOBEX]);
+  });
 });
 
 describe('dev sink purge', () => {

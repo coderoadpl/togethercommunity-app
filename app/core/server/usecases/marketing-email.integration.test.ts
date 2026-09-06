@@ -5,6 +5,7 @@ import {
   err,
   integrationAuth,
   ok,
+  SMOKE_TENANT_ID,
   tenantSettingsSchema,
   type Campaign,
   type ConsentDefinition,
@@ -46,6 +47,7 @@ import {
   completeIdempotentRequest,
   confirmMarketingConsent,
   createCampaign,
+  createSmokeTenantSilencedCredentials,
   deleteCampaign,
   getMarketingEligibility,
   getCampaign,
@@ -1468,5 +1470,21 @@ describe('marketing e-mail use-case integration', () => {
     }]);
     expect(deps.ses.sent[0]?.html).toContain(settings.footerLegalName);
     expect(deps.ses.sent[0]?.html).toContain(settings.footerAddress);
+  });
+});
+
+describe('smoke-tenant silenced marketing credentials', () => {
+  const credentials = { accessKeyId: 'key', secretAccessKey: 'secret', region: 'eu-central-1' };
+  const resolver = createSmokeTenantSilencedCredentials({ resolve: async () => ok(credentials) });
+
+  it('refuses the smoke tenant before any send can reach SES', async () => {
+    expect(await resolver.resolve(SMOKE_TENANT_ID)).toMatchObject({
+      ok: false,
+      error: { code: 'broadcasts_disabled' },
+    });
+  });
+
+  it('resolves every other tenant through the wrapped resolver', async () => {
+    expect(await resolver.resolve('tenant-1')).toEqual(ok(credentials));
   });
 });

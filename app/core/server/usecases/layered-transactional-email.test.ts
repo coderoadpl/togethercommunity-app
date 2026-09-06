@@ -4,6 +4,7 @@ import {
   err,
   integrationUnavailable,
   ok,
+  SMOKE_TENANT_ID,
   type AppError,
   type EmailIntegrationTransport,
   type EmailMessage,
@@ -208,5 +209,46 @@ describe('layered transactional e-mail sender', () => {
     expect(failed.ok).toBe(false);
     expect(pool.sent).toBe(999);
     expect(pool.reserved).toBe(0);
+  });
+
+  it('drops the smoke tenant into the sink instead of any configured transport', async () => {
+    const calls: string[] = [];
+    const pool = new MemoryPool();
+    const sender = createLayeredTransactionalEmailSender({
+      transports: transports({
+        ses: port('tenant-ses', calls),
+        smtp: port('smtp', calls),
+        resend: port('resend', calls),
+      }),
+      platform: port('platform', calls),
+      pool,
+      platformLimit: 1000,
+      smokeTenantSink: port('sink', calls),
+    });
+
+    const sent = await sender.send({
+      tenantId: SMOKE_TENANT_ID,
+      to: 'member@example.test',
+      ...message,
+    });
+
+    expect(sent).toEqual(ok({ messageId: 'sink-message', transport: 'platform' }));
+    expect(calls).toEqual(['sink']);
+    expect(pool.sent).toBe(0);
+  });
+
+  it('leaves other tenants on their own transport when the sink is configured', async () => {
+    const calls: string[] = [];
+    const sender = createLayeredTransactionalEmailSender({
+      transports: transports({ ses: port('tenant-ses', calls), smtp: null, resend: null }),
+      platform: port('platform', calls),
+      pool: new MemoryPool(),
+      platformLimit: 1000,
+      smokeTenantSink: port('sink', calls),
+    });
+
+    await sender.send({ tenantId: 'tenant-studio', to: 'member@example.test', ...message });
+
+    expect(calls).toEqual(['tenant-ses']);
   });
 });

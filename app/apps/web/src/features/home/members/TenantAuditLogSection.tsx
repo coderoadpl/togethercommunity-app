@@ -8,7 +8,7 @@ import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/
 import { formatDateTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 
-export const ImpersonationActivitySection = () => {
+export const TenantAuditLogSection = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const [cursor, setCursor] = useState<string | undefined>(undefined);
@@ -17,7 +17,7 @@ export const ImpersonationActivitySection = () => {
 
   return (
     <SectionCard
-      title={t.members.impersonationLogHeading}
+      title={t.members.auditLogHeading}
       actions={events.data === undefined ? undefined : (
         <>
           <Button
@@ -30,7 +30,7 @@ export const ImpersonationActivitySection = () => {
             {t.pagination.previousPage}
           </Button>
           <Button
-            data-testid="impersonation-log-next"
+            data-testid="audit-log-next"
             disabled={events.data.nextCursor === null}
             onClick={() => {
               const next = events.data.nextCursor;
@@ -55,23 +55,23 @@ export const ImpersonationActivitySection = () => {
           }}
         />
       ) : events.data.events.length === 0 ? (
-        <StatusView state={{ kind: 'empty', title: t.members.impersonationLogEmpty }} />
+        <StatusView state={{ kind: 'empty', title: t.members.auditLogEmpty }} />
       ) : (
-        <Stack useFlexGap spacing="0.5rem" data-testid="impersonation-log">
+        <Stack useFlexGap spacing="0.5rem" data-testid="audit-log">
           {events.data.events.map((event) => (
             <Typography key={event.id} variant="body2">
               <EntryDate component="time" dateTime={event.at}>
                 {formatDateTime(event.at, language)}
               </EntryDate>
               {' · '}
-              {event.kind === 'impersonation_started'
-                ? t.members.impersonationLogStarted
-                : t.members.impersonationLogEnded}
+              {t.members.auditLogKind[event.kind]}
               {' · '}
-              {t.members.impersonationLogEntry({
-                actor: event.actorEmail,
-                subject: event.subjectLabel ?? t.members.deletedBadge,
-              })}
+              {event.subjectMemberId === null
+                ? event.actorEmail
+                : t.members.auditLogEntry({
+                    actor: event.actorEmail,
+                    subject: event.subjectLabel ?? t.members.deletedBadge,
+                  })}
               {event.reason === null ? null : ` · ${event.reason}`}
             </Typography>
           ))}

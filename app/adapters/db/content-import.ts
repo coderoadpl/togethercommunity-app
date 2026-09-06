@@ -10,6 +10,7 @@ import {
 import type { ImportContentMutation, ImportContentRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { insertEntityVersion } from './entity-versions.js';
 import { uniqueViolation, uniqueViolationIn } from './pg-errors.js';
 import {
   courseLessons,
@@ -158,6 +159,7 @@ export const createImportContentRepository = (db: Db): ImportContentRepository =
       return await db.transaction(async (tx) => {
         if (mutation.action === 'created') await createResource(tx, tenantId, mutation);
         if (mutation.action === 'updated' && !await updateResource(tx, tenantId, mutation)) return 'conflict';
+        if (mutation.version !== undefined) await insertEntityVersion(tx, tenantId, mutation.version);
         await insertAuditEvent(tx, tenantId, mutation);
         return 'saved';
       });

@@ -28,7 +28,7 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
   const t = useTranslations();
   return (
     <CourseCardRoot component={Link} to={`/community/${encodeURIComponent(space.id)}`} data-testid={`space-card-${space.id}`}>
-      <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', height: '100%' }}>
+      <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', flexGrow: 1 }}>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'flex-start', columnGap: '0.75rem' }}>
           <Typography variant="h2" component="h3" sx={{ flex: 1, minWidth: 0 }}>
             {space.name}
@@ -51,10 +51,9 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
           )}
         </Stack>
         {space.description ? (
-          <>
-            <Typography variant="body2">{space.description}</Typography>
-            <Box sx={{ flex: 1 }} />
-          </>
+          <Typography variant="body2" sx={{ flexGrow: 1 }}>
+            {space.description}
+          </Typography>
         ) : null}
         {space.visibility === undefined ? null : (
           <Chip
@@ -62,7 +61,7 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
             variant="outlined"
             label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
             data-testid={`space-visibility-${space.id}`}
-            sx={{ alignSelf: 'flex-start' }}
+            sx={{ alignSelf: 'flex-start', marginTop: 'auto' }}
           />
         )}
       </Box>

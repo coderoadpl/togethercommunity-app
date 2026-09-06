@@ -11,6 +11,7 @@ import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { API_PATHS } from '#core/contract/index.js';
+import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
 import {
   bootServer,
@@ -221,7 +222,7 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
       return (await passwordField.isVisible()) ? 'password' : 'magic-link';
     };
 
-    assert(await step('creator2@together.dev') === 'password', 'the acme owner was not offered the password step');
+    assert(await step(SMOKE_TENANT_CREATOR_EMAIL) === 'password', 'the acme owner was not offered the password step');
     assert(await step('student2@together.dev') === 'magic-link', 'a passwordless acme member was offered a password');
     assert(await step('nikt@together.dev') === 'magic-link', 'an unknown address did not fall back to the magic link');
     assert(
@@ -267,7 +268,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     });
 
     await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
-    await signInWithPassword(page, 'creator2@together.dev', 'demo-password-15');
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, 'demo-password-15');
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',

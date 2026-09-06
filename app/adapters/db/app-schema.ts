@@ -2129,7 +2129,9 @@ export const tenantAuditEvents = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    kind: text('kind', { enum: ['impersonation_started', 'impersonation_ended'] }).notNull(),
+    kind: text('kind', {
+      enum: ['impersonation_started', 'impersonation_ended', 'content_version_restored'],
+    }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
     actorEmail: text('actor_email').notNull(),
     subjectMemberId: text('subject_member_id'),
@@ -2143,7 +2145,7 @@ export const platformAuditEvents = pgTable(
   'platform_audit_events',
   {
     id: text('id').primaryKey(),
-    action: text('action', { enum: ['platform:data-reset'] }).notNull(),
+    action: text('action', { enum: ['platform:data-reset', 'reseed-acme'] }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
     actorEmail: text('actor_email').notNull(),
     environment: text('environment').notNull(),

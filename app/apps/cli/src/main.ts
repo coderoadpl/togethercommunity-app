@@ -1483,7 +1483,7 @@ course
             : data.versions
                 .map(
                   (v) =>
-                    `- v${v.schemaVersion}  ${v.createdAt}  ${v.createdByDisplayName ?? 'unknown'}  ${v.subjectKind}:${v.subjectName}  (${v.id.slice(0, 8)})`,
+                    `- #${v.ordinal}  ${v.createdAt}  ${v.createdByDisplayName ?? 'unknown'}  ${v.subjectKind}:${v.subjectName}  (${v.id.slice(0, 8)}, schema v${v.schemaVersion})`,
                 )
                 .join('\n'),
       );
@@ -1498,8 +1498,26 @@ course
       emit(
         await ctx.api.getContentVersion(versionId),
         ctx.json,
-        ({ version }) =>
-          `${version.entityKind} ${version.entityId.slice(0, 8)}  stored v${version.schemaVersion} -> current v${version.currentSchemaVersion}\n${JSON.stringify(version.payload, null, 2)}`,
+        ({ version, changedFields }) =>
+          [
+            `${version.entityKind} ${version.entityId.slice(0, 8)}  #${version.ordinal}  stored v${version.schemaVersion} -> current v${version.currentSchemaVersion}`,
+            `changed vs current: ${changedFields.length === 0 ? 'nothing' : changedFields.join(', ')}`,
+            JSON.stringify(version.payload, null, 2),
+          ].join('\n'),
+      );
+    }),
+  );
+
+course
+  .command('restore <versionId>')
+  .description('Re-apply a stored snapshot as a new save (staff only)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [versionId]) => {
+      emit(
+        await ctx.api.restoreContentVersion({ versionId }),
+        ctx.json,
+        ({ restored }) =>
+          `restored ${restored.entityKind} ${restored.entityId.slice(0, 8)} from version #${restored.restoredFromOrdinal}`,
       );
     }),
   );

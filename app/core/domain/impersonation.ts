@@ -45,7 +45,7 @@ export type ImpersonationView = z.infer<typeof impersonationViewSchema>;
 export const tenantAuditEventSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),
-  kind: z.enum(['impersonation_started', 'impersonation_ended']),
+  kind: z.enum(['impersonation_started', 'impersonation_ended', 'content_version_restored']),
   actorUserId: z.string().min(1),
   actorEmail: z.string().min(1),
   subjectMemberId: z.string().nullable(),
@@ -55,6 +55,8 @@ export const tenantAuditEventSchema = z.object({
 });
 
 export type TenantAuditEvent = z.infer<typeof tenantAuditEventSchema>;
+
+export type TenantAuditEventKind = TenantAuditEvent['kind'];
 
 /**
  * The subject label is resolved from the member at read time, so the append-only

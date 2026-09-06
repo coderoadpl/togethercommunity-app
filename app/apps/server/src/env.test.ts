@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
 import { isProductionEnvironment } from '#core/domain/index.js';
 
 import {
@@ -12,6 +13,7 @@ import {
   selectDevSinkPurge,
   selectDomainProvisioner,
   selectPlatformReset,
+  selectSmokeTenantReseed,
   selectTenantCreationMode,
   selectTenantRouting,
   selectTrustedAuthOrigins,
@@ -639,6 +641,95 @@ describe('platform data reset policy', () => {
       { NODE_ENV: 'production', APP_ENV: 'staging', PLATFORM_OWNER_EMAILS: undefined, PRODUCTION_DATABASE_FINGERPRINT: undefined },
       adapters,
     )).toMatchObject({ ownerEmails: [], productionDatabaseFingerprint: null });
+  });
+});
+
+describe('smoke tenant reseed composition', () => {
+  const adapters = () => ({
+    reseed: { run: async () => ({ tenantId: 'tenant-acme', wiped: [] }) },
+    platformAudit: { record: async () => undefined },
+    ids: { nextId: () => 'id-1' },
+    clock: { nowIso: () => '2026-09-05T12:00:00.000Z' },
+  });
+
+  const database = {
+    DATABASE_URL: 'postgres://together:together@db.internal:5432/together',
+    PRODUCTION_DATABASE_FINGERPRINT: undefined,
+  };
+
+  it('seeds each smoke account from its own secret on production', () => {
+    const create = vi.fn(adapters);
+
+    const composed = selectSmokeTenantReseed(
+      {
+        ...database,
+        NODE_ENV: 'production',
+        APP_ENV: 'production',
+        SMOKE_MEMBER_PASSWORD: 'production-only-member-password',
+        SMOKE_CREATOR_PASSWORD: 'production-only-creator-password',
+      },
+      create,
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      member: 'production-only-member-password',
+      creator: 'production-only-creator-password',
+    });
+    expect(composed).toMatchObject({ environment: 'production' });
+  });
+
+  it.each([
+    ['no member password', undefined, 'production-only-creator-password'],
+    ['no creator password', 'production-only-member-password', undefined],
+    ['the shared demo password', 'demo-password-15', 'demo-password-15'],
+  ])('composes nothing on production with %s', (_name, member, creator) => {
+    const create = vi.fn(adapters);
+
+    expect(selectSmokeTenantReseed(
+      {
+        ...database,
+        NODE_ENV: 'production',
+        APP_ENV: 'production',
+        SMOKE_MEMBER_PASSWORD: member,
+        SMOKE_CREATOR_PASSWORD: creator,
+      },
+      create,
+    )).toBeUndefined();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the demo password off production', () => {
+    const create = vi.fn(adapters);
+
+    selectSmokeTenantReseed(
+      {
+        ...database,
+        NODE_ENV: 'development',
+        APP_ENV: 'development',
+        SMOKE_MEMBER_PASSWORD: undefined,
+        SMOKE_CREATOR_PASSWORD: undefined,
+      },
+      create,
+    );
+
+    expect(create).toHaveBeenCalledWith({ member: 'demo-password-15', creator: 'demo-password-15' });
+  });
+
+  it('composes nothing when a non-production deployment points at the production database', () => {
+    const create = vi.fn(adapters);
+
+    expect(selectSmokeTenantReseed(
+      {
+        ...database,
+        PRODUCTION_DATABASE_FINGERPRINT: databaseHostFingerprint(database.DATABASE_URL) ?? '',
+        NODE_ENV: 'development',
+        APP_ENV: 'development',
+        SMOKE_MEMBER_PASSWORD: undefined,
+        SMOKE_CREATOR_PASSWORD: undefined,
+      },
+      create,
+    )).toBeUndefined();
+    expect(create).not.toHaveBeenCalled();
   });
 });
 

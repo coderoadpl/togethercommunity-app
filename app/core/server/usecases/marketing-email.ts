@@ -9,6 +9,7 @@ import {
   emailEventSchema,
   err,
   forbidden,
+  isSmokeTenant,
   liftSuppression,
   normalizeEmail,
   notFound,
@@ -894,6 +895,19 @@ const eligibilityFor = async (tenantId: string, input: MarketingMessageInput, de
   return { eligibility: deriveMarketingEligibility({ consent, suppressed }), latest: consent.row };
 };
 
+/**
+ * Every marketing send resolves credentials before it reaches SES, so refusing
+ * them here is the one place that covers campaign dispatch, the M2M send API and
+ * the send-to-self test alike.
+ */
+export const createSmokeTenantSilencedCredentials = (
+  resolver: MarketingSesCredentialResolver,
+): MarketingSesCredentialResolver => ({
+  resolve: async (tenantId) => isSmokeTenant(tenantId)
+    ? err(appError('broadcasts_disabled', 'The smoke tenant is excluded from marketing sends'))
+    : resolver.resolve(tenantId),
+});
+
 export const sendMarketingMessages = async (
   ctx: Ctx,
   inputs: MarketingMessageInput[],
@@ -1120,6 +1134,8 @@ interface TickDeps extends SendDeps {
   outbox: EmailOutboxRepository;
   scheduler: SchedulerPort;
   runs: SchedulerRunRepository;
+  /** Set on production only: the synthetic tenant never reaches a real audience. */
+  silenceSmokeTenant?: boolean;
 }
 
 interface CampaignTickMetrics {
@@ -1275,6 +1291,9 @@ export const campaignTick = async (
 ): Promise<Result<{ leased: boolean; yieldedToTransactional: boolean; sent: number; failed: number; skipped: number }, AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'marketing:campaign:dispatch');
   if (!tenantId.ok) return tenantId;
+  if (deps.silenceSmokeTenant === true && isSmokeTenant(tenantId.value)) {
+    return ok({ leased: false, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
+  }
   const startedAt = deps.clock.nowIso();
   const runId = deps.ids.nextId();
   const emptyTotals = {

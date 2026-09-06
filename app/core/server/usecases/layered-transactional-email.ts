@@ -1,5 +1,6 @@
 import {
   appError,
+  isSmokeTenant,
   ok,
   type EmailIntegrationTransport,
   type TransactionalEmailTransport,
@@ -17,6 +18,8 @@ export interface LayeredTransactionalEmailDeps {
   platform: EmailPort;
   pool: PlatformTransactionalPool;
   platformLimit: number;
+  /** Set on production only: swallows the smoke tenant's transactional mail. */
+  smokeTenantSink?: EmailPort;
 }
 
 const TENANT_TRANSPORT_ORDER: readonly {
@@ -61,6 +64,10 @@ export const createLayeredTransactionalEmailSender = (
 ): TransactionalEmailSender => ({
   send: async (message) => {
     if (message.tenantId === null) return sendWith('platform', deps.platform, message);
+    // The sink is a platform-owned transport, so it reports as one; no tenant integration ran.
+    if (deps.smokeTenantSink !== undefined && isSmokeTenant(message.tenantId)) {
+      return sendWith('platform', deps.smokeTenantSink, message);
+    }
     const tenant = await resolveTenantTransactionalTransport(message.tenantId, deps.transports);
     if (tenant !== null) return sendWith(tenant.transport, tenant.email, message);
     if (message.tenantTransportRequired === true) {

@@ -390,8 +390,8 @@ Both results must be zero.
 
 **STATUS:** owner-action
 
-The seed creates `creator@together.dev` and `creator2@together.dev` with
-`demo-password-15` (`adapters/db/seed.ts:62`; applied on creation at
+The seed creates `creator@together.dev` and
+`kontakt+smoke-creator@togethercommunity.app` with `demo-password-15` (`adapters/db/seed.ts:62`; applied on creation at
 `adapters/db/seed.ts:127` and converged for existing local fixtures at
 `adapters/db/seed.ts:129`; `CLAUDE.md`). Seeding is manual. `vercel-build` runs
 only migration and build steps (`package.json:24`), so deployment does not call

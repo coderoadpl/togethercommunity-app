@@ -17,6 +17,7 @@ import type {
   ApiKeyRevokeInput,
   AuthResolveRequest,
   CheckoutSessionRequest,
+  ContentVersionRestoreInput,
   CouponCheckoutValidationRequest,
   CouponArchiveRequest,
   CouponCreateRequest,
@@ -333,6 +334,7 @@ const modulesScopes = {
 const contentHistoryScopes = {
   all: () => ['content-history'] as const,
   list: (courseId: string) => ['content-history', 'list', courseId] as const,
+  version: (versionId: string) => ['content-history', 'version', versionId] as const,
 };
 
 const lessonsScopes = {
@@ -1019,6 +1021,18 @@ export const contentHistoryQuery = (
     call: ({ signal }) => api.listContentHistory(input, signal),
   });
 
+export const contentVersionQuery = (api: ApiClient, versionId: string) =>
+  defineQuery({
+    queryKey: contentHistoryScopes.version(versionId),
+    call: ({ signal }) => api.getContentVersion(versionId, signal),
+  });
+
+export const restoreContentVersionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...contentHistoryScopes.all(), 'restore'],
+    call: (input: ContentVersionRestoreInput) => api.restoreContentVersion(input),
+  });
+
 export const lessonsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: lessonsScopes.all(),
@@ -1640,6 +1654,8 @@ export const tenantSetupReadinessQuery = (api: ApiClient) =>
 
 /** Invalidation filters for the course tree editor (courses, modules, lessons). */
 export const coursesInvalidates = () => ({ queryKey: coursesScopes.lists() });
+
+export const contentHistoryInvalidates = () => ({ queryKey: contentHistoryScopes.all() });
 
 export const modulesInvalidates = () => ({ queryKey: modulesScopes.all() });
 

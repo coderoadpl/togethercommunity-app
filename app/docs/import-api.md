@@ -19,6 +19,8 @@ An owner creates import keys in the panel at `/panel/integrations`, under **Inte
 - An expired key behaves exactly like a revoked one: `401` on every import endpoint. Revocation takes effect immediately.
 - Every successful record write, including an `unchanged` result, is recorded in an append-only audit journal per key: kind, `importKey`, resource id, action, payload hash, and timestamp. `GET /api/api-keys/:id/import-audit?cursor=&limit=` (owner session auth, newest first) enumerates the journal so a leaked token can be investigated and cleaned up.
 
+- Every created or updated course, module, lesson, and product also stores a content version — the state the import wrote — in the same transaction as the write, so studio staff can read and restore it from the course change history. The version's author is the key's name, or `import` when the key has none. An `unchanged` record stores no version.
+
 Send the key in `x-api-key`. Resolve the tenant through its normal tenant hostname, or send the tenant slug in `x-tenant` on a shared host — the same as the [transactional e-mail API](transactional-m2m-email.md).
 
 ## Endpoints
@@ -78,10 +80,10 @@ The display name is computed from `prefix` and `title`; it is never accepted as 
 ### Lesson
 
 ```jsonl
-{"kind":"lesson","importKey":"lesson-l1","legacyId":"l1","name":"Flex container","isPreview":false,"durationMinutes":12,"contents":[{"type":"video","storageKey":"lessons/l1.mp4","streamVideoId":"vid-1","streamCollectionId":"col-1"},{"type":"embed","embedUrl":"https://youtu.be/xxxxxxxxxxx"},{"type":"pdf","pdfUrl":"https://cdn.example.com/l1.pdf","name":"Worksheet"},{"type":"link","url":"https://example.com/docs","description":"Reference"},{"type":"html","html":"<p>Notes.</p>"}],"createdAt":"2020-02-01T00:00:00Z"}
+{"kind":"lesson","importKey":"lesson-l1","legacyId":"l1","name":"Flex container","isPreview":false,"durationMinutes":12,"contents":[{"type":"video","storageKey":"lessons/l1.mp4","streamVideoId":"vid-1","streamCollectionId":"col-1"},{"type":"embed","embedUrl":"https://youtu.be/xxxxxxxxxxx"},{"type":"embed","embedUrl":"https://codesandbox.io/s/alert-demo-abc123","collapsed":true},{"type":"pdf","pdfUrl":"https://cdn.example.com/l1.pdf","name":"Worksheet"},{"type":"link","url":"https://example.com/docs","description":"Reference"},{"type":"html","html":"<p>Notes.</p>"}],"createdAt":"2020-02-01T00:00:00Z"}
 ```
 
-Nothing is fetched, copied, or re-hosted. Video blocks require `storageKey` and `streamVideoId`; `streamLibraryId` and `streamCollectionId` are optional. Embed blocks take `embedUrl`, PDF blocks take `pdfUrl` and an optional `name`, link blocks take `url` and an optional `description`, and HTML blocks take non-empty `html`. Existing URLs and stream identifiers must stay usable.
+Nothing is fetched, copied, or re-hosted. Video blocks require `storageKey` and `streamVideoId`; `streamLibraryId` and `streamCollectionId` are optional. Embed blocks take `embedUrl` and an optional `collapsed` boolean — set it for sandboxes whose code calls `alert`, `confirm` or `prompt`, and the member sees a warning plus an expand button instead of an iframe that fires dialogs on load. PDF blocks take `pdfUrl` and an optional `name`, link blocks take `url` and an optional `description`, and HTML blocks take non-empty `html`. Existing URLs and stream identifiers must stay usable.
 
 ### Product
 

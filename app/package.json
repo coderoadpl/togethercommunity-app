@@ -45,6 +45,7 @@
     "db:migrate": "tsx adapters/db/migrate.ts",
     "db:seed": "tsx adapters/db/seed.ts",
     "db:reseed": "tsx scripts/ensure-web-bundle.ts && tsx adapters/db/reseed.ts",
+    "reseed:acme": "tsx adapters/db/reseed-acme.ts",
     "fingerprint:update": "tsx scripts/schema-fingerprint-update.ts",
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "tsx scripts/smoke.ts",

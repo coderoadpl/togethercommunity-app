@@ -23,7 +23,7 @@ import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
-import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { errorCodeOf, localizeError, retryAfterSecondsOf, useLanguage, useTranslations } from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
@@ -44,6 +44,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [identifierInvalid, setIdentifierInvalid] = useState(false);
   const [method, setMethod] = useState<SignInMethod | null>(null);
+  const [passwordKnownFor, setPasswordKnownFor] = useState<string | null>(null);
+  const [resolveFailure, setResolveFailure] = useState<Error | null>(null);
   const [password, setPassword] = useState('');
   const [requestedMagicEmail, setRequestedMagicEmail] = useState('');
   const [magicLinkResent, setMagicLinkResent] = useState(false);
@@ -71,12 +73,18 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const resolveSignInMethods = useMutation({
     ...actions.resolveSignInMethods,
-    onSuccess: (result) => {
-      const offersPassword = result.methods.includes('password') && !magicLinkExpired;
-      setMethod(offersPassword ? 'password' : 'magic-link');
+    onSuccess: (result, variables) => {
+      const hasPassword = result.methods.includes('password');
+      setPasswordKnownFor(hasPassword ? variables.email : null);
+      setResolveFailure(null);
+      setMethod(hasPassword && !magicLinkExpired ? 'password' : 'magic-link');
     },
-    onError: () => {
-      setMethod('magic-link');
+    onError: (error, variables) => {
+      if (passwordKnownFor === variables.email && !magicLinkExpired) {
+        setMethod('password');
+        return;
+      }
+      setResolveFailure(error);
     },
   });
 
@@ -148,6 +156,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const editIdentifier = () => {
     setMethod(null);
+    setResolveFailure(null);
     setPassword('');
     setRequestedMagicEmail('');
     setMagicLinkResent(false);
@@ -160,6 +169,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const switchMethod = (next: SignInMethod) => {
     signIn.reset();
     requestMagicLink.reset();
+    setResolveFailure(null);
     setPassword('');
     setMethod(next);
   };
@@ -228,6 +238,14 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       {t.auth.signingInAs({ email })} · {changeIdentifierLink}
     </FinePrint>
   );
+
+  const resolveRetryAfterSeconds = retryAfterSecondsOf(resolveFailure);
+  const resolveFailureMessage =
+    errorCodeOf(resolveFailure) === 'rate_limited'
+      ? resolveRetryAfterSeconds === null
+        ? t.auth.signInMethodsRateLimited
+        : t.auth.signInMethodsRateLimitedRetryAfter({ seconds: resolveRetryAfterSeconds })
+      : t.auth.signInMethodsUnavailable;
 
   const showDemoAccount =
     authConfig.data?.exposeMagicLinks === true &&
@@ -412,6 +430,51 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     );
   }
 
+  if (method === null && resolveFailure !== null) {
+    return (
+      <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={compactFooter}>
+        <Box sx={{ mb: '1rem' }}>{signingInAs}</Box>
+        <Alert
+          severity="error"
+          sx={{ mb: '1rem' }}
+          data-testid="sign-in-methods-unavailable"
+          action={
+            <Button
+              size="small"
+              color="inherit"
+              data-testid="sign-in-methods-retry"
+              disabled={resolveSignInMethods.isPending}
+              onClick={() => resolveSignInMethods.mutate({ email })}
+            >
+              {t.common.retry}
+            </Button>
+          }
+        >
+          {resolveFailureMessage}
+        </Alert>
+        <Stack useFlexGap spacing="0.75rem">
+          <Typography variant="body1">{t.auth.signInMethodsChoosePrompt}</Typography>
+          <Button
+            variant="outlined"
+            fullWidth
+            data-testid="choose-magic-link"
+            onClick={() => switchMethod('magic-link')}
+          >
+            {t.auth.signInMethodsChooseMagicLink}
+          </Button>
+          <Button
+            variant="outlined"
+            fullWidth
+            data-testid="choose-password"
+            onClick={() => switchMethod('password')}
+          >
+            {t.auth.signInMethodsChoosePassword}
+          </Button>
+        </Stack>
+      </FocusCard>
+    );
+  }
+
   if (method === null) {
     return (
       <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
@@ -560,25 +623,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       ) : (
         <>
           <Box sx={{ mb: '1rem' }}>{signingInAs}</Box>
-          {resolveSignInMethods.isError ? (
-            <Alert
-              severity="warning"
-              sx={{ mb: '1rem' }}
-              data-testid="sign-in-methods-unavailable"
-              action={
-                <Button
-                  size="small"
-                  color="inherit"
-                  data-testid="sign-in-methods-retry"
-                  onClick={() => resolveSignInMethods.mutate({ email })}
-                >
-                  {t.common.retry}
-                </Button>
-              }
-            >
-              {t.auth.signInMethodsUnavailable}
-            </Alert>
-          ) : null}
           {magicLinkExpired ? (
             <Alert severity="info" sx={{ mb: '1rem' }} data-testid="magic-link-expired-step">
               {t.auth.magicLinkExpiredOnStep}

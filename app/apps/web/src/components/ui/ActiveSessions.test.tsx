@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -50,22 +50,59 @@ describe('ActiveSessions', () => {
     expect(screen.getAllByRole('button', { name: pl.security.sessionRevoke })).toHaveLength(1);
   });
 
-  it('revokes the chosen session', async () => {
+  it('revokes the chosen session once confirmed', async () => {
     const run = vi.fn();
     renderSessions(propsWith({ revokeSession: { ...idle, run } }));
 
     await userEvent.click(screen.getByRole('button', { name: pl.security.sessionRevoke }));
 
+    expect(run).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toHaveTextContent(pl.security.sessionRevokeConfirmTitle);
+    expect(screen.getByRole('dialog')).toHaveTextContent(pl.security.sessionRevokeConfirmBody);
+
+    await userEvent.click(screen.getByTestId('revoke-sessions-confirm-accept'));
+
     expect(run).toHaveBeenCalledExactlyOnceWith({ sessionId: 'session-phone' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('revokes every other session', async () => {
+  it('revokes every other session once confirmed', async () => {
     const run = vi.fn();
     renderSessions(propsWith({ revokeOtherSessions: { ...idle, run } }));
 
     await userEvent.click(screen.getByTestId('revoke-other-sessions'));
 
+    expect(run).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      pl.security.sessionsRevokeOthersConfirmTitle,
+    );
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      pl.security.sessionsRevokeOthersConfirmBody,
+    );
+
+    await userEvent.click(screen.getByTestId('revoke-sessions-confirm-accept'));
+
     expect(run).toHaveBeenCalledOnce();
+  });
+
+  it('leaves every session alone when the confirmation is dismissed', async () => {
+    const revoke = vi.fn();
+    const revokeOthers = vi.fn();
+    renderSessions(propsWith({
+      revokeSession: { ...idle, run: revoke },
+      revokeOtherSessions: { ...idle, run: revokeOthers },
+    }));
+
+    await userEvent.click(screen.getByTestId('revoke-other-sessions'));
+    await userEvent.click(screen.getByTestId('revoke-sessions-confirm-cancel'));
+
+    expect(revokeOthers).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: pl.security.sessionRevoke }));
+    await userEvent.click(screen.getByTestId('revoke-sessions-confirm-cancel'));
+
+    expect(revoke).not.toHaveBeenCalled();
   });
 
   it('hides the bulk action when the current session is the only one', () => {

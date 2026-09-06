@@ -1,4 +1,16 @@
-import { Alert, Box, Button, Chip, Stack, Typography } from '@mui/material';
+import { useId, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  Typography,
+} from '@mui/material';
 
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatDateTime } from '../../lib/format.js';
@@ -10,6 +22,8 @@ interface OperationState {
   success: boolean;
   error: Error | null;
 }
+
+type PendingRevoke = { kind: 'session'; sessionId: string } | { kind: 'others' };
 
 interface SessionRow {
   id: string;
@@ -41,8 +55,18 @@ export const ActiveSessions = ({
 }: ActiveSessionsProps) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const [pendingRevoke, setPendingRevoke] = useState<PendingRevoke | null>(null);
+  const confirmTitleId = useId();
   const rows = sessions.data ?? [];
   const otherCount = rows.filter((session) => !session.current).length;
+  const revokingOthers = pendingRevoke?.kind === 'others';
+
+  const confirmRevoke = () => {
+    if (pendingRevoke === null) return;
+    if (pendingRevoke.kind === 'others') revokeOtherSessions.run();
+    else revokeSession.run({ sessionId: pendingRevoke.sessionId });
+    setPendingRevoke(null);
+  };
 
   return (
     <Box component="section" sx={{ display: 'grid', gap: '0.8rem' }} data-testid="active-sessions">
@@ -90,7 +114,7 @@ export const ActiveSessions = ({
               size="small"
               color="error"
               disabled={revokeSession.pending}
-              onClick={() => revokeSession.run({ sessionId: session.id })}
+              onClick={() => setPendingRevoke({ kind: 'session', sessionId: session.id })}
             >
               {revokeSession.pending ? t.security.sessionRevoking : t.security.sessionRevoke}
             </Button>
@@ -105,7 +129,7 @@ export const ActiveSessions = ({
             color="error"
             data-testid="revoke-other-sessions"
             disabled={revokeOtherSessions.pending}
-            onClick={() => revokeOtherSessions.run()}
+            onClick={() => setPendingRevoke({ kind: 'others' })}
           >
             {revokeOtherSessions.pending
               ? t.security.sessionsRevokingOthers
@@ -137,6 +161,42 @@ export const ActiveSessions = ({
           </Button>
         </Box>
       ) : null}
+      <Dialog
+        open={pendingRevoke !== null}
+        onClose={() => setPendingRevoke(null)}
+        aria-labelledby={confirmTitleId}
+        data-testid="revoke-sessions-confirm"
+      >
+        <DialogTitle id={confirmTitleId}>
+          {revokingOthers
+            ? t.security.sessionsRevokeOthersConfirmTitle
+            : t.security.sessionRevokeConfirmTitle}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {revokingOthers
+              ? t.security.sessionsRevokeOthersConfirmBody
+              : t.security.sessionRevokeConfirmBody}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="text"
+            data-testid="revoke-sessions-confirm-cancel"
+            onClick={() => setPendingRevoke(null)}
+          >
+            {t.common.cancel}
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            data-testid="revoke-sessions-confirm-accept"
+            onClick={confirmRevoke}
+          >
+            {revokingOthers ? t.security.sessionsRevokeOthers : t.security.sessionRevoke}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

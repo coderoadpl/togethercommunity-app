@@ -16,6 +16,7 @@ import {
   EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
 } from '#core/contract/index.js';
+import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
 import { DEV_EMAIL_DISPATCH_SECRET } from '../apps/server/src/env.js';
 import {
@@ -488,7 +489,7 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
 
   expectOk(
     await cli(
-      ['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo-password-15'],
+      ['--json', '--api-url', url, 'login', '--email', SMOKE_TENANT_CREATOR_EMAIL, '--password', 'demo-password-15'],
       authedHome,
     ),
     'login',
@@ -912,7 +913,7 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
     cli(['--json', '--api-url', url, '--tenant', 'acme', ...args], home);
 
   expectOk(
-    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo-password-15'], creatorHome),
+    await cli(['--json', '--api-url', url, 'login', '--email', SMOKE_TENANT_CREATOR_EMAIL, '--password', 'demo-password-15'], creatorHome),
     'student flow: creator login',
   );
 
@@ -1132,7 +1133,7 @@ const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {
     cli(['--json', '--api-url', url, '--tenant', 'acme', ...args], home);
 
   expectOk(
-    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo-password-15'], creatorHome),
+    await cli(['--json', '--api-url', url, 'login', '--email', SMOKE_TENANT_CREATOR_EMAIL, '--password', 'demo-password-15'], creatorHome),
     'm2m flow: creator login',
   );
 
@@ -1848,7 +1849,7 @@ const driveLegacyUrlRedirects = async (port: number, homes: string[]): Promise<v
   const legacyLessonId = sourceId('l');
 
   expectOk(
-    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo-password-15']),
+    await cli(['--json', '--api-url', url, 'login', '--email', SMOKE_TENANT_CREATOR_EMAIL, '--password', 'demo-password-15']),
     'legacy links: creator login',
   );
   const lesson = lessonSchema.parse(

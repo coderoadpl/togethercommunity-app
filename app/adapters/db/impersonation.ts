@@ -136,6 +136,9 @@ export const createImpersonationSessionRepository = (
 });
 
 export const createTenantAuditEventRepository = (db: Db): TenantAuditEventRepository => ({
+  record: async (tenantId, event) => {
+    await appendAudit(db, tenantId, [event]);
+  },
   list: async (tenantId, query) => {
     const cursor = query.cursor === undefined ? undefined : decodeCursor(query.cursor);
     const rows = await db

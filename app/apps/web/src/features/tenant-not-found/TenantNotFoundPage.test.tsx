@@ -156,6 +156,33 @@ describe('TenantGate', () => {
     expect(screen.getByText('APP')).toBeInTheDocument();
   });
 
+  it('renders the app on a bare host without a configured base domain without probing', () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', '');
+    const probe = vi.fn(() =>
+      HttpResponse.json({ ok: false, error: { code: 'tenant_not_found', message: 'no such tenant' } }, { status: 404 }),
+    );
+    server.use(http.get('/api/public/offer', probe));
+
+    renderWithProviders(<TenantGate hostname="example.org">{children}</TenantGate>);
+
+    expect(screen.getByText('APP')).toBeInTheDocument();
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('probes a custom domain and shows a friendly 404 when its tenant fails to resolve', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'example.com');
+    const probe = vi.fn(() =>
+      HttpResponse.json({ ok: false, error: { code: 'tenant_not_found', message: 'no such tenant' } }, { status: 404 }),
+    );
+    server.use(http.get('/api/public/offer', probe));
+
+    renderWithProviders(<TenantGate hostname="courses.example.org">{children}</TenantGate>);
+
+    expect(await screen.findByTestId('tenant-not-found')).toBeInTheDocument();
+    expect(probe).toHaveBeenCalledOnce();
+    expect(screen.queryByText('APP')).not.toBeInTheDocument();
+  });
+
   it('renders the app when the tenant subdomain resolves', async () => {
     server.use(
       http.get('/api/public/offer', () =>

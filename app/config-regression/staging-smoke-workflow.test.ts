@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { API_PATHS } from '#core/contract/index.js';
 
 const workflowSchema = z.object({
+  permissions: z.record(z.string()).optional(),
   on: z.object({
     push: z.object({ branches: z.array(z.string()) }),
     schedule: z.array(z.object({ cron: z.string() })),
@@ -25,6 +26,7 @@ const workflowSchema = z.object({
         name: z.string().optional(),
         id: z.string().optional(),
         if: z.string().optional(),
+        uses: z.string().optional(),
         'continue-on-error': z.boolean().optional(),
         env: z.record(z.string()).optional(),
         run: z.string().optional(),
@@ -98,6 +100,16 @@ describe('staging-smoke workflow', () => {
     expect(step('Send an SMS alert').if).toBe("steps.alert.outputs.should_page == 'true'");
   });
 
+  it('pages only on a state change, through the one gate every monitor shares', () => {
+    const gate = step('Gate the alert on a state change');
+
+    expect(gate.uses).toBe('./.github/actions/alert-gate');
+    expect(gate.with)
+      .toMatchObject({ monitor: 'staging-smoke.yml', environment: 'staging' });
+    expect(job.steps.indexOf(gate)).toBeLessThan(job.steps.indexOf(step('Send an SMS alert')));
+    expect(workflow.permissions?.['actions']).toBe('read');
+  });
+
   it('smokes the staging tenant host against both database fingerprints', () => {
     expect(job.env['STAGING_HOST_URL']).toBe(
       "https://${{ vars.STAGING_HOST || format('{0}.staging.togethercommunity.app', vars.SMOKE_TENANT || 'acme') }}",
@@ -130,6 +142,15 @@ describe('staging-smoke workflow', () => {
     expect(sanitize.run).toContain('if [ -z "$OPERATOR_SECRET" ]');
     expect(sanitize.run).toContain('::notice::');
     expect(sanitize['continue-on-error']).toBe(true);
+  });
+
+  it('tells the smoke whether the sanitize step ran', () => {
+    const sanitize = step('Sanitize the staging tenant secrets');
+
+    expect(sanitize.run).toContain('sanitized=false');
+    expect(sanitize.run).toContain('sanitized=true');
+    expect(step('Smoke the staging deployment').env?.['SANITIZED'])
+      .toBe('${{ steps.sanitize.outputs.sanitized }}');
   });
 
   it('sends the protection bypass secret to the smoke only', () => {

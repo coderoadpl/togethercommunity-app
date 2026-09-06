@@ -8,6 +8,8 @@ import {
   type Language,
 } from '#core/domain/index.js';
 
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
+
 import { sendSupportMessage, type SupportMessageDeps } from './support.js';
 
 const identity: Identity = {
@@ -31,6 +33,7 @@ const identity: Identity = {
 const harness = (supportEmail: string | null, defaultLanguage?: Language) => {
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const deps: SupportMessageDeps = {
+    tenantDomains: createInMemoryTenantDomainRepository(),
     appBaseUrl: 'https://app.together.test',
     baseDomain: 'together.test',
     singleTenantMode: false,
@@ -160,8 +163,11 @@ describe('sendSupportMessage', () => {
     ).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('queues an outbox-valid payload for a tenant logo stored as an app path', async () => {
+  it.each([null, 'courses.example.org'])('resolves a tenant logo on the canonical origin (%s)', async (domain) => {
     const h = harness('support@alpha.test');
+    h.deps.tenantDomains = createInMemoryTenantDomainRepository(domain === null ? [] : [
+      tenantDomainFixture({ id: 'domain-1', tenantId: 'tenant-1', domain, verified: true }),
+    ]);
     const findSettings = h.deps.tenants.findSettings;
     h.deps.tenants.findSettings = async (tenantId) => {
       const settings = await findSettings(tenantId);
@@ -174,7 +180,7 @@ describe('sendSupportMessage', () => {
     const payload = h.queued[0]?.payload;
     expect(emailOutboxPayloadSchema.safeParse(payload).success).toBe(true);
     expect(payload).toMatchObject({
-      branding: { logoUrl: 'https://alpha.together.test/api/public/assets/logo/abc.png' },
+      branding: { logoUrl: `https://${domain ?? 'alpha.together.test'}/api/public/assets/logo/abc.png` },
     });
   });
 

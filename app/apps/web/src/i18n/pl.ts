@@ -2103,6 +2103,8 @@ export const pl: Messages = {
   tenantDomains: {
     heading: 'Adresy',
     intro: 'Pod tymi adresami uczestnicy wchodzą na tę platformę.',
+    canonicalAddress: 'Adres główny',
+    canonicalExplanation: 'Linki w e-mailach prowadzą do najwcześniej zweryfikowanej domeny własnej lub adresu platformy, gdy żadna domena nie jest aktywna.',
     workspaceAddress: 'Adres platformy',
     customDomains: 'Własna domena',
     none: 'Nie podłączono własnej domeny. Dodaj ją poniżej.',

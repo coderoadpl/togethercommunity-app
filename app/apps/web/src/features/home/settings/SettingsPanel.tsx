@@ -1302,11 +1302,16 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
     );
   }
 
-  const { customDomains, tenantHost, canAddCustomDomain } = routing.data.routing;
+  const { customDomains, tenantHost, canonicalOrigin, canAddCustomDomain } = routing.data.routing;
 
   return (
     <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
       <Stack useFlexGap spacing="1rem" data-testid="tenant-domains">
+        <Stack useFlexGap spacing="0.3rem" data-testid="tenant-canonical-address">
+          <Eyebrow>{t.tenantDomains.canonicalAddress}</Eyebrow>
+          <Typography variant="body2">{canonicalOrigin}</Typography>
+          <Typography variant="caption">{t.tenantDomains.canonicalExplanation}</Typography>
+        </Stack>
         <CopyField
           label={t.tenantDomains.workspaceAddress}
           value={tenantHost}

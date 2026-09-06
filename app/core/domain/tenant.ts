@@ -407,6 +407,7 @@ export type TenantDomain = {
 
 export const tenantRoutingSchema = z.object({
   tenantHost: z.string(),
+  canonicalOrigin: z.string().url(),
   customDomains: z.array(z.object({
     domain: z.string(),
     verified: z.boolean(),

@@ -18,6 +18,8 @@ import {
   type EmailOutboxPayload,
 } from '#core/domain/index.js';
 
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
+
 import type { AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
@@ -489,6 +491,7 @@ const harness = (
     devMagicLinks: { findByEmail: async () => null },
     ids: { nextId: () => `id-${++sequence}` },
     clock: { nowIso: () => clockNow },
+    tenantDomains: createInMemoryTenantDomainRepository(),
     appBaseUrl: 'https://alpha.example.com',
     baseDomain: 'example.com',
     singleTenantMode: false,
@@ -1272,6 +1275,9 @@ describe('fulfillStripeWebhook', () => {
 
   it('expires the grant at the paid period end when cancellation is scheduled', async () => {
     const h = await subscribedHarness();
+    h.deps.tenantDomains = createInMemoryTenantDomainRepository([
+      tenantDomainFixture({ id: 'domain-1', tenantId: tenantA.id, domain: 'courses.example.org', verified: true }),
+    ]);
 
     await fulfillStripeWebhook(
       tenantA,
@@ -1313,6 +1319,7 @@ describe('fulfillStripeWebhook', () => {
         to: 'buyer@example.com',
         payload: expect.objectContaining({
           kind: 'subscription-ended',
+          offerUrl: 'https://courses.example.org/',
           accessEndsAt: '1998-08-20T10:00:00.000Z',
         }),
       },

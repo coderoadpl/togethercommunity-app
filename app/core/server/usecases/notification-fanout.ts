@@ -220,7 +220,8 @@ const postPlan = async (
         snippet,
       },
       contextName: space.name,
-      contextUrl: deps.links.spaceUrl({
+      contextUrl: await deps.links.spaceUrl({
+        tenantId: job.tenantId,
         tenantSlug: job.payload.tenantSlug,
         spaceId: space.id,
         rootPostId: post.rootPostId,
@@ -304,7 +305,8 @@ const eventPlan = async (
       snippet: postSnippet(`${event.title} · ${event.startsAt}`),
     },
     contextName: space.name,
-    contextUrl: deps.links.eventUrl({
+    contextUrl: await deps.links.eventUrl({
+      tenantId: job.tenantId,
       tenantSlug: job.payload.tenantSlug,
       spaceId: space.id,
       eventId: event.id,

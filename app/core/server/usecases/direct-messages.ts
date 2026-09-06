@@ -435,7 +435,8 @@ const notifyDmRecipient = async (
     createdAt: deps.clock.nowIso(),
   };
   const inserted = await deps.notifications.insert(tenantId, notification);
-  const conversationUrl = deps.links.conversationUrl({
+  const conversationUrl = await deps.links.conversationUrl({
+    tenantId,
     tenantSlug: tenant.tenantSlug,
     conversationId: input.conversationId,
   });

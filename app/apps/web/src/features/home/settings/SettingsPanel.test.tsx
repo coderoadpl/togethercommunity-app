@@ -130,6 +130,7 @@ const customDomainEntry = (input: {
 
 const initialRouting = () => ({
   tenantHost: 'akademia.together.example',
+  canonicalOrigin: 'https://kurs.acme.example',
   customDomains: [
     customDomainEntry({ domain: 'kurs.acme.example', status: 'active' }),
     customDomainEntry({ domain: 'nowa.acme.example', status: 'pending-dns' }),
@@ -392,6 +393,14 @@ describe('SettingsPanel information architecture', () => {
       .toHaveTextContent('Vercel: Domain is already in use by another project');
   });
 
+  it('shows the derived canonical address and its explanation', async () => {
+    renderPanel();
+    const address = await screen.findByTestId('tenant-canonical-address');
+    expect(address).toHaveTextContent(pl.tenantDomains.canonicalAddress);
+    expect(address).toHaveTextContent('https://kurs.acme.example');
+    expect(address).toHaveTextContent(pl.tenantDomains.canonicalExplanation);
+  });
+
   it('shows the recorded error after a check the provider failed', async () => {
     renderPanel();
 
@@ -403,6 +412,7 @@ describe('SettingsPanel information architecture', () => {
         data: {
           routing: {
             tenantHost: 'akademia.together.example',
+            canonicalOrigin: 'https://akademia.together.example',
             customDomains: [{
               domain: 'nowa.acme.example',
               verified: false,

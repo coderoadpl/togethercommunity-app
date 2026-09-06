@@ -1853,6 +1853,8 @@ export interface Messages {
   tenantDomains: {
     heading: string;
     intro: string;
+    canonicalAddress: string;
+    canonicalExplanation: string;
     workspaceAddress: string;
     customDomains: string;
     none: string;

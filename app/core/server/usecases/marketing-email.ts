@@ -806,7 +806,7 @@ interface SendDeps extends EligibilityDeps {
   ids: IdGenerator;
   tokens: TokenGenerator;
   clock: Clock;
-  unsubscribeBaseUrl: string;
+  unsubscribeBaseUrl(tenantId: string): Promise<string>;
   runId?: string;
 }
 
@@ -945,6 +945,7 @@ export const sendMarketingMessages = async (
     sentLast24Hours: settings.quotaSentLast24Hours,
     quotaSnapshotAt: settings.quotaRefreshedAt,
   })) return err(appError('rate_limited', 'Tenant SES throttle budget is exhausted'));
+  const unsubscribeBaseUrl = await deps.unsubscribeBaseUrl(tenantId.value);
   const results: MarketingSendResult[] = [];
   for (const input of inputs) {
     const initial = await eligibilityFor(tenantId.value, input, deps);
@@ -1013,7 +1014,7 @@ export const sendMarketingMessages = async (
     }
     const unsubscribeTokenId = deps.ids.nextId();
     const token = deps.tokens.nextToken();
-    const unsubscribeUrl = `${deps.unsubscribeBaseUrl}/${token}`;
+    const unsubscribeUrl = `${unsubscribeBaseUrl}/${token}`;
     await deps.unsubscribes.create(tenantId.value, {
       id: unsubscribeTokenId, tenantId: tenantId.value, token, email: send.email, memberId: input.memberId,
       campaignSendId: sendId, scope: `consent:${input.consentDefinitionId}`, createdAt: deps.clock.nowIso(), usedAt: null,
@@ -1237,13 +1238,15 @@ const campaignTickExecution = async (
   let current = campaign;
   let lastError: string | null = null;
   let consecutiveErrors = campaign.errorCount;
+  const unsubscribeBaseUrl = await deps.unsubscribeBaseUrl(tenantId.value);
+  const sendDeps = { ...deps, unsubscribeBaseUrl: async () => unsubscribeBaseUrl };
   for (const member of members) {
     const outcome = await sendMarketingMessages(ctx, [{
       to: member.email, memberId: member.memberId, campaignId: campaign.id, source: 'broadcast',
       consentDefinitionId: campaign.consentDefinitionId, subject: campaign.subject,
       bodyHtml: campaign.bodyHtml, layoutId: campaign.layoutId,
       data: { member: { email: member.email, name: member.displayName } },
-    }], deps);
+    }], sendDeps);
     if (!outcome.ok) return outcome;
     const item = outcome.value[0];
     if (item?.status === 'sent') {
@@ -1394,7 +1397,7 @@ export const testSendCampaignToSelf = async (
   if (campaign.layoutId !== null && layout === null) return err(notFound('Marketing e-mail layout was not found'));
   const unsubscribeTokenId = deps.ids.nextId();
   const token = deps.tokens.nextToken();
-  const unsubscribeUrl = `${deps.unsubscribeBaseUrl}/${token}`;
+  const unsubscribeUrl = `${await deps.unsubscribeBaseUrl(tenantId.value)}/${token}`;
   await deps.unsubscribes.create(tenantId.value, {
     id: unsubscribeTokenId,
     tenantId: tenantId.value,

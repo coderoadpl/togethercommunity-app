@@ -43,6 +43,7 @@ export interface DeepHealthDeps {
   storage: StorageProvider;
   emailTransports: EmailIntegrationTransportResolver;
   clock: Clock;
+  production: boolean;
   schedulerRuns?: Pick<SchedulerRunRepository, 'listPage'> | undefined;
   definitions?: ConsentDefinitionRepository | undefined;
   documents?: Pick<TenantDocumentRepository, 'findPublishedVersionById'> | undefined;
@@ -55,6 +56,7 @@ const SCHEDULER_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 const PRESIGN_TTL_SECONDS = 60;
 const PRESIGN_PROBE_KEY = 'health/deep-probe';
 const DEADLINE_CHECK = 'deadline';
+const SCHEDULER_PRODUCTION_ONLY = 'scheduler runs only on production';
 
 /**
  * The endpoint is unauthenticated, so only a message a probe wrote itself may
@@ -77,7 +79,7 @@ const describeFailure = (cause: unknown): string =>
     ? truncate(cause.message)
     : `unexpected ${cause instanceof Error ? cause.constructor.name : typeof cause}`;
 
-type ProbeOutcome = 'checked' | 'not-applicable';
+type ProbeOutcome = 'checked' | 'not-applicable' | { skipped: string };
 
 type Probe = () => Promise<ProbeOutcome>;
 
@@ -107,7 +109,7 @@ const createRecorder = (budgetMs: number) => {
         return;
       }
       const current = accumulated.get(name)
-        ?? { name, ok: true, ms: 0, subjects: 0, error: null };
+        ?? { name, ok: true, ms: 0, subjects: 0, error: null, skipped: null };
       const probeStartedAt = Date.now();
       let outcome: ProbeOutcome = 'not-applicable';
       let failure: string | null = null;
@@ -123,6 +125,7 @@ const createRecorder = (budgetMs: number) => {
         ms: current.ms + (Date.now() - probeStartedAt),
         subjects: current.subjects + (outcome === 'checked' ? 1 : 0),
         error: current.error ?? failure,
+        skipped: current.skipped ?? (typeof outcome === 'object' ? outcome.skipped : null),
       });
     },
     checks: (): DeepHealthCheck[] => {
@@ -136,6 +139,7 @@ const createRecorder = (budgetMs: number) => {
         error: truncate(
           `the ${String(budgetMs)} ms probe budget expired at ${[...unfinished].join(', ')}`,
         ),
+        skipped: null,
       }];
     },
   };
@@ -244,6 +248,9 @@ const probeStoragePresign = (tenant: Tenant, deps: DeepHealthDeps): Probe => asy
 };
 
 const probeSchedulerFreshness = (deps: DeepHealthDeps): Probe => async () => {
+  // The platform schedules cron jobs against the production deployment alone,
+  // so every other deployment reads a run history that can only go stale.
+  if (!deps.production) return { skipped: SCHEDULER_PRODUCTION_ONLY };
   const runs = deps.schedulerRuns;
   if (runs === undefined) return 'not-applicable';
   const page = await runs.listPage({ limit: 1 });

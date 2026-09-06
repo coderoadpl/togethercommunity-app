@@ -47,8 +47,8 @@ const provisioner = (
 
 const TXT = {
   type: 'TXT',
-  domain: '_vercel.kurs.coderoad.example',
-  value: 'vc-domain-verify=kurs.coderoad.example,abc',
+  domain: '_vercel.kurs.acme.example',
+  value: 'vc-domain-verify=kurs.acme.example,abc',
 };
 
 describe('vercel domain provisioner', () => {
@@ -59,7 +59,7 @@ describe('vercel domain provisioner', () => {
       { teamId: 'team_1', gitBranch: 'staging' },
     );
 
-    const result = await subject.add('kurs.coderoad.example');
+    const result = await subject.add('kurs.acme.example');
 
     expect(result).toEqual({
       ok: true,
@@ -67,8 +67,8 @@ describe('vercel domain provisioner', () => {
         verified: false,
         verification: [{
           type: 'TXT',
-          name: '_vercel.kurs.coderoad.example',
-          value: 'vc-domain-verify=kurs.coderoad.example,abc',
+          name: '_vercel.kurs.acme.example',
+          value: 'vc-domain-verify=kurs.acme.example,abc',
         }],
       },
     });
@@ -76,7 +76,7 @@ describe('vercel domain provisioner', () => {
       method: 'POST',
       url: 'https://api.vercel.com/v10/projects/prj_1/domains?teamId=team_1',
       authorization: 'Bearer vercel-token',
-      body: { name: 'kurs.coderoad.example', gitBranch: 'staging' },
+      body: { name: 'kurs.acme.example', gitBranch: 'staging' },
     }]);
   });
 
@@ -87,24 +87,24 @@ describe('vercel domain provisioner', () => {
       { gitBranch: 'staging' },
     );
 
-    await subject.add('kurs.coderoad.example', { gitBranch: 'main' });
+    await subject.add('kurs.acme.example', { gitBranch: 'main' });
 
-    expect(recorded[0]?.body).toEqual({ name: 'kurs.coderoad.example', gitBranch: 'main' });
+    expect(recorded[0]?.body).toEqual({ name: 'kurs.acme.example', gitBranch: 'main' });
   });
 
   it('reads verification records and the DNS configuration for the status', async () => {
     const { subject } = provisioner({
-      'GET /v9/projects/prj_1/domains/kurs.coderoad.example': {
+      'GET /v9/projects/prj_1/domains/kurs.acme.example': {
         status: 200,
         payload: { verified: false, verification: [TXT] },
       },
-      'GET /v6/domains/kurs.coderoad.example/config': {
+      'GET /v6/domains/kurs.acme.example/config': {
         status: 200,
         payload: { misconfigured: true },
       },
     });
 
-    const result = await subject.status('kurs.coderoad.example');
+    const result = await subject.status('kurs.acme.example');
 
     expect(result).toEqual({
       ok: true,
@@ -113,8 +113,8 @@ describe('vercel domain provisioner', () => {
         misconfigured: true,
         verification: [{
           type: 'TXT',
-          name: '_vercel.kurs.coderoad.example',
-          value: 'vc-domain-verify=kurs.coderoad.example,abc',
+          name: '_vercel.kurs.acme.example',
+          value: 'vc-domain-verify=kurs.acme.example,abc',
         }],
       },
     });
@@ -122,27 +122,27 @@ describe('vercel domain provisioner', () => {
 
   it('triggers verification and re-reads the resulting state', async () => {
     const { subject, recorded } = provisioner({
-      'POST /v9/projects/prj_1/domains/kurs.coderoad.example/verify': { status: 200, payload: { verified: true } },
-      'GET /v9/projects/prj_1/domains/kurs.coderoad.example': {
+      'POST /v9/projects/prj_1/domains/kurs.acme.example/verify': { status: 200, payload: { verified: true } },
+      'GET /v9/projects/prj_1/domains/kurs.acme.example': {
         status: 200,
         payload: { verified: true, verification: [] },
       },
-      'GET /v6/domains/kurs.coderoad.example/config': { status: 200, payload: { misconfigured: false } },
+      'GET /v6/domains/kurs.acme.example/config': { status: 200, payload: { misconfigured: false } },
     });
 
-    const result = await subject.verify('kurs.coderoad.example');
+    const result = await subject.verify('kurs.acme.example');
 
     expect(result).toEqual({ ok: true, value: { verified: true, misconfigured: false, verification: [] } });
     expect(recorded.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
-      'POST /v9/projects/prj_1/domains/kurs.coderoad.example/verify',
-      'GET /v9/projects/prj_1/domains/kurs.coderoad.example',
-      'GET /v6/domains/kurs.coderoad.example/config',
+      'POST /v9/projects/prj_1/domains/kurs.acme.example/verify',
+      'GET /v9/projects/prj_1/domains/kurs.acme.example',
+      'GET /v6/domains/kurs.acme.example/config',
     ]);
   });
 
   it('reads the state of a domain whose TXT challenge is not published yet', async () => {
     const { subject } = provisioner({
-      'POST /v9/projects/prj_1/domains/kurs.coderoad.example/verify': {
+      'POST /v9/projects/prj_1/domains/kurs.acme.example/verify': {
         status: 400,
         payload: {
           error: {
@@ -151,22 +151,22 @@ describe('vercel domain provisioner', () => {
           },
         },
       },
-      'GET /v9/projects/prj_1/domains/kurs.coderoad.example': {
+      'GET /v9/projects/prj_1/domains/kurs.acme.example': {
         status: 200,
         payload: { verified: false, verification: [TXT] },
       },
-      'GET /v6/domains/kurs.coderoad.example/config': { status: 200, payload: { misconfigured: false } },
+      'GET /v6/domains/kurs.acme.example/config': { status: 200, payload: { misconfigured: false } },
     });
 
-    expect(await subject.verify('kurs.coderoad.example')).toEqual({
+    expect(await subject.verify('kurs.acme.example')).toEqual({
       ok: true,
       value: {
         verified: false,
         misconfigured: false,
         verification: [{
           type: 'TXT',
-          name: '_vercel.kurs.coderoad.example',
-          value: 'vc-domain-verify=kurs.coderoad.example,abc',
+          name: '_vercel.kurs.acme.example',
+          value: 'vc-domain-verify=kurs.acme.example,abc',
         }],
       },
     });
@@ -174,10 +174,10 @@ describe('vercel domain provisioner', () => {
 
   it('treats a domain the project no longer holds as removed', async () => {
     const { subject } = provisioner({
-      'DELETE /v9/projects/prj_1/domains/kurs.coderoad.example': { status: 404 },
+      'DELETE /v9/projects/prj_1/domains/kurs.acme.example': { status: 404 },
     });
 
-    expect(await subject.remove('kurs.coderoad.example')).toEqual({ ok: true, value: undefined });
+    expect(await subject.remove('kurs.acme.example')).toEqual({ ok: true, value: undefined });
   });
 
   it('reports a project the token cannot reach instead of a pending domain', async () => {
@@ -186,15 +186,15 @@ describe('vercel domain provisioner', () => {
         status: 404,
         payload: { error: { code: 'not_found', message: 'Project not found' } },
       },
-      'GET /v9/projects/prj_1/domains/kurs.coderoad.example': { status: 404 },
-      'GET /v6/domains/kurs.coderoad.example/config': { status: 200, payload: { misconfigured: false } },
+      'GET /v9/projects/prj_1/domains/kurs.acme.example': { status: 404 },
+      'GET /v6/domains/kurs.acme.example/config': { status: 200, payload: { misconfigured: false } },
     });
 
-    expect(await subject.add('kurs.coderoad.example')).toEqual({
+    expect(await subject.add('kurs.acme.example')).toEqual({
       ok: false,
       error: { code: 'integration_unavailable', message: 'Vercel: Project not found' },
     });
-    expect(await subject.status('kurs.coderoad.example')).toEqual({
+    expect(await subject.status('kurs.acme.example')).toEqual({
       ok: false,
       error: { code: 'integration_unavailable', message: 'Vercel responded with HTTP 404.' },
     });
@@ -208,7 +208,7 @@ describe('vercel domain provisioner', () => {
       },
     });
 
-    expect(await subject.add('kurs.coderoad.example')).toEqual({
+    expect(await subject.add('kurs.acme.example')).toEqual({
       ok: false,
       error: {
         code: 'integration_unavailable',
@@ -230,7 +230,7 @@ describe('vercel domain provisioner', () => {
       },
     });
 
-    expect(await subject.add('kurs.coderoad.example')).toEqual({
+    expect(await subject.add('kurs.acme.example')).toEqual({
       ok: false,
       error: {
         code: 'integration_unavailable',
@@ -249,7 +249,7 @@ describe('vercel domain provisioner', () => {
       },
     });
 
-    expect(await subject.status('kurs.coderoad.example', { signal: AbortSignal.abort() })).toEqual({
+    expect(await subject.status('kurs.acme.example', { signal: AbortSignal.abort() })).toEqual({
       ok: false,
       error: {
         code: 'integration_unavailable',
@@ -265,7 +265,7 @@ describe('vercel domain provisioner', () => {
       fetchImpl: () => Promise.reject(new Error('ECONNRESET')),
     });
 
-    expect(await subject.status('kurs.coderoad.example')).toMatchObject({
+    expect(await subject.status('kurs.acme.example')).toMatchObject({
       ok: false,
       error: { code: 'integration_unavailable', message: 'Vercel is unreachable: ECONNRESET' },
     });

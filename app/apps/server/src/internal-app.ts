@@ -251,6 +251,7 @@ import {
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
+  listTenantRedirects,
   getTenantSetupReadiness,
   grantProductToMember,
   listBunnyVideos,
@@ -352,6 +353,7 @@ import {
   sendSupportMessage,
   resetPlatformData,
   reseedSmokeTenant,
+  sanitizeStagingSecrets,
   setTenantSecret,
   simulatePurchase,
   simulateSubscriptionCycle,
@@ -668,13 +670,20 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.smokeTenantReseed, async (c) => {
-    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.smokeTenantReseedSecret)) {
-      return respond(err(unauthorized('Invalid smoke tenant reseed secret')));
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.operatorSecret)) {
+      return respond(err(unauthorized('Invalid operator secret')));
     }
     if (deps.smokeTenantReseed === undefined) {
       return respond(err(internal('The smoke tenant reseed is not configured')));
     }
     return respond(await reseedSmokeTenant(deps.smokeTenantReseed));
+  });
+
+  app.post(API_PATHS.sanitizeStagingSecrets, async (c) => {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.operatorSecret)) {
+      return respond(err(unauthorized('Invalid operator secret')));
+    }
+    return respond(await sanitizeStagingSecrets(deps.sanitizeStagingSecrets));
   });
 
   app.get(API_PATHS.tenantDomainDispatch, async (c) => {
@@ -2025,6 +2034,11 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     ids: deps.ids,
     clock: deps.clock,
   };
+
+  app.get(API_PATHS.tenantRedirects, async (c) => {
+    const result = await listTenantRedirects(ctxOf(c), { redirects: deps.redirects });
+    return respond(result.ok ? ok({ redirects: result.value }) : result);
+  });
 
   app.get(API_PATHS.tenantRouting, async (c) => {
     const result = await getTenantRouting({ identity: c.get('identity') }, tenantRoutingDeps);

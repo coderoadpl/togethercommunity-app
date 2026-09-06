@@ -1,6 +1,6 @@
 # Migration import API
 
-The import API moves an existing catalog and audience from another platform into Together. You push courses, modules, lessons, products, members, product grants, and course progress. Products always arrive unpublished and the import sends no e-mail; the import never carries passwords — every imported member is created passwordless and reclaims access via the magic-link or password-reset flow.
+The import API moves an existing catalog and audience from another platform into Together. You push courses, modules, lessons, products, members, product grants, course progress, and the redirects that keep links minted by the previous platform working. Products always arrive unpublished and the import sends no e-mail; the import never carries passwords — every imported member is created passwordless and reclaims access via the magic-link or password-reset flow.
 
 Use it when you are switching platforms or restoring a bulk export. Do not use it for day-to-day writes — it creates and updates only records it created, never publishes, and never deletes.
 
@@ -8,9 +8,11 @@ Use it when you are switching platforms or restoring a bulk export. Do not use i
 
 An owner creates import keys in the panel at `/panel/integrations`, under **Integrations → Import keys**. The secret is shown once at creation.
 
+The CLI creates the same keys: `pnpm run cli --tenant <slug> api-key create 'Migration' --scope import:content --expires-at <iso>`.
+
 | Scope | Grants | Does not grant |
 |---|---|---|
-| `import:content` | Draft upsert of courses, modules, lessons, and products | Publishing, deleting, editing anything not created by import, any read, any other API |
+| `import:content` | Draft upsert of courses, modules, lessons, products, and redirects | Publishing, deleting, editing anything not created by import, any read, any other API |
 | `import:users` | Upsert of members (always passwordless), product grants, and course progress | Sending e-mail, the enrollment API, the marketing API, reading member lists, editing members not created by import |
 
 - The two scopes are independent but may be combined on one key. Separate keys reduce the effect of a leaked key and keep their rate-limit counters independent.
@@ -32,6 +34,7 @@ Send the key in `x-api-key`. Resolve the tenant through its normal tenant hostna
 | `POST /api/m2m/import/modules` | `import:content` | Batch upsert modules and their chapters |
 | `POST /api/m2m/import/lessons` | `import:content` | Batch upsert lessons and their content blocks |
 | `POST /api/m2m/import/products` | `import:content` | Batch upsert products, always unpublished |
+| `POST /api/m2m/import/redirects` | `import:content` | Batch upsert redirects from paths the previous platform served |
 | `POST /api/m2m/import/members` | `import:users` | Batch upsert members |
 | `POST /api/m2m/import/grants` | `import:users` | Batch upsert product grants |
 | `POST /api/m2m/import/progress` | `import:users` | Batch upsert course progress |
@@ -111,7 +114,7 @@ One grant per member and product. Collapse renewals and repeated purchases in yo
 
 ### Progress
 
-Progress is explicitly enabled in the initial rollout because Together's CodeRoad dogfood migration requires it. There can be only one progress record per imported member and imported course; using another `importKey` for the same pair fails with `conflict`. Access never depends on progress.
+Progress is explicitly enabled in the initial rollout. There can be only one progress record per imported member and imported course; using another `importKey` for the same pair fails with `conflict`. Access never depends on progress.
 
 ```jsonl
 {"kind":"progress","importKey":"progress-u789:abc123","memberKey":"member-u789","courseKey":"course-abc123","completedLessonKeys":["lesson-l1"],"lastViewedLessonKey":"lesson-l1","lastViewedModuleKey":"module-m1","lastViewedChapterId":"chapter-m1-0","updatedAt":"2025-11-02T10:00:00Z"}
@@ -119,9 +122,37 @@ Progress is explicitly enabled in the initial rollout because Together's CodeRoa
 
 `completedLessonKeys` is required and contains unique keys; it may be empty. `lastViewedLessonKey`, `lastViewedModuleKey`, and `lastViewedChapterId` are optional. Referenced lessons, modules, and chapters must belong to the referenced course. `updatedAt` is required. Progress records do not accept `legacyId` or `createdAt`.
 
+### Redirect
+
+Together holds no knowledge of the URL shapes of the platform a tenant came from. Your transform decides which paths existed there and what each one now means; the import stores one row per path and the tenant host answers it.
+
+```jsonl
+{"kind":"redirect","importKey":"redirect-course-abc123","fromPath":"/kurs/javascript","target":{"kind":"course","importKey":"course-abc123"},"permanent":true}
+{"kind":"redirect","importKey":"redirect-lesson-l1","fromPath":"/kurs/javascript/wstep","target":{"kind":"lesson","importKey":"lesson-l1","courseKey":"course-abc123"},"permanent":false}
+{"kind":"redirect","importKey":"redirect-module-m1","fromPath":"/kurs/javascript/modul-1","target":{"kind":"module-as-course","importKey":"module-m1"},"permanent":false}
+{"kind":"redirect","importKey":"redirect-catalog","fromPath":"/kursy","target":{"kind":"path","path":"/my"},"permanent":false}
+```
+
+`fromPath` is the path the previous platform served, starting with `/` and carrying no query string or fragment. A path whose first character after the leading slash is another slash or a backslash is rejected with `validation`, because a browser reads those as another origin. It is normalised before it is stored and before every lookup: case is ignored, repeated slashes collapse, and a trailing slash is dropped, so `/Kurs/JavaScript/` and `/kurs/javascript` are the same entry. One path answers once per tenant; a second redirect for the same path under another `importKey` fails with `conflict`, in a write and in a validation call alike.
+
+Paths that end in a document extension are answered — `/kurs/lekcja-1.html` and `/artykul.php` redirect like any other row. Paths under `/assets/` and paths ending in a static file extension (`.js`, `.css`, `.png`, `.svg`, `.ico`, `.txt`, `.xml`, fonts and the rest) are served by the web build instead, so a redirect stored for one never answers.
+
+`target` names the destination:
+
+| `kind` | Fields | Resolves to |
+|---|---|---|
+| `course` | `importKey` of a course | that course's member page |
+| `lesson` | `importKey` of a lesson and `courseKey` of its course | that lesson's member page inside the course |
+| `module-as-course` | `importKey` of a module | the member page of the course the module belongs to |
+| `path` | `path` | that path verbatim, for destinations the import does not own; it obeys the same shape rules as `fromPath`, so a redirect can never leave the tenant's own origin |
+
+A redirect answers before the web app sees the path, so never map a path the platform itself serves (`/my`, `/login`, `/panel`, and the rest of the member and studio routes). Content targets resolve through the same reference rules as every other kind, so submit redirects last. The destination is resolved once, at import time, and stored with the row; re-import a redirect after moving its target. `permanent: true` answers `301` and `false` answers `302` — use `301` only for a destination that keeps its identity, because browsers cache it. The request's query string is appended to the destination.
+
+The studio lists a tenant's redirects with their count under Settings → Addresses, read-only.
+
 ### Order
 
-Submit kinds in dependency order: `course`, `lesson`, `module`, `product`, `member`, `grant`, `progress`. Chunk each kind into batches. Because write endpoints do not resolve forward references, submit a course with `moduleOrder: []` before its modules and then update the course with its final module order. Anything else that still points forward is fixed by re-running the affected kind.
+Submit kinds in dependency order: `course`, `lesson`, `module`, `product`, `member`, `grant`, `progress`, `redirect`. Chunk each kind into batches. Because write endpoints do not resolve forward references, submit a course with `moduleOrder: []` before its modules and then update the course with its final module order. Anything else that still points forward is fixed by re-running the affected kind.
 
 ## Validate before you write
 

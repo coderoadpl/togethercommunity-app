@@ -25,6 +25,7 @@ const runDeepHealth = (deps: AppDeps): Promise<DeepHealthReport> =>
     storage: deps.storage,
     emailTransports: deps.emailTransports,
     clock: deps.clock,
+    production: deps.deploymentIdentity.production,
     schedulerRuns: deps.marketing?.runs,
     definitions: deps.marketing?.definitions,
     documents: deps.marketing?.documents,

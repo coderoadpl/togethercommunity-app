@@ -100,6 +100,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     || path === '/api/internal/dispatch-ksef'
     || path === '/api/internal/domain-check'
     || path === '/api/internal/reseed-acme'
+    || path === '/api/internal/sanitize-staging-secrets'
   ) return 'scheduler:dispatch';
   if (path.startsWith('/api/internal/scheduler-runs')) return 'scheduler:read';
   if (path === '/api/public/terms-consent') return 'terms:accept';
@@ -170,7 +171,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
-  if (path === '/api/tenant/routing') return 'tenant:domain:read';
+  if (path === '/api/tenant/routing' || path === '/api/tenant/redirects') return 'tenant:domain:read';
   if (path.startsWith('/api/tenant/domains')) return 'tenant:settings:write';
   if (path === '/api/support/message') return 'support:request';
   if (path === '/api/platform/data-reset') return 'platform:data:reset';
@@ -269,7 +270,7 @@ const beforeForRoute = (
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
-  if (path === '/api/tenant/routing') return staff;
+  if (path === '/api/tenant/routing' || path === '/api/tenant/redirects') return staff;
   if (path === '/api/support/message') return tenantActors;
   if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
@@ -493,7 +494,7 @@ const beforeForUseCase = (
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
   if (file === 'm2m-transactional-email.ts') return transactionalApiKey;
-  if (file === 'm2m-import.ts' || file === 'm2m-import-users.ts') {
+  if (file === 'm2m-import.ts' || file === 'm2m-import-users.ts' || file === 'm2m-import-redirects.ts') {
     return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
   }
   if (file === 'create-tenant.ts') return allHumans;

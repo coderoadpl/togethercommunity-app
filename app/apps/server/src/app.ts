@@ -19,6 +19,7 @@ import { registerPublicRoutes } from './public-app.js';
 import { publicRateLimitMiddleware } from './public-rate-limit.js';
 import { respond } from './respond.js';
 import { registerSocialPreviewRoute } from './social-preview.js';
+import { registerTenantRedirects } from './tenant-redirects.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
 
 const betterAuthPathPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
@@ -107,6 +108,7 @@ export const buildApp = (deps: AppDeps) => {
       : respond(err(notFound(`No API route for ${c.req.method} ${c.req.path}`))),
   );
   const socialRouteStart = app.routes.length;
+  registerTenantRedirects(app, deps);
   registerSocialPreviewRoute(app, deps);
   assertPublicRouteManifest(app.routes.slice(socialRouteStart), PUBLIC_ROUTE_MANIFEST);
 

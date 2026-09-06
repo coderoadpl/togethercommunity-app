@@ -14,6 +14,7 @@ import {
 } from '#adapters/db/impersonation.js';
 import { createImpersonationTokenCodec } from '#adapters/crypto/impersonation-token-codec.js';
 import { createImportContentRepository } from '#adapters/db/content-import.js';
+import { createTenantRedirectRepository } from '#adapters/db/redirects.js';
 import { createImportUsersRepository } from '#adapters/db/users-import.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
@@ -71,7 +72,6 @@ import {
   createDmReportRepository,
   createEntityVersionRepository,
   createHealthPort,
-  createLegacyContentLocator,
   createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
@@ -104,6 +104,7 @@ import {
   createTenantDomainRepository,
   createTenantRepository,
   createTenantSecretRepository,
+  createTenantSecretScan,
   createTermsConsentRepository,
   createThreadSubscriptionRepository,
   createUserDisplayReader,
@@ -189,11 +190,11 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
-  LegacyContentLocator,
   ImpersonationSessionRepository,
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
   ImportAuditEventRepository,
+  ImportRedirectRepository,
   ImportContentRepository,
   ImportUsersReader,
   ImportUsersRepository,
@@ -277,7 +278,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import {
   isProductionEnvironment,
   ok,
@@ -362,7 +363,7 @@ export interface AppDeps {
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
-  legacyContent: LegacyContentLocator;
+  redirects: ImportRedirectRepository;
   attachments: LessonAttachmentRepository;
   downloadAssets: ProductDownloadAssetRepository;
   entityVersions: EntityVersionRepository;
@@ -447,8 +448,9 @@ export interface AppDeps {
   emailDispatchCronSecret: string;
   autoInvoiceDispatchSecret: string;
   domainCheckSecret: string;
-  smokeTenantReseedSecret: string;
+  operatorSecret: string;
   smokeTenantReseed?: SmokeTenantReseedDeps;
+  sanitizeStagingSecrets: SanitizeStagingSecretsDeps;
   checkTenantDomains(): Promise<Result<TenantDomainCheckResult, AppError>>;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
@@ -570,6 +572,22 @@ export const selectSmokeTenantReseed = (
     environment: env.APP_ENV ?? env.NODE_ENV ?? 'development',
   };
 };
+
+export const selectOperatorSecret = (
+  env: Pick<
+    Env,
+    | 'OPERATOR_SECRET'
+    | 'PROD_OPERATOR_SECRET'
+    | 'STAGING_OPERATOR_SECRET'
+    | 'CRON_SECRET'
+    | 'EMAIL_DISPATCH_SECRET'
+  >,
+): string =>
+  env.OPERATOR_SECRET
+  ?? env.PROD_OPERATOR_SECRET
+  ?? env.STAGING_OPERATOR_SECRET
+  ?? env.CRON_SECRET
+  ?? env.EMAIL_DISPATCH_SECRET;
 
 export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
@@ -860,6 +878,15 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     ids,
     clock,
   }));
+  const sanitizeStagingSecrets: SanitizeStagingSecretsDeps = {
+    ...reseedMarkers(env),
+    secrets: createTenantSecretScan(db),
+    secretCrypto,
+    platformAudit: createPlatformAuditRepository(db),
+    environment: env.APP_ENV ?? env.NODE_ENV ?? 'development',
+    ids,
+    clock,
+  };
   const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
   const dispatchAutoInvoices = () => dispatchAutoInvoiceJobs({
     jobs: autoInvoiceJobs,
@@ -1159,7 +1186,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
-    legacyContent: createLegacyContentLocator(db),
+    redirects: createTenantRedirectRepository(db),
     attachments: createLessonAttachmentRepository(db),
     downloadAssets: createProductDownloadAssetRepository(db),
     entityVersions: createEntityVersionRepository(db),
@@ -1265,8 +1292,9 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     emailDispatchCronSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     domainCheckSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
-    smokeTenantReseedSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
+    operatorSecret: selectOperatorSecret(env),
     ...(smokeTenantReseed === undefined ? {} : { smokeTenantReseed }),
+    sanitizeStagingSecrets,
     checkTenantDomains: () => runTenantDomainChecks(tenantDomainDeps),
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),

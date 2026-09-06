@@ -1,0 +1,91 @@
+name: Alert gate
+description: Decide whether a monitor may page, from its previous completed run and the failing set.
+inputs:
+  monitor:
+    description: Workflow file of the monitor, e.g. prod-health.yml. Names the run history the gate reads.
+    required: true
+  environment:
+    description: Environment the monitor watches, e.g. production or staging. Keys the recorded state.
+    required: true
+  failing:
+    description: Comma-separated names of the checks that failed in this run. Empty means green.
+    required: false
+    default: ''
+  checks:
+    description: Comma-separated names of every check this run measured. Empty falls back to the failing set.
+    required: false
+    default: ''
+  github-token:
+    description: Token allowed to read this repository's Actions runs and artifacts.
+    required: true
+  branch:
+    description: Branch to read the run history of. Empty reads every branch.
+    required: false
+    default: ''
+outputs:
+  should_page:
+    description: Whether this run may send an SMS.
+    value: ${{ steps.decide.outputs.should_page }}
+  recovered:
+    description: Whether this run is the first green one after a page.
+    value: ${{ steps.decide.outputs.recovered }}
+  observe_only:
+    description: Whether the failure was withheld because the monitor or the check has never been green here.
+    value: ${{ steps.decide.outputs.observe_only }}
+  pageable:
+    description: Comma-separated failing checks that are cleared to page.
+    value: ${{ steps.decide.outputs.pageable }}
+  reason:
+    description: One line explaining the decision.
+    value: ${{ steps.decide.outputs.reason }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: 24
+    - name: Read the previous completed run and the recorded state
+      id: previous
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ github.repository }}
+        MONITOR: ${{ inputs.monitor }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        BRANCH: ${{ inputs.branch }}
+      run: |
+        artifact="alert-gate-${MONITOR%.yml}-$ENVIRONMENT"
+        echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+        directory="$RUNNER_TEMP/alert-gate"
+        mkdir -p "$directory/previous"
+        echo "next_state_file=$directory/state.json" >> "$GITHUB_OUTPUT"
+
+        query="status=completed&per_page=1&exclude_pull_requests=true"
+        if [ -n "$BRANCH" ]; then query="$query&branch=$BRANCH"; fi
+        conclusion=$(gh api "repos/$REPOSITORY/actions/workflows/$MONITOR/runs?$query" \
+          --jq '.workflow_runs[0].conclusion // ""') || conclusion=""
+        echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
+
+        id=$(gh api "repos/$REPOSITORY/actions/artifacts?name=$artifact&per_page=1" \
+          --jq '[.artifacts[] | select(.expired == false)][0].id // ""') || id=""
+        if [ -n "$id" ] && gh api "repos/$REPOSITORY/actions/artifacts/$id/zip" > "$directory/previous.zip"; then
+          unzip -o -q "$directory/previous.zip" -d "$directory/previous" || rm -f "$directory/previous/state.json"
+        fi
+        echo "state_file=$directory/previous/state.json" >> "$GITHUB_OUTPUT"
+    - name: Decide whether this run may page
+      id: decide
+      shell: bash
+      env:
+        ALERT_GATE_MONITOR: ${{ inputs.monitor }}
+        ALERT_GATE_FAILING: ${{ inputs.failing }}
+        ALERT_GATE_CHECKS: ${{ inputs.checks }}
+        ALERT_GATE_PREVIOUS_CONCLUSION: ${{ steps.previous.outputs.conclusion }}
+        ALERT_GATE_STATE_FILE: ${{ steps.previous.outputs.state_file }}
+        ALERT_GATE_NEXT_STATE_FILE: ${{ steps.previous.outputs.next_state_file }}
+      run: node "$GITHUB_WORKSPACE/app/scripts/alert-gate.ts"
+    - name: Record the state the next run reads
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ steps.previous.outputs.artifact }}
+        path: ${{ steps.previous.outputs.next_state_file }}
+        overwrite: true

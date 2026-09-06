@@ -24,10 +24,11 @@ const workflowSchema = z.object({
   }),
 });
 
-const workflow = workflowSchema.parse(parse(readFileSync(
+const source = readFileSync(
   join(import.meta.dirname, '..', '..', '.github', 'workflows', 'prod-smoke.yml'),
   'utf8',
-)));
+);
+const workflow = workflowSchema.parse(parse(source));
 
 const step = (name: string) => {
   const found = workflow.jobs.smoke.steps.find((candidate) => candidate.name === name);
@@ -42,7 +43,8 @@ describe('prod-smoke workflow', () => {
 
     expect(steps.indexOf('Reseed the smoke tenant'))
       .toBeLessThan(steps.indexOf('Smoke the deployment'));
-    expect(reseed.env?.['PROD_OPERATOR_SECRET']).toBe('${{ secrets.PROD_OPERATOR_SECRET }}');
+    expect(reseed.env?.['OPERATOR_SECRET'])
+      .toBe('${{ secrets.OPERATOR_SECRET_PRODUCTION || secrets.PROD_OPERATOR_SECRET }}');
     expect(reseed.run).toContain(API_PATHS.smokeTenantReseed);
     expect(reseed.run).toContain(SCHEDULER_OPERATOR_SECRET_HEADER);
   });
@@ -56,9 +58,8 @@ describe('prod-smoke workflow', () => {
     expect(wait.run).toContain('$EXPECTED_SHA');
     expect(step('Reseed the smoke tenant').if).toContain("steps.alias.outputs.matched == 'true'");
     expect(step('Smoke the deployment').if).toContain("steps.alias.outputs.matched == 'true'");
-    expect(step('Send an SMS alert').if).toContain("steps.alias.outputs.matched == 'false'");
-    expect(step('Fail the run on a failing smoke').if)
-      .toContain("steps.alias.outputs.matched == 'false'");
+    expect(step('Collect the failing checks').env?.['ALIAS_FAILING'])
+      .toBe('${{ steps.alias.outputs.failing }}');
   });
 
   it('reseeds acme only while acme is the tenant under test', () => {
@@ -69,28 +70,52 @@ describe('prod-smoke workflow', () => {
   it('skips the reseed with a notice when the operator secret is absent', () => {
     const reseed = step('Reseed the smoke tenant');
 
-    expect(reseed.run).toContain('if [ -z "$PROD_OPERATOR_SECRET" ]');
+    expect(reseed.run).toContain('if [ -z "$OPERATOR_SECRET" ]');
     expect(reseed.run).toContain('::notice::');
+  });
+
+  it('derives every target host from the tenant under test', () => {
+    const target = step('Resolve the deployment under test');
+
+    expect(target.run).toContain('tenant_base_url="https://$SMOKE_TENANT.togethercommunity.app"');
+    expect(target.run).toContain('base_url=${DISPATCH_BASE_URL:-$PROD_BASE_URL}');
+    expect(source).not.toContain(['coder', 'oad'].join(''));
   });
 
   it('keeps the operator secret away from a dispatched foreign host', () => {
     const reseed = step('Reseed the smoke tenant');
 
-    expect(workflow.jobs.smoke.env['PROD_BASE_URL']).toBe('https://coderoad.togethercommunity.app');
-    expect(reseed.run).toContain('if [ "$BASE_URL" != "$PROD_BASE_URL" ]');
+    expect(reseed.env?.['TENANT_BASE_URL']).toBe('${{ steps.target.outputs.tenant_base_url }}');
+    expect(reseed.run).toContain('if [ "$BASE_URL" != "$TENANT_BASE_URL" ]');
     expect(reseed.run).toContain('::notice::');
   });
 
   it('smokes and pages even when the reseed fails', () => {
     const reseed = step('Reseed the smoke tenant');
+    const failures = step('Collect the failing checks');
 
     expect(reseed['continue-on-error']).toBe(true);
-    expect(step('Send an SMS alert').if)
-      .toContain("steps.reseed.outcome == 'failure'");
-    expect(step('Fail the run on a failing smoke').if)
-      .toContain("steps.reseed.outcome == 'failure'");
+    expect(failures.env?.['RESEED_OUTCOME']).toBe('${{ steps.reseed.outcome }}');
+    expect(failures.run).toContain('failing="reseed"');
+    expect(failures.run).toContain('failing="${failing:+$failing,}$name"');
+    expect(step('Summarize the smoke checks').run).toContain('$RESEED_OUTCOME');
+  });
+
+  it('fails on the whole failing list assembled in one place and pages on the gated part', () => {
+    expect(step('Fail the run on a failing smoke').if).toBe("steps.failures.outputs.failing != ''");
+    expect(step('Send an SMS alert').if).toBe("steps.alert.outputs.should_page == 'true'");
     expect(String(step('Send an SMS alert').with?.['message']))
-      .toContain("steps.smoke.outputs.failing || steps.alias.outputs.failing || 'reseed'");
+      .toContain('failing=${{ steps.alert.outputs.pageable }}');
+  });
+
+  it('names every check it measured so a new one cannot page before it is green', () => {
+    const failures = step('Collect the failing checks');
+
+    expect(failures.env?.['ALIAS_MATCHED']).toBe('${{ steps.alias.outputs.matched }}');
+    expect(failures.run).toContain('smoke.log');
+    expect(failures.run).toContain('echo "checks=$measured"');
+    expect(step('Gate the alert on a state change').with)
+      .toMatchObject({ checks: '${{ steps.failures.outputs.checks }}' });
   });
 
   it('signs the smoke member in with the secret it is seeded with', () => {

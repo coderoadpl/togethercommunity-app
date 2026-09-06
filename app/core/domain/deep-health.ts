@@ -7,6 +7,7 @@ const deepHealthCheckSchema = z.object({
   ok: z.boolean(),
   ms: z.number().int().nonnegative(),
   error: z.string().nullable(),
+  skipped: z.string().nullable(),
 });
 
 export const deepHealthReportSchema = z.object({

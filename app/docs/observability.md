@@ -9,6 +9,65 @@ question and none of them depends on the other two.
 | Deep health | `/api/health/deep` | Does every tenant still parse, load and sign? |
 | Post-deploy smoke | `.github/workflows/prod-smoke.yml` | Can a real member sign in and play a lesson on the deployed commit? |
 
+## Alerting doctrine
+
+An SMS wakes a person up. A monitor that pages for something the owner cannot
+act on — a check that has never worked here, a failure already known and being
+worked on — teaches the owner to ignore the channel, and the next real outage
+arrives on a phone nobody reads. So paging is governed by one rule set, applied
+identically by `prod-health.yml`, `prod-smoke.yml` and `staging-smoke.yml`:
+
+1. **Observe-only until green.** Every monitor that can page starts silent on an
+   environment it has never been green on. It writes its verdict to the job
+   summary and to a `::notice::`, fails the run when it should, and sends no SMS.
+   The first green run on that environment arms it.
+2. **Page on a state change only.** A page needs the previous completed run of
+   the same workflow to have been green, or the failing set to have changed since
+   the last red one.
+3. **Never twice in a row for the same failing set.** A monitor that keeps
+   failing the same way stays quiet after the first page; the run still goes red,
+   which is what a dashboard is for.
+4. **Recovery is announced.** The first green run after a page sends a `RECOVERED`
+   SMS, so an incident always has a closing message on the same channel.
+5. **A new check inherits observe-only.** A check added to an armed monitor is
+   silent until it has been green on that environment once. Adding a probe can
+   therefore never page the owner about the probe itself.
+
+The one exception is a failure outside the monitor's own check inventory — the
+run could not measure its checks at all (`unreachable`). It pages as soon as the
+monitor is armed, because "never green" cannot be distinguished from "never ran"
+and silence would be the wrong default for a monitor that stopped working.
+
+### How it is implemented
+
+`.github/actions/alert-gate` is the single place that decides. Each monitor hands
+it the failing set and the full inventory of checks the run measured; the action
+reads the workflow's previous completed run through the Actions API, restores the
+state the previous run recorded, and outputs `should_page`, `recovered`,
+`observe_only`, `pageable` and `reason`. The SMS steps are gated on those outputs
+and on nothing else.
+
+State travels between runs as one workflow artifact per monitor and environment,
+`alert-gate-<workflow>-<environment>`, holding whether the monitor has ever been
+green, whether a page is still outstanding, the failing set that was last paged
+for, and the names cleared to page (every check that has been green here at least
+once). The artifact is overwritten on every run and kept for the repository's
+artifact retention; if it expires or is deleted, the monitor falls back to
+observe-only until its next green run, which is the safe direction.
+
+Only a run that reached the gate records state, so a run that was skipped or died
+before its checks leaves the recorded failing set untouched — an intervening
+skipped run cannot turn a still-unchanged failure back into a page.
+
+The decision itself is `app/scripts/alert-gate.ts` — a pure function with no
+dependencies, run by the composite action under Node's own type stripping and
+unit-tested in `app/scripts/alert-gate.test.ts`. The workflow wiring is asserted
+in `app/config-regression/alert-gate-action.test.ts`, which fails when any SMS
+step in the three monitors is conditioned on anything other than the gate.
+
+Because the state starts empty, the first run of each monitor after this doctrine
+landed is observe-only, and the monitor arms itself on its next green run.
+
 ## `GET /api/health/deep`
 
 Unauthenticated, rate-limited to 12 requests per minute per address
@@ -84,19 +143,25 @@ caught by the suite rather than by reading production output).
 | `deadline` | platform | Present only when the 20-second budget ran out; names the probes that did not finish. |
 
 `prod-health.yml` probes `/api/health` first and `/api/health/deep` second; the
-scheduled run fails and pages when the deep probe answers anything other than
-200.
+scheduled run fails when the deep probe answers anything other than 200, and
+reports `health` or `deep-health` as its failing check to the alert gate, which
+decides whether that failure pages.
 
 ## Post-deploy remote smoke
 
 `.github/workflows/prod-smoke.yml` runs on a `deployment_status` event with
-state `success` and environment `Production`, and on `workflow_dispatch`. It
-waits until `https://coderoad.togethercommunity.app/api/health` reports the
-deployment's commit (up to five minutes), reseeds the smoke tenant, then runs
-`pnpm run smoke:remote` (`app/scripts/remote-smoke.ts`) with
-`EXPECTED_SHA` set to that commit. A manual dispatch may leave `expected_sha`
-empty; the wait and the `health-attestation` match are then both skipped, so any
-commit the host serves is accepted.
+state `success` and environment `Production`, and on `workflow_dispatch`. Both
+the wait and the checks target `$PROD_BASE_URL` — every tenant host serves
+`/api/health`, so the commit attestation holds on the tenant's own host and the
+smoke never signs a member of one tenant in on another's. It waits until that
+host reports the deployment's commit (up to five minutes), reseeds the smoke
+tenant, then runs `pnpm run smoke:remote` (`app/scripts/remote-smoke.ts`) with
+`EXPECTED_SHA` set to that commit.
+
+A manual dispatch may point `base_url` at any host; left empty it smokes
+`PROD_BASE_URL`. It may also leave `expected_sha` empty, and the wait and the
+`health-attestation` match are then both skipped, so any commit the host serves
+is accepted.
 
 The wait comes first so the reseed always reaches the build under test — on the
 deployment the alias would otherwise still be answering from the previous one,
@@ -130,15 +195,19 @@ misconfiguration, not a deliberate opt-out, and it pages like any other failure.
 Every run appends its check list — statuses and skip reasons — to the job
 summary, so a green run still shows what was not exercised.
 
-On failure the workflow sends one SMS through the shared
+On failure the workflow asks `.github/actions/alert-gate` whether the failure may
+page and, when it may, sends one SMS through the shared
 `.github/actions/alert-sms` composite action — the same SNS credentials
-`prod-health.yml` uses — carrying only the failing check names. Skipped checks
-never trigger an SMS. Credentials are never printed: the script reports check
-names and messages, never request bodies or headers.
+`prod-health.yml` uses — carrying only the check names cleared to page. Skipped
+checks never trigger an SMS. Credentials are never printed: the script reports
+check names and messages, never request bodies or headers.
 
 The reseed step is `continue-on-error`, so a refused or unreachable reseed still
-lets the checks run; the run then fails and pages with `reseed` as the failing
-name. A broken reseed must never cost the deployment its smoke and its alert.
+lets the checks run. One step then assembles the whole failing list — `reseed`
+first, then the alias and check names — and the summary, the SMS and the run
+failure all quote it, so `failing=reseed,public-offer` names both the checks
+that broke and the reseed that probably broke them. A broken reseed must never
+cost the deployment its smoke and its alert.
 
 ### Repository secrets the owner must add
 
@@ -151,16 +220,153 @@ Settings → Secrets and variables → Actions → repository secrets:
 | `ALERT_SMS_PHONE` | prod-health, prod-smoke | On-call number in E.164 form. |
 | `SMOKE_MEMBER_EMAIL` | prod-smoke | Optional override; defaults to `kontakt+smoke-member@togethercommunity.app`. Absent (with no default) → member checks skipped. |
 | `SMOKE_MEMBER_PASSWORD` | prod-smoke | Password the smoke member is seeded with **and** signed in with. Must equal the deployment's `SMOKE_MEMBER_PASSWORD` environment variable. Set exactly one of the pair and the smoke fails. |
-| `PROD_OPERATOR_SECRET` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; equals the deployment's `CRON_SECRET`. Absent → the reseed step prints a notice and is skipped. Sent only to `PROD_BASE_URL`, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
+| `OPERATOR_SECRET_PRODUCTION` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; must equal the production deployment's `OPERATOR_SECRET`. Falls back to the deprecated `PROD_OPERATOR_SECRET` repository secret. Absent → the reseed step prints a notice and is skipped. Sent only to the tenant host, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
 
 The creator account never signs in from the workflow, so its password lives on
 the deployment only, as `SMOKE_CREATOR_PASSWORD`.
 
-The first three already exist for `prod-health.yml`; the smoke reuses them. The
-tenant under test comes from the `SMOKE_TENANT` repository variable and defaults
-to `acme`. Pointing that variable at another tenant also skips the reseed with a
-notice: the route rebuilds `tenant-acme` only, and wiping it would serve no run
-that checks something else.
+The first three already exist for `prod-health.yml`; the smoke reuses them.
+
+### Repository variables the owner must add
+
+Settings → Secrets and variables → Actions → repository variables. No host is
+hard-coded in a workflow: every one of these falls back to the `acme` fixture on
+`togethercommunity.app`, so an unset variable makes the workflow watch the
+synthetic demo tenant instead of the deployment that matters.
+
+| Variable | Used by | Fallback when unset |
+| --- | --- | --- |
+| `SMOKE_TENANT` | prod-health, prod-smoke, staging-links | `acme` — the tenant slug the other three variables build their default host from. |
+| `PROD_HEALTH_HOST` | prod-health | `<SMOKE_TENANT>.togethercommunity.app` — the host `/api/health` and `/api/health/deep` are probed on. |
+| `PROD_BASE_URL` | prod-smoke | `https://<SMOKE_TENANT>.togethercommunity.app` — the deployment smoked on `deployment` events and on a dispatch that leaves `base_url` empty. |
+| `STAGING_HOST` | staging-links | `<SMOKE_TENANT>.staging.togethercommunity.app` — the tenant host published as the deployment's environment URL and pinned on the promotion pull request. |
+| `VERCEL_DEPLOYMENTS_URL` | staging-links | `https://vercel.com/dashboard` — the deployments list linked from the same places. |
+
+Pointing `SMOKE_TENANT` at another tenant also skips the reseed with a notice:
+the route rebuilds `tenant-acme` only, and wiping it would serve no run that
+checks something else.
+
+## Staging smoke
+
+`.github/workflows/staging-smoke.yml` answers the question production's smoke
+cannot: *is staging still its own deployment?* It runs on every `push` to
+`staging`, on a daily `schedule`, and on `workflow_dispatch` with `base_url` and
+`expected_sha` inputs. The push is the primary trigger because it is the one
+event this repository emits itself: the platform's own deployment records name
+the environment and the commit however it currently labels them, so a smoke
+gated on them stops running the moment that labelling changes. It runs
+`pnpm run smoke:staging` (`app/scripts/remote-smoke.ts --staging`) against
+`https://` + the `STAGING_HOST` variable (default
+`<SMOKE_TENANT>.staging.togethercommunity.app`), the tenant coming from the same
+`SMOKE_TENANT` variable the production smoke uses.
+
+A push arrives before the deployment it will produce, so the job first waits for
+the host to serve the pushed commit: it polls `/api/health` with the bypass
+header every 20 seconds for up to 15 minutes until `data.sha` equals the
+expected commit. A host still serving the previous commit is a build in flight,
+not a regression, so those attempts only wait. When the 15 minutes pass without
+a match the job fails on `deployment-alias` with the commit it observed instead
+and sends no SMS — nothing about staging's health was measured. A dispatch with
+an empty `expected_sha`, and the scheduled run, smoke whatever the host serves.
+
+Checks, in order:
+
+1. `health-attestation` — `/api/health` answers a parseable attestation.
+2. `staging-environment` — the database is `up`, `environment` is `staging`, `production` is `false`, the schema is current.
+3. `database-fingerprint` — `databaseFingerprint` differs from `PRODUCTION_DATABASE_FINGERPRINT` **and** equals `STAGING_DATABASE_FINGERPRINT`.
+4. `health-deep` — `/api/health/deep` answers 200 with `ok: true`.
+
+A staging deployment wired to the production database therefore fails within a
+deploy instead of within days. The fingerprint is asserted against both ends:
+"not production" alone would pass on a third, unknown database, and "equals
+staging" alone would pass a variable someone pinned to the production value.
+
+Until `STAGING_DATABASE_FINGERPRINT` is set, `database-fingerprint` fails with
+`the staging database is unpinned: set STAGING_DATABASE_FINGERPRINT=<value>`, the
+smoke prints `smoke:staging: unpinned=true` when the missing pin is its only
+failure, and the workflow turns that into a green run carrying the observed
+fingerprint as a `::notice::`, in the job summary and with the steps that pin it.
+The owner therefore pins it once from a passing run instead of reading it out of
+the database, and an unset variable — a configuration chore, not an incident —
+neither pages nor leaves the branch red. Once the variable is set every mismatch
+fails and pages. A fingerprint matching production pages either way, pin or no
+pin.
+
+### Secrets after a database branch reset
+
+The staging database is a branch reset from production, so every tenant secret it
+carries — SES, S3, Stripe, Bunny, iFirma, KSeF — was encrypted with the
+production `SECRETS_MASTER_KEY`. Staging holds a different key, so those rows
+decrypt to nothing there: `/api/health/deep` fails `tenant-secret-decryption`,
+and `storage-presign` fails with it because the S3 configuration is one of the
+unreadable rows.
+
+`POST /api/internal/sanitize-staging-secrets` resolves that. Guarded by the same
+`x-scheduler-operator-secret` header the acme reseed uses, it scans every stored
+tenant secret, attempts to decrypt each one, deletes the ones that fail, and
+records a `sanitize-staging-secrets` platform audit event carrying the counts. It
+refuses with `403` when the deployment identity reports production **or** when
+`DATABASE_URL` fingerprints as the production database, so the route cannot reach
+production data even if someone aims it there.
+
+Once the unreadable rows are gone, `tenant-secret-decryption` and
+`storage-presign` report the same "nothing configured here" result they report
+for a tenant that never configured an integration: green, with no subject
+measured. That is the intended staging steady state — staging then holds only the
+secrets an operator entered on staging.
+
+`staging-smoke.yml` calls the route before its checks, using the
+`OPERATOR_SECRET_STAGING` repository secret through the deployment-protection
+bypass header. Absent secret → the step prints a notice and the smoke runs
+against staging as it stands; a failing call does not fail the job, so a sanitize
+problem never masquerades as a staging outage.
+
+To give staging its own working integrations, sign in to Studio on the staging
+host and re-enter them there — Studio → Integrations for e-mail, storage,
+payments and invoicing. Use staging-only credentials (Stripe test keys, a
+separate bucket, an SES sandbox identity); anything entered on staging is
+encrypted with staging's key and survives until the next branch reset, which
+wipes them again.
+
+### The scheduler check on a non-production deployment
+
+Vercel cron jobs (`app/vercel.json`) fire against the production deployment only,
+so no scheduler run ever starts on staging or a preview. `scheduler-freshness`
+therefore reports `skipped` with `scheduler runs only on production` on every
+non-production deployment instead of ageing out into a failure. The check stays
+`ok`, measures no subject, and carries its reason in the report; only production
+compares the last run's age against the two-hour ceiling.
+
+Staging sits behind Vercel Deployment Protection, so every request carries
+`x-vercel-protection-bypass` with the automation bypass secret. The smoke reads
+JSON APIs only, so it never needs the `x-vercel-set-bypass-cookie` companion
+header that a browser session would. The secret is sent only to
+`STAGING_HOST_URL`: a dispatch naming another host stops before the smoke with a
+notice instead of leaking the header to it.
+
+When `VERCEL_AUTOMATION_BYPASS_SECRET` is absent the job prints a notice and
+stops before installing anything: protection would answer every probe with its
+own challenge, and failing on that would page the owner about a missing secret
+rather than about staging. No SMS is sent, and the alert gate records nothing,
+so a skipped run neither arms nor disarms the monitor. Any other failure goes
+through the gate and, when it may page, sends one SMS through
+`.github/actions/alert-sms` — the credentials `prod-smoke.yml` uses — carrying
+`Together STAGING smoke FAILED: <failing checks>`.
+
+### Repository secret and variables the owner must add
+
+| Name | Kind | Purpose |
+| --- | --- | --- |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | secret | Bypasses staging deployment protection. Absent → the whole smoke is skipped with a notice. Sent only to `STAGING_HOST_URL`, so a dispatch against another host skips the smoke instead of leaking the secret to it. |
+| `PRODUCTION_DATABASE_FINGERPRINT` | variable | The fingerprint staging must **not** answer with. Unset → the workflow falls back to the recorded production value. |
+| `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the run passes green and prints the value to pin, without an SMS. |
+| `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `<SMOKE_TENANT>.staging.togethercommunity.app`. |
+| `OPERATOR_SECRET_STAGING` | secret | The staging deployment's `OPERATOR_SECRET`, used to call the secret sanitize before the checks. Falls back to the deprecated `STAGING_OPERATOR_SECRET` repository secret. Unset → the sanitize is skipped with a notice. |
+
+Obtain the bypass secret in Vercel → Settings → Deployment Protection →
+Protection Bypass for Automation, then copy it into Settings → Secrets and
+variables → Actions → repository secrets. Regenerating it in Vercel invalidates
+the copy here.
 
 ## The smoke tenant
 
@@ -209,8 +415,16 @@ travels with the fixture:
 ### Reseeding the smoke tenant
 
 `POST /api/internal/reseed-acme`, authenticated by the
-`x-scheduler-operator-secret` header (the deployment's `CRON_SECRET`), wipes and
-re-applies **only** `tenant-acme`. `prod-smoke.yml` calls it before the checks.
+`x-scheduler-operator-secret` header, wipes and re-applies **only**
+`tenant-acme`. `prod-smoke.yml` calls it before the checks.
+
+The header is matched against `OPERATOR_SECRET`, the one name every environment
+uses for the internal operator routes. `PROD_OPERATOR_SECRET`,
+`STAGING_OPERATOR_SECRET`, `CRON_SECRET` and `EMAIL_DISPATCH_SECRET` are still
+accepted, in that order, so a deployment can be migrated without downtime; all
+four are deprecated and exist only until every environment sets `OPERATOR_SECRET`.
+A deployment that gives the workflow its own operator secret can rotate it
+without touching the secret its scheduled jobs authenticate with.
 
 The run is transactional, takes the same class of advisory lock as the full
 reseed, and writes a `reseed-acme` row into `platform_audit_events`. Unlike
@@ -256,8 +470,8 @@ endpoints are unauthenticated, so no header or credential is needed.
 
 | URL | Expected | Interval | Timeout | Confirm before alerting |
 | --- | --- | --- | --- | --- |
-| `https://coderoad.togethercommunity.app/api/health` | HTTP 200 and body contains `"database":"up"` | 5 min | 15 s | 2 consecutive failures |
-| `https://coderoad.togethercommunity.app/api/health/deep` | HTTP 200 | 5 min | 30 s | 2 consecutive failures |
+| `https://<tenant-host>/api/health` | HTTP 200 and body contains `"database":"up"` | 5 min | 15 s | 2 consecutive failures |
+| `https://<tenant-host>/api/health/deep` | HTTP 200 | 5 min | 30 s | 2 consecutive failures |
 
 Notes for the monitor configuration:
 

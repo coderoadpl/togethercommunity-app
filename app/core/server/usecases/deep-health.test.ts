@@ -207,6 +207,7 @@ const deps = (overrides: Partial<DeepHealthDeps> = {}): DeepHealthDeps => ({
     }),
   },
   clock: { nowIso: () => NOW },
+  production: true,
   schedulerRuns: { listPage: async () => ({ runs: [schedulerRun], nextCursor: null }) },
   ...overrides,
 });
@@ -373,6 +374,53 @@ describe('checkDeepHealth', () => {
     expect(report.failing).toEqual(['deadline']);
     expect(checkNamed(report, 'deadline').error)
       .toBe('the 10 ms probe budget expired at tenant-directory, scheduler-freshness');
+  });
+
+  it('skips the scheduler probe on a deployment that runs no cron', async () => {
+    const report = await checkDeepHealth(deps({
+      production: false,
+      schedulerRuns: {
+        listPage: async () => ({
+          runs: [{ ...schedulerRun, startedAt: '2026-09-01T08:00:00.000Z' }],
+          nextCursor: null,
+        }),
+      },
+    }));
+
+    expect(report.ok).toBe(true);
+    expect(report.failing).toEqual([]);
+    expect(checkNamed(report, 'scheduler-freshness')).toMatchObject({
+      ok: true,
+      error: null,
+      subjects: 0,
+      skipped: 'scheduler runs only on production',
+    });
+  });
+
+  it('reports every other check as measured while the scheduler probe is skipped', async () => {
+    const report = await checkDeepHealth(deps({ production: false }));
+
+    expect(report.checks.filter((check) => check.skipped !== null).map((check) => check.name))
+      .toEqual(['scheduler-freshness']);
+  });
+
+  it('reports the sanitized tenant as unconfigured rather than undecryptable', async () => {
+    const report = await checkDeepHealth(deps({
+      tenantSecrets: {
+        listByTenant: async () => [],
+        findByKey: async () => null,
+        upsert: async (_tenantId, stored) => stored,
+        delete: async () => false,
+      },
+      secretResolver: { resolve: async (_tenantId, key) => err(notFound(`No secret "${key}"`)) },
+    }));
+
+    expect(report.ok).toBe(true);
+    expect(report.failing).toEqual([]);
+    expect(checkNamed(report, 'tenant-secret-decryption'))
+      .toMatchObject({ ok: true, error: null, subjects: 0 });
+    expect(checkNamed(report, 'storage-presign'))
+      .toMatchObject({ ok: true, error: null, subjects: 0 });
   });
 
   it('marks the scheduler probe not applicable without a repository or any run', async () => {

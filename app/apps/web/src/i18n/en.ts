@@ -791,7 +791,7 @@ export const en: Messages = {
     importKeysDescription:
       'Issue short-lived keys for draft content and member imports. Import access cannot send email, enroll through the legacy API, or publish content.',
     importKeysNameLabel: 'Key name',
-    importKeysNamePlaceholder: 'CodeRoad migration',
+    importKeysNamePlaceholder: 'Migration from a previous platform',
     importKeysScopesLabel: 'Import scopes',
     importKeysContentScope: 'Content — courses, modules, lessons, and draft products',
     importKeysUsersScope: 'Users — members and product grants',
@@ -824,6 +824,7 @@ export const en: Messages = {
       member: 'Member',
       grant: 'Grant',
       progress: 'Progress',
+      redirect: 'Redirect',
     },
     importKeysAuditActions: {
       created: 'created',
@@ -2097,6 +2098,15 @@ export const en: Messages = {
     firstDomainWarning:
       'Once you move to a custom domain members sign in again and re-register their passkeys. Google sign-in is unavailable on custom domains.',
     docsLink: 'How custom domains work',
+    redirectsHeading: 'Redirects',
+    redirectsIntro: 'Paths this workspace answers with a redirect. Imported through the import API.',
+    redirectsCount: ({ count }) => format('{count} {noun}', {
+      count,
+      noun: plural(count, 'redirect', 'redirects'),
+    }),
+    redirectsEmpty: 'No redirects are configured.',
+    redirectsPermanent: 'Permanent',
+    redirectsTemporary: 'Temporary',
   },
   buildInfo: {
     heading: 'Build information',

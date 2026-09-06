@@ -25,12 +25,12 @@
     workaround.
   - **Nested base domain (fallback mode): wildcard CNAME, no NS delegation.**
     When the base domain is a subdomain of a zone we do not control the
-    nameservers for — the agentproofarch demo case, `*.agentproofarch.coderoad.pl`
+    nameservers for — a demo app under a third-party zone, `*.demo.example.com`
     → `cname.vercel-dns.com` — a single wildcard CNAME replaces delegation.
     Together must not assume it can create records in the parent zone; that is
     exactly why the adapter only *reports* required records.
     (Owner clarification 2026-07-28: the wildcard-CNAME scheme was decided for
-    the demo app under `coderoad.pl`; Together's own domain takes the simpler
+    a demo app under a third-party zone; Together's own domain takes the simpler
     NS-delegated path. Both stay supported because the adapter is topology-blind.)
 - **Tenant custom domains are provider-agnostic in core.** A tenant points
   `spolecznosc.example.com` at `SELF_HOST_TARGET_CNAME` (Vercel:

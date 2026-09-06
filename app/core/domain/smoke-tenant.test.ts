@@ -100,10 +100,10 @@ describe('smokeTenantReseedRefusal', () => {
 
   it('refuses a tenant that took over the id under another slug', () => {
     expect(smokeTenantReseedRefusal({
-      tenant: { id: SMOKE_TENANT_ID, slug: 'coderoad' },
+      tenant: { id: SMOKE_TENANT_ID, slug: 'studio' },
       memberEmails: [],
       consentEmails: [],
-    })).toContain('slug "coderoad"');
+    })).toContain('slug "studio"');
   });
 
   it('refuses when a member looks like a real customer', () => {

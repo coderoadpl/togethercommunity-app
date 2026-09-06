@@ -933,7 +933,7 @@ export const importAuditEvents = pgTable(
       .notNull()
       .references(() => tenantApiKeys.id, { onDelete: 'no action' }),
     kind: text('kind', {
-      enum: ['course', 'module', 'lesson', 'product', 'member', 'grant', 'progress'],
+      enum: ['course', 'module', 'lesson', 'product', 'member', 'grant', 'progress', 'redirect'],
     }).notNull(),
     importKey: text('import_key').notNull(),
     resourceId: text('resource_id').notNull(),
@@ -1777,6 +1777,25 @@ export const tenantDomains = pgTable(
   ],
 );
 
+export const tenantRedirects = pgTable(
+  'tenant_redirects',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    fromPath: text('from_path').notNull(),
+    targetKind: text('target_kind', {
+      enum: ['course', 'lesson', 'module-as-course', 'path'],
+    }).notNull(),
+    targetId: text('target_id'),
+    targetPath: text('target_path').notNull(),
+    permanent: boolean('permanent').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('tenant_redirects_tenant_from_path_uidx').on(table.tenantId, table.fromPath)],
+);
+
 export const tenantDomainEvents = pgTable(
   'tenant_domain_events',
   {
@@ -2145,7 +2164,9 @@ export const platformAuditEvents = pgTable(
   'platform_audit_events',
   {
     id: text('id').primaryKey(),
-    action: text('action', { enum: ['platform:data-reset', 'reseed-acme'] }).notNull(),
+    action: text('action', {
+      enum: ['platform:data-reset', 'reseed-acme', 'sanitize-staging-secrets'],
+    }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
     actorEmail: text('actor_email').notNull(),
     environment: text('environment').notNull(),

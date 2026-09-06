@@ -1,0 +1,6 @@
+# Files exempt from tenant-neutral-lint. One tracked path per line, each with a justification
+# after "#". The lint fails on an entry without a justification or on a path that is not tracked.
+
+SECURITY.md # security contact address of the licence and copyright holder
+app/scripts/tenant-neutral-lint.ts # holds the denylist the rule is expressed in
+app/config-regression/tenant-neutral-lint.test.ts # exercises the denylist against fixtures

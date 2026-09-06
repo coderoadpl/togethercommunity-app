@@ -16,15 +16,15 @@ const canonicalUrlOf = (value: string): string | null => {
 describe('inspectSandboxEmbedUrl', () => {
   it('keeps a CodeSandbox embed URL with its player options', () => {
     const inspection = inspectSandboxEmbedUrl(
-      'https://codesandbox.io/embed/github/coderoadpl/frontend--html-css-flexbox--task-1?autoresize=1&fontsize=14&hidenavigation=1',
+      'https://codesandbox.io/embed/github/acme-courses/frontend--html-css-flexbox--task-1?autoresize=1&fontsize=14&hidenavigation=1',
     );
     expect(inspection).toEqual({
       kind: 'embeddable',
       provider: 'codesandbox',
       embedUrl:
-        'https://codesandbox.io/embed/github/coderoadpl/frontend--html-css-flexbox--task-1?autoresize=1&fontsize=14&hidenavigation=1',
+        'https://codesandbox.io/embed/github/acme-courses/frontend--html-css-flexbox--task-1?autoresize=1&fontsize=14&hidenavigation=1',
       canonicalUrl:
-        'https://codesandbox.io/s/github/coderoadpl/frontend--html-css-flexbox--task-1?autoresize=1&fontsize=14&hidenavigation=1',
+        'https://codesandbox.io/s/github/acme-courses/frontend--html-css-flexbox--task-1?autoresize=1&fontsize=14&hidenavigation=1',
     });
   });
 
@@ -36,8 +36,8 @@ describe('inspectSandboxEmbedUrl', () => {
     expect(canonicalUrlOf('https://stackblitz.com/edit/vitejs-vite-abcdef?embed=1')).toBe(
       'https://stackblitz.com/edit/vitejs-vite-abcdef',
     );
-    expect(canonicalUrlOf('https://codepen.io/coderoad/embed/abcDEF')).toBe(
-      'https://codepen.io/coderoad/pen/abcDEF',
+    expect(canonicalUrlOf('https://codepen.io/acme-courses/embed/abcDEF')).toBe(
+      'https://codepen.io/acme-courses/pen/abcDEF',
     );
   });
 
@@ -55,20 +55,20 @@ describe('inspectSandboxEmbedUrl', () => {
     expect(embedUrlOf('https://codesandbox.io/s/abc123?file=%2Fsrc%2Findex.js')).toBe(
       'https://codesandbox.io/embed/abc123?file=%2Fsrc%2Findex.js',
     );
-    expect(embedUrlOf('https://codesandbox.io/s/github/coderoadpl/task-1')).toBe(
-      'https://codesandbox.io/embed/github/coderoadpl/task-1',
+    expect(embedUrlOf('https://codesandbox.io/s/github/acme-courses/task-1')).toBe(
+      'https://codesandbox.io/embed/github/acme-courses/task-1',
     );
     expect(inspectSandboxEmbedUrl('https://codesandbox.io/s/')).toEqual({ kind: 'not-embeddable' });
   });
 
   it('reads back the canonical URL it hands out as the same embed', () => {
     const sources = [
-      'https://codesandbox.io/embed/github/coderoadpl/task-1?autoresize=1',
+      'https://codesandbox.io/embed/github/acme-courses/task-1?autoresize=1',
       'https://codesandbox.io/embed/abc123',
       'https://codesandbox.io/p/sandbox/abc123',
       'https://stackblitz.com/edit/vitejs-vite-abcdef?file=src%2Fmain.ts',
-      'https://stackblitz.com/github/coderoadpl/task-1',
-      'https://codepen.io/coderoad/pen/abcDEF',
+      'https://stackblitz.com/github/acme-courses/task-1',
+      'https://codepen.io/acme-courses/pen/abcDEF',
     ];
 
     expect(sources.map((source) => embedUrlOf(canonicalUrlOf(source) ?? ''))).toEqual(
@@ -83,23 +83,23 @@ describe('inspectSandboxEmbedUrl', () => {
     expect(embedUrlOf('https://stackblitz.com/edit/vitejs-vite-abcdef?embed=1')).toBe(
       'https://stackblitz.com/edit/vitejs-vite-abcdef?embed=1',
     );
-    expect(embedUrlOf('https://stackblitz.com/github/coderoadpl/task-1')).toBe(
-      'https://stackblitz.com/github/coderoadpl/task-1?embed=1',
+    expect(embedUrlOf('https://stackblitz.com/github/acme-courses/task-1')).toBe(
+      'https://stackblitz.com/github/acme-courses/task-1?embed=1',
     );
   });
 
   it('normalises a CodePen pen URL to its embed URL', () => {
-    expect(embedUrlOf('https://codepen.io/coderoad/pen/abcDEF')).toBe(
-      'https://codepen.io/coderoad/embed/abcDEF',
+    expect(embedUrlOf('https://codepen.io/acme-courses/pen/abcDEF')).toBe(
+      'https://codepen.io/acme-courses/embed/abcDEF',
     );
-    expect(embedUrlOf('https://codepen.io/coderoad/embed/abcDEF?theme-id=dark')).toBe(
-      'https://codepen.io/coderoad/embed/abcDEF?theme-id=dark',
+    expect(embedUrlOf('https://codepen.io/acme-courses/embed/abcDEF?theme-id=dark')).toBe(
+      'https://codepen.io/acme-courses/embed/abcDEF?theme-id=dark',
     );
   });
 
   it('rejects hosts outside the allow-list, including look-alikes', () => {
     for (const value of [
-      'https://github.com/coderoadpl/frontend--html-css-flexbox--task-1',
+      'https://github.com/acme-courses/frontend--html-css-flexbox--task-1',
       'https://codesandbox.io.evil.example/embed/abc123',
       'https://evil.example/codesandbox.io/embed/abc123',
       'https://sandbox.codesandbox.io/embed/abc123',
@@ -114,8 +114,8 @@ describe('inspectSandboxEmbedUrl', () => {
       'https://codesandbox.io/',
       'https://codesandbox.io/docs/learn',
       'https://codesandbox.io/p/devbox/abc123',
-      'https://stackblitz.com/github/coderoadpl',
-      'https://codepen.io/coderoad/full/abcDEF',
+      'https://stackblitz.com/github/acme-courses',
+      'https://codepen.io/acme-courses/full/abcDEF',
     ]) {
       expect(inspectSandboxEmbedUrl(value)).toEqual({ kind: 'not-embeddable' });
     }
@@ -151,7 +151,7 @@ describe('groupLessonBlocks', () => {
   it('merges consecutive links into one section and keeps other blocks in place', () => {
     const groups = groupLessonBlocks([
       video,
-      { type: 'link', url: 'https://github.com/coderoadpl/task-1', description: 'GitHub' },
+      { type: 'link', url: 'https://github.com/acme-courses/task-1', description: 'GitHub' },
       { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/HTML' },
       { type: 'html', html: '<p>Notatki</p>' },
       { type: 'link', url: 'https://example.com/later' },
@@ -161,7 +161,7 @@ describe('groupLessonBlocks', () => {
     expect(groups[1]).toEqual({
       kind: 'links',
       links: [
-        { url: 'https://github.com/coderoadpl/task-1', label: 'GitHub', host: 'github.com' },
+        { url: 'https://github.com/acme-courses/task-1', label: 'GitHub', host: 'github.com' },
         {
           url: 'https://developer.mozilla.org/pl/docs/Web/HTML',
           label: 'developer.mozilla.org',
@@ -175,10 +175,10 @@ describe('groupLessonBlocks', () => {
     const groups = groupLessonBlocks([
       {
         type: 'link',
-        url: 'https://codesandbox.io/embed/github/coderoadpl/task-1?autoresize=1',
+        url: 'https://codesandbox.io/embed/github/acme-courses/task-1?autoresize=1',
         description: 'CodeSandbox',
       },
-      { type: 'embed', embedUrl: 'https://codepen.io/coderoad/pen/abcDEF' },
+      { type: 'embed', embedUrl: 'https://codepen.io/acme-courses/pen/abcDEF' },
       { type: 'embed', embedUrl: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ' },
     ]);
 
@@ -187,8 +187,8 @@ describe('groupLessonBlocks', () => {
         kind: 'sandbox',
         provider: 'codesandbox',
         providerName: 'CodeSandbox',
-        embedUrl: 'https://codesandbox.io/embed/github/coderoadpl/task-1?autoresize=1',
-        canonicalUrl: 'https://codesandbox.io/s/github/coderoadpl/task-1?autoresize=1',
+        embedUrl: 'https://codesandbox.io/embed/github/acme-courses/task-1?autoresize=1',
+        canonicalUrl: 'https://codesandbox.io/s/github/acme-courses/task-1?autoresize=1',
         caption: 'CodeSandbox',
         collapsed: false,
       },
@@ -196,8 +196,8 @@ describe('groupLessonBlocks', () => {
         kind: 'sandbox',
         provider: 'codepen',
         providerName: 'CodePen',
-        embedUrl: 'https://codepen.io/coderoad/embed/abcDEF',
-        canonicalUrl: 'https://codepen.io/coderoad/pen/abcDEF',
+        embedUrl: 'https://codepen.io/acme-courses/embed/abcDEF',
+        canonicalUrl: 'https://codepen.io/acme-courses/pen/abcDEF',
         caption: null,
         collapsed: false,
       },
@@ -245,18 +245,18 @@ describe('groupLessonBlocks', () => {
 
   it('renders a repeated link target once per block the author placed', () => {
     const groups = groupLessonBlocks([
-      { type: 'link', url: 'https://github.com/coderoadpl/task-1', description: 'GitHub' },
-      { type: 'link', url: 'https://github.com/coderoadpl/task-1', description: 'Repozytorium zadania' },
-      { type: 'link', url: 'https://github.com/coderoadpl/task-1' },
+      { type: 'link', url: 'https://github.com/acme-courses/task-1', description: 'GitHub' },
+      { type: 'link', url: 'https://github.com/acme-courses/task-1', description: 'Repozytorium zadania' },
+      { type: 'link', url: 'https://github.com/acme-courses/task-1' },
     ]);
 
     expect(groups).toEqual([
       {
         kind: 'links',
         links: [
-          { url: 'https://github.com/coderoadpl/task-1', label: 'GitHub', host: 'github.com' },
-          { url: 'https://github.com/coderoadpl/task-1', label: 'Repozytorium zadania', host: 'github.com' },
-          { url: 'https://github.com/coderoadpl/task-1', label: 'github.com', host: 'github.com' },
+          { url: 'https://github.com/acme-courses/task-1', label: 'GitHub', host: 'github.com' },
+          { url: 'https://github.com/acme-courses/task-1', label: 'Repozytorium zadania', host: 'github.com' },
+          { url: 'https://github.com/acme-courses/task-1', label: 'github.com', host: 'github.com' },
         ],
       },
     ]);
@@ -264,7 +264,7 @@ describe('groupLessonBlocks', () => {
 
   it('leaves an html block in place even when it holds a single anchor', () => {
     const blocks: PlayableLessonBlock[] = [
-      { type: 'html', html: '<p><a href="https://github.com/coderoadpl/task-1">repozytorium</a></p>' },
+      { type: 'html', html: '<p><a href="https://github.com/acme-courses/task-1">repozytorium</a></p>' },
       { type: 'html', html: '<p><a href="https://codesandbox.io/s/abc123">zadanie</a></p>' },
       { type: 'html', html: '<p>Zobacz <a href="https://example.com/a">a</a> i <a href="https://example.com/b">b</a></p>' },
     ];
@@ -273,7 +273,7 @@ describe('groupLessonBlocks', () => {
   });
 
   it('keeps a link section around an html block that repeats the same target', () => {
-    const repoUrl = 'https://github.com/coderoadpl/task-1';
+    const repoUrl = 'https://github.com/acme-courses/task-1';
     const htmlBlock: PlayableLessonBlock = {
       type: 'html',
       html: `<p><a href="${repoUrl}">repozytorium</a></p>`,
@@ -290,7 +290,7 @@ describe('groupLessonBlocks', () => {
       labelsOf([
         { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex' },
         { type: 'html', html: '<p>Notatki</p>' },
-        { type: 'link', url: 'https://www.github.com/coderoadpl/task-1/' },
+        { type: 'link', url: 'https://www.github.com/acme-courses/task-1/' },
       ]),
     ).toEqual(['developer.mozilla.org', 'github.com']);
   });
@@ -316,8 +316,8 @@ describe('groupLessonBlocks', () => {
   it('keeps a repeated target on its host when the path cannot tell the chips apart', () => {
     expect(
       labelsOf([
-        { type: 'link', url: 'https://github.com/coderoadpl/task-1' },
-        { type: 'link', url: 'https://github.com/coderoadpl/task-1' },
+        { type: 'link', url: 'https://github.com/acme-courses/task-1' },
+        { type: 'link', url: 'https://github.com/acme-courses/task-1' },
         { type: 'link', url: 'https://example.com/a' },
         { type: 'link', url: 'https://example.com/b' },
       ]),

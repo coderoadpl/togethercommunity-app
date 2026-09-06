@@ -72,6 +72,7 @@ import type {
   TenantDomain,
   TenantDomainEventKind,
   TenantDomainProvider,
+  TenantRedirect,
   DnsRecord,
   TenantSecret,
   TenantSecretKey,
@@ -222,16 +223,6 @@ export interface CourseLessonRepository {
   create(tenantId: string, lesson: CourseLesson): Promise<void>;
   update(tenantId: string, lesson: CourseLesson, version?: EntityVersionRecord): Promise<CourseLesson | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
-}
-
-/**
- * Imported content keeps the identifier of the system it came from in `legacyId`;
- * row ids are allocated independently, so links minted by that system resolve here.
- */
-export interface LegacyContentLocator {
-  findCourse(tenantId: string, legacyId: string): Promise<Course | null>;
-  findModule(tenantId: string, legacyId: string): Promise<CourseModule | null>;
-  findLesson(tenantId: string, legacyId: string): Promise<CourseLesson | null>;
 }
 
 export interface CourseLessonPreview {
@@ -858,6 +849,25 @@ export interface ImportUsersRepository extends ImportUsersReader {
   commit(tenantId: string, mutation: ImportUsersMutation): Promise<'saved' | 'conflict'>;
 }
 
+export interface TenantRedirectReader {
+  findByFromPath(tenantId: string, fromPath: string): Promise<TenantRedirect | null>;
+  findById(tenantId: string, redirectId: string): Promise<TenantRedirect | null>;
+  listByTenant(tenantId: string): Promise<TenantRedirect[]>;
+}
+
+export type ImportRedirectMutation = {
+  action: 'created' | 'updated' | 'unchanged';
+  resource: TenantRedirect;
+  event: ImportAuditEvent;
+};
+
+export interface ImportRedirectRepository extends TenantRedirectReader {
+  commit(
+    tenantId: string,
+    mutation: ImportRedirectMutation,
+  ): Promise<'saved' | 'conflict' | 'path_taken'>;
+}
+
 export interface ApiKeyRateLimitRepository {
   claim(tenantId: string, input: {
     apiKeyId: string;
@@ -890,6 +900,11 @@ export interface TenantSecretRepository {
   findByKey(tenantId: string, key: TenantSecretKey): Promise<TenantSecret | null>;
   upsert(tenantId: string, secret: TenantSecret): Promise<TenantSecret>;
   delete(tenantId: string, key: TenantSecretKey): Promise<boolean>;
+}
+
+export interface TenantSecretScanPort {
+  listAll(): Promise<TenantSecret[]>;
+  deleteById(id: string): Promise<boolean>;
 }
 
 export interface SecretCrypto {

@@ -12,7 +12,7 @@
 
 ## Why this cut
 
-The parity sprint (`tasks/mvp-parity.md`) delivered a legacy-shaped product:
+The first delivery sprint shipped a course-delivery product:
 courses, entitlements, progress, checkout, panel, i18n. The PRD, however,
 promises a **platform**, and the gap is no longer "features" but five
 independent surfaces with different owners, different external dependencies and

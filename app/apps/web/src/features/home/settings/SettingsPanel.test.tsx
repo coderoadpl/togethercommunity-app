@@ -130,8 +130,8 @@ const customDomainEntry = (input: {
 const initialRouting = () => ({
   tenantHost: 'akademia.together.example',
   customDomains: [
-    customDomainEntry({ domain: 'kurs.coderoad.example', status: 'active' }),
-    customDomainEntry({ domain: 'nowa.coderoad.example', status: 'pending-dns' }),
+    customDomainEntry({ domain: 'kurs.acme.example', status: 'active' }),
+    customDomainEntry({ domain: 'nowa.acme.example', status: 'pending-dns' }),
   ],
   customDomainTarget: 'cname.vercel-dns.com',
   canAddCustomDomain: true,
@@ -148,6 +148,16 @@ const installSettingsBackend = (
   const courseList = courses === 'unavailable' ? [] : courses;
   const domainCalls: string[] = [];
   let routingState = initialRouting();
+  const redirectList = [{
+    id: 'redirect-1',
+    tenantId: 'tenant-1',
+    fromPath: '/kurs/javascript',
+    targetKind: 'course',
+    targetId: 'course-1',
+    targetPath: '/my/courses/course-1',
+    permanent: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }];
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
@@ -167,6 +177,10 @@ const installSettingsBackend = (
     http.get('/api/tenant/routing', () => HttpResponse.json({
       ok: true,
       data: { routing: routingState },
+    })),
+    http.get('/api/tenant/redirects', () => HttpResponse.json({
+      ok: true,
+      data: { redirects: redirectList },
     })),
     http.post('/api/tenant/domains', async ({ request }) => {
       const body = domainRequestSchema.parse(await request.json());
@@ -286,13 +300,22 @@ describe('SettingsPanel information architecture', () => {
     expect(screen.queryByTestId('billing-portal-url')).not.toBeInTheDocument();
   });
 
+  it('lists the imported redirects with their count', async () => {
+    renderPanel();
+
+    expect(await screen.findByTestId('tenant-redirects-count'))
+      .toHaveTextContent(pl.tenantDomains.redirectsCount({ count: 1 }));
+    expect(await screen.findByTestId('tenant-redirect-redirect-1'))
+      .toHaveTextContent('/kurs/javascript → /my/courses/course-1');
+  });
+
   it('shows the workspace address with verified and pending custom domains', async () => {
     renderPanel();
 
     expect(await screen.findByText('akademia.together.example')).toBeInTheDocument();
-    expect(await screen.findByTestId('tenant-domain-status-kurs.coderoad.example'))
+    expect(await screen.findByTestId('tenant-domain-status-kurs.acme.example'))
       .toHaveTextContent(pl.tenantDomains.statusActive);
-    const pending = await screen.findByTestId('tenant-domain-nowa.coderoad.example');
+    const pending = await screen.findByTestId('tenant-domain-nowa.acme.example');
     expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(pending).toHaveTextContent('cname.vercel-dns.com');
   });
@@ -301,14 +324,14 @@ describe('SettingsPanel information architecture', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPanel();
 
-    await screen.findByTestId('tenant-domain-kurs.coderoad.example');
+    await screen.findByTestId('tenant-domain-kurs.acme.example');
     expect(screen.queryByTestId('tenant-domain-warning')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.coderoad.example'));
+    await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.acme.example'));
 
     expect(await screen.findByTestId('tenant-domain-warning'))
       .toHaveTextContent(pl.tenantDomains.firstDomainWarning);
-    expect(screen.getByTestId('tenant-domain-nowa.coderoad.example')).toBeInTheDocument();
+    expect(screen.getByTestId('tenant-domain-nowa.acme.example')).toBeInTheDocument();
     confirm.mockRestore();
   });
 
@@ -321,7 +344,7 @@ describe('SettingsPanel information architecture', () => {
       { status: 409 },
     )));
 
-    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.coderoad.example');
+    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.acme.example');
     await userEvent.click(screen.getByTestId('tenant-domain-add'));
 
     expect(await screen.findByTestId('tenant-domain-error'))
@@ -343,7 +366,7 @@ describe('SettingsPanel information architecture', () => {
       { status: 502 },
     )));
 
-    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.coderoad.example');
+    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.acme.example');
     await userEvent.click(screen.getByTestId('tenant-domain-add'));
 
     expect(await screen.findByTestId('tenant-domain-error'))
@@ -353,7 +376,7 @@ describe('SettingsPanel information architecture', () => {
   it('shows the recorded error after a check the provider failed', async () => {
     renderPanel();
 
-    await screen.findByTestId('tenant-domain-check-nowa.coderoad.example');
+    await screen.findByTestId('tenant-domain-check-nowa.acme.example');
     let checked = false;
     server.use(
       http.get('/api/tenant/routing', () => HttpResponse.json({
@@ -362,7 +385,7 @@ describe('SettingsPanel information architecture', () => {
           routing: {
             tenantHost: 'akademia.together.example',
             customDomains: [{
-              domain: 'nowa.coderoad.example',
+              domain: 'nowa.acme.example',
               verified: false,
               status: checked ? 'error' : 'pending-dns',
               records: [],
@@ -383,38 +406,38 @@ describe('SettingsPanel information architecture', () => {
       }),
     );
 
-    await userEvent.click(screen.getByTestId('tenant-domain-check-nowa.coderoad.example'));
+    await userEvent.click(screen.getByTestId('tenant-domain-check-nowa.acme.example'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('tenant-domain-status-nowa.coderoad.example'))
+      expect(screen.getByTestId('tenant-domain-status-nowa.acme.example'))
         .toHaveTextContent(pl.tenantDomains.statusError);
     });
-    expect(screen.getByTestId('tenant-domain-nowa.coderoad.example'))
+    expect(screen.getByTestId('tenant-domain-nowa.acme.example'))
       .toHaveTextContent('Vercel is unreachable');
   });
 
   it('adds a domain and lists it as waiting for DNS', async () => {
     const { domainCalls } = renderPanel();
 
-    await userEvent.type(await screen.findByTestId('tenant-domain-input'), 'sklep.coderoad.example');
+    await userEvent.type(await screen.findByTestId('tenant-domain-input'), 'sklep.acme.example');
     await userEvent.click(screen.getByTestId('tenant-domain-add'));
 
-    const added = await screen.findByTestId('tenant-domain-sklep.coderoad.example');
+    const added = await screen.findByTestId('tenant-domain-sklep.acme.example');
     expect(added).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(added).toHaveTextContent('cname.vercel-dns.com');
-    expect(domainCalls).toEqual(['add:sklep.coderoad.example']);
+    expect(domainCalls).toEqual(['add:sklep.acme.example']);
   });
 
   it('checks a pending domain and shows it as active', async () => {
     const { domainCalls } = renderPanel();
 
-    await userEvent.click(await screen.findByTestId('tenant-domain-check-nowa.coderoad.example'));
+    await userEvent.click(await screen.findByTestId('tenant-domain-check-nowa.acme.example'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('tenant-domain-status-nowa.coderoad.example'))
+      expect(screen.getByTestId('tenant-domain-status-nowa.acme.example'))
         .toHaveTextContent(pl.tenantDomains.statusActive);
     });
-    expect(domainCalls).toEqual(['check:nowa.coderoad.example']);
+    expect(domainCalls).toEqual(['check:nowa.acme.example']);
   });
 
   it('confirms a copied DNS record only when the clipboard accepts it', async () => {
@@ -422,7 +445,7 @@ describe('SettingsPanel information architecture', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderPanel();
 
-    const record = await screen.findByTestId('dns-record-CNAME-nowa.coderoad.example');
+    const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
     await userEvent.click(within(record).getByRole('button'));
 
     expect(writeText).toHaveBeenCalledWith('cname.vercel-dns.com');
@@ -435,7 +458,7 @@ describe('SettingsPanel information architecture', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderPanel();
 
-    const record = await screen.findByTestId('dns-record-CNAME-nowa.coderoad.example');
+    const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
     await userEvent.click(within(record).getByRole('button'));
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());
@@ -446,16 +469,16 @@ describe('SettingsPanel information architecture', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const { domainCalls } = renderPanel();
 
-    await userEvent.click(await screen.findByTestId('tenant-domain-remove-kurs.coderoad.example'));
+    await userEvent.click(await screen.findByTestId('tenant-domain-remove-kurs.acme.example'));
     expect(domainCalls).toEqual([]);
 
     confirm.mockReturnValue(true);
-    await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.coderoad.example'));
+    await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.acme.example'));
 
     await waitFor(() => {
-      expect(screen.queryByTestId('tenant-domain-kurs.coderoad.example')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('tenant-domain-kurs.acme.example')).not.toBeInTheDocument();
     });
-    expect(domainCalls).toEqual(['remove:kurs.coderoad.example']);
+    expect(domainCalls).toEqual(['remove:kurs.acme.example']);
     confirm.mockRestore();
   });
 

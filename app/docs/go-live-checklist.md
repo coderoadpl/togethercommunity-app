@@ -66,6 +66,10 @@ Production boot rejects development defaults for `BETTER_AUTH_SECRET`
 `apps/server/src/env.ts:149-154`), and `CRON_SECRET`
 (`apps/server/src/env.ts:60`, `apps/server/src/env.ts:156-162`).
 
+Set `OPERATOR_SECRET` too: it is the one name every environment uses for the
+internal operator routes the workflows call, and the per-environment names it
+falls back to are deprecated.
+
 Generate and set every secret before deployment. Generate the master key with:
 
 ```sh
@@ -134,10 +138,9 @@ the session cookie has `Secure`, `HttpOnly`, and `SameSite=Lax`.
 
 **STATUS:** owner-action
 
-The legacy platform's read-capable AWS key was stored in the development
-database for `akademia-samouka` as `s3.accessKeyId` and `s3.secretAccessKey`
-(recorded in the import-rehearsal audit, kept in the owner's private archive).
-The SigV4 presigner consumes those
+A read-capable AWS key carried over from a previous platform may sit in the
+development database of an imported tenant as `s3.accessKeyId` and
+`s3.secretAccessKey`. The SigV4 presigner consumes those
 secrets through `core/server/usecases/lesson-media.ts` and
 `adapters/storage/s3.ts`.
 
@@ -160,8 +163,8 @@ Deactivate and then delete the legacy key in IAM. Delete the development copy
 with:
 
 ```sh
-pnpm --silent run cli --tenant akademia-samouka tenant-secret delete s3.accessKeyId
-pnpm --silent run cli --tenant akademia-samouka tenant-secret delete s3.secretAccessKey
+pnpm --silent run cli --tenant <slug> tenant-secret delete s3.accessKeyId
+pnpm --silent run cli --tenant <slug> tenant-secret delete s3.secretAccessKey
 ```
 
 Deletion is implemented in `apps/cli/src/main.ts:2383-2390`. Open an imported

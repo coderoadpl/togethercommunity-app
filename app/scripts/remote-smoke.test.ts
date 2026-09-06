@@ -8,10 +8,16 @@ import {
 import {
   remoteSmokeOptionsFromEnv,
   runRemoteSmoke,
+  runStagingSmoke,
+  stagingSmokeOptionsFromEnv,
+  VERCEL_BYPASS_HEADER,
   type RemoteSmokeOptions,
+  type StagingSmokeOptions,
 } from './remote-smoke.js';
 
 const SHA = 'abc123';
+const PRODUCTION_FINGERPRINT = '4ef296aa90bd';
+const STAGING_FINGERPRINT = 'a71c3d05e9f2';
 
 const healthPayload = (overrides: Record<string, unknown> = {}) => ({
   ok: true,
@@ -39,7 +45,7 @@ const deepHealthPayload = (failing: string[] = []) => ({
     ok: failing.length === 0,
     checkedAt: '2026-09-05T12:00:00.000Z',
     failing,
-    checks: failing.map((name) => ({ name, ok: false, ms: 3, error: 'boom' })),
+    checks: failing.map((name) => ({ name, ok: false, ms: 3, error: 'boom', skipped: null })),
   },
 });
 
@@ -75,9 +81,9 @@ const mePayload = {
     name: 'Smoke',
     emailVerified: true,
     tenant: {
-      id: 't-coderoad',
-      slug: 'coderoad',
-      name: 'CodeRoad',
+      id: 't-acme',
+      slug: 'acme',
+      name: 'Acme',
       staffRole: null,
       memberId: 'member-1',
       banned: false,
@@ -90,7 +96,7 @@ const coursesPayload = {
   data: {
     courses: [{
       id: 'course-1',
-      tenantId: 't-coderoad',
+      tenantId: 't-acme',
       name: SMOKE_TENANT_COURSE_TITLE,
       description: '',
       imageUrl: null,
@@ -153,7 +159,7 @@ const playbackPayload = (kind: 'bunny' | 'unavailable') => ({
 });
 
 const unpinnedOptions: RemoteSmokeOptions = {
-  baseUrl: 'https://coderoad.togethercommunity.app/',
+  baseUrl: 'https://acme.togethercommunity.app/',
   tenant: 'acme',
   publicPagePath: '/',
   member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: 'smoke-password' },
@@ -335,10 +341,257 @@ describe('remote smoke', () => {
   });
 });
 
+const stagingHealth = (overrides: Record<string, unknown> = {}) =>
+  healthPayload({
+    environment: 'staging',
+    production: false,
+    databaseFingerprint: STAGING_FINGERPRINT,
+    ...overrides,
+  });
+
+const stagingOptions: StagingSmokeOptions = {
+  baseUrl: 'https://acme.staging.togethercommunity.app/',
+  tenant: 'acme',
+  bypassSecret: 'bypass-secret',
+  productionFingerprint: PRODUCTION_FINGERPRINT,
+  expectedFingerprint: STAGING_FINGERPRINT,
+  sanitized: true,
+};
+
+const detailOf = (result: { checks: { name: string; detail: string | null }[] }, name: string) =>
+  result.checks.find((check) => check.name === name)?.detail;
+
+describe('staging smoke', () => {
+  it('accepts a staging deployment answering from the pinned staging database', async () => {
+    const request = stubbedFetch({ health: stagingHealth() });
+
+    const result = await runStagingSmoke(stagingOptions, request);
+
+    expect(result.ok).toBe(true);
+    expect(result.failing).toEqual([]);
+    expect(result.observedFingerprint).toBe(STAGING_FINGERPRINT);
+    expect(result.checks.map((check) => check.name)).toEqual([
+      'health-attestation',
+      'staging-environment',
+      'database-fingerprint',
+      'health-deep',
+    ]);
+    expect(request.mock.calls).toHaveLength(2);
+    expect(request.mock.calls.every(([, init]) =>
+      new Headers(init?.headers).get(VERCEL_BYPASS_HEADER) === 'bypass-secret')).toBe(true);
+  });
+
+  it('fails when staging answers from the production database', async () => {
+    const result = await runStagingSmoke(
+      stagingOptions,
+      stubbedFetch({ health: stagingHealth({ databaseFingerprint: PRODUCTION_FINGERPRINT }) }),
+    );
+
+    expect(result.failing).toEqual(['database-fingerprint']);
+    expect(result.unpinnedOnly).toBe(false);
+    expect(detailOf(result, 'database-fingerprint'))
+      .toBe(`staging answers from the production database (fingerprint ${PRODUCTION_FINGERPRINT})`);
+  });
+
+  it('reports the production database as an incident even while the pin is missing', async () => {
+    const result = await runStagingSmoke(
+      { ...stagingOptions, expectedFingerprint: null },
+      stubbedFetch({ health: stagingHealth({ databaseFingerprint: PRODUCTION_FINGERPRINT }) }),
+    );
+
+    expect(result.failing).toEqual(['database-fingerprint']);
+    expect(result.unpinnedOnly).toBe(false);
+  });
+
+  it('reports more than the missing pin when another check fails too', async () => {
+    const result = await runStagingSmoke(
+      { ...stagingOptions, expectedFingerprint: null },
+      stubbedFetch({
+        health: stagingHealth(),
+        deep: { payload: deepHealthPayload(['tenant-settings']), status: 500 },
+      }),
+    );
+
+    expect(result.failing).toEqual(['database-fingerprint', 'health-deep']);
+    expect(result.unpinnedOnly).toBe(false);
+  });
+
+  it('fails with the pin instruction while the staging fingerprint is unset', async () => {
+    const result = await runStagingSmoke(
+      { ...stagingOptions, expectedFingerprint: null },
+      stubbedFetch({ health: stagingHealth() }),
+    );
+
+    expect(result.failing).toEqual(['database-fingerprint']);
+    expect(result.observedFingerprint).toBe(STAGING_FINGERPRINT);
+    expect(result.unpinnedOnly).toBe(true);
+    expect(detailOf(result, 'database-fingerprint'))
+      .toBe(`the staging database is unpinned: set STAGING_DATABASE_FINGERPRINT=${STAGING_FINGERPRINT}`);
+  });
+
+  it('fails when another database than the pinned one answers', async () => {
+    const result = await runStagingSmoke(
+      stagingOptions,
+      stubbedFetch({ health: stagingHealth({ databaseFingerprint: 'ff00ff00ff00' }) }),
+    );
+
+    expect(result.failing).toEqual(['database-fingerprint']);
+    expect(detailOf(result, 'database-fingerprint'))
+      .toBe(`expected database fingerprint ${STAGING_FINGERPRINT}, received ff00ff00ff00`);
+  });
+
+  it('fails when the staging host reports the production posture', async () => {
+    const result = await runStagingSmoke(
+      stagingOptions,
+      stubbedFetch({
+        health: healthPayload({ databaseFingerprint: PRODUCTION_FINGERPRINT }),
+      }),
+    );
+
+    expect(result.failing).toEqual(['staging-environment', 'database-fingerprint']);
+    expect(detailOf(result, 'staging-environment'))
+      .toBe('health reports environment "production", not staging');
+  });
+
+  it('fails when the staging deployment reports its database down', async () => {
+    const result = await runStagingSmoke(
+      stagingOptions,
+      stubbedFetch({ health: stagingHealth({ database: 'down' }) }),
+    );
+
+    expect(result.failing).toEqual(['staging-environment']);
+    expect(detailOf(result, 'staging-environment')).toBe('health reported the database down');
+  });
+
+  it('fails on a stale schema', async () => {
+    const result = await runStagingSmoke(
+      stagingOptions,
+      stubbedFetch({ health: stagingHealth({ schemaCurrent: false }) }),
+    );
+
+    expect(result.failing).toEqual(['staging-environment']);
+    expect(detailOf(result, 'staging-environment')).toBe('health reported a stale schema');
+  });
+
+  it('fails when deep health does not answer 200', async () => {
+    const result = await runStagingSmoke(stagingOptions, stubbedFetch({
+      health: stagingHealth(),
+      deep: { payload: deepHealthPayload(['tenant-settings']), status: 500 },
+    }));
+
+    expect(result.failing).toEqual(['health-deep']);
+    expect(detailOf(result, 'health-deep')).toBe('deep health failed: tenant-settings');
+  });
+
+  it('skips the database assertions when health itself does not answer', async () => {
+    const result = await runStagingSmoke(stagingOptions, stubbedFetch({
+      health: { ok: false, error: { code: 'INTERNAL' } },
+    }));
+
+    expect(result.failing).toEqual(['health-attestation']);
+    expect(result.skipped).toEqual(['staging-environment', 'database-fingerprint']);
+    expect(result.observedFingerprint).toBeNull();
+  });
+
+  it('warns instead of failing on an unsanitized secret-decryption failure', async () => {
+    const result = await runStagingSmoke({ ...stagingOptions, sanitized: false }, stubbedFetch({
+      health: stagingHealth(),
+      deep: { payload: deepHealthPayload(['tenant-secret-decryption']), status: 500 },
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(result.failing).toEqual([]);
+    expect(result.checks.find((check) => check.name === 'health-deep')?.status).toBe('warning');
+    expect(detailOf(result, 'health-deep')).toBe('deep health failed: tenant-secret-decryption');
+  });
+
+  it('warns instead of failing on an unsanitized storage-presign failure', async () => {
+    const result = await runStagingSmoke({ ...stagingOptions, sanitized: false }, stubbedFetch({
+      health: stagingHealth(),
+      deep: {
+        payload: deepHealthPayload(['tenant-secret-decryption', 'storage-presign']),
+        status: 500,
+      },
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(result.failing).toEqual([]);
+    expect(result.checks.find((check) => check.name === 'health-deep')?.status).toBe('warning');
+  });
+
+  it('still fails an unsanitized deployment on a deep-health check outside the warning set', async () => {
+    const result = await runStagingSmoke({ ...stagingOptions, sanitized: false }, stubbedFetch({
+      health: stagingHealth(),
+      deep: {
+        payload: deepHealthPayload(['tenant-secret-decryption', 'tenant-settings']),
+        status: 500,
+      },
+    }));
+
+    expect(result.ok).toBe(false);
+    expect(result.failing).toEqual(['health-deep']);
+    expect(result.checks.find((check) => check.name === 'health-deep')?.status).toBe('failed');
+  });
+
+  it('still fails a sanitized deployment on the same tenant-secret-decryption check', async () => {
+    const result = await runStagingSmoke({ ...stagingOptions, sanitized: true }, stubbedFetch({
+      health: stagingHealth(),
+      deep: { payload: deepHealthPayload(['tenant-secret-decryption']), status: 500 },
+    }));
+
+    expect(result.ok).toBe(false);
+    expect(result.failing).toEqual(['health-deep']);
+    expect(result.checks.find((check) => check.name === 'health-deep')?.status).toBe('failed');
+  });
+});
+
+describe('stagingSmokeOptionsFromEnv', () => {
+  const environment = {
+    STAGING_BASE_URL: 'https://acme.staging.togethercommunity.app',
+    VERCEL_AUTOMATION_BYPASS_SECRET: 'bypass-secret',
+    PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
+    STAGING_DATABASE_FINGERPRINT: STAGING_FINGERPRINT,
+  };
+
+  it('reads the staging target', () => {
+    expect(stagingSmokeOptionsFromEnv(environment)).toEqual({
+      baseUrl: environment.STAGING_BASE_URL,
+      tenant: 'acme',
+      bypassSecret: 'bypass-secret',
+      productionFingerprint: PRODUCTION_FINGERPRINT,
+      expectedFingerprint: STAGING_FINGERPRINT,
+      sanitized: true,
+    });
+  });
+
+  it('defaults to sanitized when the workflow does not report otherwise', () => {
+    expect(stagingSmokeOptionsFromEnv(environment)?.sanitized).toBe(true);
+    expect(stagingSmokeOptionsFromEnv({ ...environment, SANITIZED: '' })?.sanitized).toBe(true);
+  });
+
+  it('reads an unsanitized deployment from the workflow-exported flag', () => {
+    expect(stagingSmokeOptionsFromEnv({ ...environment, SANITIZED: 'false' })?.sanitized)
+      .toBe(false);
+  });
+
+  it('leaves the staging database unpinned when its variable is unset', () => {
+    expect(stagingSmokeOptionsFromEnv({ ...environment, STAGING_DATABASE_FINGERPRINT: '' })
+      ?.expectedFingerprint).toBeNull();
+  });
+
+  it('runs no probe without the bypass secret or the production fingerprint', () => {
+    expect(stagingSmokeOptionsFromEnv({ ...environment, VERCEL_AUTOMATION_BYPASS_SECRET: '' }))
+      .toBeNull();
+    expect(stagingSmokeOptionsFromEnv({ ...environment, PRODUCTION_DATABASE_FINGERPRINT: '' }))
+      .toBeNull();
+    expect(stagingSmokeOptionsFromEnv({ ...environment, STAGING_BASE_URL: '' })).toBeNull();
+  });
+});
+
 describe('remoteSmokeOptionsFromEnv', () => {
   const environment = {
-    BASE_URL: 'https://coderoad.togethercommunity.app',
-    SMOKE_TENANT: 'coderoad',
+    BASE_URL: 'https://studio.togethercommunity.app',
+    SMOKE_TENANT: 'studio',
     EXPECTED_SHA: SHA,
     SMOKE_MEMBER_EMAIL: 'smoke@together.dev',
     SMOKE_MEMBER_PASSWORD: 'smoke-password',
@@ -347,7 +600,7 @@ describe('remoteSmokeOptionsFromEnv', () => {
   it('reads the deployment under test', () => {
     expect(remoteSmokeOptionsFromEnv(environment)).toEqual({
       baseUrl: environment.BASE_URL,
-      tenant: 'coderoad',
+      tenant: 'studio',
       publicPagePath: '/',
       expectedSha: SHA,
       member: { status: 'configured', email: 'smoke@together.dev', password: 'smoke-password' },
@@ -378,7 +631,7 @@ describe('remoteSmokeOptionsFromEnv', () => {
   it('signs nobody in without the member password', () => {
     expect(remoteSmokeOptionsFromEnv({
       BASE_URL: environment.BASE_URL,
-      SMOKE_MEMBER_EMAIL: 'real-member@coderoad.pl',
+      SMOKE_MEMBER_EMAIL: 'real-member@acme.pl',
     })?.member).toEqual({ status: 'incomplete', missing: 'SMOKE_MEMBER_PASSWORD' });
   });
 

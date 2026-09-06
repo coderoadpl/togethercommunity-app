@@ -122,6 +122,7 @@ import {
   SpaceFeedRoute,
   SpaceThreadRoute,
   StartRoute,
+  validateLessonSearch,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
@@ -194,10 +195,6 @@ const courseStructureRoute = createRoute({
   path: MEMBER_ROUTE_PATHS.course,
   component: CourseStructureRoute,
 });
-const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {
-  const thread = search['thread'];
-  return typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {};
-};
 const lessonPlayerRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.lesson,

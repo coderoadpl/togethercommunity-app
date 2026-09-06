@@ -284,7 +284,7 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import ${dependency.type} (see PRD §3.2)',
           rules: [
-            { from: ['web-page-decorator'], allow: ['visual-support', 'web-fixture', 'web-theme', 'web-i18n', 'web-ui', 'web-notifications', 'web-branding', 'web-features'] },
+            { from: ['web-page-decorator'], allow: ['core-contract', 'web-routes', 'visual-support', 'web-fixture', 'web-theme', 'web-i18n', 'web-ui', 'web-notifications', 'web-branding', 'web-features'] },
             { from: ['visual-support'], allow: ['visual-support', 'core-client', 'core-contract'] },
             { from: ['web-fixture'], allow: ['visual-support', 'web-fixture', 'core-client', 'core-contract'] },
             { from: ['web-fixture-api'], allow: ['web-api', 'web-fixture'] },

@@ -31,8 +31,8 @@ import {
 } from './server-harness.js';
 import { ensureWebBundleFresh } from './web-bundle-freshness.js';
 import { passwordFixture } from './password-fixture.js';
+import { SmokeFailure } from './smoke-failure.js';
 
-class SmokeFailure extends Error {}
 const fail = (message: string): never => {
   throw new SmokeFailure(message);
 };

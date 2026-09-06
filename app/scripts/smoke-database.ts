@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { SmokeFailure } from './smoke-failure.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { run, tsxBin } from './server-harness.js';
 const SMOKE_DB = uniqueTestDatabaseName('together_smoke');
@@ -8,7 +9,7 @@ export const baseDatabaseUrl =
 const smokeUrlObject = new URL(baseDatabaseUrl);
 smokeUrlObject.pathname = `/${SMOKE_DB}`;
 export const smokeDatabaseUrl = smokeUrlObject.toString();
-const fail = (message: string): never => { throw new Error(message); };
+const fail = (message: string): never => { throw new SmokeFailure(message); };
 function assert(condition: boolean, message: string): asserts condition { if (!condition) fail(message); }
 export const setupDatabase = async (adminUrl: string): Promise<void> => {
   const client = new pg.Client({ connectionString: adminUrl });

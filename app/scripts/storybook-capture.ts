@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { applyChrome, settlePage, stubNonDeterministicRequests } from './visual-browser-setup.js';
 import { visualSeedTime } from './visual-request-policy.js';
 import { pageScreens } from './storybook-page-screens.js';
+import { SCREENS, VIEWPORTS, includesViewport, type ScreenSpec } from './visual-screen-inventory.js';
 import { comparePng } from './visual-png-compare.js';
 
 const output = z.string().min(1).parse(process.argv[2]);
@@ -35,21 +36,22 @@ const browser = await chromium.launch(executablePath ? { headless: true, executa
 const browserVersion = browser.version();
 const measurements: unknown[] = [];
 const startedAt = Date.now();
-pageScreens.push({
-  name: 'hosted-legal-document', auth: 'public', path: '/legal/privacy/v/1',
+const hostedLegalDocument = SCREENS.find((screen) => screen.name === 'hosted-legal-document');
+if (!hostedLegalDocument) throw new Error('Missing hosted legal document screen');
+const captureScreens: readonly ScreenSpec[] = [...pageScreens, {
+  ...hostedLegalDocument,
   ready: async (page) => {
     await page.frameLocator('iframe[title="Hosted legal document"]').getByTestId('hosted-legal-document').waitFor({ timeout: 20000 });
   },
   settled: async (page) => {
     await page.frameLocator('iframe[title="Hosted legal document"]').locator('body').evaluate(async () => { await document.fonts.ready; });
   },
-});
+}];
 try {
-  for (const spec of pageScreens.filter((entry) => (process.argv[3]?.split(',') ?? ['lesson', 'start', 'space-feed', 'hosted-legal-document']).includes(entry.name))) {
+  for (const spec of captureScreens.filter((entry) => (process.argv[3]?.split(',') ?? ['lesson', 'start', 'space-feed', 'hosted-legal-document']).includes(entry.name))) {
     const screen = spec.name;
-    for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'mobile', width: 390, height: 844 }, { name: 'mobile-375', width: 375, height: 812 }]) {
-      if (spec.viewports && !spec.viewports.includes(viewport.name)) continue;
-      if (spec.auth !== 'member' && viewport.name === 'mobile-375') continue;
+    for (const viewport of VIEWPORTS) {
+      if (!includesViewport(spec, viewport)) continue;
       for (const mode of ['light']) {
         const title = { lesson: 'lessonplayer', start: 'start', 'space-feed': 'spacefeed', 'hosted-legal-document': 'hostedlegaldocument' }[screen];
         const id = title ? `pages-${title}--${mode}-${viewport.name === 'desktop' ? 'desktop' : 'mobile'}` : `${screen}--shadcn--${viewport.name}`;

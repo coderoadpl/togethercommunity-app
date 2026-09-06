@@ -2,30 +2,19 @@ import { useEffect, useState } from 'react';
 import type { Decorator } from '@storybook/react-vite';
 import { CssBaseline, GlobalStyles } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider, useParams } from '@tanstack/react-router';
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { z } from 'zod';
+import { MEMBER_ROUTE_PATHS } from '#core/contract/index.js';
+import { HomeRoute } from '../routes/home.js';
+import { CommunityRoute, CourseRoute, CourseStructureRoute, LessonPlayerRoute, MemberAccountRoute, MemberShellRoute, MyCoursesRoute, MyProductsRoute, SearchRoute, SpaceFeedRoute, StartRoute, validateLessonSearch } from '../routes/member.js';
 import { TenantBrandingBoundary } from '../branding.js';
 import { AppChromeProvider } from '../components/ui/app-chrome.js';
 import { LanguageProvider } from '../i18n/index.js';
 import { NotificationsTransportProvider } from '../notifications-transport.js';
 import { colorSchemePreference, languagePreference, ThemeModeProvider } from '../theme-mode.js';
-import { LessonPlayerPage } from '../features/member/LessonPlayerPage.js';
-import { StartPage } from '../features/member/StartPage.js';
-import { SpaceFeedPage } from '../features/member/SpaceFeedPage.js';
-import { MemberShell } from '../features/member/shell/MemberShell.js';
 import { fixtureCalls, fixtureErrors, selectFixture } from './fixture-client.js';
 import { installStoryClock } from '../../../../scripts/story-clock.js';
 import { fixtureSchema } from './fixture-key.js';
-
-import { MemberAccountPage } from '../features/member/MemberAccountPage.js';
-import { SpacesListPage } from '../features/member/SpacesListPage.js';
-import { CourseStructurePage } from '../features/member/CourseStructurePage.js';
-import { MyCoursesPage } from '../features/member/MyCoursesPage.js';
-import { MyProductsPage } from '../features/member/MyProductsPage.js';
-import { CoursePage } from '../features/member/CoursePage.js';
-import { SearchPage } from '../features/member/SearchPage.js';
-
-import { AnonHomePage } from '../features/member/AnonHomePage.js';
 
 import { PanelLayout } from '../features/home/PanelLayout.js';
 import { DashboardPanel } from '../features/home/DashboardPanel.js';
@@ -42,16 +31,6 @@ import { SendsPanel, SendDetailPage, validateSendsSearch } from '../features/hom
 const PanelDashboard = () => { const { tenant, email } = usePanelContext(); return <><DashboardPanel /><StudioChecklistDock scope={`${tenant.id}:${email}`} /></>; };
 
 const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl') });
-const LessonRoute = () => {
-  const { courseId, lessonId } = useParams({ strict: false });
-  return <LessonPlayerPage courseId={courseId ?? ''} lessonId={lessonId ?? ''} />;
-};
-const CourseRoute = () => <CourseStructurePage courseId={useParams({ strict: false }).courseId ?? ''} />;
-const ProductRoute = () => <CoursePage productId={useParams({ strict: false }).productId ?? ''} />;
-const FeedRoute = () => {
-  const { spaceId } = useParams({ strict: false });
-  return <SpaceFeedPage spaceId={spaceId ?? ''} />;
-};
 const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> }) => {
   const [state] = useState(() => {
     const fixture = selectFixture(parameters.fixture);
@@ -60,10 +39,25 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
     Object.defineProperty(window, 'EventSource', { configurable: true, value: undefined });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false }, mutations: { retry: false } } });
     const root = createRootRoute({ component: Outlet });
-    const shell = createRoute({ getParentRoute: () => root, id: 'member', component: MemberShell });
-    const start = createRoute({ getParentRoute: () => shell, path: '/start', component: StartPage });
-    const lesson = createRoute({ getParentRoute: () => shell, path: '/my/courses/$courseId/lessons/$lessonId', component: LessonRoute });
-    const feed = createRoute({ getParentRoute: () => shell, path: '/community/$spaceId', component: FeedRoute });
+    const home = createRoute({ getParentRoute: () => root, path: '/', component: HomeRoute });
+    const shell = createRoute({ getParentRoute: () => root, id: 'member-shell', component: MemberShellRoute });
+    const memberRoutes = [
+      createRoute({ getParentRoute: () => shell, path: '/start', component: StartRoute }),
+      createRoute({
+        getParentRoute: () => shell,
+        path: MEMBER_ROUTE_PATHS.lesson,
+        validateSearch: validateLessonSearch,
+        component: LessonPlayerRoute,
+      }),
+      createRoute({ getParentRoute: () => shell, path: MEMBER_ROUTE_PATHS.communitySpace, component: SpaceFeedRoute }),
+      createRoute({ getParentRoute: () => shell, path: '/account', component: MemberAccountRoute }),
+      createRoute({ getParentRoute: () => shell, path: '/community', component: CommunityRoute }),
+      createRoute({ getParentRoute: () => shell, path: MEMBER_ROUTE_PATHS.course, component: CourseStructureRoute }),
+      createRoute({ getParentRoute: () => shell, path: MEMBER_ROUTE_PATHS.courseList, component: MyCoursesRoute }),
+      createRoute({ getParentRoute: () => shell, path: '/my/products', component: MyProductsRoute }),
+      createRoute({ getParentRoute: () => shell, path: '/my/course/$productId', component: CourseRoute }),
+      createRoute({ getParentRoute: () => shell, path: '/search', component: SearchRoute }),
+    ];
     const panel = createRoute({ getParentRoute: () => root, path: '/panel', component: PanelLayout });
     const panelRoutes = [
       createRoute({ getParentRoute: () => panel, path: 'members/$memberId', component: PanelMemberDetailRoute }),
@@ -89,8 +83,11 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
       createRoute({ getParentRoute: () => panel, path: 'marketing/documents', component: DocumentsPanel }),
       createRoute({ getParentRoute: () => panel, path: 'marketing/layouts', component: LayoutsPanel }),
     ];
-    const router = createRouter({ routeTree: root.addChildren([panel.addChildren(panelRoutes), shell.addChildren([start, lesson, feed, createRoute({ getParentRoute: () => shell, path: '/', component: AnonHomePage }),
-      createRoute({ getParentRoute: () => shell, path: '/account', component: MemberAccountPage }),      createRoute({ getParentRoute: () => shell, path: '/community', component: SpacesListPage }),      createRoute({ getParentRoute: () => shell, path: '/my/courses/$courseId', component: CourseRoute }),      createRoute({ getParentRoute: () => shell, path: '/my', component: MyCoursesPage }),      createRoute({ getParentRoute: () => shell, path: '/my/products', component: MyProductsPage }),      createRoute({ getParentRoute: () => shell, path: '/my/course/$productId', component: ProductRoute }),      createRoute({ getParentRoute: () => shell, path: '/search', component: SearchPage })])]), history: createMemoryHistory({ initialEntries: [fixture.route] }), defaultPendingMs: 0 });
+    const router = createRouter({
+      routeTree: root.addChildren([home, panel.addChildren(panelRoutes), shell.addChildren(memberRoutes)]),
+      history: createMemoryHistory({ initialEntries: [fixture.route] }),
+      defaultPendingMs: 0,
+    });
     return { queryClient, router };
   });
   useEffect(() => {

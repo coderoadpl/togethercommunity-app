@@ -39,6 +39,11 @@ export const CourseStructureRoute = () => {
   return <CourseStructurePage courseId={params.courseId ?? ''} />;
 };
 
+export const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {
+  const thread = search['thread'];
+  return typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {};
+};
+
 export const LessonPlayerRoute = () => {
   const params = useParams({ strict: false });
   const { thread } = useSearch({ strict: false });

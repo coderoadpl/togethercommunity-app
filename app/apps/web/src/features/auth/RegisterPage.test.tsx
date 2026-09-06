@@ -142,7 +142,8 @@ describe('RegisterPage', () => {
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
   });
 
-  it('requires accepting configured documents and submits consent with signup', async () => {
+  it.each(['akademia.localhost', 'courses.example.org'])('requires accepting configured documents and submits consent with signup on %s', async (hostname) => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
     const signupBodies: unknown[] = [];
     const signupLanguages: Array<string | null> = [];
     server.use(
@@ -162,7 +163,7 @@ describe('RegisterPage', () => {
       }),
     );
 
-    await renderRegisterPage('akademia.localhost');
+    await renderRegisterPage(hostname);
 
     const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).toBeRequired();

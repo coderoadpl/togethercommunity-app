@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { importLessonRecordSchema, importRecordSchemaFor } from './import.js';
+import {
+  importCourseRecordSchema,
+  importLessonRecordSchema,
+  importProductRecordSchema,
+  importRecordSchemaFor,
+} from './import.js';
 
 const lessonRecord = (embed: Record<string, unknown>) => ({
   importKey: 'lesson-l1',
@@ -45,5 +50,62 @@ describe('lesson import records', () => {
     );
 
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe('import asset URL fields', () => {
+  const courseAssetPath = '/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.jpg';
+  const productAssetPath = '/api/public/assets/product-cover/00000000-0000-4000-8000-000000000002.webp';
+
+  it('accepts host-relative public asset paths for course and product covers', () => {
+    expect(importCourseRecordSchema.safeParse({
+      importKey: 'course-l1',
+      name: 'Course',
+      description: '',
+      imageUrl: courseAssetPath,
+      moduleOrder: [],
+    }).success).toBe(true);
+    expect(importProductRecordSchema.safeParse({
+      importKey: 'product-l1',
+      type: 'course',
+      slug: 'course',
+      title: 'Course',
+      description: '',
+      coverUrl: productAssetPath,
+      priceCents: 0,
+      currency: 'PLN',
+      accessItems: [],
+    }).success).toBe(true);
+  });
+
+  it('rejects relative cover paths outside the public asset route', () => {
+    expect(importCourseRecordSchema.safeParse({
+      importKey: 'course-l1',
+      name: 'Course',
+      description: '',
+      imageUrl: '/covers/course.jpg',
+      moduleOrder: [],
+    }).success).toBe(false);
+    expect(importProductRecordSchema.safeParse({
+      importKey: 'product-l1',
+      type: 'course',
+      slug: 'course',
+      title: 'Course',
+      description: '',
+      coverUrl: '/covers/product.jpg',
+      priceCents: 0,
+      currency: 'PLN',
+      accessItems: [],
+    }).success).toBe(false);
+  });
+
+  it('accepts the same asset path through the m2m record schema', () => {
+    expect(importRecordSchemaFor('course').safeParse({
+      importKey: 'course-l1',
+      name: 'Course',
+      description: '',
+      imageUrl: courseAssetPath,
+      moduleOrder: [],
+    }).success).toBe(true);
   });
 });

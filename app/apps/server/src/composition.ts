@@ -571,6 +571,11 @@ export const selectSmokeTenantReseed = (
   };
 };
 
+export const selectSmokeTenantReseedSecret = (
+  env: Pick<Env, 'PROD_OPERATOR_SECRET' | 'CRON_SECRET' | 'EMAIL_DISPATCH_SECRET'>,
+): string =>
+  env.PROD_OPERATOR_SECRET ?? env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET;
+
 export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
   create: () => DevSinkPurge,
@@ -1265,7 +1270,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     emailDispatchCronSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     autoInvoiceDispatchSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
     domainCheckSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
-    smokeTenantReseedSecret: env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET,
+    smokeTenantReseedSecret: selectSmokeTenantReseedSecret(env),
     ...(smokeTenantReseed === undefined ? {} : { smokeTenantReseed }),
     checkTenantDomains: () => runTenantDomainChecks(tenantDomainDeps),
     devEmails: createDevEmailReader(db),

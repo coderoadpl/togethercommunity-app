@@ -33,7 +33,7 @@ runs:
         ALERT_MESSAGE: ${{ inputs.message }}
         ALERT_REQUIRED: ${{ inputs.required }}
       run: |
-        if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ALERT_SMS_PHONE" ]; then
+        if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$ALERT_SMS_PHONE" ]; then
           if [ "$ALERT_REQUIRED" = "true" ]; then
             echo "::error::SMS secrets absent - cannot send the SMS"
             exit 1

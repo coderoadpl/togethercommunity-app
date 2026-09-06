@@ -7,6 +7,7 @@ import { pl } from '../../i18n/pl.js';
 import {
   hostHasTenantSubdomain,
   isConfiguredBaseDomainHost,
+  isTenantHost,
   tenantUrl,
   usesPlatformAuthSurface,
 } from '../../lib/tenant.js';
@@ -121,6 +122,26 @@ describe('hostHasTenantSubdomain', () => {
   it('ignores custom domains and multi-label tenant hosts', () => {
     expect(hostHasTenantSubdomain('community.customer.example', 'togethercommunity.app')).toBe(false);
     expect(hostHasTenantSubdomain('a.b.togethercommunity.app', 'togethercommunity.app')).toBe(false);
+  });
+});
+
+describe('isTenantHost', () => {
+  it.each([
+    ['example.com', false],
+    ['start.example.com', false],
+    ['acme.example.com', true],
+    ['courses.example.org', true],
+  ])('classifies %s with a configured base domain', (hostname, expected) => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'example.com');
+
+    expect(isTenantHost(hostname)).toBe(expected);
+  });
+
+  it('does not treat a custom-looking host as a tenant without a configured base domain', () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', '');
+
+    expect(isTenantHost('courses.example.org')).toBe(false);
+    expect(isTenantHost('acme.localhost')).toBe(true);
   });
 });
 

@@ -355,6 +355,7 @@ const stagingOptions: StagingSmokeOptions = {
   bypassSecret: 'bypass-secret',
   productionFingerprint: PRODUCTION_FINGERPRINT,
   expectedFingerprint: STAGING_FINGERPRINT,
+  sanitized: true,
 };
 
 const detailOf = (result: { checks: { name: string; detail: string | null }[] }, name: string) =>
@@ -491,6 +492,57 @@ describe('staging smoke', () => {
     expect(result.skipped).toEqual(['staging-environment', 'database-fingerprint']);
     expect(result.observedFingerprint).toBeNull();
   });
+
+  it('warns instead of failing on an unsanitized secret-decryption failure', async () => {
+    const result = await runStagingSmoke({ ...stagingOptions, sanitized: false }, stubbedFetch({
+      health: stagingHealth(),
+      deep: { payload: deepHealthPayload(['tenant-secret-decryption']), status: 500 },
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(result.failing).toEqual([]);
+    expect(result.checks.find((check) => check.name === 'health-deep')?.status).toBe('warning');
+    expect(detailOf(result, 'health-deep')).toBe('deep health failed: tenant-secret-decryption');
+  });
+
+  it('warns instead of failing on an unsanitized storage-presign failure', async () => {
+    const result = await runStagingSmoke({ ...stagingOptions, sanitized: false }, stubbedFetch({
+      health: stagingHealth(),
+      deep: {
+        payload: deepHealthPayload(['tenant-secret-decryption', 'storage-presign']),
+        status: 500,
+      },
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(result.failing).toEqual([]);
+    expect(result.checks.find((check) => check.name === 'health-deep')?.status).toBe('warning');
+  });
+
+  it('still fails an unsanitized deployment on a deep-health check outside the warning set', async () => {
+    const result = await runStagingSmoke({ ...stagingOptions, sanitized: false }, stubbedFetch({
+      health: stagingHealth(),
+      deep: {
+        payload: deepHealthPayload(['tenant-secret-decryption', 'tenant-settings']),
+        status: 500,
+      },
+    }));
+
+    expect(result.ok).toBe(false);
+    expect(result.failing).toEqual(['health-deep']);
+    expect(result.checks.find((check) => check.name === 'health-deep')?.status).toBe('failed');
+  });
+
+  it('still fails a sanitized deployment on the same tenant-secret-decryption check', async () => {
+    const result = await runStagingSmoke({ ...stagingOptions, sanitized: true }, stubbedFetch({
+      health: stagingHealth(),
+      deep: { payload: deepHealthPayload(['tenant-secret-decryption']), status: 500 },
+    }));
+
+    expect(result.ok).toBe(false);
+    expect(result.failing).toEqual(['health-deep']);
+    expect(result.checks.find((check) => check.name === 'health-deep')?.status).toBe('failed');
+  });
 });
 
 describe('stagingSmokeOptionsFromEnv', () => {
@@ -508,7 +560,18 @@ describe('stagingSmokeOptionsFromEnv', () => {
       bypassSecret: 'bypass-secret',
       productionFingerprint: PRODUCTION_FINGERPRINT,
       expectedFingerprint: STAGING_FINGERPRINT,
+      sanitized: true,
     });
+  });
+
+  it('defaults to sanitized when the workflow does not report otherwise', () => {
+    expect(stagingSmokeOptionsFromEnv(environment)?.sanitized).toBe(true);
+    expect(stagingSmokeOptionsFromEnv({ ...environment, SANITIZED: '' })?.sanitized).toBe(true);
+  });
+
+  it('reads an unsanitized deployment from the workflow-exported flag', () => {
+    expect(stagingSmokeOptionsFromEnv({ ...environment, SANITIZED: 'false' })?.sanitized)
+      .toBe(false);
   });
 
   it('leaves the staging database unpinned when its variable is unset', () => {

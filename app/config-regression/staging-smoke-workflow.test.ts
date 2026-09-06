@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { API_PATHS } from '#core/contract/index.js';
 
 const workflowSchema = z.object({
+  permissions: z.record(z.string()).optional(),
   on: z.object({
     push: z.object({ branches: z.array(z.string()) }),
     schedule: z.array(z.object({ cron: z.string() })),
@@ -94,8 +95,28 @@ describe('staging-smoke workflow', () => {
       .toBe("steps.gate.outputs.run == 'true' && steps.alias.outputs.matched == 'true'");
     expect(step('Fail the run on a stale staging alias').if)
       .toBe("steps.alias.outputs.matched == 'false'");
-    expect(step('Send an SMS alert').if)
-      .toBe("steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'");
+    expect(step('Send an SMS alert').if).toBe(
+      "steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'"
+      + " && steps.previous.outputs.notify == 'true'",
+    );
+  });
+
+  it('pages only on a state change, not on a smoke that was already failing', () => {
+    const previous = step('Decide whether the failure is new');
+
+    expect(previous.if).toBe(
+      "steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'",
+    );
+    expect(job.steps.indexOf(previous))
+      .toBeLessThan(job.steps.indexOf(step('Send an SMS alert')));
+    expect(previous.env?.['GH_TOKEN']).toBe('${{ github.token }}');
+    expect(previous.run).toContain(
+      'actions/workflows/staging-smoke.yml/runs?branch=staging&status=completed&per_page=2',
+    );
+    expect(previous.run).toContain('notify=true');
+    expect(previous.run).toContain('notify=false');
+    expect(previous.run).toContain('::notice::');
+    expect(workflow.permissions?.['actions']).toBe('read');
   });
 
   it('smokes the staging tenant host against both database fingerprints', () => {
@@ -130,6 +151,15 @@ describe('staging-smoke workflow', () => {
     expect(sanitize.run).toContain('if [ -z "$STAGING_OPERATOR_SECRET" ]');
     expect(sanitize.run).toContain('::notice::');
     expect(sanitize['continue-on-error']).toBe(true);
+  });
+
+  it('tells the smoke whether the sanitize step ran', () => {
+    const sanitize = step('Sanitize the staging tenant secrets');
+
+    expect(sanitize.run).toContain('sanitized=false');
+    expect(sanitize.run).toContain('sanitized=true');
+    expect(step('Smoke the staging deployment').env?.['SANITIZED'])
+      .toBe('${{ steps.sanitize.outputs.sanitized }}');
   });
 
   it('sends the protection bypass secret to the smoke only', () => {

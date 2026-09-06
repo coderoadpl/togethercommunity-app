@@ -36,7 +36,7 @@ export interface RemoteSmokeOptions {
 
 export interface RemoteSmokeCheck {
   name: string;
-  status: 'ok' | 'failed' | 'skipped';
+  status: 'ok' | 'failed' | 'skipped' | 'warning';
   ms: number;
   detail: string | null;
 }
@@ -117,7 +117,11 @@ const createRun = (target: SmokeTarget, request: Fetch) => {
       request(endpoint(target.baseUrl, path), {
         headers: { [TENANT_HEADER]: target.tenant, ...target.headers, ...headers },
       }),
-    step: async <T>(name: string, probe: () => T | Promise<T>): Promise<T | null> => {
+    step: async <T>(
+      name: string,
+      probe: () => T | Promise<T>,
+      options: { warnOn?: (cause: unknown) => boolean } = {},
+    ): Promise<T | null> => {
       const startedAt = Date.now();
       try {
         const value = await probe();
@@ -126,7 +130,7 @@ const createRun = (target: SmokeTarget, request: Fetch) => {
       } catch (cause) {
         checks.push({
           name,
-          status: 'failed',
+          status: options.warnOn?.(cause) === true ? 'warning' : 'failed',
           ms: Date.now() - startedAt,
           detail: cause instanceof Error ? cause.message : String(cause),
         });
@@ -168,6 +172,18 @@ const signIn = async (
   return signedIn.token;
 };
 
+/**
+ * Thrown instead of a plain Error when every failing deep-health check is one
+ * that an unsanitized staging tenant is expected to fail; the staging runner
+ * downgrades this to a warning, everyone else treats it like any failure.
+ */
+class DeepHealthUnsanitizedFailure extends Error {}
+
+const DEEP_HEALTH_UNSANITIZED_WARNING_CHECKS = new Set([
+  'tenant-secret-decryption',
+  'storage-presign',
+]);
+
 const probeDeepHealth = async (get: Get): Promise<void> => {
   const response = await get('/api/health/deep');
   const report = unwrap(
@@ -175,7 +191,10 @@ const probeDeepHealth = async (get: Get): Promise<void> => {
     'deep health',
   );
   if (response.status !== 200 || !report.ok) {
-    throw new Error(`deep health failed: ${report.failing.join(', ')}`);
+    const message = `deep health failed: ${report.failing.join(', ')}`;
+    const eligibleForWarning = report.failing.length > 0
+      && report.failing.every((name) => DEEP_HEALTH_UNSANITIZED_WARNING_CHECKS.has(name));
+    throw eligibleForWarning ? new DeepHealthUnsanitizedFailure(message) : new Error(message);
   }
 };
 
@@ -325,6 +344,8 @@ export interface StagingSmokeOptions {
   productionFingerprint: string;
   /** Null until the owner pins the observed fingerprint in a repository variable. */
   expectedFingerprint: string | null;
+  /** False while the workflow ran without the operator secret that sanitizes tenant secrets. */
+  sanitized: boolean;
 }
 
 export interface StagingSmokeResult extends RemoteSmokeResult {
@@ -399,7 +420,9 @@ export const runStagingSmoke = async (
     await run.step('database-fingerprint', () => { assertStagingDatabase(health, options); });
   }
 
-  await run.step('health-deep', () => probeDeepHealth(run.get));
+  await run.step('health-deep', () => probeDeepHealth(run.get), {
+    warnOn: (cause) => !options.sanitized && cause instanceof DeepHealthUnsanitizedFailure,
+  });
 
   const result = run.result();
   const observedFingerprint = health?.databaseFingerprint ?? null;
@@ -456,6 +479,7 @@ export const stagingSmokeOptionsFromEnv = (env: Environment): StagingSmokeOption
     bypassSecret,
     productionFingerprint,
     expectedFingerprint: provided(env, 'STAGING_DATABASE_FINGERPRINT'),
+    sanitized: provided(env, 'SANITIZED') !== 'false',
   };
 };
 

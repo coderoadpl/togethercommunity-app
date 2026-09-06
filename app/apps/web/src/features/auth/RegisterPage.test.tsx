@@ -181,7 +181,9 @@ describe('RegisterPage', () => {
 
     const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).toBeRequired();
-    const consentField = within(checkbox.closest('label') as HTMLElement);
+    const consentLabel = checkbox.closest('label');
+    if (consentLabel === null) throw new Error('expected the checkbox to sit inside a label');
+    const consentField = within(consentLabel);
     expect(consentField.getByRole('link', { name: pl.consent.terms })).toHaveAttribute(
       'href',
       'https://akademia.test/regulamin',

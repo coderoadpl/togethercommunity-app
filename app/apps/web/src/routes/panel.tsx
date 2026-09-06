@@ -24,6 +24,7 @@ export {
   PanelCouponsRoute,
   PanelCouponCreateRoute,
   PanelCouponDetailRoute,
+  PanelRedirectsRoute,
   PanelSettingsRoute,
   PanelSpacesRoute,
   PanelSpaceCreateRoute,

@@ -67,9 +67,10 @@ tenant host — custom domains and workspace subdomains alike — so those links
 keep landing on the right page instead of a not-found screen.
 
 The platform knows nothing about the URL shapes of the site a workspace came
-from. Each entry is one source path with one destination, supplied through the
-`redirect` kind of the [import API](import-api.md); the tool that reads the
-previous site decides which paths exist and what they mean.
+from. Each entry is one source path with one destination. Entries arrive two
+ways: in bulk through the `redirect` kind of the [import API](import-api.md),
+where the tool that reads the previous site decides which paths exist and what
+they mean, and one at a time from Settings → Addresses → Redirects.
 
 | Entry | Redirected to | Status |
 |---|---|---|
@@ -92,9 +93,31 @@ repeated slashes collapse, and a trailing slash is dropped. Entries belong to
 one workspace, so a path configured elsewhere never resolves on this host, and
 the platform host — which resolves to no workspace — never redirects at all.
 
-Settings → Addresses lists the workspace's redirects with their count. The list
-is read-only: entries arrive through the import API and are replaced by
-re-importing them.
+## Managing redirects
+
+Settings → Addresses counts the workspace's redirects and links to their page.
+The page lists them ordered by source path, fifty at a time, with a search over
+both the source and the destination. Each row carries its status — permanent
+(`301`) or temporary (`302`) — and its origin: `Import` for a row the import API
+wrote, `Manual` for one added here. Adding and deleting need the same permission
+as editing the workspace settings and custom domains, and both are recorded in
+the team audit log.
+
+Adding a redirect takes a source path, which is normalised as it is typed and
+shown in its stored form before it is saved, and a destination: a course, a
+lesson inside a course, or a path in this workspace. A path that another
+redirect already answers is refused, and so is a redirect whose destination
+normalises back to its own source. A source path the platform serves itself is
+refused too: the workspace root `/`, and `/api`, `/panel`, `/my`, `/login`,
+`/register`, `/account`, `/checkout`, `/community`, `/messages`,
+`/notifications`, `/search`, `/start`, `/assets`, `/forgot-password` and
+`/reset-password`, each with everything below it.
+
+The import owns the rows it wrote and never overwrites a manual row: an incoming
+record whose path a manual row already answers is reported as a conflict for
+that record. Deleting the manual row hands the path back to the import.
+Deleting an imported row is safe — the next import carrying its `importKey`
+writes it again.
 
 ## Limits
 

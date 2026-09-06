@@ -2777,6 +2777,12 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
+export const PathText = styled(Typography)<AsElement>({
+  fontFamily: FONT_MONO,
+  fontSize: '0.8125rem',
+  overflowWrap: 'anywhere',
+});
+
 export const ProgressPercentText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: '0.6875rem',

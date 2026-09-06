@@ -589,7 +589,9 @@ const deps = (input: {
     redirects: {
       findById: async () => null,
       findByFromPath: async () => null,
-      listByTenant: async () => [],
+      listPage: async () => ({ redirects: [], total: 0 }),
+      create: async () => 'saved' as const,
+      deleteById: async () => false,
       commit: async () => 'saved' as const,
     },
     attachments: {
@@ -4221,6 +4223,8 @@ describe('tenant redirects', () => {
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
       permanent: true,
+      origin: 'import',
+      createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
     },
     {
@@ -4231,6 +4235,8 @@ describe('tenant redirects', () => {
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
       permanent: false,
+      origin: 'import',
+      createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
     },
     {
@@ -4241,6 +4247,8 @@ describe('tenant redirects', () => {
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
       permanent: true,
+      origin: 'import',
+      createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
     },
     {
@@ -4251,6 +4259,8 @@ describe('tenant redirects', () => {
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
       permanent: true,
+      origin: 'import',
+      createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
     },
   ];

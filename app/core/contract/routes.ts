@@ -64,6 +64,9 @@ import {
   tenantSetupReadinessSchema,
   tenantRoutingSchema,
   tenantRedirectSchema,
+  tenantRedirectCreateInputSchema,
+  tenantRedirectDeleteInputSchema,
+  tenantRedirectListQuerySchema,
   contentVersionRestoreSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
@@ -1378,6 +1381,27 @@ export const tenantRoutingOutputSchema = z.object({
 
 export const tenantRedirectsOutputSchema = z.object({
   redirects: z.array(tenantRedirectSchema),
+  total: z.number().int().nonnegative(),
+});
+
+export const tenantRedirectsQuerySchema = tenantRedirectListQuerySchema;
+
+export type TenantRedirectsQueryInput = z.input<typeof tenantRedirectsQuerySchema>;
+
+export const tenantRedirectCreateSchema = tenantRedirectCreateInputSchema;
+
+export type TenantRedirectCreateBody = z.input<typeof tenantRedirectCreateSchema>;
+
+export const tenantRedirectDeleteSchema = tenantRedirectDeleteInputSchema;
+
+export type TenantRedirectDeleteBody = z.input<typeof tenantRedirectDeleteSchema>;
+
+export const tenantRedirectOutputSchema = z.object({
+  redirect: tenantRedirectSchema,
+});
+
+export const tenantRedirectDeleteOutputSchema = z.object({
+  id: z.string().min(1),
 });
 
 export const tenantDomainInputSchema = z.object({
@@ -1965,6 +1989,8 @@ export const API_ROUTES = {
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantRedirects: { method: 'GET', path: '/api/tenant/redirects' },
+  tenantRedirectCreate: { method: 'POST', path: '/api/tenant/redirects' },
+  tenantRedirectDelete: { method: 'POST', path: '/api/tenant/redirects/remove' },
   tenantDomainAdd: { method: 'POST', path: '/api/tenant/domains' },
   tenantDomainCheck: { method: 'POST', path: '/api/tenant/domains/check' },
   tenantDomainRemove: { method: 'POST', path: '/api/tenant/domains/remove' },
@@ -2216,6 +2242,8 @@ export const API_PATHS = {
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantRouting: API_ROUTES.tenantRouting.path,
   tenantRedirects: API_ROUTES.tenantRedirects.path,
+  tenantRedirectCreate: API_ROUTES.tenantRedirectCreate.path,
+  tenantRedirectDelete: API_ROUTES.tenantRedirectDelete.path,
   tenantDomainDispatch: API_ROUTES.tenantDomainDispatch.path,
   tenantDomainAdd: API_ROUTES.tenantDomainAdd.path,
   tenantDomainCheck: API_ROUTES.tenantDomainCheck.path,

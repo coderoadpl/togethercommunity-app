@@ -251,6 +251,7 @@ import {
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
+  listTenantRedirects,
   getTenantSetupReadiness,
   grantProductToMember,
   listBunnyVideos,
@@ -2033,6 +2034,11 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     ids: deps.ids,
     clock: deps.clock,
   };
+
+  app.get(API_PATHS.tenantRedirects, async (c) => {
+    const result = await listTenantRedirects(ctxOf(c), { redirects: deps.redirects });
+    return respond(result.ok ? ok({ redirects: result.value }) : result);
+  });
 
   app.get(API_PATHS.tenantRouting, async (c) => {
     const result = await getTenantRouting({ identity: c.get('identity') }, tenantRoutingDeps);

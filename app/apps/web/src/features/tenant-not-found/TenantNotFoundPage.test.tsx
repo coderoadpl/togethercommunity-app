@@ -22,16 +22,16 @@ describe('tenantUrl', () => {
   it('uses the configured base domain on the apex host', () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
 
-    expect(tenantUrl('coderoad', new URL('https://togethercommunity.app'))).toBe(
-      'https://coderoad.togethercommunity.app',
+    expect(tenantUrl('acme', new URL('https://togethercommunity.app'))).toBe(
+      'https://acme.togethercommunity.app',
     );
   });
 
   it('keeps a bare hostname intact without a configured base domain', () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', '');
 
-    expect(tenantUrl('coderoad', new URL('https://togethercommunity.app'))).toBe(
-      'https://coderoad.togethercommunity.app',
+    expect(tenantUrl('acme', new URL('https://togethercommunity.app'))).toBe(
+      'https://acme.togethercommunity.app',
     );
   });
 
@@ -62,8 +62,8 @@ describe('tenantUrl', () => {
   it('uses the configured platform base domain from a custom domain', () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
 
-    expect(tenantUrl('coderoad', new URL('https://community.customer.example'))).toBe(
-      'https://coderoad.togethercommunity.app',
+    expect(tenantUrl('acme', new URL('https://community.customer.example'))).toBe(
+      'https://acme.togethercommunity.app',
     );
   });
 

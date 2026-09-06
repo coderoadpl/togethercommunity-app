@@ -117,7 +117,7 @@ notes whether this audit closed it (unit test added) or it was already covered.
 | 5 | **Webhook transitions / idempotency** | `stripe-webhook.ts`, `subscription-lifecycle.ts`, `subscription-simulate.ts` | Already covered — `stripe-webhook.test.ts` (checkout→renewal→failed→cancel, duplicate-delivery race, simulate paths) + `subs-e2e` |
 | 6 | **Error-mapping exhaustiveness** | `http-status.ts` HTTP + exit-code maps; `errors.ts` constructors | Closed — `http-status.test.ts` (every `ERROR_CODES` member mapped) + `errors.test.ts` |
 | 7 | **CLI exit codes** | `apps/cli/src/output.ts` `emit` | Closed — `output.test.ts` (one JSON envelope, stderr routing, exit code per error kind) + `smoke` asserts exit 3 live |
-| 8 | **Import correctness** | `importer.ts`, `legacy-transform.ts`, `price-migration.ts`, `access-items-migration.ts` | Already covered — DB-backed `importer.test.ts` + `legacy-transform.test.ts` (18) + migration transform tests |
+| 8 | **Import correctness** | `importer.ts`, `m2m-import.ts`, `m2m-import-redirects.ts`, `price-migration.ts`, `access-items-migration.ts` | Already covered — DB-backed `importer.test.ts` + `m2m-import*.test.ts` + migration transform tests |
 | 9 | **Tenant settings partial update** | `tenant.ts` `updateTenantSettingsInputSchema`; `tenant-settings.ts` owner guard | Closed for schema — `tenant.test.ts` (omit-keeps / clear-on-empty / URL validation); owner-forbidden path is exercised by the use-case's existing shape |
 | 10 | UI panels / rendering | `apps/web/**` | Component tests + Storybook story comparator; not unit-gated |
 

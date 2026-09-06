@@ -24,8 +24,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      STAGING_HOST_URL: https://${{ vars.STAGING_HOST || 'coderoad.staging.togethercommunity.app' }}
       SMOKE_TENANT: ${{ vars.SMOKE_TENANT || 'acme' }}
+      STAGING_HOST_URL: https://${{ vars.STAGING_HOST || format('{0}.staging.togethercommunity.app', vars.SMOKE_TENANT || 'acme') }}
       PRODUCTION_DATABASE_FINGERPRINT: ${{ vars.PRODUCTION_DATABASE_FINGERPRINT || '4ef296aa90bd' }}
       STAGING_DATABASE_FINGERPRINT: ${{ vars.STAGING_DATABASE_FINGERPRINT }}
       ALIAS_POLL_ATTEMPTS: '45'

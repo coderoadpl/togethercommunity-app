@@ -99,8 +99,9 @@ describe('staging-smoke workflow', () => {
   });
 
   it('smokes the staging tenant host against both database fingerprints', () => {
-    expect(job.env['STAGING_HOST_URL'])
-      .toBe("https://${{ vars.STAGING_HOST || 'coderoad.staging.togethercommunity.app' }}");
+    expect(job.env['STAGING_HOST_URL']).toBe(
+      "https://${{ vars.STAGING_HOST || format('{0}.staging.togethercommunity.app', vars.SMOKE_TENANT || 'acme') }}",
+    );
     expect(step('Smoke the staging deployment').env?.['STAGING_BASE_URL'])
       .toBe('${{ steps.target.outputs.base_url }}');
     expect(job.env['PRODUCTION_DATABASE_FINGERPRINT'])

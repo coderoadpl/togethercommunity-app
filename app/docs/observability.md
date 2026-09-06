@@ -91,15 +91,15 @@ scheduled run fails and pages when the deep probe answers anything other than
 
 `.github/workflows/prod-smoke.yml` runs on a `deployment_status` event with
 state `success` and environment `Production`, and on `workflow_dispatch`. Both
-the wait and the checks target `https://<SMOKE_TENANT>.togethercommunity.app` —
-every tenant host serves `/api/health`, so the commit attestation holds on the
-tenant's own host and the smoke never signs a member of one tenant in on
-another's. It waits until that host reports the deployment's commit (up to five
-minutes), reseeds the smoke tenant, then runs `pnpm run smoke:remote`
-(`app/scripts/remote-smoke.ts`) with `EXPECTED_SHA` set to that commit.
+the wait and the checks target `$PROD_BASE_URL` — every tenant host serves
+`/api/health`, so the commit attestation holds on the tenant's own host and the
+smoke never signs a member of one tenant in on another's. It waits until that
+host reports the deployment's commit (up to five minutes), reseeds the smoke
+tenant, then runs `pnpm run smoke:remote` (`app/scripts/remote-smoke.ts`) with
+`EXPECTED_SHA` set to that commit.
 
-A manual dispatch may point `base_url` at any host; left empty it smokes the
-tenant host. It may also leave `expected_sha` empty, and the wait and the
+A manual dispatch may point `base_url` at any host; left empty it smokes
+`PROD_BASE_URL`. It may also leave `expected_sha` empty, and the wait and the
 `health-attestation` match are then both skipped, so any commit the host serves
 is accepted.
 
@@ -164,13 +164,26 @@ Settings → Secrets and variables → Actions → repository secrets:
 The creator account never signs in from the workflow, so its password lives on
 the deployment only, as `SMOKE_CREATOR_PASSWORD`.
 
-The first three already exist for `prod-health.yml`; the smoke reuses them and
-passes exactly the inputs that workflow passes, the region left to the composite
-action's `eu-central-1` default. The tenant under test comes from the
-`SMOKE_TENANT` repository variable and defaults to `acme`; it names both the
-`x-tenant` header and the host. Pointing that variable at another tenant also
-skips the reseed with a notice: the route rebuilds `tenant-acme` only, and
-wiping it would serve no run that checks something else.
+The first three already exist for `prod-health.yml`; the smoke reuses them.
+
+### Repository variables the owner must add
+
+Settings → Secrets and variables → Actions → repository variables. No host is
+hard-coded in a workflow: every one of these falls back to the `acme` fixture on
+`togethercommunity.app`, so an unset variable makes the workflow watch the
+synthetic demo tenant instead of the deployment that matters.
+
+| Variable | Used by | Fallback when unset |
+| --- | --- | --- |
+| `SMOKE_TENANT` | prod-health, prod-smoke, staging-links | `acme` — the tenant slug the other three variables build their default host from. |
+| `PROD_HEALTH_HOST` | prod-health | `<SMOKE_TENANT>.togethercommunity.app` — the host `/api/health` and `/api/health/deep` are probed on. |
+| `PROD_BASE_URL` | prod-smoke | `https://<SMOKE_TENANT>.togethercommunity.app` — the deployment smoked on `deployment` events and on a dispatch that leaves `base_url` empty. |
+| `STAGING_HOST` | staging-links | `<SMOKE_TENANT>.staging.togethercommunity.app` — the tenant host published as the deployment's environment URL and pinned on the promotion pull request. |
+| `VERCEL_DEPLOYMENTS_URL` | staging-links | `https://vercel.com/dashboard` — the deployments list linked from the same places. |
+
+Pointing `SMOKE_TENANT` at another tenant also skips the reseed with a notice:
+the route rebuilds `tenant-acme` only, and wiping it would serve no run that
+checks something else.
 
 ## Staging smoke
 
@@ -183,7 +196,7 @@ the environment and the commit however it currently labels them, so a smoke
 gated on them stops running the moment that labelling changes. It runs
 `pnpm run smoke:staging` (`app/scripts/remote-smoke.ts --staging`) against
 `https://` + the `STAGING_HOST` variable (default
-`coderoad.staging.togethercommunity.app`), the tenant coming from the same
+`<SMOKE_TENANT>.staging.togethercommunity.app`), the tenant coming from the same
 `SMOKE_TENANT` variable the production smoke uses.
 
 A push arrives before the deployment it will produce, so the job first waits for
@@ -284,7 +297,7 @@ carrying `Together STAGING smoke FAILED: <failing checks>`.
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | secret | Bypasses staging deployment protection. Absent → the whole smoke is skipped with a notice. Sent only to `STAGING_HOST_URL`, so a dispatch against another host skips the smoke instead of leaking the secret to it. |
 | `PRODUCTION_DATABASE_FINGERPRINT` | variable | The fingerprint staging must **not** answer with. Unset → the workflow falls back to the recorded production value. |
 | `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the run passes green and prints the value to pin, without an SMS. |
-| `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `coderoad.staging.togethercommunity.app`. |
+| `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `<SMOKE_TENANT>.staging.togethercommunity.app`. |
 | `STAGING_OPERATOR_SECRET` | secret | Staging's `PROD_OPERATOR_SECRET` value, used to call the secret sanitize before the checks. Unset → the sanitize is skipped with a notice. |
 
 Obtain the bypass secret in Vercel → Settings → Deployment Protection →
@@ -391,8 +404,8 @@ endpoints are unauthenticated, so no header or credential is needed.
 
 | URL | Expected | Interval | Timeout | Confirm before alerting |
 | --- | --- | --- | --- | --- |
-| `https://coderoad.togethercommunity.app/api/health` | HTTP 200 and body contains `"database":"up"` | 5 min | 15 s | 2 consecutive failures |
-| `https://coderoad.togethercommunity.app/api/health/deep` | HTTP 200 | 5 min | 30 s | 2 consecutive failures |
+| `https://<tenant-host>/api/health` | HTTP 200 and body contains `"database":"up"` | 5 min | 15 s | 2 consecutive failures |
+| `https://<tenant-host>/api/health/deep` | HTTP 200 | 5 min | 30 s | 2 consecutive failures |
 
 Notes for the monitor configuration:
 

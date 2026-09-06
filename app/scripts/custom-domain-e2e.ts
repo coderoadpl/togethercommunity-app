@@ -25,7 +25,7 @@ const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
-const CUSTOM_HOST = 'kurs.coderoad.localhost';
+const CUSTOM_HOST = 'kurs.acme.localhost';
 const TENANT_HOST = 'acme.localhost';
 const CREATOR_PASSWORD = 'demo-password-15';
 
@@ -187,7 +187,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
   }
 };
 
-const SELF_SERVE_HOST = 'sklep.coderoad.example';
+const SELF_SERVE_HOST = 'sklep.acme.example';
 
 const readDomainRow = async (
   databaseUrl: string,

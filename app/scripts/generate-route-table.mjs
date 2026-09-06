@@ -36,7 +36,7 @@ const purposeFor = (route) => {
 export const collectRuntimeRoutes = () => buildApp(dependency).routes
   .filter((route) => route.method !== 'ALL');
 
-const rows = () => collectRuntimeRoutes()
+const rows = () => [...new Set(collectRuntimeRoutes()
   .map((route) => {
     const publicEntry = publicRouteManifestEntry(route);
     const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
@@ -50,7 +50,7 @@ const rows = () => collectRuntimeRoutes()
     const mutating = publicEntry?.mutating
       ?? !['GET', 'HEAD', 'OPTIONS'].includes(route.method);
     return `| \`${route.method} ${route.path}\` | ${access} | ${mutating ? 'mutating' : 'read'} | ${purposeFor(route)} |`;
-  });
+  }))];
 
 const document = () => [
   '# Server route table',
@@ -58,6 +58,7 @@ const document = () => [
   'Generated from the Hono route table by `pnpm exec tsx scripts/generate-route-table.mjs`.',
   'Self-authenticating routes enforce a session, API key, or operator secret before the shared tenant identity middleware.',
   'Local-development-only routes are registered exclusively when the process runs locally (`NODE_ENV` other than `production` with `APP_ENV` unset or `development`); production, staging and preview never mount them.',
+  'Handlers that share a method, path, access and purpose — such as the two `GET /*` catch-alls — are listed once.',
   '',
   '| Route | Access | Operation | Purpose |',
   '|---|---|---|---|',

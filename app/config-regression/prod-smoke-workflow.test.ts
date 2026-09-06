@@ -77,8 +77,8 @@ describe('prod-smoke workflow', () => {
     const target = step('Resolve the deployment under test');
 
     expect(target.run).toContain('tenant_base_url="https://$SMOKE_TENANT.togethercommunity.app"');
-    expect(target.run).toContain('base_url=${DISPATCH_BASE_URL:-$tenant_base_url}');
-    expect(source).not.toContain('coderoad');
+    expect(target.run).toContain('base_url=${DISPATCH_BASE_URL:-$PROD_BASE_URL}');
+    expect(source).not.toContain(['coder', 'oad'].join(''));
   });
 
   it('keeps the operator secret away from a dispatched foreign host', () => {

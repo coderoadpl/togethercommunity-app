@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 110. Route rows: 298. Exported `Ctx` use-case rows: 241.
+Closed capability count: 110. Route rows: 300. Exported `Ctx` use-case rows: 243.
 
 ## Human-readable diff
 
@@ -64,7 +64,6 @@ no changes
 | `POST /api/auth/send-verification-email` | auth:use | public | public | yes | public route manifest |
 | `GET /api/auth/*` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/*` | auth:use | public | public | yes | public route manifest |
-| `GET /courses/*` | offer:read | public | public | yes | public route manifest |
 | `POST /api/webhooks/ses/:webhookToken` | webhook:process | webhook | webhook | yes | public route manifest |
 | `POST /u/:token` | marketing:consent:write | token | token | yes | public route manifest |
 | `POST /u/:token/confirm` | marketing:consent:write | token | token | yes | public route manifest |
@@ -115,6 +114,7 @@ no changes
 | `POST /api/m2m/import/modules` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/lessons` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/products` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
+| `POST /api/m2m/import/redirects` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/members` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/grants` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
@@ -203,6 +203,7 @@ no changes
 | `POST /api/tenant-secrets` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `DELETE /api/tenant-secrets/:key` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/tenant/settings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/tenant/redirects` | tenant:domain:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenant/routing` | tenant:domain:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/tenant/domains` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/domains/check` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
@@ -324,6 +325,7 @@ no changes
 | `GET /api/messages/:conversationId` | dm:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/notifications/stream` | notification:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /*` | offer:read | public | public | yes | public route manifest |
+| `GET /*` | offer:read | public | public | yes | public route manifest |
 
 ## Use-cases
 
@@ -435,6 +437,7 @@ no changes
 | `lesson-attachments.ts#deleteLessonAttachmentObjects` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts authorization call |
 | `lesson-playback.ts#getLessonPlayback` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-playback.ts authorization call |
+| `m2m-import-redirects.ts#importM2mRedirects` | import:content-write | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import-redirects.ts authorization call |
 | `m2m-import-users.ts#importM2mUsers` | import:users-write | import-users-api-key | import-users-api-key | yes | core/server/usecases/m2m-import-users.ts authorization call |
 | `m2m-import.ts#importM2mContent` | import:content-write | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
 | `m2m-import.ts#validateM2mImport` | import:validate | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
@@ -563,6 +566,7 @@ no changes
 | `tenant-domains.ts#addTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#checkTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#removeTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
+| `tenant-redirects.ts#listTenantRedirects` | tenant:domain:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-redirects.ts authorization call |
 | `tenant-secrets.ts#setTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
@@ -579,10 +583,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:164` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1035` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1037` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1505` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1505` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1036` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1038` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1506` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1506` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:85` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

@@ -1243,6 +1243,42 @@ const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
   );
 };
 
+const TenantRedirectsSection = () => {
+  const t = useTranslations();
+  const redirects = useQuery(actions.tenantRedirects);
+
+  if (!redirects.isSuccess) return null;
+
+  return (
+    <Stack useFlexGap spacing="0.3rem" data-testid="tenant-redirects">
+      <Eyebrow>{t.tenantDomains.redirectsHeading}</Eyebrow>
+      <Typography variant="body2">{t.tenantDomains.redirectsIntro}</Typography>
+      <Typography variant="caption" data-testid="tenant-redirects-count">
+        {t.tenantDomains.redirectsCount({ count: redirects.data.redirects.length })}
+      </Typography>
+      {redirects.data.redirects.length === 0 ? (
+        <Typography variant="body2">{t.tenantDomains.redirectsEmpty}</Typography>
+      ) : redirects.data.redirects.map((redirect) => (
+        <Stack
+          key={redirect.id}
+          direction="row"
+          useFlexGap
+          sx={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
+          data-testid={`tenant-redirect-${redirect.id}`}
+        >
+          <Typography variant="body2">{redirect.fromPath} → {redirect.targetPath}</Typography>
+          <Chip
+            size="small"
+            label={redirect.permanent
+              ? t.tenantDomains.redirectsPermanent
+              : t.tenantDomains.redirectsTemporary}
+          />
+        </Stack>
+      ))}
+    </Stack>
+  );
+};
+
 const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -1326,6 +1362,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
             <MuiLink href={redirectTo}>{redirectTo}</MuiLink>
           </Alert>
         )}
+        <TenantRedirectsSection />
         <Stack useFlexGap spacing="0.3rem">
           <Eyebrow>{t.tenantDomains.customDomains}</Eyebrow>
           {customDomains.length === 0 ? (

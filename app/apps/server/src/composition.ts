@@ -14,6 +14,7 @@ import {
 } from '#adapters/db/impersonation.js';
 import { createImpersonationTokenCodec } from '#adapters/crypto/impersonation-token-codec.js';
 import { createImportContentRepository } from '#adapters/db/content-import.js';
+import { createTenantRedirectRepository } from '#adapters/db/redirects.js';
 import { createImportUsersRepository } from '#adapters/db/users-import.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
@@ -71,7 +72,6 @@ import {
   createDmReportRepository,
   createEntityVersionRepository,
   createHealthPort,
-  createLegacyContentLocator,
   createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
@@ -190,11 +190,11 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
-  LegacyContentLocator,
   ImpersonationSessionRepository,
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
   ImportAuditEventRepository,
+  ImportRedirectRepository,
   ImportContentRepository,
   ImportUsersReader,
   ImportUsersRepository,
@@ -363,7 +363,7 @@ export interface AppDeps {
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
-  legacyContent: LegacyContentLocator;
+  redirects: ImportRedirectRepository;
   attachments: LessonAttachmentRepository;
   downloadAssets: ProductDownloadAssetRepository;
   entityVersions: EntityVersionRepository;
@@ -1175,7 +1175,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
-    legacyContent: createLegacyContentLocator(db),
+    redirects: createTenantRedirectRepository(db),
     attachments: createLessonAttachmentRepository(db),
     downloadAssets: createProductDownloadAssetRepository(db),
     entityVersions: createEntityVersionRepository(db),

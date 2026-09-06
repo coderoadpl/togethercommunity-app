@@ -81,9 +81,9 @@ const mePayload = {
     name: 'Smoke',
     emailVerified: true,
     tenant: {
-      id: 't-coderoad',
-      slug: 'coderoad',
-      name: 'CodeRoad',
+      id: 't-acme',
+      slug: 'acme',
+      name: 'Acme',
       staffRole: null,
       memberId: 'member-1',
       banned: false,
@@ -96,7 +96,7 @@ const coursesPayload = {
   data: {
     courses: [{
       id: 'course-1',
-      tenantId: 't-coderoad',
+      tenantId: 't-acme',
       name: SMOKE_TENANT_COURSE_TITLE,
       description: '',
       imageUrl: null,
@@ -159,7 +159,7 @@ const playbackPayload = (kind: 'bunny' | 'unavailable') => ({
 });
 
 const unpinnedOptions: RemoteSmokeOptions = {
-  baseUrl: 'https://coderoad.togethercommunity.app/',
+  baseUrl: 'https://acme.togethercommunity.app/',
   tenant: 'acme',
   publicPagePath: '/',
   member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: 'smoke-password' },
@@ -350,7 +350,7 @@ const stagingHealth = (overrides: Record<string, unknown> = {}) =>
   });
 
 const stagingOptions: StagingSmokeOptions = {
-  baseUrl: 'https://coderoad.staging.togethercommunity.app/',
+  baseUrl: 'https://acme.staging.togethercommunity.app/',
   tenant: 'acme',
   bypassSecret: 'bypass-secret',
   productionFingerprint: PRODUCTION_FINGERPRINT,
@@ -495,7 +495,7 @@ describe('staging smoke', () => {
 
 describe('stagingSmokeOptionsFromEnv', () => {
   const environment = {
-    STAGING_BASE_URL: 'https://coderoad.staging.togethercommunity.app',
+    STAGING_BASE_URL: 'https://acme.staging.togethercommunity.app',
     VERCEL_AUTOMATION_BYPASS_SECRET: 'bypass-secret',
     PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
     STAGING_DATABASE_FINGERPRINT: STAGING_FINGERPRINT,
@@ -527,8 +527,8 @@ describe('stagingSmokeOptionsFromEnv', () => {
 
 describe('remoteSmokeOptionsFromEnv', () => {
   const environment = {
-    BASE_URL: 'https://coderoad.togethercommunity.app',
-    SMOKE_TENANT: 'coderoad',
+    BASE_URL: 'https://studio.togethercommunity.app',
+    SMOKE_TENANT: 'studio',
     EXPECTED_SHA: SHA,
     SMOKE_MEMBER_EMAIL: 'smoke@together.dev',
     SMOKE_MEMBER_PASSWORD: 'smoke-password',
@@ -537,7 +537,7 @@ describe('remoteSmokeOptionsFromEnv', () => {
   it('reads the deployment under test', () => {
     expect(remoteSmokeOptionsFromEnv(environment)).toEqual({
       baseUrl: environment.BASE_URL,
-      tenant: 'coderoad',
+      tenant: 'studio',
       publicPagePath: '/',
       expectedSha: SHA,
       member: { status: 'configured', email: 'smoke@together.dev', password: 'smoke-password' },
@@ -568,7 +568,7 @@ describe('remoteSmokeOptionsFromEnv', () => {
   it('signs nobody in without the member password', () => {
     expect(remoteSmokeOptionsFromEnv({
       BASE_URL: environment.BASE_URL,
-      SMOKE_MEMBER_EMAIL: 'real-member@coderoad.pl',
+      SMOKE_MEMBER_EMAIL: 'real-member@acme.pl',
     })?.member).toEqual({ status: 'incomplete', missing: 'SMOKE_MEMBER_PASSWORD' });
   });
 

@@ -45,7 +45,6 @@ import {
   createCheckoutConsentCaptureRepository,
   createDevSinkPurge,
   createHealthPort,
-  createLegacyContentLocator,
   createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
@@ -1166,19 +1165,19 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       lastError: null,
     });
 
-    const first = await repo.insert(ACME, row({ id: 'dom-1', tenantId: ACME, domain: 'a.coderoad.test', lastCheckedAt: null }));
+    const first = await repo.insert(ACME, row({ id: 'dom-1', tenantId: ACME, domain: 'a.acme.test', lastCheckedAt: null }));
     expect(first).toMatchObject({
-      domain: 'a.coderoad.test',
+      domain: 'a.acme.test',
       provider: 'vercel',
-      verification: [{ type: 'TXT', name: '_vercel.a.coderoad.test', value: 'vc-1' }],
+      verification: [{ type: 'TXT', name: '_vercel.a.acme.test', value: 'vc-1' }],
     });
-    expect(await repo.insert(GLOBEX, row({ id: 'dom-clash', tenantId: GLOBEX, domain: 'a.coderoad.test', lastCheckedAt: null })))
+    expect(await repo.insert(GLOBEX, row({ id: 'dom-clash', tenantId: GLOBEX, domain: 'a.acme.test', lastCheckedAt: null })))
       .toBeNull();
-    await repo.insert(ACME, row({ id: 'dom-2', tenantId: ACME, domain: 'b.coderoad.test', lastCheckedAt: '2026-09-02T00:00:00.000Z' }));
+    await repo.insert(ACME, row({ id: 'dom-2', tenantId: ACME, domain: 'b.acme.test', lastCheckedAt: '2026-09-02T00:00:00.000Z' }));
     await repo.insert(GLOBEX, row({ id: 'dom-3', tenantId: GLOBEX, domain: 'c.globex.test', lastCheckedAt: null }));
 
-    expect(await repo.findByDomain('a.coderoad.test')).toBeNull();
-    expect(await repo.findAnyByDomain('a.coderoad.test')).toMatchObject({ id: 'dom-1' });
+    expect(await repo.findByDomain('a.acme.test')).toBeNull();
+    expect(await repo.findAnyByDomain('a.acme.test')).toMatchObject({ id: 'dom-1' });
     expect((await repo.listOldestPendingPerTenant(10)).map((entry) => entry.id).toSorted())
       .toEqual(['dom-1', 'dom-3']);
 
@@ -1206,12 +1205,12 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       verification: [],
     })).toBeNull();
     expect(await repo.patch(GLOBEX, 'dom-1', { lastError: 'foreign tenant' })).toBeNull();
-    expect(await repo.findByDomain('a.coderoad.test')).toMatchObject({ id: 'dom-1' });
+    expect(await repo.findByDomain('a.acme.test')).toMatchObject({ id: 'dom-1' });
 
     await events.append(ACME, {
       id: 'evt-1',
       tenantId: ACME,
-      domain: 'a.coderoad.test',
+      domain: 'a.acme.test',
       kind: 'domain_verified',
       actorUserId: 'user-acme-owner',
       detail: null,
@@ -1224,7 +1223,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
 
     expect(await repo.remove(GLOBEX, 'dom-1')).toBe(false);
     expect(await repo.remove(ACME, 'dom-1')).toBe(true);
-    expect(await repo.findAnyByDomain('a.coderoad.test')).toBeNull();
+    expect(await repo.findAnyByDomain('a.acme.test')).toBeNull();
     await repo.remove(ACME, 'dom-2');
     await repo.remove(GLOBEX, 'dom-3');
   });
@@ -1949,31 +1948,6 @@ describe('course/module/lesson repositories', () => {
     expect(await lessons.listPreviews(GLOBEX)).toEqual([]);
   });
 
-  it('locates imported content by its source identifier, never across tenants', async () => {
-    const courses = createCourseRepository(db);
-    const modules = createCourseModuleRepository(db);
-    const lessons = createCourseLessonRepository(db);
-    const locator = createLegacyContentLocator(db);
-
-    const course: Course = { id: 'course-imported', tenantId: ACME, name: 'C', description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false, legacyId: '656b8fa6e74246956889b096', createdAt: NOW };
-    const module: CourseModule = {
-      id: 'module-imported', tenantId: ACME, courseIds: ['course-imported'], title: 'M', prefix: null, name: 'M',
-      chapters: [{ id: 'chapter-imported', name: 'Chapter', contents: [{ id: 'content-imported', name: 'L', lessonId: 'lesson-imported' }] }],
-      legacyId: '65a52510b5bd26b9d2ab3aa1', createdAt: NOW,
-    };
-    const lesson: CourseLesson = { id: 'lesson-imported', tenantId: ACME, name: 'L', isPreview: false, contents: [], legacyId: '65a52510b5bd26b9d2ab3b77', createdAt: NOW };
-    await courses.create(ACME, course);
-    await modules.create(ACME, module);
-    await lessons.create(ACME, lesson);
-
-    expect(await locator.findCourse(ACME, '656b8fa6e74246956889b096')).toMatchObject({ id: 'course-imported' });
-    expect(await locator.findModule(ACME, '65a52510b5bd26b9d2ab3aa1')).toMatchObject({ id: 'module-imported' });
-    expect(await locator.findLesson(ACME, '65a52510b5bd26b9d2ab3b77')).toMatchObject({ id: 'lesson-imported' });
-    expect(await locator.findCourse(GLOBEX, '656b8fa6e74246956889b096')).toBeNull();
-    expect(await locator.findModule(GLOBEX, '65a52510b5bd26b9d2ab3aa1')).toBeNull();
-    expect(await locator.findLesson(GLOBEX, '65a52510b5bd26b9d2ab3b77')).toBeNull();
-    expect(await locator.findCourse(ACME, 'course-imported')).toBeNull();
-  });
 });
 
 describe('post repository', () => {

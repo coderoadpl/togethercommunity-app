@@ -384,7 +384,7 @@ describe('IntegrationsPanel', () => {
     const { apiKeySubmissions } = renderPanel();
 
     await openTab(pl.integrations.tabApiKeys);
-    await userEvent.type(await screen.findByTestId('import-api-key-name'), 'CodeRoad migration');
+    await userEvent.type(await screen.findByTestId('import-api-key-name'), 'Migration from a previous platform');
     await userEvent.click(screen.getByTestId('import-api-key-content-scope'));
     await userEvent.click(screen.getByTestId('import-api-key-users-scope'));
     const expiry = screen.getByTestId('import-api-key-expiry');
@@ -397,7 +397,7 @@ describe('IntegrationsPanel', () => {
     );
     expect(apiKeySubmissions).toHaveLength(1);
     expect(apiKeySubmissions[0]).toMatchObject({
-      name: 'CodeRoad migration',
+      name: 'Migration from a previous platform',
       scopes: ['import:content', 'import:users'],
     });
     const submission = apiKeyCreateInputSchema.parse(apiKeySubmissions[0]);

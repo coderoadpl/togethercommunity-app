@@ -63,6 +63,7 @@ import {
   creatorOnboardingSchema,
   tenantSetupReadinessSchema,
   tenantRoutingSchema,
+  tenantRedirectSchema,
   contentVersionRestoreSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
@@ -1375,6 +1376,10 @@ export const tenantRoutingOutputSchema = z.object({
   routing: tenantRoutingSchema,
 });
 
+export const tenantRedirectsOutputSchema = z.object({
+  redirects: z.array(tenantRedirectSchema),
+});
+
 export const tenantDomainInputSchema = z.object({
   domain: z.string().trim().min(1).max(253),
 });
@@ -1910,6 +1915,7 @@ export const API_ROUTES = {
   m2mImportMembers: { method: 'POST', path: '/api/m2m/import/members' },
   m2mImportGrants: { method: 'POST', path: '/api/m2m/import/grants' },
   m2mImportProgress: { method: 'POST', path: '/api/m2m/import/progress' },
+  m2mImportRedirects: { method: 'POST', path: '/api/m2m/import/redirects' },
   marketingMessagesCreate: { method: 'POST', path: '/api/m2m/marketing/messages' },
   marketingMessages: { method: 'GET', path: '/api/m2m/marketing/messages' },
   marketingMessage: { method: 'GET', path: '/api/m2m/marketing/messages/:id' },
@@ -1958,6 +1964,7 @@ export const API_ROUTES = {
   memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
+  tenantRedirects: { method: 'GET', path: '/api/tenant/redirects' },
   tenantDomainAdd: { method: 'POST', path: '/api/tenant/domains' },
   tenantDomainCheck: { method: 'POST', path: '/api/tenant/domains/check' },
   tenantDomainRemove: { method: 'POST', path: '/api/tenant/domains/remove' },
@@ -2166,6 +2173,7 @@ export const API_PATHS = {
   m2mImportMembers: API_ROUTES.m2mImportMembers.path,
   m2mImportGrants: API_ROUTES.m2mImportGrants.path,
   m2mImportProgress: API_ROUTES.m2mImportProgress.path,
+  m2mImportRedirects: API_ROUTES.m2mImportRedirects.path,
   marketingMessagesCreate: API_ROUTES.marketingMessagesCreate.path,
   marketingMessages: API_ROUTES.marketingMessages.path,
   marketingMessage: API_ROUTES.marketingMessage.path,
@@ -2207,6 +2215,7 @@ export const API_PATHS = {
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantRouting: API_ROUTES.tenantRouting.path,
+  tenantRedirects: API_ROUTES.tenantRedirects.path,
   tenantDomainDispatch: API_ROUTES.tenantDomainDispatch.path,
   tenantDomainAdd: API_ROUTES.tenantDomainAdd.path,
   tenantDomainCheck: API_ROUTES.tenantDomainCheck.path,

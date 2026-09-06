@@ -9,8 +9,6 @@ import {
 } from '#adapters/auth/create-auth.js';
 import { API_PATHS } from '#core/contract/index.js';
 
-import { LEGACY_COURSE_ROUTE } from './legacy-url-redirects.js';
-
 export type PublicRouteManifestEntry = {
   path: string;
   methods: readonly string[];
@@ -19,7 +17,7 @@ export type PublicRouteManifestEntry = {
 };
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
-  { path: '*', methods: ['GET'], mutating: false, why: 'Tenant social preview for link crawlers' },
+  { path: '*', methods: ['GET'], mutating: false, why: 'Tenant-configured path redirects and the social preview for link crawlers' },
   { path: '/manifest.webmanifest', methods: ['GET'], mutating: false, why: 'PWA web app manifest with tenant name' },
   { path: '/api/health', methods: ['GET'], mutating: false, why: 'Runtime health check' },
   { path: '/api/health/live', methods: ['GET'], mutating: false, why: 'Process liveness check' },
@@ -57,7 +55,6 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/marketing/confirm/:token', methods: ['POST'], mutating: true, why: 'Double opt-in confirmation' },
   { path: '/legal/:slug', methods: ['GET'], mutating: false, why: 'Latest public legal document' },
   { path: '/legal/:slug/v/:version', methods: ['GET'], mutating: false, why: 'Versioned public legal document' },
-  { path: LEGACY_COURSE_ROUTE, methods: ['GET'], mutating: false, why: 'Legacy course, module, chapter and lesson links redirected to their member pages' },
 ] as const;
 
 export const publicRouteManifestEntry = (

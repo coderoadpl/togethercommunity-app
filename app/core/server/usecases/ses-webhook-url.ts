@@ -1,5 +1,5 @@
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
-import { tenantOriginUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { createTenantOriginResolver, type TenantUrlDeps } from '../tenant-url.js';
 
 const SES_WEBHOOK_PATH = '/api/webhooks/ses';
 
@@ -13,15 +13,7 @@ export interface SesWebhookBaseUrlDeps {
 
 export const createSesWebhookBaseUrlResolver = (
   deps: SesWebhookBaseUrlDeps,
-): SesWebhookBaseUrlResolver => async (tenantId) => {
-  const [tenant, domains] = await Promise.all([
-    deps.tenants.findById(tenantId),
-    deps.tenantDomains.listByTenant(tenantId),
-  ]);
-  const custom = domains.find((domain) => domain.kind === 'custom' && domain.verified);
-  const origin = tenantOriginUrl({
-    slug: tenant?.slug ?? null,
-    customDomain: custom?.domain ?? null,
-  }, deps.routing);
-  return `${origin}${SES_WEBHOOK_PATH}`;
+): SesWebhookBaseUrlResolver => {
+  const resolveOrigin = createTenantOriginResolver({ ...deps.routing, ...deps });
+  return async (tenantId) => `${await resolveOrigin(tenantId)}${SES_WEBHOOK_PATH}`;
 };

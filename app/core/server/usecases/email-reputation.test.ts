@@ -217,7 +217,7 @@ describe('run reputation alerts', () => {
       emailOutbox,
       ids: { nextId: () => `alert-${String(++sequence)}` },
       clock: { nowIso: () => currentNow },
-      dashboardUrl: () => 'https://tenant.example.test/panel/marketing',
+      dashboardUrl: async () => 'https://tenant.example.test/panel/marketing',
       dispatchEmail: () => {
         dispatches += 1;
       },
@@ -282,7 +282,7 @@ describe('run reputation alerts', () => {
       emailOutbox: new InMemoryEmailOutboxRepository(),
       ids: { nextId: () => 'unused' },
       clock: { nowIso: () => NOW },
-      dashboardUrl: () => 'https://tenant.test/panel/marketing',
+      dashboardUrl: async () => 'https://tenant.test/panel/marketing',
       dispatchEmail: () => undefined,
     });
 

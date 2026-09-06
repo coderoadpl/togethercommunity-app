@@ -32,7 +32,7 @@ import type {
   TenantDomainEventRepository,
   TenantDomainRepository,
 } from '../ports.js';
-import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { canonicalTenantDomain, tenantOriginUrl, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 
 export interface TenantRoutingDeps {
   tenantDomains: TenantDomainRepository;
@@ -71,6 +71,7 @@ const routingView = (
   const custom = domains.filter((domain) => domain.kind === 'custom');
   return {
     tenantHost: new URL(tenantUrl(tenantSlug, '/', deps.routing)).host,
+    canonicalOrigin: tenantOriginUrl({ slug: tenantSlug, customDomain: canonicalTenantDomain(domains)?.domain ?? null }, deps.routing),
     customDomains: custom.map((domain) => ({
       domain: domain.domain,
       verified: domain.verified,

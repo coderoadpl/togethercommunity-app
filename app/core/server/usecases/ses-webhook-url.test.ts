@@ -68,6 +68,18 @@ describe('SES webhook base URL', () => {
     expect(await resolve('t-acme')).toBe('https://community.acme.test/api/webhooks/ses');
   });
 
+  it('selects the earliest verified custom domain independently of repository order', async () => {
+    const resolve = createSesWebhookBaseUrlResolver({
+      tenants: fakeTenants,
+      tenantDomains: fakeDomains([
+        customDomain({ domain: 'academy.example.org', verifiedAt: '2026-09-02T00:00:00.000Z' }),
+        customDomain({ domain: 'courses.example.org', verifiedAt: '2026-09-01T00:00:00.000Z' }),
+      ]),
+      routing,
+    });
+    expect(await resolve('t-acme')).toBe('https://courses.example.org/api/webhooks/ses');
+  });
+
   it('ignores an unverified custom domain', async () => {
     const resolve = createSesWebhookBaseUrlResolver({
       tenants: fakeTenants,

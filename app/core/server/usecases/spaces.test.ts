@@ -757,10 +757,10 @@ const fixture = (input: {
     tenants: tenantRepo(input.defaultHomeSpaceId ?? null),
     tenantAccess,
     links: {
-      lessonDiscussionUrl: ({ lessonId }) => `http://tenant.localhost/my/courses/c1/lessons/${lessonId}`,
-      conversationUrl: ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
-      eventUrl: ({ spaceId, eventId }) => `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
-      spaceUrl: ({ spaceId, rootPostId }) =>
+      lessonDiscussionUrl: async ({ lessonId }) => `http://tenant.localhost/my/courses/c1/lessons/${lessonId}`,
+      conversationUrl: async ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
+      eventUrl: async ({ spaceId, eventId }) => `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
+      spaceUrl: async ({ spaceId, rootPostId }) =>
         `http://tenant.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
     ids: new SequenceIds(),

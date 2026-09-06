@@ -51,7 +51,7 @@ export const runReputationAlerts = async (
     emailOutbox: EmailOutboxRepository;
     ids: IdGenerator;
     clock: Clock;
-    dashboardUrl(tenantSlug: string): string;
+    dashboardUrl(tenantId: string): string | Promise<string>;
     dispatchEmail(): void;
   },
 ): Promise<Result<{ sent: number }, AppError>> => {
@@ -118,7 +118,7 @@ export const runReputationAlerts = async (
         complaintRate: reputation.complaint.rate,
         windowStart: reputation.windowStart,
         windowEnd: reputation.windowEnd,
-        dashboardUrl: deps.dashboardUrl(tenant.slug),
+        dashboardUrl: await deps.dashboardUrl(tenant.id),
       },
       now,
     });

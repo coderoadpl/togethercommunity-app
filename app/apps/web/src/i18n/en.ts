@@ -2072,6 +2072,8 @@ export const en: Messages = {
   tenantDomains: {
     heading: 'Addresses',
     intro: 'Where members reach this workspace.',
+    canonicalAddress: 'Canonical address',
+    canonicalExplanation: 'Email links use the earliest verified custom domain, or the workspace address when none is active.',
     workspaceAddress: 'Workspace address',
     customDomains: 'Custom domain',
     none: 'No custom domain is connected. Add one below.',

@@ -9,7 +9,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
-import { customDomainOrigin, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { customDomainOrigin, resolveTenantOrigin, tenantUrl, type TenantOriginDeps } from '../tenant-url.js';
 
 export interface ResolveTenantDeps {
   tenantDomains: TenantDomainRepository;
@@ -27,10 +27,10 @@ export interface ResolvedTenant {
   domain?: TenantDomain;
 }
 
-export const authLinkBaseUrl = (
+export const authLinkBaseUrl = async (
   resolved: ResolvedTenant | null,
-  routing: TenantUrlDeps,
-): string => {
+  routing: TenantOriginDeps,
+): Promise<string> => {
   if (resolved === null) return routing.appBaseUrl;
   const { domain } = resolved;
   if (domain?.kind === 'custom') {
@@ -39,7 +39,7 @@ export const authLinkBaseUrl = (
   if (resolved.source === 'subdomain' || domain?.kind === 'subdomain') {
     return new URL(tenantUrl(resolved.tenant.slug, '/', routing)).origin;
   }
-  return routing.appBaseUrl;
+  return resolveTenantOrigin(resolved.tenant, routing);
 };
 
 /** Matches `normalizeCustomDomain`, so a fully qualified `Host` still finds its row. */

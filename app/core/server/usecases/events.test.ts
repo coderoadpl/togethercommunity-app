@@ -473,10 +473,10 @@ const fixture = (input: {
       },
     },
     links: {
-      lessonDiscussionUrl: () => 'http://tenant.localhost/my',
-      spaceUrl: ({ spaceId }) => `http://tenant.localhost/community/${spaceId}`,
-      conversationUrl: () => 'http://tenant.localhost/messages',
-      eventUrl: ({ spaceId, eventId }) =>
+      lessonDiscussionUrl: async () => 'http://tenant.localhost/my',
+      spaceUrl: async ({ spaceId }) => `http://tenant.localhost/community/${spaceId}`,
+      conversationUrl: async () => 'http://tenant.localhost/messages',
+      eventUrl: async ({ spaceId, eventId }) =>
         `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
     },
     ids: new SequenceIds(),

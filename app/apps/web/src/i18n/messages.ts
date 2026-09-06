@@ -490,6 +490,7 @@ export interface Messages {
     openNavigation: string;
     closeNavigation: string;
     accountMenu: string;
+    myAccount: string;
     signedInAs: string;
   };
   notifications: {

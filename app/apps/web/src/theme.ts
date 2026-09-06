@@ -3506,6 +3506,11 @@ export const SocialFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   borderTop: `1px solid ${theme.palette.divider}`,
 }));
 
+export const QuietActionLink = styled(Link)<AsElement & { disabled?: boolean }>(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  '&:disabled': { color: theme.palette.text.disabled },
+}));
+
 export const SocialFooterLink = styled(Link)(({ theme }) => ({
   display: 'inline-flex',
   alignItems: 'center',

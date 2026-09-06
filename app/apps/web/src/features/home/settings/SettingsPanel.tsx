@@ -61,7 +61,7 @@ import {
   shortSha,
 } from '../../../lib/build-info.js';
 import { formatDateTime } from '../../../lib/format.js';
-import { BrandSwatch, Eyebrow } from '../../../theme.js';
+import { BrandSwatch, Eyebrow, QuietActionLink } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
 import { usePanelContext } from '../panel-context.js';
 import { ImageAssetField } from '../ImageAssetField.js';
@@ -1309,10 +1309,12 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
   return (
     <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
       <Stack useFlexGap spacing="1rem" data-testid="tenant-domains">
-        <Stack useFlexGap spacing="0.3rem">
-          <Eyebrow>{t.tenantDomains.workspaceAddress}</Eyebrow>
-          <Typography variant="body2">{tenantHost}</Typography>
-        </Stack>
+        <CopyField
+          label={t.tenantDomains.workspaceAddress}
+          value={tenantHost}
+          mono
+          testId="tenant-workspace-address"
+        />
         {customDomains.some((entry) => entry.verified) ? null : (
           <Alert severity="warning" data-testid="tenant-domain-warning">
             {t.tenantDomains.firstDomainWarning}
@@ -1349,17 +1351,33 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
                   label={domainStatusLabel(t, entry.status)}
                   data-testid={`tenant-domain-status-${entry.domain}`}
                 />
-                <Button
-                  type="button"
-                  size="small"
-                  disabled={!canEdit || pending}
-                  onClick={() => checkDomain.mutate({ domain: entry.domain })}
-                  data-testid={`tenant-domain-check-${entry.domain}`}
-                >
-                  {busyWith(checkDomain, entry.domain)
-                    ? t.tenantDomains.checking
-                    : t.tenantDomains.check}
-                </Button>
+                {entry.status === 'active' ? (
+                  <QuietActionLink
+                    component="button"
+                    type="button"
+                    variant="caption"
+                    underline="hover"
+                    disabled={!canEdit || pending}
+                    onClick={() => checkDomain.mutate({ domain: entry.domain })}
+                    data-testid={`tenant-domain-check-${entry.domain}`}
+                  >
+                    {busyWith(checkDomain, entry.domain)
+                      ? t.tenantDomains.checking
+                      : t.tenantDomains.check}
+                  </QuietActionLink>
+                ) : (
+                  <Button
+                    type="button"
+                    size="small"
+                    disabled={!canEdit || pending}
+                    onClick={() => checkDomain.mutate({ domain: entry.domain })}
+                    data-testid={`tenant-domain-check-${entry.domain}`}
+                  >
+                    {busyWith(checkDomain, entry.domain)
+                      ? t.tenantDomains.checking
+                      : t.tenantDomains.check}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   size="small"

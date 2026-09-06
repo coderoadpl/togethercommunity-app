@@ -542,6 +542,7 @@ export const pl: Messages = {
     openNavigation: 'Otwórz nawigację',
     closeNavigation: 'Zamknij nawigację',
     accountMenu: 'Menu konta',
+    myAccount: 'Moje konto',
     signedInAs: 'Zalogowano jako',
   },
   notifications: {
@@ -2166,7 +2167,7 @@ export const pl: Messages = {
     targetPathLabel: 'Ścieżka docelowa',
     targetPathHint: 'Ścieżka w tym warsztacie, na przykład /my.',
     permanentLabel: 'Przekierowanie stałe (301)',
-    permanentHint: 'Przeglądarki zapamiętują stałe przekierowanie — używaj go dla celu, który się nie zmieni.',
+    permanentHint: 'Przeglądarki zapamiętują stałe przekierowania (301). Późniejsza zmiana lub usunięcie przekierowania może nie zadziałać od razu u odwiedzających.',
     submit: 'Dodaj przekierowanie',
     submitting: 'Dodaję…',
     created: ({ fromPath }) => format('Przekierowanie {fromPath} zostało dodane.', { fromPath }),

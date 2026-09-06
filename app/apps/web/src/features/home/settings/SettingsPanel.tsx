@@ -1218,14 +1218,12 @@ const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
       </Typography>
       <CopyField
         size="small"
-        mono
         label={t.tenantDomains.recordName}
         value={record.name}
         testId={`dns-record-name-${record.type}-${record.name}`}
       />
       <CopyField
         size="small"
-        mono
         label={t.tenantDomains.recordValue}
         value={record.value}
         testId={`dns-record-value-${record.type}-${record.name}`}

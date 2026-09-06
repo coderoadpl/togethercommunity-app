@@ -7,6 +7,7 @@ import {
   type CourseModule,
   type ImportAuditEvent,
   type Product,
+  type TenantDomain,
   type TenantApiKey,
 } from '#core/domain/index.js';
 
@@ -22,6 +23,8 @@ import {
 
 const NOW = '1998-08-14T10:00:00.000Z';
 const TENANT_ID = 'tenant-1';
+const COURSE_ASSET_PATH = '/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.jpg';
+const PRODUCT_ASSET_PATH = '/api/public/assets/product-cover/00000000-0000-4000-8000-000000000002.webp';
 
 const apiKey: TenantApiKey = {
   id: 'key-1',
@@ -98,6 +101,20 @@ const productRecord = () => ({
   }],
 });
 
+const customDomain = (domain = 'courses.example.org'): TenantDomain => ({
+  id: `domain-${domain}`,
+  tenantId: TENANT_ID,
+  domain,
+  kind: 'custom',
+  verified: true,
+  provider: 'manual',
+  verification: [],
+  createdAt: NOW,
+  verifiedAt: NOW,
+  lastCheckedAt: NOW,
+  lastError: null,
+});
+
 const harness = () => {
   let sequence = 0;
   let commitCalls = 0;
@@ -106,6 +123,7 @@ const harness = () => {
   const lessons = new Map<string, CourseLesson>();
   const products = new Map<string, Product>();
   const audits = new Map<string, ImportAuditEvent>();
+  const domains: TenantDomain[] = [];
   const versions: EntityVersionRecord[] = [];
   const save = (mutation: ImportContentMutation): void => {
     if (mutation.version !== undefined) versions.push(mutation.version);
@@ -130,6 +148,12 @@ const harness = () => {
     importAuditEvents: {
       findLatestByImportKey: async (_tenantId, kind, importKey) => audits.get(`${kind}:${importKey}`) ?? null,
     },
+    tenantDomains: {
+      listByTenant: async (tenantId) => domains.filter((domain) => domain.tenantId === tenantId),
+    },
+    appBaseUrl: 'http://localhost:48730',
+    baseDomain: 'localhost',
+    singleTenantMode: false,
     importContent: {
       commit: async (_tenantId, mutation) => {
         commitCalls += 1;
@@ -162,6 +186,7 @@ const harness = () => {
     lessons,
     products,
     audits,
+    domains,
     versions,
     commitCalls: () => commitCalls,
     resetCommitCalls: () => {
@@ -463,6 +488,76 @@ describe('m2m content import', () => {
     expect(h.modules.has('module-injected')).toBe(false);
   });
 
+  it('normalizes platform-host public asset URLs before storing content', async () => {
+    const h = harness();
+    const result = await importM2mContent(ctx, apiKey, 'course', {
+      datasetVersion: 'together-import/v1',
+      records: [{
+        ...courseRecord(),
+        imageUrl: `https://tenant.localhost${COURSE_ASSET_PATH}`,
+      }],
+    }, h.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(h.courses.get('course-source')?.imageUrl).toBe(COURSE_ASSET_PATH);
+    expect(h.audits.get('course:course-source')?.payloadHash).toContain(COURSE_ASSET_PATH);
+    expect(h.audits.get('course:course-source')?.payloadHash).not.toContain('tenant.localhost');
+  });
+
+  it('normalizes verified custom-domain public asset URLs before storing content', async () => {
+    const h = harness();
+    h.domains.push(customDomain());
+    const result = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1',
+      records: [{
+        ...productRecord(),
+        coverUrl: `https://courses.example.org${PRODUCT_ASSET_PATH}`,
+        accessItems: [],
+      }],
+    }, h.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(h.products.get('product-source')?.coverUrl).toBe(PRODUCT_ASSET_PATH);
+  });
+
+  it('keeps external absolute asset URLs unchanged', async () => {
+    const h = harness();
+    const externalUrl = `https://cdn.example.org${COURSE_ASSET_PATH}`;
+    const result = await importM2mContent(ctx, apiKey, 'course', {
+      datasetVersion: 'together-import/v1',
+      records: [{ ...courseRecord(), imageUrl: externalUrl }],
+    }, h.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(h.courses.get('course-source')?.imageUrl).toBe(externalUrl);
+  });
+
+  it('reports public asset URL normalization during validation', async () => {
+    const h = harness();
+    const result = await validateM2mImport(ctx, {
+      datasetVersion: 'together-import/v1',
+      records: [{
+        kind: 'course',
+        ...courseRecord(),
+        imageUrl: `https://tenant.localhost${COURSE_ASSET_PATH}`,
+      }],
+    }, h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        valid: true,
+        infos: [{
+          index: 0,
+          kind: 'course',
+          importKey: 'course-source',
+          message: `imageUrl normalized to ${COURSE_ASSET_PATH}`,
+        }],
+      },
+    });
+    expect(h.commitCalls()).toBe(0);
+  });
+
   it('validates mixed forward references without invoking the write port', async () => {
     const h = harness();
     const result = await validateM2mImport(ctx, {
@@ -490,6 +585,7 @@ describe('m2m content import', () => {
         },
         errors: [],
         warnings: [],
+        infos: [],
         valid: true,
       },
     });

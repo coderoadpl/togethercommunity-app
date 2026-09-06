@@ -68,6 +68,8 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'TenantRepository.findBySlug': 'Tenant resolution must look up a tenant before a tenant ID exists.',
   'TenantRepository.findSole': 'Single-tenant resolution must identify the sole tenant before a tenant ID exists.',
   'TenantRepository.hasAny': 'Bootstrap admission checks whether any tenant exists before creating the tenant boundary.',
+  'TenantSecretScanPort.listAll': 'The disposable-environment secret sanitizer inspects every stored secret before any tenant ID exists.',
+  'TenantSecretScanPort.deleteById': 'The sanitizer removes the exact rows its own scan already identified.',
   'TenantSesSettingsRepository.findByWebhookToken': 'The signed provider webhook token resolves the owning tenant.',
   'TenantAccessReader.findStaffGrant': 'Tenant resolution may start from a slug before a tenant ID exists.',
   'TenantAccessReader.listTenantsForStaff': 'Sign-in discovers the tenants available to a platform user.',

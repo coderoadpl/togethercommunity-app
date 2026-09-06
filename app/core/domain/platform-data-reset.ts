@@ -111,7 +111,7 @@ export const isPlatformOwner = (email: string, owners: readonly string[]): boole
 
 export interface PlatformAuditEvent {
   id: string;
-  action: 'platform:data-reset' | 'reseed-acme';
+  action: 'platform:data-reset' | 'reseed-acme' | 'sanitize-staging-secrets';
   actorUserId: string;
   actorEmail: string;
   environment: string;

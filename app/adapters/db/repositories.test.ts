@@ -77,6 +77,7 @@ import {
   createTenantDirectory,
   createTenantRepository,
   createTenantSecretRepository,
+  createTenantSecretScan,
   createUserDisplayReader,
 } from './repositories.js';
 import { tenantDomainEvents } from './schema.js';
@@ -1393,6 +1394,32 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.findByKey(GLOBEX, 'stripe.restrictedKey')).toBeNull();
     expect(await repo.delete(ACME, 'stripe.restrictedKey')).toBe(true);
     expect(await repo.findByKey(ACME, 'stripe.restrictedKey')).toBeNull();
+  });
+
+  it('scans tenant secrets across tenants and deletes them by id', async () => {
+    const repo = createTenantSecretRepository(db);
+    const scan = createTenantSecretScan(db);
+    const secret = (tenantId: string, id: string): TenantSecret => ({
+      id,
+      tenantId,
+      key: 'bunny.apiKey',
+      ciphertext: 'ct',
+      iv: 'iv',
+      authTag: 'tag',
+      maskedPreview: 'bn_***',
+      updatedAt: NOW,
+    });
+    await repo.upsert(ACME, secret(ACME, 'sec-scan-acme'));
+    await repo.upsert(GLOBEX, secret(GLOBEX, 'sec-scan-globex'));
+
+    const scanned = await scan.listAll();
+
+    expect(scanned.filter((row) => row.key === 'bunny.apiKey').map((row) => row.id))
+      .toEqual(['sec-scan-acme', 'sec-scan-globex']);
+    expect(await scan.deleteById('sec-scan-globex')).toBe(true);
+    expect(await scan.deleteById('sec-scan-globex')).toBe(false);
+    expect(await repo.findByKey(GLOBEX, 'bunny.apiKey')).toBeNull();
+    expect(await repo.findByKey(ACME, 'bunny.apiKey')).not.toBeNull();
   });
 
   it('leases, reclaims, finalizes, and releases payment event claims', async () => {

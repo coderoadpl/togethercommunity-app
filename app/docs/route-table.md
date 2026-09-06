@@ -62,6 +62,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/internal/dispatch-auto-invoices` | self-authenticating | read | api internal dispatch-auto-invoices |
 | `POST /api/internal/domain-check` | self-authenticating | mutating | tenant domain dispatch |
 | `POST /api/internal/reseed-acme` | self-authenticating | mutating | smoke tenant reseed |
+| `POST /api/internal/sanitize-staging-secrets` | self-authenticating | mutating | sanitize staging secrets |
 | `GET /api/internal/domain-check` | self-authenticating | read | api internal domain-check |
 | `POST /api/internal/dispatch-ksef` | self-authenticating | mutating | ksef dispatch |
 | `GET /api/internal/dispatch-ksef` | self-authenticating | read | api internal dispatch-ksef |

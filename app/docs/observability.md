@@ -231,6 +231,51 @@ neither pages nor leaves the branch red. Once the variable is set every mismatch
 fails and pages. A fingerprint matching production pages either way, pin or no
 pin.
 
+### Secrets after a database branch reset
+
+The staging database is a branch reset from production, so every tenant secret it
+carries — SES, S3, Stripe, Bunny, iFirma, KSeF — was encrypted with the
+production `SECRETS_MASTER_KEY`. Staging holds a different key, so those rows
+decrypt to nothing there: `/api/health/deep` fails `tenant-secret-decryption`,
+and `storage-presign` fails with it because the S3 configuration is one of the
+unreadable rows.
+
+`POST /api/internal/sanitize-staging-secrets` resolves that. Guarded by the same
+`x-scheduler-operator-secret` header the acme reseed uses, it scans every stored
+tenant secret, attempts to decrypt each one, deletes the ones that fail, and
+records a `sanitize-staging-secrets` platform audit event carrying the counts. It
+refuses with `403` when the deployment identity reports production **or** when
+`DATABASE_URL` fingerprints as the production database, so the route cannot reach
+production data even if someone aims it there.
+
+Once the unreadable rows are gone, `tenant-secret-decryption` and
+`storage-presign` report the same "nothing configured here" result they report
+for a tenant that never configured an integration: green, with no subject
+measured. That is the intended staging steady state — staging then holds only the
+secrets an operator entered on staging.
+
+`staging-smoke.yml` calls the route before its checks, using the
+`STAGING_OPERATOR_SECRET` repository secret through the deployment-protection
+bypass header. Absent secret → the step prints a notice and the smoke runs
+against staging as it stands; a failing call does not fail the job, so a sanitize
+problem never masquerades as a staging outage.
+
+To give staging its own working integrations, sign in to Studio on the staging
+host and re-enter them there — Studio → Integrations for e-mail, storage,
+payments and invoicing. Use staging-only credentials (Stripe test keys, a
+separate bucket, an SES sandbox identity); anything entered on staging is
+encrypted with staging's key and survives until the next branch reset, which
+wipes them again.
+
+### The scheduler check on a non-production deployment
+
+Vercel cron jobs (`app/vercel.json`) fire against the production deployment only,
+so no scheduler run ever starts on staging or a preview. `scheduler-freshness`
+therefore reports `skipped` with `scheduler runs only on production` on every
+non-production deployment instead of ageing out into a failure. The check stays
+`ok`, measures no subject, and carries its reason in the report; only production
+compares the last run's age against the two-hour ceiling.
+
 Staging sits behind Vercel Deployment Protection, so every request carries
 `x-vercel-protection-bypass` with the automation bypass secret. The smoke reads
 JSON APIs only, so it never needs the `x-vercel-set-bypass-cookie` companion
@@ -253,6 +298,7 @@ carrying `Together STAGING smoke FAILED: <failing checks>`.
 | `PRODUCTION_DATABASE_FINGERPRINT` | variable | The fingerprint staging must **not** answer with. Unset → the workflow falls back to the recorded production value. |
 | `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the run passes green and prints the value to pin, without an SMS. |
 | `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `<SMOKE_TENANT>.staging.togethercommunity.app`. |
+| `STAGING_OPERATOR_SECRET` | secret | Staging's `PROD_OPERATOR_SECRET` value, used to call the secret sanitize before the checks. Unset → the sanitize is skipped with a notice. |
 
 Obtain the bypass secret in Vercel → Settings → Deployment Protection →
 Protection Bypass for Automation, then copy it into Settings → Secrets and

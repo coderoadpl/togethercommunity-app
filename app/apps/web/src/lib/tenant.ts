@@ -48,6 +48,11 @@ export const hostHasTenantSubdomain = (hostname: string, baseDomain: string = ap
   return sub.length > 0 && !sub.includes('.');
 };
 
+/** Custom domains address tenants too when the platform base domain is configured. */
+export const isTenantHost = (hostname: string): boolean =>
+  hostHasTenantSubdomain(hostname) ||
+  (configuredAppBaseDomain() !== undefined && !isConfiguredBaseDomainHost(hostname));
+
 /** Stable accent hue per tenant so each tenant is visibly its own world. */
 export const tenantHue = (slug: string): number => {
   let hash = 0;

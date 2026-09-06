@@ -52,6 +52,10 @@ export interface Messages {
     saving: string;
     saved: string;
   };
+  copyField: {
+    copy: string;
+    copied: string;
+  };
   imageAssets: {
     upload: string;
     uploading: string;
@@ -741,6 +745,7 @@ export interface Messages {
     importKeysCreating: string;
     importKeysSecretHeading: string;
     importKeysSecretWarning: string;
+    importKeysSecretLabel: string;
     importKeysLoading: string;
     importKeysEmpty: string;
     importKeysActive: string;
@@ -1853,8 +1858,6 @@ export interface Messages {
     recordType: string;
     recordName: string;
     recordValue: string;
-    copy: string;
-    copied: string;
     check: string;
     checking: string;
     remove: string;
@@ -2236,14 +2239,15 @@ export interface Messages {
     wizardDkimRecords: string;
     wizardDkimName: string;
     wizardDkimValue: string;
-    wizardCopy: string;
     wizardSubscription: string;
     wizardProductionAccess: string;
     wizardDocs: string;
     wizardFeedbackDisabled: string;
     wizardAwsRejected: string;
     wizardProvisionDone: string;
-    wizardProvisionSummary: (input: { configurationSet: string; topicArn: string; endpoint: string }) => string;
+    wizardConfigurationSetLabel: string;
+    wizardTopicArnLabel: string;
+    wizardSubscriptionEndpointLabel: string;
     wizardSubscriptionConfirmed: string;
     wizardSubscriptionPending: string;
     snsLastDeliveryNone: string;

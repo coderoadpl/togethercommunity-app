@@ -13,7 +13,7 @@ import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
  * against it); do not "round" them to Material defaults.
  */
 
-const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
+export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
 

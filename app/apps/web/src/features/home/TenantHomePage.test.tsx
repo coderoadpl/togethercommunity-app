@@ -8,7 +8,7 @@ import {
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -64,6 +64,8 @@ const renderHome = async (component: () => ReactNode = TenantHomePage) => {
   await router.load();
   return { ...renderWithProviders(<RouterProvider router={router} />), router };
 };
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe('TenantHomePage dispatcher', () => {
   it('redirects a staff member into the creator panel', async () => {
@@ -174,7 +176,8 @@ describe('TenantHomePage dispatcher', () => {
     expect(await screen.findByTestId('platform-reset-open')).toHaveTextContent(pl.platformReset.action);
   });
 
-  it('renders the anonymous home on a tenant host instead of redirecting to sign in', async () => {
+  it.each(['acme.localhost', 'courses.example.org'])('renders the anonymous home on %s instead of redirecting to sign in', async (hostname) => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
     server.use(
       http.get('/api/me', () =>
         HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }),
@@ -182,7 +185,7 @@ describe('TenantHomePage dispatcher', () => {
     );
 
     const { router } = await renderHome(() => (
-      <TenantHomePage hostname="acme.localhost" anonymousHome={<div>ANON</div>} />
+      <TenantHomePage hostname={hostname} anonymousHome={<div>ANON</div>} />
     ));
 
     expect(await screen.findByText('ANON')).toBeInTheDocument();

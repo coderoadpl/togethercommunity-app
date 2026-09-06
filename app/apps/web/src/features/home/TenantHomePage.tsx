@@ -25,7 +25,7 @@ import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { hostHasTenantSubdomain, tenantUrl } from '../../lib/tenant.js';
+import { isTenantHost, tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
 import { PlatformDataReset } from './PlatformDataReset.js';
 
@@ -46,7 +46,7 @@ export const TenantHomePage = ({
   const staff = tenant !== null && tenant.staffRole !== null;
   const memberOnly = tenant !== null && tenant.staffRole === null;
   const anonymousTenantHome =
-    unauthorized && anonymousHome !== undefined && hostHasTenantSubdomain(hostname);
+    unauthorized && anonymousHome !== undefined && isTenantHost(hostname);
 
   useEffect(() => {
     if (unauthorized && !anonymousTenantHome) void navigate({ to: '/login' });

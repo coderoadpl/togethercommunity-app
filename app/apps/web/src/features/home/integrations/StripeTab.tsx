@@ -15,6 +15,7 @@ import type { StripeMode } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { CopyField } from '../../../components/ui/CopyField.js';
 import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { usePanelContext } from '../panel-context.js';
 import { ProviderTest } from './ProviderTest.js';
@@ -228,18 +229,13 @@ export const StripeTab = () => {
           />
         )}
 
-        <FormControl fullWidth>
-          <FormLabel htmlFor="stripe-webhook-url">{t.integrations.webhookUrlLabel}</FormLabel>
-          <OutlinedInput
-            id="stripe-webhook-url"
-            readOnly
-            value={secrets.data?.stripeWebhookUrl ?? ''}
-            inputProps={{ 'data-testid': 'stripe-webhook-url' }}
-          />
-          <Typography variant="caption" component="p" sx={{ mt: '0.35rem' }}>
-            {stripeReady ? t.integrations.webhookActiveHint : t.integrations.webhookUrlHint}
-          </Typography>
-        </FormControl>
+        <CopyField
+          mono
+          label={t.integrations.webhookUrlLabel}
+          hint={stripeReady ? t.integrations.webhookActiveHint : t.integrations.webhookUrlHint}
+          value={secrets.data?.stripeWebhookUrl ?? ''}
+          testId="stripe-webhook-url"
+        />
 
         <ProviderTest
           provider="payment"

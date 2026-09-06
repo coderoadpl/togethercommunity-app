@@ -20,7 +20,7 @@ import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { appBaseDomain, hostHasTenantSubdomain, isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
+import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 
 const baseDomainUrl = (): string => {
@@ -42,7 +42,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
 
   const resolveTenantOffer = !isConfiguredBaseDomainHost(hostname);
   const offer = useQuery({ ...actions.publicOffer, enabled: resolveTenantOffer });
-  const onOtherTenantHost = hostHasTenantSubdomain(hostname);
+  const onOtherTenantHost = isTenantHost(hostname);
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
 

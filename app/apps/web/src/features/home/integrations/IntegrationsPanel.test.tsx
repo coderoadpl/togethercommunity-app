@@ -367,7 +367,7 @@ describe('IntegrationsPanel', () => {
 
     expect(await screen.findByTestId('email-test-connection')).toBeInTheDocument();
     expect(await screen.findByTestId('marketing-readiness')).toBeInTheDocument();
-    expect(screen.getByTestId('marketing-webhook-url')).toHaveTextContent(
+    expect(screen.getByTestId('marketing-webhook-url')).toHaveValue(
       'https://app.example.test/api/webhooks/ses/webhook-token',
     );
     expect(screen.getByLabelText(pl.marketing.accessKeyLabel)).toBeInTheDocument();
@@ -392,7 +392,7 @@ describe('IntegrationsPanel', () => {
     expect(expiry).toHaveAttribute('max');
     await userEvent.click(screen.getByTestId('import-api-key-create'));
 
-    expect(await screen.findByLabelText(pl.integrations.importKeysSecretHeading)).toHaveValue(
+    expect(await screen.findByLabelText(pl.integrations.importKeysSecretLabel)).toHaveValue(
       'together_import_secret',
     );
     expect(apiKeySubmissions).toHaveLength(1);

@@ -2,23 +2,13 @@ import { useState } from 'react';
 import { Alert, IconButton, ListItemText, Menu, MenuItem, Snackbar, Tooltip } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
+import { copyText } from '../../lib/clipboard.js';
 import { SHELL_SNACKBAR_ANCHOR } from '../../theme.js';
 import { PostMenuIcon } from './community-icons.js';
 import { ReportPostDialog, useReportUnavailable } from './ReportPostButton.js';
 import { StartMessageErrorSnackbar, useStartPostConversation } from './messages/StartMessageButton.js';
 
 type CopyOutcome = 'done' | 'failed';
-
-const copyToClipboard = async (text: string): Promise<CopyOutcome> => {
-  const { clipboard } = navigator;
-  if (clipboard === undefined) return 'failed';
-  try {
-    await clipboard.writeText(text);
-    return 'done';
-  } catch {
-    return 'failed';
-  }
-};
 
 export const FeedPostMenu = ({
   postId,
@@ -39,7 +29,8 @@ export const FeedPostMenu = ({
 
   const copyLink = async () => {
     setAnchorEl(null);
-    setCopyOutcome(await copyToClipboard(new URL(postPath, window.location.origin).toString()));
+    const copied = await copyText(new URL(postPath, window.location.origin).toString());
+    setCopyOutcome(copied ? 'done' : 'failed');
   };
 
   return (

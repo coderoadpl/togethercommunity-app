@@ -25,6 +25,7 @@ import {
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { CopyField } from '../../../components/ui/CopyField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 
 const dateInputValue = (date: Date): string => {
@@ -169,13 +170,14 @@ export const ImportApiKeys = () => {
           <Alert severity="warning" data-testid="import-api-key-secret">
             <Typography variant="subtitle2">{t.integrations.importKeysSecretHeading}</Typography>
             <Typography variant="body2">{t.integrations.importKeysSecretWarning}</Typography>
-            <OutlinedInput
-              fullWidth
-              readOnly
-              value={create.data.secret}
-              inputProps={{ 'aria-label': t.integrations.importKeysSecretHeading }}
-              sx={{ mt: '0.6rem' }}
-            />
+            <Box sx={{ mt: '0.6rem' }}>
+              <CopyField
+                mono
+                label={t.integrations.importKeysSecretLabel}
+                value={create.data.secret}
+                testId="import-api-key-secret-value"
+              />
+            </Box>
           </Alert>
         ) : null}
         {create.isError ? <Alert severity="error">{localizePanelError(create.error, t)}</Alert> : null}

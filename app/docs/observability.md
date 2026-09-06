@@ -90,13 +90,18 @@ scheduled run fails and pages when the deep probe answers anything other than
 ## Post-deploy remote smoke
 
 `.github/workflows/prod-smoke.yml` runs on a `deployment_status` event with
-state `success` and environment `Production`, and on `workflow_dispatch`. It
-waits until `https://coderoad.togethercommunity.app/api/health` reports the
-deployment's commit (up to five minutes), reseeds the smoke tenant, then runs
-`pnpm run smoke:remote` (`app/scripts/remote-smoke.ts`) with
-`EXPECTED_SHA` set to that commit. A manual dispatch may leave `expected_sha`
-empty; the wait and the `health-attestation` match are then both skipped, so any
-commit the host serves is accepted.
+state `success` and environment `Production`, and on `workflow_dispatch`. Both
+the wait and the checks target `https://<SMOKE_TENANT>.togethercommunity.app` —
+every tenant host serves `/api/health`, so the commit attestation holds on the
+tenant's own host and the smoke never signs a member of one tenant in on
+another's. It waits until that host reports the deployment's commit (up to five
+minutes), reseeds the smoke tenant, then runs `pnpm run smoke:remote`
+(`app/scripts/remote-smoke.ts`) with `EXPECTED_SHA` set to that commit.
+
+A manual dispatch may point `base_url` at any host; left empty it smokes the
+tenant host. It may also leave `expected_sha` empty, and the wait and the
+`health-attestation` match are then both skipped, so any commit the host serves
+is accepted.
 
 The wait comes first so the reseed always reaches the build under test — on the
 deployment the alias would otherwise still be answering from the previous one,
@@ -137,8 +142,11 @@ never trigger an SMS. Credentials are never printed: the script reports check
 names and messages, never request bodies or headers.
 
 The reseed step is `continue-on-error`, so a refused or unreachable reseed still
-lets the checks run; the run then fails and pages with `reseed` as the failing
-name. A broken reseed must never cost the deployment its smoke and its alert.
+lets the checks run. One step then assembles the whole failing list — `reseed`
+first, then the alias and check names — and the summary, the SMS and the run
+failure all quote it, so `failing=reseed,public-offer` names both the checks
+that broke and the reseed that probably broke them. A broken reseed must never
+cost the deployment its smoke and its alert.
 
 ### Repository secrets the owner must add
 
@@ -151,16 +159,18 @@ Settings → Secrets and variables → Actions → repository secrets:
 | `ALERT_SMS_PHONE` | prod-health, prod-smoke | On-call number in E.164 form. |
 | `SMOKE_MEMBER_EMAIL` | prod-smoke | Optional override; defaults to `kontakt+smoke-member@togethercommunity.app`. Absent (with no default) → member checks skipped. |
 | `SMOKE_MEMBER_PASSWORD` | prod-smoke | Password the smoke member is seeded with **and** signed in with. Must equal the deployment's `SMOKE_MEMBER_PASSWORD` environment variable. Set exactly one of the pair and the smoke fails. |
-| `PROD_OPERATOR_SECRET` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; equals the deployment's `CRON_SECRET`. Absent → the reseed step prints a notice and is skipped. Sent only to `PROD_BASE_URL`, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
+| `PROD_OPERATOR_SECRET` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; must equal the deployment's `PROD_OPERATOR_SECRET`, or its `CRON_SECRET` where the deployment sets no operator secret. Absent → the reseed step prints a notice and is skipped. Sent only to the tenant host, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
 
 The creator account never signs in from the workflow, so its password lives on
 the deployment only, as `SMOKE_CREATOR_PASSWORD`.
 
-The first three already exist for `prod-health.yml`; the smoke reuses them. The
-tenant under test comes from the `SMOKE_TENANT` repository variable and defaults
-to `acme`. Pointing that variable at another tenant also skips the reseed with a
-notice: the route rebuilds `tenant-acme` only, and wiping it would serve no run
-that checks something else.
+The first three already exist for `prod-health.yml`; the smoke reuses them and
+passes exactly the inputs that workflow passes, the region left to the composite
+action's `eu-central-1` default. The tenant under test comes from the
+`SMOKE_TENANT` repository variable and defaults to `acme`; it names both the
+`x-tenant` header and the host. Pointing that variable at another tenant also
+skips the reseed with a notice: the route rebuilds `tenant-acme` only, and
+wiping it would serve no run that checks something else.
 
 ## The smoke tenant
 
@@ -209,8 +219,13 @@ travels with the fixture:
 ### Reseeding the smoke tenant
 
 `POST /api/internal/reseed-acme`, authenticated by the
-`x-scheduler-operator-secret` header (the deployment's `CRON_SECRET`), wipes and
-re-applies **only** `tenant-acme`. `prod-smoke.yml` calls it before the checks.
+`x-scheduler-operator-secret` header, wipes and re-applies **only**
+`tenant-acme`. `prod-smoke.yml` calls it before the checks.
+
+The header is matched against `PROD_OPERATOR_SECRET`, falling back to
+`CRON_SECRET` and then to `EMAIL_DISPATCH_SECRET`. A deployment that gives the
+workflow its own operator secret can therefore rotate it without touching the
+secret its scheduled jobs authenticate with.
 
 The run is transactional, takes the same class of advisory lock as the full
 reseed, and writes a `reseed-acme` row into `platform_audit_events`. Unlike

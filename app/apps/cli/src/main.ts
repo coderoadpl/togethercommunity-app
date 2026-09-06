@@ -5,7 +5,11 @@ import { z, type ZodTypeAny } from 'zod';
 
 import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client-adapter.js';
 import { createApiClient, type ApiClient } from '#core/client/index.js';
-import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';
+import {
+  API_KEY_HEADER,
+  TENANT_HEADER,
+  type TenantRedirectCreateBody,
+} from '#core/contract/index.js';
 import {
   accessItemSchema,
   currencySchema,
@@ -257,6 +261,18 @@ const erasureRejectOptionsSchema = z.object({
   note: z.string().trim().min(1),
 });
 const noOptionsSchema = z.object({});
+const redirectListOptionsSchema = z.object({
+  search: z.string().trim().min(1).optional(),
+  limit: z.string().regex(/^[1-9]\d*$/).transform((value) => Number.parseInt(value, 10)).optional(),
+  offset: z.string().regex(/^\d+$/).transform((value) => Number.parseInt(value, 10)).optional(),
+});
+const redirectCreateOptionsSchema = z.object({
+  from: z.string().trim().min(1),
+  course: z.string().min(1).optional(),
+  lesson: z.string().min(1).optional(),
+  path: z.string().min(1).optional(),
+  temporary: z.boolean().optional(),
+});
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 const schedulerRunsListOptionsSchema = z.object({
   secret: z.string().min(1),
@@ -879,6 +895,95 @@ tenant
       }
       emit(await ctx.api.updateTenantSettings({ billingPortalUrl }), ctx.json, (data) =>
         `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+      );
+    }),
+  );
+
+type RedirectCreateOptions = z.output<typeof redirectCreateOptionsSchema>;
+
+const redirectTarget = (
+  options: RedirectCreateOptions,
+): Result<TenantRedirectCreateBody['target'], AppError> => {
+  if (options.path !== undefined && (options.course !== undefined || options.lesson !== undefined)) {
+    return err(validation('Pass --path <path> or --course <id>, never both'));
+  }
+  if (options.lesson !== undefined) {
+    return options.course === undefined
+      ? err(validation('Pass --course <id> together with --lesson <id>'))
+      : ok({ kind: 'lesson', courseId: options.course, lessonId: options.lesson });
+  }
+  if (options.course !== undefined) return ok({ kind: 'course', courseId: options.course });
+  return options.path === undefined
+    ? err(validation('Pass --course <id>, --course <id> --lesson <id>, or --path <path>'))
+    : ok({ kind: 'path', path: options.path });
+};
+
+const redirect = program.command('redirect').description('Path redirects in the active tenant');
+
+redirect
+  .command('list')
+  .description('List redirects ordered by source path')
+  .option('--search <text>', 'match the source or target path')
+  .option('--limit <n>')
+  .option('--offset <n>')
+  .action(
+    withInput(z.tuple([redirectListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.getTenantRedirects({
+          ...(options.search === undefined ? {} : { search: options.search }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+          ...(options.offset === undefined ? {} : { offset: options.offset }),
+        }),
+        ctx.json,
+        (data) =>
+          data.redirects.length === 0
+            ? 'no redirects'
+            : [
+                `${String(data.total)} redirect(s)`,
+                ...data.redirects.map((entry) =>
+                  `${entry.fromPath}\t${entry.targetPath}\t${entry.permanent ? '301' : '302'}\t${entry.origin}\t(${entry.id})`,
+                ),
+              ].join('\n'),
+      );
+    }),
+  );
+
+redirect
+  .command('create')
+  .description('Add a redirect answered on every tenant host')
+  .requiredOption('--from <path>', 'source path the previous site served')
+  .option('--course <id>', 'redirect to a course page')
+  .option('--lesson <id>', 'redirect to a lesson, requires --course')
+  .option('--path <path>', 'redirect to a path in this workspace')
+  .option('--temporary', 'answer 302 instead of 301')
+  .action(
+    withInput(z.tuple([redirectCreateOptionsSchema]), async (ctx, [options]) => {
+      const target = redirectTarget(options);
+      if (!target.ok) {
+        emit(target, ctx.json, () => '');
+        return;
+      }
+      emit(
+        await ctx.api.createTenantRedirect({
+          fromPath: options.from,
+          target: target.value,
+          permanent: options.temporary !== true,
+        }),
+        ctx.json,
+        (data) => `created redirect ${data.redirect.fromPath} -> ${data.redirect.targetPath} (${data.redirect.id})`,
+      );
+    }),
+  );
+
+redirect
+  .command('delete <id>')
+  .description('Remove a redirect')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(
+        await ctx.api.deleteTenantRedirect({ id }),
+        ctx.json,
+        (data) => `deleted redirect ${data.id}`,
       );
     }),
   );

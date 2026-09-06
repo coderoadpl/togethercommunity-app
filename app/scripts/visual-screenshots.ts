@@ -393,6 +393,15 @@ const SCREENS: ScreenSpec[] = [
     },
   },
   {
+    name: 'panel-settings-redirects',
+    auth: 'creator',
+    path: '/panel/settings/redirects',
+    ready: async (page) => {
+      await page.getByTestId('redirect-row-redirect-studio-kurs-js').waitFor(visible);
+      await page.getByTestId('redirect-row-redirect-studio-oferta').waitFor(visible);
+    },
+  },
+  {
     name: 'panel-storage-wizard',
     auth: 'creator',
     path: '/panel/integrations#storage',

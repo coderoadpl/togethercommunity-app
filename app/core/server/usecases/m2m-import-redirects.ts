@@ -193,16 +193,20 @@ const prepareRedirect = async (
     createdAt = record.createdAt ?? now;
   } else {
     const stored = await deps.redirects.findById(tenantId, audit.resourceId);
-    if (stored === null) {
-      return err(appError('conflict', `Imported redirect "${record.importKey}" no longer exists`));
-    }
-    action = audit.payloadHash === payloadHash ? 'unchanged' : 'updated';
-    id = stored.id;
-    createdAt = record.createdAt ?? stored.createdAt;
+    action = stored === null
+      ? 'created'
+      : audit.payloadHash === payloadHash ? 'unchanged' : 'updated';
+    id = audit.resourceId;
+    createdAt = record.createdAt ?? stored?.createdAt ?? now;
   }
   const owner = await deps.redirects.findByFromPath(tenantId, fromPath);
   if (owner !== null && owner.id !== id) {
-    return err(appError('conflict', `Another redirect already answers "${fromPath}"`));
+    return err(appError(
+      'conflict',
+      owner.origin === 'manual'
+        ? `A redirect added in the studio already answers "${fromPath}"`
+        : `Another redirect already answers "${fromPath}"`,
+    ));
   }
   return ok({
     importKey: record.importKey,
@@ -216,6 +220,8 @@ const prepareRedirect = async (
       targetId: target.value.id,
       targetPath: target.value.path,
       permanent: record.permanent,
+      origin: 'import',
+      createdBy: null,
       createdAt,
     },
   });

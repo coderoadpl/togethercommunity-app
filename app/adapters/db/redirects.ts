@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq, ilike, or, type SQL } from 'drizzle-orm';
 
 import {
   importAuditEventSchema,
@@ -17,6 +17,18 @@ type RedirectRow = typeof tenantRedirects.$inferSelect;
 
 const toRedirect = (row: RedirectRow): TenantRedirect =>
   tenantRedirectSchema.parse({ ...row, createdAt: new Date(row.createdAt).toISOString() });
+
+const containsPattern = (value: string): string => `%${value.replace(/[\\%_]/g, '\\$&')}%`;
+
+const listFilter = (tenantId: string, search: string | undefined): SQL | undefined => {
+  const scope = eq(tenantRedirects.tenantId, tenantId);
+  if (search === undefined) return scope;
+  const pattern = containsPattern(search);
+  return and(
+    scope,
+    or(ilike(tenantRedirects.fromPath, pattern), ilike(tenantRedirects.targetPath, pattern)),
+  );
+};
 
 const insertAuditEvent = async (
   executor: Db,
@@ -63,13 +75,36 @@ export const createTenantRedirectRepository = (db: Db): ImportRedirectRepository
         .limit(1);
       return row === undefined ? null : toRedirect(row);
     },
-    listByTenant: async (tenantId) => {
+    listPage: async (tenantId, query) => {
+      const filter = listFilter(tenantId, query.search);
       const rows = await db
         .select()
         .from(tenantRedirects)
-        .where(eq(tenantRedirects.tenantId, tenantId))
-        .orderBy(tenantRedirects.fromPath);
-      return rows.map(toRedirect);
+        .where(filter)
+        .orderBy(tenantRedirects.fromPath)
+        .limit(query.limit)
+        .offset(query.offset);
+      const [totals] = await db
+        .select({ total: count() })
+        .from(tenantRedirects)
+        .where(filter);
+      return { redirects: rows.map(toRedirect), total: totals?.total ?? 0 };
+    },
+    create: async (tenantId, redirect) => {
+      try {
+        await db.insert(tenantRedirects).values({ ...redirect, tenantId });
+        return 'saved';
+      } catch (cause) {
+        if (uniqueViolation(cause, FROM_PATH_CONSTRAINT)) return 'path_taken';
+        throw cause;
+      }
+    },
+    deleteById: async (tenantId, redirectId) => {
+      const rows = await db
+        .delete(tenantRedirects)
+        .where(and(eq(tenantRedirects.tenantId, tenantId), eq(tenantRedirects.id, redirectId)))
+        .returning({ id: tenantRedirects.id });
+      return rows.length === 1;
     },
     commit: async (tenantId, mutation) => {
       const redirect = tenantRedirectSchema.parse(mutation.resource);
@@ -92,6 +127,7 @@ export const createTenantRedirectRepository = (db: Db): ImportRedirectRepository
               .where(and(
                 eq(tenantRedirects.tenantId, tenantId),
                 eq(tenantRedirects.id, redirect.id),
+                eq(tenantRedirects.origin, 'import'),
               ))
               .returning({ id: tenantRedirects.id });
             if (rows.length !== 1) return 'conflict';

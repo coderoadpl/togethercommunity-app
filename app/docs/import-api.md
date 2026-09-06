@@ -148,7 +148,9 @@ Paths that end in a document extension are answered — `/kurs/lekcja-1.html` an
 
 A redirect answers before the web app sees the path, so never map a path the platform itself serves (`/my`, `/login`, `/panel`, and the rest of the member and studio routes). Content targets resolve through the same reference rules as every other kind, so submit redirects last. The destination is resolved once, at import time, and stored with the row; re-import a redirect after moving its target. `permanent: true` answers `301` and `false` answers `302` — use `301` only for a destination that keeps its identity, because browsers cache it. The request's query string is appended to the destination.
 
-The studio lists a tenant's redirects with their count under Settings → Addresses, read-only.
+Every row an import writes is marked `import`; a row a member of staff adds in the studio is marked `manual`. The import owns only the rows it created, keyed by `importKey`, and never rewrites a manual row: when an incoming record normalises to a path a manual row already answers, that record fails with `conflict` and the manual row is left as it is. Delete the manual row in the studio to hand the path back to the import. A row the studio deletes is recreated by the next import that carries its `importKey`.
+
+The studio counts a tenant's redirects under Settings → Addresses and manages them on its own page: search, pages of fifty, add, and delete.
 
 ### Order
 

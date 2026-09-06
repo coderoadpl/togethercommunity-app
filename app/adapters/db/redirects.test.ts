@@ -61,6 +61,8 @@ const mutation = (
     targetId: 'course-js',
     targetPath: '/my/courses/course-js',
     permanent: true,
+    origin: 'import',
+    createdBy: null,
     createdAt: NOW,
     ...overrides,
   },
@@ -100,6 +102,67 @@ describe('tenant redirect repository', () => {
       mutation({ id: 'redirect-other-tenant' }, 'created', OTHER_TENANT_ID),
     )).toBe('saved');
     expect(await repository.findById(TENANT_ID, 'redirect-other-tenant')).toBeNull();
-    expect(await repository.listByTenant(TENANT_ID)).toHaveLength(1);
+    expect(await repository.listPage(TENANT_ID, { limit: 50, offset: 0 })).toMatchObject({ total: 1 });
+  });
+
+  it('creates a manual redirect, refuses a taken path, and deletes it', async () => {
+    const repository = createTenantRedirectRepository(db);
+    const manual = {
+      ...mutation({ id: 'redirect-manual', fromPath: '/oferta' }).resource,
+      origin: 'manual' as const,
+      createdBy: 'user-owner',
+    };
+
+    expect(await repository.create(TENANT_ID, manual)).toBe('saved');
+    expect(await repository.create(TENANT_ID, { ...manual, id: 'redirect-manual-twin' }))
+      .toBe('path_taken');
+    expect(await repository.findById(TENANT_ID, 'redirect-manual'))
+      .toMatchObject({ origin: 'manual', createdBy: 'user-owner' });
+    expect(await repository.deleteById(OTHER_TENANT_ID, 'redirect-manual')).toBe(false);
+    expect(await repository.deleteById(TENANT_ID, 'redirect-manual')).toBe(true);
+    expect(await repository.findById(TENANT_ID, 'redirect-manual')).toBeNull();
+  });
+
+  it('pages and searches over both paths, ordered by source path', async () => {
+    const repository = createTenantRedirectRepository(db);
+    for (const [index, fromPath] of ['/a-one', '/a-two', '/b-three'].entries()) {
+      expect(await repository.create(TENANT_ID, {
+        ...mutation({ id: `redirect-page-${String(index)}`, fromPath }).resource,
+        targetPath: index === 2 ? '/my/needle' : '/my',
+      })).toBe('saved');
+    }
+
+    const firstPage = await repository.listPage(TENANT_ID, { limit: 2, offset: 0 });
+    expect(firstPage.redirects.map((entry) => entry.fromPath)).toEqual(['/a-one', '/a-two']);
+    expect(firstPage.total).toBe(4);
+
+    const secondPage = await repository.listPage(TENANT_ID, { limit: 2, offset: 2 });
+    expect(secondPage.redirects.map((entry) => entry.fromPath)).toEqual(['/b-three', '/kurs/javascript']);
+
+    expect(await repository.listPage(TENANT_ID, { limit: 50, offset: 0, search: 'needle' }))
+      .toMatchObject({ total: 1, redirects: [{ fromPath: '/b-three' }] });
+    expect(await repository.listPage(TENANT_ID, { limit: 50, offset: 0, search: 'a-t' }))
+      .toMatchObject({ total: 1, redirects: [{ fromPath: '/a-two' }] });
+    expect(await repository.listPage(TENANT_ID, { limit: 50, offset: 0, search: '%' }))
+      .toMatchObject({ total: 0 });
+    expect(await repository.listPage(TENANT_ID, { limit: 0, offset: 0 }))
+      .toEqual({ total: 4, redirects: [] });
+  });
+
+  it('refuses to let an import update a manual row', async () => {
+    const repository = createTenantRedirectRepository(db);
+    const manual = {
+      ...mutation({ id: 'redirect-owned', fromPath: '/promocja' }).resource,
+      origin: 'manual' as const,
+      createdBy: 'user-owner',
+    };
+
+    expect(await repository.create(TENANT_ID, manual)).toBe('saved');
+    expect(await repository.commit(
+      TENANT_ID,
+      mutation({ id: 'redirect-owned', fromPath: '/promocja', targetPath: '/my/needle' }, 'updated'),
+    )).toBe('conflict');
+    expect(await repository.findById(TENANT_ID, 'redirect-owned'))
+      .toMatchObject({ origin: 'manual', targetPath: '/my/courses/course-js', createdBy: 'user-owner' });
   });
 });

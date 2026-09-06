@@ -147,17 +147,8 @@ const installSettingsBackend = (
   const courseUpdates: unknown[] = [];
   const courseList = courses === 'unavailable' ? [] : courses;
   const domainCalls: string[] = [];
+  const redirectQueries: URLSearchParams[] = [];
   let routingState = initialRouting();
-  const redirectList = [{
-    id: 'redirect-1',
-    tenantId: 'tenant-1',
-    fromPath: '/kurs/javascript',
-    targetKind: 'course',
-    targetId: 'course-1',
-    targetPath: '/my/courses/course-1',
-    permanent: true,
-    createdAt: '2026-01-01T00:00:00.000Z',
-  }];
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
@@ -178,10 +169,10 @@ const installSettingsBackend = (
       ok: true,
       data: { routing: routingState },
     })),
-    http.get('/api/tenant/redirects', () => HttpResponse.json({
-      ok: true,
-      data: { redirects: redirectList },
-    })),
+    http.get('/api/tenant/redirects', ({ request }) => {
+      redirectQueries.push(new URL(request.url).searchParams);
+      return HttpResponse.json({ ok: true, data: { redirects: [], total: 686 } });
+    }),
     http.post('/api/tenant/domains', async ({ request }) => {
       const body = domainRequestSchema.parse(await request.json());
       domainCalls.push(`add:${body.domain}`);
@@ -235,7 +226,7 @@ const installSettingsBackend = (
     }),
   );
 
-  return { updates, courseUpdates, domainCalls };
+  return { updates, courseUpdates, domainCalls, redirectQueries };
 };
 
 const renderPanel = (
@@ -244,7 +235,8 @@ const renderPanel = (
   spaces: StubSpace[] = [],
   courses: StubCourse[] | 'unavailable' = [],
 ) => {
-  const { updates, courseUpdates, domainCalls } = installSettingsBackend(initial, spaces, courses);
+  const { updates, courseUpdates, domainCalls, redirectQueries } =
+    installSettingsBackend(initial, spaces, courses);
 
   const rootRoute = createRootRoute();
   const settingsRoute = createRoute({
@@ -272,7 +264,7 @@ const renderPanel = (
 
   const { queryClient } = renderWithProviders(<RouterProvider router={router} />);
 
-  return { queryClient, router, updates, courseUpdates, domainCalls };
+  return { queryClient, router, updates, courseUpdates, domainCalls, redirectQueries };
 };
 
 const openSettingsSection = async (label: string) => {
@@ -300,13 +292,14 @@ describe('SettingsPanel information architecture', () => {
     expect(screen.queryByTestId('billing-portal-url')).not.toBeInTheDocument();
   });
 
-  it('lists the imported redirects with their count', async () => {
-    renderPanel();
+  it('summarises the redirects in one line that links to their page', async () => {
+    const { redirectQueries } = renderPanel();
 
-    expect(await screen.findByTestId('tenant-redirects-count'))
-      .toHaveTextContent(pl.tenantDomains.redirectsCount({ count: 1 }));
-    expect(await screen.findByTestId('tenant-redirect-redirect-1'))
-      .toHaveTextContent('/kurs/javascript → /my/courses/course-1');
+    const summary = await screen.findByTestId('tenant-redirects-summary');
+    expect(summary).toHaveTextContent(pl.tenantDomains.redirectsCount({ count: 686 }));
+    expect(within(summary).getByRole('link', { name: `${pl.tenantDomains.redirectsManage} →` }))
+      .toHaveAttribute('href', '/panel/settings/redirects');
+    expect(redirectQueries.map((query) => query.get('limit'))).toEqual(['0']);
   });
 
   it('shows the workspace address with verified and pending custom domains', async () => {

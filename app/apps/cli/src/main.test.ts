@@ -22,6 +22,9 @@ interface Hoisted {
   verifyTotp: ReturnType<typeof vi.fn>;
   verifyBackupCode: ReturnType<typeof vi.fn>;
   configureStripe: ReturnType<typeof vi.fn>;
+  getTenantRedirects: ReturnType<typeof vi.fn>;
+  createTenantRedirect: ReturnType<typeof vi.fn>;
+  deleteTenantRedirect: ReturnType<typeof vi.fn>;
 }
 
 const h = vi.hoisted(
@@ -45,6 +48,9 @@ const h = vi.hoisted(
     verifyTotp: vi.fn(),
     verifyBackupCode: vi.fn(),
     configureStripe: vi.fn(),
+    getTenantRedirects: vi.fn(),
+    createTenantRedirect: vi.fn(),
+    deleteTenantRedirect: vi.fn(),
   }),
 );
 
@@ -92,6 +98,9 @@ vi.mock('#core/client/index.js', () => ({
     health: h.health,
     configureStorage: h.configureStorage,
     configureStripe: h.configureStripe,
+    getTenantRedirects: h.getTenantRedirects,
+    createTenantRedirect: h.createTenantRedirect,
+    deleteTenantRedirect: h.deleteTenantRedirect,
   }),
 }));
 
@@ -105,6 +114,19 @@ vi.mock('#adapters/auth/client-adapter.js', () => ({
     verifyBackupCode: h.verifyBackupCode,
   }),
 }));
+
+const redirectFixture = {
+  id: 'redirect-legacy',
+  tenantId: 'tenant-one',
+  fromPath: '/legacy/one',
+  targetKind: 'course' as const,
+  targetId: 'course-js',
+  targetPath: '/my/courses/course-js',
+  permanent: true,
+  origin: 'import' as const,
+  createdBy: null,
+  createdAt: '1998-08-14T10:00:00.000Z',
+};
 
 const originalArgv = process.argv;
 let logSpy: MockInstance<typeof console.log>;
@@ -162,6 +184,12 @@ beforeEach(() => {
     mode: 'test',
     webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
   }));
+  h.getTenantRedirects.mockReset();
+  h.getTenantRedirects.mockResolvedValue(ok({ redirects: [redirectFixture], total: 1 }));
+  h.createTenantRedirect.mockReset();
+  h.createTenantRedirect.mockResolvedValue(ok({ redirect: redirectFixture }));
+  h.deleteTenantRedirect.mockReset();
+  h.deleteTenantRedirect.mockResolvedValue(ok({ id: redirectFixture.id }));
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   process.exitCode = 0;
@@ -514,5 +542,86 @@ describe('stripe configure', () => {
     expect(logSpy).toHaveBeenCalledExactlyOnceWith(
       'configured Stripe in test mode\nwebhook https://app.example.test/base/api/webhooks/stripe/tenant-1',
     );
+  });
+});
+
+describe('redirect commands', () => {
+  it('emits one list envelope carrying the page total', async () => {
+    await run('--json', 'redirect', 'list', '--search', 'legacy', '--limit', '2', '--offset', '4');
+
+    expect(h.getTenantRedirects).toHaveBeenCalledExactlyOnceWith({
+      search: 'legacy',
+      limit: 2,
+      offset: 4,
+    });
+    expect(soleJson()).toMatchObject({
+      ok: true,
+      data: { total: 1, redirects: [{ fromPath: '/legacy/one', origin: 'import' }] },
+    });
+  });
+
+  it('sends a lesson target and defaults to a permanent redirect', async () => {
+    await run('redirect', 'create', '--from', '/legacy/one', '--course', 'course-js', '--lesson', 'lesson-1');
+
+    expect(h.createTenantRedirect).toHaveBeenCalledExactlyOnceWith({
+      fromPath: '/legacy/one',
+      target: { kind: 'lesson', courseId: 'course-js', lessonId: 'lesson-1' },
+      permanent: true,
+    });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith(
+      'created redirect /legacy/one -> /my/courses/course-js (redirect-legacy)',
+    );
+  });
+
+  it('sends a path target as temporary when asked', async () => {
+    await run('--json', 'redirect', 'create', '--from', '/legacy/two', '--path', '/my', '--temporary');
+
+    expect(h.createTenantRedirect).toHaveBeenCalledExactlyOnceWith({
+      fromPath: '/legacy/two',
+      target: { kind: 'path', path: '/my' },
+      permanent: false,
+    });
+    expect(soleJson()).toMatchObject({ ok: true, data: { redirect: { id: 'redirect-legacy' } } });
+  });
+
+  it('emits one validation envelope when no target is given', async () => {
+    await run('--json', 'redirect', 'create', '--from', '/legacy/three');
+
+    expect(h.createTenantRedirect).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('emits one validation envelope for a lesson without its course', async () => {
+    await run('--json', 'redirect', 'create', '--from', '/legacy/four', '--lesson', 'lesson-1');
+
+    expect(h.createTenantRedirect).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('emits one validation envelope when a path and a course target are combined', async () => {
+    await run(
+      '--json', 'redirect', 'create',
+      '--from', '/legacy/five', '--path', '/oferta', '--course', 'course-js',
+    );
+
+    expect(h.createTenantRedirect).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('emits one delete envelope', async () => {
+    await run('--json', 'redirect', 'delete', 'redirect-legacy');
+
+    expect(h.deleteTenantRedirect).toHaveBeenCalledExactlyOnceWith({ id: 'redirect-legacy' });
+    expect(soleJson()).toEqual({ ok: true, data: { id: 'redirect-legacy' } });
+  });
+
+  it('reports an upstream conflict with the taxonomy exit code', async () => {
+    h.createTenantRedirect.mockResolvedValue(err(appError('conflict', 'Another redirect already answers "/legacy/one"')));
+
+    await run('--json', 'redirect', 'create', '--from', '/legacy/one', '--path', '/my');
+
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(process.exitCode).toBe(6);
   });
 });

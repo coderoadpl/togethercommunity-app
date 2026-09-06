@@ -1245,37 +1245,18 @@ const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
 
 const TenantRedirectsSection = () => {
   const t = useTranslations();
-  const redirects = useQuery(actions.tenantRedirects);
+  const redirects = useQuery(actions.tenantRedirects({ limit: 0 }));
 
   if (!redirects.isSuccess) return null;
 
   return (
-    <Stack useFlexGap spacing="0.3rem" data-testid="tenant-redirects">
-      <Eyebrow>{t.tenantDomains.redirectsHeading}</Eyebrow>
-      <Typography variant="body2">{t.tenantDomains.redirectsIntro}</Typography>
-      <Typography variant="caption" data-testid="tenant-redirects-count">
-        {t.tenantDomains.redirectsCount({ count: redirects.data.redirects.length })}
-      </Typography>
-      {redirects.data.redirects.length === 0 ? (
-        <Typography variant="body2">{t.tenantDomains.redirectsEmpty}</Typography>
-      ) : redirects.data.redirects.map((redirect) => (
-        <Stack
-          key={redirect.id}
-          direction="row"
-          useFlexGap
-          sx={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
-          data-testid={`tenant-redirect-${redirect.id}`}
-        >
-          <Typography variant="body2">{redirect.fromPath} → {redirect.targetPath}</Typography>
-          <Chip
-            size="small"
-            label={redirect.permanent
-              ? t.tenantDomains.redirectsPermanent
-              : t.tenantDomains.redirectsTemporary}
-          />
-        </Stack>
-      ))}
-    </Stack>
+    <Typography variant="body2" data-testid="tenant-redirects-summary">
+      {t.tenantDomains.redirectsCount({ count: redirects.data.total })}
+      {' · '}
+      <MuiLink component={Link} to="/panel/settings/redirects">
+        {t.tenantDomains.redirectsManage} →
+      </MuiLink>
+    </Typography>
   );
 };
 

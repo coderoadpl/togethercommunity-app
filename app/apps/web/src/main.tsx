@@ -96,6 +96,7 @@ import {
   PanelCouponsRoute,
   PanelCouponCreateRoute,
   PanelCouponDetailRoute,
+  PanelRedirectsRoute,
   PanelSettingsRoute,
   PanelSpacesRoute,
   PanelSpaceCreateRoute,
@@ -399,6 +400,11 @@ const panelSettingsRoute = createRoute({
   path: 'settings',
   component: PanelSettingsRoute,
 });
+const panelRedirectsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'settings/redirects',
+  component: PanelRedirectsRoute,
+});
 const panelMarketingCampaignsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'marketing/campaigns',
@@ -539,6 +545,7 @@ const router = createRouter({
       panelCouponDetailRoute,
       panelIntegrationsRoute,
       panelSettingsRoute,
+      panelRedirectsRoute,
       panelMarketingActivityRoute,
       panelMarketingActivityDetailRoute,
       panelMarketingSendsRoute,

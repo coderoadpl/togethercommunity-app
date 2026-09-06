@@ -116,6 +116,9 @@ import {
   tenantSecretDeleteInputSchema,
   tenantSecretSetInputSchema,
   tenantDomainInputSchema,
+  tenantRedirectsQuerySchema,
+  tenantRedirectCreateSchema,
+  tenantRedirectDeleteSchema,
   tenantSettingsUpdateInputSchema,
   impersonationStartRequestSchema,
   tenantAuditEventsQuerySchema,
@@ -252,6 +255,8 @@ import {
   getTenantSesMarketingSettings,
   getTenantSettings,
   listTenantRedirects,
+  createTenantRedirect,
+  deleteTenantRedirect,
   getTenantSetupReadiness,
   grantProductToMember,
   listBunnyVideos,
@@ -2035,9 +2040,42 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     clock: deps.clock,
   };
 
+  const tenantRedirectDeps = {
+    redirects: deps.redirects,
+    courses: deps.courses,
+    modules: deps.modules,
+    lessons: deps.lessons,
+    auditEvents: deps.auditEvents,
+    ids: deps.ids,
+    clock: deps.clock,
+  };
+
   app.get(API_PATHS.tenantRedirects, async (c) => {
-    const result = await listTenantRedirects(ctxOf(c), { redirects: deps.redirects });
-    return respond(result.ok ? ok({ redirects: result.value }) : result);
+    const search = c.req.query('search')?.trim();
+    const query = tenantRedirectsQuerySchema.safeParse({
+      ...(search === undefined || search === '' ? {} : { search }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+      ...(c.req.query('offset') === undefined ? {} : { offset: c.req.query('offset') }),
+    });
+    if (!query.success) return respond(err(validation('Invalid redirect query', query.error.flatten())));
+    const result = await listTenantRedirects(ctxOf(c), query.data, { redirects: deps.redirects });
+    return respond(result.ok ? ok(result.value) : result);
+  });
+
+  app.post(API_PATHS.tenantRedirectCreate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = tenantRedirectCreateSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid redirect payload', parsed.error.flatten())));
+    const result = await createTenantRedirect(ctxOf(c), parsed.data, tenantRedirectDeps);
+    return respond(result.ok ? ok({ redirect: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantRedirectDelete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = tenantRedirectDeleteSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid redirect payload', parsed.error.flatten())));
+    const result = await deleteTenantRedirect(ctxOf(c), parsed.data, tenantRedirectDeps);
+    return respond(result.ok ? ok(result.value) : result);
   });
 
   app.get(API_PATHS.tenantRouting, async (c) => {

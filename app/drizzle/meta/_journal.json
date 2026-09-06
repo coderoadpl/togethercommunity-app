@@ -715,6 +715,13 @@
       "when": 1788820060000,
       "tag": "0101_tenant_redirects",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1788820120000,
+      "tag": "0102_tenant_redirect_origin",
+      "breakpoints": true
     }
   ]
 }

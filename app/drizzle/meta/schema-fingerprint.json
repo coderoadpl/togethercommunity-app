@@ -1,6 +1,6 @@
 {
-  "hash": "9125356b95beccf54edcc3a90a9a8de5664807984a26a8eb4113a166ad53ea48",
-  "shortId": "9125356b95be",
+  "hash": "9755c3ad0584d18f4046bb32ed294ee72ce15884fb05d8349d318114254f0853",
+  "shortId": "9755c3ad0584",
   "schema": {
     "constraints": [
       {
@@ -3632,6 +3632,91 @@
       {
         "columns": [
           {
+            "default": "'import'::text",
+            "generated": "",
+            "identity": "",
+            "name": "origin",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "permanent",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "from_path",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_path",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_redirects"
+      },
+      {
+        "columns": [
+          {
             "default": "'pending'::text",
             "generated": "",
             "identity": "",
@@ -5148,75 +5233,6 @@
           }
         ],
         "name": "user"
-      },
-      {
-        "columns": [
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "permanent",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "now()",
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "from_path",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "target_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "target_kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "target_path",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "tenant_redirects"
       },
       {
         "columns": [

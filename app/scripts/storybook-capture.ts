@@ -69,13 +69,16 @@ try {
           await page.goto(`http://${spec.tenantSlug ?? 'studio'}.localhost:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
           await spec.ready(page);
           if (screen !== 'hosted-legal-document') await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
-          await settlePage(page);
+          await settlePage(page, spec.waitForNetworkIdle ?? true);
           if (spec.settled) {
             await spec.settled(page);
             await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
           }
         } catch (error) { failure = String(error); }
         await page.screenshot({ path: join(shots, `${file}.png`), animations: 'disabled', caret: 'hide', scale: 'css' });
+        const size = (await stat(join(shots, `${file}.png`))).size;
+        const minBytes = spec.minBytes ?? 10 * 1024;
+        if (size <= minBytes) failure = `${file} is only ${size} bytes (expected > ${minBytes})`;
         const baseline = resolve(`tasks/visual-goldens/${screen}--shadcn--${viewport.name}.png`);
         const diff = join(shots, `${file}-diff.png`);
         let countedPixels: number | undefined;
@@ -83,7 +86,7 @@ try {
         const hasBaseline = await stat(baseline).then(() => true, () => false);
         const composition = hasBaseline ? spawnSync('python3', ['-c', 'from PIL import Image\nimport sys\nimages=[Image.open(p).convert("RGB") for p in sys.argv[1:4]]\nout=Image.new("RGB",(sum(i.width for i in images),max(i.height for i in images)),"white")\nx=0\nfor i in images:\n out.paste(i,(x,0)); x+=i.width\nout.save(sys.argv[4])', baseline, join(shots, `${file}.png`), diff, join(shots, `${file}-comparison.png`)], { encoding: 'utf8' }) : undefined;
         if (composition && composition.status !== 0) throw new Error(composition.stderr);
-        const diagnostics = await page.evaluate(() => ({ calls: document.documentElement.dataset['fixtureCalls'], missing: document.documentElement.dataset['fixtureErrors'], text: document.body.innerText.slice(0, 2000) }));
+        const diagnostics = await page.evaluate(() => ({ calls: document.documentElement.dataset['fixtureCalls'], missing: document.documentElement.dataset['fixtureErrors'], pending: document.documentElement.dataset['fixturePending'], text: document.body.innerText.slice(0, 2000) }));
         if (comparison !== null || countedPixels !== 0 || failure || errors.length > 0 || (diagnostics.missing !== undefined && diagnostics.missing !== '[]') || diagnostics.text.includes('Something went wrong!')) process.exitCode = 1;
         const fixturePath = resolve(`apps/web/src/stories/fixtures/${screen}.json`);
         const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');

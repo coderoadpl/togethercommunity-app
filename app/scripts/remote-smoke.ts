@@ -71,6 +71,14 @@ const MEMBER_CHECKS = [
 
 type Fetch = typeof fetch;
 
+type Get = (path: string, headers?: Record<string, string>) => Promise<Response>;
+
+interface SmokeTarget {
+  baseUrl: string;
+  tenant: string;
+  headers: Record<string, string>;
+}
+
 const endpoint = (baseUrl: string, path: string): URL => new URL(path, new URL(baseUrl));
 
 const envelopeOf = async <T extends z.ZodTypeAny>(
@@ -102,14 +110,14 @@ const expectStatus = (response: Response, name: string, status: number): Respons
   return response;
 };
 
-const createRun = (options: RemoteSmokeOptions, request: Fetch) => {
+const createRun = (target: SmokeTarget, request: Fetch) => {
   const checks: RemoteSmokeCheck[] = [];
   return {
     get: (path: string, headers: Record<string, string> = {}): Promise<Response> =>
-      request(endpoint(options.baseUrl, path), {
-        headers: { [TENANT_HEADER]: options.tenant, ...headers },
+      request(endpoint(target.baseUrl, path), {
+        headers: { [TENANT_HEADER]: target.tenant, ...target.headers, ...headers },
       }),
-    step: async <T>(name: string, probe: () => Promise<T>): Promise<T | null> => {
+    step: async <T>(name: string, probe: () => T | Promise<T>): Promise<T | null> => {
       const startedAt = Date.now();
       try {
         const value = await probe();
@@ -160,11 +168,22 @@ const signIn = async (
   return signedIn.token;
 };
 
+const probeDeepHealth = async (get: Get): Promise<void> => {
+  const response = await get('/api/health/deep');
+  const report = unwrap(
+    await envelopeOf(response, envelopeSchema(deepHealthOutputSchema), 'deep health'),
+    'deep health',
+  );
+  if (response.status !== 200 || !report.ok) {
+    throw new Error(`deep health failed: ${report.failing.join(', ')}`);
+  }
+};
+
 export const runRemoteSmoke = async (
   options: RemoteSmokeOptions,
   request: Fetch = fetch,
 ): Promise<RemoteSmokeResult> => {
-  const run = createRun(options, request);
+  const run = createRun({ ...options, headers: {} }, request);
 
   await run.step('health-attestation', async () => {
     const health = unwrap(
@@ -178,16 +197,7 @@ export const runRemoteSmoke = async (
     }
   });
 
-  await run.step('health-deep', async () => {
-    const response = await run.get('/api/health/deep');
-    const report = unwrap(
-      await envelopeOf(response, envelopeSchema(deepHealthOutputSchema), 'deep health'),
-      'deep health',
-    );
-    if (response.status !== 200 || !report.ok) {
-      throw new Error(`deep health failed: ${report.failing.join(', ')}`);
-    }
-  });
+  await run.step('health-deep', () => probeDeepHealth(run.get));
 
   await run.step('public-offer', async () => {
     const offer = unwrap(
@@ -306,6 +316,100 @@ export const runRemoteSmoke = async (
   return run.result();
 };
 
+export const VERCEL_BYPASS_HEADER = 'x-vercel-protection-bypass';
+
+export interface StagingSmokeOptions {
+  baseUrl: string;
+  tenant: string;
+  bypassSecret: string;
+  productionFingerprint: string;
+  /** Null until the owner pins the observed fingerprint in a repository variable. */
+  expectedFingerprint: string | null;
+}
+
+export interface StagingSmokeResult extends RemoteSmokeResult {
+  observedFingerprint: string | null;
+  /** The run fails on nothing but the fingerprint nobody has pinned yet. */
+  unpinnedOnly: boolean;
+}
+
+const HEALTH_UNREACHABLE = 'the health attestation did not answer';
+
+type Health = z.output<typeof healthOutputSchema>;
+
+const readHealth = async (get: Get): Promise<Health> =>
+  unwrap(
+    await envelopeOf(await get('/api/health'), envelopeSchema(healthOutputSchema), 'health'),
+    'health',
+  );
+
+const assertStagingIdentity = (health: Health): void => {
+  if (health.database !== 'up') throw new Error('health reported the database down');
+  if (health.environment !== 'staging') {
+    throw new Error(`health reports environment "${health.environment}", not staging`);
+  }
+  if (health.production) throw new Error('health reports the deployment as production');
+  if (!health.schemaCurrent) throw new Error('health reported a stale schema');
+};
+
+const assertStagingDatabase = (health: Health, options: StagingSmokeOptions): void => {
+  const fingerprint = health.databaseFingerprint;
+  if (fingerprint === null) throw new Error('health reported no database fingerprint');
+  if (fingerprint === options.productionFingerprint) {
+    throw new Error(`staging answers from the production database (fingerprint ${fingerprint})`);
+  }
+  if (options.expectedFingerprint === null) {
+    throw new Error(
+      `the staging database is unpinned: set STAGING_DATABASE_FINGERPRINT=${fingerprint}`,
+    );
+  }
+  if (fingerprint !== options.expectedFingerprint) {
+    throw new Error(
+      `expected database fingerprint ${options.expectedFingerprint}, received ${fingerprint}`,
+    );
+  }
+};
+
+const failsOnlyOnTheMissingPin = (
+  result: RemoteSmokeResult,
+  options: StagingSmokeOptions,
+  observedFingerprint: string | null,
+): boolean =>
+  options.expectedFingerprint === null
+  && observedFingerprint !== null
+  && observedFingerprint !== options.productionFingerprint
+  && result.failing.length === 1
+  && result.failing[0] === 'database-fingerprint';
+
+export const runStagingSmoke = async (
+  options: StagingSmokeOptions,
+  request: Fetch = fetch,
+): Promise<StagingSmokeResult> => {
+  const run = createRun(
+    { ...options, headers: { [VERCEL_BYPASS_HEADER]: options.bypassSecret } },
+    request,
+  );
+
+  const health = await run.step('health-attestation', () => readHealth(run.get));
+  if (health === null) {
+    run.skip('staging-environment', HEALTH_UNREACHABLE);
+    run.skip('database-fingerprint', HEALTH_UNREACHABLE);
+  } else {
+    await run.step('staging-environment', () => { assertStagingIdentity(health); });
+    await run.step('database-fingerprint', () => { assertStagingDatabase(health, options); });
+  }
+
+  await run.step('health-deep', () => probeDeepHealth(run.get));
+
+  const result = run.result();
+  const observedFingerprint = health?.databaseFingerprint ?? null;
+  return {
+    ...result,
+    observedFingerprint,
+    unpinnedOnly: failsOnlyOnTheMissingPin(result, options, observedFingerprint),
+  };
+};
+
 type Environment = Record<string, string | undefined>;
 
 /** The workflow exports every variable unconditionally, so "unset" arrives as an empty string. */
@@ -341,7 +445,32 @@ export const remoteSmokeOptionsFromEnv = (env: Environment): RemoteSmokeOptions 
   };
 };
 
-const main = async (): Promise<void> => {
+export const stagingSmokeOptionsFromEnv = (env: Environment): StagingSmokeOptions | null => {
+  const baseUrl = provided(env, 'STAGING_BASE_URL');
+  const bypassSecret = provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET');
+  const productionFingerprint = provided(env, 'PRODUCTION_DATABASE_FINGERPRINT');
+  if (baseUrl === null || bypassSecret === null || productionFingerprint === null) return null;
+  return {
+    baseUrl,
+    tenant: provided(env, 'SMOKE_TENANT') ?? SMOKE_TENANT_SLUG,
+    bypassSecret,
+    productionFingerprint,
+    expectedFingerprint: provided(env, 'STAGING_DATABASE_FINGERPRINT'),
+  };
+};
+
+const writeChecks = (checks: readonly RemoteSmokeCheck[]): void => {
+  for (const check of checks) {
+    const detail = check.detail === null ? '' : ` — ${check.detail}`;
+    process.stdout.write(
+      `  [${check.status}] ${check.name} (${String(check.ms)}ms)${detail}\n`,
+    );
+  }
+};
+
+const elapsed = (startedAt: number): string => ((Date.now() - startedAt) / 1000).toFixed(1);
+
+const mainRemote = async (): Promise<void> => {
   const options = remoteSmokeOptionsFromEnv(process.env);
   if (options === null) {
     process.stderr.write('smoke:remote: BASE_URL is required\n');
@@ -352,22 +481,46 @@ const main = async (): Promise<void> => {
   const startedAt = Date.now();
   const result = await runRemoteSmoke(options);
 
-  for (const check of result.checks) {
-    const detail = check.detail === null ? '' : ` — ${check.detail}`;
-    process.stdout.write(
-      `  [${check.status}] ${check.name} (${String(check.ms)}ms)${detail}\n`,
-    );
-  }
+  writeChecks(result.checks);
   if (options.member.status === 'absent') {
     process.stdout.write(`${MEMBER_CREDENTIALS_NOTICE}\n`);
   }
-  const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   if (result.ok) {
-    process.stdout.write(`smoke:remote: PASS (${seconds}s)\n`);
+    process.stdout.write(`smoke:remote: PASS (${elapsed(startedAt)}s)\n`);
     return;
   }
   process.stderr.write(`smoke:remote: FAIL failing=${result.failing.join(',')}\n`);
   process.exitCode = 1;
+};
+
+const mainStaging = async (): Promise<void> => {
+  const options = stagingSmokeOptionsFromEnv(process.env);
+  if (options === null) {
+    process.stderr.write(
+      'smoke:staging: STAGING_BASE_URL, VERCEL_AUTOMATION_BYPASS_SECRET and PRODUCTION_DATABASE_FINGERPRINT are required\n',
+    );
+    process.exitCode = 2;
+    return;
+  }
+
+  const startedAt = Date.now();
+  const result = await runStagingSmoke(options);
+
+  writeChecks(result.checks);
+  process.stdout.write(
+    `smoke:staging: databaseFingerprint=${result.observedFingerprint ?? 'unknown'}\n`,
+  );
+  if (result.unpinnedOnly) process.stdout.write('smoke:staging: unpinned=true\n');
+  if (result.ok) {
+    process.stdout.write(`smoke:staging: PASS (${elapsed(startedAt)}s)\n`);
+    return;
+  }
+  process.stderr.write(`smoke:staging: FAIL failing=${result.failing.join(',')}\n`);
+  process.exitCode = 1;
+};
+
+const main = async (): Promise<void> => {
+  await (process.argv.includes('--staging') ? mainStaging() : mainRemote());
 };
 
 const invokedPath = process.argv[1];

@@ -25,6 +25,7 @@ import {
   coursesInvalidates,
   coursesQuery,
   createApiClient,
+  type ApiClient,
   createApiKeyMutation,
   createCourseMutation,
   createCheckoutSessionMutation,
@@ -311,7 +312,7 @@ const authClient = createBetterAuthClientAdapter('');
  * transport (ApiClient, AuthClientPort) exactly once here; features import
  * these ready actions and never see a client, a port or an adapter.
  */
-export const actions = {
+export const bindActions = (apiClient: ApiClient) => ({
   health: healthQuery(apiClient),
   me: meQuery(apiClient),
   meInvalidates,
@@ -580,4 +581,6 @@ export const actions = {
   schedulerRun: (id: string) => schedulerRunQuery(apiClient, id),
   updateMarketingSesSettings: updateMarketingSesSettingsMutation(apiClient),
   marketingInvalidates,
-};
+});
+
+export const actions = bindActions(apiClient);

@@ -43,7 +43,8 @@ describe('prod-smoke workflow', () => {
 
     expect(steps.indexOf('Reseed the smoke tenant'))
       .toBeLessThan(steps.indexOf('Smoke the deployment'));
-    expect(reseed.env?.['PROD_OPERATOR_SECRET']).toBe('${{ secrets.PROD_OPERATOR_SECRET }}');
+    expect(reseed.env?.['OPERATOR_SECRET'])
+      .toBe('${{ secrets.OPERATOR_SECRET_PRODUCTION || secrets.PROD_OPERATOR_SECRET }}');
     expect(reseed.run).toContain(API_PATHS.smokeTenantReseed);
     expect(reseed.run).toContain(SCHEDULER_OPERATOR_SECRET_HEADER);
   });
@@ -69,7 +70,7 @@ describe('prod-smoke workflow', () => {
   it('skips the reseed with a notice when the operator secret is absent', () => {
     const reseed = step('Reseed the smoke tenant');
 
-    expect(reseed.run).toContain('if [ -z "$PROD_OPERATOR_SECRET" ]');
+    expect(reseed.run).toContain('if [ -z "$OPERATOR_SECRET" ]');
     expect(reseed.run).toContain('::notice::');
   });
 
@@ -100,12 +101,21 @@ describe('prod-smoke workflow', () => {
     expect(step('Summarize the smoke checks').run).toContain('$RESEED_OUTCOME');
   });
 
-  it('pages with the whole failing list assembled in one place', () => {
-    for (const name of ['Send an SMS alert', 'Fail the run on a failing smoke']) {
-      expect(step(name).if).toBe("steps.failures.outputs.failing != ''");
-    }
+  it('fails on the whole failing list assembled in one place and pages on the gated part', () => {
+    expect(step('Fail the run on a failing smoke').if).toBe("steps.failures.outputs.failing != ''");
+    expect(step('Send an SMS alert').if).toBe("steps.alert.outputs.should_page == 'true'");
     expect(String(step('Send an SMS alert').with?.['message']))
-      .toContain('failing=${{ steps.failures.outputs.failing }}');
+      .toContain('failing=${{ steps.alert.outputs.pageable }}');
+  });
+
+  it('names every check it measured so a new one cannot page before it is green', () => {
+    const failures = step('Collect the failing checks');
+
+    expect(failures.env?.['ALIAS_MATCHED']).toBe('${{ steps.alias.outputs.matched }}');
+    expect(failures.run).toContain('smoke.log');
+    expect(failures.run).toContain('echo "checks=$measured"');
+    expect(step('Gate the alert on a state change').with)
+      .toMatchObject({ checks: '${{ steps.failures.outputs.checks }}' });
   });
 
   it('signs the smoke member in with the secret it is seeded with', () => {

@@ -736,24 +736,42 @@ describe('smoke tenant reseed composition', () => {
 
 describe('operator secret', () => {
   const secrets = {
+    OPERATOR_SECRET: 'operator-secret-at-least-16',
     PROD_OPERATOR_SECRET: 'prod-operator-secret-16',
+    STAGING_OPERATOR_SECRET: 'staging-operator-secret-16',
     CRON_SECRET: 'cron-secret-at-least-16',
     EMAIL_DISPATCH_SECRET: 'email-dispatch-secret-16',
   };
 
-  it('prefers the operator secret over the cron and dispatch secrets', () => {
-    expect(selectOperatorSecret(secrets)).toBe('prod-operator-secret-16');
+  it('prefers the one environment-agnostic name over every deprecated fallback', () => {
+    expect(selectOperatorSecret(secrets)).toBe('operator-secret-at-least-16');
+  });
+
+  it('accepts the deprecated per-environment names in order', () => {
+    expect(selectOperatorSecret({ ...secrets, OPERATOR_SECRET: undefined }))
+      .toBe('prod-operator-secret-16');
+    expect(selectOperatorSecret({
+      ...secrets,
+      OPERATOR_SECRET: undefined,
+      PROD_OPERATOR_SECRET: undefined,
+    })).toBe('staging-operator-secret-16');
   });
 
   it('falls back to the cron secret when no operator secret is set', () => {
-    expect(selectOperatorSecret({ ...secrets, PROD_OPERATOR_SECRET: undefined }))
-      .toBe('cron-secret-at-least-16');
-  });
-
-  it('falls back to the dispatch secret when neither is set', () => {
     expect(selectOperatorSecret({
       ...secrets,
+      OPERATOR_SECRET: undefined,
       PROD_OPERATOR_SECRET: undefined,
+      STAGING_OPERATOR_SECRET: undefined,
+    })).toBe('cron-secret-at-least-16');
+  });
+
+  it('falls back to the dispatch secret when none is set', () => {
+    expect(selectOperatorSecret({
+      ...secrets,
+      OPERATOR_SECRET: undefined,
+      PROD_OPERATOR_SECRET: undefined,
+      STAGING_OPERATOR_SECRET: undefined,
       CRON_SECRET: undefined,
     })).toBe('email-dispatch-secret-16');
   });

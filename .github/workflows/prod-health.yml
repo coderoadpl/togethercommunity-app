@@ -36,68 +36,51 @@ jobs:
       - name: Probe production health
         id: probe
         run: |
-          body=$(curl -sS --max-time 15 --retry 2 --retry-delay 5 "https://$PROD_HEALTH_HOST/api/health") || {
-            echo "reason=health endpoint unreachable" >> "$GITHUB_OUTPUT"
-            echo "failed=true" >> "$GITHUB_OUTPUT"
+          measured=health
+          report() {
+            echo "checks=$measured" >> "$GITHUB_OUTPUT"
+            echo "failing=$1" >> "$GITHUB_OUTPUT"
+            echo "reason=$2" >> "$GITHUB_OUTPUT"
             exit 0
           }
+          body=$(curl -sS --max-time 15 --retry 2 --retry-delay 5 "https://$PROD_HEALTH_HOST/api/health") \
+            || report health "health endpoint unreachable"
           echo "$body" | head -c 400
           ok=$(echo "$body" | jq -r '.ok')
           database=$(echo "$body" | jq -r '.data.database')
           schema=$(echo "$body" | jq -r '.data.schemaCurrent')
           fingerprint=$(echo "$body" | jq -r '.data.schemaFingerprintMatch // "absent"')
           if [ "$ok" != "true" ] || [ "$database" != "up" ] || [ "$schema" != "true" ] || [ "$fingerprint" = "false" ]; then
-            echo "reason=ok=$ok database=$database schemaCurrent=$schema fingerprintMatch=$fingerprint" >> "$GITHUB_OUTPUT"
-            echo "failed=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            report health "ok=$ok database=$database schemaCurrent=$schema fingerprintMatch=$fingerprint"
           fi
-          deep_status=$(curl -sS -o deep.json -w '%{http_code}' --max-time 30 --retry 2 --retry-delay 5 "https://$PROD_HEALTH_HOST/api/health/deep") || {
-            echo "reason=deep health endpoint unreachable" >> "$GITHUB_OUTPUT"
-            echo "failed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          }
+          measured=health,deep-health
+          deep_status=$(curl -sS -o deep.json -w '%{http_code}' --max-time 30 --retry 2 --retry-delay 5 "https://$PROD_HEALTH_HOST/api/health/deep") \
+            || report deep-health "deep health endpoint unreachable"
           head -c 800 deep.json
           if [ "$deep_status" != "200" ]; then
             failing=$(jq -r '(.data.failing // []) | join(",")' deep.json)
-            echo "reason=deep health $deep_status failing=${failing:-unknown}" >> "$GITHUB_OUTPUT"
-            echo "failed=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            report deep-health "deep health $deep_status failing=${failing:-unknown}"
           fi
-          echo "failed=false" >> "$GITHUB_OUTPUT"
-      - name: Check whether this failure is a fresh incident
-        id: incident
-        if: steps.probe.outputs.failed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          previous=$(gh api "repos/${{ github.repository }}/actions/workflows/prod-health.yml/runs?status=completed&per_page=1" --jq '.workflow_runs[0].conclusion' || echo "unknown")
-          if [ "$previous" = "failure" ]; then
-            echo "fresh=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "fresh=true" >> "$GITHUB_OUTPUT"
-          fi
+          report "" "health and deep probes green"
+      - name: Gate the alert on a state change
+        id: alert
+        uses: ./.github/actions/alert-gate
+        with:
+          monitor: prod-health.yml
+          environment: production
+          failing: ${{ steps.probe.outputs.failing }}
+          checks: ${{ steps.probe.outputs.checks }}
+          github-token: ${{ github.token }}
       - name: Send an SMS alert
-        if: steps.probe.outputs.failed == 'true' && steps.incident.outputs.fresh == 'true' && !inputs.test_sms
+        if: steps.alert.outputs.should_page == 'true' && !inputs.test_sms
         uses: ./.github/actions/alert-sms
         with:
           message: 'Together prod health FAILED: ${{ steps.probe.outputs.reason }}'
           aws-access-key-id: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
           phone-number: ${{ secrets.ALERT_SMS_PHONE }}
-      - name: Check whether production just recovered
-        id: recovery
-        if: steps.probe.outputs.failed == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          previous=$(gh api "repos/${{ github.repository }}/actions/workflows/prod-health.yml/runs?status=completed&per_page=1" --jq '.workflow_runs[0].conclusion' || echo "unknown")
-          if [ "$previous" = "failure" ]; then
-            echo "recovered=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "recovered=false" >> "$GITHUB_OUTPUT"
-          fi
       - name: Send a recovery SMS
-        if: steps.probe.outputs.failed == 'false' && steps.recovery.outputs.recovered == 'true' && !inputs.test_sms
+        if: steps.alert.outputs.recovered == 'true' && !inputs.test_sms
         uses: ./.github/actions/alert-sms
         with:
           message: 'Together prod health RECOVERED: health and deep probes green'
@@ -105,7 +88,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
           phone-number: ${{ secrets.ALERT_SMS_PHONE }}
       - name: Fail the run on unhealthy production
-        if: steps.probe.outputs.failed == 'true'
+        if: steps.probe.outputs.failing != ''
+        env:
+          REASON: ${{ steps.probe.outputs.reason }}
         run: |
-          echo "::error::${{ steps.probe.outputs.reason }}"
+          echo "::error::$REASON"
           exit 1

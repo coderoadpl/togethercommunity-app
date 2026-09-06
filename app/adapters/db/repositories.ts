@@ -19,6 +19,7 @@ import {
   dmMessageSchema,
   dmReportSchema,
   dnsRecordSchema,
+  domainDnsRecordSchema,
   memberCourseProgressSchema,
   memberEventSchema,
   memberGrantSchema,
@@ -3817,11 +3818,23 @@ const toTenantDomain = (row: TenantDomainRow): TenantDomain => ({
   verified: row.verified,
   provider: row.provider,
   verification: dnsRecordSchema.array().catch([]).parse(row.verification),
+  records: domainDnsRecordSchema.array().catch([]).parse(row.records),
+  providerVerified: row.providerVerified,
   createdAt: toIsoTimestamp(row.createdAt),
   verifiedAt: toNullableIsoTimestamp(row.verifiedAt),
   lastCheckedAt: toNullableIsoTimestamp(row.lastCheckedAt),
   lastError: row.lastError,
 });
+
+const mergedRecordsSql = (records: TenantDomain['records']) => sql`(
+  select coalesce(jsonb_agg(record order by first_seen), '[]'::jsonb)
+  from (
+    select record, min(position) as first_seen
+    from jsonb_array_elements(${tenantDomains.records} || ${JSON.stringify(records)}::jsonb)
+      with ordinality as entries(record, position)
+    group by record
+  ) retained
+)`;
 
 export const createTenantDomainRepository = (db: Db): TenantDomainRepository => ({
   findByDomain: async (domain) => {
@@ -3860,7 +3873,10 @@ export const createTenantDomainRepository = (db: Db): TenantDomainRepository => 
   patch: async (tenantId, id, patch) => {
     const rows = await db
       .update(tenantDomains)
-      .set(patch)
+      .set({
+        ...patch,
+        ...(patch.records === undefined ? {} : { records: mergedRecordsSql(patch.records) }),
+      })
       .where(and(eq(tenantDomains.tenantId, tenantId), eq(tenantDomains.id, id)))
       .returning();
     return rows[0] === undefined ? null : toTenantDomain(rows[0]);
@@ -3868,7 +3884,7 @@ export const createTenantDomainRepository = (db: Db): TenantDomainRepository => 
   markVerified: async (tenantId, id, patch) => {
     const rows = await db
       .update(tenantDomains)
-      .set({ ...patch, verified: true })
+      .set({ ...patch, verified: true, records: mergedRecordsSql(patch.records) })
       .where(and(
         eq(tenantDomains.tenantId, tenantId),
         eq(tenantDomains.id, id),

@@ -38,7 +38,7 @@ import {
   tenantSocialLinkSchema,
 } from '#core/domain/index.js';
 import type {
-  DnsRecord,
+  TenantRouting,
   ExemptionBasisKind,
   Language,
   TenantDomainStatus,
@@ -1204,7 +1204,7 @@ const domainErrorMessage = (error: unknown, t: Messages): string => {
   return localizePanelError(error, t);
 };
 
-const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
+const DnsRecordRow = ({ record }: { record: TenantRouting['customDomains'][number]['records'][number] }) => {
   const t = useTranslations();
 
   return (
@@ -1213,9 +1213,16 @@ const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
       spacing="0.4rem"
       data-testid={`dns-record-${record.type}-${record.name}`}
     >
-      <Typography variant="caption">
-        {t.tenantDomains.recordType}: {record.type}
-      </Typography>
+      <Stack direction="row" useFlexGap sx={{ gap: '0.5rem', alignItems: 'center' }}>
+        <Typography variant="caption">
+          {t.tenantDomains.recordType}: {record.type}
+        </Typography>
+        <Chip
+          size="small"
+          color={record.status === 'verified' ? 'success' : 'default'}
+          label={record.status === 'verified' ? t.tenantDomains.recordVerified : t.tenantDomains.recordPending}
+        />
+      </Stack>
       <CopyField
         size="small"
         mono
@@ -1230,6 +1237,29 @@ const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
         value={record.value}
         testId={`dns-record-value-${record.type}-${record.name}`}
       />
+    </Stack>
+  );
+};
+
+const DomainRecords = ({ entry }: { entry: TenantRouting['customDomains'][number] }) => {
+  const t = useTranslations();
+  const rows = entry.records.map((record) => (
+    <DnsRecordRow key={`${record.type}-${record.name}-${record.value}`} record={record} />
+  ));
+  if (entry.status === 'active') {
+    return (
+      <Box component="details">
+        <Typography component="summary" variant="caption" sx={{ cursor: 'pointer' }}>
+          {t.tenantDomains.recordsSummary({ count: entry.records.length })}
+        </Typography>
+        <Stack useFlexGap spacing="0.5rem">{rows}</Stack>
+      </Box>
+    );
+  }
+  return (
+    <Stack useFlexGap spacing="0.5rem">
+      <Typography variant="caption">{t.tenantDomains.recordsHeading}</Typography>
+      {rows}
     </Stack>
   );
 };
@@ -1379,14 +1409,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {entry.lastError === null ? null : (
                 <Typography variant="caption" color="error">{entry.lastError}</Typography>
               )}
-              {entry.verified ? null : (
-                <>
-                  <Typography variant="caption">{t.tenantDomains.recordsHeading}</Typography>
-                  {entry.records.map((record) => (
-                    <DnsRecordRow key={`${record.type}-${record.name}`} record={record} />
-                  ))}
-                </>
-              )}
+              <DomainRecords entry={entry} />
               {entry.lastCheckedAt === null ? null : (
                 <Typography variant="caption">
                   {t.tenantDomains.lastChecked({ at: formatDateTime(entry.lastCheckedAt, language) })}

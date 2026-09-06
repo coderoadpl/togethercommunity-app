@@ -19,7 +19,13 @@ administrators can read the section but cannot change it.
 3. The Studio shows the exact records. There is always a `CNAME` for routing,
    and — when the provider needs proof of ownership, typically because the
    domain is already registered with another account there — an extra `TXT`
-   record on `_vercel.<domain>`.
+   record on `_vercel.<domain>`. Every record stays in the checklist with its
+   type, copyable name and value, and a **Pending** or **Verified ✓** status.
+   Ownership records become verified when the provider stops requiring them or
+   confirms ownership. Routing records become verified when the domain is active.
+   Re-checks retain all previous records and merge new ones without duplicates.
+   Active domains collapse the checklist under **DNS records (N) ✓**; expanding
+   it shows the same records, all verified.
 4. Once the records are published, **Sprawdź teraz** re-reads the provider
    state immediately. A scheduled job repeats the same check every 15 minutes
    for every pending domain, so a domain also goes live on its own.
@@ -44,6 +50,20 @@ the address the platform operator provides. A subdomain such as
 | Weryfikacja u dostawcy | The provider returned an ownership record that must be published before it will serve the domain. |
 | Działa | The domain resolves and serves the workspace. |
 | Błąd | The last check failed; the provider message is shown under the domain. |
+
+The domain row stores the full DNS record set in `records` (JSONB), including
+`purpose` (`ownership` or `routing`). Current ownership requirements remain in
+`verification`, unchanged even when the provider confirms ownership. The separate
+`provider_verified` flag records that confirmation so ownership records can show
+verified without changing the domain status chip. Record statuses are derived on
+read and exposed as `routing.customDomains[].records[].status` in the API. Existing ownership
+requirements are retained by the migration; records already discarded before
+this migration cannot be recovered. Existing rows receive their routing record
+on read and persist it on their next check.
+
+`together domain show` prints each domain and its records with statuses.
+`together --json domain show` returns the same records in the standard
+`{ "ok": true, "data": { "routing": ... } }` envelope.
 
 ## What changes for members
 

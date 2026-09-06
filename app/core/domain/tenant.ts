@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 import {
-  dnsRecordSchema,
+  domainDnsRecordStatusSchema,
+  type DomainDnsRecord,
   tenantDomainStatusSchema,
   type DnsRecord,
   type TenantDomainProvider,
@@ -398,7 +399,9 @@ export type TenantDomain = {
   kind: 'subdomain' | 'custom';
   verified: boolean;
   provider: TenantDomainProvider;
+  providerVerified: boolean;
   verification: DnsRecord[];
+  records: DomainDnsRecord[];
   createdAt: string;
   verifiedAt: string | null;
   lastCheckedAt: string | null;
@@ -411,7 +414,7 @@ export const tenantRoutingSchema = z.object({
     domain: z.string(),
     verified: z.boolean(),
     status: tenantDomainStatusSchema,
-    records: z.array(dnsRecordSchema),
+    records: z.array(domainDnsRecordStatusSchema),
     lastCheckedAt: z.string().datetime().nullable(),
     lastError: z.string().nullable(),
   })),

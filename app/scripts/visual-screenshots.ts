@@ -128,6 +128,30 @@ const waitForUnreadBadge = async (page: Page): Promise<void> => {
     .waitFor(visible);
 };
 
+const prepareDomainChecklist = async (page: Page, active: boolean): Promise<ScreenPreparation> => {
+  const domain = 'courses.example.org';
+  const handler = async (route: Route): Promise<void> => {
+    await route.fulfill({ json: { ok: true, data: { routing: {
+      tenantHost: 'workspace.example.org',
+      customDomainTarget: 'routing.example.org',
+      canAddCustomDomain: true,
+      customDomains: [{
+        domain, verified: active, status: active ? 'active' : 'pending-dns',
+        lastCheckedAt: null, lastError: null,
+        records: [
+          { type: 'CNAME', name: domain, value: 'routing.example.org', purpose: 'routing', status: active ? 'verified' : 'pending' },
+          { type: 'TXT', name: `_vercel.${domain}`, value: 'vc-domain-verify=courses.example.org,challenge', purpose: 'ownership', status: 'verified' },
+        ],
+      }],
+    } } } });
+  };
+  await page.route('**/api/tenant/routing', handler);
+  return {
+    renderingInputsReady: Promise.resolve(),
+    cleanup: () => page.unroute('**/api/tenant/routing', handler),
+  };
+};
+
 const SCREENS: ScreenSpec[] = [
   {
     name: 'login',
@@ -381,6 +405,16 @@ const SCREENS: ScreenSpec[] = [
       await page.getByTestId('dashboard-member-row').first().waitFor(visible);
     },
   },
+  ...[false, true].map((active): ScreenSpec => ({
+    name: active ? 'panel-settings-domains-active' : 'panel-settings-domains',
+    auth: 'creator',
+    path: '/panel/settings#domains',
+    prepare: (page) => prepareDomainChecklist(page, active),
+    ready: (page) => page.getByTestId('tenant-domain-courses.example.org').waitFor(visible),
+    settled: async (page) => {
+      await page.locator('#domains').evaluate((element) => element.scrollIntoView({ block: 'start' }));
+    },
+  })),
   {
     name: 'panel-settings-security',
     auth: 'creator',

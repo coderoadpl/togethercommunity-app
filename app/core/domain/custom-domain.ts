@@ -13,6 +13,15 @@ export const dnsRecordSchema = z.object({
   value: z.string().min(1),
 });
 
+export const domainDnsRecordSchema = dnsRecordSchema.extend({
+  purpose: z.enum(['ownership', 'routing']),
+});
+
+export const domainDnsRecordStatusSchema = domainDnsRecordSchema.extend({
+  status: z.enum(['verified', 'pending']),
+});
+
+export type DomainDnsRecord = z.infer<typeof domainDnsRecordSchema>;
 export type DnsRecord = z.infer<typeof dnsRecordSchema>;
 
 export type TenantDomainProvider = 'manual' | 'vercel';
@@ -50,10 +59,15 @@ export const customDomainRecords = (input: {
   domain: string;
   target: string;
   verification: DnsRecord[];
-}): DnsRecord[] => [
-  { type: 'CNAME', name: input.domain, value: input.target },
-  ...input.verification,
+}): DomainDnsRecord[] => [
+  { type: 'CNAME', name: input.domain, value: input.target, purpose: 'routing' },
+  ...input.verification.map((record) => ({ ...record, purpose: 'ownership' as const })),
 ];
+
+export const mergeDomainRecords = (...sets: DomainDnsRecord[][]): DomainDnsRecord[] =>
+  [...new Map(sets.flat().map((record) => [
+    JSON.stringify([record.type, record.name, record.value, record.purpose]), record,
+  ])).values()];
 
 const MAX_DOMAIN_LENGTH = 253;
 const MAX_LABEL_LENGTH = 63;

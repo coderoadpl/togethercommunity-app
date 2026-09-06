@@ -17,6 +17,7 @@ import {
   TENANT_OG_TITLE_MAX_LENGTH,
 } from '#core/domain/index.js';
 
+import { FONT_MONO } from '../../../theme.js';
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -147,17 +148,8 @@ const installSettingsBackend = (
   const courseUpdates: unknown[] = [];
   const courseList = courses === 'unavailable' ? [] : courses;
   const domainCalls: string[] = [];
+  const redirectQueries: URLSearchParams[] = [];
   let routingState = initialRouting();
-  const redirectList = [{
-    id: 'redirect-1',
-    tenantId: 'tenant-1',
-    fromPath: '/kurs/javascript',
-    targetKind: 'course',
-    targetId: 'course-1',
-    targetPath: '/my/courses/course-1',
-    permanent: true,
-    createdAt: '2026-01-01T00:00:00.000Z',
-  }];
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
@@ -178,10 +170,10 @@ const installSettingsBackend = (
       ok: true,
       data: { routing: routingState },
     })),
-    http.get('/api/tenant/redirects', () => HttpResponse.json({
-      ok: true,
-      data: { redirects: redirectList },
-    })),
+    http.get('/api/tenant/redirects', ({ request }) => {
+      redirectQueries.push(new URL(request.url).searchParams);
+      return HttpResponse.json({ ok: true, data: { redirects: [], total: 686 } });
+    }),
     http.post('/api/tenant/domains', async ({ request }) => {
       const body = domainRequestSchema.parse(await request.json());
       domainCalls.push(`add:${body.domain}`);
@@ -235,7 +227,7 @@ const installSettingsBackend = (
     }),
   );
 
-  return { updates, courseUpdates, domainCalls };
+  return { updates, courseUpdates, domainCalls, redirectQueries };
 };
 
 const renderPanel = (
@@ -244,7 +236,8 @@ const renderPanel = (
   spaces: StubSpace[] = [],
   courses: StubCourse[] | 'unavailable' = [],
 ) => {
-  const { updates, courseUpdates, domainCalls } = installSettingsBackend(initial, spaces, courses);
+  const { updates, courseUpdates, domainCalls, redirectQueries } =
+    installSettingsBackend(initial, spaces, courses);
 
   const rootRoute = createRootRoute();
   const settingsRoute = createRoute({
@@ -272,7 +265,7 @@ const renderPanel = (
 
   const { queryClient } = renderWithProviders(<RouterProvider router={router} />);
 
-  return { queryClient, router, updates, courseUpdates, domainCalls };
+  return { queryClient, router, updates, courseUpdates, domainCalls, redirectQueries };
 };
 
 const openSettingsSection = async (label: string) => {
@@ -300,25 +293,51 @@ describe('SettingsPanel information architecture', () => {
     expect(screen.queryByTestId('billing-portal-url')).not.toBeInTheDocument();
   });
 
-  it('lists the imported redirects with their count', async () => {
-    renderPanel();
+  it('summarises the redirects in one line that links to their page', async () => {
+    const { redirectQueries } = renderPanel();
 
-    expect(await screen.findByTestId('tenant-redirects-count'))
-      .toHaveTextContent(pl.tenantDomains.redirectsCount({ count: 1 }));
-    expect(await screen.findByTestId('tenant-redirect-redirect-1'))
-      .toHaveTextContent('/kurs/javascript → /my/courses/course-1');
+    const summary = await screen.findByTestId('tenant-redirects-summary');
+    expect(summary).toHaveTextContent(pl.tenantDomains.redirectsCount({ count: 686 }));
+    expect(within(summary).getByRole('link', { name: `${pl.tenantDomains.redirectsManage} →` }))
+      .toHaveAttribute('href', '/panel/settings/redirects');
+    expect(redirectQueries.map((query) => query.get('limit'))).toEqual(['0']);
   });
 
   it('shows the workspace address with verified and pending custom domains', async () => {
     renderPanel();
 
-    expect(await screen.findByText('akademia.together.example')).toBeInTheDocument();
+    const address = await screen.findByRole('textbox', { name: pl.tenantDomains.workspaceAddress });
+    expect(address).toHaveValue('akademia.together.example');
+    expect(address).toHaveAttribute('readonly');
+    expect(address).toHaveStyle({ fontFamily: FONT_MONO });
     expect(await screen.findByTestId('tenant-domain-status-kurs.acme.example'))
       .toHaveTextContent(pl.tenantDomains.statusActive);
     const pending = await screen.findByTestId('tenant-domain-nowa.acme.example');
     expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example'))
       .toHaveValue('cname.vercel-dns.com');
+  });
+
+  it('copies the workspace address', async () => {
+    const writeText = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderPanel();
+
+    await userEvent.click(await screen.findByTestId('tenant-workspace-address-copy'));
+
+    expect(writeText).toHaveBeenCalledWith('akademia.together.example');
+  });
+
+  it('renders active domain checks as quiet links and pending checks as buttons', async () => {
+    const { domainCalls } = renderPanel();
+
+    const active = await screen.findByTestId('tenant-domain-check-kurs.acme.example');
+    expect(active).toHaveClass('MuiLink-root', 'MuiTypography-caption');
+    expect(active).not.toHaveClass('MuiButton-root');
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiButton-root');
+    await userEvent.click(active);
+
+    await waitFor(() => { expect(domainCalls).toEqual(['check:kurs.acme.example']); });
   });
 
   it('warns about signing in again until a custom domain is verified', async () => {
@@ -415,6 +434,7 @@ describe('SettingsPanel information architecture', () => {
     });
     expect(screen.getByTestId('tenant-domain-nowa.acme.example'))
       .toHaveTextContent('Vercel is unreachable');
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiButton-root');
   });
 
   it('adds a domain and lists it as waiting for DNS', async () => {
@@ -440,6 +460,7 @@ describe('SettingsPanel information architecture', () => {
         .toHaveTextContent(pl.tenantDomains.statusActive);
     });
     expect(domainCalls).toEqual(['check:nowa.acme.example']);
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiLink-root');
   });
 
   it('offers the record name and value as separate copy fields', async () => {

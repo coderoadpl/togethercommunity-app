@@ -185,6 +185,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |
 | `GET /api/tenant/settings` | authenticated | read | tenant settings |
 | `GET /api/tenant/redirects` | authenticated | read | tenant redirects |
+| `POST /api/tenant/redirects` | authenticated | mutating | tenant redirect create |
+| `POST /api/tenant/redirects/remove` | authenticated | mutating | tenant redirect delete |
 | `GET /api/tenant/routing` | authenticated | read | tenant routing |
 | `POST /api/tenant/domains` | authenticated | mutating | tenant domain add |
 | `POST /api/tenant/domains/check` | authenticated | mutating | tenant domain check |

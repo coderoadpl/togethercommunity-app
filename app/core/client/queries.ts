@@ -115,6 +115,9 @@ import type {
   StripeConfigureInput,
   TenantSecretSetInput,
   TenantDomainInput,
+  TenantRedirectsQueryInput,
+  TenantRedirectCreateBody,
+  TenantRedirectDeleteBody,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
 import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
@@ -316,6 +319,7 @@ const tenantRoutingScopes = {
 
 const tenantRedirectScopes = {
   all: () => ['tenant-redirects'] as const,
+  list: (query: TenantRedirectsQueryInput) => ['tenant-redirects', 'list', query] as const,
 };
 
 const onboardingScopes = {
@@ -1596,11 +1600,25 @@ export const tenantRoutingQuery = (api: ApiClient) =>
     call: ({ signal }) => api.getTenantRouting(signal),
   });
 
-export const tenantRedirectsQuery = (api: ApiClient) =>
+export const tenantRedirectsQuery = (api: ApiClient) => (query: TenantRedirectsQueryInput = {}) =>
   defineQuery({
-    queryKey: tenantRedirectScopes.all(),
-    call: ({ signal }) => api.getTenantRedirects(signal),
+    queryKey: tenantRedirectScopes.list(query),
+    call: ({ signal }) => api.getTenantRedirects(query, signal),
   });
+
+export const createTenantRedirectMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRedirectScopes.all(), 'create'],
+    call: (input: TenantRedirectCreateBody) => api.createTenantRedirect(input),
+  });
+
+export const deleteTenantRedirectMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRedirectScopes.all(), 'delete'],
+    call: (input: TenantRedirectDeleteBody) => api.deleteTenantRedirect(input),
+  });
+
+export const tenantRedirectsInvalidates = () => ({ queryKey: tenantRedirectScopes.all() });
 
 export const updateTenantSettingsMutation = (api: ApiClient) =>
   defineMutation({

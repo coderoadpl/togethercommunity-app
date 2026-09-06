@@ -2780,6 +2780,12 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
+export const PathText = styled(Typography)<AsElement>({
+  fontFamily: FONT_MONO,
+  fontSize: '0.8125rem',
+  overflowWrap: 'anywhere',
+});
+
 export const ProgressPercentText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: '0.6875rem',
@@ -3488,6 +3494,11 @@ export const SocialFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   marginTop: '2.5rem',
   paddingTop: '1rem',
   borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const QuietActionLink = styled(Link)<AsElement & { disabled?: boolean }>(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  '&:disabled': { color: theme.palette.text.disabled },
 }));
 
 export const SocialFooterLink = styled(Link)(({ theme }) => ({

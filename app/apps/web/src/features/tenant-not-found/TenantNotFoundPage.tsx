@@ -9,7 +9,7 @@ import { BrandLoader } from '../../components/layout/BrandLoader.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { hostHasTenantSubdomain } from '../../lib/tenant.js';
+import { isTenantHost } from '../../lib/tenant.js';
 import { CardTitle } from '../../theme.js';
 
 const TenantNotFoundPage = () => {
@@ -40,10 +40,10 @@ export const TenantGate = ({
   hostname?: string;
 }) => {
   const t = useTranslations();
-  const onSubdomain = hostHasTenantSubdomain(hostname);
-  const offer = useQuery({ ...actions.publicOffer, enabled: onSubdomain });
+  const onTenantHost = isTenantHost(hostname);
+  const offer = useQuery({ ...actions.publicOffer, enabled: onTenantHost });
 
-  if (!onSubdomain) return <>{children}</>;
+  if (!onTenantHost) return <>{children}</>;
   if (offer.isPending) {
     return <BrandLoader caption={t.tenant.openingWorkspace} data-testid="tenant-gate-pending" />;
   }

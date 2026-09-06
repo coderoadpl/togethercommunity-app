@@ -149,7 +149,7 @@ const harness = () => {
     redirects: {
       findById: async () => null,
       findByFromPath: async () => null,
-      listByTenant: async () => [],
+      listPage: async () => ({ redirects: [], total: 0 }),
     },
     ids: { nextId: () => `id-${sequence += 1}` },
     clock: { nowIso: () => NOW },

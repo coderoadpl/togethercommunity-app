@@ -1791,6 +1791,8 @@ export const tenantRedirects = pgTable(
     targetId: text('target_id'),
     targetPath: text('target_path').notNull(),
     permanent: boolean('permanent').notNull().default(false),
+    origin: text('origin', { enum: ['import', 'manual'] }).notNull().default('import'),
+    createdBy: text('created_by'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex('tenant_redirects_tenant_from_path_uidx').on(table.tenantId, table.fromPath)],
@@ -2149,7 +2151,13 @@ export const tenantAuditEvents = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     kind: text('kind', {
-      enum: ['impersonation_started', 'impersonation_ended', 'content_version_restored'],
+      enum: [
+        'impersonation_started',
+        'impersonation_ended',
+        'content_version_restored',
+        'redirect_created',
+        'redirect_deleted',
+      ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
     actorEmail: text('actor_email').notNull(),

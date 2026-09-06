@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { ERROR_CODES, type AppError } from './errors.js';
 import { chapterSchema, lessonBlockSchema } from './course.js';
 import { normalizeEmail } from './email.js';
+import { imageAssetKindSchema } from './image-asset.js';
 import { redirectPathSchema } from './tenant-redirect.js';
 import {
   currencySchema,
-  productCoverUrlSchema,
   productSlugSchema,
   productTypeSchema,
 } from './product.js';
@@ -40,6 +40,27 @@ const importKeySchema = z
   .max(200)
   .regex(/^[a-z0-9][a-z0-9._:-]*$/);
 
+const importPublicAssetFilePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|webp|svg|ico)$/iu;
+
+export const importPublicAssetPathSchema = z.string().trim().refine((value) => {
+  const parts = value.split('/');
+  const kind = parts[4];
+  const file = parts[5];
+  return parts.length === 6
+    && parts[0] === ''
+    && parts[1] === 'api'
+    && parts[2] === 'public'
+    && parts[3] === 'assets'
+    && kind !== undefined
+    && file !== undefined
+    && imageAssetKindSchema.safeParse(kind).success
+    && importPublicAssetFilePattern.test(file);
+}, 'Must be an absolute http(s) URL or a public asset path');
+
+const importAbsoluteUrlSchema = z.string().trim().url().regex(/^https?:\/\//iu);
+
+const importAssetUrlSchema = z.union([importAbsoluteUrlSchema, importPublicAssetPathSchema]);
+
 const importedRecordFields = {
   importKey: importKeySchema,
   legacyId: z.string().optional(),
@@ -51,7 +72,7 @@ const importCourseRecordObjectSchema = z
     ...importedRecordFields,
     name: z.string().trim().min(1),
     description: z.string().max(50_000),
-    imageUrl: z.string().url().nullable(),
+    imageUrl: importAssetUrlSchema.nullable(),
     moduleOrder: z.array(importKeySchema),
   })
   .strict();
@@ -153,7 +174,7 @@ export const importProductRecordSchema = z
     slug: productSlugSchema,
     title: z.string().trim().min(1).max(200),
     description: z.string().max(50_000),
-    coverUrl: productCoverUrlSchema.nullable(),
+    coverUrl: importAssetUrlSchema.nullable(),
     priceCents: z.number().int().nonnegative(),
     currency: currencySchema,
     accessItems: z.array(importAccessItemSchema),
@@ -353,6 +374,12 @@ export const importValidationResponseSchema = z.object({
     error: importRecordErrorSchema,
   })),
   warnings: z.array(z.object({
+    index: z.number().int().nonnegative(),
+    kind: importKindSchema,
+    importKey: importKeySchema,
+    message: z.string(),
+  })),
+  infos: z.array(z.object({
     index: z.number().int().nonnegative(),
     kind: importKindSchema,
     importKey: importKeySchema,

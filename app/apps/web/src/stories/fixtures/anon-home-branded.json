@@ -1,0 +1,73 @@
+{
+  "calls": {
+    "me:[]": {
+      "error": {
+        "code": "unauthorized",
+        "message": "Authentication required"
+      },
+      "ok": false
+    },
+    "publicNavigation:[]": {
+      "ok": true,
+      "value": {
+        "navigation": {
+          "courses": [],
+          "defaultHomeSpaceId": null,
+          "lockedSpaces": [],
+          "spaces": []
+        }
+      }
+    },
+    "publicOffer:[]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Roczny dostęp do kursu Samodzielna nauka programowania.",
+            "id": "product-akademia-roczny",
+            "marketingConsents": [],
+            "priceCents": 29900,
+            "prices": [
+              {
+                "amountCents": 29900,
+                "currency": "PLN",
+                "id": "price-product-akademia-roczny",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "akademia-roczny",
+            "title": "Akademia - dostęp roczny",
+            "type": "course"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": "#0E7490",
+            "faviconUrl": "/assets/akademia-logo.svg",
+            "logoDarkUrl": null,
+            "logoUrl": "/assets/akademia-wordmark.svg"
+          },
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Akademia Samouka",
+          "slug": "akademia",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    }
+  },
+  "principal": "anonymous",
+  "route": "/",
+  "scenario": "anon-home-branded",
+  "tenant": "akademia"
+}

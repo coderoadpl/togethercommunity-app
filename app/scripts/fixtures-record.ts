@@ -24,6 +24,7 @@ const save = (name: string, data: unknown): void => {
   writeFileSync(join(output, `${name}.json`), `${JSON.stringify(JSON.parse(canonicalJson(data)), null, 2)}\n`);
 };
 const login = async (baseUrl: string, email: string, tenant: string): Promise<ApiClient> => {
+  if (email === 'anonymous') return createApiClient({ baseUrl, headers: () => ({ 'X-Tenant': tenant }) });
   const previous = sessions.get(`${tenant}:${email}`);
   if (previous) return previous;
   let token: string | null = null;
@@ -56,23 +57,28 @@ const plan: Scenario[] = [
   { name: 'my-products', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'my-products', route: '/my/products', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.getTenantSettings(); } },
   { name: 'product-stub', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'product-stub', route: '/my/course/product-js-full', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.studentCourses(); } },
   { name: 'search', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'search', route: '/search', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourseStructure('course-js'); await api.studentCourseStructure('course-react'); await api.searchPosts({ query: 'lekcj' }); } },
+  { name: 'anon-home-branded', principal: 'anonymous', tenant: 'akademia', page: 'anon-home-branded', route: '/', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicNavigation(); } },
+  { name: 'anon-home-tiles', principal: 'anonymous', tenant: 'studio', page: 'anon-home-tiles', route: '/', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicNavigation(); await api.publicSpaceFeed({ spaceId: 'space-studio-spolecznosc' }); } },
+  { name: 'anon-course', principal: 'anonymous', tenant: 'studio', page: 'anon-course', route: '/my/courses/course-js', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicNavigation(); await api.publicCourseStructure('course-js'); } },
 ];
 const record = async (api: ApiClient, scenario: Scenario): Promise<void> => {
   const calls: Record<string, unknown> = {};
   const call = async <T>(method: keyof ApiClient, args: unknown[], invoke: () => Promise<T>): Promise<T> => {
     const result = await invoke();
-    if (!abortVisualMutation(method)) success.parse(result);
+    if (!abortVisualMutation(method) && !(scenario.principal === 'anonymous' && method === 'me')) success.parse(result);
     calls[fixtureKey(method, args)] = result;
     return result;
   };
   const me = await call('me', [], () => api.me());
-  if (!me.ok) throw new Error(me.error.message);
-  const recordedUserId = me.value.userId;
-  const fixtureUserId = `fixture-user-${createHash('sha256').update(me.value.email).digest('hex').slice(0, 16)}`;
+  if (!me.ok && scenario.principal !== 'anonymous') throw new Error(me.error.message);
+  const recordedUserId = me.ok ? me.value.userId : null;
+  const fixtureUserId = me.ok ? `fixture-user-${createHash('sha256').update(me.value.email).digest('hex').slice(0, 16)}` : null;
   await call('publicOffer', [], () => api.publicOffer());
+  if (scenario.principal !== 'anonymous') {
   await call('memberNavigation', [], () => api.memberNavigation());
   await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
   await call('unreadMessageCount', [], () => api.unreadMessageCount());
+  }
   const { courseId, lessonId, spaceId } = scenario;
   let route = scenario.route ?? '/start';
   if (['start', 'lesson', 'course'].includes(scenario.page)) {

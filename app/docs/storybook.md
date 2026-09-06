@@ -71,8 +71,10 @@ Storybook. Server HTML stories are compiled by TypeScript and the Storybook buil
 
 The experimental page workflow records the isolated seed database with the visual harness clock:
 `pnpm exec tsx scripts/fixtures-record.ts`. An optional output directory keeps
-recordings outside the source tree. Recorded tracking and read-mark failures
-follow the same request policy as the application harness. Page stories keep
+recordings outside the source tree. Each recording scenario declares its principal, route and page queries. Recorded
+tracking and read-mark failures follow the same request policy as the application
+harness. Authenticated passkey reads use the auth adapter; session IDs and times
+are normalized to stable fixture values. Page stories keep
 an `auto` theme preference; use browser color-scheme emulation for light captures or dark previews.
 
 Run `pnpm exec tsx scripts/fixtures-check.ts` after `pnpm run db:up` to re-record

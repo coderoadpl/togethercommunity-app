@@ -79,8 +79,8 @@ executes pull-request head code, and is the only gallery job with
 
 ## Storybook
 
-The experimental Storybook capture path renders three member pages and the hosted
-legal document from recorded seed fixtures. It shares the application harness's
+The experimental Storybook capture path renders seeded member, public and studio
+pages, plus the hosted legal document, from recorded fixtures. It shares the application harness's
 clock, request policy, browser setup, settling helpers and pixelmatch comparator
 (threshold 0, anti-aliasing excluded, 10-pixel budget). Page acceptance additionally
 requires zero counted pixels for every converted capture.
@@ -88,13 +88,16 @@ requires zero counted pixels for every converted capture.
 After `pnpm run db:up`, run `pnpm exec tsx scripts/fixtures-check.ts` to verify that
 fresh recordings match the committed fixtures byte-for-byte. Build with
 `pnpm run storybook:build`, then run
-`pnpm exec tsx scripts/storybook-capture.ts <output-directory>` on the macOS
+`pnpm exec tsx scripts/storybook-capture.ts <output-directory> <screen-names>` on the macOS
 renderer. The command captures the static Storybook on a local seed subdomain,
 compares against the existing `tasks/visual-goldens/` files, and writes screenshots,
 diffs and measurements to the output directory. It fails on missing fixtures,
 browser errors, missing goldens or any counted pixel difference. Captures run once,
-sequentially, with no retries. The hosted legal document has only desktop and
-390-pixel mobile goldens; the three member pages also have a 375-pixel capture.
+sequentially, with no retries. The optional screen list is comma-separated;
+without it, the original four screens are captured. Viewports and capture actions
+follow the application harness: desktop 1440×900, mobile 390×844, and member
+pages at 375×812. The menu sheet has only a 390-pixel capture. New page story IDs
+match golden filenames without the PNG extension.
 
 This path is experimental and does not replace `pnpm run visual` or author goldens.
 The catalogue is checked by its module tests and static build. Lost Pixel and its

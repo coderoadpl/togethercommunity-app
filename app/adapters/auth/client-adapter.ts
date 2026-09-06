@@ -180,9 +180,10 @@ const postBrowserSignUp = async (
 };
 
 /** Better Auth implementation of the client-side auth port. */
-export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort => {
+export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<string, string>): AuthClientPort => {
   const client = createAuthClient({
     baseURL: baseUrl === '' ? undefined : baseUrl,
+    ...(headers === undefined ? {} : { fetchOptions: { headers } }),
     plugins: [magicLinkClient(), passkeyClient(), twoFactorClient()],
   });
 

@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import pkg from '../package.json' with { type: 'json' };
 import type { StorybookConfig } from '@storybook/react-vite';
 
 const fixtureApi = fileURLToPath(new URL('../apps/web/src/stories/api.fixtures.ts', import.meta.url));
@@ -12,7 +13,7 @@ const config: StorybookConfig = {
   core: { disableTelemetry: true },
   viteFinal: (config) => ({
     ...config,
-    define: { ...config.define, 'import.meta.env.VITE_APP_BASE_DOMAIN': JSON.stringify('localhost') },
+    define: { ...config.define, __APP_VERSION__: JSON.stringify(pkg.version), __APP_COMMIT_SHA__: JSON.stringify('unknown'), 'import.meta.env.VITE_APP_BASE_DOMAIN': JSON.stringify('localhost') },
     plugins: [...(config.plugins ?? []), {
       name: 'storybook-fixture-api',
       enforce: 'pre',

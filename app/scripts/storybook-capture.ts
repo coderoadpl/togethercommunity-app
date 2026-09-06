@@ -35,15 +35,24 @@ const browser = await chromium.launch(executablePath ? { headless: true, executa
 const browserVersion = browser.version();
 const measurements: unknown[] = [];
 const startedAt = Date.now();
+pageScreens.push({
+  name: 'hosted-legal-document', auth: 'public', path: '/legal/privacy/v/1',
+  ready: async (page) => {
+    await page.frameLocator('iframe[title="Hosted legal document"]').getByTestId('hosted-legal-document').waitFor({ timeout: 20000 });
+  },
+  settled: async (page) => {
+    await page.frameLocator('iframe[title="Hosted legal document"]').locator('body').evaluate(async () => { await document.fonts.ready; });
+  },
+});
 try {
-  for (const spec of pageScreens.filter((entry) => (process.argv[3]?.split(',') ?? ['lesson', 'start', 'space-feed']).includes(entry.name))) {
+  for (const spec of pageScreens.filter((entry) => (process.argv[3]?.split(',') ?? ['lesson', 'start', 'space-feed', 'hosted-legal-document']).includes(entry.name))) {
     const screen = spec.name;
     for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'mobile', width: 390, height: 844 }, { name: 'mobile-375', width: 375, height: 812 }]) {
       if (spec.viewports && !spec.viewports.includes(viewport.name)) continue;
       if (spec.auth !== 'member' && viewport.name === 'mobile-375') continue;
       for (const mode of ['light']) {
         const title = { lesson: 'lessonplayer', start: 'start', 'space-feed': 'spacefeed', 'hosted-legal-document': 'hostedlegaldocument' }[screen];
-        const id = title ? `pages-${title}--${mode}-${viewport.name === 'desktop' ? 'desktop' : 'mobile'}` : `${screen}--shadcn-${viewport.name}`;
+        const id = title ? `pages-${title}--${mode}-${viewport.name === 'desktop' ? 'desktop' : 'mobile'}` : `${screen}--shadcn--${viewport.name}`;
         const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1, colorScheme: mode === 'dark' ? 'dark' : 'light', locale: 'pl-PL', timezoneId: 'UTC', reducedMotion: 'reduce' });
         await applyChrome(context);
         await stubNonDeterministicRequests(context);
@@ -57,7 +66,7 @@ try {
         try {
           await page.goto(`http://${spec.tenantSlug ?? 'studio'}.localhost:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
           await spec.ready(page);
-          await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
+          if (screen !== 'hosted-legal-document') await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
           await settlePage(page);
           if (spec.settled) {
             await spec.settled(page);
@@ -78,6 +87,7 @@ try {
         const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');
         const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical: hasBaseline && (await readFile(baseline)).equals(await readFile(join(shots, `${file}.png`))), failure, errors, diagnostics };
         measurements.push(result);
+        writeFileSync(join(output, 'measurements.json'), JSON.stringify({ browserVersion, milliseconds: Date.now() - startedAt, measurements }, null, 2));
         console.log(JSON.stringify(result));
         await context.close();
       }

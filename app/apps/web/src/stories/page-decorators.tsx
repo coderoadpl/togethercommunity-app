@@ -27,6 +27,20 @@ import { SearchPage } from '../features/member/SearchPage.js';
 
 import { AnonHomePage } from '../features/member/AnonHomePage.js';
 
+import { PanelLayout } from '../features/home/PanelLayout.js';
+import { DashboardPanel } from '../features/home/DashboardPanel.js';
+import { usePanelContext } from '../features/home/panel-context.js';
+import { StudioChecklistDock } from '../features/onboarding/index.js';
+import { PanelCouponCreateRoute, PanelCouponDetailRoute, PanelCouponsRoute, PanelCourseDetailRoute, PanelIntegrationsRoute, PanelLessonEditRoute, PanelOrderDetailRoute, PanelProductDetailRoute, PanelProductsRoute, PanelRedirectsRoute, PanelSettingsRoute, PanelSpacesRoute } from '../features/home/panel-routes.js';
+import { CampaignsPanel } from '../features/home/marketing/CampaignsPanel.js';
+import { ConsentsPanel } from '../features/home/marketing/ConsentsPanel.js';
+import { DocumentsPanel } from '../features/home/marketing/DocumentsPanel.js';
+import { LayoutsPanel } from '../features/home/marketing/LayoutsPanel.js';
+import { SchedulerActivityPanel, SchedulerActivityDetailPage } from '../features/home/marketing/SchedulerActivityPanel.js';
+import { SendsPanel, SendDetailPage, validateSendsSearch } from '../features/home/marketing/SendsPanel.js';
+
+const PanelDashboard = () => { const { tenant, email } = usePanelContext(); return <><DashboardPanel /><StudioChecklistDock scope={`${tenant.id}:${email}`} /></>; };
+
 const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl') });
 const LessonRoute = () => {
   const { courseId, lessonId } = useParams({ strict: false });
@@ -50,7 +64,31 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
     const start = createRoute({ getParentRoute: () => shell, path: '/start', component: StartPage });
     const lesson = createRoute({ getParentRoute: () => shell, path: '/my/courses/$courseId/lessons/$lessonId', component: LessonRoute });
     const feed = createRoute({ getParentRoute: () => shell, path: '/community/$spaceId', component: FeedRoute });
-    const router = createRouter({ routeTree: root.addChildren([shell.addChildren([start, lesson, feed, createRoute({ getParentRoute: () => shell, path: '/', component: AnonHomePage }),
+    const panel = createRoute({ getParentRoute: () => root, path: '/panel', component: PanelLayout });
+    const panelRoutes = [
+      createRoute({ getParentRoute: () => panel, path: '/', component: PanelDashboard }),
+      createRoute({ getParentRoute: () => panel, path: 'spaces', component: PanelSpacesRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'products', component: PanelProductsRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'products/$productId', component: PanelProductDetailRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'courses/$courseId', component: PanelCourseDetailRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'lessons/$lessonId', component: PanelLessonEditRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'sales/coupons', component: PanelCouponsRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'sales/coupons/new', component: PanelCouponCreateRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'sales/coupons/$couponId', component: PanelCouponDetailRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'sales/$orderId', component: PanelOrderDetailRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'settings/redirects', component: PanelRedirectsRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'settings', component: PanelSettingsRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'integrations', component: PanelIntegrationsRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/campaigns', component: CampaignsPanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/activity', component: SchedulerActivityPanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/activity/$runId', component: SchedulerActivityDetailPage }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/sends', component: SendsPanel, validateSearch: validateSendsSearch }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/sends/$kind/$sendId', component: SendDetailPage }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/consents', component: ConsentsPanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/documents', component: DocumentsPanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/layouts', component: LayoutsPanel }),
+    ];
+    const router = createRouter({ routeTree: root.addChildren([panel.addChildren(panelRoutes), shell.addChildren([start, lesson, feed, createRoute({ getParentRoute: () => shell, path: '/', component: AnonHomePage }),
       createRoute({ getParentRoute: () => shell, path: '/account', component: MemberAccountPage }),      createRoute({ getParentRoute: () => shell, path: '/community', component: SpacesListPage }),      createRoute({ getParentRoute: () => shell, path: '/my/courses/$courseId', component: CourseRoute }),      createRoute({ getParentRoute: () => shell, path: '/my', component: MyCoursesPage }),      createRoute({ getParentRoute: () => shell, path: '/my/products', component: MyProductsPage }),      createRoute({ getParentRoute: () => shell, path: '/my/course/$productId', component: ProductRoute }),      createRoute({ getParentRoute: () => shell, path: '/search', component: SearchPage })])]), history: createMemoryHistory({ initialEntries: [fixture.route] }), defaultPendingMs: 0 });
     return { queryClient, router };
   });

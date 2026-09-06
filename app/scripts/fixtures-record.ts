@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { createCliAuthAdapter } from '#adapters/auth/client-adapter.js';
+import { createCliAuthAdapter, createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import { createApiClient, type ApiClient } from '#core/client/index.js';
 import { SMOKE_TENANT_MEMBER_EMAIL, tenantSettingsSchema, tenantSchema } from '#core/domain/index.js';
 import { tenants, tenantDocuments, tenantDocumentVersions } from '#adapters/db/schema.js';
@@ -15,6 +15,7 @@ import { bootServer, ephemeralPort, killServer, rootDir } from './server-harness
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, migrateAndSeed, dropDatabase } from './smoke-database.js';
 
 import { abortVisualMutation, visualSeedTime as seedTime } from './visual-request-policy.js';
+const passkeyRecorders = new Map<string, () => Promise<unknown>>();
 const sessions = new Map<string, ApiClient>();
 const output = process.argv[2] ?? join(rootDir, 'apps/web/src/stories/fixtures');
 const abortedApi = createApiClient({ baseUrl: '', fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')) });
@@ -29,7 +30,7 @@ const login = async (baseUrl: string, email: string, tenant: string): Promise<Ap
   if (previous) return previous;
   let token: string | null = null;
   const auth = createCliAuthAdapter(baseUrl, (value) => { token = value; }, () => token);
-  if (tenant === 'studio') {
+  if (tenant === 'studio' && email !== 'creator@together.dev') {
     const requested = await auth.requestMagicLink({ email, callbackURL: `${baseUrl}/start` });
     if (!requested.ok) throw new Error(requested.error.message);
     const result = await createApiClient({ baseUrl }).devMagicLink(email);
@@ -42,6 +43,8 @@ const login = async (baseUrl: string, email: string, tenant: string): Promise<Ap
   }
   if (token === null) throw new Error('Missing seeded member session token');
   const api = createApiClient({ baseUrl, headers: () => ({ Authorization: `Bearer ${token}`, 'X-Tenant': tenant }) });
+  const browserAuth = createBetterAuthClientAdapter(baseUrl, { Authorization: `Bearer ${token}` });
+  passkeyRecorders.set(`${tenant}:${email}`, browserAuth.listPasskeys);
   sessions.set(`${tenant}:${email}`, api);
   return api;
 };
@@ -60,8 +63,30 @@ const plan: Scenario[] = [
   { name: 'anon-home-branded', principal: 'anonymous', tenant: 'akademia', page: 'anon-home-branded', route: '/', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicNavigation(); } },
   { name: 'anon-home-tiles', principal: 'anonymous', tenant: 'studio', page: 'anon-home-tiles', route: '/', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicNavigation(); await api.publicSpaceFeed({ spaceId: 'space-studio-spolecznosc' }); } },
   { name: 'anon-course', principal: 'anonymous', tenant: 'studio', page: 'anon-course', route: '/my/courses/course-js', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicNavigation(); await api.publicCourseStructure('course-js'); } },
+  { name: 'panel-dashboard', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-dashboard', route: '/panel', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listProducts(); await api.listCourses(); await api.listMembers(); await api.salesSummary(); await api.getOnboarding(); await api.getTenantSetupReadiness(); } },
+  { name: 'panel-spaces', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-spaces', route: '/panel/spaces', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listStaffSpaces(); } },
+  { name: 'panel-products', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-products', route: '/panel/products', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listProducts(); await api.listProductAccessIssues(); await api.listStaffSpaces(); const products = await api.listProducts(); if (products.ok) for (const product of products.value.products.filter((entry) => !entry.published)) { await api.listProductPrices(product.id); if (product.type === 'digital_download') await api.listProductDownloadAssets(product.id); } } },
+  { name: 'panel-product-downloads', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-product-downloads', route: '/panel/products/product-download-workbook', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listProducts(); await api.listProductPrices('product-download-workbook'); await api.listProductDownloadAssets('product-download-workbook'); await api.listCourses(); await api.listModules(); await api.listLessons(); await api.listMarketingConsentDefinitions(); } },
+  { name: 'panel-course', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-course', route: '/panel/courses/course-js', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listCourses(); await api.listModules(); await api.listLessons(); await api.listContentHistory({ courseId: 'course-js' }); } },
+  { name: 'panel-lesson-attachments', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-lesson-attachments', route: '/panel/lessons/lesson-js-zmienne-1', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listLessons(); await api.listTenantSecrets(); await api.lessonReferences('lesson-js-zmienne-1'); await api.listLessonAttachments('lesson-js-zmienne-1'); } },
+  { name: 'panel-coupons', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-coupons', route: '/panel/sales/coupons', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listCouponStats({}); } },
+  { name: 'panel-coupon-create', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-coupon-create', route: '/panel/sales/coupons/new', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listProducts(); } },
+  { name: 'panel-coupon-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-coupon-detail', route: '/panel/sales/coupons/coupon-studio-partner20', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getCouponStats('coupon-studio-partner20'); } },
+  { name: 'panel-order-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-order-detail', route: '/panel/sales/order-studio-aktywny-js', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getOrder('order-studio-aktywny-js'); } },
+  { name: 'panel-settings-redirects', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-settings-redirects', route: '/panel/settings/redirects', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getTenantRedirects({ limit: 50, offset: 0 }); await api.listCourses(); await api.listModules(); await api.listLessons(); } },
+  { name: 'panel-settings-security', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-settings-security', route: '/panel/settings#security', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getTenantSettings(); await api.listAccountSessions(); } },
+  { name: 'panel-storage-wizard', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-storage-wizard', route: '/panel/integrations#storage', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listTenantSecrets(); } },
+  { name: 'panel-integrations-email', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-integrations-email', route: '/panel/integrations#email', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getMarketingSesSettings(); await api.getMarketingReputation(); } },
+  { name: 'panel-marketing-campaigns', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-campaigns', route: '/panel/marketing/campaigns', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingCampaigns(); await api.listMarketingConsentDefinitions(); await api.getMarketingReputation(); } },
+  { name: 'panel-marketing-activity', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-activity', route: '/panel/marketing/activity', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listTenantSchedulerRuns({ limit: 25 }); } },
+  { name: 'panel-marketing-activity-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-activity-detail', route: '/panel/marketing/activity/scheduler-run-studio-outbox', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getTenantSchedulerRun('scheduler-run-studio-outbox'); } },
+  { name: 'panel-marketing-sends', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-sends', route: '/panel/marketing/sends', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingCampaigns(); await api.listEmailSends({ limit: 25 }); } },
+  { name: 'panel-marketing-send-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-send-detail', route: '/panel/marketing/sends/marketing/send-studio-marketing', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getEmailSend('marketing', 'send-studio-marketing'); } },
+  { name: 'panel-marketing-consents', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-consents', route: '/panel/marketing/consents', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingConsentDefinitions(); } },
+  { name: 'panel-marketing-documents', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-documents', route: '/panel/marketing/documents', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingDocuments(); } },
+  { name: 'panel-marketing-layouts', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-layouts', route: '/panel/marketing/layouts', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingLayouts(); } },
 ];
-const record = async (api: ApiClient, scenario: Scenario): Promise<void> => {
+const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Promise<void> => {
   const calls: Record<string, unknown> = {};
   const call = async <T>(method: keyof ApiClient, args: unknown[], invoke: () => Promise<T>): Promise<T> => {
     const result = await invoke();
@@ -74,10 +99,15 @@ const record = async (api: ApiClient, scenario: Scenario): Promise<void> => {
   const recordedUserId = me.ok ? me.value.userId : null;
   const fixtureUserId = me.ok ? `fixture-user-${createHash('sha256').update(me.value.email).digest('hex').slice(0, 16)}` : null;
   await call('publicOffer', [], () => api.publicOffer());
-  if (scenario.principal !== 'anonymous') {
+  if (scenario.principal !== 'anonymous' && scenario.principal !== 'creator@together.dev') {
   await call('memberNavigation', [], () => api.memberNavigation());
   await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
   await call('unreadMessageCount', [], () => api.unreadMessageCount());
+  }
+  if (scenario.principal === 'creator@together.dev') {
+    await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
+    await call('listReports', [{ status: 'open', limit: 1 }], () => api.listReports({ status: 'open', limit: 1 }));
+    await call('listDmReports', [{ status: 'open', limit: 1 }], () => api.listDmReports({ status: 'open', limit: 1 }));
   }
   const { courseId, lessonId, spaceId } = scenario;
   let route = scenario.route ?? '/start';
@@ -128,7 +158,12 @@ const record = async (api: ApiClient, scenario: Scenario): Promise<void> => {
     });
     await scenario.extra(recordingApi);
   }
-  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : value));
+  if (scenario.page === 'account' || scenario.page === 'panel-settings-security') {
+    const recordPasskeys = passkeyRecorders.get(`${scenario.tenant}:${scenario.principal}`);
+    if (!recordPasskeys) throw new Error('Missing passkey recorder');
+    calls[fixtureKey('listPasskeys', [])] = await recordPasskeys();
+  }
+  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? value.replaceAll(baseUrl, 'http://localhost:48730') : value));
   save(scenario.name, snapshot);
   console.log(`${scenario.name}: ${Object.keys(calls).length} calls`);
 };
@@ -140,7 +175,7 @@ try {
   const port = await ephemeralPort();
   const baseUrl = `http://localhost:${port}`;
   server = await bootServer({ port, healthUrl: `${baseUrl}/api/health`, env: { DATABASE_URL: smokeDatabaseUrl, TOGETHER_VISUAL_CLOCK: seedTime, APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost', PAYMENT_PROVIDER: 'fake', EMAIL_PROVIDER: 'dev', SIMULATED_PAYMENTS: 'true', AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true' } });
-  for (const scenario of plan) await record(await login(baseUrl, scenario.principal, scenario.tenant), scenario);
+  for (const scenario of plan) await record(await login(baseUrl, scenario.principal, scenario.tenant), scenario, baseUrl);
   const pool = new pg.Pool({ connectionString: smokeDatabaseUrl });
   try {
     const db = drizzle(pool);

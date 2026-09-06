@@ -1,4 +1,4 @@
 import { bindActions } from '../api.js';
-import { fixtureClient } from './fixture-client.js';
+import { fixtureClient, fixtureAuth } from './fixture-client.js';
 
-export const actions = bindActions(fixtureClient);
+export const actions = bindActions(fixtureClient, fixtureAuth);

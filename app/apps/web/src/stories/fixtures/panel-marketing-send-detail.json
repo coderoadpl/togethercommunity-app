@@ -1,155 +1,144 @@
 {
   "calls": {
-    "getMyErasureRequest:[]": {
+    "getEmailSend:[\"marketing\",\"send-studio-marketing\"]": {
       "ok": true,
       "value": {
-        "request": null
-      }
-    },
-    "getTenantSettings:[]": {
-      "ok": true,
-      "value": {
-        "settings": {
-          "accentColor": null,
-          "autoIssueInvoices": false,
-          "autoIssueInvoiceScope": "b2b_only",
-          "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
-          "bunnyStreamCdnHostname": null,
-          "bunnyStreamLibraryId": null,
-          "defaultHomeSpaceId": "space-studio-spolecznosc",
-          "defaultLanguage": "pl",
-          "directMessagesEnabled": true,
-          "faviconUrl": null,
-          "invoiceExemptionBasis": null,
-          "invoiceExemptionBasisKind": null,
-          "invoiceSellerAddress": null,
-          "invoiceSellerName": null,
-          "invoiceVatMode": "rate",
-          "invoiceVatRatePercent": null,
-          "invoicingProvider": null,
-          "logoDarkUrl": null,
-          "logoUrl": null,
-          "name": "Studio Demo",
-          "ogDescription": null,
-          "ogImageUrl": null,
-          "ogTitle": null,
-          "privacyUrl": null,
-          "socialLinks": [],
-          "supportConfigured": false,
-          "supportEmail": null,
-          "supportUrl": null,
-          "termsUrl": null
+        "events": [
+          {
+            "createdAt": "2026-06-27T12:00:00.000Z",
+            "id": "event-studio-marketing-queued",
+            "mailKind": "marketing",
+            "meta": {
+              "runId": "scheduler-run-studio-marketing",
+              "source": "broadcast"
+            },
+            "occurredAt": "2026-06-27T12:00:00.000Z",
+            "refId": "send-studio-marketing",
+            "tenantId": "tenant-studio",
+            "type": "queued"
+          },
+          {
+            "createdAt": "2026-06-27T12:00:00.000Z",
+            "id": "event-studio-marketing-accepted",
+            "mailKind": "marketing",
+            "meta": {
+              "sesMessageId": "ses-studio-marketing"
+            },
+            "occurredAt": "2026-06-27T12:00:00.000Z",
+            "refId": "send-studio-marketing",
+            "tenantId": "tenant-studio",
+            "type": "accepted"
+          },
+          {
+            "createdAt": "2026-06-27T12:00:00.000Z",
+            "id": "event-studio-marketing-delivered",
+            "mailKind": "marketing",
+            "meta": {
+              "processingTimeMillis": 842
+            },
+            "occurredAt": "2026-06-27T12:00:00.000Z",
+            "refId": "send-studio-marketing",
+            "tenantId": "tenant-studio",
+            "type": "delivered"
+          }
+        ],
+        "send": {
+          "campaignId": "campaign-studio-observability",
+          "campaignName": "Premiera kursu",
+          "createdAt": "2026-06-27T12:00:00.000Z",
+          "deliveryOccurredAt": "2026-06-27T12:00:00.000Z",
+          "deliveryStatus": "delivered",
+          "failureCode": null,
+          "failureMessage": null,
+          "id": "send-studio-marketing",
+          "kind": "marketing",
+          "recipient": "kursant.aktywny@together.dev",
+          "sentAt": "2026-06-27T12:00:00.000Z",
+          "sesMessageId": "ses-studio-marketing",
+          "skipReason": null,
+          "source": "broadcast",
+          "sourceApp": null,
+          "status": "sent",
+          "subject": "Twój plan nauki na lipiec",
+          "tenantId": "tenant-studio",
+          "transport": "tenant-ses"
         }
       }
     },
-    "listAccountSessions:[]": {
+    "listDmReports:[{\"limit\":1,\"status\":\"open\"}]": {
       "ok": true,
       "value": {
-        "sessions": [
+        "nextCursor": null,
+        "openCount": 0,
+        "reports": []
+      }
+    },
+    "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "items": [
           {
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "current": true,
-            "id": "fixture-session-0",
-            "lastActiveAt": "2026-07-01T12:00:00.000Z",
-            "userAgent": "node"
+            "openReportsForPost": 1,
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Konto Free",
+              "authorIsStaff": false,
+              "body": "Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?",
+              "contextId": "space-studio-spolecznosc",
+              "contextKind": "space",
+              "createdAt": "2026-06-25T12:00:00.000Z",
+              "deletedAt": null,
+              "editedAt": null,
+              "id": "post-spolecznosc-polecajki",
+              "isOwn": false,
+              "parentPostId": null,
+              "pinnedAt": null,
+              "rootPostId": "post-spolecznosc-polecajki",
+              "tenantId": "tenant-studio"
+            },
+            "report": {
+              "createdAt": "2026-06-26T12:00:00.000Z",
+              "id": "report-studio-polecajki",
+              "note": "Ten wpis wygląda jak reklama zewnętrznego serwisu.",
+              "postId": "post-spolecznosc-polecajki",
+              "reason": "off-topic",
+              "reporterDisplay": "Kursant Aktywny",
+              "reporterUserId": "user-kursant-aktywny",
+              "resolvedAt": null,
+              "resolvedByUserId": null,
+              "signals": null,
+              "source": "member",
+              "status": "open",
+              "tenantId": "tenant-studio"
+            },
+            "spaceName": "Społeczność"
           }
-        ]
+        ],
+        "nextCursor": null,
+        "openCount": 1
       }
-    },
-    "listMemberBillingOrders:[1,25]": {
-      "ok": true,
-      "value": {
-        "orders": [],
-        "page": 1,
-        "pageSize": 25,
-        "total": 0
-      }
-    },
-    "listPasskeys:[]": {
-      "ok": true,
-      "value": []
     },
     "me:[]": {
       "ok": true,
       "value": {
-        "avatarUrl": "https://www.gravatar.com/avatar/89848c4c7f4fb0ff99f461dee5317db5bbf7168e3162cdec324836419ca845ed?d=404&s=160",
-        "email": "kursant.aktywny@together.dev",
+        "avatarUrl": "https://www.gravatar.com/avatar/f9e5468247b51d08ef71d45d0320e104035ab840e84238a6121d3b0c43700e68?d=404&s=160",
+        "email": "creator@together.dev",
         "emailVerified": true,
         "impersonation": null,
-        "name": "Kursant Aktywny",
+        "name": "Studio Creator",
         "tenant": {
           "banned": false,
-          "displayName": "Kursant Aktywny",
+          "displayName": null,
           "dmOptOut": false,
           "id": "tenant-studio",
           "language": null,
-          "memberId": "member-studio-aktywny",
+          "memberId": null,
           "name": "Studio Demo",
           "slug": "studio",
-          "staffRole": null,
+          "staffRole": "owner",
           "videoAutoplay": false
         },
-        "userId": "fixture-user-89848c4c7f4fb0ff"
-      }
-    },
-    "memberNavigation:[]": {
-      "ok": true,
-      "value": {
-        "navigation": {
-          "courses": [
-            {
-              "accessibleLessonCount": 8,
-              "completedLessonCount": 2,
-              "courseId": "course-js",
-              "courseName": "Kurs JavaScript od podstaw",
-              "lastActivityAt": "2026-07-01T12:01:06.000Z",
-              "lastViewedLessonId": "lesson-js-funkcje-1"
-            },
-            {
-              "accessibleLessonCount": 6,
-              "completedLessonCount": 0,
-              "courseId": "course-react",
-              "courseName": "React w praktyce",
-              "lastActivityAt": null
-            }
-          ],
-          "directMessagesEnabled": true,
-          "lockedSpaces": [
-            {
-              "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
-              "id": "space-studio-klub-react",
-              "name": "Klub Reacta",
-              "productIds": [
-                "product-react-full"
-              ],
-              "slug": "klub-react"
-            }
-          ],
-          "spaces": [
-            {
-              "courseIds": [],
-              "id": "space-studio-spolecznosc",
-              "isFollowing": true,
-              "name": "Społeczność",
-              "position": 0,
-              "slug": "spolecznosc",
-              "unread": true,
-              "visibility": "members"
-            },
-            {
-              "courseIds": [
-                "course-js"
-              ],
-              "id": "space-studio-klub-js",
-              "isFollowing": true,
-              "name": "Klub JavaScriptu",
-              "position": 1,
-              "slug": "klub-js",
-              "unread": true,
-              "visibility": "product"
-            }
-          ]
-        }
+        "userId": "fixture-user-f9e5468247b51d08"
       }
     },
     "publicOffer:[]": {
@@ -326,21 +315,15 @@
         }
       }
     },
-    "unreadMessageCount:[]": {
+    "unreadNotificationCount:[]": {
       "ok": true,
       "value": {
         "unread": 0
       }
-    },
-    "unreadNotificationCount:[]": {
-      "ok": true,
-      "value": {
-        "unread": 1
-      }
     }
   },
-  "principal": "kursant.aktywny@together.dev",
-  "route": "/account",
-  "scenario": "account",
+  "principal": "creator@together.dev",
+  "route": "/panel/marketing/sends/marketing/send-studio-marketing",
+  "scenario": "panel-marketing-send-detail",
   "tenant": "studio"
 }

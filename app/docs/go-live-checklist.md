@@ -66,6 +66,10 @@ Production boot rejects development defaults for `BETTER_AUTH_SECRET`
 `apps/server/src/env.ts:149-154`), and `CRON_SECRET`
 (`apps/server/src/env.ts:60`, `apps/server/src/env.ts:156-162`).
 
+Set `OPERATOR_SECRET` too: it is the one name every environment uses for the
+internal operator routes the workflows call, and the per-environment names it
+falls back to are deprecated.
+
 Generate and set every secret before deployment. Generate the master key with:
 
 ```sh

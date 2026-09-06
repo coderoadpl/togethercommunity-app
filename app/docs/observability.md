@@ -9,6 +9,65 @@ question and none of them depends on the other two.
 | Deep health | `/api/health/deep` | Does every tenant still parse, load and sign? |
 | Post-deploy smoke | `.github/workflows/prod-smoke.yml` | Can a real member sign in and play a lesson on the deployed commit? |
 
+## Alerting doctrine
+
+An SMS wakes a person up. A monitor that pages for something the owner cannot
+act on — a check that has never worked here, a failure already known and being
+worked on — teaches the owner to ignore the channel, and the next real outage
+arrives on a phone nobody reads. So paging is governed by one rule set, applied
+identically by `prod-health.yml`, `prod-smoke.yml` and `staging-smoke.yml`:
+
+1. **Observe-only until green.** Every monitor that can page starts silent on an
+   environment it has never been green on. It writes its verdict to the job
+   summary and to a `::notice::`, fails the run when it should, and sends no SMS.
+   The first green run on that environment arms it.
+2. **Page on a state change only.** A page needs the previous completed run of
+   the same workflow to have been green, or the failing set to have changed since
+   the last red one.
+3. **Never twice in a row for the same failing set.** A monitor that keeps
+   failing the same way stays quiet after the first page; the run still goes red,
+   which is what a dashboard is for.
+4. **Recovery is announced.** The first green run after a page sends a `RECOVERED`
+   SMS, so an incident always has a closing message on the same channel.
+5. **A new check inherits observe-only.** A check added to an armed monitor is
+   silent until it has been green on that environment once. Adding a probe can
+   therefore never page the owner about the probe itself.
+
+The one exception is a failure outside the monitor's own check inventory — the
+run could not measure its checks at all (`unreachable`). It pages as soon as the
+monitor is armed, because "never green" cannot be distinguished from "never ran"
+and silence would be the wrong default for a monitor that stopped working.
+
+### How it is implemented
+
+`.github/actions/alert-gate` is the single place that decides. Each monitor hands
+it the failing set and the full inventory of checks the run measured; the action
+reads the workflow's previous completed run through the Actions API, restores the
+state the previous run recorded, and outputs `should_page`, `recovered`,
+`observe_only`, `pageable` and `reason`. The SMS steps are gated on those outputs
+and on nothing else.
+
+State travels between runs as one workflow artifact per monitor and environment,
+`alert-gate-<workflow>-<environment>`, holding whether the monitor has ever been
+green, whether a page is still outstanding, the failing set that was last paged
+for, and the names cleared to page (every check that has been green here at least
+once). The artifact is overwritten on every run and kept for the repository's
+artifact retention; if it expires or is deleted, the monitor falls back to
+observe-only until its next green run, which is the safe direction.
+
+Only a run that reached the gate records state, so a run that was skipped or died
+before its checks leaves the recorded failing set untouched — an intervening
+skipped run cannot turn a still-unchanged failure back into a page.
+
+The decision itself is `app/scripts/alert-gate.ts` — a pure function with no
+dependencies, run by the composite action under Node's own type stripping and
+unit-tested in `app/scripts/alert-gate.test.ts`. The workflow wiring is asserted
+in `app/config-regression/alert-gate-action.test.ts`, which fails when any SMS
+step in the three monitors is conditioned on anything other than the gate.
+
+Because the state starts empty, the first run of each monitor after this doctrine
+landed is observe-only, and the monitor arms itself on its next green run.
+
 ## `GET /api/health/deep`
 
 Unauthenticated, rate-limited to 12 requests per minute per address
@@ -84,8 +143,9 @@ caught by the suite rather than by reading production output).
 | `deadline` | platform | Present only when the 20-second budget ran out; names the probes that did not finish. |
 
 `prod-health.yml` probes `/api/health` first and `/api/health/deep` second; the
-scheduled run fails and pages when the deep probe answers anything other than
-200.
+scheduled run fails when the deep probe answers anything other than 200, and
+reports `health` or `deep-health` as its failing check to the alert gate, which
+decides whether that failure pages.
 
 ## Post-deploy remote smoke
 
@@ -135,11 +195,12 @@ misconfiguration, not a deliberate opt-out, and it pages like any other failure.
 Every run appends its check list — statuses and skip reasons — to the job
 summary, so a green run still shows what was not exercised.
 
-On failure the workflow sends one SMS through the shared
+On failure the workflow asks `.github/actions/alert-gate` whether the failure may
+page and, when it may, sends one SMS through the shared
 `.github/actions/alert-sms` composite action — the same SNS credentials
-`prod-health.yml` uses — carrying only the failing check names. Skipped checks
-never trigger an SMS. Credentials are never printed: the script reports check
-names and messages, never request bodies or headers.
+`prod-health.yml` uses — carrying only the check names cleared to page. Skipped
+checks never trigger an SMS. Credentials are never printed: the script reports
+check names and messages, never request bodies or headers.
 
 The reseed step is `continue-on-error`, so a refused or unreachable reseed still
 lets the checks run. One step then assembles the whole failing list — `reseed`
@@ -159,7 +220,7 @@ Settings → Secrets and variables → Actions → repository secrets:
 | `ALERT_SMS_PHONE` | prod-health, prod-smoke | On-call number in E.164 form. |
 | `SMOKE_MEMBER_EMAIL` | prod-smoke | Optional override; defaults to `kontakt+smoke-member@togethercommunity.app`. Absent (with no default) → member checks skipped. |
 | `SMOKE_MEMBER_PASSWORD` | prod-smoke | Password the smoke member is seeded with **and** signed in with. Must equal the deployment's `SMOKE_MEMBER_PASSWORD` environment variable. Set exactly one of the pair and the smoke fails. |
-| `PROD_OPERATOR_SECRET` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; must equal the deployment's `PROD_OPERATOR_SECRET`, or its `CRON_SECRET` where the deployment sets no operator secret. Absent → the reseed step prints a notice and is skipped. Sent only to the tenant host, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
+| `OPERATOR_SECRET_PRODUCTION` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; must equal the production deployment's `OPERATOR_SECRET`. Falls back to the deprecated `PROD_OPERATOR_SECRET` repository secret. Absent → the reseed step prints a notice and is skipped. Sent only to the tenant host, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
 
 The creator account never signs in from the workflow, so its password lives on
 the deployment only, as `SMOKE_CREATOR_PASSWORD`.
@@ -255,7 +316,7 @@ measured. That is the intended staging steady state — staging then holds only 
 secrets an operator entered on staging.
 
 `staging-smoke.yml` calls the route before its checks, using the
-`STAGING_OPERATOR_SECRET` repository secret through the deployment-protection
+`OPERATOR_SECRET_STAGING` repository secret through the deployment-protection
 bypass header. Absent secret → the step prints a notice and the smoke runs
 against staging as it stands; a failing call does not fail the job, so a sanitize
 problem never masquerades as a staging outage.
@@ -286,9 +347,11 @@ notice instead of leaking the header to it.
 When `VERCEL_AUTOMATION_BYPASS_SECRET` is absent the job prints a notice and
 stops before installing anything: protection would answer every probe with its
 own challenge, and failing on that would page the owner about a missing secret
-rather than about staging. No SMS is sent. Any other failure sends one SMS
-through `.github/actions/alert-sms` — the credentials `prod-smoke.yml` uses —
-carrying `Together STAGING smoke FAILED: <failing checks>`.
+rather than about staging. No SMS is sent, and the alert gate records nothing,
+so a skipped run neither arms nor disarms the monitor. Any other failure goes
+through the gate and, when it may page, sends one SMS through
+`.github/actions/alert-sms` — the credentials `prod-smoke.yml` uses — carrying
+`Together STAGING smoke FAILED: <failing checks>`.
 
 ### Repository secret and variables the owner must add
 
@@ -298,7 +361,7 @@ carrying `Together STAGING smoke FAILED: <failing checks>`.
 | `PRODUCTION_DATABASE_FINGERPRINT` | variable | The fingerprint staging must **not** answer with. Unset → the workflow falls back to the recorded production value. |
 | `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the run passes green and prints the value to pin, without an SMS. |
 | `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `<SMOKE_TENANT>.staging.togethercommunity.app`. |
-| `STAGING_OPERATOR_SECRET` | secret | Staging's `PROD_OPERATOR_SECRET` value, used to call the secret sanitize before the checks. Unset → the sanitize is skipped with a notice. |
+| `OPERATOR_SECRET_STAGING` | secret | The staging deployment's `OPERATOR_SECRET`, used to call the secret sanitize before the checks. Falls back to the deprecated `STAGING_OPERATOR_SECRET` repository secret. Unset → the sanitize is skipped with a notice. |
 
 Obtain the bypass secret in Vercel → Settings → Deployment Protection →
 Protection Bypass for Automation, then copy it into Settings → Secrets and
@@ -355,10 +418,13 @@ travels with the fixture:
 `x-scheduler-operator-secret` header, wipes and re-applies **only**
 `tenant-acme`. `prod-smoke.yml` calls it before the checks.
 
-The header is matched against `PROD_OPERATOR_SECRET`, falling back to
-`CRON_SECRET` and then to `EMAIL_DISPATCH_SECRET`. A deployment that gives the
-workflow its own operator secret can therefore rotate it without touching the
-secret its scheduled jobs authenticate with.
+The header is matched against `OPERATOR_SECRET`, the one name every environment
+uses for the internal operator routes. `PROD_OPERATOR_SECRET`,
+`STAGING_OPERATOR_SECRET`, `CRON_SECRET` and `EMAIL_DISPATCH_SECRET` are still
+accepted, in that order, so a deployment can be migrated without downtime; all
+four are deprecated and exist only until every environment sets `OPERATOR_SECRET`.
+A deployment that gives the workflow its own operator secret can rotate it
+without touching the secret its scheduled jobs authenticate with.
 
 The run is transactional, takes the same class of advisory lock as the full
 reseed, and writes a `reseed-acme` row into `platform_audit_events`. Unlike

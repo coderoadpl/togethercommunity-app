@@ -574,9 +574,20 @@ export const selectSmokeTenantReseed = (
 };
 
 export const selectOperatorSecret = (
-  env: Pick<Env, 'PROD_OPERATOR_SECRET' | 'CRON_SECRET' | 'EMAIL_DISPATCH_SECRET'>,
+  env: Pick<
+    Env,
+    | 'OPERATOR_SECRET'
+    | 'PROD_OPERATOR_SECRET'
+    | 'STAGING_OPERATOR_SECRET'
+    | 'CRON_SECRET'
+    | 'EMAIL_DISPATCH_SECRET'
+  >,
 ): string =>
-  env.PROD_OPERATOR_SECRET ?? env.CRON_SECRET ?? env.EMAIL_DISPATCH_SECRET;
+  env.OPERATOR_SECRET
+  ?? env.PROD_OPERATOR_SECRET
+  ?? env.STAGING_OPERATOR_SECRET
+  ?? env.CRON_SECRET
+  ?? env.EMAIL_DISPATCH_SECRET;
 
 export const selectDevSinkPurge = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,

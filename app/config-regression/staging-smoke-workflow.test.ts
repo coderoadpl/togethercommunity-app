@@ -7,14 +7,21 @@ import { z } from 'zod';
 
 const workflowSchema = z.object({
   on: z.object({
+    push: z.object({ branches: z.array(z.string()) }),
     schedule: z.array(z.object({ cron: z.string() })),
+    workflow_dispatch: z.object({
+      inputs: z.record(z.object({ description: z.string(), default: z.string() })),
+    }),
   }),
+  concurrency: z.object({ group: z.string(), 'cancel-in-progress': z.boolean() }),
   jobs: z.object({
     smoke: z.object({
-      if: z.string(),
+      if: z.string().optional(),
+      'timeout-minutes': z.number(),
       env: z.record(z.string()),
       steps: z.array(z.object({
         name: z.string().optional(),
+        id: z.string().optional(),
         if: z.string().optional(),
         env: z.record(z.string()).optional(),
         run: z.string().optional(),
@@ -29,37 +36,73 @@ const workflow = workflowSchema.parse(parse(readFileSync(
   'utf8',
 )));
 
+const job = workflow.jobs.smoke;
+
 const step = (name: string) => {
-  const found = workflow.jobs.smoke.steps.find((candidate) => candidate.name === name);
+  const found = job.steps.find((candidate) => candidate.name === name);
   if (found === undefined) throw new Error(`staging-smoke has no step named "${name}"`);
   return found;
 };
 
-describe('staging-smoke workflow', () => {
-  it('runs on a successful staging deployment however its environment is labelled', () => {
-    const condition = workflow.jobs.smoke.if;
+const pollMinutes = Number(job.env['ALIAS_POLL_ATTEMPTS']) * Number(job.env['ALIAS_POLL_SECONDS'])
+  / 60;
 
-    expect(condition).toContain("github.event.deployment_status.state == 'success'");
-    expect(condition)
-      .toContain("startsWith(github.event.deployment_status.environment, 'Preview')");
-    expect(condition).toContain("github.event.deployment_status.environment == 'staging'");
-    expect(condition).toContain("github.event.deployment.ref == 'staging'");
-    expect(condition).toContain("github.event_name == 'workflow_dispatch'");
+describe('staging-smoke workflow', () => {
+  it('runs on every push to staging without waiting for a deployment event', () => {
+    expect(workflow.on.push.branches).toEqual(['staging']);
+    expect(job.if).toBeUndefined();
+    expect(JSON.stringify(workflow.on)).not.toContain('deployment_status');
+    expect(workflow.concurrency).toEqual({ group: 'staging-smoke', 'cancel-in-progress': true });
   });
 
-  it('also runs on a schedule, so a missing deployment event cannot silence it', () => {
+  it('also runs on a schedule and on demand, so a missing push cannot silence it', () => {
     expect(workflow.on.schedule.map((entry) => entry.cron)).toEqual(['17 6 * * *']);
-    expect(workflow.jobs.smoke.if).toContain("github.event_name == 'schedule'");
+    expect(Object.keys(workflow.on.workflow_dispatch.inputs)).toEqual(['base_url', 'expected_sha']);
+    expect(workflow.on.workflow_dispatch.inputs['base_url']?.default).toBe('');
+    expect(workflow.on.workflow_dispatch.inputs['expected_sha']?.default).toBe('');
+  });
+
+  it('smokes the pushed commit and lets a dispatch name its own target', () => {
+    const resolve = step('Resolve the deployment under test').run ?? '';
+
+    expect(step('Resolve the deployment under test').env)
+      .toMatchObject({ DISPATCH_BASE_URL: '${{ inputs.base_url }}' });
+    expect(step('Resolve the deployment under test').env)
+      .toMatchObject({ DISPATCH_SHA: '${{ inputs.expected_sha }}' });
+    expect(step('Resolve the deployment under test').env)
+      .toMatchObject({ PUSH_SHA: '${{ github.sha }}' });
+    expect(resolve).toContain('echo "expected_sha=$PUSH_SHA"');
+    expect(resolve).toContain('echo "base_url=${DISPATCH_BASE_URL:-$STAGING_HOST_URL}"');
+  });
+
+  it('waits for the staging alias to serve the expected commit before smoking', () => {
+    const wait = step('Wait for the staging alias to serve the expected commit');
+
+    expect(pollMinutes).toBe(15);
+    expect(wait.run).toContain('x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET');
+    expect(wait.run).toContain('"$STAGING_BASE_URL/api/health"');
+    expect(wait.run).toContain("jq -r '.data.sha // \"\"'");
+    expect(wait.run).toContain('sleep "$ALIAS_POLL_SECONDS"');
+    expect(job['timeout-minutes']).toBeGreaterThan(pollMinutes);
+  });
+
+  it('reports a stale alias as its own failure instead of paging about the smoke', () => {
+    expect(step('Smoke the staging deployment').if)
+      .toBe("steps.gate.outputs.run == 'true' && steps.alias.outputs.matched == 'true'");
+    expect(step('Fail the run on a stale staging alias').if)
+      .toBe("steps.alias.outputs.matched == 'false'");
+    expect(step('Send an SMS alert').if)
+      .toBe("steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'");
   });
 
   it('smokes the staging tenant host against both database fingerprints', () => {
-    const env = workflow.jobs.smoke.env;
-
-    expect(env['STAGING_BASE_URL'])
-      .toContain('https://coderoad.staging.togethercommunity.app');
-    expect(env['PRODUCTION_DATABASE_FINGERPRINT'])
+    expect(job.env['STAGING_HOST_URL'])
+      .toBe("https://${{ vars.STAGING_HOST || 'coderoad.staging.togethercommunity.app' }}");
+    expect(step('Smoke the staging deployment').env?.['STAGING_BASE_URL'])
+      .toBe('${{ steps.target.outputs.base_url }}');
+    expect(job.env['PRODUCTION_DATABASE_FINGERPRINT'])
       .toBe("${{ vars.PRODUCTION_DATABASE_FINGERPRINT || '4ef296aa90bd' }}");
-    expect(env['STAGING_DATABASE_FINGERPRINT'])
+    expect(job.env['STAGING_DATABASE_FINGERPRINT'])
       .toBe('${{ vars.STAGING_DATABASE_FINGERPRINT }}');
   });
 
@@ -70,11 +113,10 @@ describe('staging-smoke workflow', () => {
   });
 
   it('keeps the bypass secret away from a dispatched foreign host', () => {
-    expect(workflow.jobs.smoke.env['STAGING_HOST_URL'])
-      .toBe('https://coderoad.staging.togethercommunity.app');
     expect(step('Decide whether the smoke can run').run)
       .toContain('if [ "$STAGING_BASE_URL" != "$STAGING_HOST_URL" ]');
-    expect(step('Smoke the staging deployment').if).toBe("steps.gate.outputs.run == 'true'");
+    expect(step('Decide whether the smoke can run').env?.['STAGING_BASE_URL'])
+      .toBe('${{ steps.target.outputs.base_url }}');
   });
 
   it('skips with a notice instead of paging when the bypass secret is absent', () => {
@@ -83,16 +125,16 @@ describe('staging-smoke workflow', () => {
     expect(gate.run).toContain('if [ -z "$VERCEL_AUTOMATION_BYPASS_SECRET" ]');
     expect(gate.run).toContain('::notice::');
     expect(gate.run).toContain('run=false');
-    expect(step('Smoke the staging deployment').if).toBe("steps.gate.outputs.run == 'true'");
+    expect(step('Smoke the staging deployment').if)
+      .toContain("steps.gate.outputs.run == 'true'");
   });
 
-  it('fails without paging while the staging fingerprint is unpinned', () => {
+  it('passes green with the pin instruction while the staging fingerprint is unpinned', () => {
     expect(step('Smoke the staging deployment').run)
       .toContain("grep -q '^smoke:staging: unpinned=true' staging-smoke.log");
-    expect(step('Send an SMS alert').if)
-      .toBe("steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'");
     expect(step('Fail the run on a failing smoke').if)
-      .toBe("steps.smoke.outputs.failed == 'true'");
+      .toBe("steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'");
+    expect(step('Summarize the staging smoke').run).toContain('STAGING_DATABASE_FINGERPRINT');
   });
 
   it('pages the on-call number with the failing checks', () => {

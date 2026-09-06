@@ -17,11 +17,21 @@ import { fixtureCalls, fixtureErrors, selectFixture } from './fixture-client.js'
 import { installStoryClock } from '../../../../scripts/story-clock.js';
 import { fixtureSchema } from './fixture-key.js';
 
+import { MemberAccountPage } from '../features/member/MemberAccountPage.js';
+import { SpacesListPage } from '../features/member/SpacesListPage.js';
+import { CourseStructurePage } from '../features/member/CourseStructurePage.js';
+import { MyCoursesPage } from '../features/member/MyCoursesPage.js';
+import { MyProductsPage } from '../features/member/MyProductsPage.js';
+import { CoursePage } from '../features/member/CoursePage.js';
+import { SearchPage } from '../features/member/SearchPage.js';
+
 const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl') });
 const LessonRoute = () => {
   const { courseId, lessonId } = useParams({ strict: false });
   return <LessonPlayerPage courseId={courseId ?? ''} lessonId={lessonId ?? ''} />;
 };
+const CourseRoute = () => <CourseStructurePage courseId={useParams({ strict: false }).courseId ?? ''} />;
+const ProductRoute = () => <CoursePage productId={useParams({ strict: false }).productId ?? ''} />;
 const FeedRoute = () => {
   const { spaceId } = useParams({ strict: false });
   return <SpaceFeedPage spaceId={spaceId ?? ''} />;
@@ -38,7 +48,8 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
     const start = createRoute({ getParentRoute: () => shell, path: '/start', component: StartPage });
     const lesson = createRoute({ getParentRoute: () => shell, path: '/my/courses/$courseId/lessons/$lessonId', component: LessonRoute });
     const feed = createRoute({ getParentRoute: () => shell, path: '/community/$spaceId', component: FeedRoute });
-    const router = createRouter({ routeTree: root.addChildren([shell.addChildren([start, lesson, feed])]), history: createMemoryHistory({ initialEntries: [fixture.route] }), defaultPendingMs: 0 });
+    const router = createRouter({ routeTree: root.addChildren([shell.addChildren([start, lesson, feed,
+      createRoute({ getParentRoute: () => shell, path: '/account', component: MemberAccountPage }),      createRoute({ getParentRoute: () => shell, path: '/community', component: SpacesListPage }),      createRoute({ getParentRoute: () => shell, path: '/my/courses/$courseId', component: CourseRoute }),      createRoute({ getParentRoute: () => shell, path: '/my', component: MyCoursesPage }),      createRoute({ getParentRoute: () => shell, path: '/my/products', component: MyProductsPage }),      createRoute({ getParentRoute: () => shell, path: '/my/course/$productId', component: ProductRoute }),      createRoute({ getParentRoute: () => shell, path: '/search', component: SearchPage })])]), history: createMemoryHistory({ initialEntries: [fixture.route] }), defaultPendingMs: 0 });
     return { queryClient, router };
   });
   useEffect(() => {

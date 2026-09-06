@@ -15,6 +15,7 @@ import { bootServer, ephemeralPort, killServer, rootDir } from './server-harness
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, migrateAndSeed, dropDatabase } from './smoke-database.js';
 
 import { abortVisualMutation, visualSeedTime as seedTime } from './visual-request-policy.js';
+const sessions = new Map<string, ApiClient>();
 const output = process.argv[2] ?? join(rootDir, 'apps/web/src/stories/fixtures');
 const abortedApi = createApiClient({ baseUrl: '', fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')) });
 const success = z.object({ ok: z.literal(true), value: z.unknown() });
@@ -23,6 +24,8 @@ const save = (name: string, data: unknown): void => {
   writeFileSync(join(output, `${name}.json`), `${JSON.stringify(JSON.parse(canonicalJson(data)), null, 2)}\n`);
 };
 const login = async (baseUrl: string, email: string, tenant: string): Promise<ApiClient> => {
+  const previous = sessions.get(`${tenant}:${email}`);
+  if (previous) return previous;
   let token: string | null = null;
   const auth = createCliAuthAdapter(baseUrl, (value) => { token = value; }, () => token);
   if (tenant === 'studio') {
@@ -37,13 +40,22 @@ const login = async (baseUrl: string, email: string, tenant: string): Promise<Ap
     if (!signedIn.ok) throw new Error(signedIn.error.message);
   }
   if (token === null) throw new Error('Missing seeded member session token');
-  return createApiClient({ baseUrl, headers: () => ({ Authorization: `Bearer ${token}`, 'X-Tenant': tenant }) });
+  const api = createApiClient({ baseUrl, headers: () => ({ Authorization: `Bearer ${token}`, 'X-Tenant': tenant }) });
+  sessions.set(`${tenant}:${email}`, api);
+  return api;
 };
 
-type Scenario = { name: string; principal: string; tenant: string; page: 'start' | 'lesson' | 'space-feed'; courseId: string; lessonId: string; spaceId: string };
+type Scenario = { name: string; principal: string; tenant: string; page: string; route?: string; extra?: (api: ApiClient) => Promise<void>; courseId: string; lessonId: string; spaceId: string };
 const plan: Scenario[] = [
   ...(['start', 'lesson'] as const).map((page) => ({ name: `acme-${page}`, principal: SMOKE_TENANT_MEMBER_EMAIL, tenant: 'acme', page, courseId: 'course-acme', lessonId: 'lesson-acme-intro', spaceId: '' })),
   ...(['start', 'space-feed', 'lesson'] as const).map((page) => ({ name: page, principal: 'kursant.aktywny@together.dev', tenant: 'studio', page, courseId: 'course-js', lessonId: 'lesson-js-zmienne-1', spaceId: 'space-studio-spolecznosc' })),
+  { name: 'account', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'account', route: '/account', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.listMemberBillingOrders(1, 25); await api.getTenantSettings(); await api.getMyErasureRequest(); await api.listAccountSessions(); } },
+  { name: 'community', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'community', route: '/community', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.listSpaces(); } },
+  { name: 'course', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'course', route: '/my/courses/course-js', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentProgress('course-js'); await api.studentCourses(); } },
+  { name: 'my-courses', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'my-courses', route: '/my', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourses(); } },
+  { name: 'my-products', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'my-products', route: '/my/products', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.getTenantSettings(); } },
+  { name: 'product-stub', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'product-stub', route: '/my/course/product-js-full', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.studentCourses(); } },
+  { name: 'search', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'search', route: '/search', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourseStructure('course-js'); await api.studentCourseStructure('course-react'); await api.searchPosts({ query: 'lekcj' }); } },
 ];
 const record = async (api: ApiClient, scenario: Scenario): Promise<void> => {
   const calls: Record<string, unknown> = {};
@@ -62,8 +74,8 @@ const record = async (api: ApiClient, scenario: Scenario): Promise<void> => {
   await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
   await call('unreadMessageCount', [], () => api.unreadMessageCount());
   const { courseId, lessonId, spaceId } = scenario;
-  let route = '/start';
-  if (scenario.page !== 'space-feed') {
+  let route = scenario.route ?? '/start';
+  if (['start', 'lesson', 'course'].includes(scenario.page)) {
     await call('studentCourseStructure', [courseId], () => api.studentCourseStructure(courseId));
   }
   if (scenario.page === 'start') {
@@ -91,6 +103,24 @@ const record = async (api: ApiClient, scenario: Scenario): Promise<void> => {
     const input = { spaceId, scope: 'upcoming' as const, limit: 5 };
     await call('listSpaceEvents', [input], () => api.listSpaceEvents(input));
     await call('markSpaceSeen', [{ spaceId }], () => abortedApi.markSpaceSeen({ spaceId }));
+  }
+  if (scenario.extra) {
+    const recordingApi = new Proxy(api, {
+      get: (target, property) => (...args: unknown[]) => {
+        const method: unknown = Reflect.get(abortVisualMutation(String(property)) ? abortedApi : target, property);
+        if (typeof method !== 'function') throw new Error(`Invalid recording method ${String(property)}`);
+        return Promise.resolve(Reflect.apply(method, target, args)).then((result: unknown) => {
+          if (!abortVisualMutation(String(property))) success.parse(result);
+          if (property === 'listAccountSessions') {
+            const parsed = z.object({ ok: z.literal(true), value: z.object({ sessions: z.array(z.object({ current: z.boolean(), userAgent: z.string().nullable() })) }) }).parse(result);
+            result = { ok: true, value: { sessions: parsed.value.sessions.map((session, index) => ({ ...session, id: `fixture-session-${index}`, createdAt: seedTime, lastActiveAt: seedTime })) } };
+          }
+          calls[fixtureKey(String(property), args)] = result;
+          return result;
+        });
+      },
+    });
+    await scenario.extra(recordingApi);
   }
   const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : value));
   save(scenario.name, snapshot);

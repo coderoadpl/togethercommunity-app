@@ -1,0 +1,878 @@
+{
+  "calls": {
+    "getTenantSettings:[]": {
+      "ok": true,
+      "value": {
+        "settings": {
+          "accentColor": null,
+          "autoIssueInvoices": false,
+          "autoIssueInvoiceScope": "b2b_only",
+          "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
+          "bunnyStreamCdnHostname": null,
+          "bunnyStreamLibraryId": null,
+          "defaultHomeSpaceId": "space-studio-spolecznosc",
+          "defaultLanguage": "pl",
+          "directMessagesEnabled": true,
+          "faviconUrl": null,
+          "invoiceExemptionBasis": null,
+          "invoiceExemptionBasisKind": null,
+          "invoiceSellerAddress": null,
+          "invoiceSellerName": null,
+          "invoiceVatMode": "rate",
+          "invoiceVatRatePercent": null,
+          "invoicingProvider": null,
+          "logoDarkUrl": null,
+          "logoUrl": null,
+          "name": "Studio Demo",
+          "ogDescription": null,
+          "ogImageUrl": null,
+          "ogTitle": null,
+          "privacyUrl": null,
+          "socialLinks": [],
+          "supportConfigured": false,
+          "supportEmail": null,
+          "supportUrl": null,
+          "termsUrl": null
+        }
+      }
+    },
+    "listDmReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "nextCursor": null,
+        "openCount": 0,
+        "reports": []
+      }
+    },
+    "listMemberEmailSends:[\"member-studio-aktywny\"]": {
+      "ok": true,
+      "value": {
+        "sends": [
+          {
+            "campaignId": null,
+            "campaignName": null,
+            "createdAt": "2026-06-28T12:00:00.000Z",
+            "deliveryOccurredAt": null,
+            "deliveryStatus": null,
+            "failureCode": null,
+            "failureMessage": null,
+            "id": "send-studio-transactional",
+            "kind": "transactional",
+            "recipient": "kursant.aktywny@together.dev",
+            "sentAt": "2026-06-28T12:00:00.000Z",
+            "sesMessageId": "ses-studio-transactional",
+            "skipReason": null,
+            "source": "welcome-sign-in",
+            "sourceApp": null,
+            "status": "sent",
+            "subject": "Twoje konto na platformie Studio Demo jest gotowe",
+            "tenantId": "tenant-studio",
+            "transport": "platform"
+          },
+          {
+            "campaignId": "campaign-studio-observability",
+            "campaignName": "Premiera kursu",
+            "createdAt": "2026-06-27T12:00:00.000Z",
+            "deliveryOccurredAt": "2026-06-27T12:00:00.000Z",
+            "deliveryStatus": "delivered",
+            "failureCode": null,
+            "failureMessage": null,
+            "id": "send-studio-marketing",
+            "kind": "marketing",
+            "recipient": "kursant.aktywny@together.dev",
+            "sentAt": "2026-06-27T12:00:00.000Z",
+            "sesMessageId": "ses-studio-marketing",
+            "skipReason": null,
+            "source": "broadcast",
+            "sourceApp": null,
+            "status": "sent",
+            "subject": "Twój plan nauki na lipiec",
+            "tenantId": "tenant-studio",
+            "transport": "tenant-ses"
+          }
+        ]
+      }
+    },
+    "listMemberGrants:[\"member-studio-aktywny\"]": {
+      "ok": true,
+      "value": {
+        "grants": [
+          {
+            "active": true,
+            "expiresAt": null,
+            "id": "grant-studio-aktywny",
+            "productId": "product-js-full",
+            "productName": "Kurs JavaScript - pełny dostęp",
+            "source": "manual",
+            "startsAt": "2026-06-01T12:00:00.000Z"
+          },
+          {
+            "active": true,
+            "expiresAt": null,
+            "id": "grant-studio-aktywny-workbook",
+            "productId": "product-download-workbook",
+            "productName": "Workbook twórcy",
+            "source": "manual",
+            "startsAt": "2026-06-19T12:00:00.000Z"
+          },
+          {
+            "active": true,
+            "expiresAt": "2026-08-10T12:00:00.000Z",
+            "id": "grant-studio-aktywny-club",
+            "productId": "product-club",
+            "productName": "Klub Studio — subskrypcja",
+            "source": "manual",
+            "startsAt": "2026-06-11T12:00:00.000Z"
+          }
+        ]
+      }
+    },
+    "listMembers:[]": {
+      "ok": true,
+      "value": {
+        "members": [
+          {
+            "activeProductIds": [],
+            "bannedAt": null,
+            "bannedReason": null,
+            "createdAt": "2026-07-01T12:00:30.000Z",
+            "deletedAt": null,
+            "displayName": "Student One",
+            "email": "student1@together.dev",
+            "externalCustomerIds": {},
+            "id": "member-studio-student1",
+            "marketingConsents": {},
+            "productIds": [],
+            "tags": []
+          },
+          {
+            "activeProductIds": [
+              "product-club",
+              "product-download-workbook",
+              "product-js-full"
+            ],
+            "bannedAt": null,
+            "bannedReason": null,
+            "createdAt": "2026-07-01T12:00:40.000Z",
+            "deletedAt": null,
+            "displayName": "Kursant Aktywny",
+            "email": "kursant.aktywny@together.dev",
+            "externalCustomerIds": {},
+            "id": "member-studio-aktywny",
+            "marketingConsents": {},
+            "productIds": [
+              "product-club",
+              "product-download-workbook",
+              "product-js-full"
+            ],
+            "tags": []
+          },
+          {
+            "activeProductIds": [],
+            "bannedAt": null,
+            "bannedReason": null,
+            "createdAt": "2026-07-01T12:00:41.000Z",
+            "deletedAt": null,
+            "displayName": "Kursant Wygasły",
+            "email": "kursant.wygasly@together.dev",
+            "externalCustomerIds": {},
+            "id": "member-studio-wygasly",
+            "marketingConsents": {},
+            "productIds": [
+              "product-js-full"
+            ],
+            "tags": []
+          },
+          {
+            "activeProductIds": [],
+            "bannedAt": null,
+            "bannedReason": null,
+            "createdAt": "2026-07-01T12:00:42.000Z",
+            "deletedAt": null,
+            "displayName": "Kursant Przyszły",
+            "email": "kursant.przyszly@together.dev",
+            "externalCustomerIds": {},
+            "id": "member-studio-przyszly",
+            "marketingConsents": {},
+            "productIds": [
+              "product-js-full"
+            ],
+            "tags": []
+          },
+          {
+            "activeProductIds": [
+              "product-js-dom-module"
+            ],
+            "bannedAt": null,
+            "bannedReason": null,
+            "createdAt": "2026-07-01T12:00:43.000Z",
+            "deletedAt": null,
+            "displayName": "Kursant Modułowy",
+            "email": "kursant.modul@together.dev",
+            "externalCustomerIds": {},
+            "id": "member-studio-modul",
+            "marketingConsents": {},
+            "productIds": [
+              "product-js-dom-module"
+            ],
+            "tags": []
+          },
+          {
+            "activeProductIds": [
+              "product-free-preview"
+            ],
+            "bannedAt": "2026-06-29T12:00:00.000Z",
+            "bannedReason": "Powtarzające się reklamy w społeczności",
+            "createdAt": "2026-07-01T12:00:44.000Z",
+            "deletedAt": null,
+            "displayName": "Konto Free",
+            "email": "free@together.dev",
+            "externalCustomerIds": {},
+            "id": "member-studio-free",
+            "marketingConsents": {},
+            "productIds": [
+              "product-free-preview"
+            ],
+            "tags": []
+          },
+          {
+            "activeProductIds": [
+              "product-club"
+            ],
+            "bannedAt": null,
+            "bannedReason": null,
+            "createdAt": "2026-07-01T12:00:45.000Z",
+            "deletedAt": null,
+            "displayName": "Kursant Abonent",
+            "email": "kursant.abonent@together.dev",
+            "externalCustomerIds": {},
+            "id": "member-studio-abonent",
+            "marketingConsents": {},
+            "productIds": [
+              "product-club"
+            ],
+            "tags": []
+          }
+        ]
+      }
+    },
+    "listProducts:[]": {
+      "ok": true,
+      "value": {
+        "products": [
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:31.000Z",
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-kurs-101",
+            "legacyId": null,
+            "priceCents": 19900,
+            "published": true,
+            "slug": "kurs-together-101",
+            "tenantId": "tenant-studio",
+            "title": "Kurs Together 101",
+            "type": "course"
+          },
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:32.000Z",
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-warsztat",
+            "legacyId": null,
+            "priceCents": 49900,
+            "published": false,
+            "slug": "warsztat-scenariuszowy",
+            "tenantId": "tenant-studio",
+            "title": "Warsztat scenariuszowy",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:33.000Z",
+            "currency": "PLN",
+            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "id": "product-js-full",
+            "legacyId": null,
+            "priceCents": 39900,
+            "published": true,
+            "slug": "js-full",
+            "tenantId": "tenant-studio",
+            "title": "Kurs JavaScript - pełny dostęp",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:34.000Z",
+            "currency": "PLN",
+            "description": "Pełny dostęp do kursu React w praktyce.",
+            "id": "product-react-full",
+            "legacyId": null,
+            "priceCents": 49900,
+            "published": true,
+            "slug": "react-full",
+            "tenantId": "tenant-studio",
+            "title": "React w praktyce - pełny dostęp",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "modules",
+                "moduleIds": [
+                  "module-js-dom"
+                ]
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:35.000Z",
+            "currency": "PLN",
+            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "id": "product-js-dom-module",
+            "legacyId": null,
+            "priceCents": 9900,
+            "published": true,
+            "slug": "js-dom-module",
+            "tenantId": "tenant-studio",
+            "title": "Pakiet: moduł DOM",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "lessonIds": [
+                  "lesson-js-demo-video",
+                  "lesson-js-zmienne-1",
+                  "lesson-js-dom-1",
+                  "lesson-js-projekt-1"
+                ],
+                "level": "lessons"
+              },
+              {
+                "courseId": "course-react",
+                "lessonIds": [
+                  "lesson-react-jsx-1",
+                  "lesson-react-hooks-1"
+                ],
+                "level": "lessons"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:36.000Z",
+            "currency": "PLN",
+            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "id": "product-free-preview",
+            "legacyId": null,
+            "priceCents": 0,
+            "published": true,
+            "slug": "free-preview",
+            "tenantId": "tenant-studio",
+            "title": "Free preview",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              },
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:38.000Z",
+            "currency": "PLN",
+            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "id": "product-club",
+            "legacyId": null,
+            "priceCents": 4900,
+            "published": true,
+            "slug": "club",
+            "tenantId": "tenant-studio",
+            "title": "Klub Studio — subskrypcja",
+            "type": "membership"
+          },
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:39.000Z",
+            "currency": "PLN",
+            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "id": "product-download-workbook",
+            "legacyId": null,
+            "priceCents": 7900,
+            "published": true,
+            "slug": "download-workbook",
+            "tenantId": "tenant-studio",
+            "title": "Workbook twórcy",
+            "type": "digital_download"
+          }
+        ]
+      }
+    },
+    "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "items": [
+          {
+            "openReportsForPost": 1,
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Konto Free",
+              "authorIsStaff": false,
+              "body": "Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?",
+              "contextId": "space-studio-spolecznosc",
+              "contextKind": "space",
+              "createdAt": "2026-06-25T12:00:00.000Z",
+              "deletedAt": null,
+              "editedAt": null,
+              "id": "post-spolecznosc-polecajki",
+              "isOwn": false,
+              "parentPostId": null,
+              "pinnedAt": null,
+              "rootPostId": "post-spolecznosc-polecajki",
+              "tenantId": "tenant-studio"
+            },
+            "report": {
+              "createdAt": "2026-06-26T12:00:00.000Z",
+              "id": "report-studio-polecajki",
+              "note": "Ten wpis wygląda jak reklama zewnętrznego serwisu.",
+              "postId": "post-spolecznosc-polecajki",
+              "reason": "off-topic",
+              "reporterDisplay": "Kursant Aktywny",
+              "reporterUserId": "user-kursant-aktywny",
+              "resolvedAt": null,
+              "resolvedByUserId": null,
+              "signals": null,
+              "source": "member",
+              "status": "open",
+              "tenantId": "tenant-studio"
+            },
+            "spaceName": "Społeczność"
+          }
+        ],
+        "nextCursor": null,
+        "openCount": 1
+      }
+    },
+    "me:[]": {
+      "ok": true,
+      "value": {
+        "avatarUrl": "https://www.gravatar.com/avatar/f9e5468247b51d08ef71d45d0320e104035ab840e84238a6121d3b0c43700e68?d=404&s=160",
+        "email": "creator@together.dev",
+        "emailVerified": true,
+        "impersonation": null,
+        "name": "Studio Creator",
+        "tenant": {
+          "banned": false,
+          "displayName": null,
+          "dmOptOut": false,
+          "id": "tenant-studio",
+          "language": null,
+          "memberId": null,
+          "name": "Studio Demo",
+          "slug": "studio",
+          "staffRole": "owner",
+          "videoAutoplay": false
+        },
+        "userId": "fixture-user-f9e5468247b51d08"
+      }
+    },
+    "memberCommerce:[\"member-studio-aktywny\"]": {
+      "ok": true,
+      "value": {
+        "activeSubscriptions": [
+          {
+            "cancelAtPeriodEnd": false,
+            "couponDiscountCents": 0,
+            "couponId": null,
+            "couponRecurringDuration": null,
+            "createdAt": "2026-06-11T12:00:00.000Z",
+            "currentPeriodEnd": "2026-07-11T12:00:00.000Z",
+            "id": "subscription-studio-aktywny-club",
+            "memberId": "member-studio-aktywny",
+            "priceId": "price-club-monthly",
+            "productId": "product-club",
+            "productTitle": "Klub Studio — subskrypcja",
+            "provider": "stripe",
+            "providerSubscriptionId": "sub_seed_aktywny_club",
+            "status": "active",
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-06-29T12:00:00.000Z"
+          }
+        ],
+        "purchases": [
+          {
+            "amountCents": 4900,
+            "billing": null,
+            "couponCode": null,
+            "couponId": null,
+            "createdAt": "2026-06-11T12:00:00.000Z",
+            "currency": "PLN",
+            "discountCents": 0,
+            "id": "order-studio-aktywny-club",
+            "kind": "recurring",
+            "memberEmail": "kursant.aktywny@together.dev",
+            "memberId": "member-studio-aktywny",
+            "memberName": "Kursant Aktywny",
+            "priceId": "price-club-monthly",
+            "productId": "product-club",
+            "productTitle": "Klub Studio — subskrypcja",
+            "provider": "stripe",
+            "providerObjectIds": {
+              "checkoutSession": "cs_seed_aktywny_club",
+              "subscription": "sub_seed_aktywny_club"
+            },
+            "status": "paid",
+            "tenantId": "tenant-studio"
+          },
+          {
+            "amountCents": 31920,
+            "billing": null,
+            "couponCode": "PARTNER20",
+            "couponId": "coupon-studio-partner20",
+            "createdAt": "2026-06-01T12:00:00.000Z",
+            "currency": "PLN",
+            "discountCents": 7980,
+            "id": "order-studio-aktywny-js",
+            "kind": "one_time",
+            "memberEmail": "kursant.aktywny@together.dev",
+            "memberId": "member-studio-aktywny",
+            "memberName": "Kursant Aktywny",
+            "priceId": "price-product-js-full",
+            "productId": "product-js-full",
+            "productTitle": "Kurs JavaScript - pełny dostęp",
+            "provider": "simulated",
+            "providerObjectIds": {
+              "checkoutSession": "sim_cs_seed_aktywny"
+            },
+            "status": "paid",
+            "tenantId": "tenant-studio"
+          }
+        ]
+      }
+    },
+    "memberLearningSummary:[\"member-studio-aktywny\"]": {
+      "ok": true,
+      "value": {
+        "summary": {
+          "courses": [
+            {
+              "accessibleLessonCount": 8,
+              "completedLessonCount": 2,
+              "courseId": "course-js",
+              "courseName": "Kurs JavaScript od podstaw",
+              "lastActivityAt": "2026-07-01T12:01:06.000Z",
+              "latestCompletedLesson": {
+                "lessonId": "lesson-js-zmienne-2",
+                "name": "Typy proste i złożone"
+              }
+            },
+            {
+              "accessibleLessonCount": 6,
+              "completedLessonCount": 0,
+              "courseId": "course-react",
+              "courseName": "React w praktyce",
+              "lastActivityAt": null,
+              "latestCompletedLesson": null
+            }
+          ],
+          "lastActivityAt": "2026-07-01T12:01:06.000Z"
+        }
+      }
+    },
+    "memberTimeline:[\"member-studio-aktywny\"]": {
+      "ok": true,
+      "value": {
+        "events": [
+          {
+            "id": "member-event-studio-aktywny-subscription",
+            "memberId": "member-studio-aktywny",
+            "occurredAt": "2026-06-29T12:00:00.000Z",
+            "payload": {
+              "cancelAtPeriodEnd": false,
+              "currentPeriodEnd": "2026-07-11T12:00:00.000Z",
+              "productId": "product-club",
+              "productTitle": "Klub Studio — subskrypcja",
+              "provider": "stripe",
+              "status": "active",
+              "subscriptionId": "subscription-studio-aktywny-club"
+            },
+            "tenantId": "tenant-studio",
+            "type": "subscription-change"
+          },
+          {
+            "id": "member-event-studio-aktywny-email",
+            "memberId": "member-studio-aktywny",
+            "occurredAt": "2026-06-27T12:00:00.000Z",
+            "payload": {
+              "mailKind": "marketing",
+              "sendId": "send-studio-marketing",
+              "source": "broadcast",
+              "subject": "Nowości w kursie JavaScript",
+              "transport": "tenant-ses"
+            },
+            "tenantId": "tenant-studio",
+            "type": "email-sent"
+          },
+          {
+            "id": "member-event-studio-aktywny-lesson",
+            "memberId": "member-studio-aktywny",
+            "occurredAt": "2026-06-26T12:00:00.000Z",
+            "payload": {
+              "courseId": "course-js",
+              "courseTitle": "Kurs JavaScript od podstaw",
+              "lessonId": "lesson-js-zmienne-2",
+              "lessonTitle": "Typy proste i złożone"
+            },
+            "tenantId": "tenant-studio",
+            "type": "lesson-completion"
+          },
+          {
+            "id": "member-event-studio-aktywny-club-grant",
+            "memberId": "member-studio-aktywny",
+            "occurredAt": "2026-06-11T12:00:00.000Z",
+            "payload": {
+              "expiresAt": "2026-08-10T12:00:00.000Z",
+              "grantId": "grant-studio-aktywny-club",
+              "productId": "product-club",
+              "productTitle": "Klub Studio — subskrypcja",
+              "source": "stripe",
+              "startsAt": "2026-06-11T12:00:00.000Z"
+            },
+            "tenantId": "tenant-studio",
+            "type": "grant"
+          },
+          {
+            "id": "member-event-studio-aktywny-club-purchase",
+            "memberId": "member-studio-aktywny",
+            "occurredAt": "2026-06-11T12:00:00.000Z",
+            "payload": {
+              "amountCents": 4900,
+              "currency": "PLN",
+              "kind": "recurring",
+              "orderId": "order-studio-aktywny-club",
+              "productId": "product-club",
+              "productTitle": "Klub Studio — subskrypcja",
+              "provider": "stripe",
+              "status": "paid"
+            },
+            "tenantId": "tenant-studio",
+            "type": "purchase"
+          }
+        ]
+      }
+    },
+    "publicOffer:[]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-kurs-101",
+            "marketingConsents": [],
+            "priceCents": 19900,
+            "prices": [
+              {
+                "amountCents": 19900,
+                "currency": "PLN",
+                "id": "price-product-studio-kurs-101",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "kurs-together-101",
+            "title": "Kurs Together 101",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "id": "product-js-full",
+            "marketingConsents": [],
+            "priceCents": 39900,
+            "prices": [
+              {
+                "amountCents": 39900,
+                "currency": "PLN",
+                "id": "price-product-js-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-full",
+            "title": "Kurs JavaScript - pełny dostęp",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Pełny dostęp do kursu React w praktyce.",
+            "id": "product-react-full",
+            "marketingConsents": [],
+            "priceCents": 49900,
+            "prices": [
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-product-react-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "react-full",
+            "title": "React w praktyce - pełny dostęp",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "id": "product-js-dom-module",
+            "marketingConsents": [],
+            "priceCents": 9900,
+            "prices": [
+              {
+                "amountCents": 9900,
+                "currency": "PLN",
+                "id": "price-product-js-dom-module",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-dom-module",
+            "title": "Pakiet: moduł DOM",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "id": "product-free-preview",
+            "marketingConsents": [],
+            "priceCents": 0,
+            "prices": [
+              {
+                "amountCents": 0,
+                "currency": "PLN",
+                "id": "price-product-free-preview",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "free-preview",
+            "title": "Free preview",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "id": "product-club",
+            "marketingConsents": [],
+            "priceCents": 4900,
+            "prices": [
+              {
+                "amountCents": 4900,
+                "currency": "PLN",
+                "id": "price-club-monthly",
+                "interval": "month",
+                "kind": "recurring"
+              },
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-club-yearly",
+                "interval": "year",
+                "kind": "recurring"
+              }
+            ],
+            "slug": "club",
+            "title": "Klub Studio — subskrypcja",
+            "type": "membership"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "id": "product-download-workbook",
+            "marketingConsents": [],
+            "priceCents": 7900,
+            "prices": [
+              {
+                "amountCents": 7900,
+                "currency": "PLN",
+                "id": "price-product-download-workbook",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "download-workbook",
+            "title": "Workbook twórcy",
+            "type": "digital_download"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": null,
+            "faviconUrl": null,
+            "logoDarkUrl": null,
+            "logoUrl": null
+          },
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Studio Demo",
+          "slug": "studio",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    },
+    "unreadNotificationCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    }
+  },
+  "principal": "creator@together.dev",
+  "route": "/panel/members/member-studio-aktywny",
+  "scenario": "member-email-timeline",
+  "tenant": "studio"
+}

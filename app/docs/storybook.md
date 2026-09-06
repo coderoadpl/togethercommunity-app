@@ -10,8 +10,8 @@ to catch builder and `.storybook` configuration drift.
 Stories are for layout primitives under `apps/web/src/components/layout`, the
 four non-ready `PageState` branches in
 `apps/web/src/components/layout/StatusView.tsx`, the seven-theme matrix in
-`ThemeShowcase.stories.tsx`, and presentational feature views backed by
-hand-written fixtures. `PageState` also contains `ready`, which renders no
+`ThemeShowcase.stories.tsx`, presentational feature views backed by hand-written
+fixtures, and page compositions backed by recorded seed fixtures. `PageState` also contains `ready`, which renders no
 status view; loading, error, empty, and not-found are structurally unreachable
 through the populated seeded-route loop. Route goldens capture only Shadcn,
 the one maintained base theme (see
@@ -68,6 +68,13 @@ checks its CSF exports during `pnpm run check`. CI then builds the complete
 Storybook. Server HTML stories are compiled by TypeScript and the Storybook build.
 
 ## Recorded page fixtures
+
+The page catalogue covers the seeded member area, anonymous home and course
+pages, studio management pages, member details and email history, and the mobile
+member menu. Each new page capture has a story ID matching its application golden
+name without the `.png` suffix, with the same desktop, mobile, or 375-pixel viewport.
+The original Start, LessonPlayer, SpaceFeed, and hosted legal document stories
+retain their existing IDs.
 
 The experimental page workflow records the isolated seed database with the visual harness clock:
 `pnpm exec tsx scripts/fixtures-record.ts`. An optional output directory keeps

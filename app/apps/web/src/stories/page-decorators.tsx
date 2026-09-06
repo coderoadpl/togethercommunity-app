@@ -31,7 +31,7 @@ import { PanelLayout } from '../features/home/PanelLayout.js';
 import { DashboardPanel } from '../features/home/DashboardPanel.js';
 import { usePanelContext } from '../features/home/panel-context.js';
 import { StudioChecklistDock } from '../features/onboarding/index.js';
-import { PanelCouponCreateRoute, PanelCouponDetailRoute, PanelCouponsRoute, PanelCourseDetailRoute, PanelIntegrationsRoute, PanelLessonEditRoute, PanelOrderDetailRoute, PanelProductDetailRoute, PanelProductsRoute, PanelRedirectsRoute, PanelSettingsRoute, PanelSpacesRoute } from '../features/home/panel-routes.js';
+import { PanelMemberDetailRoute, PanelCouponCreateRoute, PanelCouponDetailRoute, PanelCouponsRoute, PanelCourseDetailRoute, PanelIntegrationsRoute, PanelLessonEditRoute, PanelOrderDetailRoute, PanelProductDetailRoute, PanelProductsRoute, PanelRedirectsRoute, PanelSettingsRoute, PanelSpacesRoute } from '../features/home/panel-routes.js';
 import { CampaignsPanel } from '../features/home/marketing/CampaignsPanel.js';
 import { ConsentsPanel } from '../features/home/marketing/ConsentsPanel.js';
 import { DocumentsPanel } from '../features/home/marketing/DocumentsPanel.js';
@@ -66,6 +66,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
     const feed = createRoute({ getParentRoute: () => shell, path: '/community/$spaceId', component: FeedRoute });
     const panel = createRoute({ getParentRoute: () => root, path: '/panel', component: PanelLayout });
     const panelRoutes = [
+      createRoute({ getParentRoute: () => panel, path: 'members/$memberId', component: PanelMemberDetailRoute }),
       createRoute({ getParentRoute: () => panel, path: '/', component: PanelDashboard }),
       createRoute({ getParentRoute: () => panel, path: 'spaces', component: PanelSpacesRoute }),
       createRoute({ getParentRoute: () => panel, path: 'products', component: PanelProductsRoute }),

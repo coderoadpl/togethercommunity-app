@@ -1,36 +1,35 @@
 name: staging-smoke
 on:
-  deployment_status:
+  push:
+    branches: [staging]
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:
     inputs:
       base_url:
-        description: Deployment to smoke; defaults to the CodeRoad staging host
+        description: Deployment to smoke; empty smokes the staging host
         type: string
-        default: https://coderoad.staging.togethercommunity.app
+        default: ''
+      expected_sha:
+        description: Commit the deployment must report from /api/health; empty smokes whatever the alias serves
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
   group: staging-smoke
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   smoke:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'schedule' ||
-      (github.event.deployment_status.state == 'success' &&
-       github.event.deployment.ref == 'staging' &&
-       (startsWith(github.event.deployment_status.environment, 'Preview') ||
-        github.event.deployment_status.environment == 'staging'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     env:
-      STAGING_HOST_URL: https://coderoad.staging.togethercommunity.app
-      STAGING_BASE_URL: ${{ inputs.base_url || 'https://coderoad.staging.togethercommunity.app' }}
+      STAGING_HOST_URL: https://${{ vars.STAGING_HOST || 'coderoad.staging.togethercommunity.app' }}
       SMOKE_TENANT: ${{ vars.SMOKE_TENANT || 'acme' }}
       PRODUCTION_DATABASE_FINGERPRINT: ${{ vars.PRODUCTION_DATABASE_FINGERPRINT || '4ef296aa90bd' }}
       STAGING_DATABASE_FINGERPRINT: ${{ vars.STAGING_DATABASE_FINGERPRINT }}
+      ALIAS_POLL_ATTEMPTS: '45'
+      ALIAS_POLL_SECONDS: '20'
     defaults:
       run:
         working-directory: app
@@ -38,9 +37,28 @@ jobs:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
+      - name: Resolve the deployment under test
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_BASE_URL: ${{ inputs.base_url }}
+          DISPATCH_SHA: ${{ inputs.expected_sha }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "base_url=${DISPATCH_BASE_URL:-$STAGING_HOST_URL}" >> "$GITHUB_OUTPUT"
+            echo "expected_sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            echo "base_url=$STAGING_HOST_URL" >> "$GITHUB_OUTPUT"
+            echo "expected_sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "base_url=$STAGING_HOST_URL" >> "$GITHUB_OUTPUT"
+            echo "expected_sha=" >> "$GITHUB_OUTPUT"
+          fi
       - name: Decide whether the smoke can run
         id: gate
         env:
+          STAGING_BASE_URL: ${{ steps.target.outputs.base_url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           if [ "$STAGING_BASE_URL" != "$STAGING_HOST_URL" ]; then
@@ -66,10 +84,38 @@ jobs:
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         if: steps.gate.outputs.run == 'true'
-      - name: Smoke the staging deployment
-        id: smoke
+      - name: Wait for the staging alias to serve the expected commit
+        id: alias
         if: steps.gate.outputs.run == 'true'
         env:
+          STAGING_BASE_URL: ${{ steps.target.outputs.base_url }}
+          EXPECTED_SHA: ${{ steps.target.outputs.expected_sha }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          if [ -z "$EXPECTED_SHA" ]; then
+            echo "matched=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          served=""
+          for _ in $(seq 1 "$ALIAS_POLL_ATTEMPTS"); do
+            served=$(curl -sS --max-time 15 \
+              -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+              "$STAGING_BASE_URL/api/health" | jq -r '.data.sha // ""') || served=""
+            [ "$served" = "$EXPECTED_SHA" ] && break
+            echo "waiting for $EXPECTED_SHA; the alias serves \"$served\""
+            sleep "$ALIAS_POLL_SECONDS"
+          done
+          echo "served=$served" >> "$GITHUB_OUTPUT"
+          if [ "$served" != "$EXPECTED_SHA" ]; then
+            echo "matched=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "matched=true" >> "$GITHUB_OUTPUT"
+      - name: Smoke the staging deployment
+        id: smoke
+        if: steps.gate.outputs.run == 'true' && steps.alias.outputs.matched == 'true'
+        env:
+          STAGING_BASE_URL: ${{ steps.target.outputs.base_url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -o pipefail
@@ -81,20 +127,44 @@ jobs:
           echo "failing=${failing:-unreachable}" >> "$GITHUB_OUTPUT"
           echo "failed=true" >> "$GITHUB_OUTPUT"
           if grep -q '^smoke:staging: unpinned=true' staging-smoke.log; then
-            echo "::notice::the staging database is unpinned; pin STAGING_DATABASE_FINGERPRINT from the summary, no SMS is sent for a missing pin"
+            fingerprint=$(sed -n 's/^smoke:staging: databaseFingerprint=//p' staging-smoke.log | head -1)
+            echo "::notice::the staging database is unpinned; set the STAGING_DATABASE_FINGERPRINT repository variable to $fingerprint, no SMS is sent for a missing pin"
             echo "unpinned=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Summarize the staging smoke
         if: always()
+        env:
+          STAGING_BASE_URL: ${{ steps.target.outputs.base_url }}
+          EXPECTED_SHA: ${{ steps.target.outputs.expected_sha }}
+          SERVED_SHA: ${{ steps.alias.outputs.served }}
+          MATCHED: ${{ steps.alias.outputs.matched }}
+          UNPINNED: ${{ steps.smoke.outputs.unpinned }}
         run: |
-          [ -f staging-smoke.log ] || exit 0
           {
             echo "### Staging smoke"
             echo ""
             echo "Target: \`$STAGING_BASE_URL\`"
-            echo ""
-            sed -n 's/^  \[/- [/p' staging-smoke.log
-            sed -n 's/^smoke:staging: databaseFingerprint=/> observed database fingerprint: /p' staging-smoke.log
+            if [ -n "$EXPECTED_SHA" ]; then
+              echo ""
+              echo "Expected commit: \`$EXPECTED_SHA\`"
+            fi
+            if [ "$MATCHED" = "false" ]; then
+              echo ""
+              echo "- [failed] deployment-alias — the alias still serves \`${SERVED_SHA:-nothing}\` after $((ALIAS_POLL_ATTEMPTS * ALIAS_POLL_SECONDS / 60)) minutes"
+            fi
+            if [ -f staging-smoke.log ]; then
+              echo ""
+              sed -n 's/^  \[/- [/p' staging-smoke.log
+              fingerprint=$(sed -n 's/^smoke:staging: databaseFingerprint=//p' staging-smoke.log | head -1)
+              if [ -n "$fingerprint" ]; then
+                echo ""
+                echo "> observed database fingerprint: $fingerprint"
+              fi
+              if [ "$UNPINNED" = "true" ]; then
+                echo ""
+                echo "Pin it once so a swapped database starts failing: Settings → Secrets and variables → Actions → Variables → New repository variable, \`STAGING_DATABASE_FINGERPRINT\` = \`$fingerprint\`."
+              fi
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Send an SMS alert
         if: steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'
@@ -104,8 +174,17 @@ jobs:
           aws-access-key-id: ${{ secrets.ALERT_AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
           phone-number: ${{ secrets.ALERT_SMS_PHONE }}
+      - name: Fail the run on a stale staging alias
+        if: steps.alias.outputs.matched == 'false'
+        env:
+          STAGING_BASE_URL: ${{ steps.target.outputs.base_url }}
+          EXPECTED_SHA: ${{ steps.target.outputs.expected_sha }}
+          SERVED_SHA: ${{ steps.alias.outputs.served }}
+        run: |
+          echo "::error::$STAGING_BASE_URL still serves \"${SERVED_SHA:-nothing}\" instead of $EXPECTED_SHA after $((ALIAS_POLL_ATTEMPTS * ALIAS_POLL_SECONDS / 60)) minutes"
+          exit 1
       - name: Fail the run on a failing smoke
-        if: steps.smoke.outputs.failed == 'true'
+        if: steps.smoke.outputs.failed == 'true' && steps.smoke.outputs.unpinned != 'true'
         run: |
           echo "::error::staging smoke failing checks: ${{ steps.smoke.outputs.failing }}"
           exit 1

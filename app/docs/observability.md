@@ -175,17 +175,25 @@ wiping it would serve no run that checks something else.
 ## Staging smoke
 
 `.github/workflows/staging-smoke.yml` answers the question production's smoke
-cannot: *is staging still its own deployment?* It runs on a `deployment_status`
-event with state `success`, `github.event.deployment.ref == staging` and an
-environment that either starts with `Preview` (Vercel labels its previews, and
-has shipped suffixed variants of that label) or is exactly `staging` (the
-deployment `staging-links.yml` publishes on every push to the branch), on a
-daily `schedule`, and on `workflow_dispatch` with a `base_url` input. Two
-independent event sources and a cron mean a changed Vercel payload cannot
-silence the check unnoticed. It runs `pnpm run smoke:staging`
-(`app/scripts/remote-smoke.ts --staging`) against
-`https://coderoad.staging.togethercommunity.app`, the tenant coming from the
-same `SMOKE_TENANT` variable the production smoke uses.
+cannot: *is staging still its own deployment?* It runs on every `push` to
+`staging`, on a daily `schedule`, and on `workflow_dispatch` with `base_url` and
+`expected_sha` inputs. The push is the primary trigger because it is the one
+event this repository emits itself: the platform's own deployment records name
+the environment and the commit however it currently labels them, so a smoke
+gated on them stops running the moment that labelling changes. It runs
+`pnpm run smoke:staging` (`app/scripts/remote-smoke.ts --staging`) against
+`https://` + the `STAGING_HOST` variable (default
+`coderoad.staging.togethercommunity.app`), the tenant coming from the same
+`SMOKE_TENANT` variable the production smoke uses.
+
+A push arrives before the deployment it will produce, so the job first waits for
+the host to serve the pushed commit: it polls `/api/health` with the bypass
+header every 20 seconds for up to 15 minutes until `data.sha` equals the
+expected commit. A host still serving the previous commit is a build in flight,
+not a regression, so those attempts only wait. When the 15 minutes pass without
+a match the job fails on `deployment-alias` with the commit it observed instead
+and sends no SMS — nothing about staging's health was measured. A dispatch with
+an empty `expected_sha`, and the scheduled run, smoke whatever the host serves.
 
 Checks, in order:
 
@@ -200,13 +208,15 @@ deploy instead of within days. The fingerprint is asserted against both ends:
 staging" alone would pass a variable someone pinned to the production value.
 
 Until `STAGING_DATABASE_FINGERPRINT` is set, `database-fingerprint` fails with
-`the staging database is unpinned: set STAGING_DATABASE_FINGERPRINT=<value>` and
-the job summary carries the observed fingerprint, so the owner pins it once from
-a failing run instead of reading it out of the database. That run fails red but
-sends no SMS: the smoke prints `smoke:staging: unpinned=true` when the missing
-pin is its only failure, and the workflow skips the alert on it — an unset
-variable is a configuration chore, not an incident. A fingerprint matching
-production still pages, pin or no pin.
+`the staging database is unpinned: set STAGING_DATABASE_FINGERPRINT=<value>`, the
+smoke prints `smoke:staging: unpinned=true` when the missing pin is its only
+failure, and the workflow turns that into a green run carrying the observed
+fingerprint as a `::notice::`, in the job summary and with the steps that pin it.
+The owner therefore pins it once from a passing run instead of reading it out of
+the database, and an unset variable — a configuration chore, not an incident —
+neither pages nor leaves the branch red. Once the variable is set every mismatch
+fails and pages. A fingerprint matching production pages either way, pin or no
+pin.
 
 Staging sits behind Vercel Deployment Protection, so every request carries
 `x-vercel-protection-bypass` with the automation bypass secret. The smoke reads
@@ -228,7 +238,8 @@ carrying `Together STAGING smoke FAILED: <failing checks>`.
 | --- | --- | --- |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | secret | Bypasses staging deployment protection. Absent → the whole smoke is skipped with a notice. Sent only to `STAGING_HOST_URL`, so a dispatch against another host skips the smoke instead of leaking the secret to it. |
 | `PRODUCTION_DATABASE_FINGERPRINT` | variable | The fingerprint staging must **not** answer with. Unset → the workflow falls back to the recorded production value. |
-| `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the smoke fails with the value to pin, without an SMS. |
+| `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the run passes green and prints the value to pin, without an SMS. |
+| `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `coderoad.staging.togethercommunity.app`. |
 
 Obtain the bypass secret in Vercel → Settings → Deployment Protection →
 Protection Bypass for Automation, then copy it into Settings → Secrets and

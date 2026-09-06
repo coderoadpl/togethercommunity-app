@@ -26,7 +26,6 @@ export type TenantRedirect = z.output<typeof tenantRedirectSchema>;
 export const normalizeRedirectPath = (path: string): string => {
   const [withoutFragment = ''] = path.trim().split('#');
   const [withoutQuery = ''] = withoutFragment.split('?');
-  const collapsed = withoutQuery.replace(/\/{2,}/g, '/').toLowerCase();
-  const trimmed = collapsed.replace(/\/+$/, '');
-  return trimmed === '' ? '/' : trimmed;
+  const segments = withoutQuery.toLowerCase().split('/').filter((s) => s !== '');
+  return segments.length === 0 ? '/' : `/${segments.join('/')}`;
 };

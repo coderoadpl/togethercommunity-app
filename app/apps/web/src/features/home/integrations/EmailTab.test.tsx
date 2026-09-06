@@ -1,8 +1,9 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
+import { actions } from '../../../api.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { EmailTab } from './EmailTab.js';
@@ -72,6 +73,14 @@ const unconfiguredSender = {
     settings: null,
     lastSnsDelivery: null,
   },
+};
+
+const renderDetectedIdentities = async () => {
+  const { queryClient } = renderWithProviders(<EmailTab />);
+  await screen.findByLabelText('Zweryfikowana domena lub adres');
+  await act(async () => {
+    await queryClient.ensureQueryData(actions.marketingSesIdentities);
+  });
 };
 
 describe('email transport wizard', () => {
@@ -278,9 +287,9 @@ describe('email transport wizard', () => {
       })),
     );
     const user = userEvent.setup();
-    renderWithProviders(<EmailTab />);
+    await renderDetectedIdentities();
 
-    expect(await screen.findByText(/Adres nadawcy musi należeć do domeny tenant\.test/)).toBeInTheDocument();
+    expect(screen.getByText(/Adres nadawcy musi należeć do domeny tenant\.test/)).toBeInTheDocument();
     expect(screen.getByLabelText('Zweryfikowana domena lub adres')).toHaveValue('tenant.test');
     expect(screen.getByText('Sprawdzenie nastąpi po zapisaniu nadawcy')).toBeInTheDocument();
     expect(screen.getByText(/Domena jest już zweryfikowana w SES/)).toBeInTheDocument();
@@ -339,8 +348,8 @@ describe('email transport wizard', () => {
         data: { identities: [], accessDeniedAction: 'ses:GetIdentityDkimAttributes' },
       })),
     );
-    renderWithProviders(<EmailTab />);
+    await renderDetectedIdentities();
 
-    expect(await screen.findByText(/Dodaj uprawnienie ses:GetIdentityDkimAttributes/)).toBeInTheDocument();
+    expect(screen.getByText(/Dodaj uprawnienie ses:GetIdentityDkimAttributes/)).toBeInTheDocument();
   }, 15_000);
 });

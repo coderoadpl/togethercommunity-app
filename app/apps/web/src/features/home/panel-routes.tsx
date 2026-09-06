@@ -16,6 +16,7 @@ import { ReportsPanel } from './reports/ReportsPanel.js';
 import { ProductCreatePage } from './products/ProductCreatePage.js';
 import { ProductEditorPage } from './products/ProductEditorPage.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
+import { RedirectsPanel } from './settings/RedirectsPanel.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
 import { SalesPanel } from './sales/SalesPanel.js';
 import { OrderDetailPage } from './sales/OrderDetailPage.js';
@@ -185,3 +186,4 @@ export const PanelCouponDetailRoute = () => {
 };
 
 export const PanelSettingsRoute = () => <SettingsPanel />;
+export const PanelRedirectsRoute = () => <RedirectsPanel />;

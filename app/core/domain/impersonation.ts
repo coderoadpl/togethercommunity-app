@@ -45,7 +45,13 @@ export type ImpersonationView = z.infer<typeof impersonationViewSchema>;
 export const tenantAuditEventSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),
-  kind: z.enum(['impersonation_started', 'impersonation_ended', 'content_version_restored']),
+  kind: z.enum([
+    'impersonation_started',
+    'impersonation_ended',
+    'content_version_restored',
+    'redirect_created',
+    'redirect_deleted',
+  ]),
   actorUserId: z.string().min(1),
   actorEmail: z.string().min(1),
   subjectMemberId: z.string().nullable(),

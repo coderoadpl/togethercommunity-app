@@ -73,6 +73,8 @@ import type {
   TenantDomainEventKind,
   TenantDomainProvider,
   TenantRedirect,
+  TenantRedirectListQuery,
+  TenantRedirectPage,
   DnsRecord,
   TenantSecret,
   TenantSecretKey,
@@ -852,7 +854,12 @@ export interface ImportUsersRepository extends ImportUsersReader {
 export interface TenantRedirectReader {
   findByFromPath(tenantId: string, fromPath: string): Promise<TenantRedirect | null>;
   findById(tenantId: string, redirectId: string): Promise<TenantRedirect | null>;
-  listByTenant(tenantId: string): Promise<TenantRedirect[]>;
+  listPage(tenantId: string, query: TenantRedirectListQuery): Promise<TenantRedirectPage>;
+}
+
+export interface TenantRedirectRepository extends TenantRedirectReader {
+  create(tenantId: string, redirect: TenantRedirect): Promise<'saved' | 'path_taken'>;
+  deleteById(tenantId: string, redirectId: string): Promise<boolean>;
 }
 
 export type ImportRedirectMutation = {
@@ -861,7 +868,7 @@ export type ImportRedirectMutation = {
   event: ImportAuditEvent;
 };
 
-export interface ImportRedirectRepository extends TenantRedirectReader {
+export interface ImportRedirectRepository extends TenantRedirectRepository {
   commit(
     tenantId: string,
     mutation: ImportRedirectMutation,

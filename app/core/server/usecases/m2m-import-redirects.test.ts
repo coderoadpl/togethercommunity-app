@@ -123,7 +123,9 @@ const harness = () => {
       findById: async (_tenantId, id) => redirects.get(id) ?? null,
       findByFromPath: async (_tenantId, fromPath) =>
         [...redirects.values()].find((redirect) => redirect.fromPath === fromPath) ?? null,
-      listByTenant: async () => [...redirects.values()],
+      listPage: async () => ({ redirects: [...redirects.values()], total: redirects.size }),
+      create: async () => 'saved' as const,
+      deleteById: async () => false,
       commit: async (_tenantId, mutation) => {
         redirects.set(mutation.resource.id, mutation.resource);
         audits.set(`redirect:${mutation.event.importKey}`, mutation.event);
@@ -270,6 +272,51 @@ describe('m2m redirect import', () => {
       ok: true,
       value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
     });
+  });
+
+  it('reports a conflict for a manual redirect on the same path and leaves it untouched', async () => {
+    const h = harness();
+    const manual = {
+      id: 'redirect-manual',
+      tenantId: TENANT_ID,
+      fromPath: '/kurs/javascript',
+      targetKind: 'path' as const,
+      targetId: null,
+      targetPath: '/my',
+      permanent: false,
+      origin: 'manual' as const,
+      createdBy: 'user-owner',
+      createdAt: NOW,
+    };
+    h.redirects.set(manual.id, manual);
+
+    const result = await importM2mRedirects(ctx, apiKey, write([redirectRecord()]), h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(h.redirects.get('redirect-manual')).toEqual(manual);
+    expect(h.redirects.has('redirect-course')).toBe(false);
+  });
+
+  it('stores an imported redirect as import-owned', async () => {
+    const h = harness();
+
+    await importM2mRedirects(ctx, apiKey, write([redirectRecord()]), h.deps);
+
+    expect(h.redirects.get('redirect-course')).toMatchObject({ origin: 'import', createdBy: null });
+  });
+
+  it('recreates an imported redirect the studio deleted', async () => {
+    const h = harness();
+
+    await importM2mRedirects(ctx, apiKey, write([redirectRecord()]), h.deps);
+    h.redirects.delete('redirect-course');
+    const result = await importM2mRedirects(ctx, apiKey, write([redirectRecord()]), h.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { summary: { created: 1, failed: 0 } } });
+    expect(h.redirects.get('redirect-course')).toMatchObject({ fromPath: '/kurs/javascript' });
   });
 
   it('refuses a target that no import created', async () => {

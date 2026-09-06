@@ -101,10 +101,18 @@ const createRecorder = (budgetMs: number) => {
   const accumulated = new Map<string, DeepHealthCheck>();
   const unfinished = new Set<string>();
   const startedAt = Date.now();
+  let budgetExpired = false;
   return {
     record: async (name: string, probe: Probe): Promise<void> => {
       const remainingMs = startedAt + budgetMs - Date.now();
-      if (remainingMs <= 0) {
+      /**
+       * The deadline timer counts on a monotonic clock that Date.now() cannot
+       * observe, so an expired budget has to latch: re-measuring it against the
+       * wall clock can report a millisecond still left and admit one more probe
+       * after the deadline already cut its predecessor off.
+       */
+      if (budgetExpired || remainingMs <= 0) {
+        budgetExpired = true;
         unfinished.add(name);
         return;
       }
@@ -116,8 +124,10 @@ const createRecorder = (budgetMs: number) => {
       try {
         outcome = await withDeadline(probe, remainingMs);
       } catch (cause) {
-        if (cause instanceof DeadlineExceeded) unfinished.add(name);
-        else failure = describeFailure(cause);
+        if (cause instanceof DeadlineExceeded) {
+          budgetExpired = true;
+          unfinished.add(name);
+        } else failure = describeFailure(cause);
       }
       accumulated.set(name, {
         name,

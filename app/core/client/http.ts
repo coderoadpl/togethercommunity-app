@@ -185,6 +185,8 @@ import {
   tenantSecretDeleteOutputSchema,
   tenantSettingsOutputSchema,
   tenantRedirectsOutputSchema,
+  tenantRedirectOutputSchema,
+  tenantRedirectDeleteOutputSchema,
   tenantRoutingOutputSchema,
   tenantDomainRemovalOutputSchema,
   termsConsentOutputSchema,
@@ -306,6 +308,9 @@ import {
   type TenantSecretDeleteInput,
   type TenantSecretSetInput,
   type TenantDomainInput,
+  type TenantRedirectsQueryInput,
+  type TenantRedirectCreateBody,
+  type TenantRedirectDeleteBody,
   type TenantSettingsUpdateInput,
   type TermsConsentRequest,
   type WriteMethod,
@@ -2283,13 +2288,37 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  getTenantRedirects: (signal?: AbortSignal) =>
-    request(
+  getTenantRedirects: (input: TenantRedirectsQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.search !== undefined) params.set('search', input.search);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    if (input.offset !== undefined) params.set('offset', String(input.offset));
+    const suffix = params.toString();
+    return request(
       options,
       API_ROUTES.tenantRedirects.method,
-      API_ROUTES.tenantRedirects.path,
+      suffix.length > 0 ? `${API_ROUTES.tenantRedirects.path}?${suffix}` : API_ROUTES.tenantRedirects.path,
       tenantRedirectsOutputSchema,
       undefined,
+      signal,
+    );
+  },
+  createTenantRedirect: (input: TenantRedirectCreateBody, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantRedirectCreate.method,
+      API_ROUTES.tenantRedirectCreate.path,
+      tenantRedirectOutputSchema,
+      input,
+      signal,
+    ),
+  deleteTenantRedirect: (input: TenantRedirectDeleteBody, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantRedirectDelete.method,
+      API_ROUTES.tenantRedirectDelete.path,
+      tenantRedirectDeleteOutputSchema,
+      input,
       signal,
     ),
   addTenantDomain: (input: TenantDomainInput, signal?: AbortSignal) =>

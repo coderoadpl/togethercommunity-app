@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { Eyebrow } from '../../theme.js';
+import { CopyField } from './CopyField.js';
 
 interface OperationState {
   pending: boolean;
@@ -318,15 +319,12 @@ export const AuthenticationMethods = ({
             <Eyebrow variant="overline" component="h4">
               {t.security.scanOrCopyKey}
             </Eyebrow>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="totp-uri">{t.security.otpauthUriLabel}</FormLabel>
-              <OutlinedInput
-                id="totp-uri"
-                readOnly
-                value={enableTwoFactor.data.totpURI}
-                inputProps={{ 'data-testid': 'totp-uri' }}
-              />
-            </FormControl>
+            <CopyField
+              mono
+              label={t.security.otpauthUriLabel}
+              value={enableTwoFactor.data.totpURI}
+              testId="totp-uri"
+            />
             <Box component="form" onSubmit={submitTotp} sx={{ display: 'grid', gap: '0.8rem' }}>
               <FormControl fullWidth>
                 <FormLabel htmlFor="verify-totp-code">{t.security.authenticatorCodeLabel}</FormLabel>

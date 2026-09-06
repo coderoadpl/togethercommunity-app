@@ -13,7 +13,7 @@ import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
  * against it); do not "round" them to Material defaults.
  */
 
-const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
+export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
 
@@ -2776,6 +2776,12 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
+
+export const PathText = styled(Typography)<AsElement>({
+  fontFamily: FONT_MONO,
+  fontSize: '0.8125rem',
+  overflowWrap: 'anywhere',
+});
 
 export const ProgressPercentText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,

@@ -171,7 +171,10 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
-  if (path === '/api/tenant/routing' || path === '/api/tenant/redirects') return 'tenant:domain:read';
+  if (path === '/api/tenant/routing') return 'tenant:domain:read';
+  if (path.startsWith('/api/tenant/redirects')) {
+    return method === 'GET' ? 'tenant:domain:read' : 'tenant:settings:write';
+  }
   if (path.startsWith('/api/tenant/domains')) return 'tenant:settings:write';
   if (path === '/api/support/message') return 'support:request';
   if (path === '/api/platform/data-reset') return 'platform:data:reset';
@@ -270,7 +273,8 @@ const beforeForRoute = (
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
-  if (path === '/api/tenant/routing' || path === '/api/tenant/redirects') return staff;
+  if (path === '/api/tenant/routing') return staff;
+  if (path.startsWith('/api/tenant/redirects')) return method === 'GET' ? staff : owner;
   if (path === '/api/support/message') return tenantActors;
   if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
@@ -509,7 +513,9 @@ const beforeForUseCase = (
   if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'lesson-playback.ts') return tenantActors;
-  if (file === 'tenant-domains.ts') return capability === 'tenant:domain:read' ? staff : owner;
+  if (file === 'tenant-domains.ts' || file === 'tenant-redirects.ts') {
+    return capability === 'tenant:domain:read' ? staff : owner;
+  }
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;

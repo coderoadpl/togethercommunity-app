@@ -50,6 +50,7 @@ import { PanelPage, SectionCard, StatusView } from '../../../components/layout/i
 import { ActiveSessions } from '../../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
+import { CopyField } from '../../../components/ui/CopyField.js';
 import { EmailVerificationStatus } from '../../../components/ui/EmailVerificationStatus.js';
 import { errorCodeOf, localizePanelError, serverMessageOf, useLanguage, useTranslations } from '../../../i18n/index.js';
 import type { Messages } from '../../../i18n/index.js';
@@ -1183,8 +1184,6 @@ const domainStatusLabel = (t: Messages, status: TenantDomainStatus): string => {
   }
 };
 
-const COPIED_LABEL_MS = 2_000;
-
 const DOMAIN_STATUS_COLOR: Record<TenantDomainStatus, 'success' | 'warning' | 'info' | 'error'> = {
   active: 'success',
   'pending-dns': 'warning',
@@ -1207,75 +1206,48 @@ const domainErrorMessage = (error: unknown, t: Messages): string => {
 
 const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
   const t = useTranslations();
-  const [copied, setCopied] = useState(false);
-  const copyValue = async () => {
-    try {
-      await navigator.clipboard.writeText(record.value);
-      setCopied(true);
-      window.setTimeout(() => {
-        setCopied(false);
-      }, COPIED_LABEL_MS);
-    } catch {
-      setCopied(false);
-    }
-  };
 
   return (
     <Stack
-      direction="row"
       useFlexGap
-      sx={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
+      spacing="0.4rem"
       data-testid={`dns-record-${record.type}-${record.name}`}
     >
-      <Typography variant="caption" sx={{ overflowWrap: 'anywhere' }}>
-        {t.tenantDomains.recordType}: {record.type} · {t.tenantDomains.recordName}: {record.name}
-        {' · '}
-        {t.tenantDomains.recordValue}: {record.value}
+      <Typography variant="caption">
+        {t.tenantDomains.recordType}: {record.type}
       </Typography>
-      <Button
-        type="button"
+      <CopyField
         size="small"
-        onClick={() => void copyValue()}
-      >
-        {copied ? t.tenantDomains.copied : t.tenantDomains.copy}
-      </Button>
+        mono
+        label={t.tenantDomains.recordName}
+        value={record.name}
+        testId={`dns-record-name-${record.type}-${record.name}`}
+      />
+      <CopyField
+        size="small"
+        mono
+        label={t.tenantDomains.recordValue}
+        value={record.value}
+        testId={`dns-record-value-${record.type}-${record.name}`}
+      />
     </Stack>
   );
 };
 
 const TenantRedirectsSection = () => {
   const t = useTranslations();
-  const redirects = useQuery(actions.tenantRedirects);
+  const redirects = useQuery(actions.tenantRedirects({ limit: 0 }));
 
   if (!redirects.isSuccess) return null;
 
   return (
-    <Stack useFlexGap spacing="0.3rem" data-testid="tenant-redirects">
-      <Eyebrow>{t.tenantDomains.redirectsHeading}</Eyebrow>
-      <Typography variant="body2">{t.tenantDomains.redirectsIntro}</Typography>
-      <Typography variant="caption" data-testid="tenant-redirects-count">
-        {t.tenantDomains.redirectsCount({ count: redirects.data.redirects.length })}
-      </Typography>
-      {redirects.data.redirects.length === 0 ? (
-        <Typography variant="body2">{t.tenantDomains.redirectsEmpty}</Typography>
-      ) : redirects.data.redirects.map((redirect) => (
-        <Stack
-          key={redirect.id}
-          direction="row"
-          useFlexGap
-          sx={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
-          data-testid={`tenant-redirect-${redirect.id}`}
-        >
-          <Typography variant="body2">{redirect.fromPath} → {redirect.targetPath}</Typography>
-          <Chip
-            size="small"
-            label={redirect.permanent
-              ? t.tenantDomains.redirectsPermanent
-              : t.tenantDomains.redirectsTemporary}
-          />
-        </Stack>
-      ))}
-    </Stack>
+    <Typography variant="body2" data-testid="tenant-redirects-summary">
+      {t.tenantDomains.redirectsCount({ count: redirects.data.total })}
+      {' · '}
+      <MuiLink component={Link} to="/panel/settings/redirects">
+        {t.tenantDomains.redirectsManage} →
+      </MuiLink>
+    </Typography>
   );
 };
 

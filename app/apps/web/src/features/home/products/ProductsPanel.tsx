@@ -4,14 +4,10 @@ import {
   Box,
   Button,
   Chip,
-  FormControl,
-  FormHelperText,
-  FormLabel,
   IconButton,
   List,
   ListItem,
   ListItemText,
-  OutlinedInput,
   Snackbar,
   Stack,
   SvgIcon,
@@ -25,10 +21,12 @@ import type { Product, ProductAccessIssues, StaffSpace } from '#core/domain/inde
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { CopyField } from '../../../components/ui/CopyField.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { PanelListRow } from '../../../components/ui/PanelListRow.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { copyText } from '../../../lib/clipboard.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
 import { productTypeLabel } from './product-type.js';
@@ -146,19 +144,13 @@ const ProductRow = ({
       ];
 
   const copyCheckoutLink = async () => {
-    if (navigator.clipboard === undefined) {
-      setCopied(false);
-      setCopyFallbackUrl(checkoutUrl);
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(checkoutUrl);
+    if (await copyText(checkoutUrl)) {
       setCopyFallbackUrl(null);
       setCopied(true);
-    } catch {
-      setCopied(false);
-      setCopyFallbackUrl(checkoutUrl);
+      return;
     }
+    setCopied(false);
+    setCopyFallbackUrl(checkoutUrl);
   };
 
   return (
@@ -245,16 +237,13 @@ const ProductRow = ({
       {copyFallbackUrl === null ? null : (
         <Stack useFlexGap spacing="0.5rem" data-testid={`copy-fallback-${product.id}`}>
           <Alert severity="warning">{t.products.checkoutLinkCopyFailed}</Alert>
-          <FormControl fullWidth>
-            <FormLabel htmlFor={`checkout-url-${product.id}`}>{t.products.publishPublicUrl}</FormLabel>
-            <OutlinedInput
-              id={`checkout-url-${product.id}`}
-              value={copyFallbackUrl}
-              readOnly
-              onFocus={(event) => event.currentTarget.select()}
-            />
-            <FormHelperText>{t.products.checkoutLinkManualHint}</FormHelperText>
-          </FormControl>
+          <CopyField
+            mono
+            label={t.products.publishPublicUrl}
+            hint={t.products.checkoutLinkManualHint}
+            value={copyFallbackUrl}
+            testId={`checkout-url-${product.id}`}
+          />
         </Stack>
       )}
       {issue ? <AccessIssues issue={issue} /> : null}
@@ -281,10 +270,12 @@ const ProductRow = ({
         body={(
           <Stack useFlexGap spacing="0.75rem">
             <Typography>{t.products.publishConfirmIntro}</Typography>
-            <FormControl fullWidth>
-              <FormLabel htmlFor={`publish-url-${product.id}`}>{t.products.publishPublicUrl}</FormLabel>
-              <OutlinedInput id={`publish-url-${product.id}`} value={checkoutUrl} readOnly />
-            </FormControl>
+            <CopyField
+              mono
+              label={t.products.publishPublicUrl}
+              value={checkoutUrl}
+              testId={`publish-url-${product.id}`}
+            />
             <Typography>
               {t.products.publishActivePrice}:{' '}
               <DataValue>

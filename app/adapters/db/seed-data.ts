@@ -43,6 +43,7 @@ import {
   spaceSubscriptions,
   tenantAdmins,
   tenantDomains,
+  tenantRedirects,
   tenantDocuments,
   tenantDocumentVersions,
   tenants,
@@ -966,6 +967,36 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         verified: true,
       })),
     )
+    .onConflictDoNothing();
+
+  await db
+    .insert(tenantRedirects)
+    .values([
+      {
+        id: 'redirect-studio-kurs-js',
+        tenantId: 'tenant-studio',
+        fromPath: '/kurs/javascript',
+        targetKind: 'course' as const,
+        targetId: 'course-js',
+        targetPath: '/my/courses/course-js',
+        permanent: true,
+        origin: 'import' as const,
+        createdBy: null,
+        createdAt: relativeIso(-30),
+      },
+      {
+        id: 'redirect-studio-oferta',
+        tenantId: 'tenant-studio',
+        fromPath: '/oferta',
+        targetKind: 'path' as const,
+        targetId: null,
+        targetPath: '/my',
+        permanent: false,
+        origin: 'manual' as const,
+        createdBy: creatorUserIds.get('tenant-studio') ?? null,
+        createdAt: relativeIso(-2),
+      },
+    ])
     .onConflictDoNothing();
 
   await db

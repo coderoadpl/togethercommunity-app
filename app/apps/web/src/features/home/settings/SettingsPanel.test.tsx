@@ -311,7 +311,7 @@ describe('SettingsPanel information architecture', () => {
     const pending = await screen.findByTestId('tenant-domain-nowa.acme.example');
     expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example'))
-      .toHaveValue('cname.vercel-dns.com');
+      .toHaveTextContent('cname.vercel-dns.com');
   });
 
   it('warns about signing in again until a custom domain is verified', async () => {
@@ -419,7 +419,7 @@ describe('SettingsPanel information architecture', () => {
     const added = await screen.findByTestId('tenant-domain-sklep.acme.example');
     expect(added).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-sklep.acme.example'))
-      .toHaveValue('cname.vercel-dns.com');
+      .toHaveTextContent('cname.vercel-dns.com');
     expect(domainCalls).toEqual(['add:sklep.acme.example']);
   });
 
@@ -442,7 +442,7 @@ describe('SettingsPanel information architecture', () => {
 
     const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
     expect(within(record).getByTestId('dns-record-name-CNAME-nowa.acme.example'))
-      .toHaveValue('nowa.acme.example');
+      .toHaveTextContent('nowa.acme.example');
 
     await userEvent.click(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copy'));
 

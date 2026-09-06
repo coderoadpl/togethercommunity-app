@@ -238,7 +238,6 @@ const ProductRow = ({
         <Stack useFlexGap spacing="0.5rem" data-testid={`copy-fallback-${product.id}`}>
           <Alert severity="warning">{t.products.checkoutLinkCopyFailed}</Alert>
           <CopyField
-            mono
             label={t.products.publishPublicUrl}
             hint={t.products.checkoutLinkManualHint}
             value={copyFallbackUrl}
@@ -271,7 +270,6 @@ const ProductRow = ({
           <Stack useFlexGap spacing="0.75rem">
             <Typography>{t.products.publishConfirmIntro}</Typography>
             <CopyField
-              mono
               label={t.products.publishPublicUrl}
               value={checkoutUrl}
               testId={`publish-url-${product.id}`}

@@ -10,9 +10,6 @@ import {
   FormHelperText,
   FormLabel,
   Link,
-  List,
-  ListItem,
-  ListItemText,
   OutlinedInput,
   Stack,
   Switch,
@@ -25,6 +22,7 @@ import { sesIdentityFreshness, type SnsWebhookDelivery } from '#core/domain/inde
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
+import { CopyField } from '../../../components/ui/CopyField.js';
 import {
   errorCodeOf,
   localizePanelError,
@@ -138,32 +136,26 @@ const SesOnboardingWizard = ({
       {records.length === 0 ? null : (
         <>
           <Typography variant="h3">{t.marketing.wizardDkimRecords}</Typography>
-          <List disablePadding>
+          <Stack component="ul" useFlexGap spacing="0.9rem" sx={{ listStyle: 'none', p: 0, m: 0 }}>
             {records.map((record) => (
-              <ListItem
-                key={record.name}
-                disableGutters
-                secondaryAction={(
-                  <Button
-                    type="button"
-                    size="small"
-                    onClick={() => void navigator.clipboard.writeText(`${record.name}\t${record.value}`)}
-                  >
-                    {t.marketing.wizardCopy}
-                  </Button>
-                )}
-              >
-                <ListItemText
-                  primary={`${t.marketing.wizardDkimName}: ${record.name}`}
-                  secondary={`${t.marketing.wizardDkimValue}: ${record.value}`}
-                  slotProps={{
-                    primary: { sx: { overflowWrap: 'anywhere' } },
-                    secondary: { sx: { overflowWrap: 'anywhere' } },
-                  }}
+              <Stack key={record.name} component="li" useFlexGap spacing="0.4rem">
+                <CopyField
+                  size="small"
+                  mono
+                  label={t.marketing.wizardDkimName}
+                  value={record.name}
+                  testId={`dkim-record-name-${record.name}`}
                 />
-              </ListItem>
+                <CopyField
+                  size="small"
+                  mono
+                  label={t.marketing.wizardDkimValue}
+                  value={record.value}
+                  testId={`dkim-record-value-${record.name}`}
+                />
+              </Stack>
             ))}
-          </List>
+          </Stack>
         </>
       )}
       <Typography variant="body2">{t.marketing.wizardProvisionHint}</Typography>
@@ -194,13 +186,29 @@ const SesOnboardingWizard = ({
       {provision.data === undefined ? null : (
         <Alert severity="success">
           <AlertTitle>{t.marketing.wizardProvisionDone}</AlertTitle>
-          <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
-            {t.marketing.wizardProvisionSummary({
-              configurationSet: provision.data.configurationSet,
-              topicArn: provision.data.topicArn,
-              endpoint: provision.data.subscriptionEndpoint,
-            })}
-          </Typography>
+          <Stack useFlexGap spacing="0.4rem" sx={{ mb: '0.6rem' }}>
+            <CopyField
+              size="small"
+              mono
+              label={t.marketing.wizardConfigurationSetLabel}
+              value={provision.data.configurationSet}
+              testId="ses-configuration-set"
+            />
+            <CopyField
+              size="small"
+              mono
+              label={t.marketing.wizardTopicArnLabel}
+              value={provision.data.topicArn}
+              testId="ses-topic-arn"
+            />
+            <CopyField
+              size="small"
+              mono
+              label={t.marketing.wizardSubscriptionEndpointLabel}
+              value={provision.data.subscriptionEndpoint}
+              testId="ses-subscription-endpoint"
+            />
+          </Stack>
           <Typography variant="body2">
             {provision.data.subscriptionConfirmed
               ? t.marketing.wizardSubscriptionConfirmed
@@ -681,7 +689,16 @@ export const EmailTab = () => {
         {footerUpdate.isError ? <Alert severity="error">{localizePanelError(footerUpdate.error, t)}</Alert> : null}
       </SectionCard>
       <SectionCard title={t.marketing.webhookUrl} description={t.marketing.webhookHint}>
-        <Typography variant="body2" data-testid="marketing-webhook-url">{result.data.webhookUrl ?? t.marketing.blocked}</Typography>
+        {result.data.webhookUrl === null || result.data.webhookUrl === undefined ? (
+          <Typography variant="body2" data-testid="marketing-webhook-url">{t.marketing.blocked}</Typography>
+        ) : (
+          <CopyField
+            mono
+            label={t.integrations.webhookUrlLabel}
+            value={result.data.webhookUrl}
+            testId="marketing-webhook-url"
+          />
+        )}
       </SectionCard>
       <SectionCard title={t.marketing.quota}>
         <Typography variant="body2">

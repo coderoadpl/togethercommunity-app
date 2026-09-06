@@ -133,6 +133,7 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   TenantSecretRepository,
+  TenantSecretScanPort,
   TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
@@ -3635,6 +3636,23 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
     const rows = await db
       .delete(tenantSecrets)
       .where(and(eq(tenantSecrets.tenantId, tenantId), eq(tenantSecrets.key, key)))
+      .returning({ id: tenantSecrets.id });
+    return rows.length > 0;
+  },
+});
+
+export const createTenantSecretScan = (db: Db): TenantSecretScanPort => ({
+  listAll: async () =>
+    (
+      await db
+        .select()
+        .from(tenantSecrets)
+        .orderBy(asc(tenantSecrets.tenantId), asc(tenantSecrets.key))
+    ).map(parseSecret),
+  deleteById: async (id) => {
+    const rows = await db
+      .delete(tenantSecrets)
+      .where(eq(tenantSecrets.id, id))
       .returning({ id: tenantSecrets.id });
     return rows.length > 0;
   },

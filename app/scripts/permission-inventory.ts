@@ -100,6 +100,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     || path === '/api/internal/dispatch-ksef'
     || path === '/api/internal/domain-check'
     || path === '/api/internal/reseed-acme'
+    || path === '/api/internal/sanitize-staging-secrets'
   ) return 'scheduler:dispatch';
   if (path.startsWith('/api/internal/scheduler-runs')) return 'scheduler:read';
   if (path === '/api/public/terms-consent') return 'terms:accept';

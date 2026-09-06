@@ -14,7 +14,7 @@ import {
   selectDomainProvisioner,
   selectPlatformReset,
   selectSmokeTenantReseed,
-  selectSmokeTenantReseedSecret,
+  selectOperatorSecret,
   selectTenantCreationMode,
   selectTenantRouting,
   selectTrustedAuthOrigins,
@@ -734,7 +734,7 @@ describe('smoke tenant reseed composition', () => {
   });
 });
 
-describe('smoke tenant reseed secret', () => {
+describe('operator secret', () => {
   const secrets = {
     PROD_OPERATOR_SECRET: 'prod-operator-secret-16',
     CRON_SECRET: 'cron-secret-at-least-16',
@@ -742,16 +742,16 @@ describe('smoke tenant reseed secret', () => {
   };
 
   it('prefers the operator secret over the cron and dispatch secrets', () => {
-    expect(selectSmokeTenantReseedSecret(secrets)).toBe('prod-operator-secret-16');
+    expect(selectOperatorSecret(secrets)).toBe('prod-operator-secret-16');
   });
 
   it('falls back to the cron secret when no operator secret is set', () => {
-    expect(selectSmokeTenantReseedSecret({ ...secrets, PROD_OPERATOR_SECRET: undefined }))
+    expect(selectOperatorSecret({ ...secrets, PROD_OPERATOR_SECRET: undefined }))
       .toBe('cron-secret-at-least-16');
   });
 
   it('falls back to the dispatch secret when neither is set', () => {
-    expect(selectSmokeTenantReseedSecret({
+    expect(selectOperatorSecret({
       ...secrets,
       PROD_OPERATOR_SECRET: undefined,
       CRON_SECRET: undefined,

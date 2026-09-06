@@ -55,6 +55,7 @@ export * from './usecases/order-reconciliation.js';
 export * from './usecases/support.js';
 export * from './usecases/platform-data-reset.js';
 export * from './usecases/smoke-tenant-reseed.js';
+export * from './usecases/sanitize-staging-secrets.js';
 export * from './usecases/invoices.js';
 export * from './usecases/ksef-submissions.js';
 export * from './usecases/dispatch-ksef-job.js';

@@ -892,6 +892,11 @@ export interface TenantSecretRepository {
   delete(tenantId: string, key: TenantSecretKey): Promise<boolean>;
 }
 
+export interface TenantSecretScanPort {
+  listAll(): Promise<TenantSecret[]>;
+  deleteById(id: string): Promise<boolean>;
+}
+
 export interface SecretCrypto {
   encrypt(plaintext: string): { ciphertext: string; iv: string; authTag: string };
   decrypt(input: { ciphertext: string; iv: string; authTag: string }): Result<string, AppError>;

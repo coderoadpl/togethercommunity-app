@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+import { API_PATHS } from '#core/contract/index.js';
+
 const workflowSchema = z.object({
   on: z.object({
     push: z.object({ branches: z.array(z.string()) }),
@@ -23,6 +25,7 @@ const workflowSchema = z.object({
         name: z.string().optional(),
         id: z.string().optional(),
         if: z.string().optional(),
+        'continue-on-error': z.boolean().optional(),
         env: z.record(z.string()).optional(),
         run: z.string().optional(),
         with: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -104,6 +107,28 @@ describe('staging-smoke workflow', () => {
       .toBe("${{ vars.PRODUCTION_DATABASE_FINGERPRINT || '4ef296aa90bd' }}");
     expect(job.env['STAGING_DATABASE_FINGERPRINT'])
       .toBe('${{ vars.STAGING_DATABASE_FINGERPRINT }}');
+  });
+
+  it('drops the secrets staging cannot decrypt before measuring its health', () => {
+    const sanitize = step('Sanitize the staging tenant secrets');
+
+    expect(job.steps.indexOf(sanitize))
+      .toBeLessThan(job.steps.indexOf(step('Smoke the staging deployment')));
+    expect(sanitize.if)
+      .toBe("steps.gate.outputs.run == 'true' && steps.alias.outputs.matched == 'true'");
+    expect(sanitize.env?.['STAGING_OPERATOR_SECRET'])
+      .toBe('${{ secrets.STAGING_OPERATOR_SECRET }}');
+    expect(sanitize.run).toContain('x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET');
+    expect(sanitize.run).toContain('x-scheduler-operator-secret: $STAGING_OPERATOR_SECRET');
+    expect(sanitize.run).toContain(API_PATHS.sanitizeStagingSecrets);
+  });
+
+  it('skips the sanitize with a notice instead of failing when the operator secret is absent', () => {
+    const sanitize = step('Sanitize the staging tenant secrets');
+
+    expect(sanitize.run).toContain('if [ -z "$STAGING_OPERATOR_SECRET" ]');
+    expect(sanitize.run).toContain('::notice::');
+    expect(sanitize['continue-on-error']).toBe(true);
   });
 
   it('sends the protection bypass secret to the smoke only', () => {

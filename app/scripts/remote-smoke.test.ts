@@ -45,7 +45,7 @@ const deepHealthPayload = (failing: string[] = []) => ({
     ok: failing.length === 0,
     checkedAt: '2026-09-05T12:00:00.000Z',
     failing,
-    checks: failing.map((name) => ({ name, ok: false, ms: 3, error: 'boom' })),
+    checks: failing.map((name) => ({ name, ok: false, ms: 3, error: 'boom', skipped: null })),
   },
 });
 

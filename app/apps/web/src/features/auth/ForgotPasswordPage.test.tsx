@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { ThemeModeProvider } from '../../theme-mode.js';
 import { ForgotPasswordPage } from './ForgotPasswordPage.js';
 
 const renderForgotPasswordPage = async () => {
@@ -16,10 +17,21 @@ const renderForgotPasswordPage = async () => {
     history: createMemoryHistory({ initialEntries: ['/forgot-password'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return renderWithProviders(
+    <ThemeModeProvider>
+      <RouterProvider router={router} />
+    </ThemeModeProvider>,
+  );
 };
 
 describe('ForgotPasswordPage', () => {
+  it('sits on the auth shell, signed once with the Together wordmark', async () => {
+    await renderForgotPasswordPage();
+
+    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', 'Together');
+    expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
+  });
+
   it.each(['known@example.com', 'random-unknown@example.com'])(
     'shows the same neutral success for %s',
     async (email) => {
@@ -49,7 +61,7 @@ describe('ForgotPasswordPage', () => {
   it('validates the email before requesting a reset', async () => {
     await renderForgotPasswordPage();
     await userEvent.type(screen.getByTestId('forgot-password-email'), 'not-an-email');
-    fireEvent.submit(screen.getByTestId('forgot-password-page'));
+    fireEvent.submit(screen.getByTestId('forgot-password-form'));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(pl.forgotPassword.invalidEmail);
   });

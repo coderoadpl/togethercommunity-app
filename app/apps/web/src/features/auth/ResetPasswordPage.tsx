@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
+  Box,
   Button,
   FormControl,
   FormLabel,
   Link as MuiLink,
-  OutlinedInput,
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
@@ -14,10 +14,11 @@ import { Link } from '@tanstack/react-router';
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
-import { FinePrint, Wordmark } from '../../theme.js';
+import { FinePrint } from '../../theme.js';
+import { AuthButton, AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthShell } from './AuthShell.js';
 
 const tokenFromLocation = (): string | null =>
   new URLSearchParams(window.location.search).get('token');
@@ -55,7 +56,7 @@ export const ResetPasswordPage = () => {
   };
 
   return (
-    <FocusCard eyebrow={t.resetPassword.eyebrow({ host: window.location.hostname })}>
+    <AuthShell>
         {!token || invalidToken || providerRejectedToken ? (
           <StatusView
             state={{
@@ -71,26 +72,25 @@ export const ResetPasswordPage = () => {
             data-testid="reset-invalid-token"
           />
         ) : resetPassword.isSuccess ? (
-          <Stack useFlexGap spacing="0.8rem" data-testid="reset-success">
-            <Wordmark variant="h2" component="p">
-              {t.resetPassword.successTitle}
-            </Wordmark>
-            <FinePrint variant="body2" component="p">
-              {t.resetPassword.successBody}
-            </FinePrint>
-            <Button component={Link} to="/login" variant="contained" fullWidth>
+          <Stack useFlexGap spacing="1rem" data-testid="reset-success">
+            <Box>
+              <AuthTitle variant="h1">{t.resetPassword.successTitle}</AuthTitle>
+              <AuthLead component="p">{t.resetPassword.successBody}</AuthLead>
+            </Box>
+            <AuthButton component={Link} to="/login" variant="contained" fullWidth>
               {t.resetPassword.goToLogin}
-            </Button>
+            </AuthButton>
           </Stack>
         ) : (
           <>
-            <FinePrint variant="caption" component="p" sx={{ mb: '1rem' }}>
-              {t.resetPassword.intro}
-            </FinePrint>
+            <Box sx={{ mb: '1.5rem' }}>
+              <AuthTitle variant="h1">{t.resetPassword.title}</AuthTitle>
+              <AuthLead component="p">{t.resetPassword.intro}</AuthLead>
+            </Box>
             <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
               <FormControl fullWidth>
                 <FormLabel htmlFor="reset-password">{t.resetPassword.newPasswordLabel}</FormLabel>
-                <OutlinedInput
+                <AuthInput
                   id="reset-password"
                   type="password"
                   value={password}
@@ -102,7 +102,7 @@ export const ResetPasswordPage = () => {
               </FormControl>
               <FormControl fullWidth>
                 <FormLabel htmlFor="reset-password-confirm">{t.resetPassword.confirmPasswordLabel}</FormLabel>
-                <OutlinedInput
+                <AuthInput
                   id="reset-password-confirm"
                   type="password"
                   value={confirm}
@@ -112,7 +112,7 @@ export const ResetPasswordPage = () => {
                   required
                 />
               </FormControl>
-              <Button
+              <AuthButton
                 type="submit"
                 variant="contained"
                 fullWidth
@@ -120,7 +120,7 @@ export const ResetPasswordPage = () => {
                 disabled={resetPassword.isPending}
               >
                 {resetPassword.isPending ? t.resetPassword.submitPending : t.resetPassword.submitIdle}
-              </Button>
+              </AuthButton>
             </Stack>
             {localError ? (
               <Alert severity="error" sx={{ mt: '0.6rem' }} data-testid="reset-local-error">
@@ -137,6 +137,6 @@ export const ResetPasswordPage = () => {
             </FinePrint>
           </>
         )}
-    </FocusCard>
+    </AuthShell>
   );
 };

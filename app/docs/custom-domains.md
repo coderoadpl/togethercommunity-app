@@ -5,6 +5,29 @@ additionally connect up to three of their own domains from
 **Panel → Ustawienia → Adresy**. Only the workspace owner sees the controls;
 administrators can read the section but cannot change it.
 
+## Canonical address
+
+Server-built email and notification links use the workspace's canonical origin.
+The canonical address is the earliest verified active custom domain, ordered by
+`verifiedAt`, with `createdAt` used for older verified rows without a verification
+timestamp. Equal timestamps are ordered by domain name. Pending and unverified
+domains are excluded. In this schema, `verified` is the active routing state.
+Without a verified custom domain, links use the platform subdomain (or the
+configured application origin in single-tenant mode).
+
+Settings → Addresses displays this derived address read-only as **Adres główny**
+in Polish. There is no primary flag or manual selection. Removing the canonical
+domain makes the next eligible domain canonical; removing the last one restores
+the platform address.
+
+Enrollment, subscription, support, erasure, notification and marketing emails,
+including campaign unsubscribe and double opt-in fallbacks, use this origin.
+Campaign unsubscribe addresses are resolved per tenant when sending, including
+scheduled sends and test sends. SES webhook subscriptions use the same resolver.
+Auth and consent links that already carry a resolved request origin retain it;
+tenant-header and single-tenant auth fallbacks use the canonical origin.
+Existing queued messages and registered SES subscriptions are not rewritten.
+
 ## How it works
 
 1. The owner types a domain and presses **Dodaj domenę**. The platform

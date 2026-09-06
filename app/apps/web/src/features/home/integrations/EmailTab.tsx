@@ -141,14 +141,12 @@ const SesOnboardingWizard = ({
               <Stack key={record.name} component="li" useFlexGap spacing="0.4rem">
                 <CopyField
                   size="small"
-                  mono
                   label={t.marketing.wizardDkimName}
                   value={record.name}
                   testId={`dkim-record-name-${record.name}`}
                 />
                 <CopyField
                   size="small"
-                  mono
                   label={t.marketing.wizardDkimValue}
                   value={record.value}
                   testId={`dkim-record-value-${record.name}`}
@@ -189,21 +187,18 @@ const SesOnboardingWizard = ({
           <Stack useFlexGap spacing="0.4rem" sx={{ mb: '0.6rem' }}>
             <CopyField
               size="small"
-              mono
               label={t.marketing.wizardConfigurationSetLabel}
               value={provision.data.configurationSet}
               testId="ses-configuration-set"
             />
             <CopyField
               size="small"
-              mono
               label={t.marketing.wizardTopicArnLabel}
               value={provision.data.topicArn}
               testId="ses-topic-arn"
             />
             <CopyField
               size="small"
-              mono
               label={t.marketing.wizardSubscriptionEndpointLabel}
               value={provision.data.subscriptionEndpoint}
               testId="ses-subscription-endpoint"
@@ -693,7 +688,6 @@ export const EmailTab = () => {
           <Typography variant="body2" data-testid="marketing-webhook-url">{t.marketing.blocked}</Typography>
         ) : (
           <CopyField
-            mono
             label={t.integrations.webhookUrlLabel}
             value={result.data.webhookUrl}
             testId="marketing-webhook-url"

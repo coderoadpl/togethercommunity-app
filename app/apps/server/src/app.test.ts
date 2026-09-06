@@ -752,10 +752,10 @@ const deps = (input: {
       subscribe: () => () => undefined,
     },
     links: {
-      conversationUrl: ({ conversationId }) => `http://localhost/messages/${conversationId}`,
-      eventUrl: ({ spaceId, eventId }) => `http://localhost/community/${spaceId}/events/${eventId}`,
-      lessonDiscussionUrl: ({ lessonId }) => `http://localhost/my/courses/c1/lessons/${lessonId}`,
-      spaceUrl: ({ spaceId, rootPostId }) =>
+      conversationUrl: async ({ conversationId }) => `http://localhost/messages/${conversationId}`,
+      eventUrl: async ({ spaceId, eventId }) => `http://localhost/community/${spaceId}/events/${eventId}`,
+      lessonDiscussionUrl: async ({ lessonId }) => `http://localhost/my/courses/c1/lessons/${lessonId}`,
+      spaceUrl: async ({ spaceId, rootPostId }) =>
         `http://localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
     tenantDomains: tenantDomainRepositoryStub({
@@ -6244,7 +6244,7 @@ describe('tenant-host magic links on checkout', () => {
     expect(new URL(parsed.data.magicLink.url).host).toBe('acme.localhost:48730');
   });
 
-  it('keeps the base host when the tenant comes from the x-tenant header', async () => {
+  it('uses the tenant origin when the tenant comes from the x-tenant header', async () => {
     const { app, captured } = capturingApp();
 
     const response = await purchase(
@@ -6254,7 +6254,7 @@ describe('tenant-host magic links on checkout', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(captured.request?.baseUrl).toBe('http://localhost:48730');
+    expect(captured.request?.baseUrl).toBe('http://globex.localhost:48730');
     expect(captured.request?.language).toBe('pl');
   });
 });
@@ -6377,7 +6377,7 @@ describe('tenant-host email verification', () => {
   );
 
   it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
-    'keeps %s delivery on the configured base URL for tenant-header routing',
+    'uses the tenant origin for %s delivery with tenant-header routing',
     async (path) => {
       const { app, captured } = capturingApp();
 
@@ -6393,7 +6393,7 @@ describe('tenant-host email verification', () => {
 
       expect(captured.verificationContext).toEqual({
         email: 'tenant-header@together.dev',
-        context: { language: 'pl', baseUrl: 'http://localhost:48730' },
+        context: { language: 'pl', baseUrl: 'http://globex.localhost:48730' },
       });
     },
   );
@@ -6459,7 +6459,7 @@ describe('auth link host trust', () => {
     expect(captured.context?.context.tenantName).toBeUndefined();
   });
 
-  it('keeps the reset base on APP_BASE_URL for tenant-header routing', async () => {
+  it('uses the tenant origin for reset fallback with tenant-header routing', async () => {
     const { app, captured } = capturingApp();
 
     await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
@@ -6472,7 +6472,7 @@ describe('auth link host trust', () => {
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
-    expect(captured.resetContext?.context.baseUrl).toBe('http://localhost:48730');
+    expect(captured.resetContext?.context.baseUrl).toBe('http://globex.localhost:48730');
   });
 
   it('still builds the reset base on the requesting tenant subdomain', async () => {
@@ -6518,6 +6518,26 @@ describe('auth link host trust', () => {
 
     expect(captured.context?.context.baseUrl).toBe('https://learn.acme.example');
   });
+
+  it.each([BETTER_AUTH_MAGIC_LINK_PATH, BETTER_AUTH_PASSWORD_RESET_PATH])(
+    'uses the canonical origin for %s without a tenant request host',
+    async (path) => {
+      const { app, captured } = capturingApp({
+        domains: [tenantDomainFixture({
+          id: 'domain-canonical', tenantId: globex.id, domain: 'courses.example.org', verified: true,
+        })],
+      });
+      await app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', host: 'localhost:48730', [TENANT_HEADER]: 'globex' },
+        body: JSON.stringify({ email: 'login@together.dev' }),
+      });
+      const baseUrl = path === BETTER_AUTH_MAGIC_LINK_PATH
+        ? captured.context?.context.baseUrl
+        : captured.resetContext?.context.baseUrl;
+      expect(baseUrl).toBe('https://courses.example.org');
+    },
+  );
 
   it('leaves no delivery-context residue when Better Auth rejects the request', async () => {
     const contexts = new Map<string, DeliveryContext>();

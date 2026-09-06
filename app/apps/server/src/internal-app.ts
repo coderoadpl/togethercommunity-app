@@ -166,6 +166,7 @@ import {
   beginProductDownloadUpload,
   authenticateApiKey,
   authLinkBaseUrl,
+  createTenantOriginResolver,
   autoIssueOnPayment,
   authorizeRequiredTenant,
   authorizeTenant,
@@ -865,7 +866,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
               selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
               attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
               collectedAt: deps.clock.nowIso(),
-              confirmationBaseUrl: `${deps.appBaseUrl}/marketing/confirm`,
+              confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
               ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
             },
             createdAt: deps.clock.nowIso(),
@@ -960,7 +961,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           productId: selection.value.product.id,
           orderId: result.value.orderId,
           collectedAt: deps.clock.nowIso(),
-          confirmationBaseUrl: `${authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
+          confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
           ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
         });
         const orderDetails = deps.orderDetails;
@@ -981,7 +982,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         }
       }
 
-      const baseUrl = authLinkBaseUrl(tenant.value, deps);
+      const baseUrl = await authLinkBaseUrl(tenant.value, deps);
       const issuedMagicLink = await issueMagicLink(deps, {
         email: parsed.data.email,
         tenantId: tenant.value.tenant.id,
@@ -1231,6 +1232,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = marketingCampaignActionInputSchema.pick({ campaignId: true }).safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign test payload', parsed.error.flatten())));
+    const resolveOrigin = createTenantOriginResolver(deps);
     const result = await testSendCampaignToSelf(ctxOf(c), parsed.data, {
       definitions: deps.marketing.definitions, consents: deps.marketing.marketingConsents,
       campaigns: deps.marketing.campaigns, layouts: deps.marketing.layouts, sends: deps.marketing.campaignSends,
@@ -1240,7 +1242,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ses: deps.marketing.marketingSes, credentials: deps.marketing.marketingCredentials,
       quotaReader: deps.marketing.quotaReader, throttle: deps.marketing.throttle,
       hmac: deps.marketing.hmac, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
-      clock: deps.clock, unsubscribeBaseUrl: `${deps.appBaseUrl}/u`,
+      clock: deps.clock, unsubscribeBaseUrl: async (tenantId: string) => `${await resolveOrigin(tenantId)}/u`,
       scheduler: deps.marketing.scheduler,
       runs: deps.marketing.runs,
       outbox: { enqueue: async () => ok({ id: '' }), claimBatch: async () => ok([]), markSent: async () => ok(undefined), markFailed: async () => ok(undefined) },
@@ -1675,6 +1677,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         clock: deps.clock,
         notifications: {
           tenants: deps.tenants,
+          tenantDomains: deps.tenantDomains,
           tenantAccess: deps.tenantAccess,
           emailOutbox: deps.emailOutbox,
           appBaseUrl: deps.appBaseUrl,

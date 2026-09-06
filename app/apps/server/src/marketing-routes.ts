@@ -51,7 +51,8 @@ import {
   sendM2mTransactionalMessage,
   sendMarketingMessages,
   getM2mTransactionalMessage,
-  tenantUrl,
+  createTenantOriginResolver,
+  resolveTenantOrigin,
   unsubscribeAllMarketing,
   unsubscribeOneClick,
   type Ctx,
@@ -119,25 +120,28 @@ export const authenticateMarketingApiKey = async (
     : authenticated;
 };
 
-const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps, unsubscribeBaseUrl: string) => ({
-  definitions: marketing.definitions,
-  consents: marketing.marketingConsents,
-  suppressions: marketing.suppressions,
-  hmac: marketing.hmac,
-  sends: marketing.campaignSends,
-  events: marketing.events,
-  layouts: marketing.layouts,
-  unsubscribes: marketing.unsubscribes,
-  sesSettings: marketing.sesSettings,
-  ses: marketing.marketingSes,
-  credentials: marketing.marketingCredentials,
-  quotaReader: marketing.quotaReader,
-  throttle: marketing.throttle,
-  ids: deps.ids,
-  tokens: { nextToken: () => randomBytes(24).toString('base64url') },
-  clock: deps.clock,
-  unsubscribeBaseUrl,
-});
+const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps) => {
+  const resolveOrigin = createTenantOriginResolver(deps);
+  return {
+    definitions: marketing.definitions,
+    consents: marketing.marketingConsents,
+    suppressions: marketing.suppressions,
+    hmac: marketing.hmac,
+    sends: marketing.campaignSends,
+    events: marketing.events,
+    layouts: marketing.layouts,
+    unsubscribes: marketing.unsubscribes,
+    sesSettings: marketing.sesSettings,
+    ses: marketing.marketingSes,
+    credentials: marketing.marketingCredentials,
+    quotaReader: marketing.quotaReader,
+    throttle: marketing.throttle,
+    ids: deps.ids,
+    tokens: { nextToken: () => randomBytes(24).toString('base64url') },
+    clock: deps.clock,
+    unsubscribeBaseUrl: async (tenantId: string) => `${await resolveOrigin(tenantId)}/u`,
+  };
+};
 
 const readJson = async (request: Request): Promise<unknown> => request.json().catch(() => null);
 
@@ -353,7 +357,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
         data: message.data,
         ...(idempotencyKey === undefined ? {} : { idempotencySource: idempotencyKey }),
       };
-    }), sendDeps(deps, marketingResult.value, tenantUrl(authenticated.value.tenant.slug, '/u', deps)));
+    }), sendDeps(deps, marketingResult.value));
     const status = sent.ok ? 202 : HTTP_STATUS_BY_ERROR_CODE[sent.error.code];
     if (idempotencyKey !== undefined) await completeIdempotentRequest(authenticated.value.ctx, { key: idempotencyKey, status }, { repository: marketingResult.value.idempotency });
     if (!sent.ok) return sent.error.code === 'rate_limited'
@@ -393,7 +397,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     return response(await recordMarketingConsent(authenticated.value.ctx, {
       email, memberId, definitionId, source,
       evidence: { collectedAt, proofRef, ...(ip === undefined ? {} : { ip }), ...(userAgent === undefined ? {} : { userAgent }) },
-      confirmationBaseUrl: tenantUrl(authenticated.value.tenant.slug, '/marketing/confirm', deps),
+      confirmationBaseUrl: `${await resolveTenantOrigin(authenticated.value.tenant, deps)}/marketing/confirm`,
     }, {
       definitions: marketing.value.definitions, consents: marketing.value.marketingConsents,
       confirmations: marketing.value.confirmations, members: deps.members, tenants: deps.tenants,
@@ -793,7 +797,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
         proofRef: `preference:${token}`,
         ...(c.req.header('user-agent') === undefined ? {} : { userAgent: c.req.header('user-agent') }),
       },
-      confirmationBaseUrl: `${authLinkBaseUrl(resolved.value, deps)}/marketing/confirm`,
+      confirmationBaseUrl: `${await authLinkBaseUrl(resolved.value, deps)}/marketing/confirm`,
     }, {
       ...unsubscribeDeps(deps, marketing.value),
       confirmations: marketing.value.confirmations,

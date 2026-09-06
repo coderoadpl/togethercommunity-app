@@ -750,11 +750,11 @@ const deps = (
     tenants: { findSettings: async () => null },
     tenantAccess,
     links: {
-      lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
+      lessonDiscussionUrl: async ({ tenantSlug, courseId, lessonId }) =>
         `http://${tenantSlug ?? 'app'}.localhost/my/courses/${courseId ?? 'none'}/lessons/${lessonId}`,
-      conversationUrl: ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
-      eventUrl: ({ spaceId, eventId }) => `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
-      spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
+      conversationUrl: async ({ conversationId }) => `http://tenant.localhost/messages/${conversationId}`,
+      eventUrl: async ({ spaceId, eventId }) => `http://tenant.localhost/community/${spaceId}/events/${eventId}`,
+      spaceUrl: async ({ tenantSlug, spaceId, rootPostId }) =>
         `http://${tenantSlug ?? 'app'}.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
     ids: new SequenceIds(),

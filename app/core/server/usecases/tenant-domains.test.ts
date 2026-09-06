@@ -230,6 +230,7 @@ describe('getTenantRouting', () => {
           'https://acme.together.example',
           'https://kurs.acme.example',
         ],
+        canonicalOrigin: 'https://kurs.acme.example',
         customDomains: [
           {
             domain: 'kurs.acme.example',

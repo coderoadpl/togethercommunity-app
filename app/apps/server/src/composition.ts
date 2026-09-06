@@ -280,7 +280,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import {
   isProductionEnvironment,
   ok,
@@ -859,6 +859,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const idempotency = createAutomationIdempotencyRepository(db);
   const marketingJobs = createMarketingJobRepository(db);
   const sesOnboardingControlPlane = createSesOnboardingControlPlane();
+  const resolveOrigin = createTenantOriginResolver({
+    tenants, tenantDomains, appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
+  });
+  const unsubscribeBaseUrl = async (tenantId: string): Promise<string> => `${await resolveOrigin(tenantId)}/u`;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants,
     tenantDomains,
@@ -1009,7 +1013,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, events: emailEvents, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
-      unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler, runs: schedulerRuns,
+      unsubscribeBaseUrl, outbox: emailOutbox, scheduler, runs: schedulerRuns,
       ...(production ? { silenceSmokeTenant: true } : {}),
     });
   };
@@ -1025,13 +1029,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     memberLanguage: null,
     memberVideoAutoplay: false,
   });
-  const reputationDashboardUrl = (tenantSlug: string): string => {
-    return tenantUrl(tenantSlug, '/panel/marketing', {
-      appBaseUrl: env.APP_BASE_URL,
-      baseDomain,
-      singleTenantMode,
-    });
-  };
+  const reputationDashboardUrl = async (tenantId: string): Promise<string> =>
+    `${await resolveOrigin(tenantId)}/panel/marketing`;
   const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
     const marketing = await runScheduledMarketingJobs({
@@ -1109,21 +1108,17 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     customDomainTarget,
   };
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
+  const memberLink = async (tenantId: string, tenantSlug: string | null, path: string): Promise<string> =>
+    new URL(path, await resolveTenantOrigin({ id: tenantId, slug: tenantSlug }, { ...routing, tenantDomains })).toString();
   const links: DiscussionLinkPort = {
-    lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
-      tenantUrl(tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId), routing),
-    spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
-      tenantUrl(
-        tenantSlug,
-        rootPostId === undefined
-          ? communitySpacePath(spaceId)
-          : communityPostPath(spaceId, rootPostId),
-        routing,
-      ),
-    conversationUrl: ({ tenantSlug, conversationId }) =>
-      tenantUrl(tenantSlug, conversationPath(conversationId), routing),
-    eventUrl: ({ tenantSlug, spaceId, eventId }) =>
-      tenantUrl(tenantSlug, communityEventPath(spaceId, eventId), routing),
+    lessonDiscussionUrl: ({ tenantId, tenantSlug, courseId, lessonId }) =>
+      memberLink(tenantId, tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId)),
+    spaceUrl: ({ tenantId, tenantSlug, spaceId, rootPostId }) =>
+      memberLink(tenantId, tenantSlug, rootPostId === undefined ? communitySpacePath(spaceId) : communityPostPath(spaceId, rootPostId)),
+    conversationUrl: ({ tenantId, tenantSlug, conversationId }) =>
+      memberLink(tenantId, tenantSlug, conversationPath(conversationId)),
+    eventUrl: ({ tenantId, tenantSlug, spaceId, eventId }) =>
+      memberLink(tenantId, tenantSlug, communityEventPath(spaceId, eventId)),
   };
 
   const google =

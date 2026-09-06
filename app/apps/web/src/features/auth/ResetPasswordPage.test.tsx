@@ -9,6 +9,7 @@ import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { ThemeModeProvider } from '../../theme-mode.js';
 import { ResetPasswordPage } from './ResetPasswordPage.js';
 
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
@@ -21,7 +22,11 @@ const renderResetPage = async (search: string) => {
     history: createMemoryHistory({ initialEntries: ['/reset-password'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return renderWithProviders(
+    <ThemeModeProvider>
+      <RouterProvider router={router} />
+    </ThemeModeProvider>,
+  );
 };
 
 afterEach(() => {
@@ -29,6 +34,13 @@ afterEach(() => {
 });
 
 describe('ResetPasswordPage', () => {
+  it('sits on the auth shell, signed once with the Together wordmark', async () => {
+    await renderResetPage('?token=valid-token');
+
+    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', 'Together');
+    expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
+  });
+
   it('resets the password and shows a success state on the happy path', async () => {
     let body: unknown;
     server.use(http.post('*', async ({ request }) => {

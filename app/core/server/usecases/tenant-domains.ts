@@ -33,7 +33,7 @@ import type {
   TenantDomainRepository,
   StorageCorsCache,
 } from '../ports.js';
-import { customDomainOrigin, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { canonicalTenantDomain, customDomainOrigin, tenantOriginUrl, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 
 export interface TenantRoutingDeps {
   tenantDomains: TenantDomainRepository;
@@ -81,6 +81,7 @@ const routingView = async (
   return {
     tenantHost: new URL(tenantOrigin).host,
     storageCorsOrigins,
+    canonicalOrigin: tenantOriginUrl({ slug: tenantSlug, customDomain: canonicalTenantDomain(domains)?.domain ?? null }, deps.routing),
     customDomains: custom.map((domain) => ({
       domain: domain.domain,
       verified: domain.verified,

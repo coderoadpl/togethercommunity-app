@@ -314,6 +314,10 @@ const tenantRoutingScopes = {
   all: () => ['tenant-routing'] as const,
 };
 
+const tenantRedirectScopes = {
+  all: () => ['tenant-redirects'] as const,
+};
+
 const onboardingScopes = {
   all: () => ['onboarding'] as const,
 };
@@ -1590,6 +1594,12 @@ export const tenantRoutingQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: tenantRoutingScopes.all(),
     call: ({ signal }) => api.getTenantRouting(signal),
+  });
+
+export const tenantRedirectsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tenantRedirectScopes.all(),
+    call: ({ signal }) => api.getTenantRedirects(signal),
   });
 
 export const updateTenantSettingsMutation = (api: ApiClient) =>

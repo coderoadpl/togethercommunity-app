@@ -520,12 +520,12 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     expect(screen.queryByTestId('lesson-links')).not.toBeInTheDocument();
 
     await userEvent.clear(urlField);
-    await userEvent.type(urlField, 'https://github.com/coderoadpl/task-1');
+    await userEvent.type(urlField, 'https://github.com/acme-courses/task-1');
     expect(await screen.findByTestId('lesson-links')).toBeInTheDocument();
     expect(screen.getByText(pl.lessons.blockPreviewLabel)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /github\.com/ })).toHaveAttribute(
       'href',
-      'https://github.com/coderoadpl/task-1',
+      'https://github.com/acme-courses/task-1',
     );
   });
 

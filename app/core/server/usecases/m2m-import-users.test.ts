@@ -12,6 +12,7 @@ import {
   type TenantApiKey,
 } from '#core/domain/index.js';
 
+import type { M2mImportRedirectReaders } from './m2m-import-redirects.js';
 import type { Ctx } from '../context.js';
 import type {
   ImportAuthUserState,
@@ -162,7 +163,7 @@ const harness = () => {
       return 'saved';
     },
   };
-  const deps: M2mImportUsersDeps = {
+  const deps: M2mImportUsersDeps & M2mImportRedirectReaders = {
     courses: { findById: async (_tenantId, id) => id === course.id ? course : null },
     modules: {
       findById: async (_tenantId, id) => id === module.id ? module : null,
@@ -175,6 +176,11 @@ const harness = () => {
         audits.get(`${kind}:${importKey}`) ?? null,
     },
     importUsers,
+    redirects: {
+      findById: async () => null,
+      findByFromPath: async () => null,
+      listByTenant: async () => [],
+    },
     ids: { nextId: () => `id-${sequence += 1}` },
     clock: { nowIso: () => NOW },
     hash: { sha256: (content) => String(content) },

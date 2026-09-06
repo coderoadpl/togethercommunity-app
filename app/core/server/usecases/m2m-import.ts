@@ -60,6 +60,10 @@ import type {
 } from '../ports.js';
 import { aggregateAccessItems, buildAccessLookup } from './access.js';
 import {
+  prepareM2mRedirectValidationRecord,
+  type M2mImportRedirectReaders,
+} from './m2m-import-redirects.js';
+import {
   emptyImportReferenceMaps,
   prepareM2mUsersValidationRecord,
   type M2mImportUsersReaders,
@@ -74,7 +78,10 @@ type ImportReaders = {
   hash: ContentHash;
 };
 
-export type M2mImportValidationDeps = ImportReaders & M2mImportUsersReaders & { clock: Clock };
+export type M2mImportValidationDeps = ImportReaders
+  & M2mImportUsersReaders
+  & M2mImportRedirectReaders
+  & { clock: Clock };
 
 export type M2mImportContentDeps = ImportReaders & {
   importContent: ImportContentRepository;
@@ -596,6 +603,7 @@ const emptyPlanCounts = (): Record<ImportKind, number> => ({
   member: 0,
   grant: 0,
   progress: 0,
+  redirect: 0,
 });
 
 const validateImportForTenant = async (
@@ -617,6 +625,7 @@ const validateImportForTenant = async (
   const recordsByKey = new Map<string, ImportRecord>();
   const seen = new Set<string>();
   const memberEmails = new Map<string, string>();
+  const claimedRedirectPaths = new Map<string, string>();
   for (let index = 0; index < envelope.data.records.length; index += 1) {
     const raw = envelope.data.records[index];
     const identity = recordIdentity(raw, index);
@@ -631,6 +640,7 @@ const validateImportForTenant = async (
       continue;
     }
     const requiredCapability = importContentKindSchema.safeParse(parsed.data.kind).success
+      || parsed.data.kind === 'redirect'
       ? 'import:content-write'
       : 'import:users-write';
     if (ctx.capabilities?.includes(requiredCapability) !== true) {
@@ -684,14 +694,24 @@ const validateImportForTenant = async (
             ? record.createdAt
             : deps.clock.nowIso(),
         )
-      : await prepareM2mUsersValidationRecord(
-          tenantId,
-          record,
-          references,
-          deps,
-          deps.clock.nowIso(),
-          recordsByKey,
-        );
+      : record.kind === 'redirect'
+        ? await prepareM2mRedirectValidationRecord(
+            tenantId,
+            record,
+            references,
+            deps,
+            record.createdAt ?? deps.clock.nowIso(),
+            recordsByKey,
+            claimedRedirectPaths,
+          )
+        : await prepareM2mUsersValidationRecord(
+            tenantId,
+            record,
+            references,
+            deps,
+            deps.clock.nowIso(),
+            recordsByKey,
+          );
     if (!prepared.ok) {
       errors.push({ index, kind: record.kind, importKey: record.importKey, error: prepared.error });
       continue;

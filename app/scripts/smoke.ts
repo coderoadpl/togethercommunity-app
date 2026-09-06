@@ -13,6 +13,7 @@ import {
   deepHealthOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
   envelopeSchema,
+  m2mImportBatchOutputSchema,
   EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
 } from '#core/contract/index.js';
@@ -1835,59 +1836,100 @@ const driveAnonymousPublicFlow = async (port: number, homes: string[]): Promise<
   );
 };
 
-const driveLegacyUrlRedirects = async (port: number, homes: string[]): Promise<void> => {
+const driveTenantRedirects = async (port: number, homes: string[]): Promise<void> => {
   const url = `http://localhost:${port}`;
-  const creatorHome = mkdtempSync(join(tmpdir(), 'smoke-legacy-creator-'));
+  const creatorHome = mkdtempSync(join(tmpdir(), 'smoke-redirects-creator-'));
   homes.push(creatorHome);
   const cli = (args: string[]): Promise<Run> =>
     run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: creatorHome });
-  const acme = (args: string[]): Promise<Run> =>
-    cli(['--json', '--api-url', url, '--tenant', 'acme', ...args]);
-  const sourceId = (suffix: string): string => randomUUID().replaceAll('-', '').slice(0, 20) + suffix;
-  const legacyCourseId = sourceId('c');
-  const legacyModuleId = sourceId('m');
-  const legacyLessonId = sourceId('l');
+  const suffix = randomUUID().replaceAll('-', '');
+  const courseKey = `course-${suffix}`;
+  const lessonKey = `lesson-${suffix}`;
+  const moduleKey = `module-${suffix}`;
+  const legacyBase = `/legacy-${suffix}`;
 
   expectOk(
     await cli(['--json', '--api-url', url, 'login', '--email', SMOKE_TENANT_CREATOR_EMAIL, '--password', 'demo-password-15']),
-    'legacy links: creator login',
+    'redirects: creator login',
   );
-  const lesson = lessonSchema.parse(
+  const key = apiKeyCreateSchema.parse(
     expectOk(
-      await acme(['lesson', 'create', '--data', `{"name":"Legacy lesson","legacyId":"${legacyLessonId}"}`]),
-      'legacy links: create the imported lesson',
+      await cli([
+        '--json', '--api-url', url, '--tenant', 'acme',
+        'api-key', 'create', 'CI import key',
+        '--scope', 'import:content',
+        '--expires-at', new Date(Date.now() + 86_400_000).toISOString(),
+      ]),
+      'redirects: create the import key',
     ),
-  );
-  const course = courseSchema.parse(
-    expectOk(
-      await acme(['course', 'create', '--name', `Legacy course ${randomUUID()}`, '--legacy-id', legacyCourseId]),
-      'legacy links: create the imported course',
-    ),
-  );
-  const chapterId = randomUUID();
-  const modulePayload = JSON.stringify({
-    courseIds: [course.course.id],
-    title: 'Legacy module',
-    legacyId: legacyModuleId,
-    chapters: [{ id: chapterId, name: 'Legacy chapter', contents: [{ id: randomUUID(), name: 'Legacy lesson', lessonId: lesson.lesson.id }] }],
-  });
-  expectOk(
-    await acme(['module', 'create', '--data', modulePayload]),
-    'legacy links: create the imported module',
   );
 
-  const coursePage = `/my/courses/${course.course.id}`;
-  const lessonPage = `${coursePage}/lessons/${lesson.lesson.id}`;
-  const legacyPath = `/courses/${legacyCourseId}`;
-  const hop = async (path: string, tenant: string): Promise<Response> =>
-    fetch(`${url}${path}`, { headers: { [TENANT_HEADER]: tenant }, redirect: 'manual' });
+  const importBatch = async (kind: string, records: unknown[], label: string): Promise<void> => {
+    const response = await fetch(`${url}/api/m2m/import/${kind}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key.secret,
+        [TENANT_HEADER]: 'acme',
+      },
+      body: JSON.stringify({ datasetVersion: 'together-import/v1', records }),
+    });
+    const payload: unknown = await response.json();
+    const parsed = envelopeSchema(m2mImportBatchOutputSchema).safeParse(payload);
+    assert(
+      response.status === 200 && parsed.success && parsed.data.ok && parsed.data.data.summary.failed === 0,
+      `${label}: expected a clean import, got ${response.status} ${JSON.stringify(payload)}`,
+    );
+  };
+
+  await importBatch('lessons', [
+    { importKey: lessonKey, name: 'Imported lesson', isPreview: false, contents: [] },
+  ], 'redirects: import the lesson');
+  await importBatch('courses', [
+    { importKey: courseKey, name: 'Imported course', description: '', imageUrl: null, moduleOrder: [] },
+  ], 'redirects: import the course');
+  await importBatch('modules', [{
+    importKey: moduleKey,
+    courseKeys: [courseKey],
+    title: 'Imported module',
+    prefix: null,
+    chapters: [{
+      id: randomUUID(),
+      name: 'Imported chapter',
+      contents: [{ id: randomUUID(), name: 'Imported lesson', lessonKey }],
+    }],
+  }], 'redirects: import the module');
+  await importBatch('redirects', [
+    {
+      importKey: `redirect-course-${suffix}`,
+      fromPath: legacyBase,
+      target: { kind: 'course', importKey: courseKey },
+      permanent: true,
+    },
+    {
+      importKey: `redirect-lesson-${suffix}`,
+      fromPath: `${legacyBase}/lesson`,
+      target: { kind: 'lesson', importKey: lessonKey, courseKey },
+      permanent: false,
+    },
+    {
+      importKey: `redirect-module-${suffix}`,
+      fromPath: `${legacyBase}/module`,
+      target: { kind: 'module-as-course', importKey: moduleKey },
+      permanent: false,
+    },
+  ], 'redirects: import the redirects');
+
+  const coursePage = `/my/courses/${courseKey}`;
+  const lessonPage = `${coursePage}/lessons/${lessonKey}`;
+  const hop = async (requestPath: string, tenant: string): Promise<Response> =>
+    fetch(`${url}${requestPath}`, { headers: { [TENANT_HEADER]: tenant }, redirect: 'manual' });
   const expectHop = async (
-    path: string,
+    requestPath: string,
     expected: { status: number; location: string },
     label: string,
-    tenant = 'acme',
   ): Promise<void> => {
-    const response = await hop(path, tenant);
+    const response = await hop(requestPath, 'acme');
     assert(
       response.status === expected.status,
       `${label}: expected ${expected.status}, got ${response.status}`,
@@ -1898,29 +1940,27 @@ const driveLegacyUrlRedirects = async (port: number, homes: string[]): Promise<v
       `${label}: expected a hop to ${expected.location}, got ${String(location)}`,
     );
   };
+  const expectNoHop = async (requestPath: string, tenant: string, label: string): Promise<void> => {
+    const response = await hop(requestPath, tenant);
+    assert(
+      response.headers.get('location') === null,
+      `${label}: expected no redirect, got ${String(response.headers.get('location'))}`,
+    );
+  };
 
-  await expectHop(legacyPath, { status: 301, location: coursePage }, 'legacy links: course link');
+  await expectHop(legacyBase, { status: 301, location: coursePage }, 'redirects: course link');
   await expectHop(
-    `${legacyPath}/modules/${legacyModuleId}`,
-    { status: 302, location: lessonPage },
-    'legacy links: module link',
+    `${legacyBase}/lesson?utm_source=newsletter`,
+    { status: 302, location: `${lessonPage}?utm_source=newsletter` },
+    'redirects: lesson link',
   );
   await expectHop(
-    `${legacyPath}/modules/${legacyModuleId}/chapters/${chapterId}`,
-    { status: 302, location: lessonPage },
-    'legacy links: chapter link',
+    `${legacyBase.toUpperCase()}/MODULE/`,
+    { status: 302, location: coursePage },
+    'redirects: module link, normalised',
   );
-  await expectHop(
-    `${legacyPath}/modules/${legacyModuleId}/chapters/${chapterId}/lessons/${legacyLessonId}?utm_source=newsletter`,
-    { status: 301, location: `${lessonPage}?utm_source=newsletter` },
-    'legacy links: lesson link',
-  );
-  await expectHop(legacyPath, { status: 302, location: '/my' }, 'legacy links: another workspace', 'studio');
-  await expectHop(
-    `/courses/${sourceId('x')}`,
-    { status: 302, location: '/my' },
-    'legacy links: unknown course',
-  );
+  await expectNoHop(legacyBase, 'studio', 'redirects: another workspace');
+  await expectNoHop(`${legacyBase}/unknown`, 'acme', 'redirects: unconfigured path');
 };
 
 const startedAt = Date.now();
@@ -1970,8 +2010,8 @@ try {
   await driveEventsFlow(port, homes);
   console.log('smoke: driving the anonymous public surface...');
   await driveAnonymousPublicFlow(port, homes);
-  console.log('smoke: following legacy course links...');
-  await driveLegacyUrlRedirects(port, homes);
+  console.log('smoke: following tenant redirects...');
+  await driveTenantRedirects(port, homes);
   console.log('smoke: proving password rotation with two isolated CLI homes...');
   await proveCliPasswordRotation(port, homes);
   console.log('smoke: proving provider-validated email verification resend...');

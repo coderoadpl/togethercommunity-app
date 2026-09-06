@@ -8,6 +8,7 @@ const importAuditResourceTypeSchema = z.enum([
   'member',
   'grant',
   'progress',
+  'redirect',
 ]);
 
 export type ImportAuditResourceType = z.output<typeof importAuditResourceTypeSchema>;

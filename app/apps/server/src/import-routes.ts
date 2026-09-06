@@ -17,6 +17,7 @@ import {
 import {
   claimM2mImportRateLimit,
   importM2mContent,
+  importM2mRedirects,
   importM2mUsers,
   validateM2mImport,
 } from '#core/server/index.js';
@@ -67,6 +68,7 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       products: deps.products,
       importAuditEvents: deps.importAuditEvents,
       importUsers: deps.importUsersReader,
+      redirects: deps.redirects,
       hash: deps.contentHash,
       clock: deps.clock,
     }));
@@ -160,6 +162,41 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       ));
     });
   };
+
+  app.post(API_PATHS.m2mImportRedirects, async (c) => {
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
+    if (!authenticated.ok) return respond(authenticated);
+    if (!apiKeyHasCapability(authenticated.value.apiKey, 'import:content-write')) {
+      return respond(err(forbidden('import:content-write is not permitted')));
+    }
+    const parsed = m2mImportWriteRequestSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid import batch', parsed.error.flatten())));
+    const limited = await claimM2mImportRateLimit(
+      authenticated.value.tenant.id,
+      authenticated.value.apiKey,
+      { mode: 'content', recordCount: parsed.data.records.length },
+      { rateLimits: deps.apiKeyRateLimits, clock: deps.clock },
+    );
+    if (!limited.ok) {
+      const responseHeaders = retryHeaders(limited);
+      return respond(limited, responseHeaders === undefined ? {} : { headers: responseHeaders });
+    }
+    return respond(await importM2mRedirects(
+      authenticated.value.ctx,
+      authenticated.value.apiKey,
+      parsed.data,
+      {
+        courses: deps.courses,
+        modules: deps.modules,
+        lessons: deps.lessons,
+        importAuditEvents: deps.importAuditEvents,
+        redirects: deps.redirects,
+        ids: deps.ids,
+        clock: deps.clock,
+        hash: deps.contentHash,
+      },
+    ));
+  });
 
   writeUsersRoute(API_PATHS.m2mImportMembers, 'member');
   writeUsersRoute(API_PATHS.m2mImportGrants, 'grant');

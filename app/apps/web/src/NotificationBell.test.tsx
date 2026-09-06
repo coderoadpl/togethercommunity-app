@@ -300,7 +300,7 @@ describe('NotificationBell', () => {
                 contextId: null,
                 courseId: null,
                 eventId: null,
-                domain: 'kurs.coderoad.example',
+                domain: 'kurs.acme.example',
                 lessonName: '',
                 authorDisplay: null,
                 authorAvatarUrl: null,
@@ -319,7 +319,7 @@ describe('NotificationBell', () => {
 
     const row = within(await screen.findByTestId('notification-n1'));
     expect(row.queryByTestId('member-avatar')).toBeNull();
-    expect(row.getByText(pl.notifications.tenantDomainVerified({ domain: 'kurs.coderoad.example' })))
+    expect(row.getByText(pl.notifications.tenantDomainVerified({ domain: 'kurs.acme.example' })))
       .toBeInTheDocument();
   });
 

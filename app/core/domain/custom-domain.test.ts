@@ -4,11 +4,11 @@ import { customDomainRecords, normalizeCustomDomain, tenantDomainStatus } from '
 
 describe('normalizeCustomDomain', () => {
   it.each([
-    ['  Kurs.CodeRoad.PL  ', 'kurs.coderoad.pl'],
-    ['https://kurs.coderoad.pl/panel/settings', 'kurs.coderoad.pl'],
-    ['http://kurs.coderoad.pl:8443', 'kurs.coderoad.pl'],
-    ['kurs.coderoad.pl.', 'kurs.coderoad.pl'],
-    ['xn--kurs-kva.coderoad.pl', 'xn--kurs-kva.coderoad.pl'],
+    ['  Kurs.Acme.PL  ', 'kurs.acme.pl'],
+    ['https://kurs.acme.pl/panel/settings', 'kurs.acme.pl'],
+    ['http://kurs.acme.pl:8443', 'kurs.acme.pl'],
+    ['kurs.acme.pl.', 'kurs.acme.pl'],
+    ['xn--kurs-kva.acme.pl', 'xn--kurs-kva.acme.pl'],
   ])('normalises %s to %s', (input, expected) => {
     expect(normalizeCustomDomain(input, 'together.example'))
       .toEqual({ ok: true, value: expected });
@@ -18,15 +18,15 @@ describe('normalizeCustomDomain', () => {
     ['', 'an empty string'],
     ['   ', 'blank input'],
     ['localhost', 'a single label'],
-    ['kurs coderoad pl', 'spaces'],
-    ['-kurs.coderoad.pl', 'a leading hyphen'],
-    ['kurs.coderoad.przykład', 'unicode instead of punycode'],
+    ['kurs acme pl', 'spaces'],
+    ['-kurs.acme.pl', 'a leading hyphen'],
+    ['kurs.acme.przykład', 'unicode instead of punycode'],
     ['together.example', 'the platform base domain'],
     ['acme.together.example', 'a subdomain of the platform'],
     [`${'a'.repeat(250)}.example.com`, 'more than 253 characters'],
     [`${'a'.repeat(64)}.example.com`, 'a label longer than 63 characters'],
     ['1.2.3.4', 'an IPv4 literal'],
-    ['kurs.coderoad.123', 'an all-numeric top label'],
+    ['kurs.acme.123', 'an all-numeric top label'],
   ])('refuses %s (%s)', (input) => {
     expect(normalizeCustomDomain(input, 'together.example'))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -53,12 +53,12 @@ describe('normalizeCustomDomain', () => {
 describe('customDomainRecords', () => {
   it('puts the routing CNAME before the ownership records the provider asked for', () => {
     expect(customDomainRecords({
-      domain: 'kurs.coderoad.pl',
+      domain: 'kurs.acme.pl',
       target: 'cname.vercel-dns.com',
-      verification: [{ type: 'TXT', name: '_vercel.kurs.coderoad.pl', value: 'vc-1' }],
+      verification: [{ type: 'TXT', name: '_vercel.kurs.acme.pl', value: 'vc-1' }],
     })).toEqual([
-      { type: 'CNAME', name: 'kurs.coderoad.pl', value: 'cname.vercel-dns.com' },
-      { type: 'TXT', name: '_vercel.kurs.coderoad.pl', value: 'vc-1' },
+      { type: 'CNAME', name: 'kurs.acme.pl', value: 'cname.vercel-dns.com' },
+      { type: 'TXT', name: '_vercel.kurs.acme.pl', value: 'vc-1' },
     ]);
   });
 });
@@ -70,7 +70,7 @@ describe('tenantDomainStatus', () => {
     [
       {
         verified: false,
-        verification: [{ type: 'TXT' as const, name: '_vercel.kurs.coderoad.pl', value: 'vc-1' }],
+        verification: [{ type: 'TXT' as const, name: '_vercel.kurs.acme.pl', value: 'vc-1' }],
         lastError: null,
       },
       'provider-verification',

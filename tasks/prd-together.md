@@ -67,13 +67,13 @@ Te zasady rozstrzygają spory projektowe w przyszłości. Każda funkcja musi by
 |---|---|---|---|
 | **Twórca „wyceniony poza rynek"** (główna) | Twórca/edukator, którego nie stać na 89-500 USD/mies. u Circle/Kajabi — albo który rezygnuje z platformy, gdy sprzedaż siada | Hosted | Cena, przy której platformę trzyma się „na zawsze"; wideo wkleja z YouTube |
 | **Twórca nietechniczny** | YouTuber/Instagramer (1k-100k followersów), chce sprzedać kurs/ebooka | Hosted | Od zera do sprzedaży w 1 dzień, bez devopsu |
-| **Twórca techniczny** | Programista-twórca (jak autor: CodeRoad) | Self-host | Pełna kontrola, brak vendor lock-in |
+| **Twórca techniczny** | Programista-twórca (jak autor platformy) | Self-host | Pełna kontrola, brak vendor lock-in |
 | **Kursant / członek** | Klient twórcy — kupuje, uczy się, dyskutuje | — | Prosty zakup, wygodne odtwarzanie, jedno konto u danego twórcy |
 | **Zespół twórcy** *(przyszłość)* | VA, moderator, montażysta | Płatny plan | Role i uprawnienia |
 
 Persony „techniczne" i zorientowane na własność danych to mile widziany, ale **poboczny** segment — za mały, żeby na nim budować wzrost.
 
-**Pierwszy realny tenant (dogfooding):** migracja kursu CodeRoad (kurs.coderoad.pl) — walidacja delivery, płatności i migracji danych z legacy stacku (szczegóły w prywatnych materiałach właściciela).
+**Pierwszy realny tenant (dogfooding):** migracja własnego kursu autora z poprzedniej platformy — walidacja delivery, płatności i migracji danych (szczegóły w prywatnych materiałach właściciela).
 
 ---
 
@@ -97,14 +97,14 @@ Model dystrybucji: darmowy self-host (pełny core, Fair Source) + tania wersja h
 - Twórca nietechniczny przechodzi od rejestracji do opublikowanego, kupowalnego produktu w **< 1 dzień** (docelowo < 2 h).
 - Twórca techniczny stawia self-host w **< 15 minut** (`docker compose up` + kreator startowy).
 - Pełna parytetowość funkcji korowych self-host ↔ hosted (jeden kod).
-- Kurs CodeRoad zmigrowany i działający na nowej platformie jako pierwszy tenant — **i jako poligon testowy wszystkich filarów przed publicznym startem** (patrz bramka w §6).
+- Własny kurs autora zmigrowany i działający na nowej platformie jako pierwszy tenant — **i jako poligon testowy wszystkich filarów przed publicznym startem** (patrz bramka w §6).
 - 100% ciężkiego contentu poza naszą infrastrukturą (zero plików wideo w naszej bazie/storage).
 
 ---
 
 ## 6. Zakres — filary i fazy
 
-⚠️ Przyjęto (do potwierdzenia): **rdzeń MVP = Delivery + Sprzedaż**, potem Społeczność, potem Marketing. Uzasadnienie: to najkrótsza ścieżka do produktu, którym twórca może zarabiać, i pokrywa się z potrzebą migracji CodeRoad.
+⚠️ Przyjęto (do potwierdzenia): **rdzeń MVP = Delivery + Sprzedaż**, potem Społeczność, potem Marketing. Uzasadnienie: to najkrótsza ścieżka do produktu, którym twórca może zarabiać, i pokrywa się z potrzebą migracji pierwszego tenanta.
 
 ### Faza 0 — Fundament
 Multi-tenancy, auth, panel twórcy, system adapterów integracji (storage/e-mail/Stripe), self-host (docker compose), design system.
@@ -123,9 +123,9 @@ Billing wersji hosted, provisioning tenantów self-service, dodatki brandingowe 
 
 Fazy 2-4 dostaną **osobne, szczegółowe PRD** przed rozpoczęciem prac. Ten dokument definiuje je kierunkowo.
 
-### Bramka startu komercyjnego: dogfooding na CodeRoad
+### Bramka startu komercyjnego: dogfooding na pierwszym tenancie
 
-Publiczny start Together (sprzedaż wersji hosted, marketing platformy, przyjmowanie zewnętrznych twórców) następuje **dopiero po przetestowaniu marketingu, sprzedaży i delivery na CodeRoad jako żywym tenancie z realnymi kursantami**. Budujemy etapami (fazy jak wyżej), ale nie komercjalizujemy po fazie 1 — projekt w zakresie podstawowych funkcjonalności nie jest absurdalnie duży, więc stać nas na dowiezienie więcej przed startem zamiast sprzedawania niedojrzałego produktu. CodeRoad daje możliwość przetestowania wszystkiego end-to-end bez ryzyka reputacyjnego u cudzych klientów.
+Publiczny start Together (sprzedaż wersji hosted, marketing platformy, przyjmowanie zewnętrznych twórców) następuje **dopiero po przetestowaniu marketingu, sprzedaży i delivery na pierwszym tenancie jako żywym tenancie z realnymi kursantami**. Budujemy etapami (fazy jak wyżej), ale nie komercjalizujemy po fazie 1 — projekt w zakresie podstawowych funkcjonalności nie jest absurdalnie duży, więc stać nas na dowiezienie więcej przed startem zamiast sprzedawania niedojrzałego produktu. Własny tenant daje możliwość przetestowania wszystkiego end-to-end bez ryzyka reputacyjnego u cudzych klientów.
 
 ---
 
@@ -413,7 +413,7 @@ Stories fazy 0 i 1 są rozpisane do poziomu implementowalnego. Fazy 2-4 — pozi
 
 **Co pozostaje specyficzne dla Together (nie ma tego w agentproofarch):**
 - Adaptery BYO (`StorageProvider`/`EmailProvider`/`PaymentProvider` z US-010) — naturalnie wpisują się we wzorzec portów (precedens: `DomainPort` z implementacjami vercel/caddy/noop); każdy nasz port ma realne ≥2 implementacje, więc jest zgodny z tamtejszą zasadą „no speculative ports".
-- Sekrety integracji szyfrowane at rest; zdarzenia domenowe pod Klienta 360 (FR-36); migracja CodeRoad (legacy stack → nowa struktura; szczegóły w prywatnych materiałach właściciela); testy krytyczne: izolacja tenantów + webhooki Stripe.
+- Sekrety integracji szyfrowane at rest; zdarzenia domenowe pod Klienta 360 (FR-36); migracja pierwszego tenanta z poprzedniej platformy (szczegóły w prywatnych materiałach właściciela); testy krytyczne: izolacja tenantów + webhooki Stripe.
 - Repo produktowe: `coderoadpl/togethercommunity-app` (publiczne, FSL-1.1-ALv2 — patrz LICENSE.md); fundament architektoniczny: `coderoadpl/agentproofarch` (będzie jeszcze korygowany — śledzić zmiany).
 
 **Punkty tarcia agentproofarch ↔ Together — rozstrzygnięte ADR-ami (2026-07-11):**
@@ -430,7 +430,7 @@ Stories fazy 0 i 1 są rozpisane do poziomu implementowalnego. Fazy 2-4 — pozi
 | Czas: `git clone` → działający panel (self-host) | < 15 min |
 | Ciężkie pliki w naszej infrastrukturze | 0 |
 | Pokrycie testami izolacji tenantów i webhooków | 100% ścieżek krytycznych |
-| Bramka startu komercyjnego | Marketing, sprzedaż i delivery przetestowane end-to-end na CodeRoad z realnymi kursantami |
+| Bramka startu komercyjnego | Marketing, sprzedaż i delivery przetestowane end-to-end na pierwszym tenancie z realnymi kursantami |
 | Walidacja po publicznym starcie | ≥ 1 zewnętrzny twórca sprzedaje produkt |
 
 ---
@@ -466,4 +466,4 @@ Stories fazy 0 i 1 są rozpisane do poziomu implementowalnego. Fazy 2-4 — pozi
 - **Architektura normatywna: [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** — fundament multi-tenant SaaS (warstwy, porty, CLI, deploy Vercel/Docker); szczegóły w §10
 - Research konkurencji (OSS + SaaS + rynek PL): prywatne materiały właściciela
 - **Poprzednia iteracja Together (VI 2025): archiwum poprzedniej iteracji w prywatnych materiałach właściciela** — project-description, prd (m.in. poziomy dostępu publiczne/płatne/ukryte, zarządzanie członkostwem przez API, denormalizacja postępu kursanta), tech-stack (Vite+React+tRPC+Express+Prisma — ciekawostka: agentproofarch to w dużej mierze dojrzalsza wersja tego samego kierunku)
-- Obecna platforma legacy (pierwszy tenant): produkcja kurs.coderoad.pl (szczegóły stacku w prywatnych materiałach właściciela)
+- Poprzednia platforma pierwszego tenanta: szczegóły stacku i produkcji w prywatnych materiałach właściciela

@@ -3,6 +3,7 @@
 Generated from the Hono route table by `pnpm exec tsx scripts/generate-route-table.mjs`.
 Self-authenticating routes enforce a session, API key, or operator secret before the shared tenant identity middleware.
 Local-development-only routes are registered exclusively when the process runs locally (`NODE_ENV` other than `production` with `APP_ENV` unset or `development`); production, staging and preview never mount them.
+Handlers that share a method, path, access and purpose — such as the two `GET /*` catch-alls — are listed once.
 
 | Route | Access | Operation | Purpose |
 |---|---|---|---|
@@ -44,7 +45,6 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/auth/send-verification-email` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `GET /api/auth/*` | public | read | Authentication callbacks and session reads |
 | `POST /api/auth/*` | public | mutating | Login, recovery, and magic-link authentication surface |
-| `GET /courses/*` | public | read | Legacy course, module, chapter and lesson links redirected to their member pages |
 | `POST /api/webhooks/ses/:webhookToken` | public | mutating | Amazon SNS delivery webhook |
 | `POST /u/:token` | public | mutating | Unsubscribe preference changes |
 | `POST /u/:token/confirm` | public | mutating | Unsubscribe preference changes |
@@ -94,6 +94,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/m2m/import/modules` | self-authenticating | mutating | m2m import modules |
 | `POST /api/m2m/import/lessons` | self-authenticating | mutating | m2m import lessons |
 | `POST /api/m2m/import/products` | self-authenticating | mutating | m2m import products |
+| `POST /api/m2m/import/redirects` | self-authenticating | mutating | m2m import redirects |
 | `POST /api/m2m/import/members` | self-authenticating | mutating | m2m import members |
 | `POST /api/m2m/import/grants` | self-authenticating | mutating | m2m import grants |
 | `POST /api/m2m/import/progress` | self-authenticating | mutating | m2m import progress |
@@ -182,6 +183,7 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |
 | `GET /api/tenant/settings` | authenticated | read | tenant settings |
+| `GET /api/tenant/redirects` | authenticated | read | tenant redirects |
 | `GET /api/tenant/routing` | authenticated | read | tenant routing |
 | `POST /api/tenant/domains` | authenticated | mutating | tenant domain add |
 | `POST /api/tenant/domains/check` | authenticated | mutating | tenant domain check |
@@ -302,4 +304,4 @@ Local-development-only routes are registered exclusively when the process runs l
 | `POST /api/messages/report` | authenticated | mutating | messages report |
 | `GET /api/messages/:conversationId` | authenticated | read | messages thread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
-| `GET /*` | public | read | Tenant social preview for link crawlers |
+| `GET /*` | public | read | Tenant-configured path redirects and the social preview for link crawlers |

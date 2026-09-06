@@ -29,7 +29,7 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const USAGE = `Usage: pnpm run import --bundle <dir> --tenant <bundleSlug>=<targetTenantIdOrSlug> [--tenant ...] \\
   [--dry-run | --apply] [--create-tenants --owner-email <email>] [--database-url <url>]
 
-The bundle directory is a legacy-export output (contains tenants/<slug>/*.json).
+The bundle directory is an import bundle (contains tenants/<slug>/*.json).
 Default mode is --dry-run: nothing is written, a diff report is produced.`;
 
 interface CliArgs {

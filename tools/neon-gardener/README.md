@@ -31,9 +31,12 @@ Install and load the agent:
 
 ```sh
 mkdir -p "$HOME/Library/LaunchAgents"
-cp tools/neon-gardener/com.coderoad.neon-gardener.plist "$HOME/Library/LaunchAgents/"
-launchctl load "$HOME/Library/LaunchAgents/com.coderoad.neon-gardener.plist"
+cp tools/neon-gardener/app.togethercommunity.neon-gardener.plist "$HOME/Library/LaunchAgents/"
+launchctl setenv NEON_GARDENER_DIR "$PWD"
+launchctl load "$HOME/Library/LaunchAgents/app.togethercommunity.neon-gardener.plist"
 ```
+
+`NEON_GARDENER_DIR` points at the checkout the agent runs from.
 
 The agent runs immediately when loaded and every six hours afterward.
 

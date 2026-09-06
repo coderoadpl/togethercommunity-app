@@ -1,6 +1,6 @@
 {
-  "hash": "ffdd056a8235c3065a0c7777f64bea2641a3ead74ceffc10cbf1c73d8c1bd3d0",
-  "shortId": "ffdd056a8235",
+  "hash": "9125356b95beccf54edcc3a90a9a8de5664807984a26a8eb4113a166ad53ea48",
+  "shortId": "9125356b95be",
   "schema": {
     "constraints": [
       {
@@ -645,6 +645,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "tenant_redirects_tenant_id_tenants_id_fk",
+        "table": "tenant_redirects"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "tenant_secrets_tenant_id_tenants_id_fk",
         "table": "tenant_secrets"
       },
@@ -1092,6 +1097,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "tenant_domains_pkey",
         "table": "tenant_domains"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "tenant_redirects_pkey",
+        "table": "tenant_redirects"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2061,6 +2071,11 @@
         "definition": "CREATE UNIQUE INDEX tenant_domains_domain_uidx ON tenant_domains USING btree (domain)",
         "name": "tenant_domains_domain_uidx",
         "table": "tenant_domains"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX tenant_redirects_tenant_from_path_uidx ON tenant_redirects USING btree (tenant_id, from_path)",
+        "name": "tenant_redirects_tenant_from_path_uidx",
+        "table": "tenant_redirects"
       },
       {
         "definition": "CREATE UNIQUE INDEX tenant_secrets_tenant_key_uidx ON tenant_secrets USING btree (tenant_id, key)",
@@ -5133,6 +5148,75 @@
           }
         ],
         "name": "user"
+      },
+      {
+        "columns": [
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "permanent",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "from_path",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_path",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_redirects"
       },
       {
         "columns": [

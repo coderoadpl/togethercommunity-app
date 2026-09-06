@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.coderoad.neon-gardener</string>
+  <string>app.togethercommunity.neon-gardener</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>exec "$HOME/repositories/together-wt-gardener/tools/neon-gardener/run.sh"</string>
+    <string>exec "${NEON_GARDENER_DIR:?set NEON_GARDENER_DIR to the checkout}/tools/neon-gardener/run.sh"</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

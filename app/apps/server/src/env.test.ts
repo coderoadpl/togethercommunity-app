@@ -315,15 +315,15 @@ describe('tenant routing mode', () => {
     let clock = 1_000;
     const memoized = memoizeHostCheck(check, { ttlMs: 100, now: () => clock });
 
-    expect(await memoized('kurs.coderoad.example')).toBe(true);
-    expect(await memoized('kurs.coderoad.example')).toBe(true);
+    expect(await memoized('kurs.acme.example')).toBe(true);
+    expect(await memoized('kurs.acme.example')).toBe(true);
     expect(check).toHaveBeenCalledTimes(1);
 
-    expect(await memoized('inna.coderoad.example')).toBe(true);
+    expect(await memoized('inna.acme.example')).toBe(true);
     expect(check).toHaveBeenCalledTimes(2);
 
     clock += 100;
-    expect(await memoized('kurs.coderoad.example')).toBe(true);
+    expect(await memoized('kurs.acme.example')).toBe(true);
     expect(check).toHaveBeenCalledTimes(3);
   });
 });

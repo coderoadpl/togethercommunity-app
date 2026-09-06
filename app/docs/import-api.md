@@ -67,8 +67,10 @@ Records reference each other by `importKey`, never by Together ids. A reference 
 ### Course
 
 ```jsonl
-{"kind":"course","importKey":"course-abc123","legacyId":"abc123","name":"Front-end from A to Z","description":"","imageUrl":"https://cdn.example.com/cover.png","moduleOrder":["module-m1","module-m2"],"createdAt":"2020-01-01T00:00:00Z"}
+{"kind":"course","importKey":"course-abc123","legacyId":"abc123","name":"Front-end from A to Z","description":"","imageUrl":"/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.png","moduleOrder":["module-m1","module-m2"],"createdAt":"2020-01-01T00:00:00Z"}
 ```
+
+`imageUrl` accepts `null`, an absolute `http` or `https` URL, or a host-relative path under Together's public image asset route: `/api/public/assets/<kind>/<file>`. Other relative paths are rejected by the import schema. When an import sends an absolute URL on this tenant's platform subdomain or verified custom domain and the URL path is that public asset route, Together stores the host-relative path so the image stays same-origin on every tenant host. External absolute URLs are stored unchanged.
 
 `moduleOrder` must contain unique keys. Entries pointing at modules that do not exist yet fail with `conflict`, so submit courses with `moduleOrder: []` first and update them after the modules land.
 
@@ -91,10 +93,10 @@ Nothing is fetched, copied, or re-hosted. Video blocks require `storageKey` and 
 ### Product
 
 ```jsonl
-{"kind":"product","importKey":"product-p1","legacyId":"p1","type":"course","slug":"front-end-full","title":"Front-end full course","description":"","coverUrl":null,"priceCents":0,"currency":"PLN","accessItems":[{"level":"modules","courseKey":"course-abc123","moduleKeys":["module-m1","module-m2"]}],"createdAt":"2020-03-01T00:00:00Z"}
+{"kind":"product","importKey":"product-p1","legacyId":"p1","type":"course","slug":"front-end-full","title":"Front-end full course","description":"","coverUrl":"/api/public/assets/product-cover/00000000-0000-4000-8000-000000000002.webp","priceCents":0,"currency":"PLN","accessItems":[{"level":"modules","courseKey":"course-abc123","moduleKeys":["module-m1","module-m2"]}],"createdAt":"2020-03-01T00:00:00Z"}
 ```
 
-`published` is not an accepted field. `type` is `course`, `digital_download`, or `membership`; `priceCents` is a non-negative integer and `currency` is a three-letter uppercase code. `accessItems` use `courseKey` plus `excludedModuleKeys` for `level: "course"`, `moduleKeys` for `level: "modules"`, or `lessonKeys` for `level: "lessons"`. The module and lesson arrays must be non-empty. Unresolved references fail with `conflict`; a slug already used by another product fails with `slug_reserved`.
+`published` is not an accepted field. `type` is `course`, `digital_download`, or `membership`; `coverUrl` follows the same absolute URL or public asset path rules as course `imageUrl`; `priceCents` is a non-negative integer and `currency` is a three-letter uppercase code. `accessItems` use `courseKey` plus `excludedModuleKeys` for `level: "course"`, `moduleKeys` for `level: "modules"`, or `lessonKeys` for `level: "lessons"`. The module and lesson arrays must be non-empty. Unresolved references fail with `conflict`; a slug already used by another product fails with `slug_reserved`.
 
 ### Member
 
@@ -192,12 +194,16 @@ Mixed kinds are allowed when the key holds the scope required by every included 
       { "index": 40, "kind": "grant", "importKey": "grant-u1:p1",
         "message": "expiresAt in the past — grant will import as expired" }
     ],
+    "infos": [
+      { "index": 0, "kind": "course", "importKey": "course-abc123",
+        "message": "imageUrl normalized to /api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.png" }
+    ],
     "valid": false
   }
 }
 ```
 
-Validate checks schemas, per-record scope, duplicate kind-and-`importKey` pairs inside the call, import-lineage reference resolution, duplicate member e-mails, product slug collisions, and whether existing imported records would be updated or left unchanged. A key already used by an imported record is not an error; a key colliding with a native resource is. Validation checks member e-mails against existing in-tenant members and auth identities and reports a conflict when one already exists; it reveals nothing about accounts outside the tenant. The loop is: fix your export, validate, repeat until `valid: true`, then apply.
+Validate checks schemas, per-record scope, duplicate kind-and-`importKey` pairs inside the call, import-lineage reference resolution, duplicate member e-mails, product slug collisions, and whether existing imported records would be updated or left unchanged. Validation reports URL normalization in `infos` and applies the same normalized payload to the plan, but writes nothing. A key already used by an imported record is not an error; a key colliding with a native resource is. Validation checks member e-mails against existing in-tenant members and auth identities and reports a conflict when one already exists; it reveals nothing about accounts outside the tenant. The loop is: fix your export, validate, repeat until `valid: true`, then apply.
 
 ## Applying a batch
 

@@ -34,6 +34,8 @@ declare module '@mui/material/styles' {
     focusRing?: string;
     /** Link ink; themes that leave it unset follow the branding-tinted primary. */
     linkColor?: string;
+    /** Present only when a tenant supplied an accent, so accent-driven decoration can opt out. */
+    brandAccent?: string;
   }
   interface ThemeOptions {
     headerRule?: string;
@@ -49,6 +51,7 @@ declare module '@mui/material/styles' {
     };
     focusRing?: string;
     linkColor?: string;
+    brandAccent?: string;
   }
 }
 
@@ -2776,6 +2779,19 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
+
+export const CopyFieldSurface = styled(Stack)(({ theme }) => ({
+  backgroundColor: theme.palette.action.hover,
+  borderRadius: theme.shape.borderRadius,
+}));
+
+export const CopyFieldText = styled('code')({
+  fontFamily: FONT_MONO,
+  fontSize: '0.875rem',
+  userSelect: 'text',
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+});
 
 export const PathText = styled(Typography)<AsElement>({
   fontFamily: FONT_MONO,

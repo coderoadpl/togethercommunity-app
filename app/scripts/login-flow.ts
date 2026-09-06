@@ -23,10 +23,7 @@ export const signInWithPassword = async (
 
 export const requestMagicLink = async (page: Page, email: string): Promise<void> => {
   await continueWithIdentifier(page, email);
-  const useMagicLink = page.getByTestId('use-magic-link');
   const send = page.getByTestId('send-magic-link');
-  await send.or(useMagicLink).first().waitFor(visible);
-  if (await useMagicLink.isVisible()) await useMagicLink.click();
   await send.waitFor(visible);
   await send.click();
 };

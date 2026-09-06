@@ -10,6 +10,8 @@ import {
   type MemberErasureRequestEvent,
 } from '#core/domain/index.js';
 
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
+
 import type { Ctx } from '../context.js';
 import type {
   MemberErasureRequestRepository,
@@ -147,7 +149,7 @@ describe('member erasure requests', () => {
     expect(second).toMatchObject({ ok: false, error: { code: 'conflict' } });
   });
 
-  it('queues staff notifications with the tenant panel URL', async () => {
+  it.each([null, 'courses.example.org'])('queues staff notifications with the canonical panel URL (%s)', async (domain) => {
     const h = harness();
     const queued: Array<{ to: string; payload: unknown }> = [];
     let dispatched = 0;
@@ -181,6 +183,9 @@ describe('member erasure requests', () => {
         markSent: async () => ok(undefined),
         markFailed: async () => ok(undefined),
       },
+      tenantDomains: createInMemoryTenantDomainRepository(domain === null ? [] : [
+        tenantDomainFixture({ id: 'domain-1', tenantId: 'tenant-1', domain, verified: true }),
+      ]),
       appBaseUrl: 'https://app.example.com',
       baseDomain: 'example.com',
       singleTenantMode: false,
@@ -205,7 +210,7 @@ describe('member erasure requests', () => {
           memberEmail: member.email,
           requestedAt: now,
           dueAt: erasureRequestDueAt(now),
-          panelUrl: 'https://acme.example.com/panel/members',
+          panelUrl: `https://${domain ?? 'acme.example.com'}/panel/members`,
         }),
       },
       {
@@ -213,7 +218,7 @@ describe('member erasure requests', () => {
         payload: expect.objectContaining({
           kind: 'member-erasure-request',
           language: 'en',
-          panelUrl: 'https://acme.example.com/panel/members',
+          panelUrl: `https://${domain ?? 'acme.example.com'}/panel/members`,
         }),
       },
     ]);
@@ -248,6 +253,7 @@ describe('member erasure requests', () => {
         markSent: async () => ok(undefined),
         markFailed: async () => ok(undefined),
       },
+      tenantDomains: createInMemoryTenantDomainRepository(),
       appBaseUrl: 'https://app.example.com',
       baseDomain: 'example.com',
       singleTenantMode: false,

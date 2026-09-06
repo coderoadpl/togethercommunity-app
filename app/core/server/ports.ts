@@ -607,13 +607,14 @@ export interface RealtimeBusPort {
 
 export interface DiscussionLinkPort {
   lessonDiscussionUrl(input: {
+    tenantId: string;
     tenantSlug: string | null;
     courseId: string | null;
     lessonId: string;
-  }): string;
-  spaceUrl(input: { tenantSlug: string | null; spaceId: string; rootPostId?: string }): string;
-  conversationUrl(input: { tenantSlug: string | null; conversationId: string }): string;
-  eventUrl(input: { tenantSlug: string | null; spaceId: string; eventId: string }): string;
+  }): Promise<string>;
+  spaceUrl(input: { tenantId: string; tenantSlug: string | null; spaceId: string; rootPostId?: string }): Promise<string>;
+  conversationUrl(input: { tenantId: string; tenantSlug: string | null; conversationId: string }): Promise<string>;
+  eventUrl(input: { tenantId: string; tenantSlug: string | null; spaceId: string; eventId: string }): Promise<string>;
 }
 
 export interface MemberCourseProgressRepository {

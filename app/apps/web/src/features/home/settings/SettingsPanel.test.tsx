@@ -130,6 +130,7 @@ const customDomainEntry = (input: {
 
 const initialRouting = () => ({
   tenantHost: 'akademia.together.example',
+  canonicalOrigin: 'https://kurs.acme.example',
   customDomains: [
     customDomainEntry({ domain: 'kurs.acme.example', status: 'active' }),
     customDomainEntry({ domain: 'nowa.acme.example', status: 'pending-dns' }),
@@ -344,16 +345,15 @@ describe('SettingsPanel information architecture', () => {
   it('shows the workspace address with verified and pending custom domains', async () => {
     renderPanel();
 
-    const address = await screen.findByRole('textbox', { name: pl.tenantDomains.workspaceAddress });
-    expect(address).toHaveValue('akademia.together.example');
-    expect(address).toHaveAttribute('readonly');
+    const address = await screen.findByTestId('tenant-workspace-address');
+    expect(address).toHaveTextContent('akademia.together.example');
     expect(address).toHaveStyle({ fontFamily: FONT_MONO });
     expect(await screen.findByTestId('tenant-domain-status-kurs.acme.example'))
       .toHaveTextContent(pl.tenantDomains.statusActive);
     const pending = await screen.findByTestId('tenant-domain-nowa.acme.example');
     expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example'))
-      .toHaveValue('cname.vercel-dns.com');
+      .toHaveTextContent('cname.vercel-dns.com');
   });
 
   it('copies the workspace address', async () => {
@@ -431,6 +431,14 @@ describe('SettingsPanel information architecture', () => {
       .toHaveTextContent('Vercel: Domain is already in use by another project');
   });
 
+  it('shows the derived canonical address and its explanation', async () => {
+    renderPanel();
+    const address = await screen.findByTestId('tenant-canonical-address');
+    expect(address).toHaveTextContent(pl.tenantDomains.canonicalAddress);
+    expect(address).toHaveTextContent('https://kurs.acme.example');
+    expect(address).toHaveTextContent(pl.tenantDomains.canonicalExplanation);
+  });
+
   it('shows the recorded error after a check the provider failed', async () => {
     renderPanel();
 
@@ -442,6 +450,7 @@ describe('SettingsPanel information architecture', () => {
         data: {
           routing: {
             tenantHost: 'akademia.together.example',
+            canonicalOrigin: 'https://akademia.together.example',
             customDomains: [{
               domain: 'nowa.acme.example',
               verified: false,
@@ -484,7 +493,7 @@ describe('SettingsPanel information architecture', () => {
     const added = await screen.findByTestId('tenant-domain-sklep.acme.example');
     expect(added).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-sklep.acme.example'))
-      .toHaveValue('cname.vercel-dns.com');
+      .toHaveTextContent('cname.vercel-dns.com');
     expect(domainCalls).toEqual(['add:sklep.acme.example']);
   });
 
@@ -508,7 +517,7 @@ describe('SettingsPanel information architecture', () => {
 
     const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
     expect(within(record).getByTestId('dns-record-name-CNAME-nowa.acme.example'))
-      .toHaveValue('nowa.acme.example');
+      .toHaveTextContent('nowa.acme.example');
 
     await userEvent.click(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copy'));
 

@@ -155,7 +155,7 @@ const runEnrollmentJourney = async (
   await page.getByTestId('enable-2fa').click();
   const uriInput = page.getByTestId('totp-uri');
   await uriInput.waitFor(visible);
-  const totpUri = await uriInput.inputValue();
+  const totpUri = (await uriInput.textContent()) ?? '';
   assert(totpUri.startsWith('otpauth://'), `Enrollment URI was not an otpauth:// URI: ${totpUri}`);
 
   const totpUrl = new URL(totpUri);

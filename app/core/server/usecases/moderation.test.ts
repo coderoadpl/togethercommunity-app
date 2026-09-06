@@ -409,10 +409,10 @@ const makeDeps = (
       findMember: async () => null,
     },
     links: {
-      conversationUrl: () => '',
-      eventUrl: () => '',
-      lessonDiscussionUrl: () => '',
-      spaceUrl: () => '',
+      conversationUrl: async () => '',
+      eventUrl: async () => '',
+      lessonDiscussionUrl: async () => '',
+      spaceUrl: async () => '',
     },
     dmReports,
     dmConversations: {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   emailEventSchema,
@@ -14,6 +14,9 @@ import {
   type MarketingConsent,
   type TenantSesSettings,
 } from '#core/domain/index.js';
+
+import { createTenantOriginResolver, resolveTenantOrigin } from '../tenant-url.js';
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
 import {
   FakeEmailHmac,
   FakeSesMarketingSender,
@@ -201,7 +204,10 @@ const setup = async (emails = ['member@example.test'], tenantDefault?: Language)
     runs: new InMemorySchedulerRunRepository(),
     credentials: { resolve: async () => ok({ accessKeyId: 'AKIA', secretAccessKey: 'secret', region: 'eu-central-1' }) },
     quotaReader,
-    unsubscribeBaseUrl: 'https://tenant.test/u',
+    unsubscribeBaseUrl: async (tenantId: string) => {
+      expect(tenantId).toBe('tenant-1');
+      return 'https://tenant.test/u';
+    },
     ...languagePreferences(tenantDefault),
   };
 };
@@ -1451,6 +1457,56 @@ describe('marketing e-mail use-case integration', () => {
       value: {
         engagement: { uniqueOpens: 2, totalOpens: 3, uniqueClicks: 1, totalClicks: 2 },
       },
+    });
+  });
+
+  it.each(['campaign', 'batch', 'self-test'] as const)('resolves the unsubscribe origin once for the sending tenant (%s)', async (kind) => {
+    const emails = ['one@example.test', 'two@example.test'];
+    const deps = await setup(emails);
+    const tenantDomains = createInMemoryTenantDomainRepository([
+      tenantDomainFixture({ id: 'domain-1', tenantId: 'tenant-1', domain: 'courses.example.org', verified: true }),
+      tenantDomainFixture({ id: 'domain-2', tenantId: 'tenant-2', domain: 'other.example.org', verified: true }),
+    ]);
+    const origin = createTenantOriginResolver({
+      tenants: deps.tenants, tenantDomains,
+      appBaseUrl: 'https://start.example.org', baseDomain: 'example.org', singleTenantMode: false,
+    });
+    const unsubscribeBaseUrl = vi.fn(async (tenantId: string) => `${await origin(tenantId)}/u`);
+    deps.unsubscribeBaseUrl = unsubscribeBaseUrl;
+    const result = kind === 'self-test'
+      ? await testSendCampaignToSelf(ctx, { campaignId: 'campaign-1' }, deps)
+      : kind === 'batch'
+        ? await sendMarketingMessages(ctx, emails.map((email, index) => ({
+          to: email, memberId: `member-${String(index + 1)}`, campaignId: null,
+          source: 'api', consentDefinitionId: definition.id, subject: 'Hello',
+          bodyHtml: '<p>Hello</p>', data: {},
+        })), deps)
+        : await campaignTick(ctx, { campaignId: 'campaign-1', workerId: 'worker-1', tickSeconds: 1 }, deps);
+    expect(result.ok).toBe(true);
+    expect(unsubscribeBaseUrl).toHaveBeenCalledExactlyOnceWith('tenant-1');
+    expect(deps.ses.sent).toHaveLength(kind === 'self-test' ? 1 : 2);
+    for (const sent of deps.ses.sent) {
+      expect(sent.headers['List-Unsubscribe']).toContain('https://courses.example.org/u/');
+      expect(sent.html).toContain('https://courses.example.org/u/');
+    }
+  });
+
+  it('builds double opt-in confirmation links from a canonical fallback', async () => {
+    const deps = await setup([]);
+    const origin = await resolveTenantOrigin({ id: 'tenant-1', slug: 'acme' }, {
+      tenantDomains: createInMemoryTenantDomainRepository([
+        tenantDomainFixture({ id: 'domain-1', tenantId: 'tenant-1', domain: 'courses.example.org', verified: true }),
+      ]),
+      appBaseUrl: 'https://start.example.org', baseDomain: 'example.org', singleTenantMode: false,
+    });
+    const result = await recordMarketingConsent(ctx, {
+      email: 'new@example.test', memberId: null, definitionId: definition.id,
+      evidence: { collectedAt: NOW, proofRef: 'form-1' }, source: 'api',
+      confirmationBaseUrl: `${origin}/marketing/confirm`,
+    }, deps);
+    expect(result.ok).toBe(true);
+    expect(deps.outbox.items[0]?.payload).toMatchObject({
+      confirmationUrl: `https://courses.example.org/marketing/confirm/${deps.confirmations.rows[0]?.token}`,
     });
   });
 

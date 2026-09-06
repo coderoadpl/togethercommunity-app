@@ -194,7 +194,7 @@ const withAuthDeliveryContext = async (
     await setContext({
       email,
       resolved,
-      baseUrl: authLinkBaseUrl(resolved, deps),
+      baseUrl: await authLinkBaseUrl(resolved, deps),
       language: await authEmailLanguage(
         email,
         resolved,
@@ -677,7 +677,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps.tenants,
     );
     if (!consent.ok) return respondPublic(consent);
-    const baseUrl = authLinkBaseUrl(tenant.value, deps);
+    const baseUrl = await authLinkBaseUrl(tenant.value, deps);
     const checkoutConsent = {
       termsAccepted: parsed.data.termsAccepted === true,
       selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,

@@ -17,11 +17,11 @@ import type {
   ProductRepository,
   TenantRepository,
 } from '../ports.js';
-import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';
 import { createOrRenewGrant } from './grant-window.js';
 
-export interface FulfillEnrollmentDeps extends EnsureMemberDeps, TenantUrlDeps {
+export interface FulfillEnrollmentDeps extends EnsureMemberDeps, TenantOriginDeps {
   products: ProductRepository;
   grants: ProductGrantRepository;
   tenants: TenantRepository;
@@ -65,7 +65,7 @@ export const fulfillEnrollment = async (
       { ...deps, grants: transaction.grants },
     );
     if (input.sendEmail) {
-      const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
+      const tenantBaseUrl = `${await resolveTenantOrigin(tenant, deps)}/`;
       const settings = await deps.tenants.findSettings(tenant.id);
       const language = resolveEmailLanguage(
         member.value.language,

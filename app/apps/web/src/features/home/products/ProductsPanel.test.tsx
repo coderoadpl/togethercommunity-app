@@ -237,7 +237,7 @@ describe('ProductsPanel', () => {
     await waitFor(() => expect(publish).toBeEnabled());
     await userEvent.click(publish);
     expect(await screen.findByText(pl.products.publishConfirmIntro)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.products.publishPublicUrl)).toHaveValue(
+    expect(screen.getByRole('group', { name: pl.products.publishPublicUrl })).toHaveTextContent(
       `${window.location.origin}/checkout/draft-course`,
     );
     expect(screen.getByText(/25,00/u)).toBeInTheDocument();
@@ -445,7 +445,7 @@ describe('ProductsPanel', () => {
     await userEvent.click(await screen.findByRole('button', { name: pl.products.copyCheckoutLink }));
 
     expect(await screen.findByText(pl.products.checkoutLinkCopyFailed)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.products.publishPublicUrl)).toHaveValue(
+    expect(screen.getByRole('group', { name: pl.products.publishPublicUrl })).toHaveTextContent(
       `${window.location.origin}/checkout/draft-course`,
     );
     expect(screen.queryByText(pl.products.checkoutLinkCopied)).not.toBeInTheDocument();

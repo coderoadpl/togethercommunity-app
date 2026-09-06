@@ -1,6 +1,6 @@
 {
-  "hash": "9755c3ad0584d18f4046bb32ed294ee72ce15884fb05d8349d318114254f0853",
-  "shortId": "9755c3ad0584",
+  "hash": "1137d6171f426cf2314d6a7c98c47cf329af004bb9fe8382499edc2232d1a511",
+  "shortId": "1137d6171f42",
   "schema": {
     "constraints": [
       {
@@ -605,6 +605,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "storage_cors_checks_tenant_id_tenants_id_fk",
+        "table": "storage_cors_checks"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "suppressions_tenant_id_tenants_id_fk",
         "table": "suppressions"
       },
@@ -1162,6 +1167,11 @@
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "sns_webhook_deliveries_pkey",
         "table": "sns_webhook_deliveries"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id)",
+        "name": "storage_cors_checks_pkey",
+        "table": "storage_cors_checks"
       },
       {
         "definition": "PRIMARY KEY (tenant_id)",
@@ -7367,6 +7377,35 @@
           }
         ],
         "name": "checkout_consent_captures"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checked_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "results",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "storage_cors_checks"
       },
       {
         "columns": [

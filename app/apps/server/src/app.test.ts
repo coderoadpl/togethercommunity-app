@@ -397,12 +397,17 @@ const deps = (input: {
     storage: {
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
       delete: async () => ok({ deleted: true }),
       head: async () => ok({ sizeBytes: 1 }),
       healthcheck: async () => ok({ healthy: true }),
       test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+    },
+    storageCorsCache: {
+      read: async () => null,
+      write: async () => undefined,
     },
     processedPaymentEvents: {
       claim: async () => 'claimed',
@@ -2926,6 +2931,8 @@ describe('deep health route', () => {
         ok: true,
         checkedAt: expect.any(String),
         failing: [],
+        warnings: [],
+        storageCors: [],
         checks: [
           { name: 'tenant-directory', ok: true, ms: expect.any(Number), error: null, skipped: null },
           {
@@ -2941,6 +2948,7 @@ describe('deep health route', () => {
           { name: 'tenant-secret-decryption', ok: true, ms: expect.any(Number), error: null, skipped: null },
           { name: 'email-transport', ok: true, ms: expect.any(Number), error: null, skipped: null },
           { name: 'storage-presign', ok: true, ms: expect.any(Number), error: null, skipped: null },
+          { name: 'storage-cors', ok: true, ms: expect.any(Number), error: null, skipped: null },
         ],
       },
     });
@@ -3179,6 +3187,7 @@ describe('lesson attachment download route', () => {
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+        probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
         presignPut: (input) => ok(input.url),
         presignGet: () => ok('https://download.example.test/signed'),
         delete: async () => ok({ deleted: true }),
@@ -3891,7 +3900,7 @@ describe('new route authorization', () => {
     expect(routed.status).toBe(200);
     expect(probedOrigins).toEqual([
       ['http://acme.localhost:48730', 'http://localhost:48730'],
-      ['http://localhost:48730'],
+      ['http://acme.localhost:48730', 'http://localhost:48730'],
     ]);
   });
 });

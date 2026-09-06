@@ -8,6 +8,7 @@ import {
 } from './custom-domain.js';
 import { staffRoleSchema } from './identity.js';
 import { DEFAULT_LANGUAGE, languageSchema, type Language } from './language.js';
+import { storageCorsStatusSchema } from './storage.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
 const tenantStatusSchema = z.enum(['active', 'suspended']);
@@ -407,6 +408,7 @@ export type TenantDomain = {
 
 export const tenantRoutingSchema = z.object({
   tenantHost: z.string(),
+  storageCorsOrigins: z.array(z.string().url()),
   customDomains: z.array(z.object({
     domain: z.string(),
     verified: z.boolean(),
@@ -414,6 +416,7 @@ export const tenantRoutingSchema = z.object({
     records: z.array(dnsRecordSchema),
     lastCheckedAt: z.string().datetime().nullable(),
     lastError: z.string().nullable(),
+    storageCorsStatus: storageCorsStatusSchema,
   })),
   /** Value a creator points the custom domain at with a CNAME record. */
   customDomainTarget: z.string(),

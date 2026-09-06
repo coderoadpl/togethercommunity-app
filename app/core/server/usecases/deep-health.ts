@@ -3,6 +3,8 @@ import {
   type Course,
   type DeepHealthCheck,
   type DeepHealthReport,
+  type DeepHealthStorageCors,
+  type StorageCorsCacheEntry,
   type Tenant,
 } from '#core/domain/index.js';
 
@@ -15,15 +17,19 @@ import type {
   EmailIntegrationTransportResolver,
   ProductPriceRepository,
   ProductRepository,
+  PublicRateLimitRepository,
   SchedulerRunRepository,
   SecretCrypto,
+  StorageCorsCache,
   StorageProvider,
   TenantDirectory,
+  TenantDomainRepository,
   TenantDocumentRepository,
   TenantRepository,
   TenantSecretRepository,
   TenantSecretResolver,
 } from '../ports.js';
+import { customDomainOrigin, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 import { resolveTenantTransactionalTransport } from './layered-transactional-email.js';
 import { getPublicOffer } from './public-offer.js';
 import { getPublicCourseStructure } from './public-surface.js';
@@ -41,6 +47,10 @@ export interface DeepHealthDeps {
   secretCrypto: SecretCrypto;
   secretResolver: TenantSecretResolver;
   storage: StorageProvider;
+  storageCorsCache: StorageCorsCache;
+  storageCorsRateLimit: PublicRateLimitRepository;
+  tenantDomains: TenantDomainRepository;
+  routing: TenantUrlDeps;
   emailTransports: EmailIntegrationTransportResolver;
   clock: Clock;
   production: boolean;
@@ -57,6 +67,9 @@ const PRESIGN_TTL_SECONDS = 60;
 const PRESIGN_PROBE_KEY = 'health/deep-probe';
 const DEADLINE_CHECK = 'deadline';
 const SCHEDULER_PRODUCTION_ONLY = 'scheduler runs only on production';
+const STORAGE_CORS_CACHE_TTL_MS = 10 * 60 * 1000;
+const STORAGE_CORS_RUN_BUDGET_MS = 4_000;
+const STORAGE_CORS_RATE_LIMIT_SCOPE = 'deep-health-storage-cors';
 
 /**
  * The endpoint is unauthenticated, so only a message a probe wrote itself may
@@ -79,7 +92,7 @@ const describeFailure = (cause: unknown): string =>
     ? truncate(cause.message)
     : `unexpected ${cause instanceof Error ? cause.constructor.name : typeof cause}`;
 
-type ProbeOutcome = 'checked' | 'not-applicable' | { skipped: string };
+type ProbeOutcome = 'checked' | 'not-applicable' | { skipped: string } | { warning: string };
 
 type Probe = () => Promise<ProbeOutcome>;
 
@@ -100,6 +113,7 @@ const withDeadline = async (probe: Probe, remainingMs: number): Promise<ProbeOut
 const createRecorder = (budgetMs: number) => {
   const accumulated = new Map<string, DeepHealthCheck>();
   const unfinished = new Set<string>();
+  const warnings = new Set<string>();
   const startedAt = Date.now();
   let budgetExpired = false;
   return {
@@ -123,6 +137,7 @@ const createRecorder = (budgetMs: number) => {
       let failure: string | null = null;
       try {
         outcome = await withDeadline(probe, remainingMs);
+        if (typeof outcome === 'object' && 'warning' in outcome) warnings.add(name);
       } catch (cause) {
         if (cause instanceof DeadlineExceeded) {
           budgetExpired = true;
@@ -133,9 +148,9 @@ const createRecorder = (budgetMs: number) => {
         name,
         ok: current.ok && failure === null,
         ms: current.ms + (Date.now() - probeStartedAt),
-        subjects: current.subjects + (outcome === 'checked' ? 1 : 0),
+        subjects: current.subjects + (outcome === 'checked' || (typeof outcome === 'object' && 'warning' in outcome) ? 1 : 0),
         error: current.error ?? failure,
-        skipped: current.skipped ?? (typeof outcome === 'object' ? outcome.skipped : null),
+        skipped: current.skipped ?? (typeof outcome === 'object' && 'skipped' in outcome ? outcome.skipped : null),
       });
     },
     checks: (): DeepHealthCheck[] => {
@@ -152,6 +167,33 @@ const createRecorder = (budgetMs: number) => {
         skipped: null,
       }];
     },
+    warnings: (): string[] => [...warnings],
+    recordWarning: async (name: string, probe: Probe, timeoutMs: number): Promise<void> => {
+      const current = accumulated.get(name)
+        ?? { name, ok: true, ms: 0, subjects: 0, error: null, skipped: null };
+      const probeStartedAt = Date.now();
+      let outcome: ProbeOutcome = { warning: 'the warning probe budget was exhausted' };
+      if (timeoutMs > 0) {
+        try {
+          outcome = await withDeadline(probe, timeoutMs);
+        } catch {
+          outcome = { warning: 'the warning probe did not complete' };
+        }
+      }
+      if (typeof outcome === 'object' && 'warning' in outcome) warnings.add(name);
+      accumulated.set(name, {
+        name,
+        ok: true,
+        ms: current.ms + (Date.now() - probeStartedAt),
+        subjects: current.subjects + (outcome === 'checked' ||
+          (typeof outcome === 'object' && 'warning' in outcome) ? 1 : 0),
+        error: null,
+        skipped: current.skipped ?? (typeof outcome === 'object' && 'skipped' in outcome
+          ? outcome.skipped
+          : null),
+      });
+    },
+    remainingMs: (): number => Math.max(0, startedAt + budgetMs - Date.now()),
   };
 };
 
@@ -257,6 +299,72 @@ const probeStoragePresign = (tenant: Tenant, deps: DeepHealthDeps): Probe => asy
   return 'checked';
 };
 
+const storageCorsOrigins = async (tenant: Tenant, deps: DeepHealthDeps): Promise<string[]> => {
+  const domains = await deps.tenantDomains.listByTenant(tenant.id);
+  return [...new Set([
+    new URL(tenantUrl(tenant.slug, '/', deps.routing)).origin,
+    ...domains
+      .filter((domain) => domain.kind === 'custom' && domain.verified)
+      .map((domain) => customDomainOrigin(domain.domain, deps.routing)),
+  ])];
+};
+
+const sameOrigins = (cached: StorageCorsCacheEntry, origins: string[]): boolean =>
+  cached.results.length === origins.length &&
+  origins.every((origin) => cached.results.some((result) => result.origin === origin));
+
+const probeStorageCors = (
+  tenant: Tenant,
+  deps: DeepHealthDeps,
+  reports: DeepHealthStorageCors[],
+): Probe => async () => {
+  const configuration = await resolveStorageConfiguration(tenant.id, deps.secretResolver);
+  if (!configuration.ok) {
+    if (configuration.error.code === 'integration_not_configured') return 'not-applicable';
+    throw new ProbeFailure(`storage configuration failed with ${configuration.error.code}`);
+  }
+  const origins = await storageCorsOrigins(tenant, deps);
+  const cached = await deps.storageCorsCache.read(tenant.id);
+  const cacheAgeMs = cached === null
+    ? Number.POSITIVE_INFINITY
+    : Date.parse(deps.clock.nowIso()) - Date.parse(cached.checkedAt);
+  const cacheHit = cached !== null &&
+    cacheAgeMs >= 0 &&
+    cacheAgeMs < STORAGE_CORS_CACHE_TTL_MS &&
+    sameOrigins(cached, origins);
+  if (cacheHit) {
+    reports.push({ tenantId: tenant.id, cached: true, results: cached.results });
+    return cached.results.some((result) => result.status !== 'ok')
+      ? { warning: 'one or more bucket CORS preflights did not pass' }
+      : 'checked';
+  }
+  const now = deps.clock.nowIso();
+  const startedAt = new Date(
+    Math.floor(Date.parse(now) / STORAGE_CORS_CACHE_TTL_MS) * STORAGE_CORS_CACHE_TTL_MS,
+  ).toISOString();
+  const claimed = await deps.storageCorsRateLimit.claim({
+    scope: STORAGE_CORS_RATE_LIMIT_SCOPE,
+    key: tenant.id,
+    windowStartedAt: startedAt,
+    expiresAt: new Date(Date.parse(startedAt) + STORAGE_CORS_CACHE_TTL_MS).toISOString(),
+    limit: 1,
+  });
+  if (!claimed) {
+    const shared = await deps.storageCorsCache.read(tenant.id);
+    const results = shared !== null && sameOrigins(shared, origins)
+      ? shared.results
+      : origins.map((origin) => ({ origin, status: 'unknown' as const }));
+    reports.push({ tenantId: tenant.id, cached: shared !== null, results });
+    return { warning: 'the bucket CORS probe is already rate-limited' };
+  }
+  const results = await deps.storage.probeCors(configuration.value, origins);
+  await deps.storageCorsCache.write(tenant.id, { checkedAt: deps.clock.nowIso(), results });
+  reports.push({ tenantId: tenant.id, cached: false, results });
+  return results.some((result) => result.status !== 'ok')
+    ? { warning: 'one or more bucket CORS preflights were blocked' }
+    : 'checked';
+};
+
 const probeSchedulerFreshness = (deps: DeepHealthDeps): Probe => async () => {
   // The platform schedules cron jobs against the production deployment alone,
   // so every other deployment reads a run history that can only go stale.
@@ -282,6 +390,7 @@ export const checkDeepHealth = async (
   budgetMs: number = DEEP_HEALTH_BUDGET_MS,
 ): Promise<DeepHealthReport> => {
   const recorder = createRecorder(budgetMs);
+  const storageCors: DeepHealthStorageCors[] = [];
   let tenants: Tenant[] = [];
   await recorder.record('tenant-directory', async () => {
     tenants = await deps.tenantDirectory.listAll();
@@ -296,6 +405,12 @@ export const checkDeepHealth = async (
     await recorder.record('email-transport', probeEmailTransport(tenant, deps));
     await recorder.record('storage-presign', probeStoragePresign(tenant, deps));
   }
+  const corsStartedAt = Date.now();
+  for (const tenant of tenants) {
+    const runRemainingMs = STORAGE_CORS_RUN_BUDGET_MS - (Date.now() - corsStartedAt);
+    const timeoutMs = Math.min(runRemainingMs, Math.max(0, recorder.remainingMs() - 1_000));
+    await recorder.recordWarning('storage-cors', probeStorageCors(tenant, deps, storageCors), timeoutMs);
+  }
   const checks = recorder.checks();
   const failing = checks.filter((check) => !check.ok).map((check) => check.name);
   return {
@@ -303,6 +418,8 @@ export const checkDeepHealth = async (
     checkedAt: deps.clock.nowIso(),
     tenants: tenants.length,
     failing,
+    warnings: recorder.warnings(),
     checks,
+    storageCors,
   };
 };

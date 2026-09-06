@@ -158,6 +158,18 @@ const renderPanel = (
       return HttpResponse.json({ ok: true, data: { key: params.key } });
     }),
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('/api/tenant/routing', () => HttpResponse.json({
+      ok: true,
+      data: {
+        routing: {
+          tenantHost: 'akademia.together.example',
+          storageCorsOrigins: ['https://akademia.together.example'],
+          customDomains: [],
+          customDomainTarget: 'cname.vercel-dns.com',
+          canAddCustomDomain: true,
+        },
+      },
+    })),
     http.post('/api/tenant/settings', async ({ request }) => {
       const body = await request.json();
       if (typeof body === 'object' && body !== null && 'bunnyStreamLibraryId' in body) {

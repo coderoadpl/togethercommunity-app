@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { err, notFound, ok, type StorageConfiguration } from '#core/domain/index.js';
 
@@ -568,6 +568,78 @@ describe('createS3StorageProvider', () => {
       },
     });
     expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
+  });
+
+  it('reports each deep-health CORS preflight as ok or blocked', async () => {
+    const bucket = fakeBucket(undefined, ['https://courses.example.org']);
+    const storage = createS3StorageProvider(resolver, {
+      fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
+    });
+
+    await expect(storage.probeCors(MINIO_CONFIGURATION, [
+      'https://courses.example.org',
+      'https://members.example.org',
+    ])).resolves.toEqual([
+      { origin: 'https://courses.example.org', status: 'ok' },
+      { origin: 'https://members.example.org', status: 'blocked' },
+    ]);
+  });
+
+  it('reports a 403 preflight as blocked', async () => {
+    const bucket = fakeBucket({ method: 'OPTIONS', status: 403, body: '' });
+    const storage = createS3StorageProvider(resolver, {
+      fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
+    });
+
+    await expect(storage.probeCors(
+      MINIO_CONFIGURATION,
+      ['https://courses.example.org'],
+    )).resolves.toEqual([{ origin: 'https://courses.example.org', status: 'blocked' }]);
+  });
+
+  it('reports a timed-out preflight as blocked', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      fetchStorage: async () => { throw new DOMException('Timed out', 'TimeoutError'); },
+      allowPrivateEndpoints: true,
+    });
+
+    await expect(storage.probeCors(
+      MINIO_CONFIGURATION,
+      ['https://courses.example.org'],
+    )).resolves.toEqual([{ origin: 'https://courses.example.org', status: 'blocked' }]);
+  });
+
+  it('reports an unresolved endpoint as unknown instead of blaming bucket CORS', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => [],
+    });
+
+    await expect(storage.probeCors(
+      { ...MINIO_CONFIGURATION, endpoint: 'https://storage.example.test' },
+      ['https://courses.example.org'],
+    )).resolves.toEqual([{ origin: 'https://courses.example.org', status: 'unknown' }]);
+  });
+
+  it('bounds a DNS lookup that never settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: () => new Promise(() => undefined),
+      });
+      const result = storage.probeCors(
+        { ...MINIO_CONFIGURATION, endpoint: 'https://storage.example.test' },
+        ['https://courses.example.org'],
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(result).resolves.toEqual([
+        { origin: 'https://courses.example.org', status: 'unknown' },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([

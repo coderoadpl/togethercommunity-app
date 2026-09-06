@@ -31,6 +31,7 @@ export const CopyField = ({
   editable = false,
   onChange,
   mono = false,
+  multiline = false,
   size = 'medium',
   testId,
 }: {
@@ -40,6 +41,7 @@ export const CopyField = ({
   editable?: boolean;
   onChange?: (next: string) => void;
   mono?: boolean;
+  multiline?: boolean;
   size?: 'small' | 'medium';
   testId?: string;
 }) => {
@@ -70,6 +72,8 @@ export const CopyField = ({
         id={inputId}
         size={size}
         value={value}
+        multiline={multiline}
+        minRows={multiline ? 8 : undefined}
         readOnly={!editable}
         inputRef={inputRef}
         onChange={(event) => onChange?.(event.target.value)}

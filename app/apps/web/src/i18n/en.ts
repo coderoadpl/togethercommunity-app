@@ -896,6 +896,10 @@ export const en: Messages = {
     storageInstructionMinio:
       'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket. Set bucket CORS AllowedHeaders to include Content-Type. Browser uploads require HTTPS unless MinIO shares the Together origin. Private endpoints also require STORAGE_ALLOW_PRIVATE_ENDPOINTS=true on the server.',
     storageInstructionLink: 'Open provider instructions',
+    storageCorsHeading: 'Bucket CORS',
+    storageCorsDescription: 'Allow every origin below. Copy the complete JSON into your bucket CORS settings.',
+    storageCorsOriginLabel: ({ number }) => format('Allowed origin {number}', { number }),
+    storageCorsJsonLabel: 'CORS JSON',
     storageProbeDescription:
       'Together will upload a small scratch object, read it back byte for byte, delete it, and verify browser CORS. Nothing is saved yet.',
     storageProbeStart: 'Run live probe',
@@ -2103,6 +2107,8 @@ export const en: Messages = {
     firstDomainWarning:
       'Once you move to a custom domain members sign in again and re-register their passkeys. Google sign-in is unavailable on custom domains.',
     docsLink: 'How custom domains work',
+    storageCorsHint: 'Add this address to bucket CORS.',
+    storageCorsLink: 'Open the storage wizard',
     redirectsCount: ({ count }) => format('{count} {noun}', {
       count,
       noun: plural(count, 'redirect', 'redirects'),

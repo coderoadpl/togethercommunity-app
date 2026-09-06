@@ -23,6 +23,7 @@ import {
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { CopyField } from '../../../components/ui/CopyField.js';
 import {
   localizePanelError,
   providerCodeOf,
@@ -68,6 +69,15 @@ const defaultsFor = (provider: StorageProviderKind) => {
   return { endpoint: '', region: 'us-east-1' };
 };
 
+export const storageCorsJson = (origins: string[]): string => JSON.stringify([
+  {
+    AllowedOrigins: origins,
+    AllowedMethods: ['PUT', 'GET', 'DELETE'],
+    AllowedHeaders: ['Content-Type'],
+    ExposeHeaders: ['ETag'],
+  },
+], null, 2);
+
 const isProbeErrorCode = (value: string): value is StorageProbeErrorCode =>
   STORAGE_PROBE_ERROR_CODES.some((candidate) => candidate === value);
 
@@ -86,7 +96,7 @@ const localizedProbeError = (error: unknown, t: Messages): string => {
   return code !== null && isProbeErrorCode(code) ? messages[code] : localizePanelError(error, t);
 };
 
-export const StorageWizard = ({ configured }: { configured: boolean }) => {
+export const StorageWizard = ({ configured, origins }: { configured: boolean; origins: string[] }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [step, setStep] = useState<WizardStep>('provider');
@@ -101,7 +111,10 @@ export const StorageWizard = ({ configured }: { configured: boolean }) => {
   const configure = useMutation({
     ...actions.configureStorage,
     onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
+      await Promise.all([
+        queryClient.invalidateQueries(actions.tenantSecretsInvalidates()),
+        queryClient.invalidateQueries(actions.tenantRoutingInvalidates()),
+      ]);
     },
   });
 
@@ -151,6 +164,26 @@ export const StorageWizard = ({ configured }: { configured: boolean }) => {
   return (
     <Stack useFlexGap spacing="1.25rem" data-testid="storage-wizard">
       {configured ? <Alert severity="info">{t.integrations.storageConfigured}</Alert> : null}
+      <Stack useFlexGap spacing="0.75rem" data-testid="storage-cors-settings">
+        <Typography variant="subtitle2">{t.integrations.storageCorsHeading}</Typography>
+        <Typography variant="body2">{t.integrations.storageCorsDescription}</Typography>
+        {origins.map((origin, index) => (
+          <CopyField
+            key={origin}
+            value={origin}
+            label={t.integrations.storageCorsOriginLabel({ number: index + 1 })}
+            mono
+            testId={`storage-cors-origin-${String(index + 1)}`}
+          />
+        ))}
+        <CopyField
+          value={storageCorsJson(origins)}
+          label={t.integrations.storageCorsJsonLabel}
+          mono
+          multiline
+          testId="storage-cors-json"
+        />
+      </Stack>
       <Stepper activeStep={activeStep} alternativeLabel>
         <Step><StepLabel>{t.integrations.storageProviderStep}</StepLabel></Step>
         <Step><StepLabel>{t.integrations.storageConnectionStep}</StepLabel></Step>

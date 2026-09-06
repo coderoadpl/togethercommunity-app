@@ -178,6 +178,7 @@ import {
   createLesson,
   createMarketingConsentDefinition,
   createModule,
+  customDomainOrigin,
   createPost,
   createProduct,
   createProductPrice,
@@ -368,6 +369,7 @@ import {
   testBunnyConnection,
   testIfirmaConnection,
   testIntegration,
+  tenantUrl,
   testKsefConnection,
   testSendCampaignToSelf,
   unfollowSpace,
@@ -438,8 +440,15 @@ const impersonationOf = (
 
 const probeCorsOrigins = async (req: HonoRequest, deps: AppDeps): Promise<string[]> => {
   const resolved = await resolveTenant(req.header('host') ?? '', req.header(TENANT_HEADER) ?? null, deps);
-  const tenantOrigin = authLinkBaseUrl(resolved.ok ? resolved.value : null, deps);
-  return [...new Set([new URL(tenantOrigin).origin, new URL(deps.appBaseUrl).origin])];
+  if (!resolved.ok || resolved.value === null) return [new URL(deps.appBaseUrl).origin];
+  const domains = await deps.tenantDomains.listByTenant(resolved.value.tenant.id);
+  return [...new Set([
+    new URL(tenantUrl(resolved.value.tenant.slug, '/', deps)).origin,
+    new URL(deps.appBaseUrl).origin,
+    ...domains
+      .filter((domain) => domain.kind === 'custom' && domain.verified)
+      .map((domain) => customDomainOrigin(domain.domain, deps)),
+  ])];
 };
 
 const emailBranding = async (
@@ -2021,6 +2030,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   const tenantRoutingDeps = {
     tenantDomains: deps.tenantDomains,
+    storageCorsCache: deps.storageCorsCache,
     routing: {
       appBaseUrl: deps.appBaseUrl,
       baseDomain: deps.baseDomain,
@@ -2168,7 +2178,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await probeStorageConnection(
       ctxOf(c),
       parsed.data,
-      { storage: deps.storage, corsOrigins: await probeCorsOrigins(c.req, deps) },
+      {
+        storage: deps.storage,
+        corsOrigins: await probeCorsOrigins(c.req, deps),
+      },
     ));
   });
 

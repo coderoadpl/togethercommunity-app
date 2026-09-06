@@ -105,6 +105,8 @@ produced while the HTTP status reports whether production is healthy.
     "ok": false,
     "checkedAt": "2026-09-05T09:12:00.000Z",
     "failing": ["tenant-settings"],
+    "warnings": [],
+    "storageCors": [],
     "checks": [
       { "name": "tenant-directory", "ok": true, "ms": 4, "error": null },
       { "name": "scheduler-freshness", "ok": true, "ms": 6, "error": null },
@@ -113,7 +115,8 @@ produced while the HTTP status reports whether production is healthy.
       { "name": "course-content", "ok": true, "ms": 52, "error": null },
       { "name": "tenant-secret-decryption", "ok": true, "ms": 3, "error": null },
       { "name": "email-transport", "ok": true, "ms": 9, "error": null },
-      { "name": "storage-presign", "ok": true, "ms": 2, "error": null }
+      { "name": "storage-presign", "ok": true, "ms": 2, "error": null },
+      { "name": "storage-cors", "ok": true, "ms": 8, "error": null }
     ]
   }
 }
@@ -140,6 +143,7 @@ caught by the suite rather than by reading production output).
 | `tenant-secret-decryption` | per tenant | Decrypts one stored secret with the master key. The plaintext is discarded, never returned. |
 | `email-transport` | per tenant | Resolves the transactional transport (tenant SES → SMTP → Resend). Tenants on the platform pool are skipped. |
 | `storage-presign` | per tenant | Signs a GET URL for the configured bucket. No request is sent to the bucket. |
+| `storage-cors` | per tenant | Sends a presigned `PUT` preflight for the platform origin and every verified custom domain. Database-backed results and rate limits are shared for ten minutes; blocked, unknown, and budget-limited origins add a warning without failing deep health. |
 | `deadline` | platform | Present only when the 20-second budget ran out; names the probes that did not finish. |
 
 `prod-health.yml` probes `/api/health` first and `/api/health/deep` second; the

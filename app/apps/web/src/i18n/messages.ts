@@ -813,6 +813,10 @@ export interface Messages {
     storageInstructionB2: string;
     storageInstructionMinio: string;
     storageInstructionLink: string;
+    storageCorsHeading: string;
+    storageCorsDescription: string;
+    storageCorsOriginLabel: (params: { number: number }) => string;
+    storageCorsJsonLabel: string;
     storageProbeDescription: string;
     storageProbeStart: string;
     storageProbeSuccess: string;
@@ -1868,6 +1872,8 @@ export interface Messages {
     conflict: string;
     firstDomainWarning: string;
     docsLink: string;
+    storageCorsHint: string;
+    storageCorsLink: string;
     redirectsCount: (params: { count: number }) => string;
     redirectsManage: string;
   };

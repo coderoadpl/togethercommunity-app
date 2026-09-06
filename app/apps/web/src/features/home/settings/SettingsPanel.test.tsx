@@ -125,10 +125,15 @@ const customDomainEntry = (input: {
   records: [{ type: 'CNAME' as const, name: input.domain, value: 'cname.vercel-dns.com' }],
   lastCheckedAt: null,
   lastError: null,
+  storageCorsStatus: 'unknown' as const,
 });
 
 const initialRouting = () => ({
   tenantHost: 'akademia.together.example',
+  storageCorsOrigins: [
+    'https://akademia.together.example',
+    'https://kurs.acme.example',
+  ],
   customDomains: [
     customDomainEntry({ domain: 'kurs.acme.example', status: 'active' }),
     customDomainEntry({ domain: 'nowa.acme.example', status: 'pending-dns' }),
@@ -314,6 +319,34 @@ describe('SettingsPanel information architecture', () => {
       .toHaveValue('cname.vercel-dns.com');
   });
 
+  it('shows the storage CORS hint until the verified origin passes its probe', async () => {
+    const { queryClient } = renderPanel();
+
+    const hint = await screen.findByTestId('tenant-domain-cors-hint-kurs.acme.example');
+    expect(hint).toHaveTextContent(pl.tenantDomains.storageCorsHint);
+    expect(within(hint).getByRole('link', { name: pl.tenantDomains.storageCorsLink }))
+      .toHaveAttribute('href', '/panel/integrations#storage');
+    expect(screen.queryByTestId('tenant-domain-cors-hint-nowa.acme.example')).not.toBeInTheDocument();
+
+    server.use(http.get('/api/tenant/routing', () => HttpResponse.json({
+      ok: true,
+      data: {
+        routing: {
+          ...initialRouting(),
+          customDomains: initialRouting().customDomains.map((entry) =>
+            entry.domain === 'kurs.acme.example'
+              ? { ...entry, storageCorsStatus: 'ok' }
+              : entry),
+        },
+      },
+    })));
+    await queryClient.invalidateQueries();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('tenant-domain-cors-hint-kurs.acme.example')).not.toBeInTheDocument();
+    });
+  });
+
   it('warns about signing in again until a custom domain is verified', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPanel();
@@ -378,6 +411,7 @@ describe('SettingsPanel information architecture', () => {
         data: {
           routing: {
             tenantHost: 'akademia.together.example',
+            storageCorsOrigins: ['https://akademia.together.example'],
             customDomains: [{
               domain: 'nowa.acme.example',
               verified: false,
@@ -385,6 +419,7 @@ describe('SettingsPanel information architecture', () => {
               records: [],
               lastCheckedAt: null,
               lastError: checked ? 'Vercel is unreachable' : null,
+              storageCorsStatus: 'unknown',
             }],
             customDomainTarget: 'cname.vercel-dns.com',
             canAddCustomDomain: true,

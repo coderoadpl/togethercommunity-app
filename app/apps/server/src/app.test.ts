@@ -144,6 +144,7 @@ const deps = (input: {
   dispatchEmails?: AppDeps['dispatchEmails'];
   dispatchAutoInvoices?: AppDeps['dispatchAutoInvoices'];
   checkTenantDomains?: AppDeps['checkTenantDomains'];
+  sanitizeStagingSecrets?: AppDeps['sanitizeStagingSecrets'];
   autoInvoiceJobs?: Parameters<Parameters<AppDeps['paymentTransaction']['run']>[0]>[0]['autoInvoiceJobs'];
   paymentRefunds?: AppDeps['paymentRefunds'];
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
@@ -519,7 +520,21 @@ const deps = (input: {
     emailDispatchCronSecret: 'test-email-dispatch-cron-secret',
     autoInvoiceDispatchSecret: 'test-auto-invoice-dispatch-secret',
     domainCheckSecret: 'test-domain-check-secret',
-    smokeTenantReseedSecret: 'test-smoke-tenant-reseed-secret',
+    operatorSecret: 'test-operator-secret',
+    sanitizeStagingSecrets: input.sanitizeStagingSecrets ?? {
+      production: false,
+      databaseFingerprint: 'staging-fingerprint',
+      productionDatabaseFingerprint: 'production-fingerprint',
+      secrets: { listAll: async () => [], deleteById: async () => false },
+      secretCrypto: {
+        encrypt: () => ({ ciphertext: 'cipher', iv: 'iv', authTag: 'tag' }),
+        decrypt: () => ok('plaintext'),
+      },
+      platformAudit: { record: async () => undefined },
+      environment: 'staging',
+      ids: { nextId: () => 'audit-1' },
+      clock: { nowIso: () => '2026-09-05T12:00:00.000Z' },
+    },
     checkTenantDomains: input.checkTenantDomains
       ?? (async () => ok({ checked: 0, verified: 0, failed: 0, alerted: 0 })),
     tenantDomainEvents: { append: async () => undefined },
@@ -2651,7 +2666,7 @@ describe('smoke tenant reseed route', () => {
 
     const response = await app.request(API_PATHS.smokeTenantReseed, {
       method: 'POST',
-      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-smoke-tenant-reseed-secret' },
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' },
     });
 
     expect(response.status).toBe(200);
@@ -2667,10 +2682,80 @@ describe('smoke tenant reseed route', () => {
 
     const response = await app.request(API_PATHS.smokeTenantReseed, {
       method: 'POST',
-      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-smoke-tenant-reseed-secret' },
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' },
     });
 
     expect(response.status).toBe(500);
+  });
+});
+
+describe('staging secret sanitize route', () => {
+  const undecryptable = {
+    id: 'secret-foreign',
+    tenantId: 't-acme',
+    key: 'stripe.restrictedKey',
+    ciphertext: 'foreign',
+    iv: 'iv',
+    authTag: 'tag',
+    maskedPreview: 'rk_***',
+    updatedAt: '2026-09-05T12:00:00.000Z',
+  } as const;
+
+  const sanitize = (
+    over: Partial<AppDeps['sanitizeStagingSecrets']> = {},
+  ): AppDeps['sanitizeStagingSecrets'] => ({
+    ...deps().sanitizeStagingSecrets,
+    secrets: {
+      listAll: async () => [undecryptable],
+      deleteById: vi.fn(async () => true),
+    },
+    secretCrypto: {
+      encrypt: () => ({ ciphertext: 'cipher', iv: 'iv', authTag: 'tag' }),
+      decrypt: () => err(internal('Stored secret failed integrity verification')),
+    },
+    ...over,
+  });
+
+  it('removes undecryptable secrets only for the configured operator secret', async () => {
+    const composed = sanitize();
+    const app = buildApp(deps({ sanitizeStagingSecrets: composed }));
+
+    const refused = await app.request(API_PATHS.sanitizeStagingSecrets, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'wrong-secret' },
+    });
+    expect(refused.status).toBe(401);
+    expect(composed.secrets.deleteById).not.toHaveBeenCalled();
+
+    const response = await app.request(API_PATHS.sanitizeStagingSecrets, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: {
+        environment: 'staging',
+        scanned: 1,
+        kept: 0,
+        removed: [{ tenantId: 't-acme', key: 'stripe.restrictedKey' }],
+        durationMs: 0,
+      },
+    });
+  });
+
+  it('refuses a production deployment', async () => {
+    const composed = sanitize({ production: true });
+    const app = buildApp(deps({ sanitizeStagingSecrets: composed }));
+
+    const response = await app.request(API_PATHS.sanitizeStagingSecrets, {
+      method: 'POST',
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' },
+    });
+
+    expect(response.status).toBe(403);
+    expect(composed.secrets.deleteById).not.toHaveBeenCalled();
   });
 });
 
@@ -2840,14 +2925,20 @@ describe('deep health route', () => {
         checkedAt: expect.any(String),
         failing: [],
         checks: [
-          { name: 'tenant-directory', ok: true, ms: expect.any(Number), error: null },
-          { name: 'scheduler-freshness', ok: true, ms: expect.any(Number), error: null },
-          { name: 'tenant-settings', ok: true, ms: expect.any(Number), error: null },
-          { name: 'public-offer', ok: true, ms: expect.any(Number), error: null },
-          { name: 'course-content', ok: true, ms: expect.any(Number), error: null },
-          { name: 'tenant-secret-decryption', ok: true, ms: expect.any(Number), error: null },
-          { name: 'email-transport', ok: true, ms: expect.any(Number), error: null },
-          { name: 'storage-presign', ok: true, ms: expect.any(Number), error: null },
+          { name: 'tenant-directory', ok: true, ms: expect.any(Number), error: null, skipped: null },
+          {
+            name: 'scheduler-freshness',
+            ok: true,
+            ms: expect.any(Number),
+            error: null,
+            skipped: 'scheduler runs only on production',
+          },
+          { name: 'tenant-settings', ok: true, ms: expect.any(Number), error: null, skipped: null },
+          { name: 'public-offer', ok: true, ms: expect.any(Number), error: null, skipped: null },
+          { name: 'course-content', ok: true, ms: expect.any(Number), error: null, skipped: null },
+          { name: 'tenant-secret-decryption', ok: true, ms: expect.any(Number), error: null, skipped: null },
+          { name: 'email-transport', ok: true, ms: expect.any(Number), error: null, skipped: null },
+          { name: 'storage-presign', ok: true, ms: expect.any(Number), error: null, skipped: null },
         ],
       },
     });

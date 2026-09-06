@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import { styled, useTheme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
+import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { ApiError } from '#core/client/index.js';
@@ -29,6 +29,7 @@ import { ApiError } from '#core/client/index.js';
 import { useTenantBranding } from '../../branding.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
+import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
 import { LogoImage } from '../../components/ui/LogoImage.js';
 import { EmailLanguageSwitcher } from '../../EmailLanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
@@ -449,6 +450,17 @@ const UserMenu = ({
           <ColorSchemeSwitcher compact />
         </Box>
         <Divider sx={{ display: { xs: 'block', sm: 'none' } }} />
+        <MenuItem
+          component={Link}
+          to="/account"
+          sx={{ minHeight: '44px', px: '1rem' }}
+          onClick={() => setAnchorEl(null)}
+        >
+          <ListItemIcon>
+            <ManageAccountIcon />
+          </ListItemIcon>
+          <ListItemText primary={t.panel.myAccount} />
+        </MenuItem>
         <MenuItem
           data-testid="sign-out"
           disabled={pending}

@@ -62,7 +62,10 @@ const courseLessonIds = (modules: CourseModule[], courseId: string): Set<string>
   return ids;
 };
 
-const AddRedirectForm = ({ onCreated }: { onCreated: (fromPath: string) => void }) => {
+const AddRedirectForm = ({ onCreated, onCancel }: {
+  onCreated: (fromPath: string) => void;
+  onCancel: () => void;
+}) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const courses = useQuery(actions.courses);
@@ -74,7 +77,7 @@ const AddRedirectForm = ({ onCreated }: { onCreated: (fromPath: string) => void 
   const [courseId, setCourseId] = useState('');
   const [lessonId, setLessonId] = useState('');
   const [targetPath, setTargetPath] = useState('');
-  const [permanent, setPermanent] = useState(true);
+  const [permanent, setPermanent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const courseOptions = courses.data?.courses ?? [];
@@ -120,9 +123,14 @@ const AddRedirectForm = ({ onCreated }: { onCreated: (fromPath: string) => void 
       onSubmit={(event) => void submit(event)}
       data-testid="redirect-add"
       actions={(
-        <Button type="submit" variant="contained" disabled={!ready || create.isPending}>
-          {create.isPending ? t.redirects.submitting : t.redirects.submit}
-        </Button>
+        <>
+          <Button type="button" onClick={onCancel} disabled={create.isPending}>
+            {t.common.cancel}
+          </Button>
+          <Button type="submit" variant="contained" disabled={!ready || create.isPending}>
+            {create.isPending ? t.redirects.submitting : t.redirects.submit}
+          </Button>
+        </>
       )}
     >
       <TextField
@@ -230,6 +238,7 @@ export const RedirectsPanel = () => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const [pending, setPending] = useState<TenantRedirect | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(search);
@@ -266,12 +275,20 @@ export const RedirectsPanel = () => {
       backTo={<PanelBackLink to="/panel/settings">{t.redirects.backToSettings}</PanelBackLink>}
     >
       {notice === null ? null : <Alert severity="success" data-testid="redirect-notice">{notice}</Alert>}
-      <AddRedirectForm
-        onCreated={(fromPath) => {
-          setNotice(t.redirects.created({ fromPath }));
-          setPage(0);
-        }}
-      />
+      {adding ? (
+        <AddRedirectForm
+          onCreated={(fromPath) => {
+            setNotice(t.redirects.created({ fromPath }));
+            setPage(0);
+            setAdding(false);
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <Button variant="contained" onClick={() => setAdding(true)} sx={{ alignSelf: 'flex-start' }}>
+          {t.redirects.addHeading}
+        </Button>
+      )}
       <ListSection
         data-testid="redirects-list"
         isEmpty={redirects.isSuccess && total === 0 && !filtered && page === 0}

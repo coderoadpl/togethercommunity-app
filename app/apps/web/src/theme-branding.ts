@@ -115,12 +115,21 @@ export const deriveBrandPalette = (
   };
 };
 
+/** Keeps rings, outlines and accent ink legible whatever accent a tenant picks. */
+export const accentOnSurface = (
+  accent: string,
+  background: string,
+  minimum: number = NON_TEXT_MIN,
+): string =>
+  nudgeToward(accent, relativeLuminance(background) > 0.5 ? '#000000' : '#ffffff', background, minimum);
+
 export const applyBranding = (theme: Theme, branding: TenantBranding | null | undefined): Theme => {
   if (branding === null || branding === undefined || branding.accentColor === null) return theme;
   const primary = deriveBrandPalette(branding.accentColor, theme.palette.mode);
   return {
     ...theme,
     focusRing: primary.main,
+    brandAccent: primary.main,
     ...(theme.primaryActive === undefined ? {} : { primaryActive: primary.light }),
     palette: {
       ...theme.palette,

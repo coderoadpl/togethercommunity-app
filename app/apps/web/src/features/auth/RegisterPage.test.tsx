@@ -16,6 +16,7 @@ import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { ThemeModeProvider } from '../../theme-mode.js';
 import { RegisterPage } from './RegisterPage.js';
 
 const HomeAfterRegistration = () => <div>Home after registration</div>;
@@ -39,7 +40,11 @@ const renderRegisterPage = async (hostname?: string) => {
     history: createMemoryHistory({ initialEntries: ['/register'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return renderWithProviders(
+    <ThemeModeProvider>
+      <RouterProvider router={router} />
+    </ThemeModeProvider>,
+  );
 };
 
 const tenantOffer = (legal: { termsUrl: string | null; privacyUrl: string | null }) => ({
@@ -57,6 +62,15 @@ const noTenantOffer = http.get('/api/public/offer', () =>
 afterEach(() => vi.unstubAllEnvs());
 
 describe('RegisterPage', () => {
+  it('sits on the auth shell, signed once with the Together wordmark', async () => {
+    server.use(noTenantOffer);
+
+    await renderRegisterPage();
+
+    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', 'Together');
+    expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
+  });
+
   it.each([
     ['configured base domain', 'togethercommunity.app'],
     ['derived start host', 'start.togethercommunity.app'],
@@ -75,7 +89,7 @@ describe('RegisterPage', () => {
 
     await renderRegisterPage(hostname);
 
-    expect(screen.getByText(pl.auth.createAccountPlatformEyebrow)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: pl.auth.createAccount })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: pl.auth.createAccount })).toBeEnabled();
     expect(offerCalls).toBe(0);
   });

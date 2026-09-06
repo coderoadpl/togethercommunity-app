@@ -141,11 +141,13 @@ export interface Messages {
   };
   auth: {
     signInTitle: string;
-    signInPlatformEyebrow: string;
-    signInEyebrow: (params: { host: string }) => string;
-    createAccountPlatformEyebrow: string;
-    createAccountEyebrow: (params: { host: string }) => string;
+    signInToTenant: (params: { tenant: string }) => string;
+    signInLead: string;
+    preferences: string;
     emailLabel: string;
+    emailPlaceholder: string;
+    emailHelper: string;
+    orSeparator: string;
     emailInvalid: string;
     passwordLabel: string;
     passwordTooShort: (params: { min: number }) => string;
@@ -156,17 +158,21 @@ export interface Messages {
     identifierPending: string;
     signingInAs: (params: { email: string }) => string;
     changeIdentifier: string;
+    changeIdentifierShort: string;
     signInMethodsUnavailable: string;
     signInMethodsRateLimited: string;
     signInMethodsRateLimitedRetryAfter: (params: { seconds: number }) => string;
     signInMethodsChoosePrompt: string;
     signInMethodsChooseMagicLink: string;
     signInMethodsChoosePassword: string;
-    usePasswordPrompt: string;
-    usePasswordInstead: string;
-    useMagicLinkPrompt: string;
-    useMagicLinkInstead: string;
-    passkeyPrompt: string;
+    methodTitle: string;
+    methodLead: string;
+    methodMagicLinkTitle: string;
+    methodMagicLinkBody: string;
+    methodPasswordTitle: string;
+    methodPasswordBody: string;
+    methodPasskeyTitle: string;
+    methodPasskeyBody: string;
     passkeyLink: string;
     passkeyPending: string;
     twoFactorTitle: string;
@@ -178,13 +184,10 @@ export interface Messages {
     twoFactorBackToLogin: string;
     continueWithGoogle: string;
     forgotPassword: string;
-    forgotPasswordLink: string;
-    magicLinkStepBody: string;
-    magicLinkIdle: string;
     magicLinkPending: string;
     magicLinkExpired: string;
     magicLinkExpiredOnStep: string;
-    magicLinkRequested: string;
+    checkInboxTitle: string;
     magicLinkRequestedBody: (params: { email: string }) => string;
     magicLinkResend: string;
     magicLinkResendCooldown: (params: { seconds: number }) => string;
@@ -194,9 +197,17 @@ export interface Messages {
     demoAccount: string;
     registerPrompt: string;
     registerLink: string;
+    noAccessPrompt: string;
+    noAccessLink: string;
+    privacyPolicy: string;
+    poweredBy: string;
+    footerCourses: string;
+    footerCommunity: string;
+    cannotSignIn: string;
     previewLessons: string;
     creatingAccount: string;
     createAccount: string;
+    createAccountLead: string;
     alreadyHaveAccount: string;
     signInLink: string;
     registeredTitle: string;
@@ -1684,7 +1695,7 @@ export interface Messages {
     credentialAccountMissing: string;
   };
   forgotPassword: {
-    eyebrow: (params: { host: string }) => string;
+    title: string;
     intro: string;
     emailLabel: string;
     invalidEmail: string;
@@ -1696,7 +1707,6 @@ export interface Messages {
   };
   resetPassword: {
     title: string;
-    eyebrow: (params: { host: string }) => string;
     intro: string;
     newPasswordLabel: string;
     confirmPasswordLabel: string;

@@ -34,6 +34,8 @@ declare module '@mui/material/styles' {
     focusRing?: string;
     /** Link ink; themes that leave it unset follow the branding-tinted primary. */
     linkColor?: string;
+    /** Present only when a tenant supplied an accent, so accent-driven decoration can opt out. */
+    brandAccent?: string;
   }
   interface ThemeOptions {
     headerRule?: string;
@@ -49,6 +51,7 @@ declare module '@mui/material/styles' {
     };
     focusRing?: string;
     linkColor?: string;
+    brandAccent?: string;
   }
 }
 

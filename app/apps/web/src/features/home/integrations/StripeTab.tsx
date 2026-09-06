@@ -230,7 +230,6 @@ export const StripeTab = () => {
         )}
 
         <CopyField
-          mono
           label={t.integrations.webhookUrlLabel}
           hint={stripeReady ? t.integrations.webhookActiveHint : t.integrations.webhookUrlHint}
           value={secrets.data?.stripeWebhookUrl ?? ''}

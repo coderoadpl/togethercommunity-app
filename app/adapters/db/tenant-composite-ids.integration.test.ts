@@ -289,6 +289,10 @@ beforeAll(async () => {
       findLatestByImportKey: (tenantId, kind, importKey) =>
         countContentRead(auditRepository.findLatestByImportKey(tenantId, kind, importKey)),
     },
+    tenantDomains: { listByTenant: async () => [] },
+    appBaseUrl: 'http://localhost:48730',
+    baseDomain: 'localhost',
+    singleTenantMode: false,
     importContent: createImportContentRepository(db),
     ids,
     clock,

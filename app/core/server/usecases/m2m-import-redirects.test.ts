@@ -158,6 +158,10 @@ const validationHarness = () => {
       findProgressById: async () => null,
       findProgressByPair: async () => null,
     },
+    tenantDomains: { listByTenant: async () => [] },
+    appBaseUrl: 'http://localhost:48730',
+    baseDomain: 'localhost',
+    singleTenantMode: false,
   };
   return { ...h, deps };
 };

@@ -1,6 +1,16 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -11,6 +21,8 @@ import packageJson from '../package.json' with { type: 'json' };
 
 const appRoot = join(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
+const fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), 'together-config-regression-')));
+const fixtureAppRoot = join(fixtureRoot, 'app');
 const token = `__together_probe_${String(process.pid)}_${String(Date.now())}__`;
 const coreDomainDir = join('core', 'domain', token);
 const coreServerDir = join('core', 'server', token);
@@ -19,23 +31,6 @@ const islandCoreDir = join(featureDir, 'core');
 const islandDomFixture = join(islandCoreDir, 'dom.tsx');
 const layoutDir = join('apps', 'web', 'src', 'components', 'layout', token);
 const tenantScopeFixtureRoot = mkdtempSync(join(tmpdir(), 'together-tenant-scope-'));
-
-const sweepRoots = [
-  join(appRoot, 'core', 'domain'),
-  join(appRoot, 'core', 'server'),
-  join(appRoot, 'apps', 'web', 'src', 'features'),
-  join(appRoot, 'apps', 'web', 'src', 'components', 'layout'),
-];
-
-const sweep = (): void => {
-  for (const root of sweepRoots) {
-    for (const entry of readdirSync(root, { withFileTypes: true })) {
-      if (entry.isDirectory() && entry.name.startsWith('__together_probe_')) {
-        rmSync(join(root, entry.name), { recursive: true, force: true });
-      }
-    }
-  }
-};
 
 const eslintFixtures = {
   assertion: {
@@ -110,8 +105,30 @@ let islandTypecheckStatus: number | null = null;
 let tenantScopeOutput = '';
 let tenantScopeStatus: number | null = null;
 
+const copyFixtureFile = (rel: string): void => {
+  const target = join(fixtureAppRoot, rel);
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(join(appRoot, rel), target, { recursive: true });
+};
+
+const createFixtureWorkspace = (): void => {
+  mkdirSync(fixtureAppRoot, { recursive: true });
+  for (const rel of [
+    '.dependency-cruiser.cjs',
+    'eslint.config.js',
+    'eslint-plugin-together',
+    'package.json',
+    'tsconfig.islands.json',
+    'tsconfig.json',
+  ]) {
+    copyFixtureFile(rel);
+  }
+  const nodeModules = join(appRoot, 'node_modules');
+  if (existsSync(nodeModules)) symlinkSync(nodeModules, join(fixtureAppRoot, 'node_modules'), 'dir');
+};
+
 const writeFixture = (rel: string, content: string): string => {
-  const absolute = join(appRoot, rel);
+  const absolute = join(fixtureAppRoot, rel);
   mkdirSync(dirname(absolute), { recursive: true });
   writeFileSync(absolute, content, 'utf8');
   return absolute;
@@ -120,9 +137,10 @@ const writeFixture = (rel: string, content: string): string => {
 const runCommand = async (
   command: string,
   args: string[],
+  cwd = fixtureAppRoot,
 ): Promise<{ status: number | null; stdout: string; stderr: string }> =>
   await new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: appRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8');
@@ -148,27 +166,38 @@ const findMessage = (
   );
 
 beforeAll(async () => {
-  sweep();
+  createFixtureWorkspace();
+  writeFixture(join('adapters', 'db', 'client.ts'), 'export const clientProbe = 1;\n');
+  writeFixture(join('apps', 'web', 'src', 'api.ts'), 'export const actions = {};\n');
+  writeFixture(
+    join('apps', 'web', 'src', 'features', 'auth', 'LoginPage.tsx'),
+    'export const LoginPage = () => null;\n',
+  );
+  writeFixture(join('core', 'contract', 'routes.ts'), 'export const routesProbe = 1;\n');
   const fixtures = Object.values(eslintFixtures);
   const eslintTargets = fixtures.map((fixture) => writeFixture(fixture.rel, fixture.content));
+  writeFixture(
+    join(featureDir, 'helpers', 'api.ts'),
+    "export const descriptor = { queryKey: ['probe'], call: () => Promise.resolve(null) };\n",
+  );
   for (const fixture of depcruiseFixtures) writeFixture(fixture.rel, fixture.content);
   writeFixture(islandDomFixture, 'export const forbidden = document;\n');
 
   const eslintRun = await runCommand(
-    join(appRoot, 'node_modules', '.bin', 'eslint'),
+    join(fixtureAppRoot, 'node_modules', '.bin', 'eslint'),
     ['--format', 'json', ...eslintTargets],
   );
   const eslintResults: EslintResult[] = JSON.parse(eslintRun.stdout);
   for (const result of eslintResults) {
     for (const fixture of fixtures) {
-      if (result.filePath === join(appRoot, fixture.rel)) {
+      if (result.filePath.endsWith(fixture.rel)) {
         messagesByFixture.set(fixture.rel, result.messages);
       }
     }
   }
 
   const depcruiseRun = await runCommand(
-    join(appRoot, 'node_modules', '.bin', 'depcruise'),
+    join(fixtureAppRoot, 'node_modules', '.bin', 'depcruise'),
     ['--output-type', 'json', coreDomainDir, coreServerDir, islandCoreDir, layoutDir],
   );
   const report: { summary: { violations: Array<{ rule: { name: string } }> } } = JSON.parse(
@@ -179,7 +208,7 @@ beforeAll(async () => {
   }
 
   const islandTypecheckRun = await runCommand(
-    join(appRoot, 'node_modules', '.bin', 'tsc'),
+    join(fixtureAppRoot, 'node_modules', '.bin', 'tsc'),
     ['--noEmit', '-p', 'tsconfig.islands.json'],
   );
   islandTypecheckStatus = islandTypecheckRun.status;
@@ -191,18 +220,15 @@ beforeAll(async () => {
   const tenantScopeRun = await runCommand(
     join(appRoot, 'node_modules', '.bin', 'tsx'),
     ['scripts/tenant-scope-check.ts', tenantScopeFixtureRoot],
+    appRoot,
   );
   tenantScopeStatus = tenantScopeRun.status;
   tenantScopeOutput = `${tenantScopeRun.stdout}${tenantScopeRun.stderr}`;
 }, 180_000);
 
 afterAll(() => {
-  rmSync(join(appRoot, coreDomainDir), { recursive: true, force: true });
-  rmSync(join(appRoot, coreServerDir), { recursive: true, force: true });
-  rmSync(join(appRoot, featureDir), { recursive: true, force: true });
-  rmSync(join(appRoot, layoutDir), { recursive: true, force: true });
+  rmSync(fixtureRoot, { recursive: true, force: true });
   rmSync(tenantScopeFixtureRoot, { recursive: true, force: true });
-  sweep();
 });
 
 describe('ESLint gate', () => {
@@ -274,7 +300,7 @@ describe('Dependency Cruiser gate', () => {
 
   it('keeps guarded rules at error severity', () => {
     const config: { forbidden: Array<{ name: string; severity: string }> } = require(
-      join(appRoot, '.dependency-cruiser.cjs'),
+      join(fixtureAppRoot, '.dependency-cruiser.cjs'),
     );
     const severity = new Map(config.forbidden.map((rule) => [rule.name, rule.severity]));
     for (const name of [
@@ -331,7 +357,7 @@ describe('Custom plugin registration', () => {
   };
 
   it('keeps descriptor and sx rules enabled as errors', async () => {
-    const eslint = new ESLint({ cwd: appRoot });
+    const eslint = new ESLint({ cwd: fixtureAppRoot });
     const config: Linter.Config = await eslint.calculateConfigForFile(
       join('apps', 'web', 'src', 'features', 'auth', 'LoginPage.tsx'),
     );
@@ -342,7 +368,7 @@ describe('Custom plugin registration', () => {
   it('keeps the sx baseline empty', () => {
     const baseline: unknown = JSON.parse(
       readFileSync(
-        join(appRoot, 'eslint-plugin-together', 'sx-layout-baseline.json'),
+        join(fixtureAppRoot, 'eslint-plugin-together', 'sx-layout-baseline.json'),
         'utf8',
       ),
     );

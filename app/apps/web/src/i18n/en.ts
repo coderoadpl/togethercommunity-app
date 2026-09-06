@@ -535,6 +535,7 @@ export const en: Messages = {
     openNavigation: 'Open navigation',
     closeNavigation: 'Close navigation',
     accountMenu: 'Account menu',
+    myAccount: 'My account',
     signedInAs: 'Signed in as',
   },
   notifications: {
@@ -2145,7 +2146,7 @@ export const en: Messages = {
     targetPathLabel: 'Target path',
     targetPathHint: 'A path inside this workspace, for example /my.',
     permanentLabel: 'Permanent redirect (301)',
-    permanentHint: 'Browsers cache a permanent redirect — use it for a target that keeps its identity.',
+    permanentHint: 'Browsers cache permanent (301) redirects. Changing or removing one later may not take effect immediately for visitors.',
     submit: 'Add redirect',
     submitting: 'Adding…',
     created: ({ fromPath }) => format('{fromPath} now redirects.', { fromPath }),

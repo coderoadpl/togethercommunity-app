@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   err,
@@ -374,6 +374,23 @@ describe('checkDeepHealth', () => {
     expect(report.failing).toEqual(['deadline']);
     expect(checkNamed(report, 'deadline').error)
       .toBe('the 10 ms probe budget expired at tenant-directory, scheduler-freshness');
+  });
+
+  it('names the same probes when the wall clock lags the expired deadline', async () => {
+    const frozen = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    try {
+      const report = await checkDeepHealth(
+        deps({ tenantDirectory: { listAll: () => new Promise(() => undefined) } }),
+        10,
+      );
+
+      expect(report.checks.map((check) => check.name)).toEqual(['tenant-directory', 'deadline']);
+      expect(report.failing).toEqual(['deadline']);
+      expect(checkNamed(report, 'deadline').error)
+        .toBe('the 10 ms probe budget expired at tenant-directory, scheduler-freshness');
+    } finally {
+      frozen.mockRestore();
+    }
   });
 
   it('skips the scheduler probe on a deployment that runs no cron', async () => {

@@ -1,47 +1,42 @@
-import { useEffect, useState, type MouseEvent } from 'react';
-import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useId, useState, type MouseEvent } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  IconButton,
+  Skeleton,
+  Snackbar,
+  Stack,
+  SvgIcon,
+  Tooltip,
+  useMediaQuery,
+} from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { Notification } from '#core/domain/index.js';
 
 import { actions } from './api.js';
-import { MemberAvatar } from './components/ui/MemberAvatar.js';
-import { localizeError, useLanguage, useTranslations } from './i18n/index.js';
-import { formatDate } from './lib/format.js';
+import { localizeError, useTranslations } from './i18n/index.js';
+import { NotificationList } from './NotificationList.js';
+import { notificationTarget, useNotificationNavigation } from './notification-links.js';
+import { useNotifications } from './notifications-data.js';
 import {
-  notificationTarget,
-  notificationTitle,
-  useNotificationNavigation,
-} from './notification-links.js';
-import { connectNotificationsStream, streamlessPollInterval } from './notifications-stream.js';
-import { useNotificationsTransport } from './notifications-transport.js';
-import {
-  CountBadge,
+  EmptyStateContent,
+  EmptyStateIcon,
   Eyebrow,
-  FinePrint,
   NotificationBellIcon,
-  NotificationMenuItem,
+  NotificationCountBadge,
+  NotificationPanel,
+  NotificationPanelBody,
+  NotificationPanelFooter,
+  NotificationPanelHeader,
+  NotificationPopover,
   NotificationSnippet,
-  NotificationTitle,
-  PanelNavItem,
   SHELL_SNACKBAR_ANCHOR,
-  UnreadDot,
+  SheetDrawer,
 } from './theme.js';
-
-const OverlayCountBadge = styled(Badge)(({ theme }) => ({
-  '& .MuiBadge-badge': {
-    backgroundColor: theme.palette.text.primary,
-    color: theme.palette.background.default,
-    borderRadius: '999px',
-    minWidth: '18px',
-    height: '18px',
-    padding: '0 5px',
-    fontSize: '0.6875rem',
-    fontWeight: 600,
-  },
-}));
 
 const BELL_PATH =
   'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z';
@@ -52,216 +47,160 @@ const BellIcon = () => (
   </NotificationBellIcon>
 );
 
-/** Tab-bar variant: default SvgIcon size so the label baseline matches the sibling tabs. */
-const TabBellIcon = () => (
+const CloseIcon = () => (
   <SvgIcon aria-hidden viewBox="0 0 24 24">
-    <path d={BELL_PATH} />
+    <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4l-6.3 6.31-1.42-1.42L9.17 12l-6.3-6.29 1.42-1.42 6.3 6.31 6.3-6.31z" />
   </SvgIcon>
 );
 
-export const NotificationBell = ({
-  tabLabel,
-  navLabel,
-  live = true,
-}: {
-  tabLabel?: string;
-  navLabel?: string;
-  live?: boolean;
-}) => {
+const SKELETON_ROWS = [0, 1, 2];
+
+export const NotificationBell = ({ live = true }: { live?: boolean } = {}) => {
   const t = useTranslations();
-  const { language } = useLanguage();
+  const theme = useTheme();
+  const compact = !useMediaQuery(theme.breakpoints.up('md'));
   const navigateToTarget = useNotificationNavigation();
-  const me = useQuery(actions.me);
-  const impersonating = (me.data?.impersonation ?? null) !== null;
-  const queryClient = useQueryClient();
+  const headingId = useId();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const { streamless, reportStreamless, reportStreaming } = useNotificationsTransport();
-  const open = Boolean(anchorEl);
-
-  useEffect(() => {
-    if (!live) return;
-    const stream = connectNotificationsStream({
-      onEvent: () => {
-        void queryClient.invalidateQueries(actions.notificationsInvalidates());
-        void queryClient.invalidateQueries(actions.messagesInvalidates());
-      },
-      onFallback: reportStreamless,
-      onStreaming: reportStreaming,
-    });
-    return () => stream.close();
-  }, [live, queryClient, reportStreamless, reportStreaming]);
-
-  const unread = useQuery({
-    ...actions.unreadNotifications,
-    enabled: live,
-    refetchInterval: streamlessPollInterval(streamless),
+  const open = anchorEl !== null;
+  const { impersonating, unread, unreadCount, markRead, markAllRead } = useNotifications({
+    live,
+    stream: live,
   });
   const list = useQuery({ ...actions.notifications, enabled: live && open });
 
-  const markRead = useMutation({
-    ...actions.markNotificationRead,
-    onSuccess: () => queryClient.invalidateQueries(actions.notificationsInvalidates()),
-  });
-  const markAllRead = useMutation({
-    ...actions.markAllNotificationsRead,
-    onSuccess: () => queryClient.invalidateQueries(actions.notificationsInvalidates()),
-  });
+  const close = () => setAnchorEl(null);
 
   const openNotification = (notification: Notification) => {
-    setAnchorEl(null);
+    close();
     if (notification.readAt === null && !impersonating) markRead.mutate({ id: notification.id });
     navigateToTarget(notificationTarget(notification));
   };
 
-  const unreadCount = unread.data?.unread ?? 0;
   const notifications = list.data?.notifications ?? [];
 
-  const trigger = navLabel !== undefined ? (
-    <PanelNavItem
-      data-testid="notification-nav"
-      aria-label={unreadCount > 0 ? t.notifications.unreadAria({ count: unreadCount }) : t.notifications.bell}
-      aria-haspopup="true"
-      aria-expanded={open ? true : undefined}
-      onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
-    >
-      <ListItemIcon>
-        <BellIcon />
-      </ListItemIcon>
-      <ListItemText primary={navLabel} slotProps={{ primary: { noWrap: true } }} />
-      {unreadCount > 0 && <CountBadge data-testid="notification-bell-count">{unreadCount}</CountBadge>}
-    </PanelNavItem>
-  ) : tabLabel === undefined ? (
-    <Tooltip title={t.notifications.bell}>
-        <IconButton
-          color="inherit"
+  const panel = (
+    <NotificationPanel role="dialog" aria-labelledby={headingId} data-testid="notifications-panel">
+      <NotificationPanelHeader>
+        <Eyebrow variant="overline" component="p" id={headingId}>
+          {t.notifications.heading}
+        </Eyebrow>
+        <Box sx={{ flex: 1 }} />
+        <Button
           size="small"
-          data-testid="notification-bell"
-          aria-label={t.notifications.bell}
-          aria-haspopup="true"
-          aria-expanded={open ? true : undefined}
-          onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
-          sx={{ minHeight: '44px', minWidth: '44px' }}
+          data-testid="notifications-popover-mark-all-read"
+          disabled={markAllRead.isPending || impersonating || unreadCount === 0}
+          onClick={() => markAllRead.mutate()}
         >
-          <OverlayCountBadge badgeContent={unreadCount} data-testid="notification-badge">
-            <BellIcon />
-          </OverlayCountBadge>
-        </IconButton>
-    </Tooltip>
-  ) : (
-    <ButtonBase
-      data-testid="notification-tab"
-      aria-label={t.notifications.bell}
-      aria-haspopup="true"
-      aria-expanded={open ? true : undefined}
-      onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
-      sx={{ minHeight: '44px', minWidth: '44px', py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
-    >
-      <OverlayCountBadge badgeContent={unreadCount} data-testid="notification-tab-badge">
-        <TabBellIcon />
-      </OverlayCountBadge>
-      <Typography variant="caption" component="span" noWrap title={tabLabel} sx={{ maxWidth: '100%' }}>{tabLabel}</Typography>
-    </ButtonBase>
-  );
-
-  return (
-    <>
-      {trigger}
-      <Menu
-        anchorEl={anchorEl}
-        open={open}
-        onClose={() => setAnchorEl(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-      >
-        <Box sx={{ px: '1rem', py: '0.5rem', width: 'min(22rem, 82vw)' }}>
-          <Eyebrow variant="overline" component="p">
-            {t.notifications.heading}
-          </Eyebrow>
-        </Box>
-        <Divider />
+          {t.notifications.markAllRead}
+        </Button>
+        {compact ? (
+          <IconButton
+            aria-label={t.shell.closeSheet}
+            data-testid="notifications-panel-close"
+            onClick={close}
+          >
+            <CloseIcon />
+          </IconButton>
+        ) : null}
+      </NotificationPanelHeader>
+      <NotificationPanelBody>
         {list.isPending ? (
-          <Box sx={{ px: '1rem', py: '0.75rem' }}>
-            <NotificationSnippet variant="body2" component="p">
-              {t.notifications.loading}
-            </NotificationSnippet>
-          </Box>
+          <Stack useFlexGap sx={{ rowGap: '0.5rem', p: '0.75rem' }} data-testid="notifications-loading">
+            {SKELETON_ROWS.map((row) => (
+              <Skeleton key={row} variant="rectangular" height={40} />
+            ))}
+          </Stack>
         ) : list.isError ? (
-          <Box sx={{ px: '1rem', py: '0.75rem' }}>
+          <Box sx={{ p: '0.75rem' }}>
             <Alert severity="error">{localizeError(list.error, t)}</Alert>
             <Button size="small" sx={{ mt: '0.5rem' }} onClick={() => void list.refetch()}>
               {t.common.retry}
             </Button>
           </Box>
         ) : notifications.length === 0 ? (
-          <Box sx={{ px: '1rem', py: '0.75rem' }} data-testid="notifications-empty">
+          <EmptyStateContent sx={{ p: '1.25rem' }} data-testid="notifications-empty">
+            <EmptyStateIcon aria-hidden viewBox="0 0 24 24">
+              <path d={BELL_PATH} />
+            </EmptyStateIcon>
             <NotificationSnippet variant="body2" component="p">
               {t.notifications.empty}
             </NotificationSnippet>
-          </Box>
+            <NotificationSnippet variant="body2" component="p">
+              {t.notifications.emptyHint}
+            </NotificationSnippet>
+          </EmptyStateContent>
         ) : (
-          notifications.map((notification) => (
-            <NotificationMenuItem
-              key={notification.id}
-              data-testid={`notification-${notification.id}`}
-              onClick={() => openNotification(notification)}
-              sx={{ gap: '0.6rem', maxWidth: '22rem' }}
-            >
-              {notification.readAt === null ? <UnreadDot aria-hidden /> : null}
-              {notification.payload.contextKind === 'tenant' ? null : (
-                <MemberAvatar
-                  name={notification.payload.authorDisplay ?? ''}
-                  avatarUrl={notification.payload.authorAvatarUrl}
-                  size="sm"
-                />
-              )}
-              <Box sx={{ minWidth: 0 }}>
-                <NotificationTitle component="p" unread={notification.readAt === null}>
-                  {notificationTitle(t, notification)}
-                </NotificationTitle>
-                <NotificationSnippet variant="body2" component="p">
-                  {notification.payload.snippet}
-                </NotificationSnippet>
-                <FinePrint component="p">{formatDate(notification.createdAt, language)}</FinePrint>
-              </Box>
-            </NotificationMenuItem>
-          ))
+          <NotificationList notifications={notifications} onOpen={openNotification} />
         )}
-        <Divider />
-        <Box sx={{ px: '1rem', py: '0.5rem' }}>
-          <Button
-            size="small"
-            data-testid="notifications-popover-mark-all-read"
-            disabled={markAllRead.isPending || impersonating || unreadCount === 0}
-            onClick={() => markAllRead.mutate()}
-          >
-            {t.notifications.markAllRead}
-          </Button>
-          {unread.isError ? (
-            <Box>
-              <Alert severity="error">{localizeError(unread.error, t)}</Alert>
-              <Button size="small" sx={{ mt: '0.5rem' }} onClick={() => void unread.refetch()}>
-                {t.common.retry}
-              </Button>
-            </Box>
-          ) : null}
-          {markAllRead.isError ? <Alert severity="error">{localizeError(markAllRead.error, t)}</Alert> : null}
-        </Box>
-        <MenuItem
+        {unread.isError ? (
+          <Box sx={{ p: '0.75rem' }}>
+            <Alert severity="error">{localizeError(unread.error, t)}</Alert>
+          </Box>
+        ) : null}
+        {markAllRead.isError ? (
+          <Box sx={{ p: '0.75rem' }}>
+            <Alert severity="error">{localizeError(markAllRead.error, t)}</Alert>
+          </Box>
+        ) : null}
+      </NotificationPanelBody>
+      <NotificationPanelFooter>
+        <Button
           component={Link}
           to="/notifications"
           data-testid="notifications-view-all"
-          onClick={() => setAnchorEl(null)}
+          sx={{ flex: 1, justifyContent: 'center', p: '0.75rem' }}
+          onClick={close}
         >
           {t.notifications.viewAll}
-        </MenuItem>
-      </Menu>
+        </Button>
+      </NotificationPanelFooter>
+    </NotificationPanel>
+  );
+
+  return (
+    <>
+      <Tooltip title={t.notifications.bell}>
+        <IconButton
+          color="inherit"
+          data-testid="notification-bell"
+          aria-label={
+            unreadCount > 0 ? t.notifications.unreadAria({ count: unreadCount }) : t.notifications.bell
+          }
+          aria-haspopup="dialog"
+          aria-expanded={open ? true : undefined}
+          onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+          sx={{ minHeight: '48px', minWidth: '48px' }}
+        >
+          <NotificationCountBadge badgeContent={unreadCount} max={99} data-testid="notification-badge">
+            <BellIcon />
+          </NotificationCountBadge>
+        </IconButton>
+      </Tooltip>
+      {compact ? (
+        <SheetDrawer anchor="bottom" open={open} onClose={close}>
+          {panel}
+        </SheetDrawer>
+      ) : (
+        <NotificationPopover
+          anchorEl={anchorEl}
+          open={open}
+          onClose={close}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          {panel}
+        </NotificationPopover>
+      )}
       <Snackbar
         open={markRead.isError}
         autoHideDuration={6000}
         anchorOrigin={SHELL_SNACKBAR_ANCHOR}
         onClose={() => markRead.reset()}
       >
-        <Alert severity="error" onClose={() => markRead.reset()}>{markRead.isError ? localizeError(markRead.error, t) : ''}</Alert>
+        <Alert severity="error" onClose={() => markRead.reset()}>
+          {markRead.isError ? localizeError(markRead.error, t) : ''}
+        </Alert>
       </Snackbar>
       <Snackbar
         open={markAllRead.isSuccess}
@@ -269,7 +208,9 @@ export const NotificationBell = ({
         anchorOrigin={SHELL_SNACKBAR_ANCHOR}
         onClose={() => markAllRead.reset()}
       >
-        <Alert severity="success" onClose={() => markAllRead.reset()}>{t.notifications.markedAllRead}</Alert>
+        <Alert severity="success" onClose={() => markAllRead.reset()}>
+          {t.notifications.markedAllRead}
+        </Alert>
       </Snackbar>
     </>
   );

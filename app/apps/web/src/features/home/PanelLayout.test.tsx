@@ -429,9 +429,15 @@ describe('Creator panel routing', () => {
     expect(screen.getByText(pl.tenant.roleOwner)).toHaveClass('MuiChip-label');
     const menu = screen.getByRole('menu');
     const items = within(menu).getAllByRole('menuitem');
-    expect(items[0]).toHaveAccessibleName(pl.panel.myAccount);
-    expect(items[0]).toHaveAttribute('href', '/account');
-    expect(items[1]).toHaveAccessibleName(pl.tenant.signOut);
+    expect(items.map((item) => item.textContent)).toEqual([
+      pl.student.myProducts,
+      pl.messages.navLabel,
+      pl.panel.myAccount,
+      pl.tenant.signOut,
+    ]);
+    expect(items[0]).toHaveAttribute('href', '/my/products');
+    expect(items[1]).toHaveAttribute('href', '/messages');
+    expect(items[2]).toHaveAttribute('href', '/account');
 
     await userEvent.click(screen.getByTestId('sign-out'));
 

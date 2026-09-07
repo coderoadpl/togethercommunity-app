@@ -224,9 +224,12 @@ const accountRoute = createRoute({
   path: '/account',
   component: MemberAccountRoute,
 });
+const validateNotificationsSearch = (search: Record<string, unknown>): { filter?: 'unread' } =>
+  search['filter'] === 'unread' ? { filter: 'unread' } : {};
 const notificationsRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/notifications',
+  validateSearch: validateNotificationsSearch,
   component: NotificationsRoute,
 });
 const messagesRoute = createRoute({

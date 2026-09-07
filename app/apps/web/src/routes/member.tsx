@@ -51,7 +51,10 @@ export const LessonPlayerRoute = () => {
   );
 };
 
-export const NotificationsRoute = () => <NotificationsPage />;
+export const NotificationsRoute = () => {
+  const { filter } = useSearch({ strict: false });
+  return <NotificationsPage filter={filter === 'unread' ? 'unread' : 'all'} />;
+};
 
 export const MessagesRoute = () => <MessagesListPage />;
 

@@ -38,25 +38,49 @@ export const notificationTarget = (notification: Notification): NotificationTarg
     : { kind: 'lesson-thread', courseId, lessonId: contextId, rootPostId };
 };
 
-export const notificationTitle = (t: Messages, notification: Notification): string => {
+/** The one value a title puts in bold: the actor, the space or the domain. */
+const notificationSubject = (notification: Notification): string =>
+  TENANT_DOMAIN_KINDS.includes(notification.kind)
+    ? notification.payload.domain ?? ''
+    : notification.kind === 'space-event'
+      ? notification.payload.lessonName
+      : notification.payload.authorDisplay ?? '';
+
+const titleWithSubject = (t: Messages, notification: Notification, subject: string): string => {
   const { lessonName } = notification.payload;
-  const domain = notification.payload.domain ?? '';
-  const author = notification.payload.authorDisplay ?? '';
   return notification.kind === 'tenant-domain-verified'
-  ? t.notifications.tenantDomainVerified({ domain })
+  ? t.notifications.tenantDomainVerified({ domain: subject })
   : notification.kind === 'tenant-domain-error'
-  ? t.notifications.tenantDomainError({ domain })
+  ? t.notifications.tenantDomainError({ domain: subject })
   : notification.kind === 'dm-report'
-  ? t.notifications.dmReport({ reporter: author })
+  ? t.notifications.dmReport({ reporter: subject })
   : notification.kind === 'space-event'
-    ? t.notifications.spaceEvent({ space: lessonName })
+    ? t.notifications.spaceEvent({ space: subject })
     : notification.kind === 'dm-message'
-    ? t.notifications.dmMessage({ author })
+    ? t.notifications.dmMessage({ author: subject })
     : notification.kind === 'space-post'
-      ? t.notifications.spacePost({ author, space: lessonName })
+      ? t.notifications.spacePost({ author: subject, space: lessonName })
       : notification.kind === 'lesson-question'
-        ? t.notifications.lessonQuestion({ author, lesson: lessonName })
-        : t.notifications.threadReply({ author, lesson: lessonName });
+        ? t.notifications.lessonQuestion({ author: subject, lesson: lessonName })
+        : t.notifications.threadReply({ author: subject, lesson: lessonName });
+};
+
+export const notificationTitle = (t: Messages, notification: Notification): string =>
+  titleWithSubject(t, notification, notificationSubject(notification));
+
+/** A placeholder no message bundle and no user-supplied name can contain. */
+const SUBJECT_SLOT = '\u0000';
+
+export const notificationTitleParts = (
+  t: Messages,
+  notification: Notification,
+): { before: string; subject: string; after: string } => {
+  const subject = notificationSubject(notification);
+  if (subject.length === 0) return { before: notificationTitle(t, notification), subject, after: '' };
+  const sentence = titleWithSubject(t, notification, SUBJECT_SLOT);
+  const slot = sentence.indexOf(SUBJECT_SLOT);
+  if (slot === -1) return { before: sentence, subject: '', after: '' };
+  return { before: sentence.slice(0, slot), subject, after: sentence.slice(slot + 1) };
 };
 
 export const useNotificationNavigation = () => {

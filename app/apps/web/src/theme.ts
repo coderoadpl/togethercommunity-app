@@ -1,6 +1,6 @@
 import type { ElementType } from 'react';
-import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
-import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
+import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, Typography } from '@mui/material';
+import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
 import { accentOnSurface, type AccentGradient } from './theme-branding.js';
 
@@ -2883,7 +2883,7 @@ export const LedgerTitle = styled(Typography, {
   dense === true ? { [theme.breakpoints.down('md')]: { fontSize: '1.375rem' } } : {},
 );
 
-export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
+export const FinePrint = styled(Typography)<AsElement & { dateTime?: string }>({ fontSize: '0.75rem' });
 
 
 export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
@@ -2978,11 +2978,6 @@ export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   },
 }));
 
-export const NotificationMenuItem = styled(MenuItem)({
-  whiteSpace: 'normal',
-  alignItems: 'flex-start',
-});
-
 export const NotificationTitle = styled(Typography, {
   shouldForwardProp: (prop) => prop !== 'unread',
 })<AsElement & { unread?: boolean }>(({ unread }) => ({
@@ -2999,14 +2994,6 @@ export const NotificationSnippet = styled(Typography)<AsElement>(({ theme }) => 
   overflow: 'hidden',
 }));
 
-export const NotificationRowButton = styled(ButtonBase)({
-  display: 'flex',
-  width: '100%',
-  textAlign: 'left',
-  justifyContent: 'flex-start',
-  alignItems: 'stretch',
-});
-
 export const CountBadge = styled('span')(({ theme }) => ({
   display: 'inline-flex',
   alignItems: 'center',
@@ -3020,6 +3007,11 @@ export const CountBadge = styled('span')(({ theme }) => ({
   fontSize: '0.6875rem',
   fontWeight: 600,
   flexShrink: 0,
+}));
+
+/** Direct messages stay ink: the red badge is reserved for the notification count. */
+export const InkDotBadge = styled(Badge)(({ theme }) => ({
+  '& .MuiBadge-badge': { backgroundColor: theme.palette.text.primary },
 }));
 
 export const LockedSpaceMark = styled(Box)(({ theme }) => ({
@@ -3045,6 +3037,172 @@ export const UnreadDot = styled('span')(({ theme }) => ({
 export const NotificationBellIcon = styled(SvgIcon)({
   fontSize: '1.25rem',
 });
+
+/**
+ * The unread count is the one red fill in the chrome: the tenant accent already
+ * means "brand / active" and its contrast is not guaranteed, while the error
+ * palette is fixed and contrast-tested in every scheme.
+ */
+export const NotificationCountBadge = styled(Badge)(({ theme }) => ({
+  '& .MuiBadge-badge': {
+    backgroundColor: theme.palette.error.main,
+    color: theme.palette.error.contrastText,
+    borderRadius: '999px',
+    minWidth: 18,
+    height: 18,
+    padding: '0 5px',
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+  },
+}));
+
+export const NotificationPopover = styled(Popover)(({ theme }) => ({
+  '& .MuiPaper-root': {
+    width: 'min(24rem, 92vw)',
+    backgroundColor: theme.palette.background.paper,
+    backgroundImage: 'none',
+    border: `1px solid ${theme.palette.divider}`,
+  },
+}));
+
+export const NotificationPanel = styled(Box)({
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 0,
+  maxHeight: '70vh',
+});
+
+export const NotificationPanelHeader = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  padding: '0.5rem 0.75rem',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const NotificationPanelFooter = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const NotificationPanelBody = styled(Box)({
+  flex: 1,
+  minHeight: 0,
+  overflowY: 'auto',
+});
+
+export const NotificationGroupHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  display: 'block',
+  padding: '0.5rem 0.75rem 0.15rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const NotificationItems = styled('ul')({
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+});
+
+const notificationItemStyle = (theme: Theme, unread?: boolean): CSSObject => ({
+  display: 'flex',
+  width: '100%',
+  gap: '0.6rem',
+  alignItems: 'flex-start',
+  textAlign: 'left',
+  minHeight: 48,
+  padding: '0.625rem 0.75rem',
+  backgroundColor: unread === true ? alpha(theme.palette.primary.main, 0.09) : 'transparent',
+});
+
+const forwardExceptUnread = { shouldForwardProp: (prop: PropertyKey) => prop !== 'unread' };
+
+export const NotificationItem = styled(ButtonBase, forwardExceptUnread)<{ unread?: boolean }>(
+  ({ theme, unread }) => ({
+    ...notificationItemStyle(theme, unread),
+    '&:hover': { backgroundColor: theme.palette.action.hover },
+  }),
+);
+
+export const NotificationItemStatic = styled(Box, forwardExceptUnread)<{ unread?: boolean }>(
+  ({ theme, unread }) => notificationItemStyle(theme, unread),
+);
+
+export const NotificationActor = styled(Box)({
+  position: 'relative',
+  flexShrink: 0,
+  lineHeight: 0,
+});
+
+export const NotificationActorMark = styled(Box)(({ theme }) => ({
+  width: 36,
+  height: 36,
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: '8px',
+  backgroundColor: theme.palette.action.hover,
+}));
+
+export const NotificationTypeMark = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  right: -2,
+  bottom: -2,
+  width: 16,
+  height: 16,
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: '50%',
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  '& .MuiSvgIcon-root': { fontSize: '0.7rem' },
+}));
+
+export const NotificationItemMain = styled(Box)({ minWidth: 0, flex: 1 });
+
+export const NotificationItemMeta = styled(Box)({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  gap: 4,
+  flexShrink: 0,
+});
+
+export const NotificationLine = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== 'unread',
+})<AsElement & { unread?: boolean }>(({ unread }) => ({
+  fontSize: '0.9rem',
+  fontWeight: unread === true ? 500 : 400,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}));
+
+export const NotificationSubject = styled('span')({ fontWeight: 700 });
+
+export const NotificationSnippetLine = styled(NotificationSnippet)<AsElement>({
+  WebkitLineClamp: 1,
+});
+
+export const SheetDrawer = styled(Drawer)(({ theme }) => ({
+  '& .MuiDrawer-paper': {
+    backgroundColor: theme.palette.background.paper,
+    borderRight: 'none',
+    borderTop: `1px solid ${theme.palette.divider}`,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    maxHeight: '80vh',
+    paddingBottom: 'env(safe-area-inset-bottom)',
+  },
+}));
+
+export const SheetHeader = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  padding: '12px 10px 8px',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const SheetTitle = styled(Typography)<AsElement>({ fontWeight: 600 });
 
 /** The member shell keeps its identity block in the bottom-left corner, where a default snackbar would land. */
 export const SHELL_SNACKBAR_ANCHOR = { vertical: 'bottom', horizontal: 'right' } as const;

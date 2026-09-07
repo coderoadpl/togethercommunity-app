@@ -31,6 +31,7 @@ import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
 import { LogoImage } from '../../components/ui/LogoImage.js';
+import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 import { EmailLanguageSwitcher } from '../../EmailLanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
@@ -49,7 +50,6 @@ import {
   PanelNavItem,
 } from '../../theme.js';
 import {
-  AccountIcon,
   CouponsIcon,
   CoursesIcon,
   DashboardIcon,
@@ -63,6 +63,7 @@ import {
   MarketingSendsIcon,
   MembersIcon,
   MenuIcon,
+  MessagesIcon,
   ProductsIcon,
   ReportsIcon,
   SalesIcon,
@@ -419,9 +420,9 @@ const UserMenu = ({
           aria-haspopup="true"
           aria-expanded={open ? true : undefined}
           onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
-          sx={{ minHeight: '44px', minWidth: '44px' }}
+          sx={{ minHeight: '48px', minWidth: '48px' }}
         >
-          <AccountIcon />
+          <MemberAvatar name={email} />
         </IconButton>
       </Tooltip>
       <Menu
@@ -452,7 +453,32 @@ const UserMenu = ({
         <Divider sx={{ display: { xs: 'block', sm: 'none' } }} />
         <MenuItem
           component={Link}
+          to="/my/products"
+          data-testid="user-menu-products"
+          sx={{ minHeight: '44px', px: '1rem' }}
+          onClick={() => setAnchorEl(null)}
+        >
+          <ListItemIcon>
+            <ProductsIcon />
+          </ListItemIcon>
+          <ListItemText primary={t.student.myProducts} />
+        </MenuItem>
+        <MenuItem
+          component={Link}
+          to="/messages"
+          data-testid="user-menu-messages"
+          sx={{ minHeight: '44px', px: '1rem' }}
+          onClick={() => setAnchorEl(null)}
+        >
+          <ListItemIcon>
+            <MessagesIcon />
+          </ListItemIcon>
+          <ListItemText primary={t.messages.navLabel} />
+        </MenuItem>
+        <MenuItem
+          component={Link}
           to="/account"
+          data-testid="user-menu-account"
           sx={{ minHeight: '44px', px: '1rem' }}
           onClick={() => setAnchorEl(null)}
         >

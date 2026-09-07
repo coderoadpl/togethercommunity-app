@@ -2113,6 +2113,7 @@ export const pl: Messages = {
     customDomains: 'Własna domena',
     none: 'Nie podłączono własnej domeny. Dodaj ją poniżej.',
     addLabel: 'Dodaj domenę',
+    addHint: 'Użyj subdomeny, chyba że wdrożenie obsługuje domeny główne.',
     addPlaceholder: 'kurs.twojadomena.pl',
     add: 'Dodaj domenę',
     adding: 'Dodaję…',

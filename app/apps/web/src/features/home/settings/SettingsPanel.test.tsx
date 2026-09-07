@@ -141,6 +141,7 @@ const initialRouting = () => ({
     customDomainEntry({ domain: 'nowa.acme.example', status: 'pending-dns' }),
   ],
   customDomainTarget: 'cname.vercel-dns.com',
+  apexDomainsSupported: false,
   canAddCustomDomain: true,
 });
 
@@ -442,6 +443,27 @@ describe('SettingsPanel information architecture', () => {
       .toHaveTextContent(pl.tenantDomains.conflict);
   });
 
+  it('advises using a subdomain unless apex routing is configured', async () => {
+    renderPanel();
+
+    expect(await screen.findByTestId('tenant-domain-hint'))
+      .toHaveTextContent(pl.tenantDomains.addHint);
+  });
+
+  it('does not advise using a subdomain when apex routing is configured', async () => {
+    const { queryClient } = renderPanel();
+    await screen.findByTestId('tenant-domain-hint');
+    server.use(http.get('/api/tenant/routing', () => HttpResponse.json({
+      ok: true,
+      data: { routing: { ...initialRouting(), apexDomainsSupported: true } },
+    })));
+    await queryClient.invalidateQueries();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('tenant-domain-hint')).not.toBeInTheDocument();
+    });
+  });
+
   it('quotes the provider when it refuses the domain for good', async () => {
     renderPanel();
 
@@ -495,6 +517,7 @@ describe('SettingsPanel information architecture', () => {
               storageCorsStatus: 'unknown',
             }],
             customDomainTarget: 'cname.vercel-dns.com',
+            apexDomainsSupported: false,
             canAddCustomDomain: true,
           },
         },

@@ -193,6 +193,7 @@ Set these on the deployment that terminates TLS:
 | Key | Purpose |
 |---|---|
 | `APP_CUSTOM_DOMAIN_TARGET` | The `CNAME` value shown to creators. Defaults to the platform host. |
+| `DOMAIN_PROVISIONER_APEX_A_RECORD` | Optional IPv4 `A` record shown for two-label apex domains. Without it, apex domains are rejected and creators must connect a subdomain. |
 | `DOMAIN_PROVISIONER_TOKEN` | Enables provider mode. See the warning below. |
 | `DOMAIN_PROVISIONER_PROJECT_ID` | The project the domains attach to. Required together with the token. |
 | `DOMAIN_PROVISIONER_TEAM_ID` | Set when the project lives in a team. |

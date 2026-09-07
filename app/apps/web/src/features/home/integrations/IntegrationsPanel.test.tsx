@@ -167,6 +167,7 @@ const renderPanel = (
           canonicalOrigin: 'https://akademia.together.example',
           customDomains: [],
           customDomainTarget: 'cname.vercel-dns.com',
+          apexDomainsSupported: false,
           canAddCustomDomain: true,
         },
       },

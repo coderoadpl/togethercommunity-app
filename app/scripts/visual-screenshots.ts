@@ -136,6 +136,7 @@ const prepareDomainChecklist = async (page: Page, active: boolean): Promise<Scre
       storageCorsOrigins: ['https://workspace.example.org', `https://${domain}`],
       canonicalOrigin: `https://${domain}`,
       customDomainTarget: 'routing.example.org',
+      apexDomainsSupported: false,
       canAddCustomDomain: true,
       customDomains: [{
         domain, verified: active, status: active ? 'active' : 'pending-dns',

@@ -1332,7 +1332,13 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
     );
   }
 
-  const { customDomains, tenantHost, canonicalOrigin, canAddCustomDomain } = routing.data.routing;
+  const {
+    customDomains,
+    tenantHost,
+    canonicalOrigin,
+    canAddCustomDomain,
+    apexDomainsSupported,
+  } = routing.data.routing;
 
   return (
     <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
@@ -1468,6 +1474,11 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
                 onChange={(event) => setDraft(event.target.value)}
                 inputProps={{ 'data-testid': 'tenant-domain-input' }}
               />
+              {apexDomainsSupported ? null : (
+                <FormHelperText data-testid="tenant-domain-hint">
+                  {t.tenantDomains.addHint}
+                </FormHelperText>
+              )}
             </FormControl>
             <Button
               type="submit"

@@ -58,6 +58,22 @@ ${image}
 
 const hasFileExtension = (path: string): boolean => /\/[^/]+\.[^/]+$/.test(path);
 
+const canonicalRequestUrl = (
+  url: string,
+  host: string | undefined,
+  forwardedProtocol: string | undefined,
+  configuredBaseUrl: string,
+): URL => {
+  const canonical = new URL(url);
+  if (host !== undefined) canonical.host = host;
+  const configuredProtocol = new URL(configuredBaseUrl).protocol;
+  const forwarded = forwardedProtocol?.split(',')[0]?.trim().toLowerCase();
+  canonical.protocol = configuredProtocol === 'https:' || forwarded === 'https'
+    ? 'https:'
+    : 'http:';
+  return canonical;
+};
+
 export const registerSocialPreviewRoute = (app: Hono<Vars>, deps: AppDeps): void => {
   app.get('*', async (c, next) => {
     const userAgent = c.req.header('user-agent') ?? '';
@@ -81,7 +97,12 @@ export const registerSocialPreviewRoute = (app: Hono<Vars>, deps: AppDeps): void
     }
     const { tenant } = resolved.value;
     const settings = await deps.tenants.findSettings(tenant.id);
-    const requestUrl = new URL(c.req.url);
+    const requestUrl = canonicalRequestUrl(
+      c.req.url,
+      c.req.header('host'),
+      c.req.header('x-forwarded-proto'),
+      deps.appBaseUrl,
+    );
     const social = resolveTenantSocial(tenant, settings, requestUrl.origin);
     const canonicalUrl = `${requestUrl.origin}${requestUrl.pathname}`;
     return c.html(renderSocialPreview({

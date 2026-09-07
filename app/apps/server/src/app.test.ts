@@ -4206,6 +4206,38 @@ describe('social preview route', () => {
     expect(await response.text()).toContain('property="og:title" content="Acme"');
   });
 
+  it('uses the forwarded HTTPS scheme for canonical crawler metadata', async () => {
+    const response = await buildApp(deps()).request('/public?draft=1', {
+      headers: {
+        host: 'acme.localhost:48730',
+        'user-agent': 'Twitterbot/1.0',
+        'x-forwarded-proto': 'https',
+      },
+    });
+
+    const html = await response.text();
+    expect(html).toContain('property="og:url" content="https://acme.localhost:48730/public"');
+    expect(html).toContain('<link rel="canonical" href="https://acme.localhost:48730/public">');
+    expect(html).not.toContain('http://acme.localhost:48730');
+  });
+
+  it('keeps production crawler metadata on HTTPS when a proxy reports HTTP', async () => {
+    const app = buildApp({
+      ...deps(),
+      appBaseUrl: 'https://start.example.org',
+      baseDomain: 'example.org',
+    });
+    const response = await app.request('/', {
+      headers: {
+        host: 'acme.example.org',
+        'user-agent': 'Twitterbot/1.0',
+        'x-forwarded-proto': 'http',
+      },
+    });
+
+    expect(await response.text()).toContain('property="og:url" content="https://acme.example.org/"');
+  });
+
   it.each([
     ['browser', '/', 'Mozilla/5.0', 'acme.localhost:48730'],
     ['asset', '/assets/app.js', 'Twitterbot/1.0', 'acme.localhost:48730'],
@@ -4216,6 +4248,124 @@ describe('social preview route', () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('tenant crawler files', () => {
+  const publicCourse: Course = {
+    id: 'course-public',
+    tenantId: acme.id,
+    name: 'Public course',
+    description: '',
+    imageUrl: null,
+    moduleOrder: [],
+    publiclyVisible: true,
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
+  const publicSpace: Space = {
+    id: 'space-public',
+    tenantId: acme.id,
+    slug: 'public-space',
+    name: 'Public space',
+    description: null,
+    visibility: 'members',
+    productIds: [],
+    publicReadOnly: true,
+    position: 0,
+    archivedAt: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
+
+  const crawlerApp = () => {
+    const base = deps({
+      domains: [tenantDomainFixture({
+        id: 'domain-canonical',
+        tenantId: acme.id,
+        domain: 'courses.example.org',
+        verified: true,
+      })],
+    });
+    return buildApp({
+      ...base,
+      courses: { ...base.courses, list: async () => [publicCourse] },
+      spaces: { ...base.spaces, list: async () => [publicSpace] },
+    });
+  };
+
+  it('serves the tenant robots policy directly to crawler user agents', async () => {
+    const response = await crawlerApp().request('/robots.txt', {
+      headers: { host: 'acme.localhost:48730', 'user-agent': 'Googlebot/2.1' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/plain');
+    expect(await response.text()).toBe([
+      'User-agent: *',
+      'Allow: /',
+      'Allow: /my/courses/',
+      'Disallow: /my',
+      'Disallow: /panel',
+      'Disallow: /api',
+      'Disallow: /login',
+      'Sitemap: https://courses.example.org/sitemap.xml',
+      '',
+    ].join('\n'));
+  });
+
+  it('lists public home, course and navigation spaces at the canonical origin', async () => {
+    const response = await crawlerApp().request('/sitemap.xml', {
+      headers: { host: 'acme.localhost:48730', 'user-agent': 'Googlebot/2.1' },
+    });
+
+    const xml = await response.text();
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/xml');
+    expect(xml).toContain('<loc>https://courses.example.org/</loc>');
+    expect(xml).toContain('<loc>https://courses.example.org/my/courses/course-public</loc>');
+    expect(xml).toContain('<loc>https://courses.example.org/community/space-public</loc>');
+  });
+
+  it('uses the configured HTTPS tenant origin when no custom domain is verified', async () => {
+    const base = deps();
+    const app = buildApp({
+      ...base,
+      appBaseUrl: 'https://start.example.org',
+      baseDomain: 'example.org',
+    });
+    const response = await app.request('/robots.txt', {
+      headers: {
+        host: 'untrusted.example.net',
+        [TENANT_HEADER]: acme.slug,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('Sitemap: https://acme.example.org/sitemap.xml');
+  });
+
+  it('lists only the HTTPS tenant home when public navigation is empty', async () => {
+    const base = deps();
+    const app = buildApp({
+      ...base,
+      appBaseUrl: 'https://start.example.org',
+      baseDomain: 'example.org',
+    });
+    const response = await app.request('/sitemap.xml', {
+      headers: {
+        host: 'untrusted.example.net',
+        [TENANT_HEADER]: acme.slug,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe([
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      '  <url><loc>https://acme.example.org/</loc></url>',
+      '</urlset>',
+      '',
+    ].join('\n'));
   });
 });
 

@@ -1863,6 +1863,7 @@ export interface Messages {
     customDomains: string;
     none: string;
     addLabel: string;
+    addHint: string;
     addPlaceholder: string;
     add: string;
     adding: string;

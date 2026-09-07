@@ -191,6 +191,9 @@ describe('LessonPlayerPage', () => {
       http.get('/api/student/lessons/:lessonId/attachments', () =>
         HttpResponse.json({ ok: true, data: { attachments: [] } }),
       ),
+      http.post('/api/student/progress/last-viewed', () =>
+        HttpResponse.json({ ok: true, data: { progress: progress([]) } }),
+      ),
     );
   });
 
@@ -1318,6 +1321,30 @@ describe('LessonPlayerPage', () => {
         chapterId: 'c1',
       }),
     );
+  });
+
+  it('keeps last-viewed failures silent on the lesson page', async () => {
+    let lastViewedCalls = 0;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', () => {
+        lastViewedCalls += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'Write failed' } },
+          { status: 500 },
+        );
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('lesson-video')).toBeInTheDocument();
+    await waitFor(() => expect(lastViewedCalls).toBe(1));
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith('Failed to update last-viewed lesson', expect.any(Error)));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 
   it('skips the last-viewed write and its error alert while viewing as a member', async () => {

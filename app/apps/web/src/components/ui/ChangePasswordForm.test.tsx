@@ -9,6 +9,7 @@ import { LanguageProvider, type Language } from '../../i18n/index.js';
 import { pl } from '../../i18n/pl.js';
 import { languagePreference } from '../../theme-mode.js';
 import { ChangePasswordForm } from './ChangePasswordForm.js';
+import { ToastProvider } from './Toast.js';
 
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
@@ -20,12 +21,14 @@ const renderForm = (
   languagePreference.save(language);
   render(
     <LanguageProvider>
-      <ChangePasswordForm
-        pending={false}
-        success={false}
-        error={error}
-        onSubmit={onSubmit}
-      />
+      <ToastProvider>
+        <ChangePasswordForm
+          pending={false}
+          success={false}
+          error={error}
+          onSubmit={onSubmit}
+        />
+      </ToastProvider>
     </LanguageProvider>,
   );
   return onSubmit;
@@ -110,7 +113,7 @@ describe('ChangePasswordForm', () => {
     });
     renderForm(vi.fn(), providerError);
 
-    expect(screen.getByTestId('change-password-remote-error')).toHaveTextContent(
+    expect(screen.getByTestId(/^toast-error-/)).toHaveTextContent(
       pl.changePassword.invalidCurrentPassword,
     );
   });

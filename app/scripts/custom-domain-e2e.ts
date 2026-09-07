@@ -167,7 +167,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     await page.getByTestId('passkey-proof-password').fill(CREATOR_PASSWORD);
     await page.getByTestId('add-passkey').click();
     try {
-      await page.getByTestId('passkey-added').waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator('[data-testid^="toast-success-"]').first().waitFor({ state: 'visible', timeout: 20000 });
     } catch (cause) {
       const alert = await page.getByRole('alert').first().textContent().catch(() => null);
       throw new E2eFailure(
@@ -274,7 +274,7 @@ const runSelfServeAdd = async (input: {
 
     await page.getByTestId('tenant-domain-input').fill('sklep.acme.localhost');
     await page.getByTestId('tenant-domain-add').click();
-    await page.getByTestId('tenant-domain-error').waitFor({ state: 'visible', timeout: 20000 });
+    await page.locator('[data-testid^="toast-error-"]').first().waitFor({ state: 'visible', timeout: 20000 });
     assert(
       await readDomainRow(input.databaseUrl, 'sklep.acme.localhost') === null,
       'the platform base domain was accepted as a custom domain',

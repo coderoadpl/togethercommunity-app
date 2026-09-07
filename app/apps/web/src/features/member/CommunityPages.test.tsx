@@ -9,7 +9,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createPostInputSchema,
@@ -29,6 +29,10 @@ import { MemberShell } from './shell/MemberShell.js';
 import { SpaceFeedPage } from './SpaceFeedPage.js';
 import { SpaceThreadPage } from './SpaceThreadPage.js';
 import { SpacesListPage } from './SpacesListPage.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const okMe = () =>
   http.get('/api/me', () =>
@@ -627,6 +631,31 @@ describe('community pages', () => {
     await user.click(screen.getByTestId('space-composer-submit'));
 
     await waitFor(() => expect(seenCalls).toEqual(['s1', 's1']));
+  });
+
+  it('keeps space seen failures silent on the feed page', async () => {
+    let seenCalls = 0;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', [feedItem({ id: 'p1', body: 'Visible post' })]),
+      http.post('/api/spaces/:spaceId/seen', () => {
+        seenCalls += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'Write failed' } },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByText('Visible post')).toBeInTheDocument();
+    await waitFor(() => expect(seenCalls).toBe(1));
+    await waitFor(() => expect(warn).toHaveBeenCalledWith('Failed to mark space seen', expect.any(Error)));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 
   it('never marks the space seen while viewing as a member', async () => {

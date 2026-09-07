@@ -172,6 +172,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   const { mutate: markSeen } = useMutation({
     ...actions.markSpaceSeen,
+    onError: (error) => console.warn('Failed to mark space seen', error),
     onSettled: () => queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
   });
   const invalidateSpaces = async () => {

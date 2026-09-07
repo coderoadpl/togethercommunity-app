@@ -1,5 +1,6 @@
 import type { ElementType } from 'react';
 import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, Typography } from '@mui/material';
+import type { ListItemButtonProps } from '@mui/material/ListItemButton';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
 import { accentOnSurface, type AccentGradient } from './theme-branding.js';
@@ -3299,6 +3300,13 @@ export const CourseTreeModuleTitle = styled(TreeModuleTitle)<AsElement>({
   lineHeight: 1.4,
 });
 
+export const CourseTreeModuleButton = styled(ListItemButton)<ListItemButtonProps>(({ theme }) => ({
+  backgroundColor: theme.palette.background.paper,
+  '&:hover': {
+    backgroundColor: theme.palette.action.hover,
+  },
+}));
+
 export const CourseTreeChapterTitle = styled(TreeChapterTitle)<AsElement>({
   fontSize: '0.875rem',
   lineHeight: 1.4,
@@ -3395,16 +3403,12 @@ export const VisuallyHidden = styled('span')({
 
 export type CoverFrame = 'card' | 'standalone';
 
-/** Wider than the member course column, so a page cover never shrinks below the member reference. */
-const COVER_STANDALONE_MAX_WIDTH = '45rem';
-
 const coverBox = (theme: Theme, frame: CoverFrame) => ({
   display: 'block',
   width: '100%',
   aspectRatio: '16 / 9',
   ...(frame === 'standalone'
     ? {
-        maxWidth: COVER_STANDALONE_MAX_WIDTH,
         border: `1px solid ${theme.palette.divider}`,
         borderRadius: theme.shape.borderRadius,
       }

@@ -89,6 +89,12 @@ describe('SalesPanel', () => {
           },
         });
       }),
+      http.get('/api/orders/reconciliation', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { rows: [], checkedThrough: '2026-08-03T12:00:00.000Z' },
+        }),
+      ),
       http.get('/api/coupons/options', () =>
         HttpResponse.json({
           ok: true,
@@ -118,7 +124,8 @@ describe('SalesPanel', () => {
     });
     renderWithProviders(<RouterProvider router={router} />);
 
-    expect(await screen.findByTestId('sales-row')).toHaveTextContent('Workshop');
+    const salesRow = await screen.findByTestId('sales-row');
+    expect(salesRow).toHaveTextContent('Workshop');
     expect(screen.getByTestId('sales-row')).toHaveTextContent('Ada');
     expect(screen.getByRole('link', { name: 'Ada' }))
       .toHaveAttribute('href', '/panel/members/m1');

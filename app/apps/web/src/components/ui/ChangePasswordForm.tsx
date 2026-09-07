@@ -14,6 +14,7 @@ import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/pa
 
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
 import { Eyebrow } from '../../theme.js';
+import { useToastError, useToastSuccess } from './Toast.js';
 
 interface ChangePasswordFormProps {
   pending: boolean;
@@ -68,6 +69,9 @@ export const ChangePasswordForm = ({
       : error !== null
         ? localizeError(error, t)
         : null;
+
+  useToastSuccess(success, t.changePassword.success);
+  useToastError(remoteError);
 
   return (
     <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.8rem' }}>
@@ -138,13 +142,7 @@ export const ChangePasswordForm = ({
           {pending ? t.changePassword.submitPending : t.changePassword.submitIdle}
         </Button>
       </Box>
-      {success ? (
-        <Typography variant="caption" component="p" data-testid="change-password-success">
-          {t.changePassword.success}
-        </Typography>
-      ) : null}
       {localError ? <Alert severity="error" data-testid="change-password-local-error">{localError}</Alert> : null}
-      {remoteError ? <Alert severity="error" data-testid="change-password-remote-error">{remoteError}</Alert> : null}
     </Box>
   );
 };

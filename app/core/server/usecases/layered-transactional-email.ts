@@ -68,16 +68,18 @@ export const createLayeredTransactionalEmailSender = (
     if (deps.smokeTenantSink !== undefined && isSmokeTenant(message.tenantId)) {
       return sendWith('platform', deps.smokeTenantSink, message);
     }
-    const tenant = await resolveTenantTransactionalTransport(message.tenantId, deps.transports);
-    if (tenant !== null) return sendWith(tenant.transport, tenant.email, message);
-    if (message.tenantTransportRequired === true) {
-      return {
-        ok: false,
-        error: appError(
-          'integration_not_configured',
-          'A tenant SES, SMTP or Resend transport is required for API-submitted e-mail',
-        ),
-      };
+    if (message.forcePlatformTransport !== true) {
+      const tenant = await resolveTenantTransactionalTransport(message.tenantId, deps.transports);
+      if (tenant !== null) return sendWith(tenant.transport, tenant.email, message);
+      if (message.tenantTransportRequired === true) {
+        return {
+          ok: false,
+          error: appError(
+            'integration_not_configured',
+            'A tenant SES, SMTP or Resend transport is required for API-submitted e-mail',
+          ),
+        };
+      }
     }
     const reserved = await deps.pool.reserve(message.tenantId, deps.platformLimit);
     if (!reserved) {

@@ -1657,11 +1657,17 @@ export interface Messages {
     signedInAs: string;
     back: string;
     profileHeading: string;
+    tabsLabel: string;
+    tabs: { profile: string; security: string; notifications: string; playback: string };
     displayNameLabel: string;
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
     avatarHint: string;
+    avatarUpload: string;
+    avatarUploading: string;
+    avatarRemove: string;
+    avatarTooLarge: string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;

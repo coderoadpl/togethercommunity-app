@@ -221,6 +221,8 @@ export const members = pgTable(
     userId: text('user_id').notNull(),
     email: text('email').notNull(),
     displayName: text('display_name'),
+    avatarUrl: text('avatar_url'),
+    avatarCleared: boolean('avatar_cleared').notNull().default(false),
     language: text('language', { enum: ['pl', 'en'] }),
     videoAutoplay: boolean('video_autoplay').notNull().default(false),
     legacyId: text('legacy_id'),

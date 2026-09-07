@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const IMAGE_ASSET_MAX_BYTES = 5 * 1024 * 1024;
+export const AVATAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 const IMAGE_ASSET_KINDS = [
   'course-cover',
@@ -9,6 +10,7 @@ const IMAGE_ASSET_KINDS = [
   'logo-dark',
   'favicon',
   'share-image',
+  'avatar',
 ] as const;
 
 export const imageAssetKindSchema = z.enum(IMAGE_ASSET_KINDS);
@@ -45,6 +47,7 @@ const CONTENT_TYPES_BY_KIND: Record<ImageAssetKind, readonly string[]> = {
   'logo-dark': IMAGE_ASSET_CONTENT_TYPES,
   favicon: IMAGE_ASSET_FAVICON_CONTENT_TYPES,
   'share-image': IMAGE_ASSET_SHARE_IMAGE_CONTENT_TYPES,
+  avatar: IMAGE_ASSET_SHARE_IMAGE_CONTENT_TYPES,
 };
 
 export const imageAssetContentTypesFor = (kind: ImageAssetKind): readonly string[] =>
@@ -87,6 +90,17 @@ export const imageAssetUploadInputSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['contentType'],
       message: `${input.contentType} is not accepted for ${input.kind}`,
+    });
+  }
+  if (input.kind === 'avatar' && input.sizeBytes > AVATAR_IMAGE_MAX_BYTES) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_big,
+      maximum: AVATAR_IMAGE_MAX_BYTES,
+      type: 'number',
+      inclusive: true,
+      exact: false,
+      path: ['sizeBytes'],
+      message: `Avatar image must not exceed ${String(AVATAR_IMAGE_MAX_BYTES)} bytes`,
     });
   }
 });

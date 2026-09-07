@@ -160,6 +160,7 @@ import {
   archiveCoupon,
   attachModuleToCourse,
   beginBrandingAssetUpload,
+  beginAvatarUpload,
   beginCourseCoverUpload,
   beginLessonAttachmentUpload,
   beginProductCoverUpload,
@@ -190,6 +191,7 @@ import {
   createTenantDocument,
   configureStorageConnection,
   completeBrandingAssetUpload,
+  completeAvatarUpload,
   completeCourseCoverUpload,
   completeLessonAttachmentUpload,
   completeProductCoverUpload,
@@ -220,6 +222,7 @@ import {
   revokeMyAccountSession,
   revokeMyOtherAccountSessions,
   updateMyProfile,
+  removeAvatar,
   listErasureRequests,
   rejectErasureRequest,
   exportOrders,
@@ -558,7 +561,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   email: user.email,
   name: user.name,
   emailVerified: user.emailVerified,
-  image: user.image,
+  image: null,
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
@@ -1515,7 +1518,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         email: identity.email,
         name: identity.name,
         emailVerified: identity.emailVerified,
-        avatarUrl: avatarUrlFor(deps.contentHash, { image: identity.image, email: identity.email }),
+        avatarUrl: avatarUrlFor(identity.image),
         tenant:
           identity.tenantId &&
             identity.tenantSlug &&
@@ -1584,6 +1587,31 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       { members: deps.members, clock: deps.clock },
     ));
   });
+
+  app.post(API_PATHS.avatarUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    return respondImageAssetUpload(beginAvatarUpload, ctxOf(c), body, deps);
+  });
+
+  app.post(API_PATHS.avatarComplete, async (c) => {
+    const parsed = imageAssetCompleteRequestSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return respond(err(validation('Invalid avatar completion', parsed.error.flatten())));
+    }
+    return respond(await completeAvatarUpload(ctxOf(c), parsed.data, {
+      avatars: deps.accountAvatars,
+      avatarImages: deps.avatarImages,
+      secretResolver: deps.secretResolver,
+      storage: deps.storage,
+    }));
+  });
+
+  app.post(API_PATHS.avatarRemove, async (c) =>
+    respond(await removeAvatar(ctxOf(c), {
+      avatars: deps.accountAvatars,
+      secretResolver: deps.secretResolver,
+      storage: deps.storage,
+    })));
 
   app.get(API_PATHS.accountSessions, async (c) => respond(await listMyAccountSessions(
     ctxOf(c),

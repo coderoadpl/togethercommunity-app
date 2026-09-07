@@ -20,7 +20,6 @@ import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -59,8 +58,6 @@ import {
 } from './spaces.js';
 
 const NOW = '2026-07-15T10:00:00.000Z';
-
-const contentHash: ContentHash = { sha256: (content) => `digest(${String(content)})` };
 
 const identity = (overrides: Partial<Identity>): Identity => ({
   userId: 'u1',
@@ -766,7 +763,6 @@ const fixture = (input: {
     ids: new SequenceIds(),
     clock: new MutableClock(),
     avatarSources,
-    contentHash,
   };
   return { deps, contentVersionBumps, posts, reactions, spaceSubscriptions, spaceSeen, notifications, delivered };
 };
@@ -1053,8 +1049,8 @@ describe('space feed', () => {
     expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
       ok: true,
       value: {
-        pinned: [{ authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160' }],
-        items: [{ authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u2@example.com)?d=404&s=160' }],
+        pinned: [{ authorAvatarUrl: null }],
+        items: [{ authorAvatarUrl: null }],
       },
     });
   });
@@ -1257,7 +1253,7 @@ describe('space-post notifications', () => {
       courseId: null,
       lessonName: 'Klub',
       snippet: 'nowy wpis',
-      authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160',
+      authorAvatarUrl: null,
     });
   });
 

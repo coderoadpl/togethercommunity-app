@@ -144,9 +144,8 @@ files; each package carries the full license in its \`LICENSE\` file under
 
 The Together logo wordmarks contain letterforms of Poppins (Indian Type Foundry), used under the SIL Open Font License 1.1, converted to outlines; no font software is distributed.
 
-**sharp / libvips.** The dev-only Argos upload tooling installs sharp's
-prebuilt libvips binaries (\`@img/sharp-libvips-*\`, LGPL-3.0-or-later; the
-related \`@img/sharp-*\` prebuilds carry the same notice). They are
+**sharp / libvips.** Avatar image processing uses sharp, which installs
+prebuilt libvips binaries (\`@img/sharp-libvips-*\`, LGPL-3.0-or-later). They are
 platform-specific shared libraries installed under \`node_modules\` alongside
 sharp and loaded by it at runtime through dynamic linking. The LGPL-3.0
 obligations are satisfied by that dynamic linking together with upstream

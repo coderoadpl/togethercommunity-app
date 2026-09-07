@@ -464,7 +464,6 @@ const makeDeps = (
     ids,
     clock: { nowIso: () => NOW },
     avatarSources: { listAvatarSources: async () => [] },
-    contentHash: { sha256: (content) => `digest(${String(content)})` },
   };
 };
 

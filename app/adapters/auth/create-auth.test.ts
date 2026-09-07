@@ -407,6 +407,7 @@ const buildAuth = (options: {
   singleTenantMode?: boolean;
   verifiedCustomHosts?: string[];
   trustedOrigins?: string[];
+  importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
 } = {}) => {
   const db = createDb('node-postgres', connectionString);
   const emailOutbox = createEmailOutboxRepository(db);
@@ -450,6 +451,7 @@ const buildAuth = (options: {
     dispatchEmail,
     defaultTenantName: 'Together',
     google: null,
+    ...(options.importGoogleAvatar === undefined ? {} : { importGoogleAvatar: options.importGoogleAvatar }),
     validateSignUpConsent: async ({ accepted }) =>
       consentRequired && accepted !== true
         ? err(validation('Accepting the terms and privacy policy is required'))
@@ -468,6 +470,51 @@ const buildAuth = (options: {
     flushEmails,
   };
 };
+
+const googleIdToken = (picture: string): string =>
+  `header.${Buffer.from(JSON.stringify({ picture })).toString('base64url')}.signature`;
+
+describe('provider avatar hooks', () => {
+  it('removes a raw provider image before creating the auth user', async () => {
+    const { auth } = buildAuth();
+    const { internalAdapter } = await auth.$context;
+    const created = await internalAdapter.createUser({
+      name: 'Provider User',
+      email: `provider-image-${Date.now()}@together.dev`,
+      emailVerified: true,
+      image: 'https://images.example.org/profile.png',
+    });
+
+    expect(created.image).toBeNull();
+  });
+
+  it('passes Google pictures from account create and update hooks to the importer', async () => {
+    const imported: Array<{ userId: string; sourceUrl: string }> = [];
+    const { auth } = buildAuth({
+      importGoogleAvatar: async (input) => { imported.push(input); },
+    });
+    const { internalAdapter } = await auth.$context;
+    const createdUser = await internalAdapter.createUser({
+      name: 'Google User',
+      email: `google-avatar-${Date.now()}@together.dev`,
+      emailVerified: true,
+    });
+    const createdAccount = await internalAdapter.createAccount({
+      accountId: `google-${Date.now()}`,
+      providerId: 'google',
+      userId: createdUser.id,
+      idToken: googleIdToken('https://images.example.org/first.png'),
+    });
+    await internalAdapter.updateAccount(createdAccount.id, {
+      idToken: googleIdToken('https://images.example.org/second.png'),
+    });
+
+    expect(imported).toEqual([
+      { userId: createdUser.id, sourceUrl: 'https://images.example.org/first.png' },
+      { userId: createdUser.id, sourceUrl: 'https://images.example.org/second.png' },
+    ]);
+  });
+});
 
 describe('auth cookie scope', () => {
   it('composes soft email verification without blocking password sign-in', async () => {

@@ -618,7 +618,6 @@ const fixture = (
           .filter((row) => row.tenantId === tenantId && userIds.includes(row.userId))
           .map((row) => ({ userId: row.userId, email: row.email, image: null })),
     },
-    contentHash: { sha256: (content) => `digest(${String(content)})` },
   };
   return { deps, blocks, conversations, messages, states, notifications, delivered, published };
 };

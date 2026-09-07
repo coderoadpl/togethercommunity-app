@@ -132,7 +132,7 @@ const MethodCard = ({
 export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  useRedirectSignedInWithTenant();
+  const me = useRedirectSignedInWithTenant();
   const magicLinkExpired = invalidTokenFromLocation();
   const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [identifierInvalid, setIdentifierInvalid] = useState(false);
@@ -206,6 +206,13 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   });
 
   const signInWithGoogle = useMutation(actions.signInWithGoogle);
+  const { mutate: promptGoogleOneTap } = useMutation(actions.promptGoogleOneTap);
+
+  useEffect(() => {
+    const clientId = authConfig.data?.googleClientId;
+    if (clientId === null || clientId === undefined || me.isPending || me.data !== undefined) return;
+    promptGoogleOneTap({ clientId, callbackURL: window.location.origin });
+  }, [authConfig.data?.googleClientId, me.data, me.isPending, promptGoogleOneTap]);
 
   const completeTwoFactor = async () => {
     setTwoFactorRequired(false);

@@ -38,6 +38,8 @@ import type {
 
 import type { Db } from './client.js';
 import {
+  createAccountAvatarRepository,
+  createAccountAvatarTenantReader,
   createAvatarSourceReader,
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -1295,7 +1297,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     ]));
   });
 
-  it('reads avatar sources for tenant identities only, preferring the member e-mail', async () => {
+  it('reads only tenant-scoped member avatars', async () => {
     await db.insert(user).values({
       id: 'user-acme-avatar',
       name: 'Avatar Member',
@@ -1308,6 +1310,12 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       userId: 'user-acme-avatar',
       email: 'member-avatar@together.dev',
     }));
+    const avatars = createAccountAvatarRepository(db);
+    await avatars.setAvatar(
+      ACME,
+      'user-acme-avatar',
+      '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp',
+    );
 
     const reader = createAvatarSourceReader(db);
     const sources = await reader.listAvatarSources(ACME, [
@@ -1317,11 +1325,41 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     ]);
 
     expect([...sources].sort((a, b) => a.userId.localeCompare(b.userId))).toEqual([
-      { userId: 'user-acme-avatar', email: 'member-avatar@together.dev', image: 'https://lh3.googleusercontent.com/a/avatar' },
-      { userId: 'user-acme-owner', email: 'owner-acme@together.dev', image: null },
+      { userId: 'user-acme-avatar', image: '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp' },
+      { userId: 'user-acme-owner', image: null },
     ]);
     expect(await reader.listAvatarSources(GLOBEX, ['user-acme-avatar'])).toEqual([]);
     expect(await reader.listAvatarSources(ACME, [])).toEqual([]);
+  });
+
+  it('keeps avatar state independent across a user membership in two tenants', async () => {
+    await db.insert(user).values({
+      id: 'user-shared-avatar',
+      name: 'Shared Member',
+      email: 'shared-avatar@together.dev',
+    });
+    const memberRepository = createMemberRepository(db);
+    await memberRepository.create(ACME, member({
+      id: 'mem-shared-acme', tenantId: ACME, userId: 'user-shared-avatar',
+    }));
+    await memberRepository.create(GLOBEX, member({
+      id: 'mem-shared-globex', tenantId: GLOBEX, userId: 'user-shared-avatar',
+    }));
+    const avatars = createAccountAvatarRepository(db);
+    const avatarTenants = createAccountAvatarTenantReader(db);
+    const acmeAvatar = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp';
+    const globexAvatar = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp';
+
+    expect((await avatarTenants.listTenantIdsForUser('user-shared-avatar')).sort())
+      .toEqual([ACME, GLOBEX].sort());
+    await avatars.setAvatar(ACME, 'user-shared-avatar', acmeAvatar);
+    await avatars.setAvatar(GLOBEX, 'user-shared-avatar', globexAvatar);
+    await avatars.removeAvatar(ACME, 'user-shared-avatar');
+    expect(await avatars.findState(ACME, 'user-shared-avatar'))
+      .toEqual({ image: null, canImport: false });
+    expect(await avatars.findState(GLOBEX, 'user-shared-avatar'))
+      .toEqual({ image: globexAvatar, canImport: false });
+    expect(await avatars.setAvatarIfMissing(ACME, 'user-shared-avatar', acmeAvatar)).toBe(false);
   });
 
   it('stores and revokes API keys by hash within the tenant', async () => {

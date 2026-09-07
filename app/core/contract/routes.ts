@@ -245,6 +245,7 @@ export const EMAIL_DISPATCH_SECRET_HEADER = 'x-email-dispatch-secret';
 
 export const authConfigOutputSchema = z.object({
   googleEnabled: z.boolean(),
+  googleClientId: z.string().nullable().default(null),
   passkeysEnabled: z.boolean(),
   totpEnabled: z.boolean(),
   exposeMagicLinks: z.boolean(),
@@ -297,6 +298,8 @@ export const meProfileUpdateOutputSchema = z.object({
   language: languageSchema.nullable().default(null),
   videoAutoplay: z.boolean().default(false),
 });
+
+export const avatarRemoveOutputSchema = z.object({ removed: z.literal(true) });
 
 export const accountSessionsOutputSchema = z.object({
   sessions: z.array(z.object({
@@ -1759,6 +1762,9 @@ export const API_ROUTES = {
   authResolve: { method: 'POST', path: '/api/public/auth-resolve' },
   me: { method: 'GET', path: '/api/me' },
   meProfile: { method: 'POST', path: '/api/me/profile' },
+  avatarUpload: { method: 'POST', path: '/api/me/avatar/upload' },
+  avatarComplete: { method: 'POST', path: '/api/me/avatar/complete' },
+  avatarRemove: { method: 'POST', path: '/api/me/avatar/remove' },
   accountSessions: { method: 'GET', path: '/api/me/sessions' },
   accountSessionRevoke: { method: 'POST', path: '/api/me/sessions/revoke' },
   accountSessionsRevokeOthers: { method: 'POST', path: '/api/me/sessions/revoke-others' },
@@ -2030,6 +2036,9 @@ export const API_PATHS = {
   authResolve: API_ROUTES.authResolve.path,
   me: API_ROUTES.me.path,
   meProfile: API_ROUTES.meProfile.path,
+  avatarUpload: API_ROUTES.avatarUpload.path,
+  avatarComplete: API_ROUTES.avatarComplete.path,
+  avatarRemove: API_ROUTES.avatarRemove.path,
   accountSessions: API_ROUTES.accountSessions.path,
   accountSessionRevoke: API_ROUTES.accountSessionRevoke.path,
   accountSessionsRevokeOthers: API_ROUTES.accountSessionsRevokeOthers.path,

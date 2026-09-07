@@ -11,12 +11,15 @@ import {
   Snackbar,
   Stack,
   Switch,
+  Tab,
+  Tabs,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import { AVATAR_IMAGE_MAX_BYTES } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -34,6 +37,16 @@ import { useImpersonation } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
+
+type AccountTab = 'profile' | 'security' | 'notifications' | 'playback';
+
+const accountTabFrom = (value: unknown): AccountTab =>
+  value === 'security' || value === 'notifications' || value === 'playback' ? value : 'profile';
+
+const avatarContentType = (value: string): 'image/png' | 'image/jpeg' | 'image/webp' | null => {
+  if (value === 'image/png' || value === 'image/jpeg' || value === 'image/webp') return value;
+  return null;
+};
 
 const SignedInAddress = ({ email, variant }: { email: string; variant: 'card' | 'inline' }) => {
   const t = useTranslations();
@@ -65,6 +78,7 @@ export const MemberAccountPage = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const search = useSearch({ strict: false });
   const me = useQuery(actions.me);
   const impersonating = useImpersonation() !== null;
   const ownAccount = me.data !== undefined && me.data.impersonation === null;
@@ -86,10 +100,23 @@ export const MemberAccountPage = () => {
     },
   });
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const updateProfile = useMutation({
     ...actions.updateMyProfile,
     onSuccess: async () => {
       setDisplayNameDraft(null);
+      await queryClient.invalidateQueries(actions.meInvalidates());
+    },
+  });
+  const uploadAvatar = useMutation({
+    ...actions.uploadAvatar,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.meInvalidates());
+    },
+  });
+  const removeAvatar = useMutation({
+    ...actions.removeAvatar,
+    onSuccess: async () => {
       await queryClient.invalidateQueries(actions.meInvalidates());
     },
   });
@@ -184,6 +211,11 @@ export const MemberAccountPage = () => {
   const dmOptOut = me.data.tenant?.dmOptOut ?? false;
   const emailLanguage = me.data.tenant?.language ?? null;
   const videoAutoplay = me.data.tenant?.videoAutoplay ?? false;
+  const requestedTab = accountTabFrom(search['tab']);
+  const selectedTab = (requestedTab === 'security' && impersonating) ||
+    (requestedTab === 'playback' && me.data.tenant?.memberId == null)
+    ? 'profile'
+    : requestedTab;
   const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
@@ -206,8 +238,35 @@ export const MemberAccountPage = () => {
 
   return (
     <MemberSurface title={t.account.title} eyebrow={t.account.heading}>
-      <Stack component="section" useFlexGap spacing="1.5rem">
-        {me.data.tenant?.memberId ? (
+      <Tabs
+        value={selectedTab}
+        onChange={(_event, value: AccountTab) => {
+          void navigate({ to: '/account', search: { tab: value } });
+        }}
+        aria-label={t.account.tabsLabel}
+        variant="scrollable"
+        allowScrollButtonsMobile
+      >
+        <Tab id="account-tab-profile" aria-controls="account-panel-profile" value="profile" label={t.account.tabs.profile} />
+        {impersonating ? null : (
+          <Tab id="account-tab-security" aria-controls="account-panel-security" value="security" label={t.account.tabs.security} />
+        )}
+        <Tab id="account-tab-notifications" aria-controls="account-panel-notifications" value="notifications" label={t.account.tabs.notifications} />
+        {me.data.tenant?.memberId == null ? null : (
+          <Tab id="account-tab-playback" aria-controls="account-panel-playback" value="playback" label={t.account.tabs.playback} />
+        )}
+      </Tabs>
+      <Stack
+        component="section"
+        useFlexGap
+        spacing="1.5rem"
+        role="tabpanel"
+        id={`account-panel-${selectedTab}`}
+        aria-labelledby={`account-tab-${selectedTab}`}
+        tabIndex={0}
+        sx={{ mt: '1.5rem' }}
+      >
+        {selectedTab === 'profile' && me.data.tenant?.memberId ? (
           <SectionCard
             title={t.account.profileHeading}
             onSubmit={(event: FormEvent) => {
@@ -227,6 +286,51 @@ export const MemberAccountPage = () => {
                 {t.account.avatarHint}
               </Typography>
             </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
+              <Button component="label" variant="outlined" disabled={uploadAvatar.isPending}>
+                {uploadAvatar.isPending ? t.account.avatarUploading : t.account.avatarUpload}
+                <input
+                  hidden
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file !== undefined && file.size > AVATAR_IMAGE_MAX_BYTES) {
+                      setAvatarError(t.account.avatarTooLarge);
+                      return;
+                    }
+                    const contentType = file === undefined ? null : avatarContentType(file.type);
+                    if (file === undefined || contentType === null) return;
+                    setAvatarError(null);
+                    uploadAvatar.mutate({
+                      kind: 'avatar',
+                      fileName: file.name,
+                      contentType,
+                      sizeBytes: file.size,
+                      body: file,
+                    });
+                  }}
+                />
+              </Button>
+              {me.data.avatarUrl === null ? null : (
+                <Button
+                  variant="text"
+                  color="error"
+                  disabled={removeAvatar.isPending}
+                  onClick={() => removeAvatar.mutate(undefined)}
+                >
+                  {t.account.avatarRemove}
+                </Button>
+              )}
+            </Stack>
+            {uploadAvatar.isError ? (
+              <Alert severity="error">{localizeError(uploadAvatar.error, t)}</Alert>
+            ) : null}
+            {avatarError === null ? null : <Alert severity="error">{avatarError}</Alert>}
+            {removeAvatar.isError ? (
+              <Alert severity="error">{localizeError(removeAvatar.error, t)}</Alert>
+            ) : null}
             <FormControl fullWidth>
               <FormLabel htmlFor="account-display-name">{t.account.displayNameLabel}</FormLabel>
               <OutlinedInput
@@ -253,18 +357,18 @@ export const MemberAccountPage = () => {
               <Alert severity="error">{localizeError(updateProfile.error, t)}</Alert>
             ) : null}
           </SectionCard>
-        ) : (
+        ) : selectedTab === 'profile' ? (
           <SignedInAddress email={email} variant="card" />
-        )}
+        ) : null}
 
-        {billingOrders.isError ? (
+        {selectedTab === 'profile' && billingOrders.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(billingOrders.error, t), retry: { label: t.common.retry, onRetry: () => void billingOrders.refetch() } }} />
         ) : null}
-        {tenantSettings.isError ? (
+        {selectedTab === 'profile' && tenantSettings.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} />
         ) : null}
 
-        {impersonating ? null : (
+        {selectedTab === 'security' && !impersonating ? (
           <>
             <SectionCard title={t.emailVerification.heading}>
               <EmailVerificationStatus
@@ -383,9 +487,9 @@ export const MemberAccountPage = () => {
               />
             </SectionCard>
           </>
-        )}
+        ) : null}
 
-        {!impersonating && me.data.tenant?.memberId !== undefined && me.data.tenant.memberId !== null ? (
+        {selectedTab === 'notifications' && !impersonating && me.data.tenant?.memberId !== undefined && me.data.tenant.memberId !== null ? (
           <SectionCard
             title={t.messages.privacyHeading}
             description={t.messages.optOutHint}
@@ -407,7 +511,7 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
+        {selectedTab === 'notifications' ? <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
             <EmailLanguagePicker preference={emailLanguagePreference} />
             <ColorSchemeSwitcher />
@@ -433,9 +537,9 @@ export const MemberAccountPage = () => {
               )}
             </>
           )}
-        </SectionCard>
+        </SectionCard> : null}
 
-        {!impersonating && me.data.tenant?.memberId != null ? (
+        {selectedTab === 'playback' && !impersonating && me.data.tenant?.memberId != null ? (
           <SectionCard
             title={t.account.playbackHeading}
             description={t.account.playbackIntro}
@@ -458,7 +562,7 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {billingPortalUrl ? (
+        {selectedTab === 'profile' && billingPortalUrl ? (
           <SectionCard title={t.account.billingHeading} description={t.account.billingIntro}>
               <Box>
                 <Button
@@ -475,7 +579,7 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {billedOrders.length > 0 ? (
+        {selectedTab === 'profile' && billedOrders.length > 0 ? (
           <SectionCard title={t.account.invoiceOrdersHeading}>
             <Stack useFlexGap spacing="1rem">
               {billedOrders.map((order) => (
@@ -513,7 +617,7 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {tenantSettings.data?.settings.supportConfigured === true ? (
+        {selectedTab === 'profile' && tenantSettings.data?.settings.supportConfigured === true ? (
           <SectionCard
             title={t.support.heading}
             description={t.support.intro}
@@ -558,7 +662,7 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {tenantSettings.data?.settings.supportUrl ? (
+        {selectedTab === 'profile' && tenantSettings.data?.settings.supportUrl ? (
           <Button
             component="a"
             href={tenantSettings.data.settings.supportUrl}
@@ -569,7 +673,7 @@ export const MemberAccountPage = () => {
           </Button>
         ) : null}
 
-        {impersonating ? null : (
+        {selectedTab === 'profile' && !impersonating ? (
           <SectionCard
             title={t.account.dataExportHeading}
             description={t.account.dataExportIntro}
@@ -590,9 +694,9 @@ export const MemberAccountPage = () => {
               />
             ) : null}
           </SectionCard>
-        )}
+        ) : null}
 
-        <SectionCard
+        {selectedTab === 'profile' ? <SectionCard
           title={t.account.erasureHeading}
           description={t.account.erasureIntro}
         >
@@ -668,7 +772,7 @@ export const MemberAccountPage = () => {
             <Alert severity="error">{localizeError(createErasureRequest.error, t)}</Alert>
           ) : null}
           {cancelErasureRequest.isError ? <Alert severity="error">{localizeError(cancelErasureRequest.error, t)}</Alert> : null}
-        </SectionCard>
+        </SectionCard> : null}
 
         <Snackbar
           open={updateProfile.isSuccess}

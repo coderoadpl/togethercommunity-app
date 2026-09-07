@@ -1,4 +1,5 @@
 import {
+  AVATAR_IMAGE_MAX_BYTES,
   IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION,
   IMAGE_ASSET_EXTENSION_BY_CONTENT_TYPE,
   IMAGE_ASSET_MAX_BYTES,
@@ -12,12 +13,15 @@ import {
   type ImageAssetKind,
   type ImageAssetUploadInput,
   type Result,
+  type StorageConfiguration,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type {
   Clock,
+  AccountAvatarRepository,
+  AvatarImageProcessor,
   IdGenerator,
   StorageProvider,
   TenantSecretResolver,
@@ -30,9 +34,27 @@ const IMAGE_ASSET_UPLOAD_TTL_SECONDS = 15 * 60;
 export const IMAGE_ASSET_GET_TTL_SECONDS = 60 * 60;
 
 const imageAssetFilePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|webp|svg|ico)$/;
+const avatarServePathPattern = /^\/api\/public\/assets\/avatar\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.webp)$/iu;
 
 const servePath = (kind: ImageAssetKind, file: string): string =>
   `/api/public/assets/${kind}/${file}`;
+
+const deleteAvatarObject = async (
+  tenantId: string,
+  image: string | null,
+  configuration: StorageConfiguration,
+  storage: StorageProvider,
+): Promise<Result<void, AppError>> => {
+  const file = image === null ? undefined : avatarServePathPattern.exec(image)?.[1];
+  if (file === undefined) return ok(undefined);
+  const removed = await storage.delete({
+    url: storage.objectUrl(configuration, `image-assets/${tenantId}/avatar/${file}`).toString(),
+    accessKeyId: configuration.accessKeyId,
+    secretAccessKey: configuration.secretAccessKey,
+    region: configuration.region,
+  });
+  return removed.ok ? ok(undefined) : removed;
+};
 
 const parseStoredKey = (
   tenantId: string,
@@ -55,6 +77,11 @@ export interface ImageAssetDeps {
   secretResolver: TenantSecretResolver;
   ids: IdGenerator;
   clock: Clock;
+}
+
+export interface AvatarImageAssetDeps extends ImageAssetDeps {
+  avatars: AccountAvatarRepository;
+  avatarImages: AvatarImageProcessor;
 }
 
 export interface ImageAssetUploadStart {
@@ -189,6 +216,138 @@ export const completeBrandingAssetUpload = async (
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
   return completeUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
+};
+
+export const beginAvatarUpload = async (
+  ctx: Ctx,
+  input: ImageAssetUploadInput,
+  deps: ImageAssetDeps,
+): Promise<Result<ImageAssetUploadStart, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:profile:self-write');
+  if (!tenant.ok) return tenant;
+  if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));
+  return beginUpload(tenant.value, ['avatar'], input, deps);
+};
+
+export const completeAvatarUpload = async (
+  ctx: Ctx,
+  input: { key: string },
+  deps: Pick<AvatarImageAssetDeps, 'avatars' | 'avatarImages' | 'secretResolver' | 'storage'>,
+): Promise<Result<{ url: string }, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:profile:self-write');
+  if (!tenant.ok) return tenant;
+  if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));
+  const parsed = parseStoredKey(tenant.value, input.key);
+  if (parsed === null || parsed.kind !== 'avatar') return err(notFound('Image asset not found'));
+  const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
+  if (!configuration.ok) return configuration;
+  const sourceUrl = deps.storage.objectUrl(configuration.value, input.key).toString();
+  const storedObject = await deps.storage.head({
+    url: sourceUrl,
+    accessKeyId: configuration.value.accessKeyId,
+    secretAccessKey: configuration.value.secretAccessKey,
+    region: configuration.value.region,
+  });
+  if (!storedObject.ok) return storedObject;
+  if (storedObject.value.sizeBytes < 1 || storedObject.value.sizeBytes > AVATAR_IMAGE_MAX_BYTES) {
+    const removed = await deps.storage.delete({
+      url: sourceUrl,
+      accessKeyId: configuration.value.accessKeyId,
+      secretAccessKey: configuration.value.secretAccessKey,
+      region: configuration.value.region,
+    });
+    if (!removed.ok) return removed;
+    return err(validation(`Uploaded avatar must be between 1 and ${String(AVATAR_IMAGE_MAX_BYTES)} bytes`));
+  }
+  const id = parsed.file.slice(0, parsed.file.lastIndexOf('.'));
+  const targetKey = `image-assets/${tenant.value}/avatar/${id}.webp`;
+  const current = await deps.avatars.findState(tenant.value, ctx.identity.userId);
+  const processed = await deps.avatarImages.processStored({
+    configuration: configuration.value,
+    sourceKey: input.key,
+    targetKey,
+  });
+  if (!processed.ok) return processed;
+  const url = servePath('avatar', `${id}.webp`);
+  if (targetKey !== input.key) {
+    const removed = await deps.storage.delete({
+      url: sourceUrl,
+      accessKeyId: configuration.value.accessKeyId,
+      secretAccessKey: configuration.value.secretAccessKey,
+      region: configuration.value.region,
+    });
+    if (!removed.ok) {
+      await deleteAvatarObject(tenant.value, url, configuration.value, deps.storage);
+      return removed;
+    }
+  }
+  if (current?.image !== url) {
+    const removed = await deleteAvatarObject(
+      tenant.value,
+      current?.image ?? null,
+      configuration.value,
+      deps.storage,
+    );
+    if (!removed.ok) {
+      await deleteAvatarObject(tenant.value, url, configuration.value, deps.storage);
+      return removed;
+    }
+  }
+  await deps.avatars.setAvatar(tenant.value, ctx.identity.userId, url);
+  return ok({ url });
+};
+
+export const removeAvatar = async (
+  ctx: Ctx,
+  deps: Pick<AvatarImageAssetDeps, 'avatars' | 'secretResolver' | 'storage'>,
+): Promise<Result<{ removed: true }, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:profile:self-write');
+  if (!tenant.ok) return tenant;
+  if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));
+  const current = await deps.avatars.findState(tenant.value, ctx.identity.userId);
+  if (current?.image !== null && current?.image !== undefined) {
+    const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
+    if (!configuration.ok) return configuration;
+    const removed = await deleteAvatarObject(tenant.value, current.image, configuration.value, deps.storage);
+    if (!removed.ok) return removed;
+  }
+  await deps.avatars.removeAvatar(tenant.value, ctx.identity.userId);
+  return ok({ removed: true });
+};
+
+export const importGoogleAvatar = async (
+  input: { tenantId: string; userId: string; sourceUrl: string },
+  deps: Pick<AvatarImageAssetDeps, 'avatars' | 'avatarImages' | 'ids' | 'secretResolver' | 'storage'>,
+): Promise<void> => {
+  try {
+    const state = await deps.avatars.findState(input.tenantId, input.userId);
+    if (state === null || !state.canImport) return;
+    const configuration = await resolveStorageConfiguration(input.tenantId, deps.secretResolver);
+    if (!configuration.ok) return;
+    const file = `${deps.ids.nextId()}.webp`;
+    const targetKey = `image-assets/${input.tenantId}/avatar/${file}`;
+    const imported = await deps.avatarImages.importRemote({
+      configuration: configuration.value,
+      sourceUrl: input.sourceUrl,
+      targetKey,
+    });
+    if (!imported.ok) return;
+    const stored = await deps.avatars.setAvatarIfMissing(
+      input.tenantId,
+      input.userId,
+      servePath('avatar', file),
+    );
+    if (!stored) {
+      await deleteAvatarObject(
+        input.tenantId,
+        servePath('avatar', file),
+        configuration.value,
+        deps.storage,
+      );
+    }
+  } catch {
+    return;
+  }
 };
 
 export const getPublicImageAssetUrl = async (

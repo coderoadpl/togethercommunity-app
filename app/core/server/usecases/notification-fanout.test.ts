@@ -15,7 +15,6 @@ import type {
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -207,7 +206,6 @@ const links: DiscussionLinkPort = {
   eventUrl: async () => 'http://tenant.localhost/event',
 };
 
-const contentHash: ContentHash = { sha256: () => 'hash' };
 const clock: Clock = { nowIso: () => NOW };
 
 class RecordingNotifications implements NotificationRepository {
@@ -404,7 +402,6 @@ const fixture = (input: {
     ids,
     clock: input.clock ?? clock,
     avatarSources,
-    contentHash,
   };
   return { deps, notifications, pages, delivered, languages, saves };
 };

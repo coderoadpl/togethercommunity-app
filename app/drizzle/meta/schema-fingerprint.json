@@ -1,6 +1,6 @@
 {
-  "hash": "91fd6011035186494773419c161476708166aa6b07e2dea6a072e971f1c4e05f",
-  "shortId": "91fd60110351",
+  "hash": "c89e11997611b5c5fe8e88e0bba7c56acaea3bc3ee8686e78bd6c6ca7be20c87",
+  "shortId": "c89e11997611",
   "schema": {
     "constraints": [
       {
@@ -3310,9 +3310,25 @@
             "default": "false",
             "generated": "",
             "identity": "",
+            "name": "avatar_cleared",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
             "name": "video_autoplay",
             "notNull": true,
             "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "avatar_url",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

@@ -140,10 +140,10 @@ export const CopyField = ({
           <CopyFieldText
             ref={textRef}
             data-testid={testId}
+            style={multiline ? { whiteSpace: 'pre-wrap' } : undefined}
             sx={{
               flex: 1,
               minWidth: 0,
-              ...(multiline ? { whiteSpace: 'pre-wrap' } : {}),
             }}
           >
             {value}

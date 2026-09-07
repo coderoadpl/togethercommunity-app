@@ -164,6 +164,7 @@ const renderPanel = (
         routing: {
           tenantHost: 'akademia.together.example',
           storageCorsOrigins: ['https://akademia.together.example'],
+          canonicalOrigin: 'https://akademia.together.example',
           customDomains: [],
           customDomainTarget: 'cname.vercel-dns.com',
           canAddCustomDomain: true,

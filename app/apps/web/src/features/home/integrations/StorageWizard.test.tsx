@@ -17,7 +17,7 @@ describe('StorageWizard CORS settings', () => {
 
     expect(screen.getAllByTestId(/^storage-cors-origin-\d+$/)).toHaveLength(origins.length);
     origins.forEach((origin, index) => {
-      expect(screen.getByTestId(`storage-cors-origin-${String(index + 1)}`)).toHaveValue(origin);
+      expect(screen.getByTestId(`storage-cors-origin-${String(index + 1)}`)).toHaveTextContent(origin);
     });
   });
 
@@ -33,7 +33,7 @@ describe('StorageWizard CORS settings', () => {
 
     renderWithProviders(<StorageWizard configured={false} origins={origins} />);
     const policy = screen.getByTestId('storage-cors-json');
-    expect(policy.tagName).toBe('TEXTAREA');
-    expect(policy).toHaveValue(storageCorsJson(origins));
+    expect(policy.tagName).toBe('CODE');
+    expect(policy.textContent).toBe(storageCorsJson(origins));
   });
 });

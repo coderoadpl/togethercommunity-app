@@ -1,6 +1,6 @@
 {
-  "hash": "1137d6171f426cf2314d6a7c98c47cf329af004bb9fe8382499edc2232d1a511",
-  "shortId": "1137d6171f42",
+  "hash": "91fd6011035186494773419c161476708166aa6b07e2dea6a072e971f1c4e05f",
+  "shortId": "91fd60110351",
   "schema": {
     "constraints": [
       {
@@ -2892,6 +2892,115 @@
             "default": "'[]'::jsonb",
             "generated": "",
             "identity": "",
+            "name": "records",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "verification",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'manual'::text",
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "provider_verified",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "verified",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "domain",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_checked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "verified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "tenant_domains"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
             "name": "social_links",
             "notNull": true,
             "type": "jsonb"
@@ -3311,99 +3420,6 @@
           }
         ],
         "name": "members"
-      },
-      {
-        "columns": [
-          {
-            "default": "'[]'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "verification",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "'manual'::text",
-            "generated": "",
-            "identity": "",
-            "name": "provider",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "verified",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "now()",
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "domain",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "last_checked_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "last_error",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "verified_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          }
-        ],
-        "name": "tenant_domains"
       },
       {
         "columns": [

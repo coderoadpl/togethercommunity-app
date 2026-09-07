@@ -123,7 +123,7 @@ const customDomainEntry = (input: {
   domain: input.domain,
   verified: input.status === 'active',
   status: input.status,
-  records: [{ type: 'CNAME' as const, name: input.domain, value: 'cname.vercel-dns.com' }],
+  records: [{ type: 'CNAME' as const, name: input.domain, value: 'cname.vercel-dns.com', purpose: 'routing' as const, status: input.status === 'active' ? 'verified' as const : 'pending' as const }],
   lastCheckedAt: null,
   lastError: null,
   storageCorsStatus: 'unknown' as const,
@@ -307,6 +307,44 @@ describe('SettingsPanel information architecture', () => {
     expect(within(summary).getByRole('link', { name: `${pl.tenantDomains.redirectsManage} →` }))
       .toHaveAttribute('href', '/panel/settings/redirects');
     expect(redirectQueries.map((query) => query.get('limit'))).toEqual(['0']);
+  });
+
+  it('keeps verified ownership beside pending routing and collapses active records', async () => {
+    renderPanel();
+    await screen.findByTestId('tenant-domain-check-nowa.acme.example');
+    const host = 'courses.example.org';
+    const records = [
+      { type: 'CNAME', name: host, value: 'routing.example.org', purpose: 'routing', status: 'pending' },
+      { type: 'TXT', name: `_vercel.${host}`, value: 'challenge', purpose: 'ownership', status: 'verified' },
+    ];
+    const routing = {
+      ...initialRouting(),
+      customDomains: [{
+        domain: host, verified: false, status: 'pending-dns', records,
+        lastCheckedAt: null, lastError: null, storageCorsStatus: 'unknown' as const,
+      }],
+    };
+    server.use(
+      http.get('/api/tenant/routing', () => HttpResponse.json({ ok: true, data: { routing } })),
+      http.post('/api/tenant/domains/check', () => HttpResponse.json({ ok: true, data: { routing } })),
+    );
+    await userEvent.click(screen.getByTestId('tenant-domain-check-nowa.acme.example'));
+    const ownership = await screen.findByTestId(`dns-record-TXT-_vercel.${host}`);
+    expect(ownership).toHaveTextContent(pl.tenantDomains.recordVerified);
+    expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(pl.tenantDomains.recordPending);
+    expect(await within(ownership).findByTestId(`dns-record-name-TXT-_vercel.${host}`)).toHaveTextContent(`_vercel.${host}`);
+    expect(await within(ownership).findByTestId(`dns-record-value-TXT-_vercel.${host}`)).toHaveTextContent('challenge');
+    routing.customDomains[0] = {
+      domain: host, lastCheckedAt: null, lastError: null, verified: true, status: 'active',
+      records: records.map((record) => ({ ...record, status: 'verified' })), storageCorsStatus: 'unknown' as const,
+    };
+    await userEvent.click(screen.getByTestId(`tenant-domain-check-${host}`));
+    const summary = await screen.findByText(pl.tenantDomains.recordsSummary({ count: 2 }));
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    await userEvent.click(summary);
+    expect(summary.closest('details')).toHaveAttribute('open');
+    expect(screen.getByTestId(`dns-record-TXT-_vercel.${host}`)).toHaveTextContent(pl.tenantDomains.recordVerified);
+    expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(pl.tenantDomains.recordVerified);
   });
 
   it('shows the workspace address with verified and pending custom domains', async () => {

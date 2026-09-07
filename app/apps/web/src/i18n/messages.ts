@@ -1872,6 +1872,9 @@ export interface Messages {
     statusProviderVerification: string;
     statusError: string;
     recordsHeading: string;
+    recordsSummary: (values: { count: number }) => string;
+    recordVerified: string;
+    recordPending: string;
     recordType: string;
     recordName: string;
     recordValue: string;

@@ -57,8 +57,8 @@ describe('customDomainRecords', () => {
       target: 'cname.vercel-dns.com',
       verification: [{ type: 'TXT', name: '_vercel.kurs.acme.pl', value: 'vc-1' }],
     })).toEqual([
-      { type: 'CNAME', name: 'kurs.acme.pl', value: 'cname.vercel-dns.com' },
-      { type: 'TXT', name: '_vercel.kurs.acme.pl', value: 'vc-1' },
+      { type: 'CNAME', name: 'kurs.acme.pl', value: 'cname.vercel-dns.com', purpose: 'routing' },
+      { type: 'TXT', name: '_vercel.kurs.acme.pl', value: 'vc-1', purpose: 'ownership' },
     ]);
   });
 });

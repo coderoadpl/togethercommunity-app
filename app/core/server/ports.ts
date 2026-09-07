@@ -78,6 +78,7 @@ import type {
   TenantRedirectListQuery,
   TenantRedirectPage,
   DnsRecord,
+  DomainDnsRecord,
   TenantSecret,
   TenantSecretKey,
   TenantSettings,
@@ -1668,7 +1669,9 @@ export interface TenantDomainRepository {
     tenantId: string,
     id: string,
     patch: {
+      providerVerified?: boolean;
       verification?: DnsRecord[];
+      records?: DomainDnsRecord[];
       verifiedAt?: string | null;
       lastCheckedAt?: string | null;
       lastError?: string | null;
@@ -1683,6 +1686,8 @@ export interface TenantDomainRepository {
     id: string,
     patch: {
       verification: DnsRecord[];
+      records: DomainDnsRecord[];
+      providerVerified: boolean;
       verifiedAt: string;
       lastCheckedAt: string;
       lastError: null;
@@ -1712,6 +1717,7 @@ export interface TenantDomainEventRepository {
 }
 
 export interface DomainProvisionState {
+  records: DomainDnsRecord[];
   verified: boolean;
   misconfigured: boolean;
   verification: DnsRecord[];
@@ -1731,7 +1737,7 @@ export interface DomainProvisioner {
   add(
     domain: string,
     options?: DomainProvisionerCall & { gitBranch?: string },
-  ): Promise<Result<{ verification: DnsRecord[]; verified: boolean }, AppError>>;
+  ): Promise<Result<{ verification: DnsRecord[]; records: DomainDnsRecord[]; verified: boolean }, AppError>>;
   status(
     domain: string,
     options?: DomainProvisionerCall,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Decorator } from '@storybook/react-vite';
-import { CssBaseline, GlobalStyles } from '@mui/material';
+import { CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { z } from 'zod';
@@ -13,11 +13,12 @@ import { HomeRoute } from '../routes/home.js';
 import { CommunityRoute, CourseRoute, CourseStructureRoute, LessonPlayerRoute, MemberAccountRoute, MemberShellRoute, MyCoursesRoute, MyProductsRoute, SearchRoute, SpaceFeedRoute, StartRoute, validateLessonSearch } from '../routes/member.js';
 import { TenantBrandingBoundary } from '../branding.js';
 import { LanguageSwitcher } from '../components/ui/LanguageSwitcher.js';
+import { TenantGate } from '../features/tenant-not-found/TenantNotFoundPage.js';
 import { AppChromeProvider } from '../components/ui/app-chrome.js';
 import { LanguageProvider } from '../i18n/index.js';
 import { NotificationsTransportProvider } from '../notifications-transport.js';
 import { colorSchemePreference, languagePreference, ThemeModeProvider } from '../theme-mode.js';
-import { fixtureCalls, fixtureErrors, fixturePendingCalls, selectFixture } from './fixture-client.js';
+import { fixtureCalls, fixtureErrors, fixtureExpectationErrors, fixturePendingCalls, fixtureQueriesReady, selectFixture } from './fixture-client.js';
 import { installStoryClock } from '../../../../scripts/story-clock.js';
 import { fixtureSchema } from './fixture-key.js';
 
@@ -114,19 +115,21 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
   useEffect(() => {
     const timer = window.setInterval(() => {
       document.documentElement.dataset['fixtureCalls'] = JSON.stringify([...fixtureCalls]);
-      document.documentElement.dataset['fixtureErrors'] = JSON.stringify([...fixtureErrors]);
+      document.documentElement.dataset['fixtureErrors'] = JSON.stringify([...fixtureErrors, ...fixtureExpectationErrors()]);
       document.documentElement.dataset['fixturePending'] = JSON.stringify([...fixturePendingCalls]);
-      document.documentElement.dataset['fixtureReady'] = String(state.queryClient.isFetching() === fixturePendingCalls.size && state.queryClient.isMutating() === 0);
+      const fetchingKeys = state.queryClient.getQueryCache().findAll({ fetchStatus: 'fetching' }).map((query) => query.queryKey);
+      document.documentElement.dataset['fixtureFetching'] = JSON.stringify(fetchingKeys);
+      document.documentElement.dataset['fixtureReady'] = String(fixtureQueriesReady(fetchingKeys) && state.queryClient.isMutating() === 0);
     }, 50);
     return () => window.clearInterval(timer);
   }, [state]);
   return (
     <QueryClientProvider client={state.queryClient}>
       <ThemeModeProvider>
-        <LanguageProvider><AppChromeProvider><NotificationsTransportProvider><TenantBrandingBoundary>
+        <LanguageProvider><AppChromeProvider>
           <CssBaseline />
-          <GlobalStyles styles={{ '*, *::before, *::after': { animation: 'none !important', transition: 'none !important', caretColor: 'transparent !important' } }} />
-          <RouterProvider router={state.router} />
+          <NotificationsTransportProvider><TenantBrandingBoundary>
+          <TenantGate><RouterProvider router={state.router} /></TenantGate>
         </TenantBrandingBoundary></NotificationsTransportProvider></AppChromeProvider></LanguageProvider>
       </ThemeModeProvider>
     </QueryClientProvider>

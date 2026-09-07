@@ -258,7 +258,14 @@
     }
   },
   "pending": [
-    "me:[]"
+    {
+      "call": "me:[]",
+      "queryKeys": [
+        [
+          "me"
+        ]
+      ]
+    }
   ],
   "principal": "creator@together.dev",
   "route": "/panel",

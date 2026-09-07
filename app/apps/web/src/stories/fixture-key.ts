@@ -6,7 +6,17 @@ export const fixtureSchema = z.object({
   tenant: z.string(),
   route: z.string(),
   calls: z.record(z.unknown()),
-  pending: z.array(z.string()).default([]),
+  pending: z.array(z.object({ call: z.string(), queryKeys: z.array(z.array(z.unknown())) })).default([]),
+  expectedErrors: z.record(z.string()).default({}),
+}).superRefine((fixture, context) => {
+  for (const key of [...fixture.pending.map((entry) => entry.call), ...Object.keys(fixture.expectedErrors)]) {
+    if (!Object.hasOwn(fixture.calls, key)) context.addIssue({ code: z.ZodIssueCode.custom, message: `Unrecorded fixture expectation ${key}` });
+  }
+  for (const [key, code] of Object.entries(fixture.expectedErrors)) {
+    if (!z.object({ ok: z.literal(false), error: z.object({ code: z.literal(code) }) }).safeParse(fixture.calls[key]).success) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: `Expected fixture error ${code} for ${key}` });
+    }
+  }
 });
 export type Fixture = z.infer<typeof fixtureSchema>;
 

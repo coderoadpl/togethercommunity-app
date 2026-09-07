@@ -78,7 +78,9 @@ retain their existing IDs.
 
 The experimental page workflow records the isolated seed database with the visual harness clock:
 `pnpm exec tsx scripts/fixtures-record.ts`. An optional output directory keeps
-recordings outside the source tree. Each recording scenario declares its principal, route and page queries. Each scenario checks its declared domain error codes. Recorded
+recordings outside the source tree. Each recording scenario declares its principal, route and page queries. Each scenario checks its declared domain error codes and rejects expectations for
+unrecorded calls. Captures reject pending or expected-error calls that were never
+exercised. Recorded
 tracking and read-mark failures follow the same request policy as the application
 harness. Authenticated passkey reads use the auth adapter; session IDs and times
 are normalized to stable fixture values. Page stories keep
@@ -94,9 +96,14 @@ this command before the Storybook build. CI does not run this experimental captu
 For serial full-gate verification, use `TOGETHER_TEST_SERIAL=1 pnpm run check`.
 
 The splash records the creator and public offer from the seed, then declares
-`me:[]` in the fixture's `pending` list. The fixture client holds that call
-indefinitely; capture readiness waits for all other queries and mutations to
-settle. The shared screen specification supplies the splash's 7 KiB minimum
+`me:[]` and its identity query key in the fixture's `pending` list. The fixture client holds that call
+indefinitely; capture readiness waits for all queries outside the explicitly
+held query keys and for all mutations to settle. A held call can serve multiple
+queries or run outside the query cache. Timeout diagnostics include fetching query
+keys and held calls. Page decorators use the production tenant-loading boundary
+and baseline placement. Animation suppression belongs to the capture harness after
+the page settles, matching the application harness; disabling it before mount
+changes the course upload button’s initial border paint. The shared screen specification supplies the splash's 7 KiB minimum
 PNG size and skips network-idle waiting. Password recovery stories synchronize
 the fixture route's token and error parameters with the iframe URL because the
 production auth pages read those values from the browser location.

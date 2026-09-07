@@ -315,6 +315,9 @@
       }
     }
   },
+  "expectedErrors": {
+    "studentCourseStructure:[\"course-does-not-exist\"]": "not_found"
+  },
   "principal": "kursant.aktywny@together.dev",
   "route": "/my/courses/course-does-not-exist",
   "scenario": "course-not-found",

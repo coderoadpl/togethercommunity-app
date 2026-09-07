@@ -94,7 +94,9 @@ compares against the existing `tasks/visual-goldens/` files, and writes screensh
 diffs and measurements to the output directory. It fails on missing fixtures,
 browser errors, missing goldens or any counted pixel difference. Captures run once,
 sequentially, with no retries. The optional screen list is comma-separated;
-without it, the original four screens are captured. Viewports and capture actions
+without it, the complete page catalogue is captured. Before capturing, the command
+checks that every catalogue viewport has a built story and a committed golden;
+unknown screen names fail explicitly. Viewports and capture actions
 follow the application harness: desktop 1440×900, mobile 390×844, and member
 pages at 375×812. The menu sheet has only a 390-pixel capture. New page story IDs
 match golden filenames without the PNG extension.

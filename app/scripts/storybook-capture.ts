@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, extname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -8,7 +8,7 @@ import { chromium } from 'playwright-core';
 import { z } from 'zod';
 import { applyChrome, settlePage, stubNonDeterministicRequests } from './visual-browser-setup.js';
 import { visualSeedTime } from './visual-request-policy.js';
-import { pageScreens } from './storybook-page-screens.js';
+import { pageScreens, pageStoryId } from './storybook-page-screens.js';
 import { SCREENS, VIEWPORTS, includesViewport, type ScreenSpec } from './visual-screen-inventory.js';
 import { comparePng } from './visual-png-compare.js';
 
@@ -48,13 +48,29 @@ const captureScreens: readonly ScreenSpec[] = [...pageScreens, {
   },
 }];
 try {
-  for (const spec of captureScreens.filter((entry) => (process.argv[3]?.split(',') ?? ['lesson', 'start', 'space-feed', 'hosted-legal-document']).includes(entry.name))) {
+  const index = z.object({ entries: z.record(z.object({ type: z.string() })) }).parse(JSON.parse(await readFile(join(root, 'index.json'), 'utf8')));
+  const goldens = await readdir(resolve('tasks/visual-goldens'));
+  for (const spec of captureScreens) {
+    const expectedGoldens = new Set<string>();
+    for (const viewport of VIEWPORTS.filter((viewport) => includesViewport(spec, viewport))) {
+      const id = pageStoryId(spec.name, viewport.name);
+      if (index.entries[id]?.type !== 'story') throw new Error(`Missing story ${id} for ${spec.name} at ${viewport.name}`);
+      await stat(resolve(`tasks/visual-goldens/${spec.name}--shadcn--${viewport.name}.png`));
+      expectedGoldens.add(`${spec.name}--shadcn--${viewport.name}.png`);
+    }
+    const skipped = goldens.filter((file) => file.startsWith(`${spec.name}--shadcn--`) && file.endsWith('.png') && !expectedGoldens.has(file));
+    if (skipped.length > 0) throw new Error(`Uncovered page goldens: ${skipped.join(', ')}`);
+  }
+  const selected = process.argv[3]?.split(',') ?? captureScreens.map((entry) => entry.name);
+  for (const name of selected) {
+    if (!captureScreens.some((entry) => entry.name === name)) throw new Error(`Unknown page screen ${name}`);
+  }
+  for (const spec of captureScreens.filter((entry) => selected.includes(entry.name))) {
     const screen = spec.name;
     for (const viewport of VIEWPORTS) {
       if (!includesViewport(spec, viewport)) continue;
       for (const mode of ['light']) {
-        const title = { lesson: 'lessonplayer', start: 'start', 'space-feed': 'spacefeed', 'hosted-legal-document': 'hostedlegaldocument' }[screen];
-        const id = title ? `pages-${title}--${mode}-${viewport.name === 'desktop' ? 'desktop' : 'mobile'}` : `${screen}--shadcn--${viewport.name}`;
+        const id = pageStoryId(screen, viewport.name);
         const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1, colorScheme: mode === 'dark' ? 'dark' : 'light', locale: 'pl-PL', timezoneId: 'UTC', reducedMotion: 'reduce' });
         await applyChrome(context);
         await stubNonDeterministicRequests(context);
@@ -78,7 +94,7 @@ try {
         await page.screenshot({ path: join(shots, `${file}.png`), animations: 'disabled', caret: 'hide', scale: 'css' });
         const size = (await stat(join(shots, `${file}.png`))).size;
         const minBytes = spec.minBytes ?? 10 * 1024;
-        if (size <= minBytes) failure = `${file} is only ${size} bytes (expected > ${minBytes})`;
+        if (size <= minBytes) failure = [failure, `${file} is only ${size} bytes (expected > ${minBytes})`].filter(Boolean).join('; ');
         const baseline = resolve(`tasks/visual-goldens/${screen}--shadcn--${viewport.name}.png`);
         const diff = join(shots, `${file}-diff.png`);
         let countedPixels: number | undefined;
@@ -86,7 +102,8 @@ try {
         const hasBaseline = await stat(baseline).then(() => true, () => false);
         const composition = hasBaseline ? spawnSync('python3', ['-c', 'from PIL import Image\nimport sys\nimages=[Image.open(p).convert("RGB") for p in sys.argv[1:4]]\nout=Image.new("RGB",(sum(i.width for i in images),max(i.height for i in images)),"white")\nx=0\nfor i in images:\n out.paste(i,(x,0)); x+=i.width\nout.save(sys.argv[4])', baseline, join(shots, `${file}.png`), diff, join(shots, `${file}-comparison.png`)], { encoding: 'utf8' }) : undefined;
         if (composition && composition.status !== 0) throw new Error(composition.stderr);
-        const diagnostics = await page.evaluate(() => ({ calls: document.documentElement.dataset['fixtureCalls'], missing: document.documentElement.dataset['fixtureErrors'], pending: document.documentElement.dataset['fixturePending'], text: document.body.innerText.slice(0, 2000) }));
+        const diagnostics = await page.evaluate(() => ({ calls: document.documentElement.dataset['fixtureCalls'], missing: document.documentElement.dataset['fixtureErrors'], pending: document.documentElement.dataset['fixturePending'], fetching: document.documentElement.dataset['fixtureFetching'], text: document.body.innerText.slice(0, 2000) }));
+        if (failure && diagnostics.fetching !== undefined) failure += `; fetching queries: ${diagnostics.fetching}; held calls: ${diagnostics.pending ?? '[]'}`;
         if (comparison !== null || countedPixels !== 0 || failure || errors.length > 0 || (diagnostics.missing !== undefined && diagnostics.missing !== '[]') || diagnostics.text.includes('Something went wrong!')) process.exitCode = 1;
         const fixturePath = resolve(`apps/web/src/stories/fixtures/${screen}.json`);
         const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');
@@ -98,6 +115,9 @@ try {
       }
     }
   }
+} catch (error) {
+  process.exitCode = 1;
+  throw error;
 } finally {
   await browser.close();
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

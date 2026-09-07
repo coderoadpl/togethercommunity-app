@@ -457,6 +457,9 @@
       }
     }
   },
+  "expectedErrors": {
+    "studentLesson:[\"lesson-js-zmienne-2\"]": "forbidden"
+  },
   "principal": "free@together.dev",
   "route": "/my/courses/course-js/lessons/lesson-js-zmienne-2",
   "scenario": "lesson-locked",

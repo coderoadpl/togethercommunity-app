@@ -52,6 +52,8 @@ export const comparePng = ({
   const result = spawnSync(
     process.execPath,
     [
+      // Node 24 can deadlock joining compiler workers when the CLI calls process.exit.
+      '--jitless',
       pixelmatchCli,
       baselinePath,
       currentPath,

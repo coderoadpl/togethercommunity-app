@@ -49,4 +49,13 @@ const pageScreenNames = new Set([
   'member-email-timeline',
 ]);
 
-export const pageScreens: readonly ScreenSpec[] = SCREENS.filter((screen) => pageScreenNames.has(screen.name));
+export const pageScreens: readonly ScreenSpec[] = [...pageScreenNames].map((name) => {
+  const screen = SCREENS.find((entry) => entry.name === name);
+  if (!screen) throw new Error(`Missing page screen ${name}`);
+  return screen;
+});
+
+export const pageStoryId = (screen: string, viewport: string): string => {
+  const title = { lesson: 'lessonplayer', start: 'start', 'space-feed': 'spacefeed', 'hosted-legal-document': 'hostedlegaldocument' }[screen];
+  return title ? `pages-${title}--light-${viewport === 'desktop' ? 'desktop' : 'mobile'}` : `${screen}--shadcn--${viewport}`;
+};

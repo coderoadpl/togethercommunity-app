@@ -41,6 +41,7 @@ export interface TenantRoutingDeps {
   storageCorsCache?: StorageCorsCache | undefined;
   routing: TenantUrlDeps;
   customDomainTarget: string;
+  customDomainApexARecord?: string | undefined;
 }
 
 export interface TenantDomainDeps extends TenantRoutingDeps {
@@ -52,6 +53,11 @@ export interface TenantDomainDeps extends TenantRoutingDeps {
   realtimeBus: RealtimeBusPort;
   ids: IdGenerator;
   clock: Clock;
+  logger?: { warn(message: string): void } | undefined;
+  resubscribeSesWebhookAfterDomainRemoval?: ((
+    tenantId: string,
+    domain: string,
+  ) => Promise<Result<{ endpoint: string } | null, AppError>>) | undefined;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -72,6 +78,7 @@ const domainRecords = (domain: TenantDomain, deps: TenantRoutingDeps) =>
     customDomainRecords({
       domain: domain.domain,
       target: deps.customDomainTarget,
+      apexARecord: deps.customDomainApexARecord,
       verification: domain.verification,
     }),
   );
@@ -112,6 +119,7 @@ const routingView = async (
         : 'unknown',
     })),
     customDomainTarget: deps.customDomainTarget,
+    apexDomainsSupported: deps.customDomainApexARecord !== undefined,
     canAddCustomDomain: custom.length < MAX_CUSTOM_DOMAINS_PER_TENANT,
   };
 };
@@ -252,7 +260,11 @@ export const addTenantDomain = async (
 ): Promise<Result<TenantRouting, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
-  const normalized = normalizeCustomDomain(input.domain, deps.routing.baseDomain);
+  const normalized = normalizeCustomDomain(
+    input.domain,
+    deps.routing.baseDomain,
+    deps.customDomainApexARecord,
+  );
   if (!normalized.ok) return normalized;
   const domain = normalized.value;
   if (domain === new URL(deps.routing.appBaseUrl).hostname) {
@@ -295,7 +307,10 @@ export const addTenantDomain = async (
     providerVerified: added.value.verified,
     verification: added.value.verification,
     records: mergeDomainRecords(customDomainRecords({
-      domain, target: deps.customDomainTarget, verification: added.value.verification,
+      domain,
+      target: deps.customDomainTarget,
+      apexARecord: deps.customDomainApexARecord,
+      verification: added.value.verification,
     }), added.value.records),
     createdAt: now,
     verifiedAt: null,
@@ -453,6 +468,31 @@ export const removeTenantDomain = async (
     actorUserId: ctx.identity.userId,
     detail: null,
   });
+  const resubscribed = await deps.resubscribeSesWebhookAfterDomainRemoval?.(
+    tenant.value,
+    row.domain,
+  );
+  if (resubscribed !== undefined && !resubscribed.ok) {
+    deps.logger?.warn(
+      `[tenant-domain] SES webhook resubscribe failed tenant=${tenant.value} domain=${row.domain} error=${resubscribed.error.message}`,
+    );
+    await appendEvent(deps, {
+      tenantId: tenant.value,
+      domain: row.domain,
+      kind: 'ses_webhook_resubscribe_failed',
+      actorUserId: ctx.identity.userId,
+      detail: resubscribed.error.message,
+    });
+  }
+  if (resubscribed !== undefined && resubscribed.ok && resubscribed.value !== null) {
+    await appendEvent(deps, {
+      tenantId: tenant.value,
+      domain: row.domain,
+      kind: 'ses_webhook_resubscribed',
+      actorUserId: ctx.identity.userId,
+      detail: resubscribed.value.endpoint,
+    });
+  }
   const requestHost = input.requestHost?.toLowerCase().replace(/:\d+$/, '') ?? null;
   return ok({
     routing: await readRouting(tenant.value, ctx.identity.tenantSlug, deps),

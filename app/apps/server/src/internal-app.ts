@@ -253,6 +253,7 @@ import {
   checkTenantDomain,
   getTenantRouting,
   removeTenantDomain,
+  resubscribeSesWebhookAfterDomainRemoval,
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
@@ -2040,7 +2041,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       singleTenantMode: deps.singleTenantMode,
     },
     customDomainTarget: deps.customDomainTarget,
+    customDomainApexARecord: deps.customDomainApexARecord,
   };
+  const marketing = deps.marketing;
+  const sesOnboarding = marketing?.sesOnboarding;
   const tenantDomainDeps = {
     ...tenantRoutingDeps,
     domainEvents: deps.tenantDomainEvents,
@@ -2051,6 +2055,17 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     realtimeBus: deps.realtimeBus,
     ids: deps.ids,
     clock: deps.clock,
+    logger: deps.logger,
+    ...(marketing === undefined || sesOnboarding === undefined ? {} : {
+      resubscribeSesWebhookAfterDomainRemoval: (tenantId: string, domain: string) =>
+        resubscribeSesWebhookAfterDomainRemoval(tenantId, domain, {
+          settings: marketing.sesSettings,
+          credentials: sesOnboarding.credentials,
+          controlPlane: sesOnboarding.controlPlane,
+          clock: deps.clock,
+          webhookBaseUrl: sesWebhookBaseUrl,
+        }),
+    }),
   };
 
   const tenantRedirectDeps = {

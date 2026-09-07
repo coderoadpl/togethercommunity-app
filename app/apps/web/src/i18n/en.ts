@@ -2093,6 +2093,7 @@ export const en: Messages = {
     customDomains: 'Custom domain',
     none: 'No custom domain is connected. Add one below.',
     addLabel: 'Add a domain',
+    addHint: 'Use a subdomain unless your deployment is configured to support apex domains.',
     addPlaceholder: 'courses.example.com',
     add: 'Add domain',
     adding: 'Adding…',

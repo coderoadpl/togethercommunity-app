@@ -171,6 +171,7 @@ const harness = (input: {
   const rows = input.rows ?? [];
   const events: TenantDomainEventInput[] = [];
   const notifications: Notification[] = [];
+  const warnings: string[] = [];
   let nextId = 0;
   const notificationRepository: NotificationRepository = {
     insert: async (_tenantId, notification) => notification,
@@ -203,6 +204,7 @@ const harness = (input: {
     realtimeBus: { publish: () => undefined, subscribe: () => () => undefined },
     ids: { nextId: () => `id-${String((nextId += 1))}` },
     clock: input.clock ?? { nowIso: () => input.now ?? '2026-09-04T10:00:00.000Z' },
+    logger: { warn: (message) => { warnings.push(message); } },
     routing: {
       appBaseUrl: 'https://start.together.example',
       baseDomain: 'together.example',
@@ -210,7 +212,7 @@ const harness = (input: {
     },
     customDomainTarget: 'cname.vercel-dns.com',
   };
-  return { deps, rows, events, notifications };
+  return { deps, rows, events, notifications, warnings };
 };
 
 describe('getTenantRouting', () => {
@@ -258,6 +260,7 @@ describe('getTenantRouting', () => {
           },
         ],
         customDomainTarget: 'cname.vercel-dns.com',
+        apexDomainsSupported: false,
         canAddCustomDomain: true,
       },
     });
@@ -321,6 +324,33 @@ describe('addTenantDomain', () => {
       detail: 'vercel',
       at: '2026-09-04T10:00:00.000Z',
     }]);
+  });
+
+  it('uses the provisioner apex A record when the deployment supports apex domains', async () => {
+    const { deps, rows } = harness();
+    deps.customDomainApexARecord = '192.0.2.1';
+
+    expect(await addTenantDomain(ctx, { domain: 'example.org' }, deps)).toMatchObject({ ok: true });
+    expect(rows[0]?.records[0]).toEqual({
+      type: 'A',
+      name: 'example.org',
+      value: '192.0.2.1',
+      purpose: 'routing',
+    });
+  });
+
+  it('rejects an apex domain before provisioning when no apex A record is configured', async () => {
+    const provisioner = new FakeProvisioner();
+    const { deps } = harness({ provisioner });
+
+    expect(await addTenantDomain(ctx, { domain: 'example.org' }, deps)).toMatchObject({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: 'Apex domains are not supported by this deployment. Use a subdomain such as courses.example.org.',
+      },
+    });
+    expect(provisioner.calls).toEqual([]);
   });
 
   it('leaves a domain the provider already holds pending until a check confirms its DNS', async () => {
@@ -633,6 +663,48 @@ describe('removeTenantDomain', () => {
       ok: true,
       value: { redirectTo: 'https://acme.together.example/panel/settings' },
     });
+  });
+
+  it('resubscribes SES and records an audit event when the removed domain carried the webhook', async () => {
+    const { deps, events } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'courses.example.org', verified: true })],
+    });
+    deps.resubscribeSesWebhookAfterDomainRemoval = async () =>
+      ok({ endpoint: 'https://acme.together.example/api/webhooks/ses/token' });
+
+    expect(await removeTenantDomain(ctx, { domain: 'courses.example.org' }, deps))
+      .toMatchObject({ ok: true });
+    expect(events).toMatchObject([
+      { kind: 'domain_removed', domain: 'courses.example.org' },
+      {
+        kind: 'ses_webhook_resubscribed',
+        domain: 'courses.example.org',
+        detail: 'https://acme.together.example/api/webhooks/ses/token',
+      },
+    ]);
+  });
+
+  it('keeps the removal successful and audits a failed SES resubscription', async () => {
+    const { deps, events, rows, warnings } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'courses.example.org', verified: true })],
+    });
+    deps.resubscribeSesWebhookAfterDomainRemoval = async () =>
+      err(integrationUnavailable('SES subscription could not be updated'));
+
+    expect(await removeTenantDomain(ctx, { domain: 'courses.example.org' }, deps))
+      .toMatchObject({ ok: true });
+    expect(rows).toEqual([]);
+    expect(events).toMatchObject([
+      { kind: 'domain_removed', domain: 'courses.example.org' },
+      {
+        kind: 'ses_webhook_resubscribe_failed',
+        domain: 'courses.example.org',
+        detail: 'SES subscription could not be updated',
+      },
+    ]);
+    expect(warnings).toEqual([
+      '[tenant-domain] SES webhook resubscribe failed tenant=t-acme domain=courses.example.org error=SES subscription could not be updated',
+    ]);
   });
 
   it('keeps the row when the provider refuses to detach the domain', async () => {

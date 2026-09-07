@@ -12,6 +12,11 @@ const optionalHeaderName = z.preprocess(
   z.string().regex(/^[a-z0-9-]+$/).optional(),
 );
 
+const optionalIpv4Address = z.preprocess(
+  (value) => value === '' ? undefined : value,
+  z.string().ip({ version: 'v4' }).optional(),
+);
+
 export const DEV_EMAIL_DISPATCH_SECRET = 'dev-email-dispatch-secret';
 
 const optionalCount = z.preprocess(
@@ -62,6 +67,7 @@ export const envSchema = z
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     /** DNS target creators point a custom domain at; defaults to the platform host. */
     APP_CUSTOM_DOMAIN_TARGET: optionalNonEmptyString,
+    DOMAIN_PROVISIONER_APEX_A_RECORD: optionalIpv4Address,
     APP_COMMIT_SHA: optionalNonEmptyString,
     /**
      * Token and project together hand custom-domain provisioning to the provider; unset keeps

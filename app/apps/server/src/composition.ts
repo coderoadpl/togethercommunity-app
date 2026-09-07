@@ -480,6 +480,7 @@ export interface AppDeps {
   singleTenantMode: boolean;
   appBaseUrl: string;
   customDomainTarget: string;
+  customDomainApexARecord?: string | undefined;
   devEndpoints: DevEndpoints;
   platformReset?: PlatformResetAppDeps;
   authConfig: AuthConfig;
@@ -1106,6 +1107,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     clock,
     routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
     customDomainTarget,
+    customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
   };
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const memberLink = async (tenantId: string, tenantSlug: string | null, path: string): Promise<string> =>
@@ -1321,6 +1323,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
     customDomainTarget,
+    customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
     devEndpoints,
     ...(platformReset === undefined ? {} : { platformReset }),
     authConfig: { googleEnabled: google !== null },

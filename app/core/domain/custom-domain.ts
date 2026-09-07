@@ -30,7 +30,9 @@ export type TenantDomainEventKind =
   | 'domain_added'
   | 'domain_verified'
   | 'domain_check_failed'
-  | 'domain_removed';
+  | 'domain_removed'
+  | 'ses_webhook_resubscribed'
+  | 'ses_webhook_resubscribe_failed';
 
 export const tenantDomainStatusSchema = z.enum([
   'active',
@@ -40,6 +42,9 @@ export const tenantDomainStatusSchema = z.enum([
 ]);
 
 export type TenantDomainStatus = z.infer<typeof tenantDomainStatusSchema>;
+
+/** Apex stays limited to two labels because core has no maintained public-suffix data. */
+const isProvisionerApex = (domain: string): boolean => domain.split('.').length === 2;
 
 export const tenantDomainStatus = (domain: {
   verified: boolean;
@@ -58,11 +63,22 @@ export const tenantDomainStatus = (domain: {
 export const customDomainRecords = (input: {
   domain: string;
   target: string;
+  apexARecord?: string | undefined;
   verification: DnsRecord[];
-}): DomainDnsRecord[] => [
-  { type: 'CNAME', name: input.domain, value: input.target, purpose: 'routing' },
-  ...input.verification.map((record) => ({ ...record, purpose: 'ownership' as const })),
-];
+}): DomainDnsRecord[] => {
+  const apexARecord = isProvisionerApex(input.domain)
+    ? input.apexARecord
+    : undefined;
+  return [
+    {
+      type: apexARecord === undefined ? 'CNAME' : 'A',
+      name: input.domain,
+      value: apexARecord ?? input.target,
+      purpose: 'routing',
+    },
+    ...input.verification.map((record) => ({ ...record, purpose: 'ownership' as const })),
+  ];
+};
 
 export const mergeDomainRecords = (...sets: DomainDnsRecord[][]): DomainDnsRecord[] =>
   [...new Map(sets.flat().map((record) => [
@@ -154,6 +170,7 @@ const isHostname = (value: string): boolean => {
 export const normalizeCustomDomain = (
   input: string,
   baseDomain: string | null,
+  apexARecord?: string,
 ): Result<string, AppError> => {
   const lowercased = input.trim().toLowerCase();
   if (lowercased.length === 0) return err(validation('Enter a domain'));
@@ -168,6 +185,9 @@ export const normalizeCustomDomain = (
   }
   if (!isHostname(domain)) {
     return err(validation('Enter a domain such as courses.example.com'));
+  }
+  if (isProvisionerApex(domain) && apexARecord === undefined) {
+    return err(validation('Apex domains are not supported by this deployment. Use a subdomain such as courses.example.org.'));
   }
   const normalizedBase = stripTrailingDots(baseDomain?.trim().toLowerCase() ?? '');
   if (

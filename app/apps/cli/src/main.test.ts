@@ -633,6 +633,7 @@ describe('domain show', () => {
   const routing = {
     tenantHost: 'workspace.example.org',
     customDomainTarget: 'routing.example.org',
+    apexDomainsSupported: false,
     canAddCustomDomain: true,
     customDomains: [{
       domain: 'courses.example.org', verified: false, status: 'pending-dns',

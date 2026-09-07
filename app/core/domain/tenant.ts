@@ -424,6 +424,7 @@ export const tenantRoutingSchema = z.object({
   })),
   /** Value a creator points the custom domain at with a CNAME record. */
   customDomainTarget: z.string(),
+  apexDomainsSupported: z.boolean(),
   canAddCustomDomain: z.boolean(),
 });
 

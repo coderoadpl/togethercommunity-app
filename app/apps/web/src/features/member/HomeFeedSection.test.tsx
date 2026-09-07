@@ -107,14 +107,14 @@ describe('HomeFeedSection', () => {
       '/community/s1/posts/p1',
     );
 
-    expect(within(card).getByTestId('member-avatar-image')).toHaveAttribute(
+    expect(within(card).getByTestId('user-avatar-image')).toHaveAttribute(
       'src',
       'https://cdn.test/ada.png',
     );
 
     const other = screen.getByTestId('home-feed-post-p2');
-    expect(within(other).queryByTestId('member-avatar-image')).toBeNull();
-    expect(within(other).getByTestId('member-avatar')).toHaveTextContent('AN');
+    expect(within(other).queryByTestId('user-avatar-image')).toBeNull();
+    expect(within(other).getByTestId('user-avatar')).toHaveTextContent('AN');
     expect(within(other).getByTestId('home-feed-space-p2')).toHaveAttribute('href', '/community/s2');
     expect(within(other).getByTestId('home-feed-open-p2')).toHaveAttribute(
       'href',

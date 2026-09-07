@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, Tooltip } from '@mui/material';
+import { Alert, Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, Tooltip, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
@@ -16,7 +16,7 @@ import { useNotificationsTransport } from '../../notifications-transport.js';
 import { BreakAllText, CountBadge, Eyebrow, InkDotBadge, VisuallyHidden } from '../../theme.js';
 import { SignOutIcon } from './account-icons.js';
 import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
-import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { memberMessagesPath } from './shell/member-nav.js';
 import { MessagesIcon, ProductsIcon } from './shell/shell-icons.js';
 
@@ -87,7 +87,11 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
             invisible={unreadMessageCount === 0}
             data-testid="member-account-unread"
           >
-            <MemberAvatar name={displayName} avatarUrl={me.data?.avatarUrl ?? null} />
+            <UserAvatar
+              name={displayName}
+              email={email}
+              imageUrl={me.data?.avatarUrl ?? null}
+            />
           </InkDotBadge>
         </IconButton>
       </Tooltip>
@@ -101,12 +105,27 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
         {me.isError ? <Box sx={{ p: '0.75rem' }}><StatusView surface={false} state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }} /></Box> : null}
         {email !== null ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: '0.75rem', px: '1rem', py: '0.5rem', maxWidth: '18rem' }}>
-            <MemberAvatar name={displayName} avatarUrl={me.data?.avatarUrl ?? null} />
+            <UserAvatar
+              name={displayName}
+              email={email}
+              imageUrl={me.data?.avatarUrl ?? null}
+              size="lg"
+            />
             <Box sx={{ minWidth: 0 }}>
               <Eyebrow variant="overline" component="p">
                 {t.panel.signedInAs}
               </Eyebrow>
-              <BreakAllText variant="body2" data-testid="member-account-email">
+              {displayName === '' ? null : (
+                <Typography variant="body2" component="p" noWrap data-testid="member-account-name">
+                  {displayName}
+                </Typography>
+              )}
+              <BreakAllText
+                variant="caption"
+                component="p"
+                color="text.secondary"
+                data-testid="member-account-email"
+              >
                 {email}
               </BreakAllText>
             </Box>

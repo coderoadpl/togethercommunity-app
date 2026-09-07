@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 
 import type { Notification } from '#core/domain/index.js';
 
-import { MemberAvatar } from './components/ui/MemberAvatar.js';
+import { UserAvatar } from './components/ui/UserAvatar.js';
 import { useLanguage, useTranslations } from './i18n/index.js';
 import { formatDate, formatDateTime, formatRelativeTime } from './lib/format.js';
 import { NotificationKindIcon } from './notification-icons.js';
@@ -60,7 +60,7 @@ const NotificationBody = ({ notification, group }: { notification: Notification;
           </NotificationActorMark>
         ) : (
           <>
-            <MemberAvatar name={authorDisplay} avatarUrl={authorAvatarUrl} />
+            <UserAvatar name={authorDisplay} imageUrl={authorAvatarUrl} />
             <NotificationTypeMark>
               <NotificationKindIcon kind={notification.kind} />
             </NotificationTypeMark>

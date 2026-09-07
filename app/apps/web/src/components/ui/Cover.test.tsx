@@ -6,14 +6,9 @@ import { accentGradient, deterministicAccent } from '../../theme-branding.js';
 import { Cover } from './Cover.js';
 
 const DESKTOP_WIDTH = 1440;
-const ROOT_FONT_SIZE_PX = 16;
-const MEMBER_COURSE_COLUMN_PX = 711;
 const COVER_SRC = 'https://cdn.test/cover.jpg';
 
 const stylesOf = (element: Element): Record<string, string> => stylesAt(element, DESKTOP_WIDTH);
-
-const pxOf = (remValue: string | undefined): number =>
-  Number.parseFloat(remValue ?? 'NaN') * ROOT_FONT_SIZE_PX;
 
 const rgbOf = (hex: string): string =>
   `rgb(${[1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16)).join(', ')})`;
@@ -108,14 +103,14 @@ describe('Cover', () => {
     expect(standalone).toHaveAttribute('loading', 'eager');
   });
 
-  it('bounds a standalone cover above the member course column instead of shrinking it', () => {
+  it('lets a standalone cover fill the member course column', () => {
     render(<Cover src={COVER_SRC} title="Kurs" alt="Okładka" frame="standalone" testId="standalone" />);
     render(<Cover src={null} title="Kurs bez okładki" alt="" frame="standalone" fallbackTestId="fallback" />);
 
     for (const testId of ['standalone', 'fallback']) {
       const styles = stylesOf(screen.getByTestId(testId));
       expect(styles).toMatchObject({ width: '100%', 'aspect-ratio': '16/9' });
-      expect(pxOf(styles['max-width'])).toBeGreaterThanOrEqual(MEMBER_COURSE_COLUMN_PX);
+      expect(styles['max-width']).toBeUndefined();
       expect(styles['max-height']).toBeUndefined();
     }
   });

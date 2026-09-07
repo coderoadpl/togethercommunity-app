@@ -279,7 +279,109 @@ describe('CourseSidebar', () => {
 
     const current = await screen.findByTestId('lesson-button-l3');
     expect(scrollIntoView.mock.instances).toEqual([current]);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
     scrollIntoView.mockRestore();
+  });
+
+  it('does not scroll the active lesson when it is already visible with padding', async () => {
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute('data-course-tree-scroll') ? 400 : 44;
+      },
+    });
+    const rects = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: Element) {
+      if (this.hasAttribute('data-course-tree-scroll')) return new DOMRect(0, 0, 320, 400);
+      if (this.getAttribute('data-testid') === 'module-toggle-m2') return new DOMRect(0, 60, 320, 44);
+      if (this.getAttribute('data-testid') === 'lesson-button-l3') return new DOMRect(0, 120, 320, 44);
+      return new DOMRect(0, 0, 320, 44);
+    });
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    try {
+      await renderSidebar('l3');
+
+      expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      scrollIntoView.mockRestore();
+      rects.mockRestore();
+      if (originalClientHeight === undefined) {
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+      } else {
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight);
+      }
+    }
+  });
+
+  it('scrolls when the active lesson is half cut off inside the tree scroller', async () => {
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute('data-course-tree-scroll') ? 400 : 44;
+      },
+    });
+    const rects = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: Element) {
+      if (this.hasAttribute('data-course-tree-scroll')) return new DOMRect(0, 0, 320, 400);
+      if (this.getAttribute('data-testid') === 'module-toggle-m2') return new DOMRect(0, 120, 320, 44);
+      if (this.getAttribute('data-testid') === 'lesson-button-l3') return new DOMRect(0, 396, 320, 44);
+      return new DOMRect(0, 120, 320, 44);
+    });
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    try {
+      await renderSidebar('l3');
+
+      const current = await screen.findByTestId('lesson-button-l3');
+      expect(scrollIntoView.mock.instances).toEqual([current]);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    } finally {
+      scrollIntoView.mockRestore();
+      rects.mockRestore();
+      if (originalClientHeight === undefined) {
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+      } else {
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight);
+      }
+    }
+  });
+
+  it('scrolls when the active lesson is visible but its module header is above the scroller', async () => {
+    server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute('data-course-tree-scroll') ? 400 : 44;
+      },
+    });
+    const rects = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: Element) {
+      if (this.hasAttribute('data-course-tree-scroll')) return new DOMRect(0, 0, 320, 400);
+      if (this.getAttribute('data-testid') === 'module-toggle-m2') return new DOMRect(0, -44, 320, 44);
+      if (this.getAttribute('data-testid') === 'lesson-button-l3') return new DOMRect(0, 120, 320, 44);
+      return new DOMRect(0, 0, 320, 44);
+    });
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    try {
+      await renderSidebar('l3');
+
+      const current = await screen.findByTestId('lesson-button-l3');
+      expect(scrollIntoView.mock.instances).toEqual([current]);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    } finally {
+      scrollIntoView.mockRestore();
+      rects.mockRestore();
+      if (originalClientHeight === undefined) {
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+      } else {
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight);
+      }
+    }
   });
 
   it('scrolls the module list alone, with the header and filter pinned above it', async () => {

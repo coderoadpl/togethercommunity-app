@@ -254,7 +254,10 @@ export const LessonPlayerPage = ({
   }, [structure.data, lessonId]);
   const transitioning = lesson.isPlaceholderData;
 
-  const lastViewed = useMutation(actions.updateLastViewed);
+  const lastViewed = useMutation({
+    ...actions.updateLastViewed,
+    onError: (error) => console.warn('Failed to update last-viewed lesson', error),
+  });
   const lastViewedRef = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -378,7 +381,7 @@ export const LessonPlayerPage = ({
 
   const groups = groupLessonBlocks(lesson.data.lesson.contents);
   const videoAutoplay = me.data?.tenant?.videoAutoplay ?? false;
-  const hasSideErrors = [structure, progress, attachments, lastViewed, complete, uncomplete]
+  const hasSideErrors = [structure, progress, attachments, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
@@ -422,7 +425,6 @@ export const LessonPlayerPage = ({
             {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
             {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
             {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
-            {lastViewed.isError ? <Alert severity="error">{localizeError(lastViewed.error, t)}</Alert> : null}
             {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
             {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
           </Stack>

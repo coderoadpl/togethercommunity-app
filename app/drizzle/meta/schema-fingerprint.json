@@ -1,6 +1,6 @@
 {
-  "hash": "91fd6011035186494773419c161476708166aa6b07e2dea6a072e971f1c4e05f",
-  "shortId": "91fd60110351",
+  "hash": "19cdc6be58eeb52b2c55680147f2775f9e9d04bca0c459af8b61084d24a40741",
+  "shortId": "19cdc6be58ee",
   "schema": {
     "constraints": [
       {
@@ -3062,6 +3062,22 @@
             "type": "boolean"
           },
           {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "member_video_autoplay_override",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "video_autoplay_default",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
             "default": "true",
             "generated": "",
             "identity": "",
@@ -3307,14 +3323,6 @@
             "type": "jsonb"
           },
           {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "video_autoplay",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
             "default": null,
             "generated": "",
             "identity": "",
@@ -3417,6 +3425,14 @@
             "name": "user_id",
             "notNull": true,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "video_autoplay",
+            "notNull": false,
+            "type": "boolean"
           }
         ],
         "name": "members"

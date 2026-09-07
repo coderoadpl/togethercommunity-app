@@ -12,6 +12,7 @@ import {
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { Eyebrow } from '../../theme.js';
 import { CopyField } from './CopyField.js';
+import { useToastError, useToastOutcome } from './Toast.js';
 
 interface OperationState {
   pending: boolean;
@@ -104,6 +105,38 @@ export const AuthenticationMethods = ({
     ? []
     : regenerateBackupCodes.data ?? enableTwoFactor.data?.backupCodes ?? [];
 
+  useToastOutcome(
+    requestPasswordSetup.success,
+    t.security.resetSent,
+    requestPasswordSetup.error === null ? null : localizeError(requestPasswordSetup.error, t),
+  );
+  useToastOutcome(
+    registerPasskey.success,
+    t.security.passkeyAdded,
+    registerPasskey.error === null ? null : localizeError(registerPasskey.error, t),
+  );
+  useToastOutcome(
+    removePasskey.success,
+    t.security.passkeyRemoved,
+    removePasskey.error === null ? null : localizeError(removePasskey.error, t),
+  );
+  useToastError(enableTwoFactor.error === null ? null : localizeError(enableTwoFactor.error, t));
+  useToastOutcome(
+    verifyTotp.success,
+    t.security.twoFactorOn,
+    verifyTotp.error === null ? null : localizeError(verifyTotp.error, t),
+  );
+  useToastOutcome(
+    disableTwoFactor.success,
+    t.security.twoFactorOff,
+    disableTwoFactor.error === null ? null : localizeError(disableTwoFactor.error, t),
+  );
+  useToastOutcome(
+    regenerateBackupCodes.success,
+    t.security.backupCodesRegenerated,
+    regenerateBackupCodes.error === null ? null : localizeError(regenerateBackupCodes.error, t),
+  );
+
   return (
     <Stack useFlexGap spacing="1.75rem">
       <Box component="section" sx={{ display: 'grid', gap: '0.8rem' }}>
@@ -127,14 +160,6 @@ export const AuthenticationMethods = ({
               : t.security.passkeySetPassword}
           </Button>
         </Box>
-        {requestPasswordSetup.success ? (
-          <Typography variant="caption" component="p" data-testid="passkey-password-setup-sent">
-            {t.security.resetSent}
-          </Typography>
-        ) : null}
-        {requestPasswordSetup.error ? (
-          <Alert severity="error">{localizeError(requestPasswordSetup.error, t)}</Alert>
-        ) : null}
         <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
           <FormControl fullWidth>
             <FormLabel htmlFor="passkey-name">{t.security.passkeyNameLabel}</FormLabel>
@@ -170,12 +195,6 @@ export const AuthenticationMethods = ({
             </Button>
           </Box>
         </Box>
-        {registerPasskey.success ? (
-          <Typography variant="caption" component="p" data-testid="passkey-added">
-            {t.security.passkeyAdded}
-          </Typography>
-        ) : null}
-        {registerPasskey.error ? <Alert severity="error">{localizeError(registerPasskey.error, t)}</Alert> : null}
         {passkeys.pending ? <Typography variant="body2">{t.security.loadingPasskeys}</Typography> : null}
         {passkeys.data !== undefined && passkeys.data.length === 0 ? (
           <Typography variant="body2" data-testid="passkeys-empty">
@@ -232,12 +251,6 @@ export const AuthenticationMethods = ({
             )}
           </Stack>
         ))}
-        {removePasskey.success ? (
-          <Typography variant="caption" data-testid="passkey-removed">
-            {t.security.passkeyRemoved}
-          </Typography>
-        ) : null}
-        {removePasskey.error ? <Alert severity="error">{localizeError(removePasskey.error, t)}</Alert> : null}
         {passkeys.error ? (
           <Box>
             <Alert severity="error">{localizeError(passkeys.error, t)}</Alert>
@@ -303,17 +316,6 @@ export const AuthenticationMethods = ({
             </Button>
           </Stack>
         </Box>
-        {enableTwoFactor.error ? <Alert severity="error">{localizeError(enableTwoFactor.error, t)}</Alert> : null}
-        {regenerateBackupCodes.error ? (
-          <Alert severity="error">{localizeError(regenerateBackupCodes.error, t)}</Alert>
-        ) : null}
-        {disableTwoFactor.error ? <Alert severity="error">{localizeError(disableTwoFactor.error, t)}</Alert> : null}
-        {disableTwoFactor.success ? (
-          <Typography variant="caption" data-testid="two-factor-disabled">
-            {t.security.twoFactorOff}
-          </Typography>
-        ) : null}
-
         {enableTwoFactor.data ? (
           <Box sx={{ display: 'grid', gap: '0.8rem' }}>
             <Eyebrow variant="overline" component="h4">
@@ -347,12 +349,6 @@ export const AuthenticationMethods = ({
                 </Button>
               </Box>
             </Box>
-            {verifyTotp.success ? (
-              <Typography variant="caption" component="p" data-testid="totp-verified">
-                {t.security.twoFactorOn}
-              </Typography>
-            ) : null}
-            {verifyTotp.error ? <Alert severity="error">{localizeError(verifyTotp.error, t)}</Alert> : null}
           </Box>
         ) : null}
 
@@ -366,11 +362,6 @@ export const AuthenticationMethods = ({
                 </Typography>
               ))}
             </Box>
-            {regenerateBackupCodes.success ? (
-              <Typography variant="caption" component="p" data-testid="backup-codes-regenerated">
-                {t.security.backupCodesRegenerated}
-              </Typography>
-            ) : null}
           </Box>
         ) : null}
       </Box>

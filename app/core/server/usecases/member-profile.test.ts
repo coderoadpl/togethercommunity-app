@@ -94,7 +94,7 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { displayName: 'Ada L.' }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: false },
+      value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: null },
     });
     expect(calls).toEqual([
       { tenantId: 'tenant-1', memberId: 'member-1', displayName: 'Ada L.' },
@@ -106,7 +106,7 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { displayName: null }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: null, dmOptOut: false, language: null, videoAutoplay: false },
+      value: { displayName: null, dmOptOut: false, language: null, videoAutoplay: null },
     });
     expect(calls[0]?.displayName).toBeNull();
   });
@@ -116,7 +116,7 @@ describe('updateMyProfile', () => {
 
     await expect(updateMyProfile(context(), { language: 'en' }, deps)).resolves.toEqual({
       ok: true,
-      value: { displayName: 'Ada L.', dmOptOut: false, language: 'en', videoAutoplay: false },
+      value: { displayName: 'Ada L.', dmOptOut: false, language: 'en', videoAutoplay: null },
     });
     expect(calls).toEqual([]);
   });
@@ -126,10 +126,10 @@ describe('updateMyProfile', () => {
 
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', dmOptOut: true }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: true, language: null, videoAutoplay: false } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: true, language: null, videoAutoplay: null } });
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', dmOptOut: false }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: false } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: null } });
     expect(optOutCalls).toEqual([now, null]);
   });
 
@@ -138,7 +138,7 @@ describe('updateMyProfile', () => {
 
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', language: 'en' }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: 'en', videoAutoplay: false } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: 'en', videoAutoplay: null } });
     expect(languageCalls).toEqual(['en']);
   });
 
@@ -147,7 +147,7 @@ describe('updateMyProfile', () => {
 
     await expect(
       updateMyProfile(context(), { displayName: 'Ada L.', language: null }, deps),
-    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: false } });
+    ).resolves.toEqual({ ok: true, value: { displayName: 'Ada L.', dmOptOut: false, language: null, videoAutoplay: null } });
     expect(languageCalls).toEqual([null]);
   });
 

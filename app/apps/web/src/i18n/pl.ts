@@ -1935,7 +1935,7 @@ export const pl: Messages = {
     playbackHeading: 'Odtwarzanie',
     playbackIntro: 'Zdecyduj, jak zachowuje się odtwarzacz wideo w lekcjach.',
     videoAutoplayLabel: 'Automatycznie odtwarzaj wideo',
-    videoAutoplayHint: 'Domyślnie wideo czeka na Twoje kliknięcie.',
+    videoAutoplayHint: 'Twój wybór zastępuje domyślne ustawienie twórcy.',
     videoAutoplaySaved: 'Zapisano ustawienie odtwarzania.',
   },
   changePassword: {
@@ -2069,6 +2069,14 @@ export const pl: Messages = {
     intro:
       'Gdy wyłączysz wiadomości prywatne, uczestnicy nie zobaczą sekcji „Wiadomości” i nie rozpoczną nowych rozmów. Zapisane rozmowy pozostają w bazie.',
     toggleLabel: 'Wiadomości prywatne między uczestnikami',
+  },
+  videoPlayback: {
+    heading: 'Odtwarzanie wideo',
+    intro: 'Ustal, czy wideo w lekcjach uruchamia się automatycznie.',
+    defaultLabel: 'Automatycznie odtwarzaj wideo',
+    defaultHint: 'To ustawienie obowiązuje wszystkich uczestników, którzy nie wybrali własnej opcji.',
+    overrideLabel: 'Uczestnicy mogą zmienić to ustawienie',
+    overrideHint: 'Po włączeniu tej opcji uczestnicy zobaczą ustawienie odtwarzania na stronie konta.',
   },
   legal: {
     heading: 'Regulamin i polityka prywatności',

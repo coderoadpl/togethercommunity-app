@@ -8,7 +8,6 @@ import {
   FormHelperText,
   FormLabel,
   OutlinedInput,
-  Snackbar,
   Stack,
   Switch,
   Typography,
@@ -17,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import { resolveVideoAutoplay } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -25,6 +25,7 @@ import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
+import { useToastOutcome } from '../../components/ui/Toast.js';
 import { EmailLanguagePicker, useEmailLanguagePreference } from '../../EmailLanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
@@ -157,6 +158,32 @@ export const MemberAccountPage = () => {
   const changePassword = useMutation(actions.changePassword);
   const resendVerification = useMutation(actions.sendVerificationEmail);
 
+  useToastOutcome(
+    updateProfile.isSuccess,
+    t.account.displayNameSaved,
+    updateProfile.error === null ? null : localizeError(updateProfile.error, t),
+  );
+  useToastOutcome(
+    updatePrivacy.isSuccess,
+    t.messages.optOutSaved,
+    updatePrivacy.error === null ? null : localizeError(updatePrivacy.error, t),
+  );
+  useToastOutcome(
+    updatePlayback.isSuccess,
+    t.account.videoAutoplaySaved,
+    updatePlayback.error === null ? null : localizeError(updatePlayback.error, t),
+  );
+  useToastOutcome(
+    requestPasswordReset.isSuccess,
+    t.account.resetSent,
+    requestPasswordReset.error === null ? null : localizeError(requestPasswordReset.error, t),
+  );
+  useToastOutcome(
+    support.isSuccess,
+    t.support.sent,
+    support.error === null ? null : localizeError(support.error, t),
+  );
+
   if (me.isPending) {
     return (
       <MemberSurface
@@ -183,7 +210,14 @@ export const MemberAccountPage = () => {
   const savedDisplayName = me.data.tenant?.displayName ?? '';
   const dmOptOut = me.data.tenant?.dmOptOut ?? false;
   const emailLanguage = me.data.tenant?.language ?? null;
-  const videoAutoplay = me.data.tenant?.videoAutoplay ?? false;
+  const memberVideoAutoplayOverride =
+    tenantSettings.data?.settings.memberVideoAutoplayOverride === true;
+  const videoAutoplay = tenantSettings.data === undefined
+    ? false
+    : resolveVideoAutoplay(
+        tenantSettings.data.settings,
+        me.data.tenant?.videoAutoplay ?? null,
+      );
   const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
@@ -249,9 +283,6 @@ export const MemberAccountPage = () => {
                 {t.account.displayNameSave}
               </Button>
             </Box>
-            {updateProfile.isError ? (
-              <Alert severity="error">{localizeError(updateProfile.error, t)}</Alert>
-            ) : null}
           </SectionCard>
         ) : (
           <SignedInAddress email={email} variant="card" />
@@ -300,14 +331,6 @@ export const MemberAccountPage = () => {
                       : t.account.setOrResetPassword}
                   </Button>
                 </Box>
-                {requestPasswordReset.isSuccess ? (
-                  <Typography variant="caption" component="p" data-testid="account-reset-sent">
-                    {t.account.resetSent}
-                  </Typography>
-                ) : null}
-                {requestPasswordReset.isError ? (
-                  <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert>
-                ) : null}
             </SectionCard>
 
             <SectionCard title={t.security.heading} data-testid="account-security-methods">
@@ -401,9 +424,6 @@ export const MemberAccountPage = () => {
               )}
               label={t.messages.optOutLabel}
             />
-            {updatePrivacy.isError ? (
-              <Alert severity="error">{localizeError(updatePrivacy.error, t)}</Alert>
-            ) : null}
           </SectionCard>
         ) : null}
 
@@ -435,7 +455,7 @@ export const MemberAccountPage = () => {
           )}
         </SectionCard>
 
-        {!impersonating && me.data.tenant?.memberId != null ? (
+        {!impersonating && me.data.tenant?.memberId != null && memberVideoAutoplayOverride ? (
           <SectionCard
             title={t.account.playbackHeading}
             description={t.account.playbackIntro}
@@ -452,9 +472,6 @@ export const MemberAccountPage = () => {
               label={t.account.videoAutoplayLabel}
             />
             <FormHelperText>{t.account.videoAutoplayHint}</FormHelperText>
-            {updatePlayback.isError ? (
-              <Alert severity="error">{localizeError(updatePlayback.error, t)}</Alert>
-            ) : null}
           </SectionCard>
         ) : null}
 
@@ -551,10 +568,6 @@ export const MemberAccountPage = () => {
                 {support.isPending ? t.support.sending : t.support.send}
               </Button>
             </Box>
-            {support.isSuccess ? <Typography>{t.support.sent}</Typography> : null}
-            {support.isError ? (
-              <Alert severity="error">{localizeError(support.error, t)}</Alert>
-            ) : null}
           </SectionCard>
         ) : null}
 
@@ -669,36 +682,6 @@ export const MemberAccountPage = () => {
           ) : null}
           {cancelErasureRequest.isError ? <Alert severity="error">{localizeError(cancelErasureRequest.error, t)}</Alert> : null}
         </SectionCard>
-
-        <Snackbar
-          open={updateProfile.isSuccess}
-          autoHideDuration={4000}
-          onClose={() => updateProfile.reset()}
-        >
-          <Alert severity="success" data-testid="account-display-name-saved">
-            {t.account.displayNameSaved}
-          </Alert>
-        </Snackbar>
-
-        <Snackbar
-          open={updatePrivacy.isSuccess}
-          autoHideDuration={4000}
-          onClose={() => updatePrivacy.reset()}
-        >
-          <Alert severity="success" data-testid="account-dm-opt-out-saved">
-            {t.messages.optOutSaved}
-          </Alert>
-        </Snackbar>
-
-        <Snackbar
-          open={updatePlayback.isSuccess}
-          autoHideDuration={4000}
-          onClose={() => updatePlayback.reset()}
-        >
-          <Alert severity="success" data-testid="account-video-autoplay-saved">
-            {t.account.videoAutoplaySaved}
-          </Alert>
-        </Snackbar>
       </Stack>
     </MemberSurface>
   );

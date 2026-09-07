@@ -29,7 +29,7 @@ export interface MemberProfile {
   displayName: string | null;
   dmOptOut: boolean;
   language: Language | null;
-  videoAutoplay: boolean;
+  videoAutoplay: boolean | null;
 }
 
 export const updateMyProfile = async (
@@ -76,6 +76,6 @@ export const updateMyProfile = async (
     displayName: updated.displayName,
     dmOptOut: updated.dmOptOutAt !== null,
     language: updated.language ?? null,
-    videoAutoplay: updated.videoAutoplay ?? false,
+    videoAutoplay: updated.videoAutoplay ?? null,
   });
 };

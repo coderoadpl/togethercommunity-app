@@ -6,7 +6,7 @@ import { Link } from '@tanstack/react-router';
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ProgressRing } from '../../../components/ui/ProgressRing.js';
+import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { RailProgressBar } from '../../../theme.js';
 import { courseTotals } from '../CourseRail.js';
@@ -26,10 +26,10 @@ const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) =
   return (
     <Box sx={{ px: '0.6rem', pb: '0.75rem' }} data-testid="course-sidebar-header">
       <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.5rem' }}>
-        <ProgressRing value={totals.percent} done={done} />
         <Typography variant="subtitle1" component="p" noWrap sx={{ minWidth: 0 }}>
           {structure.name}
         </Typography>
+        {done ? <CompletionMark label={t.courseOverview.courseCompleted} /> : null}
       </Stack>
       <RailProgressBar
         variant="determinate"

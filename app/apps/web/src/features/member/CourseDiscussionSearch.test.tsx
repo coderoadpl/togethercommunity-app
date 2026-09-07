@@ -103,7 +103,7 @@ describe('CourseDiscussionSearch', () => {
 
     expect(await screen.findByText(pl.discussion.searchCourseHeading)).toBeInTheDocument();
     expect(screen.getByTestId('course-search-hint')).toHaveTextContent(
-      pl.discussion.searchWholeWordsHint,
+      pl.discussion.searchHint,
     );
 
     await user.type(screen.getByTestId('course-discussion-search-input'), 'silnik');

@@ -186,14 +186,19 @@ describe('SearchPage', () => {
     expect(requestedUrls.map((url) => new URL(url).searchParams.get('query'))).toEqual(['ab']);
   });
 
-  it('states plainly that nothing matched', async () => {
+  it('states plainly that nothing matched and only then explains word stems', async () => {
     server.use(okNavigation(), okStructure(), okHits([]));
     const user = userEvent.setup();
 
     await renderSearch();
+    expect(screen.getByTestId('search-hint')).toHaveTextContent(pl.search.hint);
+    expect(screen.queryByText(pl.search.stemHint)).not.toBeInTheDocument();
+
     await user.type(screen.getByTestId('search-input'), 'silnik');
 
-    expect(await screen.findByTestId('search-empty')).toHaveTextContent(pl.search.empty);
+    const empty = await screen.findByTestId('search-empty');
+    expect(empty).toHaveTextContent(pl.search.empty);
+    expect(within(empty).getByTestId('search-stem-hint')).toHaveTextContent(pl.search.stemHint);
     expect(screen.queryByTestId('search-results')).not.toBeInTheDocument();
   });
 

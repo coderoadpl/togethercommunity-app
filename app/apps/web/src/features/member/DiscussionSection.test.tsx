@@ -492,7 +492,7 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     expect(await screen.findByTestId('discussion-search-hint')).toHaveTextContent(
-      pl.discussion.searchWholeWordsHint,
+      pl.discussion.searchHint,
     );
     await user.type(await screen.findByTestId('discussion-search-input'), 'silnik');
 

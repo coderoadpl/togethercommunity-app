@@ -9,7 +9,7 @@ import type { PublicDmConversation } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, StatusView } from '../../../components/layout/index.js';
-import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatRelativeTime } from '../../../lib/format.js';
 import {
@@ -52,9 +52,9 @@ const ConversationRow = ({ conversation }: { conversation: PublicDmConversation 
             <VisuallyHidden>{t.notifications.unreadLabel}</VisuallyHidden>
           </>
         ) : null}
-        <MemberAvatar
+        <UserAvatar
           name={conversation.otherParticipant.display}
-          avatarUrl={conversation.otherParticipant.avatarUrl}
+          imageUrl={conversation.otherParticipant.avatarUrl}
           size="sm"
         />
         <Box sx={{ minWidth: 0, flex: 1 }}>

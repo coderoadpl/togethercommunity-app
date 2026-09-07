@@ -31,12 +31,10 @@ describe('ProgressRing', () => {
     expect(dashOffset(screen.getByTestId('progress-ring-value'))).toBeCloseTo(0);
   });
 
-  it('flags the done state and stays out of the accessibility tree', () => {
-    render(<ProgressRing value={100} done />);
+  it('stays out of the accessibility tree', () => {
+    render(<ProgressRing value={100} />);
 
-    const ring = screen.getByTestId('progress-ring');
-    expect(ring).toHaveAttribute('data-done', 'true');
-    expect(ring).toHaveAttribute('aria-hidden');
+    expect(screen.getByTestId('progress-ring')).toHaveAttribute('aria-hidden');
   });
 
   it('scales the drawn circle with the requested size', () => {

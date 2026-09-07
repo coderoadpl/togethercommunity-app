@@ -28,7 +28,7 @@ import { useToastOutcome } from '../../components/ui/Toast.js';
 import { EmailLanguagePicker, useEmailLanguagePreference } from '../../EmailLanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
-import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { useImpersonation } from './viewer.js';
 
@@ -243,9 +243,10 @@ export const MemberAccountPage = () => {
           >
             <SignedInAddress email={email} variant="inline" />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <MemberAvatar
+              <UserAvatar
                 name={displayName.trim() === '' ? me.data.name : displayName}
-                avatarUrl={me.data.avatarUrl}
+                email={email}
+                imageUrl={me.data.avatarUrl}
                 size="lg"
               />
               <Typography variant="caption" color="text.secondary">

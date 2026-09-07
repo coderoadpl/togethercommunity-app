@@ -33,7 +33,7 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
         slotProps={{ htmlInput: { 'data-testid': 'discussion-search-input' } }}
       />
       <Typography variant="caption" color="text.secondary" data-testid="discussion-search-hint">
-        {t.discussion.searchWholeWordsHint}
+        {t.discussion.searchHint}
       </Typography>
       {enabled && (
         <Box data-testid="discussion-search-results">
@@ -42,9 +42,12 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
           ) : search.isError ? (
             <StatusView surface={false} state={{ kind: 'error', message: localizeError(search.error, t), retry: { label: t.common.retry, onRetry: () => void search.refetch() } }} />
           ) : search.data.hits.length === 0 ? (
-            <Typography variant="body2" data-testid="discussion-search-empty">
-              {t.discussion.searchEmpty}
-            </Typography>
+            <Stack useFlexGap sx={{ rowGap: '0.35rem' }} data-testid="discussion-search-empty">
+              <Typography variant="body2">{t.discussion.searchEmpty}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {t.search.stemHint}
+              </Typography>
+            </Stack>
           ) : (
             <Stack useFlexGap sx={{ rowGap: '0.5rem' }}>
               {search.data.hits.map((hit) => (

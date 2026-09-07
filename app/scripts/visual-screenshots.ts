@@ -441,6 +441,11 @@ const SCREENS: ScreenSpec[] = [
         element.scrollIntoView({ block: 'start' }),
       );
     },
+    /** The CORS fields quote the harness origin, whose port is allocated per run. */
+    mask: (page) => [
+      page.locator('[data-testid^="storage-cors-origin-"]'),
+      page.getByTestId('storage-cors-json'),
+    ],
   },
   {
     name: 'panel-lesson-attachments',
@@ -790,6 +795,8 @@ const settlePage = async (page: Page, waitForNetworkIdle = true): Promise<void> 
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 20000 });
+  await page.goto(`${studioBaseUrl}/panel`, { waitUntil: 'load' });
   await page.getByTestId('tenant-name').waitFor(visible);
 };
 

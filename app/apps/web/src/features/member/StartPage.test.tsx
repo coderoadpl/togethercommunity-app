@@ -277,6 +277,36 @@ describe('StartPage', () => {
     expect(within(screen.getByTestId('space-card-s2')).queryByTestId('space-unread-s2')).not.toBeInTheDocument();
   });
 
+  it('uses the visibility chip on start space cards', async () => {
+    server.use(
+      okCourses([]),
+      okNavigation({
+        spaces: [
+          {
+            ...space('s-public', 'Publiczna'),
+            publicReadOnly: true,
+          },
+          {
+            ...space('s1', 'Premium'),
+            visibility: 'product',
+            products: [{ id: 'p1', title: 'Program Pro' }],
+          },
+        ],
+      }),
+      okHomeFeed(),
+      noNotifications(),
+    );
+
+    await renderStart();
+
+    expect(await screen.findByTestId('space-visibility-s-public')).toHaveTextContent(
+      pl.community.publicReadOnly,
+    );
+    expect(await screen.findByTestId('space-visibility-s1')).toHaveTextContent(
+      pl.community.productGatedFor({ product: 'Program Pro' }),
+    );
+  });
+
   it('sends the space section header to the community list', async () => {
     server.use(
       okCourses([]),

@@ -1376,6 +1376,8 @@ export interface Messages {
     eyebrow: string;
     inputLabel: string;
     placeholder: string;
+    hint: string;
+    stemHint: string;
     empty: string;
     lessonsHeading: string;
     spacesHeading: string;
@@ -1471,6 +1473,7 @@ export interface Messages {
     unmarkCompleted: string;
     unmarkCompletedHint: string;
     completeContinue: string;
+    completing: string;
     previousLesson: string;
     nextLesson: string;
     firstLesson: string;
@@ -1536,7 +1539,7 @@ export interface Messages {
     backToAll: string;
     loadMore: string;
     searchLabel: string;
-    searchWholeWordsHint: string;
+    searchHint: string;
     searching: string;
     searchEmpty: string;
     searchCourseHeading: string;
@@ -1550,8 +1553,10 @@ export interface Messages {
     noSpacesTitle: string;
     noSpacesBody: string;
     staffNoMember: string;
+    publicReadOnly: string;
     membersOnly: string;
     productGated: string;
+    productGatedFor: (params: { product: string }) => string;
     followingChip: string;
     feedEyebrow: string;
     aboutHeading: string;
@@ -1650,6 +1655,7 @@ export interface Messages {
     noMatches: string;
   };
   account: {
+    menuStudio: string;
     menuAccount: string;
     title: string;
     heading: string;

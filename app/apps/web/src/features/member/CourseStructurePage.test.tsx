@@ -419,9 +419,12 @@ describe('CourseStructurePage', () => {
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveTextContent(pl.courseOverview.reviewAgain);
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
-    expect(screen.getByTestId('course-completed-note')).toHaveTextContent(
+    const card = screen.getByTestId('course-progress-card');
+    expect(within(card).getByTestId('completion-mark')).toHaveAccessibleName(
       pl.courseOverview.courseCompleted,
     );
+    expect(within(card).getByTestId('progress-percent')).toHaveTextContent('100%');
+    expect(screen.queryByTestId('course-completed-note')).not.toBeInTheDocument();
   });
 
   it('hides the continue CTA when no lesson is accessible', async () => {

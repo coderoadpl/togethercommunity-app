@@ -7,6 +7,7 @@ import type { MemberNavigationSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
+import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { SidebarProgressPercent } from '../../../theme.js';
@@ -75,7 +76,11 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
               data-testid={`sidebar-course-${course.courseId}`}
             >
               <ListItemIcon>
-                <ProgressRing value={percent} done={done} />
+                {done ? (
+                  <CompletionMark label={t.courseOverview.courseCompleted} />
+                ) : (
+                  <ProgressRing value={percent} />
+                )}
               </ListItemIcon>
               <Tooltip title={course.courseName} enterDelay={600} describeChild>
                 <ListItemText

@@ -17,6 +17,7 @@ import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { StudioIcon } from '../account-icons.js';
 import { useCanOpenStudio, useViewerKind } from '../viewer.js';
 import { AnonShell } from './AnonShell.js';
+import { CourseBreadcrumbs } from './CourseBreadcrumbs.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { ImpersonationBanner } from './ImpersonationBanner.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
@@ -56,6 +57,9 @@ export const MemberShell = () => {
     }
     : null;
 
+  const lessonCrumbs = courseContext === null || courseContext.lessonId === null
+    ? null
+    : { courseId: courseContext.courseId, lessonId: courseContext.lessonId };
   const hasMobileNavigation = identity !== null && !isDesktop;
   const closeSheet = () => setOpenSheet(null);
 
@@ -134,10 +138,28 @@ export const MemberShell = () => {
         <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
           <AppBar position="sticky">
             <Toolbar variant="dense" sx={{ minHeight: '52px', px: '1.25rem', gap: '0.75rem' }}>
-              <Box sx={{ display: { xs: 'flex', md: 'none' }, flex: '1 1 auto', minWidth: 0 }}>
-                {brand}
+              {lessonCrumbs === null ? (
+                <Box sx={{ display: { xs: 'flex', md: 'none' }, flex: '1 1 auto', minWidth: 0 }}>
+                  {brand}
+                </Box>
+              ) : null}
+              <Box
+                data-testid="shell-breadcrumbs"
+                sx={{
+                  flex: '1 1 auto',
+                  minWidth: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  overflow: 'hidden',
+                }}
+              >
+                {lessonCrumbs === null ? null : (
+                  <CourseBreadcrumbs
+                    courseId={lessonCrumbs.courseId}
+                    lessonId={lessonCrumbs.lessonId}
+                  />
+                )}
               </Box>
-              <Box sx={{ flex: { xs: 0, md: 1 } }} />
               {hasMobileNavigation && courseContext !== null ? (
                 <>
                   <IconButton

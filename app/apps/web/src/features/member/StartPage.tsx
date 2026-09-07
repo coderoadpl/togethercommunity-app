@@ -8,10 +8,11 @@ import type { MemberNavigationCourse } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
+import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { CourseCardRoot, ProgressPercentText, RailProgressBar } from '../../theme.js';
 import { CourseCard } from './CourseCards.js';
-import { coursePercent, type CourseLessonCounts } from './course-progress.js';
+import { coursePercent, isCourseDone, type CourseLessonCounts } from './course-progress.js';
 import { continueLessonId, flattenLessons } from './CourseRail.js';
 import { LiveNowBanner } from './events/LiveNowBanner.js';
 import { UpcomingEventsStrip } from './events/UpcomingEventsStrip.js';
@@ -52,6 +53,7 @@ const ContinueCard = ({ course }: { course: MemberNavigationCourse }) => {
   if (target === undefined) return null;
 
   const percent = coursePercent(course);
+  const done = isCourseDone(course);
   const isReview = target.completionStatus === 'fully-completed';
 
   return (
@@ -86,9 +88,10 @@ const ContinueCard = ({ course }: { course: MemberNavigationCourse }) => {
             aria-label={t.courseOverview.progressTitle}
             sx={{ flex: 1 }}
           />
-          <ProgressPercentText variant="caption" component="span" sx={{ ml: '0.5rem' }}>
+          <ProgressPercentText variant="caption" component="span" sx={{ mx: '0.5rem' }}>
             {t.courseOverview.percentValue({ percent })}
           </ProgressPercentText>
+          {done ? <CompletionMark label={t.courseOverview.courseCompleted} /> : null}
         </Stack>
         <Box>
           <Button

@@ -73,7 +73,7 @@ export const CourseDiscussionSearch = ({
           testId="course-discussion-search-input"
         />
         <Typography variant="caption" color="text.secondary" data-testid="course-search-hint">
-          {t.discussion.searchWholeWordsHint}
+          {t.discussion.searchHint}
         </Typography>
         {enabled &&
           (search.isPending ? (
@@ -81,9 +81,12 @@ export const CourseDiscussionSearch = ({
           ) : search.isError ? (
             <StatusView surface={false} state={{ kind: 'error', message: localizeError(search.error, t), retry: { label: t.common.retry, onRetry: () => void search.refetch() } }} />
           ) : groups.length === 0 ? (
-            <Typography variant="body2" data-testid="course-search-empty">
-              {t.discussion.searchCourseEmpty}
-            </Typography>
+            <Stack useFlexGap sx={{ rowGap: '0.35rem' }} data-testid="course-search-empty">
+              <Typography variant="body2">{t.discussion.searchCourseEmpty}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {t.search.stemHint}
+              </Typography>
+            </Stack>
           ) : (
             <Stack useFlexGap sx={{ rowGap: '1rem' }} data-testid="course-search-results">
               {groups.map((group) => (

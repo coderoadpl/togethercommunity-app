@@ -187,6 +187,21 @@ const noNotifications = () =>
   http.get('/api/notifications/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }));
 
+const page = (label: string) => () => <p>{label}</p>;
+
+const stubMatchingViewport = (dimension: 'min-width' | 'max-width') => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes(dimension),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 const renderShell = async (path: string) => {
   const rootRoute = createRootRoute();
   const shellRoute = createRoute({
@@ -194,7 +209,6 @@ const renderShell = async (path: string) => {
     id: 'member-shell',
     component: MemberShell,
   });
-  const page = (label: string) => () => <p>{label}</p>;
   const routeTree = rootRoute.addChildren([
     createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: page('Studio') }),
     shellRoute.addChildren([
@@ -229,6 +243,56 @@ const renderShell = async (path: string) => {
 };
 
 describe('MemberShell', () => {
+  it('carries the lesson breadcrumb in the app bar', async () => {
+    stubMatchingViewport('min-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const crumbs = await screen.findByTestId('member-breadcrumbs');
+    expect(screen.getByTestId('shell-breadcrumbs')).toContainElement(crumbs);
+    expect(within(crumbs).getByRole('link', { name: 'JavaScript od zera' })).toHaveAttribute(
+      'href',
+      '/my/courses/c1',
+    );
+    expect(within(crumbs).getByText('Podstawy')).toBeInTheDocument();
+    expect(within(crumbs).getByText('Start')).toBeInTheDocument();
+    expect(within(crumbs).getByText('Zmienne')).toBeInTheDocument();
+  });
+
+  it('compacts the app-bar breadcrumb to the course and the lesson below sm', async () => {
+    stubMatchingViewport('max-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const crumbs = await screen.findByTestId('member-breadcrumbs');
+    expect(within(crumbs).getByRole('link', { name: 'JavaScript od zera' })).toBeInTheDocument();
+    expect(within(crumbs).getByText('Zmienne')).toBeInTheDocument();
+    expect(within(crumbs).queryByText('Podstawy')).not.toBeInTheDocument();
+    expect(within(crumbs).queryByText('Start')).not.toBeInTheDocument();
+  });
+
+  it('gives the compact app bar to the breadcrumb instead of truncating the brand', async () => {
+    stubMatchingViewport('max-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    await screen.findByTestId('member-breadcrumbs');
+    expect(screen.queryByTestId('shell-brand')).not.toBeInTheDocument();
+  });
+
+  it('leaves the app bar without a breadcrumb outside a lesson', async () => {
+    stubMatchingViewport('min-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1');
+
+    await screen.findByTestId('course-sidebar');
+    expect(screen.queryByTestId('member-breadcrumbs')).not.toBeInTheDocument();
+  });
+
   it('shows the Studio app-bar button only to staff', async () => {
     stubViewport(true);
     server.use(okMe({ staffRole: 'admin', memberId: null }), okNavigation(), okOffer(), noNotifications());
@@ -269,11 +333,13 @@ describe('MemberShell', () => {
     const inProgress = within(sidebar).getByTestId('sidebar-course-c1');
     expect(inProgress).toHaveAttribute('href', '/my/courses/c1');
     expect(inProgress).toHaveTextContent('33%');
-    expect(within(inProgress).getByTestId('progress-ring')).toHaveAttribute('data-done', 'false');
+    expect(within(inProgress).getByTestId('progress-ring')).toBeInTheDocument();
+    expect(within(inProgress).queryByTestId('completion-mark')).not.toBeInTheDocument();
 
     const done = within(sidebar).getByTestId('sidebar-course-c2');
     expect(done).not.toHaveTextContent('%');
-    expect(within(done).getByTestId('progress-ring')).toHaveAttribute('data-done', 'true');
+    expect(within(done).getByTestId('completion-mark')).toBeInTheDocument();
+    expect(within(done).queryByTestId('progress-ring')).not.toBeInTheDocument();
 
     const locked = within(sidebar).getByTestId('sidebar-locked-s9');
     expect(locked).toHaveAttribute('href', '/checkout/p1');

@@ -1,3 +1,5 @@
+import { PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
+
 export type MemberNavEntry =
   | { kind: 'start' }
   | { kind: 'search' }
@@ -15,8 +17,6 @@ export interface CourseContext {
 export const memberHomePath = (): '/start' => '/start';
 
 export const anonHomePath = (): '/' => '/';
-
-export const PUBLIC_OFFER_ANCHOR = 'offer';
 
 export const anonOfferLink = (viewedSpaceIsHomeSpace: boolean): { to: '/'; hash?: string } =>
   viewedSpaceIsHomeSpace

@@ -14,7 +14,8 @@ import {
 } from '../../notifications-stream.js';
 import { useNotificationsTransport } from '../../notifications-transport.js';
 import { BreakAllText, CountBadge, Eyebrow, InkDotBadge, VisuallyHidden } from '../../theme.js';
-import { SignOutIcon } from './account-icons.js';
+import { SignOutIcon, StudioIcon } from './account-icons.js';
+import { useCanOpenStudio } from './viewer.js';
 import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { memberMessagesPath } from './shell/member-nav.js';
@@ -28,6 +29,7 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
   const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
+  const canOpenStudio = useCanOpenStudio();
 
   const signOut = useMutation({
     ...actions.signOut,
@@ -132,6 +134,20 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
           </Box>
         ) : null}
         {email !== null ? <Divider /> : null}
+        {canOpenStudio ? (
+          <MenuItem
+            component={Link}
+            to="/panel"
+            data-testid="member-account-studio-link"
+            sx={{ minHeight: '44px' }}
+            onClick={() => setAnchorEl(null)}
+          >
+            <ListItemIcon>
+              <StudioIcon />
+            </ListItemIcon>
+            <ListItemText primary={t.account.menuStudio} />
+          </MenuItem>
+        ) : null}
         <MenuItem
           component={Link}
           to="/my/products"

@@ -1876,6 +1876,7 @@ export const pl: Messages = {
     noMatches: 'Żadna przestrzeń nie pasuje do filtra.',
   },
   account: {
+    menuStudio: 'Studio',
     dataExportHeading: 'Pobierz swoje dane',
     dataExportIntro: 'Wyeksportuj profil, zgody, zakupy, dostępy, postępy i wpisy jako JSON.',
     dataExportButton: 'Pobierz moje dane',

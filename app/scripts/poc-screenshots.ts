@@ -169,6 +169,8 @@ const captureCreatorPanel = async (context: BrowserContext, studioBaseUrl: strin
   await shoot(page, '01-login.png');
 
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 20000 });
+  await page.goto(`${studioBaseUrl}/panel`, { waitUntil: 'load' });
 
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
   assert(

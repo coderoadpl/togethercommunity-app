@@ -191,6 +191,8 @@ const setEnglish = async (context: BrowserContext): Promise<void> => {
 const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 15000 });
+  await page.goto(`${baseUrl}/panel`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
 };
 

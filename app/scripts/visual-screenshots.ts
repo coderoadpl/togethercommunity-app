@@ -441,6 +441,11 @@ const SCREENS: ScreenSpec[] = [
         element.scrollIntoView({ block: 'start' }),
       );
     },
+    /** The CORS fields quote the harness origin, whose port is allocated per run. */
+    mask: (page) => [
+      page.locator('[data-testid^="storage-cors-origin-"]'),
+      page.getByTestId('storage-cors-json'),
+    ],
   },
   {
     name: 'panel-lesson-attachments',

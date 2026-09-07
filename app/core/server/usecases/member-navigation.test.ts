@@ -566,6 +566,38 @@ describe('getMemberNavigation', () => {
     expect(result).toMatchObject({ ok: true, value: { lockedSpaces: [] } });
   });
 
+  it('uses the published checkout product when a draft product is listed first', async () => {
+    const draftFirstSpace = space({
+      id: 's-draft-first',
+      slug: 's-draft-first',
+      name: 'Draft first',
+      visibility: 'product',
+      productIds: ['p-draft', 'p-course-c2'],
+    });
+    const draftProduct = {
+      ...product('p-draft', [{ level: 'course', courseId: 'c1' }]),
+      published: false,
+    };
+
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({ spaces: [draftFirstSpace], products: [draftProduct, pCourseC2] }),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        lockedSpaces: [
+          {
+            id: 's-draft-first',
+            productIds: ['p-course-c2'],
+            products: [{ id: 'p-course-c2', title: 'Product p-course-c2' }],
+          },
+        ],
+      },
+    });
+  });
+
   it('never flags a locked space', async () => {
     const result = await getMemberNavigation(
       memberCtx(),
@@ -585,6 +617,26 @@ describe('getMemberNavigation', () => {
         spaces: [
           { id: 's-open', courseIds: [] },
           { id: 's-module', courseIds: ['c1'] },
+        ],
+      },
+    });
+  });
+
+  it('carries public flags and product summaries for sidebar labels', async () => {
+    const result = await getMemberNavigation(
+      memberCtx(),
+      deps({
+        spaces: [{ ...openSpace, publicReadOnly: true }, entitledSpace],
+        products: [pModuleM1],
+        grants: [grant('g1', 'p-module-m1')],
+      }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        spaces: [
+          { id: 's-open', publicReadOnly: true, products: [] },
+          { id: 's-module', products: [{ id: 'p-module-m1', title: 'Product p-module-m1' }] },
         ],
       },
     });

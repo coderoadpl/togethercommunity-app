@@ -280,6 +280,48 @@ describe('community pages', () => {
     expect(screen.queryByTestId('space-card-gated')).not.toBeInTheDocument();
   });
 
+  it('labels space cards from public-read, members and product visibility data', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([
+        space({ id: 'public', name: 'Publiczna', publicReadOnly: true }),
+        space({ id: 'members', name: 'Klub' }),
+        space({
+          id: 'buyers',
+          name: 'Kupujący',
+          visibility: 'product',
+          productIds: ['p1'],
+          products: [{ id: 'p1', title: 'Program Pro' }],
+        }),
+        space({
+          id: 'buyers-fallback',
+          name: 'Kupujący bez produktu',
+          visibility: 'product',
+          productIds: ['p2'],
+        }),
+      ]),
+    );
+
+    await renderPage(SpacesListPage, '/community');
+
+    const publicChip = await screen.findByTestId('space-visibility-public');
+    expect(publicChip).toHaveTextContent(pl.community.publicReadOnly);
+    expect(publicChip.querySelector('svg')).toHaveClass('MuiChip-icon');
+
+    const membersChip = screen.getByTestId('space-visibility-members');
+    expect(membersChip).toHaveTextContent(pl.community.membersOnly);
+    expect(membersChip.querySelector('svg')).toHaveClass('MuiChip-icon');
+
+    const buyersChip = screen.getByTestId('space-visibility-buyers');
+    expect(buyersChip).toHaveTextContent(pl.community.productGatedFor({ product: 'Program Pro' }));
+    expect(buyersChip.querySelector('svg')).toHaveClass('MuiChip-icon');
+
+    const fallbackChip = screen.getByTestId('space-visibility-buyers-fallback');
+    expect(fallbackChip).toHaveTextContent(pl.community.productGated);
+    expect(fallbackChip.querySelector('svg')).toHaveClass('MuiChip-icon');
+  });
+
   it('renders the space feed with root posts, reply counts and reaction chips', async () => {
     server.use(
       okMe(),

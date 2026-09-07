@@ -14,6 +14,7 @@ import { SidebarProgressPercent } from '../../../theme.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { LockClosed } from '../tree-icons.js';
+import { LockedSpaceTooltipTitle } from '../SpaceCards.js';
 import { nestSpacesUnderCourses } from './course-spaces.js';
 import {
   activeNavEntry,
@@ -105,7 +106,7 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
           ? { component: 'div', disabled: true }
           : { component: Link, to: `/checkout/${encodeURIComponent(productId)}` };
         return (
-          <Tooltip key={space.id} title={t.shell.lockedSpaceHint}>
+          <Tooltip key={space.id} title={<LockedSpaceTooltipTitle space={space} />}>
             <NavRow {...linkProps} data-testid={`sidebar-locked-${space.id}`}>
               <ListItemIcon>
                 <LockClosed />

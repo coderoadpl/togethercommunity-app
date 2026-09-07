@@ -1,13 +1,15 @@
 import { z } from 'zod';
 
-import { spaceSchema } from './space.js';
+import { spaceProductSummarySchema, spaceSchema } from './space.js';
 
 const memberNavigationSpaceSchema = spaceSchema
   .pick({ id: true, slug: true, name: true, visibility: true, position: true })
   .extend({
+    publicReadOnly: z.boolean().optional(),
     isFollowing: z.boolean(),
     unread: z.boolean().default(false),
     courseIds: z.array(z.string().min(1)).default([]),
+    products: z.array(spaceProductSummarySchema).optional(),
   });
 
 export type MemberNavigationSpace = z.output<typeof memberNavigationSpaceSchema>;
@@ -30,6 +32,8 @@ const memberNavigationLockedSpaceSchema = spaceSchema.pick({
   name: true,
   description: true,
   productIds: true,
+}).extend({
+  products: z.array(spaceProductSummarySchema).optional(),
 });
 
 export const memberNavigationSchema = z.object({

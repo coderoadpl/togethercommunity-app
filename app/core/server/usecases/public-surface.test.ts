@@ -143,7 +143,7 @@ const navigationDeps = (input: {
 }): PublicNavigationDeps => ({
   spaces: { list: async () => input.spaces.filter((row) => row.archivedAt === null) },
   courses: { list: async () => input.courses ?? [] },
-  products: { listPublishedByTenant: async () => input.products ?? [] },
+  products: { listPublishedByTenant: async () => (input.products ?? []).filter((row) => row.published) },
   tenants: {
     findSettings: async () => ({
       name: tenant.name,
@@ -391,18 +391,28 @@ describe('getPublicNavigation', () => {
       tenant,
       navigationDeps({
         spaces: [
-          space({ id: 'second', publicReadOnly: true, position: 2 }),
+          space({
+            id: 'second',
+            publicReadOnly: true,
+            position: 2,
+            visibility: 'product',
+            productIds: ['p1'],
+          }),
           space({ id: 'first', publicReadOnly: true, position: 1 }),
           space({ id: 'members', publicReadOnly: false }),
         ],
         courses: [course('open', true), course('hidden', false)],
+        products: [product('p1', [], 'open')],
       }),
     );
 
     expect(result).toMatchObject({
       ok: true,
       value: {
-        spaces: [{ id: 'first' }, { id: 'second' }],
+        spaces: [
+          { id: 'first', publicReadOnly: true, products: [] },
+          { id: 'second', publicReadOnly: true, products: [{ id: 'p1', title: 'Product p1' }] },
+        ],
         courses: [{ id: 'open', name: 'Course open', description: 'About open', imageUrl: null }],
         lockedSpaces: [],
       },
@@ -424,7 +434,48 @@ describe('getPublicNavigation', () => {
 
     expect(result).toMatchObject({
       ok: true,
-      value: { lockedSpaces: [{ id: 'sellable', productIds: ['p1'] }] },
+      value: {
+        lockedSpaces: [
+          {
+            id: 'sellable',
+            productIds: ['p1'],
+            products: [{ id: 'p1', title: 'Product p1' }],
+          },
+        ],
+      },
+    });
+  });
+
+  it('uses the published checkout product when a draft product is listed first', async () => {
+    const result = await getPublicNavigation(
+      tenant,
+      navigationDeps({
+        spaces: [
+          space({
+            id: 'draft-first',
+            publicReadOnly: false,
+            visibility: 'product',
+            productIds: ['p-draft', 'p1'],
+          }),
+        ],
+        products: [
+          { ...product('p-draft', [], 'open'), published: false },
+          product('p1', [], 'open'),
+        ],
+      }),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        lockedSpaces: [
+          {
+            id: 'draft-first',
+            productIds: ['p1'],
+            products: [{ id: 'p1', title: 'Product p1' }],
+          },
+        ],
+      },
     });
   });
 

@@ -25,7 +25,7 @@ import { SpaceEventsSection } from './events/SpaceEventsSection.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
-import { LockedSpaceCard } from './SpaceCards.js';
+import { LockedSpaceCard, SpaceVisibilityChip } from './SpaceCards.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
@@ -298,12 +298,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
         <PostBody variant="body2" component="p" color="text.secondary">
           {space.description ?? t.community.noDescription}
         </PostBody>
-        <Chip
-          size="small"
-          variant="outlined"
-          label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
-          sx={{ alignSelf: 'flex-start' }}
-        />
+        <SpaceVisibilityChip space={space} />
         <Box>
           <Button
             variant={isFollowing ? 'outlined' : 'contained'}

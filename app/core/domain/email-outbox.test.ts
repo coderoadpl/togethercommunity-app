@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderEmailOutboxPayload } from './email-outbox.js';
+import { emailOutboxPayloadSchema, isAuthBearingEmailPayload, renderEmailOutboxPayload } from './email-outbox.js';
 
 const branding = { logoUrl: 'https://cdn.test/logo.png', accentColor: '#123456' };
 
@@ -171,6 +171,7 @@ describe('renderEmailOutboxPayload', () => {
     });
     expect(rendered).toEqual({
       success: true,
+      payload: { kind: 'm2m-transactional', subject: 'Receipt', text: 'Paid', replyTo: 'support@example.test' },
       data: {
         subject: 'Receipt',
         html: '<pre>Paid</pre>',
@@ -201,4 +202,15 @@ describe('renderEmailOutboxPayload', () => {
     const rendered = renderEmailOutboxPayload({ kind: 'magic-link', language: 'en', tenantName: 'Studio', url: 'not-a-url' });
     expect(rendered.success).toBe(false);
   });
+});
+
+describe('isAuthBearingEmailPayload', () => {
+  it.each(emailOutboxPayloadSchema.options.map((option) => ({ kind: option.shape.kind.value })))(
+    'classifies $kind for global auth bearer isolation',
+    ({ kind }) => {
+      expect(isAuthBearingEmailPayload({ kind })).toBe([
+        'welcome-sign-in', 'reset-password', 'verify-email', 'magic-link',
+      ].includes(kind));
+    },
+  );
 });

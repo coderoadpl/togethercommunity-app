@@ -13,4 +13,5 @@ export const useRedirectSignedInWithTenant = () => {
   useEffect(() => {
     if (hasTenantMembership) void navigate({ to: '/' });
   }, [hasTenantMembership, navigate]);
+  return me;
 };

@@ -66,7 +66,7 @@ describe('UserAvatar', () => {
       <UserAvatar
         name="Ada Lovelace"
         email="ada@together.dev"
-        imageUrl="https://www.gravatar.com/avatar/abc?d=404&s=160"
+        imageUrl="/api/public/assets/avatar/avatar.webp"
       />,
     );
 
@@ -83,7 +83,7 @@ describe('UserAvatar', () => {
     render(
       <UserAvatar
         name="Ada Lovelace"
-        imageUrl="https://www.gravatar.com/avatar/abc?d=404&s=160"
+        imageUrl="/api/public/assets/avatar/avatar.webp"
       />,
     );
 

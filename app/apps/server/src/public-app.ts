@@ -753,6 +753,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     return respondPublic(
       ok({
         googleEnabled: deps.authConfig.googleEnabled && !onCustomDomain,
+        googleClientId: onCustomDomain ? null : deps.authConfig.googleClientId,
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,

@@ -167,15 +167,34 @@ export interface UserDisplayReader {
 }
 
 export interface AvatarSourceReader {
-  /**
-   * Avatar sources for identities that belong to the tenant: the tenant-scoped
-   * member e-mail when a member row exists, the account e-mail otherwise, plus
-   * the provider picture from the auth user row.
-   */
   listAvatarSources(
     tenantId: string,
     userIds: string[],
-  ): Promise<Array<{ userId: string; email: string; image: string | null }>>;
+  ): Promise<Array<{ userId: string; image: string | null }>>;
+}
+
+export interface AccountAvatarRepository {
+  findState(tenantId: string, userId: string): Promise<{ image: string | null; canImport: boolean } | null>;
+  setAvatar(tenantId: string, userId: string, image: string): Promise<void>;
+  setAvatarIfMissing(tenantId: string, userId: string, image: string): Promise<boolean>;
+  removeAvatar(tenantId: string, userId: string): Promise<void>;
+}
+
+export interface AccountAvatarTenantReader {
+  listTenantIdsForUser(userId: string): Promise<string[]>;
+}
+
+export interface AvatarImageProcessor {
+  processStored(input: {
+    configuration: StorageConfiguration;
+    sourceKey: string;
+    targetKey: string;
+  }): Promise<Result<void, AppError>>;
+  importRemote(input: {
+    configuration: StorageConfiguration;
+    sourceUrl: string;
+    targetKey: string;
+  }): Promise<Result<void, AppError>>;
 }
 
 export interface ProductRepository {

@@ -14,12 +14,16 @@ import type { StorageProvider } from '../ports.js';
 import {
   IMAGE_ASSET_GET_TTL_SECONDS,
   beginBrandingAssetUpload,
+  beginAvatarUpload,
   beginCourseCoverUpload,
   beginProductCoverUpload,
   completeBrandingAssetUpload,
+  completeAvatarUpload,
   completeCourseCoverUpload,
   completeProductCoverUpload,
   getPublicImageAssetUrl,
+  importGoogleAvatar,
+  removeAvatar,
   type ImageAssetDeps,
 } from './image-assets.js';
 
@@ -92,6 +96,137 @@ const testDeps = (sizeBytes = 1024) => {
 };
 
 describe('image assets', () => {
+  it('processes a member avatar to a 256px WebP path before storing it on the account', async () => {
+    const { deps, removed } = testDeps();
+    const images: Array<{ sourceKey: string; targetKey: string }> = [];
+    const stored: string[] = [];
+    const previous = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp';
+    const avatarDeps = {
+      ...deps,
+      avatars: {
+        findState: async () => ({ image: previous, canImport: false }),
+        setAvatar: async (_tenantId: string, _userId: string, image: string) => {
+          stored.push(image);
+        },
+        setAvatarIfMissing: async () => true,
+        removeAvatar: async () => undefined,
+      },
+      avatarImages: {
+        processStored: async (input: { sourceKey: string; targetKey: string }) => {
+          images.push(input);
+          return ok(undefined);
+        },
+        importRemote: async () => ok(undefined),
+      },
+    };
+    const started = await beginAvatarUpload(memberCtx, {
+      kind: 'avatar',
+      fileName: 'portrait.jpg',
+      contentType: 'image/jpeg',
+      sizeBytes: 1024,
+    }, avatarDeps);
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    await expect(completeAvatarUpload(memberCtx, { key: started.value.key }, avatarDeps))
+      .resolves.toEqual(ok({ url: `/api/public/assets/avatar/${ASSET_ID}.webp` }));
+    expect(images).toMatchObject([{
+      sourceKey: `image-assets/${TENANT_ID}/avatar/${ASSET_ID}.jpg`,
+      targetKey: `image-assets/${TENANT_ID}/avatar/${ASSET_ID}.webp`,
+    }]);
+    expect(stored).toEqual([`/api/public/assets/avatar/${ASSET_ID}.webp`]);
+    expect(removed).toContain(
+      'https://storage.example.test/private-assets/image-assets/tenant-1/avatar/00000000-0000-4000-8000-000000000002.webp',
+    );
+  });
+
+  it('removes the account avatar without accepting an arbitrary replacement URL', async () => {
+    const { deps, removed } = testDeps();
+    const stored: string[] = [];
+    const previous = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp';
+    const result = await removeAvatar(memberCtx, {
+      ...deps,
+      avatars: {
+        findState: async () => ({ image: previous, canImport: false }),
+        setAvatar: async (_tenantId, _userId, image) => {
+          stored.push(image);
+        },
+        setAvatarIfMissing: async () => true,
+        removeAvatar: async () => {
+          stored.push('removed');
+        },
+      },
+    });
+
+    expect(result).toEqual(ok({ removed: true }));
+    expect(stored).toEqual(['removed']);
+    expect(removed).toEqual([
+      'https://storage.example.test/private-assets/image-assets/tenant-1/avatar/00000000-0000-4000-8000-000000000002.webp',
+    ]);
+  });
+
+  it('imports a Google picture through the processor only while the avatar is missing', async () => {
+    const { deps } = testDeps();
+    const imported: string[] = [];
+    const stored: string[] = [];
+    let canImport = true;
+    const avatarDeps = {
+      ...deps,
+      avatars: {
+        findState: async () => ({ image: null, canImport }),
+        setAvatar: async () => undefined,
+        setAvatarIfMissing: async (_tenantId: string, _userId: string, image: string) => {
+          stored.push(image);
+          canImport = false;
+          return true;
+        },
+        removeAvatar: async () => undefined,
+      },
+      avatarImages: {
+        processStored: async () => ok(undefined),
+        importRemote: async ({ sourceUrl }: { sourceUrl: string }) => {
+          imported.push(sourceUrl);
+          return ok(undefined);
+        },
+      },
+    };
+    const input = {
+      tenantId: TENANT_ID,
+      userId: 'user-1',
+      sourceUrl: 'https://lh3.googleusercontent.com/a/photo',
+    };
+    await importGoogleAvatar(input, avatarDeps);
+    await importGoogleAvatar(input, avatarDeps);
+
+    expect(imported).toEqual(['https://lh3.googleusercontent.com/a/photo']);
+    expect(stored).toEqual([`/api/public/assets/avatar/${ASSET_ID}.webp`]);
+  });
+
+  it('deletes a Google image when another avatar wins the conditional update', async () => {
+    const { deps, removed } = testDeps();
+    await importGoogleAvatar({
+      tenantId: TENANT_ID,
+      userId: 'user-1',
+      sourceUrl: 'https://lh3.googleusercontent.com/a/photo',
+    }, {
+      ...deps,
+      avatars: {
+        findState: async () => ({ image: null, canImport: true }),
+        setAvatar: async () => undefined,
+        setAvatarIfMissing: async () => false,
+        removeAvatar: async () => undefined,
+      },
+      avatarImages: {
+        processStored: async () => ok(undefined),
+        importRemote: async () => ok(undefined),
+      },
+    });
+
+    expect(removed).toEqual([
+      `https://storage.example.test/private-assets/image-assets/${TENANT_ID}/avatar/${ASSET_ID}.webp`,
+    ]);
+  });
+
   it.each([
     ['course-cover', adminCtx, beginCourseCoverUpload],
     ['product-cover', adminCtx, beginProductCoverUpload],

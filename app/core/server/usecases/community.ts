@@ -39,7 +39,6 @@ import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -97,7 +96,6 @@ export interface CommunityDeps {
   ids: IdGenerator;
   clock: Clock;
   avatarSources: AvatarSourceReader;
-  contentHash: ContentHash;
 }
 
 const minutesBefore = (iso: string, minutes: number): string =>

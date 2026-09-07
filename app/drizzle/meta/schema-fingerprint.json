@@ -1,6 +1,6 @@
 {
-  "hash": "19cdc6be58eeb52b2c55680147f2775f9e9d04bca0c459af8b61084d24a40741",
-  "shortId": "19cdc6be58ee",
+  "hash": "8155088baf745a14b7305a72b30d6d57247edf0b453c52df52f84d17c15b727b",
+  "shortId": "8155088baf74",
   "schema": {
     "constraints": [
       {
@@ -3321,6 +3321,22 @@
             "name": "marketing_consents",
             "notNull": true,
             "type": "jsonb"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "avatar_cleared",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "avatar_url",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

@@ -617,6 +617,16 @@ const deps = (input: {
     avatarSources: {
       listAvatarSources: async () => [],
     },
+    accountAvatars: {
+      findState: async () => ({ image: null, canImport: true }),
+      setAvatar: async () => undefined,
+      setAvatarIfMissing: async () => true,
+      removeAvatar: async () => undefined,
+    },
+    avatarImages: {
+      processStored: async () => ok(undefined),
+      importRemote: async () => ok(undefined),
+    },
     progress: {
       findByMemberAndCourse: async () => null,
       listByMember: async () => [],

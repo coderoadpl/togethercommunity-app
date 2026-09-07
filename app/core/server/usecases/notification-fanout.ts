@@ -21,7 +21,6 @@ import {
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -68,7 +67,6 @@ export interface PostFanoutDeps {
   ids: IdGenerator;
   clock: Clock;
   avatarSources: AvatarSourceReader;
-  contentHash: ContentHash;
 }
 
 export interface EventFanoutDeps {
@@ -86,7 +84,6 @@ export interface EventFanoutDeps {
   ids: IdGenerator;
   clock: Clock;
   avatarSources: AvatarSourceReader;
-  contentHash: ContentHash;
 }
 
 export type NotificationFanoutDeps = PostFanoutDeps & EventFanoutDeps;

@@ -595,10 +595,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:168` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1055` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1057` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1526` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1526` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1056` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1058` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1527` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1527` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

@@ -617,8 +617,8 @@ const grantRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRep
   },
 });
 
-const productRepo = (contentVersionBumps: string[]): ProductRepository => ({
-  listByTenant: async () => [],
+const productRepo = (contentVersionBumps: string[], products: Product[]): ProductRepository => ({
+  listByTenant: async (tenantId) => products.filter((item) => item.tenantId === tenantId),
   listPublishedByTenant: async () => [],
   findById: async () => null,
   create: async () => 'created',
@@ -750,7 +750,7 @@ const fixture = (input: {
     modules: emptyModules,
     lessons: emptyLessons,
     grants: grantRepo(input.grants ?? [], input.products ?? []),
-    products: productRepo(contentVersionBumps),
+    products: productRepo(contentVersionBumps, input.products ?? []),
     tenants: tenantRepo(input.defaultHomeSpaceId ?? null),
     tenantAccess,
     links: {
@@ -798,6 +798,22 @@ describe('space visibility', () => {
     expect(listed.ok).toBe(true);
     if (!listed.ok) return;
     expect(listed.value.map((item) => item.id)).toEqual(['s-open', 's-club']);
+  });
+
+  it('includes product summaries for visible product-gated spaces', async () => {
+    const f = fixture({
+      spaces: spaces(),
+      grants: [grant('m1', 'p-club')],
+      products: [{ ...product('p-club'), title: 'Club Pass' }],
+    });
+    const listed = await listSpacesForMember(ctx(), f.deps);
+    expect(listed).toMatchObject({
+      ok: true,
+      value: [
+        { id: 's-open', products: [] },
+        { id: 's-club', products: [{ id: 'p-club', title: 'Club Pass' }] },
+      ],
+    });
   });
 
   it('hides the product-gated space once the grant expired', async () => {

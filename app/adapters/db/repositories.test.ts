@@ -366,6 +366,23 @@ describe('member repository', () => {
     });
   });
 
+  it('stores a nullable video autoplay preference', async () => {
+    const repo = createMemberRepository(db);
+    const memberId = 'mem-acme-video-autoplay';
+    await repo.create(ACME, member({
+      id: memberId,
+      tenantId: ACME,
+      userId: 'user-acme-video-autoplay',
+      email: 'video-autoplay@together.dev',
+    }));
+
+    expect(await repo.findById(ACME, memberId)).toMatchObject({ videoAutoplay: null });
+    expect(await repo.updateVideoAutoplay(ACME, memberId, true)).toMatchObject({ videoAutoplay: true });
+    expect(await repo.findById(ACME, memberId)).toMatchObject({ videoAutoplay: true });
+    expect(await repo.updateVideoAutoplay(ACME, memberId, false)).toMatchObject({ videoAutoplay: false });
+    expect(await repo.findById(ACME, memberId)).toMatchObject({ videoAutoplay: false });
+  });
+
   it('updates ban state and appends its event atomically', async () => {
     const repo = createMemberRepository(db);
     const event = {
@@ -1102,6 +1119,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       termsUrl: null,
       privacyUrl: null,
       defaultHomeSpaceId: null,
+      videoAutoplayDefault: true,
+      memberVideoAutoplayOverride: true,
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
@@ -1113,12 +1132,16 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
+      videoAutoplayDefault: true,
+      memberVideoAutoplayOverride: true,
     });
     expect(await repo.findSettings(ACME)).toMatchObject({
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
+      videoAutoplayDefault: true,
+      memberVideoAutoplayOverride: true,
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',

@@ -155,6 +155,8 @@ export const tenantSettingsSchema = z.object({
   privacyUrl: z.string().url().nullable().default(null),
   defaultHomeSpaceId: z.string().min(1).nullable().default(null),
   directMessagesEnabled: z.boolean().optional(),
+  videoAutoplayDefault: z.boolean().optional(),
+  memberVideoAutoplayOverride: z.boolean().optional(),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
@@ -236,6 +238,8 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   directMessagesEnabled: z.boolean().optional(),
+  videoAutoplayDefault: z.boolean().optional(),
+  memberVideoAutoplayOverride: z.boolean().optional(),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
@@ -252,6 +256,16 @@ export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInput
 /** Tenants created before the switch existed keep direct messages on. */
 export const directMessagesEnabled = (settings: TenantSettings): boolean =>
   settings.directMessagesEnabled !== false;
+
+export const resolveVideoAutoplay = (
+  settings: Pick<TenantSettings, 'videoAutoplayDefault' | 'memberVideoAutoplayOverride'>,
+  memberVideoAutoplay: boolean | null,
+): boolean => {
+  if (settings.memberVideoAutoplayOverride && memberVideoAutoplay !== null) {
+    return memberVideoAutoplay;
+  }
+  return settings.videoAutoplayDefault ?? false;
+};
 
 export const resolveInvoiceVat = (settings: TenantSettings): InvoiceVatResolution => {
   if (settings.invoiceVatMode === null) return { ok: false, reason: 'unset' };
@@ -325,7 +339,7 @@ export const memberSchema = z.object({
   avatarUrl: z.string().nullable().optional(),
   avatarCleared: z.boolean().optional(),
   language: languageSchema.nullable().optional(),
-  videoAutoplay: z.boolean().optional(),
+  videoAutoplay: z.boolean().nullable().optional(),
   tags: z.array(z.string()),
   marketingConsents: z.record(z.boolean()),
   externalCustomerIds: z.record(z.string()),

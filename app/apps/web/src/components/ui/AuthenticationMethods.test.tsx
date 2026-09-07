@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '../../i18n/index.js';
 import { pl } from '../../i18n/pl.js';
+import { ToastProvider } from './Toast.js';
 import {
   AuthenticationMethods,
   type AuthenticationMethodsProps,
@@ -27,9 +28,13 @@ const propsWith = (
 
 const renderMethods = (props: AuthenticationMethodsProps) => render(
   <LanguageProvider>
-    <AuthenticationMethods {...props} />
+    <ToastProvider>
+      <AuthenticationMethods {...props} />
+    </ToastProvider>
   </LanguageProvider>,
 );
+
+const toastStack = () => screen.getByTestId('toast-stack');
 
 describe('AuthenticationMethods', () => {
   it('keeps passkey add and removal confirmation disabled without a password', async () => {
@@ -96,9 +101,7 @@ describe('AuthenticationMethods', () => {
 
     expect(screen.getByText('once-one')).toBeInTheDocument();
     expect(screen.getByText('once-two')).toBeInTheDocument();
-    expect(screen.getByTestId('backup-codes-regenerated')).toHaveTextContent(
-      pl.security.backupCodesRegenerated,
-    );
+    expect(within(toastStack()).getByText(pl.security.backupCodesRegenerated)).toBeInTheDocument();
   });
 
   it('hides issued backup codes after a later successful two-factor disable', () => {
@@ -119,7 +122,7 @@ describe('AuthenticationMethods', () => {
     }));
 
     expect(screen.queryByText('stale-code')).not.toBeInTheDocument();
-    expect(screen.getByTestId('two-factor-disabled')).toBeInTheDocument();
+    expect(within(toastStack()).getByText(pl.security.twoFactorOff)).toBeInTheDocument();
   });
   it('wraps the two-factor action row instead of stretching its buttons', () => {
     renderMethods(propsWith());

@@ -46,6 +46,7 @@ import { TenantBrandingBoundary } from './branding.js';
 import { AppChromeProvider } from './components/ui/app-chrome.js';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { LanguageSwitcher } from './components/ui/LanguageSwitcher.js';
+import { ToastProvider } from './components/ui/Toast.js';
 import { LanguageProvider } from './i18n/index.js';
 import { NotificationsTransportProvider } from './notifications-transport.js';
 import { initWebObservability, reportError } from './observability.js';
@@ -604,14 +605,16 @@ createRoot(container).render(
           <CssBaseline />
           <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
             <QueryClientProvider client={queryClient}>
-              <RefreshSnackbar />
-              <NotificationsTransportProvider>
-                <TenantBrandingBoundary>
-                  <TenantGate>
-                    <RouterProvider router={router} />
-                  </TenantGate>
-                </TenantBrandingBoundary>
-              </NotificationsTransportProvider>
+              <ToastProvider>
+                <RefreshSnackbar />
+                <NotificationsTransportProvider>
+                  <TenantBrandingBoundary>
+                    <TenantGate>
+                      <RouterProvider router={router} />
+                    </TenantGate>
+                  </TenantBrandingBoundary>
+                </NotificationsTransportProvider>
+              </ToastProvider>
               {import.meta.env.DEV ? (
                 <Suspense fallback={null}>
                   <ReactQueryDevtools />

@@ -9,7 +9,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createPostInputSchema,
@@ -29,6 +29,10 @@ import { MemberShell } from './shell/MemberShell.js';
 import { SpaceFeedPage } from './SpaceFeedPage.js';
 import { SpaceThreadPage } from './SpaceThreadPage.js';
 import { SpacesListPage } from './SpacesListPage.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const okMe = () =>
   http.get('/api/me', () =>
@@ -274,6 +278,48 @@ describe('community pages', () => {
     expect(await screen.findByTestId('space-card-s1')).toHaveTextContent('Ogólna');
     expect(screen.getByTestId('space-following-s1')).toHaveTextContent(pl.community.followingChip);
     expect(screen.queryByTestId('space-card-gated')).not.toBeInTheDocument();
+  });
+
+  it('labels space cards from public-read, members and product visibility data', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([
+        space({ id: 'public', name: 'Publiczna', publicReadOnly: true }),
+        space({ id: 'members', name: 'Klub' }),
+        space({
+          id: 'buyers',
+          name: 'Kupujący',
+          visibility: 'product',
+          productIds: ['p1'],
+          products: [{ id: 'p1', title: 'Program Pro' }],
+        }),
+        space({
+          id: 'buyers-fallback',
+          name: 'Kupujący bez produktu',
+          visibility: 'product',
+          productIds: ['p2'],
+        }),
+      ]),
+    );
+
+    await renderPage(SpacesListPage, '/community');
+
+    const publicChip = await screen.findByTestId('space-visibility-public');
+    expect(publicChip).toHaveTextContent(pl.community.publicReadOnly);
+    expect(publicChip.querySelector('svg')).toHaveClass('MuiChip-icon');
+
+    const membersChip = screen.getByTestId('space-visibility-members');
+    expect(membersChip).toHaveTextContent(pl.community.membersOnly);
+    expect(membersChip.querySelector('svg')).toHaveClass('MuiChip-icon');
+
+    const buyersChip = screen.getByTestId('space-visibility-buyers');
+    expect(buyersChip).toHaveTextContent(pl.community.productGatedFor({ product: 'Program Pro' }));
+    expect(buyersChip.querySelector('svg')).toHaveClass('MuiChip-icon');
+
+    const fallbackChip = screen.getByTestId('space-visibility-buyers-fallback');
+    expect(fallbackChip).toHaveTextContent(pl.community.productGated);
+    expect(fallbackChip.querySelector('svg')).toHaveClass('MuiChip-icon');
   });
 
   it('renders the space feed with root posts, reply counts and reaction chips', async () => {
@@ -585,6 +631,31 @@ describe('community pages', () => {
     await user.click(screen.getByTestId('space-composer-submit'));
 
     await waitFor(() => expect(seenCalls).toEqual(['s1', 's1']));
+  });
+
+  it('keeps space seen failures silent on the feed page', async () => {
+    let seenCalls = 0;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1' })]),
+      okFeed('s1', [feedItem({ id: 'p1', body: 'Visible post' })]),
+      http.post('/api/spaces/:spaceId/seen', () => {
+        seenCalls += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'Write failed' } },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByText('Visible post')).toBeInTheDocument();
+    await waitFor(() => expect(seenCalls).toBe(1));
+    await waitFor(() => expect(warn).toHaveBeenCalledWith('Failed to mark space seen', expect.any(Error)));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 
   it('never marks the space seen while viewing as a member', async () => {

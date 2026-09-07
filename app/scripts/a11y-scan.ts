@@ -156,7 +156,7 @@ const SCREENS: ScreenSpec[] = [
     path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
     viewports: memberViewports,
     ready: async (page) => {
-      await page.getByLabel('breadcrumb').waitFor(visible);
+      await page.getByTestId('member-breadcrumbs').waitFor(visible);
       await page.getByTestId('discussion-composer-open').waitFor(visible);
     },
   },

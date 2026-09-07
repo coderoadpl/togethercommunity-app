@@ -135,7 +135,7 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
           />
         )}
         {catalogEntry !== undefined && catalogEntry.description !== '' && (
-          <Paper elevation={1} sx={{ p: '1.5rem' }}>
+          <Paper elevation={1} sx={{ p: '1.5rem' }} data-testid="course-about-card">
             <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
               {t.courseOverview.aboutCourse}
             </Eyebrow>

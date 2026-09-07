@@ -278,7 +278,7 @@ export const meOutputSchema = z.object({
       banned: z.boolean(),
       dmOptOut: z.boolean().default(false),
       language: languageSchema.nullable().default(null),
-      videoAutoplay: z.boolean().default(false),
+      videoAutoplay: z.boolean().nullable().default(null),
     })
     .nullable(),
   impersonation: impersonationViewSchema.nullable().default(null),
@@ -296,7 +296,7 @@ export const meProfileUpdateOutputSchema = z.object({
   displayName: z.string().nullable(),
   dmOptOut: z.boolean().default(false),
   language: languageSchema.nullable().default(null),
-  videoAutoplay: z.boolean().default(false),
+  videoAutoplay: z.boolean().nullable().default(null),
 });
 
 export const avatarRemoveOutputSchema = z.object({ removed: z.literal(true) });

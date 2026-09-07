@@ -7,12 +7,14 @@ import type { MemberNavigationSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
+import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { SidebarProgressPercent } from '../../../theme.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { LockClosed } from '../tree-icons.js';
+import { LockedSpaceTooltipTitle } from '../SpaceCards.js';
 import { nestSpacesUnderCourses } from './course-spaces.js';
 import {
   activeNavEntry,
@@ -74,7 +76,11 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
               data-testid={`sidebar-course-${course.courseId}`}
             >
               <ListItemIcon>
-                <ProgressRing value={percent} done={done} />
+                {done ? (
+                  <CompletionMark label={t.courseOverview.courseCompleted} />
+                ) : (
+                  <ProgressRing value={percent} />
+                )}
               </ListItemIcon>
               <Tooltip title={course.courseName} enterDelay={600} describeChild>
                 <ListItemText
@@ -100,7 +106,7 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
           ? { component: 'div', disabled: true }
           : { component: Link, to: `/checkout/${encodeURIComponent(productId)}` };
         return (
-          <Tooltip key={space.id} title={t.shell.lockedSpaceHint}>
+          <Tooltip key={space.id} title={<LockedSpaceTooltipTitle space={space} />}>
             <NavRow {...linkProps} data-testid={`sidebar-locked-${space.id}`}>
               <ListItemIcon>
                 <LockClosed />

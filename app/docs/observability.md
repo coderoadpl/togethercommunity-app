@@ -240,10 +240,10 @@ synthetic demo tenant instead of the deployment that matters.
 
 | Variable | Used by | Fallback when unset |
 | --- | --- | --- |
-| `SMOKE_TENANT` | prod-health, prod-smoke, staging-links | `acme` — the tenant slug the other three variables build their default host from. |
+| `SMOKE_TENANT` | prod-health, prod-smoke | `acme` — the tenant slug the production smoke variables build their default host from. |
 | `PROD_HEALTH_HOST` | prod-health | `<SMOKE_TENANT>.togethercommunity.app` — the host `/api/health` and `/api/health/deep` are probed on. |
 | `PROD_BASE_URL` | prod-smoke | `https://<SMOKE_TENANT>.togethercommunity.app` — the deployment smoked on `deployment` events and on a dispatch that leaves `base_url` empty. |
-| `STAGING_HOST` | staging-links | `<SMOKE_TENANT>.staging.togethercommunity.app` — the tenant host published as the deployment's environment URL and pinned on the promotion pull request. |
+| `STAGING_HOST` | staging-links | `acme.staging.togethercommunity.app` — the seeded tenant host published as the deployment's environment URL and pinned on the promotion pull request. |
 | `VERCEL_DEPLOYMENTS_URL` | staging-links | `https://vercel.com/dashboard` — the deployments list linked from the same places. |
 
 Pointing `SMOKE_TENANT` at another tenant also skips the reseed with a notice:
@@ -261,8 +261,8 @@ the environment and the commit however it currently labels them, so a smoke
 gated on them stops running the moment that labelling changes. It runs
 `pnpm run smoke:staging` (`app/scripts/remote-smoke.ts --staging`) against
 `https://` + the `STAGING_HOST` variable (default
-`<SMOKE_TENANT>.staging.togethercommunity.app`), the tenant coming from the same
-`SMOKE_TENANT` variable the production smoke uses.
+`acme.staging.togethercommunity.app`) and always sends requests as the seeded
+`acme` tenant.
 
 A push arrives before the deployment it will produce, so the job first waits for
 the host to serve the pushed commit: it polls `/api/health` with the bypass
@@ -279,6 +279,13 @@ Checks, in order:
 2. `staging-environment` — the database is `up`, `environment` is `staging`, `production` is `false`, the schema is current.
 3. `database-fingerprint` — `databaseFingerprint` differs from `PRODUCTION_DATABASE_FINGERPRINT` **and** equals `STAGING_DATABASE_FINGERPRINT`.
 4. `health-deep` — `/api/health/deep` answers 200 with `ok: true`.
+5. `public-offer` — the seeded tenant offer lists at least one published product.
+6. `public-page` — the seeded tenant storefront returns HTML.
+7. `member-sign-in` — password sign-in of the seeded smoke member.
+8. `member-identity` — `/api/me` reports a membership on the seeded tenant.
+9. `student-courses` — the seeded smoke member sees `Acme Course` and has an accessible lesson.
+10. `lesson-playback` — the seeded lesson resolves a playable Bunny Stream URL.
+11. `studio-tenant-settings` — skipped for the same API-key scope reason as production smoke.
 
 A staging deployment wired to the production database therefore fails within a
 deploy instead of within days. The fingerprint is asserted against both ends:
@@ -298,12 +305,13 @@ pin.
 
 ### Secrets after a database branch reset
 
-The staging database is a branch reset from production, so every tenant secret it
-carries — SES, S3, Stripe, Bunny, iFirma, KSeF — was encrypted with the
+Legacy staging databases were copied from production, so every tenant secret
+they carried — SES, S3, Stripe, Bunny, iFirma, KSeF — was encrypted with the
 production `SECRETS_MASTER_KEY`. Staging holds a different key, so those rows
 decrypt to nothing there: `/api/health/deep` fails `tenant-secret-decryption`,
 and `storage-presign` fails with it because the S3 configuration is one of the
-unreadable rows.
+unreadable rows. New staging databases are schema-only branches seeded by the
+deployed build, so there may be no copied secrets to sanitize.
 
 `POST /api/internal/sanitize-staging-secrets` resolves that. Guarded by the same
 `x-scheduler-operator-secret` header the acme reseed uses, it scans every stored
@@ -323,7 +331,8 @@ secrets an operator entered on staging.
 `OPERATOR_SECRET_STAGING` repository secret through the deployment-protection
 bypass header. Absent secret → the step prints a notice and the smoke runs
 against staging as it stands; a failing call does not fail the job, so a sanitize
-problem never masquerades as a staging outage.
+problem never masquerades as a staging outage. On a schema-only staging branch
+the route is a no-op when no copied secret rows exist.
 
 To give staging its own working integrations, sign in to Studio on the staging
 host and re-enter them there — Studio → Integrations for e-mail, storage,
@@ -364,7 +373,7 @@ through the gate and, when it may page, sends one SMS through
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | secret | Bypasses staging deployment protection. Absent → the whole smoke is skipped with a notice. Sent only to `STAGING_HOST_URL`, so a dispatch against another host skips the smoke instead of leaking the secret to it. |
 | `PRODUCTION_DATABASE_FINGERPRINT` | variable | The fingerprint staging must **not** answer with. Unset → the workflow falls back to the recorded production value. |
 | `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the run passes green and prints the value to pin, without an SMS. |
-| `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `<SMOKE_TENANT>.staging.togethercommunity.app`. |
+| `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `acme.staging.togethercommunity.app`. |
 | `OPERATOR_SECRET_STAGING` | secret | The staging deployment's `OPERATOR_SECRET`, used to call the secret sanitize before the checks. Falls back to the deprecated `STAGING_OPERATOR_SECRET` repository secret. Unset → the sanitize is skipped with a notice. |
 
 Obtain the bypass secret in Vercel → Settings → Deployment Protection →

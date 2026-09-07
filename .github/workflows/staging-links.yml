@@ -14,7 +14,7 @@ concurrency:
   group: staging-links
   cancel-in-progress: true
 env:
-  STAGING_HOST: ${{ vars.STAGING_HOST || format('{0}.staging.togethercommunity.app', vars.SMOKE_TENANT || 'acme') }}
+  STAGING_HOST: ${{ vars.STAGING_HOST || 'acme.staging.togethercommunity.app' }}
   PLATFORM_URL: https://start.staging.togethercommunity.app
   VERCEL_DEPLOYMENTS_URL: ${{ vars.VERCEL_DEPLOYMENTS_URL || 'https://vercel.com/dashboard' }}
 jobs:

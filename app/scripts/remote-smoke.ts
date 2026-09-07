@@ -3,6 +3,7 @@ import type { z } from 'zod';
 
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import {
+  DEMO_SEED_PASSWORD,
   SMOKE_TENANT_COURSE_TITLE,
   SMOKE_TENANT_MEMBER_EMAIL,
   SMOKE_TENANT_SLUG,
@@ -153,13 +154,14 @@ const createRun = (target: SmokeTarget, request: Fetch) => {
 };
 
 const signIn = async (
-  options: RemoteSmokeOptions,
+  options: { baseUrl: string; authHeaders?: Record<string, string> | undefined },
   member: { email: string; password: string },
   request: Fetch,
 ): Promise<string> => {
   const auth = createAuthE2eClient({
     connectUrl: options.baseUrl,
     origin: new URL(options.baseUrl).origin,
+    ...(options.authHeaders === undefined ? {} : { headers: options.authHeaders }),
     request,
   });
   const signedIn = await auth.signInEmail(member);
@@ -198,26 +200,21 @@ const probeDeepHealth = async (get: Get): Promise<void> => {
   }
 };
 
-export const runRemoteSmoke = async (
-  options: RemoteSmokeOptions,
-  request: Fetch = fetch,
-): Promise<RemoteSmokeResult> => {
-  const run = createRun({ ...options, headers: {} }, request);
+type SmokeRun = ReturnType<typeof createRun>;
 
-  await run.step('health-attestation', async () => {
-    const health = unwrap(
-      await envelopeOf(await run.get('/api/health'), envelopeSchema(healthOutputSchema), 'health'),
-      'health',
-    );
-    if (health.database !== 'up') throw new Error('health reported the database down');
-    if (!health.schemaCurrent) throw new Error('health reported a stale schema');
-    if (options.expectedSha !== undefined && health.sha !== options.expectedSha) {
-      throw new Error(`expected SHA ${options.expectedSha}, received ${health.sha}`);
-    }
-  });
+interface TenantSurfaceSmokeOptions {
+  baseUrl: string;
+  publicPagePath: string;
+  member: MemberCredentials;
+  expectedCourseTitle?: string | undefined;
+  authHeaders?: Record<string, string> | undefined;
+}
 
-  await run.step('health-deep', () => probeDeepHealth(run.get));
-
+const runTenantSurfaceChecks = async (
+  run: SmokeRun,
+  options: TenantSurfaceSmokeOptions,
+  request: Fetch,
+): Promise<void> => {
   await run.step('public-offer', async () => {
     const offer = unwrap(
       await envelopeOf(
@@ -245,7 +242,7 @@ export const runRemoteSmoke = async (
   if (member.status === 'absent') {
     for (const name of MEMBER_CHECKS) run.skip(name, MEMBER_CREDENTIALS_SKIP_REASON);
     run.skip('studio-tenant-settings', STUDIO_SETTINGS_SKIP_REASON);
-    return run.result();
+    return;
   }
 
   const token = await run.step('member-sign-in', () => {
@@ -259,7 +256,7 @@ export const runRemoteSmoke = async (
     run.skip('student-courses', 'member sign-in failed');
     run.skip('lesson-playback', 'member sign-in failed');
     run.skip('studio-tenant-settings', STUDIO_SETTINGS_SKIP_REASON);
-    return run.result();
+    return;
   }
   const authenticated = { authorization: `Bearer ${token}` };
 
@@ -332,6 +329,28 @@ export const runRemoteSmoke = async (
   }
 
   run.skip('studio-tenant-settings', STUDIO_SETTINGS_SKIP_REASON);
+};
+
+export const runRemoteSmoke = async (
+  options: RemoteSmokeOptions,
+  request: Fetch = fetch,
+): Promise<RemoteSmokeResult> => {
+  const run = createRun({ ...options, headers: {} }, request);
+
+  await run.step('health-attestation', async () => {
+    const health = unwrap(
+      await envelopeOf(await run.get('/api/health'), envelopeSchema(healthOutputSchema), 'health'),
+      'health',
+    );
+    if (health.database !== 'up') throw new Error('health reported the database down');
+    if (!health.schemaCurrent) throw new Error('health reported a stale schema');
+    if (options.expectedSha !== undefined && health.sha !== options.expectedSha) {
+      throw new Error(`expected SHA ${options.expectedSha}, received ${health.sha}`);
+    }
+  });
+
+  await run.step('health-deep', () => probeDeepHealth(run.get));
+  await runTenantSurfaceChecks(run, options, request);
   return run.result();
 };
 
@@ -340,6 +359,8 @@ export const VERCEL_BYPASS_HEADER = 'x-vercel-protection-bypass';
 export interface StagingSmokeOptions {
   baseUrl: string;
   tenant: string;
+  publicPagePath: string;
+  member: MemberCredentials;
   bypassSecret: string;
   productionFingerprint: string;
   /** Null until the owner pins the observed fingerprint in a repository variable. */
@@ -423,6 +444,15 @@ export const runStagingSmoke = async (
   await run.step('health-deep', () => probeDeepHealth(run.get), {
     warnOn: (cause) => !options.sanitized && cause instanceof DeepHealthUnsanitizedFailure,
   });
+  await runTenantSurfaceChecks(
+    run,
+    {
+      ...options,
+      authHeaders: { [VERCEL_BYPASS_HEADER]: options.bypassSecret },
+      expectedCourseTitle: SMOKE_TENANT_COURSE_TITLE,
+    },
+    request,
+  );
 
   const result = run.result();
   const observedFingerprint = health?.databaseFingerprint ?? null;
@@ -453,6 +483,12 @@ const memberFromEnv = (env: Environment, tenant: string): MemberCredentials => {
   };
 };
 
+const stagingMemberFromEnv = (env: Environment): MemberCredentials => ({
+  status: 'configured',
+  email: provided(env, 'SMOKE_MEMBER_EMAIL') ?? SMOKE_TENANT_MEMBER_EMAIL,
+  password: provided(env, 'SMOKE_MEMBER_PASSWORD') ?? DEMO_SEED_PASSWORD,
+});
+
 export const remoteSmokeOptionsFromEnv = (env: Environment): RemoteSmokeOptions | null => {
   const baseUrl = provided(env, 'BASE_URL');
   if (baseUrl === null) return null;
@@ -475,7 +511,9 @@ export const stagingSmokeOptionsFromEnv = (env: Environment): StagingSmokeOption
   if (baseUrl === null || bypassSecret === null || productionFingerprint === null) return null;
   return {
     baseUrl,
-    tenant: provided(env, 'SMOKE_TENANT') ?? SMOKE_TENANT_SLUG,
+    tenant: SMOKE_TENANT_SLUG,
+    publicPagePath: provided(env, 'PUBLIC_PAGE_PATH') ?? '/',
+    member: stagingMemberFromEnv(env),
     bypassSecret,
     productionFingerprint,
     expectedFingerprint: provided(env, 'STAGING_DATABASE_FINGERPRINT'),

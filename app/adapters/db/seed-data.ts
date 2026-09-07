@@ -1,11 +1,17 @@
 import { and, eq, sql } from 'drizzle-orm';
 
-import type { AccessItem, Chapter, LessonBlock, ProductType } from '#core/domain/index.js';
+import {
+  DEMO_SEED_PASSWORD,
+  type AccessItem,
+  type Chapter,
+  type LessonBlock,
+  type ProductType,
+} from '#core/domain/index.js';
 
 import type { Db } from './client.js';
 import { SAMPLE_LESSON_PDF_URL } from './sample-assets.js';
 import { createSeedUsers } from './seed-users.js';
-import { applySmokeTenantSeed, DEMO_SEED_PASSWORD } from './smoke-tenant-seed.js';
+import { applySmokeTenantSeed } from './smoke-tenant-seed.js';
 import {
   campaigns,
   campaignSends,

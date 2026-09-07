@@ -96,6 +96,10 @@ type ProbeOutcome = 'checked' | 'not-applicable' | { skipped: string } | { warni
 
 type Probe = () => Promise<ProbeOutcome>;
 
+interface WarningProbeRecord {
+  timedOut: boolean;
+}
+
 const withDeadline = async (probe: Probe, remainingMs: number): Promise<ProbeOutcome> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -168,15 +172,17 @@ const createRecorder = (budgetMs: number) => {
       }];
     },
     warnings: (): string[] => [...warnings],
-    recordWarning: async (name: string, probe: Probe, timeoutMs: number): Promise<void> => {
+    recordWarning: async (name: string, probe: Probe, timeoutMs: number): Promise<WarningProbeRecord> => {
       const current = accumulated.get(name)
         ?? { name, ok: true, ms: 0, subjects: 0, error: null, skipped: null };
       const probeStartedAt = Date.now();
       let outcome: ProbeOutcome = { warning: 'the warning probe budget was exhausted' };
+      let timedOut = false;
       if (timeoutMs > 0) {
         try {
           outcome = await withDeadline(probe, timeoutMs);
-        } catch {
+        } catch (cause) {
+          timedOut = cause instanceof DeadlineExceeded;
           outcome = { warning: 'the warning probe did not complete' };
         }
       }
@@ -192,6 +198,7 @@ const createRecorder = (budgetMs: number) => {
           ? outcome.skipped
           : null),
       });
+      return { timedOut };
     },
     remainingMs: (): number => Math.max(0, startedAt + budgetMs - Date.now()),
   };
@@ -406,10 +413,14 @@ export const checkDeepHealth = async (
     await recorder.record('storage-presign', probeStoragePresign(tenant, deps));
   }
   const corsStartedAt = Date.now();
+  let corsBudgetExpired = false;
   for (const tenant of tenants) {
     const runRemainingMs = STORAGE_CORS_RUN_BUDGET_MS - (Date.now() - corsStartedAt);
-    const timeoutMs = Math.min(runRemainingMs, Math.max(0, recorder.remainingMs() - 1_000));
-    await recorder.recordWarning('storage-cors', probeStorageCors(tenant, deps, storageCors), timeoutMs);
+    const timeoutMs = corsBudgetExpired
+      ? 0
+      : Math.min(runRemainingMs, Math.max(0, recorder.remainingMs() - 1_000));
+    const warning = await recorder.recordWarning('storage-cors', probeStorageCors(tenant, deps, storageCors), timeoutMs);
+    if (warning.timedOut) corsBudgetExpired = true;
   }
   const checks = recorder.checks();
   const failing = checks.filter((check) => !check.ok).map((check) => check.name);

@@ -3,14 +3,16 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { createCliAuthAdapter, createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import { createApiClient, meQuery, type ApiClient } from '#core/client/index.js';
-import { SMOKE_TENANT_MEMBER_EMAIL, tenantSettingsSchema, tenantSchema, type AppError } from '#core/domain/index.js';
-import { tenants, tenantDocuments, tenantDocumentVersions } from '#adapters/db/schema.js';
+import { SMOKE_TENANT_MEMBER_EMAIL, consentDefinitionSchema, marketingConsentSchema, deriveConsentState, tenantSettingsSchema, tenantSchema, type AppError } from '#core/domain/index.js';
+import { tenants, tenantDocuments, tenantDocumentVersions, unsubscribeTokens, consentDefinitions, consentDefinitionVersions, marketingConsents, suppressions, consentConfirmationTokens } from '#adapters/db/schema.js';
 import { canonicalJson, fixtureKey, fixtureSchema, type Fixture } from '../apps/web/src/stories/fixture-key.js';
+import { renderConfirmationPage, renderPreferencesPage } from '../apps/server/src/public-marketing-pages.js';
+import { SCREENS } from './visual-screen-inventory.js';
 import { bootServer, ephemeralPort, killServer, rootDir } from './server-harness.js';
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, migrateAndSeed, dropDatabase } from './smoke-database.js';
 
@@ -201,6 +203,41 @@ try {
     const [version] = await db.select().from(tenantDocumentVersions).where(eq(tenantDocumentVersions.id, 'document-akademia-privacy-v1'));
     if (!tenant || !document || !version || !version.publishedAt) throw new Error('Missing legal seed');
     save('hosted-legal-document', { nonce: 'storybook', brand: { tenant: tenantSchema.parse(tenant), settings: tenantSettingsSchema.parse(tenant) }, language: 'pl', path: `/legal/${document.slug}/v/${version.version}`, title: document.title, content: version.content, immutableVersion: { version: version.version, publishedAt: version.publishedAt } });
+    const common = { nonce: 'storybook', brand: { tenant: tenantSchema.parse(tenant), settings: tenantSettingsSchema.parse(tenant) }, language: 'pl' as const };
+    const [token] = await db.select().from(unsubscribeTokens).where(and(eq(unsubscribeTokens.tenantId, tenant.id), eq(unsubscribeTokens.id, 'unsubscribe-akademia-visual')));
+    if (!token) throw new Error('Missing unsubscribe seed');
+    const suppressionRows = await db.select().from(suppressions).where(eq(suppressions.tenantId, tenant.id));
+    if (suppressionRows.length !== 0) throw new Error('Preference recording requires the unsuppressed seed');
+    const definitionRows = await db.select().from(consentDefinitions).where(and(eq(consentDefinitions.tenantId, tenant.id), eq(consentDefinitions.status, 'active'), eq(consentDefinitions.kind, 'optional_marketing'))).orderBy(asc(consentDefinitions.key));
+    const definitions = await Promise.all(definitionRows.map(async (row) => {
+      const versions = await db.select().from(consentDefinitionVersions).where(and(eq(consentDefinitionVersions.tenantId, tenant.id), eq(consentDefinitionVersions.definitionId, row.id))).orderBy(asc(consentDefinitionVersions.version));
+      const consents = await db.select().from(marketingConsents).where(and(eq(marketingConsents.tenantId, tenant.id), eq(marketingConsents.email, token.email), eq(marketingConsents.definitionId, row.id)));
+      const state = deriveConsentState(consents.map((consent) => marketingConsentSchema.parse({ ...consent, occurredAt: new Date(consent.occurredAt).toISOString() })), consentDefinitionSchema.parse({ ...row, createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString() }));
+      return { id: row.id, label: versions.at(-1)?.label ?? row.key, active: state.active, pendingConfirmation: state.state === 'pending_confirmation' };
+    }));
+    const preferences = { ...common, token: token.token, email: token.email, scope: token.scope, scopeLabel: definitions.find((definition) => token.scope === `consent:${definition.id}`)?.label ?? null, globallySuppressed: false, definitions };
+    const verifyHtml = async (name: string, html: string): Promise<void> => {
+      const screen = SCREENS.find((entry) => entry.name === name);
+      if (!screen) throw new Error(`Missing server HTML screen ${name}`);
+      const response = await fetch(`${baseUrl}${screen.path}`, { headers: { 'X-Tenant': tenant.slug } });
+      if (!response.ok || await response.text() !== html) throw new Error(`Recorded inputs do not reproduce ${name}`);
+    };
+    await verifyHtml('marketing-preferences', renderPreferencesPage(preferences));
+    save('marketing-preferences', preferences);
+    for (const expectedState of ['success', 'expired'] as const) {
+      const name = `marketing-confirmation-${expectedState}`;
+      const screen = SCREENS.find((entry) => entry.name === name);
+      if (!screen) throw new Error(`Missing server HTML screen ${name}`);
+      const path = new URL(screen.path, baseUrl).pathname;
+      const confirmationToken = path.split('/').at(-1);
+      if (!confirmationToken) throw new Error('Missing confirmation token');
+      const [confirmation] = await db.select().from(consentConfirmationTokens).where(and(eq(consentConfirmationTokens.tenantId, tenant.id), eq(consentConfirmationTokens.token, confirmationToken)));
+      const state = !confirmation || (confirmation.usedAt === null && Date.parse(confirmation.expiresAt) <= Date.parse(seedTime)) ? 'expired' : confirmation.usedAt === null ? 'prompt' : 'success';
+      if (state !== expectedState) throw new Error(`Unexpected seeded confirmation state for ${name}`);
+      const input = { ...common, path, state: expectedState };
+      await verifyHtml(name, renderConfirmationPage(input));
+      save(name, input);
+    }
   } finally { await pool.end(); }
 } finally {
   if (server) await killServer(server);

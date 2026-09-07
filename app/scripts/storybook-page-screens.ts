@@ -55,6 +55,13 @@ export const pageScreens: readonly ScreenSpec[] = [...pageScreenNames].map((name
   return screen;
 });
 
+export const serverHtmlScreenNames = new Set([
+  'hosted-legal-document',
+  'marketing-preferences',
+  'marketing-confirmation-success',
+  'marketing-confirmation-expired',
+]);
+
 export const pageStoryId = (screen: string, viewport: string): string => {
   const title = { lesson: 'lessonplayer', start: 'start', 'space-feed': 'spacefeed', 'hosted-legal-document': 'hostedlegaldocument' }[screen];
   return title ? `pages-${title}--light-${viewport === 'desktop' ? 'desktop' : 'mobile'}` : `${screen}--shadcn--${viewport}`;

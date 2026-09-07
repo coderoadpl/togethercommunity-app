@@ -8,7 +8,7 @@ import { chromium } from 'playwright-core';
 import { z } from 'zod';
 import { applyChrome, settlePage, stubNonDeterministicRequests } from './visual-browser-setup.js';
 import { visualSeedTime } from './visual-request-policy.js';
-import { pageScreens, pageStoryId } from './storybook-page-screens.js';
+import { pageScreens, pageStoryId, serverHtmlScreenNames } from './storybook-page-screens.js';
 import { SCREENS, VIEWPORTS, includesViewport, type ScreenSpec } from './visual-screen-inventory.js';
 import { comparePng } from './visual-png-compare.js';
 
@@ -36,17 +36,19 @@ const browser = await chromium.launch(executablePath ? { headless: true, executa
 const browserVersion = browser.version();
 const measurements: unknown[] = [];
 const startedAt = Date.now();
-const hostedLegalDocument = SCREENS.find((screen) => screen.name === 'hosted-legal-document');
-if (!hostedLegalDocument) throw new Error('Missing hosted legal document screen');
-const captureScreens: readonly ScreenSpec[] = [...pageScreens, {
-  ...hostedLegalDocument,
-  ready: async (page) => {
-    await page.frameLocator('iframe[title="Hosted legal document"]').getByTestId('hosted-legal-document').waitFor({ timeout: 20000 });
-  },
-  settled: async (page) => {
-    await page.frameLocator('iframe[title="Hosted legal document"]').locator('body').evaluate(async () => { await document.fonts.ready; });
-  },
-}];
+const captureScreens: readonly ScreenSpec[] = [...pageScreens, ...[...serverHtmlScreenNames].map((name) => {
+  const screen = SCREENS.find((entry) => entry.name === name);
+  if (!screen) throw new Error(`Missing server HTML screen ${name}`);
+  return {
+    ...screen,
+    ready: async (page) => {
+      await page.frameLocator('iframe').getByTestId(name).waitFor({ timeout: 20000 });
+    },
+    settled: async (page) => {
+      await page.frameLocator('iframe').locator('body').evaluate(async () => { await document.fonts.ready; });
+    },
+  } satisfies ScreenSpec;
+})];
 try {
   const index = z.object({ entries: z.record(z.object({ type: z.string() })) }).parse(JSON.parse(await readFile(join(root, 'index.json'), 'utf8')));
   const goldens = await readdir(resolve('tasks/visual-goldens'));
@@ -84,7 +86,7 @@ try {
         try {
           await page.goto(`http://${spec.tenantSlug ?? 'studio'}.localhost:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
           await spec.ready(page);
-          if (screen !== 'hosted-legal-document') await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
+          if (!serverHtmlScreenNames.has(screen)) await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
           await settlePage(page, spec.waitForNetworkIdle ?? true);
           if (spec.settled) {
             await spec.settled(page);

@@ -20,7 +20,7 @@ carries all seven so the other six remain reachable as unmaintained BYO-theme
 examples.
 
 Stories do not verify routing, data fetching, authentication, tenant
-resolution, content security policy, server-rendered public pages, island
+resolution, content security policy, server-side route behavior, island
 state, or coverage. The nonce policy in `apps/server/src/app.ts` is verified by
 `pnpm run visual` and `pnpm run smoke`, never by stories. Island cores governed
 by `tsconfig.islands.json` remain DOM-free and node-tested.
@@ -107,3 +107,25 @@ changes the course upload button’s initial border paint. The shared screen spe
 PNG size and skips network-idle waiting. Password recovery stories synchronize
 the fixture route's token and error parameters with the iframe URL because the
 production auth pages read those values from the browser location.
+
+## Server HTML pages
+
+The server catalogue renders the production public-page functions in fullscreen
+`iframe srcDoc` elements, without the web theme decorator. The capture path waits
+for the nested document and its fonts before comparing the four inventory pages
+at desktop and mobile sizes: hosted legal document, marketing preferences, and
+confirmation success and expired states. All eight captures use the application
+goldens and the shared comparator, with zero counted pixels required.
+
+The recorder reads the brand, unsubscribe token, consent definitions, versions,
+consent history and confirmation state from the isolated seed database. It also
+checks that the new recorded inputs reproduce the live server HTML exactly.
+The nonce remains the stable `storybook` fixture value: Hono generates a fresh
+request nonce, but these pure renderers do not emit it into the document.
+CSP behavior remains covered by the runtime harness.
+
+The preference-result stories cover scoped unsubscribe, global unsubscribe,
+saved preferences and pending confirmation at both viewports. These synthetic
+states reuse the recorded seed brand, token and scope label. They have no entries
+in the application capture inventory and no committed goldens, so they are
+catalogue coverage only.

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { NONCE, secureHeaders } from 'hono/secure-headers';
+import type { RouterRoute } from 'hono/types';
 
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
 import { err, internal, notFound, validation } from '#core/domain/index.js';
@@ -41,6 +42,18 @@ const routePathMatches = (routePath: string, requestPath: string): boolean => {
   }
   return routeSegments.length === requestSegments.length;
 };
+
+const redactedApiPath = (routes: RouterRoute[], requestPath: string): string => {
+  const route = routes.find((candidate) =>
+    candidate.method !== 'ALL'
+    && !candidate.path.includes('*')
+    && routePathMatches(candidate.path, requestPath),
+  );
+  return route?.path ?? '/api/*';
+};
+
+const apiNotFoundMessage = (routes: RouterRoute[], method: string, requestPath: string): string =>
+  `No API route for ${method} ${redactedApiPath(routes, requestPath)}`;
 
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<AppVars>();
@@ -88,7 +101,7 @@ export const buildApp = (deps: AppDeps) => {
       && routePathMatches(route.path, c.req.path),
     );
     if (!routeExists) {
-      return respond(err(notFound(`No API route for ${c.req.method} ${c.req.path}`)));
+      return respond(err(notFound(apiNotFoundMessage(app.routes, c.req.method, c.req.path))));
     }
     await next();
   });
@@ -105,7 +118,7 @@ export const buildApp = (deps: AppDeps) => {
   app.all('/api/*', (c) =>
     c.req.path.startsWith(betterAuthPathPrefix)
       ? deps.auth.handler(trustedAuthRequest(c, c.req.raw, deps.authTrustedProxyHeader))
-      : respond(err(notFound(`No API route for ${c.req.method} ${c.req.path}`))),
+      : respond(err(notFound(apiNotFoundMessage(app.routes, c.req.method, c.req.path)))),
   );
   const socialRouteStart = app.routes.length;
   registerTenantRedirects(app, deps);

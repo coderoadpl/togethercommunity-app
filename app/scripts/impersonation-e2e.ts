@@ -216,10 +216,14 @@ const runReadOnlyJourney = async (
     await page.locator('[data-testid^="space-composer"]').count() === 0,
     'The space composer stayed visible while viewing as a member',
   );
+  await page.getByTestId('member-account-menu').click();
+  await page.getByTestId('member-account-link').waitFor(visible);
   assert(
-    await page.getByTestId('sidebar-messages').count() === 0,
+    await page.getByTestId('member-account-messages').count() === 0,
     'The direct-message entry point stayed visible while viewing as a member',
   );
+  await page.keyboard.press('Escape');
+  await page.getByTestId('member-account-link').waitFor({ state: 'detached', timeout: 15000 });
   assert(
     await page.locator('[data-testid^="start-message-"]').count() === 0,
     'The "message the author" entry point stayed visible on the space feed while viewing as a member',

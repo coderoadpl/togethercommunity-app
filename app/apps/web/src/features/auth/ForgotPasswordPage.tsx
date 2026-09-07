@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
+  Button,
   FormControl,
   FormLabel,
   Link as MuiLink,
@@ -14,7 +15,7 @@ import { z } from 'zod';
 import { actions } from '../../api.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { FinePrint } from '../../theme.js';
-import { AuthButton, AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
 import { AuthShell } from './AuthShell.js';
 
 const emailSchema = z.string().email();
@@ -79,7 +80,7 @@ export const ForgotPasswordPage = () => {
                 required
               />
             </FormControl>
-            <AuthButton
+            <Button
               type="submit"
               variant="contained"
               fullWidth
@@ -89,7 +90,7 @@ export const ForgotPasswordPage = () => {
               {requestPasswordReset.isPending
                 ? t.forgotPassword.submitPending
                 : t.forgotPassword.submitIdle}
-            </AuthButton>
+            </Button>
           </Stack>
           {localError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
           {requestPasswordReset.isError ? (

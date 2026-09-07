@@ -114,15 +114,8 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
-// The member shell keeps the bell in the sidebar from md up and in the top bar
-// below it — wait on the instance this viewport actually shows, otherwise a
-// shot can land before the async count arrives.
+// The count arrives asynchronously, so a shot can otherwise land on a bare bell.
 const waitForUnreadBadge = async (page: Page): Promise<void> => {
-  const width = page.viewportSize()?.width ?? 0;
-  if (width >= 900) {
-    await page.getByTestId('notification-bell-count').waitFor(visible);
-    return;
-  }
   await page
     .locator('[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)')
     .waitFor(visible);

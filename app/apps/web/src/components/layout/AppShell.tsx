@@ -26,6 +26,12 @@ const ShellFooter = ({ children }: { children: ReactNode }) => {
   );
 };
 
+const ShellRoot = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  minHeight: '100vh',
+  backgroundColor: theme.palette.background.default,
+}));
+
 const SidebarColumn = styled(Box)<{ component?: ElementType }>(({ theme }) => ({
   width: `${DRAWER_WIDTH}px`,
   flexShrink: 0,
@@ -65,7 +71,7 @@ export const AppShell = ({
   children,
 }: AppShellProps) => (
   <BottomInsetProvider>
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <ShellRoot>
       {isDesktop ? (
         <SidebarColumn component="aside">
           {brand}
@@ -122,6 +128,6 @@ export const AppShell = ({
         </Box>
         {footer === undefined ? null : <ShellFooter>{footer}</ShellFooter>}
       </Box>
-    </Box>
+    </ShellRoot>
   </BottomInsetProvider>
 );

@@ -434,4 +434,19 @@ describe('NotificationBell', () => {
 
     await waitFor(() => expect(screen.getByTestId('notification-n1')).toHaveFocus());
   });
+
+  it('closes the panel on Escape and gives focus back to the bell', async () => {
+    server.use(okUnread(1), okList([notification({ id: 'n1', read: false, courseId: 'c1' })]));
+
+    await renderBell();
+
+    const bell = await screen.findByTestId('notification-bell');
+    await userEvent.click(bell);
+    await waitFor(() => expect(screen.getByTestId('notification-n1')).toHaveFocus());
+
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByTestId('notifications-panel')).not.toBeInTheDocument());
+    expect(bell).toHaveFocus();
+  });
 });

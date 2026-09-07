@@ -3156,9 +3156,15 @@ describe('deep health route', () => {
 
 describe('API envelope totality', () => {
   it.each([
-    ['unknown route', '/api/does-not-exist', 'GET'],
-    ['wrong method', API_PATHS.health, 'POST'],
-  ])('returns a not_found envelope for an %s', async (_label, path, method) => {
+    ['unknown route', '/api/does-not-exist', 'GET', '/api/*'],
+    ['wrong method', API_PATHS.health, 'POST', API_PATHS.health],
+    [
+      'wrong method token route',
+      '/api/webhooks/ses/live-ses-webhook-token',
+      'GET',
+      '/api/webhooks/ses/:webhookToken',
+    ],
+  ])('returns a not_found envelope for an %s', async (_label, path, method, redactedPath) => {
     const response = await buildApp(deps({ authenticated: true })).request(path, { method });
 
     expect(response.status).toBe(404);
@@ -3166,7 +3172,7 @@ describe('API envelope totality', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toEqual({
       ok: false,
-      error: { code: 'not_found', message: `No API route for ${method} ${path}` },
+      error: { code: 'not_found', message: `No API route for ${method} ${redactedPath}` },
     });
   });
 });

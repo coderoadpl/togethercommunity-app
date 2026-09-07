@@ -374,6 +374,41 @@ describe('checkDeepHealth', () => {
     expect(probes).toBe(1);
   });
 
+  it('does not restart CORS probes when the wall clock lags the warning deadline', async () => {
+    const tenants = [0, 1, 2, 3].map((index) => ({
+      ...acme,
+      id: `tenant-${String(index)}`,
+      slug: `tenant-${String(index)}`,
+    }));
+    const realNow = Date.now.bind(Date);
+    const realStartedAt = realNow();
+    const reportedStartedAt = realStartedAt;
+    const slowedClock = vi
+      .spyOn(Date, 'now')
+      .mockImplementation(() => reportedStartedAt + Math.floor((realNow() - realStartedAt) * 0.8));
+    try {
+      let probes = 0;
+      const report = await checkDeepHealth(deps({
+        tenantDirectory: { listAll: async () => tenants },
+        storage: {
+          ...deps().storage,
+          probeCors: () => {
+            probes += 1;
+            return new Promise(() => undefined);
+          },
+        },
+      }), 1_250);
+
+      expect(report.ok).toBe(true);
+      expect(report.failing).toEqual([]);
+      expect(report.warnings).toEqual(['storage-cors']);
+      expect(report.checks.some((check) => check.name === 'deadline')).toBe(false);
+      expect(probes).toBe(1);
+    } finally {
+      slowedClock.mockRestore();
+    }
+  });
+
   it('fails a members-only course whose module references a missing lesson', async () => {
     const membersOnly = { ...course, publiclyVisible: false };
     const report = await checkDeepHealth(deps({

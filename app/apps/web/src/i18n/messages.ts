@@ -203,7 +203,6 @@ export interface Messages {
     poweredBy: string;
     publicNavLabel: string;
     publicNavCourses: string;
-    publicNavMaterials: string;
     publicNavCommunity: string;
     cannotSignInPrompt: string;
     cannotSignInLink: string;

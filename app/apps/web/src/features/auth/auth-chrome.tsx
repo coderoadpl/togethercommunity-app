@@ -322,18 +322,14 @@ export const AuthPublicNav = styled(Box)<{ component?: ElementType }>(({ theme }
   flexWrap: 'wrap',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '0 1.5rem',
+  gap: '0.5rem 1.5rem',
   padding: '0.5rem 1.25rem 1.5rem',
   fontSize: '0.875rem',
   color: theme.palette.text.secondary,
   [theme.breakpoints.up('sm')]: { padding: '0.5rem clamp(1.5rem, 4vw, 3rem) 1.5rem' },
 }));
 
-export const AuthPublicNavLink = styled(MuiLink)<{
-  component?: ElementType;
-  to?: string;
-  hash?: string;
-}>(({ theme }) => ({
+export const AuthPublicNavLink = styled(MuiLink)<{ component?: ElementType; to?: string }>(({ theme }) => ({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '0.45rem',

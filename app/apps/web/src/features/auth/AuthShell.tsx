@@ -3,7 +3,7 @@ import { ThemeProvider, useTheme, type Theme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { communitySpacePath, PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
+import { communitySpacePath } from '#core/contract/index.js';
 
 import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
@@ -32,7 +32,7 @@ import {
   AuthPublicNavLink,
   AuthStage,
 } from './auth-chrome.js';
-import { CommunityOutlineIcon, CoursesOutlineIcon, MaterialsOutlineIcon } from './auth-icons.js';
+import { CommunityOutlineIcon, CoursesOutlineIcon } from './auth-icons.js';
 
 interface AuthShellProps {
   hostname?: string;
@@ -71,8 +71,6 @@ const usePublicSurface = (hostname: string) => {
     socialLinks: offer.data?.tenant.socialLinks ?? [],
     homeSpaceId: navigation.data?.navigation.defaultHomeSpaceId ?? null,
     hasCourses: (navigation.data?.navigation.courses.length ?? 0) > 0,
-    hasMaterials:
-      offer.data?.products.some((product) => product.type === 'digital_download') ?? false,
   };
 };
 
@@ -121,9 +119,9 @@ const TenantFooter = ({ hostname }: { hostname: string }) => {
 
 const TenantPublicNav = ({ hostname }: { hostname: string }) => {
   const t = useTranslations();
-  const { homeSpaceId, hasCourses, hasMaterials } = usePublicSurface(hostname);
+  const { homeSpaceId, hasCourses } = usePublicSurface(hostname);
 
-  if (!hasCourses && !hasMaterials && homeSpaceId === null) return null;
+  if (!hasCourses && homeSpaceId === null) return null;
 
   return (
     <AuthPublicNav component="nav" aria-label={t.auth.publicNavLabel} data-testid="auth-public-nav">
@@ -131,17 +129,6 @@ const TenantPublicNav = ({ hostname }: { hostname: string }) => {
         <AuthPublicNavLink component={Link} to="/" data-testid="auth-public-nav-courses">
           <CoursesOutlineIcon />
           {t.auth.publicNavCourses}
-        </AuthPublicNavLink>
-      ) : null}
-      {hasMaterials ? (
-        <AuthPublicNavLink
-          component={Link}
-          to="/"
-          hash={PUBLIC_OFFER_ANCHOR}
-          data-testid="auth-public-nav-materials"
-        >
-          <MaterialsOutlineIcon />
-          {t.auth.publicNavMaterials}
         </AuthPublicNavLink>
       ) : null}
       {homeSpaceId === null ? null : (

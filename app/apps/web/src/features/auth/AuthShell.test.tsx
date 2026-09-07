@@ -186,7 +186,7 @@ describe('AuthShell', () => {
 
   it('closes the page with a public navigation row of icon links', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
-    stubOffer({ withDownload: true });
+    stubOffer();
     stubNavigation({ defaultHomeSpaceId: 'space-1', courseIds: ['course-1'] });
 
     await renderShell(TENANT_HOST);
@@ -194,11 +194,9 @@ describe('AuthShell', () => {
     const strip = await screen.findByRole('navigation', { name: pl.auth.publicNavLabel });
     expect([...strip.querySelectorAll('a')].map((link) => link.textContent)).toEqual([
       pl.auth.publicNavCourses,
-      pl.auth.publicNavMaterials,
       pl.auth.publicNavCommunity,
     ]);
     expect(screen.getByTestId('auth-public-nav-courses')).toHaveAttribute('href', '/');
-    expect(screen.getByTestId('auth-public-nav-materials')).toHaveAttribute('href', '/#offer');
     expect(screen.getByTestId('auth-public-nav-community')).toHaveAttribute(
       'href',
       '/community/space-1',
@@ -219,13 +217,12 @@ describe('AuthShell', () => {
     await renderShell(TENANT_HOST);
 
     expect(await screen.findByTestId('auth-public-nav-courses')).toBeInTheDocument();
-    expect(screen.queryByTestId('auth-public-nav-materials')).not.toBeInTheDocument();
     expect(screen.queryByTestId('auth-public-nav-community')).not.toBeInTheDocument();
   });
 
-  it('omits the navigation row when the tenant publishes nothing', async () => {
+  it('omits the navigation row when a download is all the tenant publishes', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
-    stubOffer();
+    stubOffer({ withDownload: true });
     stubNavigation({ defaultHomeSpaceId: null, courseIds: [] });
 
     await renderShell(TENANT_HOST);
@@ -304,9 +301,14 @@ describe('AuthShell', () => {
   it('reduces the platform surface footer to the Together wordmark alone', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     let offerCalls = 0;
+    let navigationCalls = 0;
     server.use(
       http.get('*/api/public/offer', () => {
         offerCalls += 1;
+        return HttpResponse.json({ ok: true, data: {} });
+      }),
+      http.get('*/api/public/navigation', () => {
+        navigationCalls += 1;
         return HttpResponse.json({ ok: true, data: {} });
       }),
     );
@@ -316,5 +318,7 @@ describe('AuthShell', () => {
     expect(screen.getByTestId('auth-together-logo')).toBeInTheDocument();
     expect(screen.queryByTestId('auth-footer-links')).not.toBeInTheDocument();
     await waitFor(() => expect(offerCalls).toBe(0));
+    expect(navigationCalls).toBe(0);
+    expect(screen.queryByTestId('auth-public-nav')).not.toBeInTheDocument();
   });
 });

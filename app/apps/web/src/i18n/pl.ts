@@ -205,7 +205,6 @@ export const pl: Messages = {
     poweredBy: 'Obsługiwane przez',
     publicNavLabel: 'Strony publiczne',
     publicNavCourses: 'Kursy',
-    publicNavMaterials: 'Materiały',
     publicNavCommunity: 'Społeczność',
     cannotSignInPrompt: 'Nie możesz się zalogować?',
     cannotSignInLink: 'Napisz do nas',

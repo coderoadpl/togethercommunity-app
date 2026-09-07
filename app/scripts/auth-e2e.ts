@@ -284,7 +284,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('passkey-proof-password').fill('demo-password-15');
     await page.getByTestId('add-passkey').click();
     try {
-      await page.getByTestId('passkey-added').waitFor({ state: 'visible', timeout: 15000 });
+      await page.locator('[data-testid^="toast-success-"]').first().waitFor({ state: 'visible', timeout: 15000 });
     } catch (cause) {
       const alert = await page.getByRole('alert').first().textContent().catch(() => null);
       throw new E2eFailure(`passkey registration did not confirm. alert=${String(alert)}\n${String(cause)}`);

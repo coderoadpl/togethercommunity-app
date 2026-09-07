@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import type { TenantRedirect } from '#core/domain/index.js';
 
+import { ToastProvider } from '../../../components/ui/Toast.js';
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -162,8 +163,15 @@ const renderPage = () => {
     history: createMemoryHistory({ initialEntries: ['/panel/settings/redirects'] }),
   });
 
-  return renderWithProviders(<RouterProvider router={router} />);
+  return renderWithProviders(
+    <ToastProvider>
+      <RouterProvider router={router} />
+    </ToastProvider>,
+  );
 };
+
+const findToast = async (kind: 'success' | 'error') =>
+  screen.findByTestId(new RegExp(`^toast-${kind}-`));
 
 describe('RedirectsPanel', () => {
   it('lists redirects with their kind and origin', async () => {
@@ -264,7 +272,7 @@ describe('RedirectsPanel', () => {
         permanent: true,
       }]);
     });
-    expect(await screen.findByTestId('redirect-notice'))
+    expect(await findToast('success'))
       .toHaveTextContent(pl.redirects.created({ fromPath: '/kurs/javascript' }));
   });
 
@@ -305,7 +313,7 @@ describe('RedirectsPanel', () => {
     await userEvent.type(screen.getByTestId('redirect-target-path'), '/my');
     await userEvent.click(screen.getByRole('button', { name: pl.redirects.submit }));
 
-    expect(await screen.findByTestId('redirect-add-error')).toBeInTheDocument();
+    expect(await findToast('error')).toBeInTheDocument();
     expect(screen.getByTestId('redirect-from-path')).toHaveValue('/oferta');
   });
 
@@ -323,10 +331,10 @@ describe('RedirectsPanel', () => {
     await userEvent.click(await screen.findByTestId('redirect-delete-confirm'));
 
     await waitFor(() => { expect(backend.deleted).toEqual(['redirect-1']); });
-    expect(await screen.findByTestId('redirect-notice')).toHaveTextContent(pl.redirects.deleted);
+    expect(await findToast('success')).toHaveTextContent(pl.redirects.deleted);
   });
 
-  it('reports a failed deletion inside the confirmation and keeps it open', async () => {
+  it('reports a failed deletion as a toast and keeps the confirmation open', async () => {
     installBackend([redirect()]);
     server.use(http.post('/api/tenant/redirects/remove', () =>
       HttpResponse.json({ ok: false, error: { code: 'internal' } }, { status: 500 })));
@@ -336,7 +344,7 @@ describe('RedirectsPanel', () => {
     await userEvent.click(await screen.findByTestId('redirect-delete-confirm'));
 
     const dialog = await screen.findByRole('dialog');
-    expect(await within(dialog).findByTestId('redirect-delete-error')).toBeInTheDocument();
+    expect(await findToast('error')).toBeInTheDocument();
     expect(within(dialog).getByTestId('redirect-delete-confirm')).toBeEnabled();
   });
 

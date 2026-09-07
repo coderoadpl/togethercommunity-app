@@ -182,7 +182,7 @@ const runEnrollmentJourney = async (
     await currentTotp(secret),
     page.getByTestId('verify-totp'),
   );
-  await page.getByTestId('totp-verified').waitFor(visible);
+  await page.locator('[data-testid^="toast-success-"]').first().waitFor(visible);
   console.log('two-factor-e2e: browser enrollment and TOTP verification OK');
   return { secret, oldBackupCode };
 };
@@ -221,7 +221,7 @@ const runBackupCodeJourney = async (
   await openSecuritySettings(page, baseUrl);
   await page.getByTestId('enable-2fa-password').fill(account.password);
   await page.getByTestId('regenerate-backup-codes').click();
-  await page.getByTestId('backup-codes-regenerated').waitFor(visible);
+  await page.locator('[data-testid^="toast-success-"]').first().waitFor(visible);
   const regeneratedCodes = await backupCodes(page);
   assertBackupCodeCount(regeneratedCodes, 'Regeneration');
   assert(!regeneratedCodes.includes(oldBackupCode), 'Regeneration retained an old backup code');
@@ -272,7 +272,7 @@ const runDisableJourney = async (page: Page, baseUrl: string): Promise<void> => 
   await openSecuritySettings(page, baseUrl);
   await page.getByTestId('enable-2fa-password').fill(account.password);
   await page.getByTestId('disable-2fa').click();
-  await page.getByTestId('two-factor-disabled').waitFor(visible);
+  await page.locator('[data-testid^="toast-success-"]').first().waitFor(visible);
   assert(await page.getByTestId('backup-codes').count() === 0, 'Backup codes remained visible after disabling 2FA');
 
   await signOut(page);

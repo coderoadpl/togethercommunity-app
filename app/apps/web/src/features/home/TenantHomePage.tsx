@@ -50,9 +50,8 @@ export const TenantHomePage = ({
 
   useEffect(() => {
     if (unauthorized && !anonymousTenantHome) void navigate({ to: '/login' });
-    else if (staff) void navigate({ to: '/panel' });
-    else if (memberOnly) void navigate({ to: '/start' });
-  }, [unauthorized, anonymousTenantHome, staff, memberOnly, navigate]);
+    else if (tenant !== null) void navigate({ to: '/start' });
+  }, [unauthorized, anonymousTenantHome, tenant, navigate]);
 
   if (me.isPending) {
     return <BrandLoader caption={t.tenant.openingWorkspace} />;

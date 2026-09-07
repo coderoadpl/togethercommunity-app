@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, Tooltip } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
@@ -9,7 +9,8 @@ import { localizeError, useTranslations } from '../../i18n/index.js';
 import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
 import { navigateFresh } from '../../lib/navigation.js';
 import { BreakAllText, Eyebrow } from '../../theme.js';
-import { AccountIcon, SignOutIcon } from './account-icons.js';
+import { AccountIcon, SignOutIcon, StudioIcon } from './account-icons.js';
+import { useCanOpenStudio } from './viewer.js';
 import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 
@@ -20,6 +21,7 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
   const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
+  const canOpenStudio = useCanOpenStudio();
 
   const signOut = useMutation({
     ...actions.signOut,
@@ -83,6 +85,20 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
           </Box>
         ) : null}
         {email !== null ? <Divider /> : null}
+        {canOpenStudio ? (
+          <MenuItem
+            component={Link}
+            to="/panel"
+            data-testid="member-account-studio-link"
+            sx={{ minHeight: '44px' }}
+            onClick={() => setAnchorEl(null)}
+          >
+            <ListItemIcon>
+              <StudioIcon />
+            </ListItemIcon>
+            <ListItemText primary={t.account.menuStudio} />
+          </MenuItem>
+        ) : null}
         <MenuItem
           data-testid="member-account-link"
           onClick={() => {

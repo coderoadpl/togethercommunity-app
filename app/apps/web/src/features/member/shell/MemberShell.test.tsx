@@ -39,6 +39,7 @@ const stubViewport = (isDesktop: boolean) => {
 const okMe = (
   overrides: {
     memberId?: string | null;
+    staffRole?: 'owner' | 'admin' | null;
     banned?: boolean;
     tenant?: null;
     displayName?: string | null;
@@ -59,7 +60,7 @@ const okMe = (
               id: 't1',
               slug: 'acme',
               name: 'Acme',
-              staffRole: null,
+              staffRole: overrides.staffRole ?? null,
               memberId: overrides.memberId ?? 'm1',
               displayName: overrides.displayName ?? null,
               banned: overrides.banned ?? false,
@@ -188,6 +189,7 @@ const renderShell = async (path: string) => {
   });
   const page = (label: string) => () => <p>{label}</p>;
   const routeTree = rootRoute.addChildren([
+    createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: page('Studio') }),
     shellRoute.addChildren([
       createRoute({ getParentRoute: () => shellRoute, path: '/start', component: page('Start') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page('Szukaj') }),
@@ -220,6 +222,29 @@ const renderShell = async (path: string) => {
 };
 
 describe('MemberShell', () => {
+  it('shows the Studio app-bar button only to staff', async () => {
+    stubViewport(true);
+    server.use(okMe({ staffRole: 'admin', memberId: null }), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/start');
+
+    const studioLink = await screen.findByTestId('member-studio-link');
+    expect(studioLink).toHaveAttribute('href', '/panel');
+    expect(studioLink).toHaveTextContent(pl.account.menuStudio);
+    expect(studioLink.querySelector('svg')).toBeInTheDocument();
+    expect(window.getComputedStyle(studioLink).getPropertyValue('min-height')).toBe('44px');
+  });
+
+  it('hides the Studio app-bar button from member-only accounts', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/start');
+
+    expect(await screen.findByText('Start')).toBeInTheDocument();
+    expect(screen.queryByTestId('member-studio-link')).not.toBeInTheDocument();
+  });
+
   it('renders spaces, course rings and locked upsells in one sidebar list', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());

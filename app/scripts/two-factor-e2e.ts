@@ -80,7 +80,13 @@ const buildWeb = async (): Promise<void> => {
   assert(build.code === 0, `Web build failed:\n${build.stdout}${build.stderr}`);
 };
 
-const expectAcmeWorkspace = async (page: Page): Promise<void> => {
+const expectAcmeWorkspace = async (page: Page, baseUrl: string): Promise<void> => {
+  try {
+    await page.waitForURL('**/start', { timeout: 15000 });
+    await page.goto(`${baseUrl}/panel`, { waitUntil: 'domcontentloaded' });
+  } catch (cause) {
+    throw new E2eFailure(`Acme workspace did not reach the member landing at ${page.url()}.\n${String(cause)}`);
+  }
   const tenantName = page.getByTestId('tenant-name');
   try {
     await tenantName.waitFor(visible);
@@ -148,7 +154,7 @@ const runEnrollmentJourney = async (
   baseUrl: string,
 ): Promise<{ secret: string; oldBackupCode: string }> => {
   await signInWithAccountPassword(page, baseUrl);
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   await openSecuritySettings(page, baseUrl);
 
   await page.getByTestId('enable-2fa-password').fill(account.password);
@@ -202,7 +208,7 @@ const runProvisionalChallengeJourney = async (
     await currentTotp(secret),
     page.getByTestId('verify-login-totp'),
   );
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   console.log('two-factor-e2e: provisional login challenge and invalid-code rejection OK');
 };
 
@@ -238,7 +244,7 @@ const runBackupCodeJourney = async (
     oneTimeCode,
     page.getByTestId('verify-login-backup-code'),
   );
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   console.log('two-factor-e2e: regenerated backup code opened the workspace');
 
   await signOut(page);
@@ -258,7 +264,7 @@ const runBackupCodeJourney = async (
     await currentTotp(secret),
     page.getByTestId('verify-login-totp'),
   );
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   console.log('two-factor-e2e: backup-code regeneration, invalidation, one-time use, and replay rejection OK');
 };
 
@@ -271,7 +277,7 @@ const runDisableJourney = async (page: Page, baseUrl: string): Promise<void> => 
 
   await signOut(page);
   await signInWithAccountPassword(page, baseUrl);
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   assert(
     await page.getByTestId('two-factor-challenge').count() === 0,
     'Password login still showed a two-factor challenge after disabling 2FA',

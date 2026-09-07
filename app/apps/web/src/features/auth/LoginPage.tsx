@@ -45,6 +45,7 @@ import {
   AuthPasskeyLink,
   AuthTitle,
 } from './auth-chrome.js';
+import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { PasskeyOutlineIcon } from './auth-icons.js';
 import { AuthShell } from './AuthShell.js';
 
@@ -132,6 +133,7 @@ const MethodCard = ({
 export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  useRedirectSignedInWithTenant();
   const magicLinkExpired = invalidTokenFromLocation();
   const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [identifierInvalid, setIdentifierInvalid] = useState(false);

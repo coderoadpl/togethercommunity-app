@@ -13,7 +13,7 @@ import {
   UNREAD_BADGE_POLL_INTERVAL_MS,
 } from '../../notifications-stream.js';
 import { useNotificationsTransport } from '../../notifications-transport.js';
-import { BreakAllText, CountBadge, Eyebrow, InkDotBadge } from '../../theme.js';
+import { BreakAllText, CountBadge, Eyebrow, InkDotBadge, VisuallyHidden } from '../../theme.js';
 import { SignOutIcon } from './account-icons.js';
 import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
@@ -72,7 +72,11 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
       <Tooltip title={t.panel.accountMenu}>
         <IconButton
           data-testid="member-account-menu"
-          aria-label={t.panel.accountMenu}
+          aria-label={
+            unreadMessageCount > 0
+              ? t.panel.accountMenuUnread({ count: unreadMessageCount })
+              : t.panel.accountMenu
+          }
           aria-haspopup="true"
           aria-expanded={open ? true : undefined}
           onClick={(event) => setAnchorEl(event.currentTarget)}
@@ -132,9 +136,14 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
             </ListItemIcon>
             <ListItemText primary={t.messages.navLabel} />
             {unreadMessageCount > 0 ? (
-              <CountBadge data-testid="member-account-messages-unread">
-                {unreadMessageCount}
-              </CountBadge>
+              <>
+                <CountBadge aria-hidden data-testid="member-account-messages-unread">
+                  {unreadMessageCount}
+                </CountBadge>
+                <VisuallyHidden>
+                  {t.messages.unreadAria({ count: unreadMessageCount })}
+                </VisuallyHidden>
+              </>
             ) : null}
           </MenuItem>
         ) : null}

@@ -98,6 +98,12 @@ describe('MemberAccountMenu', () => {
 
     expect(await screen.findByTestId('member-account-messages-unread')).toHaveTextContent('3');
     expect(screen.getByTestId('member-account-unread')).toBeInTheDocument();
+    expect(screen.getByTestId('member-account-menu')).toHaveAccessibleName(
+      pl.panel.accountMenuUnread({ count: 3 }),
+    );
+    expect(screen.getByTestId('member-account-messages')).toHaveTextContent(
+      pl.messages.unreadAria({ count: 3 }),
+    );
   });
 
   it('ends the view instead of the operator session while viewing as a member', async () => {

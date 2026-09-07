@@ -553,6 +553,8 @@ export const pl: Messages = {
     openNavigation: 'Otwórz nawigację',
     closeNavigation: 'Zamknij nawigację',
     accountMenu: 'Menu konta',
+    accountMenuUnread: ({ count }) =>
+      format('Menu konta, nieprzeczytane wiadomości: {count}', { count }),
     myAccount: 'Moje konto',
     signedInAs: 'Zalogowano jako',
   },
@@ -565,6 +567,7 @@ export const pl: Messages = {
     allRead: 'Wszystko przeczytane.',
     loading: 'Wczytywanie powiadomień…',
     markAllRead: 'Oznacz wszystkie jako przeczytane',
+    markAllReadShort: 'Oznacz wszystkie',
     markedAllRead: 'Oznaczono wszystkie powiadomienia jako przeczytane.',
     viewAll: 'Zobacz wszystkie',
     pageEyebrow: 'Twoja aktywność',

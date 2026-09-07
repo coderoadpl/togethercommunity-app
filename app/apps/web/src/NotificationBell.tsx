@@ -29,6 +29,7 @@ import {
   NotificationBellIcon,
   NotificationCountBadge,
   NotificationPanel,
+  NotificationPanelAction,
   NotificationPanelBody,
   NotificationPanelFooter,
   NotificationPanelHeader,
@@ -55,7 +56,10 @@ const CloseIcon = () => (
 
 const SKELETON_ROWS = [0, 1, 2];
 
-export const NotificationBell = ({ live = true }: { live?: boolean } = {}) => {
+export const NotificationBell = ({
+  live = true,
+  viewAllTo = '/notifications',
+}: { live?: boolean; viewAllTo?: '/notifications' | '/panel/notifications' } = {}) => {
   const t = useTranslations();
   const theme = useTheme();
   const compact = !useMediaQuery(theme.breakpoints.up('md'));
@@ -86,14 +90,15 @@ export const NotificationBell = ({ live = true }: { live?: boolean } = {}) => {
           {t.notifications.heading}
         </Eyebrow>
         <Box sx={{ flex: 1 }} />
-        <Button
+        <NotificationPanelAction
           size="small"
           data-testid="notifications-popover-mark-all-read"
+          aria-label={t.notifications.markAllRead}
           disabled={markAllRead.isPending || impersonating || unreadCount === 0}
           onClick={() => markAllRead.mutate()}
         >
-          {t.notifications.markAllRead}
-        </Button>
+          {t.notifications.markAllReadShort}
+        </NotificationPanelAction>
         {compact ? (
           <IconButton
             aria-label={t.shell.closeSheet}
@@ -131,7 +136,7 @@ export const NotificationBell = ({ live = true }: { live?: boolean } = {}) => {
             </NotificationSnippet>
           </EmptyStateContent>
         ) : (
-          <NotificationList notifications={notifications} onOpen={openNotification} />
+          <NotificationList autoFocusFirst notifications={notifications} onOpen={openNotification} />
         )}
         {unread.isError ? (
           <Box sx={{ p: '0.75rem' }}>
@@ -147,7 +152,7 @@ export const NotificationBell = ({ live = true }: { live?: boolean } = {}) => {
       <NotificationPanelFooter>
         <Button
           component={Link}
-          to="/notifications"
+          to={viewAllTo}
           data-testid="notifications-view-all"
           sx={{ flex: 1, justifyContent: 'center', p: '0.75rem' }}
           onClick={close}

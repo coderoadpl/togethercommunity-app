@@ -406,6 +406,8 @@ const UserMenu = ({
   pending: boolean;
 }) => {
   const t = useTranslations();
+  const settings = useQuery(actions.tenantSettings);
+  const messagesEnabled = settings.data?.settings.directMessagesEnabled !== false;
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
 
@@ -463,18 +465,20 @@ const UserMenu = ({
           </ListItemIcon>
           <ListItemText primary={t.student.myProducts} />
         </MenuItem>
-        <MenuItem
-          component={Link}
-          to="/messages"
-          data-testid="user-menu-messages"
-          sx={{ minHeight: '44px', px: '1rem' }}
-          onClick={() => setAnchorEl(null)}
-        >
-          <ListItemIcon>
-            <MessagesIcon />
-          </ListItemIcon>
-          <ListItemText primary={t.messages.navLabel} />
-        </MenuItem>
+        {messagesEnabled ? (
+          <MenuItem
+            component={Link}
+            to="/messages"
+            data-testid="user-menu-messages"
+            sx={{ minHeight: '44px', px: '1rem' }}
+            onClick={() => setAnchorEl(null)}
+          >
+            <ListItemIcon>
+              <MessagesIcon />
+            </ListItemIcon>
+            <ListItemText primary={t.messages.navLabel} />
+          </MenuItem>
+        ) : null}
         <MenuItem
           component={Link}
           to="/account"
@@ -594,7 +598,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
             <ColorSchemeSwitcher compact />
             <EmailLanguageSwitcher />
           </Box>
-          <NotificationBell />
+          <NotificationBell viewAllTo="/panel/notifications" />
           <UserMenu
             email={email}
             role={tenant.staffRole}

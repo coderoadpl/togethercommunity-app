@@ -501,6 +501,7 @@ export interface Messages {
     openNavigation: string;
     closeNavigation: string;
     accountMenu: string;
+    accountMenuUnread: (params: { count: number }) => string;
     myAccount: string;
     signedInAs: string;
   };
@@ -512,6 +513,7 @@ export interface Messages {
     allRead: string;
     loading: string;
     markAllRead: string;
+    markAllReadShort: string;
     markedAllRead: string;
     viewAll: string;
     pageEyebrow: string;

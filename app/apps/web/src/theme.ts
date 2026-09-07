@@ -3080,6 +3080,11 @@ export const NotificationPanelHeader = styled(Box)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
 }));
 
+export const NotificationPanelAction = styled(Button)({
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+});
+
 export const NotificationPanelFooter = styled(Box)(({ theme }) => ({
   display: 'flex',
   borderTop: `1px solid ${theme.palette.divider}`,
@@ -3104,14 +3109,21 @@ export const NotificationItems = styled('ul')({
 });
 
 const notificationItemStyle = (theme: Theme, unread?: boolean): CSSObject => ({
-  display: 'flex',
+  display: 'grid',
+  gridTemplateColumns: 'auto minmax(0, 1fr)',
+  gridTemplateAreas: '"actor main" "actor meta"',
   width: '100%',
-  gap: '0.6rem',
+  gap: '0.15rem 0.6rem',
   alignItems: 'flex-start',
   textAlign: 'left',
-  minHeight: 48,
+  minHeight: 56,
   padding: '0.625rem 0.75rem',
   backgroundColor: unread === true ? alpha(theme.palette.primary.main, 0.09) : 'transparent',
+  [theme.breakpoints.up('sm')]: {
+    display: 'flex',
+    gap: '0.6rem',
+    minHeight: 48,
+  },
 });
 
 const forwardExceptUnread = { shouldForwardProp: (prop: PropertyKey) => prop !== 'unread' };
@@ -3128,6 +3140,7 @@ export const NotificationItemStatic = styled(Box, forwardExceptUnread)<{ unread?
 );
 
 export const NotificationActor = styled(Box)({
+  gridArea: 'actor',
   position: 'relative',
   flexShrink: 0,
   lineHeight: 0,
@@ -3156,15 +3169,22 @@ export const NotificationTypeMark = styled(Box)(({ theme }) => ({
   '& .MuiSvgIcon-root': { fontSize: '0.7rem' },
 }));
 
-export const NotificationItemMain = styled(Box)({ minWidth: 0, flex: 1 });
+export const NotificationItemMain = styled(Box)({ gridArea: 'main', minWidth: 0, flex: 1 });
 
-export const NotificationItemMeta = styled(Box)({
+export const NotificationItemMeta = styled(Box)(({ theme }) => ({
+  gridArea: 'meta',
   display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'flex-end',
-  gap: 4,
+  flexDirection: 'row',
+  justifyContent: 'flex-start',
+  alignItems: 'center',
+  gap: 6,
   flexShrink: 0,
-});
+  [theme.breakpoints.up('sm')]: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+}));
 
 export const NotificationLine = styled(Typography, {
   shouldForwardProp: (prop) => prop !== 'unread',
@@ -3178,9 +3198,11 @@ export const NotificationLine = styled(Typography, {
 
 export const NotificationSubject = styled('span')({ fontWeight: 700 });
 
-export const NotificationSnippetLine = styled(NotificationSnippet)<AsElement>({
+export const NotificationSnippetLine = styled(NotificationSnippet)<AsElement>(({ theme }) => ({
+  display: 'none',
   WebkitLineClamp: 1,
-});
+  [theme.breakpoints.up('sm')]: { display: '-webkit-box' },
+}));
 
 export const SheetDrawer = styled(Drawer)(({ theme }) => ({
   '& .MuiDrawer-paper': {

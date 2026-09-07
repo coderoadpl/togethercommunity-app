@@ -80,6 +80,7 @@ import {
   PanelCoursesRoute,
   PanelIndexRoute,
   PanelIntegrationsRoute,
+  PanelNotificationsRoute,
   PanelLayout,
   PanelLessonsRoute,
   PanelLessonCreateRoute,
@@ -272,6 +273,12 @@ const panelIndexRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: '/',
   component: PanelIndexRoute,
+});
+const panelNotificationsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'notifications',
+  validateSearch: validateNotificationsSearch,
+  component: PanelNotificationsRoute,
 });
 const panelProductsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
@@ -522,6 +529,7 @@ const router = createRouter({
     ]),
     panelLayoutRoute.addChildren([
       panelIndexRoute,
+      panelNotificationsRoute,
       panelProductsRoute,
       panelProductCreateRoute,
       panelProductDetailRoute,

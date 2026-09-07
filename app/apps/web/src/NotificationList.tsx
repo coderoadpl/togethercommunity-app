@@ -103,10 +103,12 @@ const NotificationBody = ({ notification, group }: { notification: Notification;
 const NotificationRow = ({
   notification,
   group,
+  autoFocus,
   onOpen,
 }: {
   notification: Notification;
   group: GroupKey;
+  autoFocus: boolean;
   onOpen: (notification: Notification) => void;
 }) => {
   const t = useTranslations();
@@ -121,6 +123,7 @@ const NotificationRow = ({
         </NotificationItemStatic>
       ) : (
         <NotificationItem
+          autoFocus={autoFocus}
           unread={unread}
           data-testid={testId}
           title={notificationTitle(t, notification)}
@@ -135,9 +138,11 @@ const NotificationRow = ({
 
 export const NotificationList = ({
   notifications,
+  autoFocusFirst = false,
   onOpen,
 }: {
   notifications: Notification[];
+  autoFocusFirst?: boolean;
   onOpen: (notification: Notification) => void;
 }) => {
   const t = useTranslations();
@@ -147,27 +152,34 @@ export const NotificationList = ({
     yesterday: t.notifications.groupYesterday,
     earlier: t.notifications.groupEarlier,
   };
+  const groups = GROUP_KEYS.map((key) => ({
+    key,
+    items: notifications.filter((item) => groupOf(item.createdAt, now) === key),
+  })).filter((group) => group.items.length > 0);
+  const firstId = groups[0]?.items[0]?.id ?? null;
 
   return (
     <NotificationItems data-testid="notification-list">
-      {GROUP_KEYS.map((key) => {
-        const items = notifications.filter((item) => groupOf(item.createdAt, now) === key);
-        if (items.length === 0) return null;
-        return (
-          <Fragment key={key}>
-            <NotificationGroupHeading
-              variant="overline"
-              component="li"
-              data-testid={`notification-group-${key}`}
-            >
-              {labels[key]}
-            </NotificationGroupHeading>
-            {items.map((item) => (
-              <NotificationRow key={item.id} notification={item} group={key} onOpen={onOpen} />
-            ))}
-          </Fragment>
-        );
-      })}
+      {groups.map(({ key, items }) => (
+        <Fragment key={key}>
+          <NotificationGroupHeading
+            variant="overline"
+            component="li"
+            data-testid={`notification-group-${key}`}
+          >
+            {labels[key]}
+          </NotificationGroupHeading>
+          {items.map((item) => (
+            <NotificationRow
+              key={item.id}
+              notification={item}
+              group={key}
+              autoFocus={autoFocusFirst && item.id === firstId}
+              onOpen={onOpen}
+            />
+          ))}
+        </Fragment>
+      ))}
     </NotificationItems>
   );
 };

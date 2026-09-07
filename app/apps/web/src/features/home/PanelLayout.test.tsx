@@ -444,4 +444,39 @@ describe('Creator panel routing', () => {
     await waitFor(() =>
       expect(window.sessionStorage.getItem('together-login-identifier')).toBeNull());
   });
+
+  it('drops the messages entry from the account menu when the community has direct messages off', async () => {
+    stubViewport(true);
+    commonHandlers();
+    server.use(
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              bunnyStreamCdnHostname: null,
+              logoUrl: null,
+              logoDarkUrl: null,
+              accentColor: null,
+              faviconUrl: null,
+              termsUrl: null,
+              privacyUrl: null,
+              directMessagesEnabled: false,
+            },
+          },
+        }),
+      ),
+    );
+
+    await renderPanelAt('/panel/products');
+
+    await userEvent.click(await screen.findByTestId('user-menu'));
+
+    await waitFor(() => expect(screen.queryByTestId('user-menu-messages')).toBeNull());
+    expect(screen.getByTestId('user-menu-products')).toBeInTheDocument();
+  });
 });

@@ -110,12 +110,14 @@ const renderBell = async ({ desktop = true }: { desktop?: boolean } = {}) => {
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
-const renderRoutedBell = async () => {
+const renderRoutedBell = async (
+  { viewAllTo }: { viewAllTo?: '/panel/notifications' } = {},
+) => {
   stubViewport(true);
   const rootRoute = createRootRoute({
     component: () => (
       <>
-        <NotificationBell />
+        {viewAllTo === undefined ? <NotificationBell /> : <NotificationBell viewAllTo={viewAllTo} />}
         <Outlet />
       </>
     ),
@@ -129,6 +131,11 @@ const renderRoutedBell = async () => {
     getParentRoute: () => rootRoute,
     path: '/notifications',
     component: () => <p>all notifications</p>,
+  });
+  const panelNotificationsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/notifications',
+    component: () => <p>all studio notifications</p>,
   });
   const spaceThreadRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -146,6 +153,7 @@ const renderRoutedBell = async () => {
     routeTree: rootRoute.addChildren([
       indexRoute,
       notificationsRoute,
+      panelNotificationsRoute,
       spaceThreadRoute,
       lessonRoute,
     ]),
@@ -398,5 +406,32 @@ describe('NotificationBell', () => {
     await userEvent.click(viewAll);
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/notifications'));
+  });
+
+  it('keeps the studio bell inside the panel when viewing every notification', async () => {
+    server.use(okUnread(0), okList([]));
+
+    const { router } = await renderRoutedBell({ viewAllTo: '/panel/notifications' });
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+    await userEvent.click(await screen.findByTestId('notifications-view-all'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/panel/notifications'));
+  });
+
+  it('moves focus to the first notification when the panel opens', async () => {
+    server.use(
+      okUnread(1),
+      okList([
+        notification({ id: 'n1', read: false, courseId: 'c1' }),
+        notification({ id: 'n2', read: true, courseId: 'c1' }),
+      ]),
+    );
+
+    await renderBell();
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+
+    await waitFor(() => expect(screen.getByTestId('notification-n1')).toHaveFocus());
   });
 });

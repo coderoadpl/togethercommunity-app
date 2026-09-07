@@ -292,6 +292,17 @@ const verifyCors = async (
   return ok(undefined);
 };
 
+const storageCorsProbeStatus = (result: Result<undefined, AppError>): StorageCorsProbeResult['status'] => {
+  if (result.ok) return 'ok';
+  const details = result.error.details;
+  return typeof details === 'object' &&
+    details !== null &&
+    'providerCode' in details &&
+    details.providerCode === 'storage.cors'
+    ? 'blocked'
+    : 'unknown';
+};
+
 const objectUrl = (configuration: StorageConfiguration, key: string): URL => {
   const url = new URL(configuration.endpoint);
   const keyPath = key.split('/').map(rfc3986).join('/');
@@ -545,7 +556,7 @@ export const createS3StorageProvider = (
     try {
       return await Promise.all(normalizedOrigins.map(async (origin) => {
         const result = await verifyCors(fetchStorage, signed, origin, dispatcher);
-        return { origin, status: result.ok ? 'ok' : 'blocked' };
+        return { origin, status: storageCorsProbeStatus(result) };
       }));
     } finally {
       await dispatcher.destroy();

@@ -2932,7 +2932,7 @@ describe('deep health route', () => {
         checkedAt: expect.any(String),
         failing: [],
         warnings: [],
-        storageCors: [],
+        storageCors: 'not-applicable',
         checks: [
           { name: 'tenant-directory', ok: true, ms: expect.any(Number), error: null, skipped: null },
           {
@@ -2995,6 +2995,54 @@ describe('deep health route', () => {
     expect(payload.data.ok).toBe(false);
     expect(payload.data.failing).toEqual(['tenant-settings']);
     expect(JSON.stringify(payload)).not.toContain('portal.acme.test');
+  });
+
+  it('answers with only aggregate storage CORS status when storage is configured', async () => {
+    const configured = deps();
+    configured.tenantDomains = tenantDomainRepositoryStub({
+      listByTenant: async (tenantId) => tenantId === 't-acme'
+        ? [tenantDomainFixture({
+          id: 'domain-1',
+          tenantId,
+          domain: 'courses.example.org',
+          verified: true,
+        })]
+        : [],
+    });
+    configured.secretResolver = {
+      resolve: async (_tenantId, key) => key === 's3.configuration'
+        ? ok(JSON.stringify({
+          provider: 'minio',
+          endpoint: 'https://storage.example.test',
+          region: 'eu-central-1',
+          bucket: 'creator-files',
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        }))
+        : err(notFound('not configured')),
+    };
+    configured.storage = {
+      ...configured.storage,
+      probeCors: async (_configuration, origins) => origins.map((origin) => ({
+        origin,
+        status: origin === 'https://courses.example.org' ? 'blocked' : 'ok',
+      })),
+    };
+
+    const response = await buildApp(configured).request(API_PATHS.healthDeep);
+    const payload = deepHealthEnvelopeSchema.parse(await response.json());
+    if (!payload.ok) throw new Error('the deep health route must answer with a report');
+    const serialized = JSON.stringify(payload.data);
+
+    expect(response.status).toBe(200);
+    expect(payload.data.storageCors).toBe('warning');
+    expect(payload.data.warnings).toEqual(['storage-cors']);
+    expect(serialized).not.toContain('courses.example.org');
+    expect(serialized).not.toContain('acme.together.example');
+    expect(serialized).not.toContain('tenantId');
+    expect(serialized).not.toContain('results');
+    expect(serialized).not.toContain('tenants');
+    expect(serialized).not.toContain('subjects');
   });
 
   it('spends a dedicated per-address bucket and throttles with 429', async () => {

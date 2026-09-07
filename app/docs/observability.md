@@ -106,7 +106,7 @@ produced while the HTTP status reports whether production is healthy.
     "checkedAt": "2026-09-05T09:12:00.000Z",
     "failing": ["tenant-settings"],
     "warnings": [],
-    "storageCors": [],
+    "storageCors": "not-applicable",
     "checks": [
       { "name": "tenant-directory", "ok": true, "ms": 4, "error": null },
       { "name": "scheduler-freshness", "ok": true, "ms": 6, "error": null },
@@ -129,7 +129,10 @@ dedicated e-mail transport is skipped by those probes instead of failing them �
 the response cannot distinguish "nothing to check" from "checked and fine", and
 that is deliberate; the per-check subject counts stay internal (they are
 asserted in `core/server/usecases/deep-health.test.ts`, so an inert probe is
-caught by the suite rather than by reading production output).
+caught by the suite rather than by reading production output). The public
+`storageCors` field is only an aggregate status: `ok`, `warning`, or
+`not-applicable`. Per-tenant CORS results, tenant counts, and origins stay in the
+server-side report available to operator-authenticated code paths.
 
 ### What each check does
 
@@ -143,7 +146,7 @@ caught by the suite rather than by reading production output).
 | `tenant-secret-decryption` | per tenant | Decrypts one stored secret with the master key. The plaintext is discarded, never returned. |
 | `email-transport` | per tenant | Resolves the transactional transport (tenant SES → SMTP → Resend). Tenants on the platform pool are skipped. |
 | `storage-presign` | per tenant | Signs a GET URL for the configured bucket. No request is sent to the bucket. |
-| `storage-cors` | per tenant | Sends a presigned `PUT` preflight for the platform origin and every verified custom domain. Database-backed results and rate limits are shared for ten minutes; blocked, unknown, and budget-limited origins add a warning without failing deep health. |
+| `storage-cors` | per tenant | Sends a presigned `PUT` preflight for the platform origin and every verified custom domain. Database-backed results and rate limits are shared for ten minutes; blocked, unknown, and budget-limited origins add a warning without failing deep health. The public response exposes only the aggregate `storageCors` status, never origins or per-tenant entries. |
 | `deadline` | platform | Present only when the 20-second budget ran out; names the probes that did not finish. |
 
 `prod-health.yml` probes `/api/health` first and `/api/health/deep` second; the

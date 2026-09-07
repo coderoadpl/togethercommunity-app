@@ -599,7 +599,7 @@ describe('createS3StorageProvider', () => {
     )).resolves.toEqual([{ origin: 'https://courses.example.org', status: 'blocked' }]);
   });
 
-  it('reports a timed-out preflight as blocked', async () => {
+  it('reports a timed-out preflight as unknown', async () => {
     const storage = createS3StorageProvider(resolver, {
       fetchStorage: async () => { throw new DOMException('Timed out', 'TimeoutError'); },
       allowPrivateEndpoints: true,
@@ -608,7 +608,31 @@ describe('createS3StorageProvider', () => {
     await expect(storage.probeCors(
       MINIO_CONFIGURATION,
       ['https://courses.example.org'],
-    )).resolves.toEqual([{ origin: 'https://courses.example.org', status: 'blocked' }]);
+    )).resolves.toEqual([{ origin: 'https://courses.example.org', status: 'unknown' }]);
+  });
+
+  it('reports an unreadable preflight response as unknown', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      fetchStorage: async () => ({
+        ok: true,
+        status: 204,
+        body: { cancel: async () => { throw new Error('connection closed'); } },
+        headers: {
+          get: (name: string) => ({
+            'access-control-allow-origin': '*',
+            'access-control-allow-methods': 'PUT',
+            'access-control-allow-headers': 'content-type',
+          })[name.toLowerCase()] ?? null,
+        },
+        text: async () => '',
+      }),
+      allowPrivateEndpoints: true,
+    });
+
+    await expect(storage.probeCors(
+      MINIO_CONFIGURATION,
+      ['https://courses.example.org'],
+    )).resolves.toEqual([{ origin: 'https://courses.example.org', status: 'unknown' }]);
   });
 
   it('reports an unresolved endpoint as unknown instead of blaming bucket CORS', async () => {

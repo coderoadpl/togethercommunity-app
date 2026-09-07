@@ -5,9 +5,10 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { createThemeForMode } from '../../theme.js';
 import { CourseCard, type CourseCardCourse } from './CourseCards.js';
@@ -30,6 +31,10 @@ const renderCards = async () => {
         <CourseCard
           course={course('without-description', '')}
           counts={{ accessibleLessonCount: 4, completedLessonCount: 3 }}
+        />
+        <CourseCard
+          course={course('finished', '')}
+          counts={{ accessibleLessonCount: 4, completedLessonCount: 4 }}
         />
       </ThemeProvider>
     ),
@@ -62,6 +67,19 @@ describe('CourseCard', () => {
         'auto',
       );
     }
+  });
+
+  it('marks a finished course next to its percentage and nowhere else', async () => {
+    await renderCards();
+
+    const finished = screen.getByTestId('course-progress-row-finished');
+    expect(within(finished).getByTestId('course-progress-finished')).toHaveTextContent('100%');
+    expect(within(finished).getByTestId('completion-mark')).toHaveAccessibleName(
+      pl.courseOverview.courseCompleted,
+    );
+
+    const partial = screen.getByTestId('course-progress-row-with-description');
+    expect(within(partial).queryByTestId('completion-mark')).not.toBeInTheDocument();
   });
 
   it('lets the description absorb the leftover height above the progress row', async () => {

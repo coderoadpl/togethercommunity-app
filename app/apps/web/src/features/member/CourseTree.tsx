@@ -8,6 +8,7 @@ import {
   OutlinedInput,
   Stack,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -22,6 +23,7 @@ import type {
 } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { useTranslations } from '../../i18n/index.js';
 import {
   CourseTreeChapterTitle,
@@ -33,7 +35,7 @@ import {
 } from '../../theme.js';
 import { branchOfLesson } from './course-tree-state.js';
 import { Highlighted } from './highlight.js';
-import { Caret, CompletionFull, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js';
+import { Caret, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js';
 
 const TITLE_TOOLTIP_DELAY_MS = 500;
 
@@ -69,15 +71,10 @@ const AccessMark = ({ status }: { status: AccessStatus }) => {
   return null;
 };
 
-const CompletionMark = ({ status }: { status: CompletionStatus }) => {
+const LessonCompletion = ({ status }: { status: CompletionStatus }) => {
   const t = useTranslations();
   if (status === 'fully-completed') {
-    return (
-      <>
-        <CompletionFull />
-        <VisuallyHidden>{t.courseTree.completionComplete}</VisuallyHidden>
-      </>
-    );
+    return <CompletionMark label={t.courseTree.completionComplete} />;
   }
   if (status === 'partially-completed') {
     return (
@@ -95,12 +92,7 @@ const ProgressMark = ({ lessons }: { lessons: CourseStructureLesson[] }) => {
   const done = lessons.filter((lesson) => lesson.completionStatus === 'fully-completed').length;
   const total = lessons.length;
   if (done === total && total > 0) {
-    return (
-      <>
-        <CompletionFull />
-        <VisuallyHidden>{t.courseTree.completionComplete}</VisuallyHidden>
-      </>
-    );
+    return <CompletionMark label={t.courseTree.completionComplete} />;
   }
   return (
     <TreeProgressCount variant="caption" component="span">
@@ -179,7 +171,7 @@ const LessonRow = ({
           {t.courseTree.lessonDuration({ minutes: lesson.durationMinutes })}
         </LessonDurationText>
       )}
-      <CompletionMark status={lesson.completionStatus} />
+      <LessonCompletion status={lesson.completionStatus} />
       <AccessMark status={lesson.accessStatus} />
     </Stack>
   );
@@ -424,6 +416,15 @@ export const CourseTree = ({
         placeholder={t.courseTree.filterPlaceholder}
         inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
       />
+      <Typography
+        variant="caption"
+        component="p"
+        color="text.secondary"
+        sx={{ mb: '0.75rem', flexShrink: 0 }}
+        data-testid="lesson-search-hint"
+      >
+        {t.search.hint}
+      </Typography>
 
       <Box
         data-testid="course-tree-scroll"
@@ -432,6 +433,9 @@ export const CourseTree = ({
         {modules.length === 0 ? (
           <Box sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-no-results">
             <CourseTreeChapterTitle>{t.courseTree.noMatches}</CourseTreeChapterTitle>
+            <Typography variant="caption" component="p" color="text.secondary" sx={{ mt: '0.35rem' }}>
+              {t.search.stemHint}
+            </Typography>
           </Box>
         ) : (
           <List disablePadding component="ul" sx={{ m: 0, p: 0 }} data-testid="course-tree">

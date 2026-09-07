@@ -3,8 +3,9 @@ import { Link } from '@tanstack/react-router';
 
 import type { CourseStructureLesson, CourseStructureWithAccess } from '#core/domain/index.js';
 
+import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { useTranslations, type Messages } from '../../i18n/index.js';
-import { CourseCompletedNote, Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
+import { Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
 
 export const flattenLessons = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
   structure.modules.flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons));
@@ -97,6 +98,9 @@ export const CourseProgressCard = ({
         <StatTileValue component="span" data-testid="progress-percent">
           {t.courseOverview.percentValue({ percent: totals.percent })}
         </StatTileValue>
+        {courseCompleted ? (
+          <CompletionMark size="md" label={t.courseOverview.courseCompleted} />
+        ) : null}
       </Stack>
       <RailProgressBar
         variant="determinate"
@@ -104,16 +108,6 @@ export const CourseProgressCard = ({
         sx={{ mt: '0.6rem' }}
         aria-label={t.courseOverview.progressTitle}
       />
-      {courseCompleted && (
-        <CourseCompletedNote
-          variant="body2"
-          component="p"
-          data-testid="course-completed-note"
-          sx={{ mt: '0.75rem' }}
-        >
-          {t.courseOverview.courseCompleted}
-        </CourseCompletedNote>
-      )}
       {continueTarget !== null && (
         <Stack useFlexGap sx={{ mt: '1.25rem', rowGap: '0.75rem' }}>
           <Button

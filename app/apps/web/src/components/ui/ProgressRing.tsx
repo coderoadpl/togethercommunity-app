@@ -5,11 +5,9 @@ const STROKE_WIDTH = 2;
 export const ProgressRing = ({
   value,
   size = 18,
-  done = false,
 }: {
   value: number;
   size?: number;
-  done?: boolean;
 }) => {
   const theme = useTheme();
   const center = size / 2;
@@ -25,7 +23,6 @@ export const ProgressRing = ({
       aria-hidden
       focusable="false"
       data-testid="progress-ring"
-      data-done={done ? 'true' : 'false'}
     >
       <circle
         cx={center}
@@ -40,7 +37,7 @@ export const ProgressRing = ({
         cy={center}
         r={radius}
         fill="none"
-        stroke={done ? theme.palette.success.main : theme.palette.text.primary}
+        stroke={theme.palette.text.primary}
         strokeWidth={STROKE_WIDTH}
         strokeLinecap="round"
         strokeDasharray={circumference}

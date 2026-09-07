@@ -2,6 +2,8 @@ import type { ElementType } from 'react';
 import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
+import { progressTokens } from './theme-progress.js';
+
 /**
  * The entire "engineer's logbook" visual language lives in this theme:
  * colors, fonts and component overrides. Pages only use MUI components
@@ -2826,6 +2828,26 @@ export const LedgerBreadcrumbs = styled(Breadcrumbs)({
   },
 });
 
+export const ShellBreadcrumbs = styled(Breadcrumbs)(({ theme }) => ({
+  minWidth: 0,
+  ...theme.typography.body2,
+  color: theme.palette.text.secondary,
+  '& .MuiBreadcrumbs-ol': { flexWrap: 'nowrap' },
+  '& .MuiBreadcrumbs-separator': { marginInline: '0.35rem' },
+  '& .MuiBreadcrumbs-li': {
+    minWidth: 0,
+    '& > *': {
+      display: 'block',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+  },
+  '& .MuiBreadcrumbs-li:not(:first-of-type):not(:last-of-type) > *': { maxWidth: '10rem' },
+  '& .MuiBreadcrumbs-li:last-of-type': { color: theme.palette.text.primary },
+  '& a': { color: 'inherit' },
+}));
+
 export const LedgerTitle = styled(Typography, {
   shouldForwardProp: (prop) => prop !== 'dense',
 })<AsElement & { dense?: boolean }>(({ theme, dense }) =>
@@ -3008,8 +3030,12 @@ export const AccessLockOpenIcon = styled(SvgIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const CompletionCheckIcon = styled(SvgIcon)(({ theme }) => ({
-  fontSize: '1.15rem',
+export const CompletionMarkIcon = styled(SvgIcon, {
+  shouldForwardProp: (prop) => prop !== 'markSize',
+})<{ markSize: 'sm' | 'md' }>(({ theme, markSize }) => ({
+  fontSize: markSize === 'md' ? '1.4rem' : '1.15rem',
+  flexShrink: 0,
+  alignSelf: 'center',
   color: theme.palette.success.main,
 }));
 
@@ -3327,15 +3353,20 @@ export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
   '& th:first-of-type': { zIndex: 2 },
 }));
 
-export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({
-  height: 6,
-  borderRadius: 999,
-  backgroundColor: theme.palette.divider,
-  '& .MuiLinearProgress-bar': {
+export const RailProgressBar = styled(LinearProgress)(({ theme }) => {
+  const tokens = progressTokens(theme.palette.background.paper, theme.palette.primary.main);
+  return {
+    height: 8,
+    boxSizing: 'border-box',
     borderRadius: 999,
-    backgroundColor: theme.palette.text.primary,
-  },
-}));
+    backgroundColor: tokens.track,
+    border: `1px solid ${tokens.border}`,
+    '& .MuiLinearProgress-bar': {
+      borderRadius: 999,
+      backgroundColor: tokens.fill,
+    },
+  };
+});
 
 export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
@@ -3351,11 +3382,6 @@ export const SidebarProgressPercent = styled(Typography)<AsElement>(({ theme }) 
   color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
-}));
-
-export const CourseCompletedNote = styled(Typography)<AsElement>(({ theme }) => ({
-  fontWeight: 600,
-  color: theme.palette.success.main,
 }));
 
 export const EmptyStateIcon = styled(SvgIcon)(({ theme }) => ({
@@ -3452,7 +3478,8 @@ export const LessonPlaceholder = styled(Box)(({ theme }) => ({
 export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   overflowWrap: 'anywhere',
   maxWidth: '44rem',
-  marginInline: 'auto',
+  marginInline: 0,
+  textAlign: 'left',
   '& img': { maxWidth: '100%', height: 'auto' },
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },

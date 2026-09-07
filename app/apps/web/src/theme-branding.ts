@@ -1,6 +1,28 @@
-import type { PaletteMode, Theme } from '@mui/material/styles';
+import { decomposeColor, hslToRgb, type PaletteMode, type Theme } from '@mui/material/styles';
 
 import type { TenantBranding } from '#core/domain/index.js';
+
+const CSS_COLOR_4 = /^(rgba?|hsla?)\(\s*([^,]+?)\s*\)$/;
+
+/**
+ * MUI's color parser only accepts the comma-separated legacy syntax and answers
+ * NaN — never an error — for the space-separated CSS Color 4 form the themes
+ * use, so every ratio computed from it would silently pass any floor.
+ */
+export const toHex = (color: string): string => {
+  const [, fn, spaced] = CSS_COLOR_4.exec(color) ?? [];
+  const normalized = fn === undefined || spaced === undefined
+    ? color
+    : `${fn}(${spaced.replaceAll('/', ' ').trim().split(/\s+/).join(', ')})`;
+  const decomposed = decomposeColor(
+    normalized.startsWith('hsl') ? hslToRgb(normalized) : normalized,
+  );
+  const channels = decomposed.values.slice(0, 3);
+  if (!decomposed.type.startsWith('rgb') || channels.some(Number.isNaN)) {
+    throw new Error(`Unsupported color for contrast math: ${color}`);
+  }
+  return `#${channels.map((channel) => Math.round(channel).toString(16).padStart(2, '0')).join('')}`;
+};
 
 const hexChannel = (hex: string, offset: number): number =>
   Number.parseInt(hex.slice(offset + 1, offset + 3), 16);
@@ -10,7 +32,7 @@ const linearChannel = (value: number): number => {
   return scaled <= 0.04045 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
 };
 
-const relativeLuminance = (hex: string): number =>
+export const relativeLuminance = (hex: string): number =>
   0.2126 * linearChannel(hexChannel(hex, 0)) +
   0.7152 * linearChannel(hexChannel(hex, 2)) +
   0.0722 * linearChannel(hexChannel(hex, 4));
@@ -24,7 +46,7 @@ export const contrastRatio = (a: string, b: string): number => {
   return (lighter + 0.05) / (darker + 0.05);
 };
 
-const mix = (hex: string, target: string, weight: number): string => {
+export const mix = (hex: string, target: string, weight: number): string => {
   const blended = [0, 2, 4].map((offset) => {
     const from = hexChannel(hex, offset);
     const to = hexChannel(target, offset);
@@ -50,7 +72,7 @@ const NON_TEXT_MIN = 3;
 const DARK_BACKGROUND = '#101113';
 const DARK_SURFACE = '#17181B';
 
-const nudgeToward = (
+export const nudgeToward = (
   color: string,
   target: string,
   background: string,

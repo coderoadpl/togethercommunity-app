@@ -1,6 +1,7 @@
 import { Alert, Button, Stack, Typography } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
+import { useToastOutcome } from './Toast.js';
 
 type VerificationOutcome = 'verified' | 'expired' | 'invalid' | 'providerError' | null;
 
@@ -44,6 +45,11 @@ export const EmailVerificationStatus = ({
   onResend: () => void;
 }) => {
   const t = useTranslations();
+  useToastOutcome(
+    resendSent,
+    t.emailVerification.sent,
+    resendError ? t.emailVerification.providerError : null,
+  );
 
   return (
     <Stack useFlexGap spacing="0.8rem" data-testid="email-verification-status">
@@ -62,8 +68,6 @@ export const EmailVerificationStatus = ({
           {resendPending ? t.emailVerification.sending : t.emailVerification.resend}
         </Button>
       ) : null}
-      {resendSent ? <Alert severity="success">{t.emailVerification.sent}</Alert> : null}
-      {resendError ? <Alert severity="error">{t.emailVerification.providerError}</Alert> : null}
     </Stack>
   );
 };

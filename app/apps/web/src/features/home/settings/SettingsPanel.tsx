@@ -52,6 +52,7 @@ import { AuthenticationMethods } from '../../../components/ui/AuthenticationMeth
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
 import { EmailVerificationStatus } from '../../../components/ui/EmailVerificationStatus.js';
+import { useToastError, useToastOutcome } from '../../../components/ui/Toast.js';
 import { errorCodeOf, localizePanelError, serverMessageOf, useLanguage, useTranslations } from '../../../i18n/index.js';
 import type { Messages } from '../../../i18n/index.js';
 import {
@@ -114,6 +115,11 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   });
   const emailValue = email ?? settings.data?.settings.supportEmail ?? '';
   const urlValue = url ?? settings.data?.settings.supportUrl ?? '';
+  useToastOutcome(
+    update.isSuccess,
+    t.common.saved,
+    update.error === null ? null : localizePanelError(update.error, t),
+  );
   return (
     <SectionCard
       title={t.support.settingsHeading}
@@ -151,7 +157,6 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setUrl(event.target.value)}
         />
       </FormControl>
-      {update.isError ? <Alert severity="error">{localizePanelError(update.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -170,6 +175,11 @@ const EmailLanguageSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const stored = settings.data?.settings.defaultLanguage ?? null;
   const value = draft ?? stored ?? DEFAULT_LANGUAGE;
   const unavailable = !settings.isSuccess || update.isPending;
+  useToastOutcome(
+    update.isSuccess,
+    t.common.saved,
+    update.error === null ? null : localizePanelError(update.error, t),
+  );
   return (
     <SectionCard
       title={t.emailLanguageSettings.heading}
@@ -201,7 +211,6 @@ const EmailLanguageSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       {settings.isError ? (
         <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
-      {update.isError ? <Alert severity="error">{localizePanelError(update.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -255,6 +264,11 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const provider = settings.data?.settings.invoicingProvider ?? '';
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerAddress, setSellerAddress] = useState<string | null>(null);
+  useToastOutcome(
+    updateSettings.isSuccess,
+    t.common.saved,
+    updateSettings.error === null ? null : localizePanelError(updateSettings.error, t),
+  );
 
   return (
     <SectionCard
@@ -415,7 +429,6 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         />
       </FormControl>
       {provider === 'ksef' ? <KsefCredentialsPointer /> : null}
-      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -446,6 +459,11 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   };
 
   const disabled = !canEdit || !settings.isSuccess;
+  useToastOutcome(
+    updateSettings.isSuccess,
+    t.legal.saved,
+    updateSettings.error === null ? null : localizePanelError(updateSettings.error, t),
+  );
 
   return (
     <SectionCard
@@ -496,12 +514,6 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       {settings.isError ? (
         <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
-      {updateSettings.isSuccess ? (
-        <Typography variant="caption" component="p" data-testid="legal-saved">
-          {t.legal.saved}
-        </Typography>
-      ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -533,6 +545,12 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
 
   const pending = updateSettings.isPending || updateCourse.isPending;
   const loaded = settings.isSuccess && spaces.isSuccess;
+  useToastOutcome(
+    saved,
+    t.publicAccess.saved,
+    updateSettings.error === null ? null : localizePanelError(updateSettings.error, t),
+  );
+  useToastError(updateCourse.error === null ? null : localizePanelError(updateCourse.error, t));
 
   const submit = async () => {
     setSaved(false);
@@ -632,13 +650,11 @@ const PublicAccessPanel = ({ canEdit }: { canEdit: boolean }) => {
         <FormHelperText>{t.publicAccess.coursesHint}</FormHelperText>
       </FormControl>
       <FormHelperText data-testid="public-access-status">
-        {pending ? t.publicAccess.saving : saved ? t.publicAccess.saved : ' '}
+        {pending ? t.publicAccess.saving : ' '}
       </FormHelperText>
       {spaces.isError ? (
         <StatusView state={{ kind: 'error', message: localizePanelError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
       ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
-      {updateCourse.isError ? <Alert severity="error">{localizePanelError(updateCourse.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -655,6 +671,11 @@ const DirectMessagesPanel = ({ canEdit }: { canEdit: boolean }) => {
     },
   });
   const enabled = settings.data?.settings.directMessagesEnabled !== false;
+  useToastOutcome(
+    updateSettings.isSuccess,
+    t.common.saved,
+    updateSettings.error === null ? null : localizePanelError(updateSettings.error, t),
+  );
 
   return (
     <SectionCard title={t.directMessages.heading} description={t.directMessages.intro}>
@@ -671,9 +692,8 @@ const DirectMessagesPanel = ({ canEdit }: { canEdit: boolean }) => {
         label={t.directMessages.toggleLabel}
       />
       <FormHelperText data-testid="direct-messages-status">
-        {updateSettings.isPending ? t.common.saving : updateSettings.isSuccess ? t.common.saved : ' '}
+        {updateSettings.isPending ? t.common.saving : ' '}
       </FormHelperText>
-      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -775,6 +795,11 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   };
 
   const disabled = !canEdit || !settings.isSuccess;
+  useToastOutcome(
+    updateSettings.isSuccess,
+    t.branding.saved,
+    updateSettings.error === null ? null : localizePanelError(updateSettings.error, t),
+  );
 
   return (
     <SectionCard
@@ -1004,12 +1029,6 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       {settings.isError ? (
         <StatusView state={{ kind: 'error', message: localizePanelError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
-      {updateSettings.isSuccess ? (
-        <Typography variant="caption" component="p" data-testid="branding-saved">
-          {t.branding.saved}
-        </Typography>
-      ) : null}
-      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -1057,6 +1076,11 @@ const SecurityPanel = () => {
     redirectTo: new URL('/reset-password', window.location.origin).toString(),
     language,
   };
+  useToastOutcome(
+    requestPasswordReset.isSuccess,
+    t.security.resetSent,
+    requestPasswordReset.error === null ? null : localizePanelError(requestPasswordReset.error, t),
+  );
 
   return (
     <SectionCard title={t.security.heading} data-testid="security-settings">
@@ -1082,14 +1106,6 @@ const SecurityPanel = () => {
                 ? t.security.resetSending
                 : t.security.setOrResetPassword}
             </Button>
-            {requestPasswordReset.isSuccess ? (
-              <Typography variant="caption" component="p" data-testid="security-reset-sent">
-                {t.security.resetSent}
-              </Typography>
-            ) : null}
-            {requestPasswordReset.isError ? (
-              <Alert severity="error">{localizePanelError(requestPasswordReset.error, t)}</Alert>
-            ) : null}
           </Box>
         </Box>
 
@@ -1285,7 +1301,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const queryClient = useQueryClient();
   const routing = useQuery(actions.tenantRouting);
   const [draft, setDraft] = useState('');
-  const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  const [removedRedirectTo, setRemovedRedirectTo] = useState<string | null>(null);
   const invalidate = async () => {
     await queryClient.invalidateQueries(actions.tenantRoutingInvalidates());
   };
@@ -1294,7 +1310,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const removeDomain = useMutation({
     ...actions.removeTenantDomain,
     onSuccess: async (result) => {
-      setRedirectTo(result.redirectTo);
+      setRemovedRedirectTo(result.redirectTo);
       await invalidate();
     },
   });
@@ -1303,7 +1319,13 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
     mutation: { isPending: boolean; variables?: { domain: string } | undefined },
     domain: string,
   ): boolean => mutation.isPending && mutation.variables?.domain === domain;
-  const error = addDomain.error ?? checkDomain.error ?? removeDomain.error;
+  useToastOutcome(
+    addDomain.isSuccess,
+    t.common.saved,
+    addDomain.error === null ? null : domainErrorMessage(addDomain.error, t),
+  );
+  useToastError(checkDomain.error === null ? null : domainErrorMessage(checkDomain.error, t));
+  useToastError(removeDomain.error === null ? null : domainErrorMessage(removeDomain.error, t));
 
   if (routing.isError) {
     return (
@@ -1363,19 +1385,14 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
             </MuiLink>
           </Alert>
         )}
-        {error === null ? null : (
-          <Alert severity="error" data-testid="tenant-domain-error">
-            {domainErrorMessage(error, t)}
-          </Alert>
-        )}
-        {redirectTo === null ? null : (
+        <TenantRedirectsSection />
+        {removedRedirectTo === null ? null : (
           <Alert severity="info" data-testid="tenant-domain-redirect">
             {t.tenantDomains.removedRedirect}
             {' '}
-            <MuiLink href={redirectTo}>{redirectTo}</MuiLink>
+            <MuiLink href={removedRedirectTo}>{removedRedirectTo}</MuiLink>
           </Alert>
         )}
-        <TenantRedirectsSection />
         <Stack useFlexGap spacing="0.3rem">
           <Eyebrow>{t.tenantDomains.customDomains}</Eyebrow>
           {customDomains.length === 0 ? (

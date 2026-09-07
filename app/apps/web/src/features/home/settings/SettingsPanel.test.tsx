@@ -17,6 +17,7 @@ import {
   TENANT_OG_TITLE_MAX_LENGTH,
 } from '#core/domain/index.js';
 
+import { ToastProvider } from '../../../components/ui/Toast.js';
 import { FONT_MONO } from '../../../theme.js';
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
@@ -149,6 +150,7 @@ const installSettingsBackend = (
   initial: StoredSettings,
   spaces: StubSpace[] = [],
   courses: StubCourse[] | 'unavailable' = [],
+  removeRedirectTo: string | null = null,
 ) => {
   let settings = { ...initial };
   const updates: unknown[] = [];
@@ -214,7 +216,7 @@ const installSettingsBackend = (
       };
       return HttpResponse.json({
         ok: true,
-        data: { routing: routingState, redirectTo: null },
+        data: { routing: routingState, redirectTo: removeRedirectTo },
       });
     }),
     http.get('/api/spaces/staff', () =>
@@ -242,9 +244,10 @@ const renderPanel = (
   emailVerified = true,
   spaces: StubSpace[] = [],
   courses: StubCourse[] | 'unavailable' = [],
+  removeRedirectTo: string | null = null,
 ) => {
   const { updates, courseUpdates, domainCalls, redirectQueries } =
-    installSettingsBackend(initial, spaces, courses);
+    installSettingsBackend(initial, spaces, courses, removeRedirectTo);
 
   const rootRoute = createRootRoute();
   const settingsRoute = createRoute({
@@ -270,7 +273,11 @@ const renderPanel = (
     }),
   });
 
-  const { queryClient } = renderWithProviders(<RouterProvider router={router} />);
+  const { queryClient } = renderWithProviders(
+    <ToastProvider>
+      <RouterProvider router={router} />
+    </ToastProvider>,
+  );
 
   return { queryClient, router, updates, courseUpdates, domainCalls, redirectQueries };
 };
@@ -278,6 +285,12 @@ const renderPanel = (
 const openSettingsSection = async (label: string) => {
   await userEvent.click(await screen.findByRole('tab', { name: label }));
 };
+
+const findToast = async (kind: 'success' | 'error') =>
+  screen.findByTestId(new RegExp(`^toast-${kind}-`));
+
+const queryToast = (kind: 'success' | 'error') =>
+  screen.queryByTestId(new RegExp(`^toast-${kind}-`));
 
 afterEach(() => {
   window.history.replaceState(null, '', '/');
@@ -303,11 +316,13 @@ describe('SettingsPanel information architecture', () => {
   it('summarises the redirects in one line that links to their page', async () => {
     const { redirectQueries } = renderPanel();
 
+    await waitFor(() => {
+      expect(redirectQueries.map((query) => query.get('limit'))).toEqual(['0']);
+    });
     const summary = await screen.findByTestId('tenant-redirects-summary');
     expect(summary).toHaveTextContent(pl.tenantDomains.redirectsCount({ count: 686 }));
     expect(within(summary).getByRole('link', { name: `${pl.tenantDomains.redirectsManage} →` }))
       .toHaveAttribute('href', '/panel/settings/redirects');
-    expect(redirectQueries.map((query) => query.get('limit'))).toEqual(['0']);
   });
 
   it('keeps verified ownership beside pending routing and collapses active records', async () => {
@@ -439,7 +454,7 @@ describe('SettingsPanel information architecture', () => {
     await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.acme.example');
     await userEvent.click(screen.getByTestId('tenant-domain-add'));
 
-    expect(await screen.findByTestId('tenant-domain-error'))
+    expect(await findToast('error'))
       .toHaveTextContent(pl.tenantDomains.conflict);
   });
 
@@ -482,7 +497,7 @@ describe('SettingsPanel information architecture', () => {
     await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.acme.example');
     await userEvent.click(screen.getByTestId('tenant-domain-add'));
 
-    expect(await screen.findByTestId('tenant-domain-error'))
+    expect(await findToast('error'))
       .toHaveTextContent('Vercel: Domain is already in use by another project');
   });
 
@@ -553,6 +568,7 @@ describe('SettingsPanel information architecture', () => {
     expect(screen.getByTestId('dns-record-value-CNAME-sklep.acme.example'))
       .toHaveTextContent('cname.vercel-dns.com');
     expect(domainCalls).toEqual(['add:sklep.acme.example']);
+    expect(await findToast('success')).toHaveTextContent(pl.common.saved);
   });
 
   it('checks a pending domain and shows it as active', async () => {
@@ -566,6 +582,7 @@ describe('SettingsPanel information architecture', () => {
     });
     expect(domainCalls).toEqual(['check:nowa.acme.example']);
     expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiLink-root');
+    expect(queryToast('success')).not.toBeInTheDocument();
   });
 
   it('offers the record name and value as separate copy fields', async () => {
@@ -603,7 +620,8 @@ describe('SettingsPanel information architecture', () => {
 
   it('removes a domain only after the owner confirms', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const { domainCalls } = renderPanel();
+    const redirectTo = 'https://akademia.together.example/panel/settings';
+    const { domainCalls } = renderPanel(EMPTY_SETTINGS, true, [], [], redirectTo);
 
     await userEvent.click(await screen.findByTestId('tenant-domain-remove-kurs.acme.example'));
     expect(domainCalls).toEqual([]);
@@ -615,6 +633,11 @@ describe('SettingsPanel information architecture', () => {
       expect(screen.queryByTestId('tenant-domain-kurs.acme.example')).not.toBeInTheDocument();
     });
     expect(domainCalls).toEqual(['remove:kurs.acme.example']);
+    const redirect = await screen.findByTestId('tenant-domain-redirect');
+    expect(redirect).toHaveTextContent(pl.tenantDomains.removedRedirect);
+    expect(within(redirect).getByRole('link', { name: redirectTo }))
+      .toHaveAttribute('href', redirectTo);
+    expect(queryToast('success')).not.toBeInTheDocument();
     confirm.mockRestore();
   });
 
@@ -739,7 +762,7 @@ describe('SettingsPanel security', () => {
     expect(await screen.findByText(pl.emailVerification.pending({ email: 'creator3@together.dev' })))
       .toBeInTheDocument();
     await userEvent.click(screen.getByTestId('resend-verification-email'));
-    expect(await screen.findByText(pl.emailVerification.sent)).toBeInTheDocument();
+    expect(await findToast('success')).toHaveTextContent(pl.emailVerification.sent);
     expect(body).toEqual({
       email: 'creator3@together.dev',
       callbackURL: 'http://localhost:3000/login?verification=verified',
@@ -763,7 +786,7 @@ describe('SettingsPanel security', () => {
     await userEvent.click(screen.getByTestId('change-revoke-sessions'));
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
-    expect(await screen.findByTestId('change-password-success')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.changePassword.success,
     );
     expect(body).toEqual({
@@ -788,7 +811,7 @@ describe('SettingsPanel security', () => {
 
     await userEvent.click(await screen.findByTestId('passkey-set-password'));
 
-    expect(await screen.findByTestId('passkey-password-setup-sent')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.security.resetSent,
     );
     expect(body).toEqual({
@@ -807,7 +830,7 @@ describe('SettingsPanel legal documents', () => {
     await userEvent.type(screen.getByTestId('legal-privacy-url'), 'https://akademia.test/prywatnosc');
     await userEvent.click(screen.getByTestId('legal-save'));
 
-    expect(await screen.findByTestId('legal-saved')).toHaveTextContent(pl.legal.saved);
+    expect(await findToast('success')).toHaveTextContent(pl.legal.saved);
     expect(updates).toContainEqual({
       termsUrl: 'https://akademia.test/regulamin',
       privacyUrl: 'https://akademia.test/prywatnosc',
@@ -828,7 +851,7 @@ describe('SettingsPanel legal documents', () => {
     await userEvent.clear(termsInput);
     await userEvent.click(screen.getByTestId('legal-save'));
 
-    expect(await screen.findByTestId('legal-saved')).toBeInTheDocument();
+    expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual({ termsUrl: null, privacyUrl: null });
   });
 });
@@ -866,7 +889,7 @@ describe('SettingsPanel public access', () => {
     await userEvent.click(screen.getByTestId('public-access-save'));
 
     await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: null }));
-    expect(await screen.findByTestId('public-access-status')).toHaveTextContent(pl.publicAccess.saved);
+    expect(await findToast('success')).toHaveTextContent(pl.publicAccess.saved);
   });
 
   it('keeps a dormant home space when the section is saved for other reasons', async () => {
@@ -1047,7 +1070,7 @@ describe('SettingsPanel branding', () => {
     await userEvent.type(screen.getByTestId('branding-favicon-url'), 'https://cdn.example.com/favicon.svg');
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByTestId('branding-saved')).toHaveTextContent(pl.branding.saved);
+    expect(await findToast('success')).toHaveTextContent(pl.branding.saved);
     expect(updates).toContainEqual({
       name: 'Akademia',
       socialLinks: [],
@@ -1073,7 +1096,7 @@ describe('SettingsPanel branding', () => {
     );
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual({
       name: 'Akademia',
       socialLinks: [],
@@ -1121,7 +1144,7 @@ describe('SettingsPanel branding', () => {
     );
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual(expect.objectContaining({
       name: 'Akademia Praktyków',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@akademia' }],
@@ -1155,7 +1178,7 @@ describe('SettingsPanel branding', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('branding-accent-swatch')).toHaveStyle({ backgroundColor: '#0E7490' });
-    }, { timeout: 5_000 });
+    });
   }, BRANDING_TEST_TIMEOUT);
 
   it('rejects a malformed accent color without calling the API', async () => {
@@ -1166,7 +1189,7 @@ describe('SettingsPanel branding', () => {
     await userEvent.click(screen.getByTestId('branding-save'));
 
     expect(await screen.findByText(pl.branding.accentInvalid)).toBeInTheDocument();
-    expect(screen.queryByTestId('branding-saved')).not.toBeInTheDocument();
+    expect(queryToast('success')).not.toBeInTheDocument();
     expect(updates).toHaveLength(0);
   }, BRANDING_TEST_TIMEOUT);
 
@@ -1186,7 +1209,7 @@ describe('SettingsPanel branding', () => {
     await userEvent.clear(screen.getByTestId('branding-accent-color'));
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual({
       name: 'Akademia',
       socialLinks: [],
@@ -1214,7 +1237,7 @@ describe('SettingsPanel branding', () => {
     );
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual(expect.objectContaining({
       logoUrl: 'https://cdn.example.com/light.svg',
       logoDarkUrl: 'https://cdn.example.com/dark.svg',
@@ -1246,7 +1269,7 @@ describe('SettingsPanel branding', () => {
     await userEvent.click(await screen.findByTestId('branding-logo-dark-url-remove'));
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual(expect.objectContaining({
       logoUrl: 'https://cdn.example.com/light.svg',
       logoDarkUrl: null,
@@ -1288,7 +1311,7 @@ describe('SettingsPanel branding', () => {
     await userEvent.type(shareImageInput, 'https://cdn.example.com/share.png');
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual(expect.objectContaining({
       ogImageUrl: 'https://cdn.example.com/share.png',
     }));

@@ -134,7 +134,6 @@ const renderSidebar = async (currentLessonId: string | null) => {
         courseId="course-1"
         currentLessonId={currentLessonId}
         tenantName="Acme"
-        variant="drawer"
       />
     ),
   });
@@ -267,13 +266,18 @@ describe('CourseSidebar', () => {
     expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-back'));
   });
 
-  it('keeps notifications and the account within reach while the course owns the bar', async () => {
+  it('ends with the lesson tree, leaving notifications and the account to the app bar', async () => {
     server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
 
-    await renderSidebar('l2');
+    const { container } = await renderSidebar('l2');
 
-    expect(await screen.findByText(pl.notifications.bell)).toBeInTheDocument();
-    expect(screen.getByTestId('course-sidebar-account')).toHaveAttribute('href', '/account');
+    expect(await screen.findByTestId('course-tree')).toBeInTheDocument();
+    expect(screen.queryByText(pl.notifications.bell)).toBeNull();
+    expect(screen.queryByText(pl.account.menuAccount)).toBeNull();
+    expect(screen.queryByTestId('course-sidebar-account')).toBeNull();
+    expect(screen.queryByTestId('member-identity')).toBeNull();
+    expect(container.querySelectorAll('a[href="/account"]')).toHaveLength(0);
+    expect(container.querySelectorAll('a[href="/notifications"]')).toHaveLength(0);
   });
 
   it('links to the space of the course below the overview entry', async () => {

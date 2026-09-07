@@ -31,6 +31,7 @@ import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
 import { LogoImage } from '../../components/ui/LogoImage.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { EmailLanguageSwitcher } from '../../EmailLanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
@@ -38,7 +39,7 @@ import { actions } from '../../api.js';
 import { AppShell, BrandLoader, StatusView } from '../../components/layout/index.js';
 import { localizePanelError, useTranslations, type Messages } from '../../i18n/index.js';
 import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
-import { tenantHue } from '../../lib/tenant.js';
+import { deterministicHue } from '../../lib/hue.js';
 import { applyBranding } from '../../theme-branding.js';
 import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
 import {
@@ -49,7 +50,6 @@ import {
   PanelNavItem,
 } from '../../theme.js';
 import {
-  AccountIcon,
   CouponsIcon,
   CoursesIcon,
   DashboardIcon,
@@ -63,6 +63,7 @@ import {
   MarketingSendsIcon,
   MembersIcon,
   MenuIcon,
+  MessagesIcon,
   ProductsIcon,
   ReportsIcon,
   SalesIcon,
@@ -394,17 +395,23 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
 };
 
 const UserMenu = ({
+  name,
   email,
+  avatarUrl,
   role,
   onSignOut,
   pending,
 }: {
+  name: string;
   email: string;
+  avatarUrl: string | null;
   role: PanelTenant['staffRole'];
   onSignOut: () => void;
   pending: boolean;
 }) => {
   const t = useTranslations();
+  const settings = useQuery(actions.tenantSettings);
+  const messagesEnabled = settings.data?.settings.directMessagesEnabled !== false;
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
 
@@ -419,9 +426,9 @@ const UserMenu = ({
           aria-haspopup="true"
           aria-expanded={open ? true : undefined}
           onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
-          sx={{ minHeight: '44px', minWidth: '44px' }}
+          sx={{ minHeight: '48px', minWidth: '48px' }}
         >
-          <AccountIcon />
+          <UserAvatar name={name} email={email} imageUrl={avatarUrl} />
         </IconButton>
       </Tooltip>
       <Menu
@@ -435,14 +442,27 @@ const UserMenu = ({
           list: { sx: { py: '0.35rem' } },
         }}
       >
-        <Box sx={{ px: '1rem', py: '0.75rem' }}>
-          <Eyebrow variant="overline" component="p">
-            {t.panel.signedInAs}
-          </Eyebrow>
-          <BreakAllText variant="body2" data-testid="user-menu-email">
-            {email}
-          </BreakAllText>
-          <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.625rem' }} />
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', px: '1rem', py: '0.75rem' }}>
+          <UserAvatar name={name} email={email} imageUrl={avatarUrl} size="lg" />
+          <Box sx={{ minWidth: 0 }}>
+            <Eyebrow variant="overline" component="p">
+              {t.panel.signedInAs}
+            </Eyebrow>
+            {name === '' ? null : (
+              <Typography variant="body2" component="p" noWrap data-testid="user-menu-name">
+                {name}
+              </Typography>
+            )}
+            <BreakAllText
+              variant="caption"
+              component="p"
+              color="text.secondary"
+              data-testid="user-menu-email"
+            >
+              {email}
+            </BreakAllText>
+            <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.625rem' }} />
+          </Box>
         </Box>
         <Divider />
         <Box sx={{ display: { xs: 'grid', sm: 'none' }, gap: '0.5rem', px: '1rem', py: '0.75rem' }}>
@@ -452,7 +472,34 @@ const UserMenu = ({
         <Divider sx={{ display: { xs: 'block', sm: 'none' } }} />
         <MenuItem
           component={Link}
+          to="/my/products"
+          data-testid="user-menu-products"
+          sx={{ minHeight: '44px', px: '1rem' }}
+          onClick={() => setAnchorEl(null)}
+        >
+          <ListItemIcon>
+            <ProductsIcon />
+          </ListItemIcon>
+          <ListItemText primary={t.student.myProducts} />
+        </MenuItem>
+        {messagesEnabled ? (
+          <MenuItem
+            component={Link}
+            to="/messages"
+            data-testid="user-menu-messages"
+            sx={{ minHeight: '44px', px: '1rem' }}
+            onClick={() => setAnchorEl(null)}
+          >
+            <ListItemIcon>
+              <MessagesIcon />
+            </ListItemIcon>
+            <ListItemText primary={t.messages.navLabel} />
+          </MenuItem>
+        ) : null}
+        <MenuItem
+          component={Link}
           to="/account"
+          data-testid="user-menu-account"
           sx={{ minHeight: '44px', px: '1rem' }}
           onClick={() => setAnchorEl(null)}
         >
@@ -480,7 +527,12 @@ const UserMenu = ({
   );
 };
 
-const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) => {
+const PanelShell = ({ tenant, name, email, avatarUrl }: {
+  tenant: PanelTenant;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+}) => {
   const t = useTranslations();
   const theme = useTheme();
   const navigate = useNavigate();
@@ -568,9 +620,11 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
             <ColorSchemeSwitcher compact />
             <EmailLanguageSwitcher />
           </Box>
-          <NotificationBell />
+          <NotificationBell viewAllTo="/panel/notifications" />
           <UserMenu
+            name={name}
             email={email}
+            avatarUrl={avatarUrl}
             role={tenant.staffRole}
             pending={signOut.isPending}
             onSignOut={() => signOut.mutate()}
@@ -661,7 +715,7 @@ export const PanelLayout = () => {
   const branding = useTenantBranding();
   const theme = useMemo(
     () => applyBranding(
-      createThemeForMode('shadcn', tenant ? tenantHue(tenant.slug) : 0, resolvedScheme),
+      createThemeForMode('shadcn', tenant ? deterministicHue(tenant.slug) : 0, resolvedScheme, 'studio'),
       branding,
     ),
     [tenant, branding, resolvedScheme],
@@ -686,7 +740,12 @@ export const PanelLayout = () => {
   return (
     <ThemeProvider theme={theme}>
       <PanelContextProvider value={{ tenant, email: me.data.email, emailVerified: me.data.emailVerified }}>
-        <PanelShell tenant={tenant} email={me.data.email} />
+        <PanelShell
+          tenant={tenant}
+          name={me.data.name}
+          email={me.data.email}
+          avatarUrl={me.data.avatarUrl}
+        />
       </PanelContextProvider>
     </ThemeProvider>
   );

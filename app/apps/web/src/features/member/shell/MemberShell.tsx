@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Alert, AppBar, Box, Button, IconButton, Toolbar, useMediaQuery } from '@mui/material';
+import { Alert, AppBar, Box, Button, IconButton, Toolbar, Tooltip, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useRouterState } from '@tanstack/react-router';
@@ -14,7 +14,8 @@ import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitch
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
-import { useViewerKind } from '../viewer.js';
+import { StudioIcon } from '../account-icons.js';
+import { useCanOpenStudio, useViewerKind } from '../viewer.js';
 import { AnonShell } from './AnonShell.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { ImpersonationBanner } from './ImpersonationBanner.js';
@@ -38,6 +39,7 @@ export const MemberShell = () => {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const courseContext = courseContextFromPath(pathname);
   const [openSheet, setOpenSheet] = useState<'menu' | 'program' | null>(null);
+  const canOpenStudio = useCanOpenStudio();
 
   useEffect(() => {
     setOpenSheet(null);
@@ -69,7 +71,6 @@ export const MemberShell = () => {
       courseId={courseContext.courseId}
       currentLessonId={courseContext.lessonId}
       tenantName={identity.tenantName}
-      variant="drawer"
     />
   );
 
@@ -165,13 +166,30 @@ export const MemberShell = () => {
                   </Button>
                 </>
               ) : null}
-              {hasMobileNavigation ? <NotificationBell /> : null}
+              {canOpenStudio ? (
+                <Tooltip title={t.account.menuStudio}>
+                  <Button
+                    component={Link}
+                    to="/panel"
+                    color="inherit"
+                    size="small"
+                    startIcon={<StudioIcon />}
+                    data-testid="member-studio-link"
+                    sx={{ minHeight: '44px', minWidth: '44px', flexShrink: 0 }}
+                  >
+                    {t.account.menuStudio}
+                  </Button>
+                </Tooltip>
+              ) : null}
               <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
                 <ColorSchemeCycleButton />
               </Box>
-              <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
-                <MemberAccountMenu />
-              </Box>
+              {identity === null ? null : (
+                <>
+                  <NotificationBell />
+                  <MemberAccountMenu />
+                </>
+              )}
             </Toolbar>
             <ImpersonationBanner />
           </AppBar>

@@ -1,8 +1,8 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, Drawer, Typography } from '@mui/material';
+import { Box, ButtonBase } from '@mui/material';
 import { styled } from '@mui/material/styles';
 
-import { PanelNavItem, type AsElement } from '../../../theme.js';
+import { PanelNavItem } from '../../../theme.js';
 
 export type ShellLinkProps = {
   component?: ElementType;
@@ -92,28 +92,7 @@ export const SidebarColumn = styled(Box)<{ component?: ElementType }>(({ theme }
   height: '100vh',
   display: 'flex',
   flexDirection: 'column',
-  backgroundColor: theme.palette.background.default,
+  backgroundColor: theme.palette.background.paper,
   borderRight: `1px solid ${theme.palette.divider}`,
 }));
 
-export const SheetDrawer = styled(Drawer)(({ theme }) => ({
-  '& .MuiDrawer-paper': {
-    backgroundColor: theme.palette.background.paper,
-    borderRight: 'none',
-    borderTop: `1px solid ${theme.palette.divider}`,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    maxHeight: '80vh',
-    paddingBottom: 'env(safe-area-inset-bottom)',
-  },
-}));
-
-export const SheetHeader = styled(Box)(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-  padding: '12px 10px 8px',
-  borderBottom: `1px solid ${theme.palette.divider}`,
-}));
-
-export const SheetTitle = styled(Typography)<AsElement>({ fontWeight: 600 });

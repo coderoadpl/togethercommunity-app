@@ -18,8 +18,7 @@ import { actions } from '../../../api.js';
 import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
-import { CoverImage } from '../../../components/ui/CoverImage.js';
-import { BreakAnywhereText, Eyebrow, FinePrint, VersionDiffRow } from '../../../theme.js';
+import { BreakAnywhereText, CoverImageElement, Eyebrow, FinePrint, VersionDiffRow } from '../../../theme.js';
 
 type PreviewValue = VersionPreview['fields'][number]['value'];
 
@@ -43,7 +42,7 @@ const FieldValue = ({ value, t, language }: { value: PreviewValue; t: Messages; 
     ) : (
       <Stack useFlexGap spacing="0.35rem">
         <Box sx={{ maxWidth: '12rem' }}>
-          <CoverImage src={value.url} alt="" />
+          <CoverImageElement frame="card" src={value.url} alt="" />
         </Box>
         <BreakAnywhereText component="p" variant="caption">
           {value.url}

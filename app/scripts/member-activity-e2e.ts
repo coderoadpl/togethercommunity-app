@@ -191,6 +191,8 @@ const setEnglish = async (context: BrowserContext): Promise<void> => {
 const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 15000 });
+  await page.goto(`${baseUrl}/panel`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
 };
 
@@ -259,7 +261,7 @@ const runEventJourney = async (
   assert(eventNotification !== undefined, 'Member A did not receive the space-event notification');
 
   await memberPage.goto(`${baseUrl}/notifications`, { waitUntil: 'domcontentloaded' });
-  await memberPage.getByTestId(`notification-open-${eventNotification.id}`).click();
+  await memberPage.getByTestId(`notification-${eventNotification.id}`).click();
   await memberPage.waitForURL(`**/community/${studioSpaceId}/events/${event.id}`, { timeout: 15000 });
   await memberPage.getByTestId('event-live-embed').waitFor({ state: 'visible', timeout: 15000 });
   assert(
@@ -440,7 +442,7 @@ const runDirectMessageJourney = async (
   const notification = unreadDmNotifications[0];
   assert(notification !== undefined, 'Collapsed DM notification was unavailable');
   await memberAPage.goto(`${baseUrl}/notifications`, { waitUntil: 'domcontentloaded' });
-  await memberAPage.getByTestId(`notification-open-${notification.id}`).click();
+  await memberAPage.getByTestId(`notification-${notification.id}`).click();
   await memberAPage.waitForURL(`**/messages/${conversationId}`, { timeout: 15000 });
   await memberAPage.getByText(replies[2] ?? '', { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
 

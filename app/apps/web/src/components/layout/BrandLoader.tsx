@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from 'react';
 import { Box, Stack, Typography, useMediaQuery } from '@mui/material';
-import { keyframes, useTheme } from '@mui/material/styles';
+import { keyframes, styled, useTheme } from '@mui/material/styles';
 
 const markPulse = keyframes({
   '0%, 100%': { transform: 'scale(0.92)' },
@@ -11,6 +11,10 @@ const glowBreath = keyframes({
   '0%, 100%': { opacity: 0.55 },
   '50%': { opacity: 1 },
 });
+
+const LoaderStack = styled(Stack, { shouldForwardProp: (prop) => prop !== 'viewport' })<{
+  viewport: boolean;
+}>(({ theme, viewport }) => (viewport ? { backgroundColor: theme.palette.background.default } : {}));
 
 interface BrandLoaderProps {
   caption?: ReactNode;
@@ -29,7 +33,8 @@ export const BrandLoader = ({
   const viewport = scope === 'viewport';
 
   return (
-    <Stack
+    <LoaderStack
+      viewport={viewport}
       role="status"
       aria-live="polite"
       aria-busy="true"
@@ -103,6 +108,6 @@ export const BrandLoader = ({
           {caption}
         </Typography>
       ) : null}
-    </Stack>
+    </LoaderStack>
   );
 };

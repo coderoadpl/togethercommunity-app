@@ -93,6 +93,20 @@ describe('query error reporting', () => {
     expect(reportError).not.toHaveBeenCalled();
   });
 
+  it('does not report an expected anonymous me query', async () => {
+    const error = new ApiError({ code: 'unauthorized', message: 'Sign in' });
+
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ['me'],
+        queryFn: () => failingQuery(error),
+        retry: false,
+      }),
+    ).rejects.toThrow('Sign in');
+
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
   it('reports other query failures', async () => {
     const error = new ApiError({ code: 'tenant_not_found', message: 'Unknown tenant' });
 

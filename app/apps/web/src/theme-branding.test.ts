@@ -2,10 +2,22 @@ import { describe, expect, it } from 'vitest';
 
 import type { TenantBranding } from '#core/domain/index.js';
 
-import { applyBranding, contrastRatio, deriveBrandPalette } from './theme-branding.js';
+import {
+  accentGradient,
+  accentOnSurface,
+  applyBranding,
+  contrastRatio,
+  deriveBrandPalette,
+  deterministicAccent,
+} from './theme-branding.js';
 import { createThemeForMode, MODES } from './theme.js';
 
 const ACCENT = '#0E7490';
+const ACCENTS = [ACCENT, '#F5C842', '#4F46E5', '#E8682A', '#000000', '#ffffff'];
+const SCHEMES = ['light', 'dark'] as const;
+const SURFACES = ['member', 'studio'] as const;
+const AA_MIN = 4.5;
+const NON_TEXT_MIN = 3;
 
 const branding = (accentColor: string | null): TenantBranding => ({
   logoUrl: null,
@@ -15,12 +27,15 @@ const branding = (accentColor: string | null): TenantBranding => ({
 });
 
 describe('applyBranding', () => {
-  it('returns the untouched theme instance for every mode when there is no branding', () => {
+  it('leaves the palette alone for every mode when there is no branding', () => {
     for (const mode of MODES) {
       const theme = createThemeForMode(mode.id);
-      expect(applyBranding(theme, null)).toBe(theme);
-      expect(applyBranding(theme, undefined)).toBe(theme);
-      expect(applyBranding(theme, branding(null))).toBe(theme);
+      for (const unbranded of [null, undefined, branding(null)]) {
+        const result = applyBranding(theme, unbranded);
+        expect(result.palette).toBe(theme.palette);
+        expect(result.focusRing).toBe(theme.focusRing);
+        expect(result.accentInk).toBe(theme.palette.primary.contrastText);
+      }
     }
   });
 
@@ -33,13 +48,8 @@ describe('applyBranding', () => {
       expect(branded.palette.primary.main).toBe(derived.main);
       expect(branded.palette.primary.dark).toBe(derived.dark);
       expect(branded.palette.primary.contrastText).toBe(derived.contrastText);
-      if (mode.id === 'shadcn') {
-        expect(branded.palette.secondary).toMatchObject(derived);
-        expect(branded.primaryActive).toBe(derived.light);
-      } else {
-        expect(branded.palette.secondary).toBe(theme.palette.secondary);
-        expect(branded.primaryActive).toBeUndefined();
-      }
+      expect(branded.palette.secondary).toBe(theme.palette.secondary);
+      expect(branded.primaryActive).toBe(mode.id === 'shadcn' ? derived.light : undefined);
     }
   });
 
@@ -69,8 +79,70 @@ describe('applyBranding', () => {
     const theme = createThemeForMode('shadcn');
     const derived = deriveBrandPalette(ACCENT);
     expect(theme.focusRing).toBeDefined();
-    expect(applyBranding(theme, branding(ACCENT)).focusRing).toBe(derived.main);
+    expect(applyBranding(theme, branding(ACCENT)).focusRing).toBe(
+      accentOnSurface(derived.main, theme.palette.background.default),
+    );
     expect(theme.focusRing).not.toBe(derived.main);
+  });
+
+  it('keeps the focus ring perceivable on the page and inside cards for any accent', () => {
+    for (const scheme of SCHEMES) {
+      for (const surface of SURFACES) {
+        const theme = createThemeForMode('shadcn', undefined, scheme, surface);
+        for (const accent of ACCENTS) {
+          const ring = applyBranding(theme, branding(accent)).focusRing ?? '';
+          const where = `${scheme}/${surface}/${accent}`;
+          expect([where, contrastRatio(ring, theme.palette.background.default) >= NON_TEXT_MIN])
+            .toEqual([where, true]);
+          expect([where, contrastRatio(ring, theme.palette.background.paper) >= NON_TEXT_MIN])
+            .toEqual([where, true]);
+        }
+      }
+    }
+  });
+
+  it('moves the accent onto primary on the member and the creator surface alike', () => {
+    for (const scheme of SCHEMES) {
+      const derived = deriveBrandPalette(ACCENT, scheme);
+      for (const surface of SURFACES) {
+        const theme = createThemeForMode('shadcn', undefined, scheme, surface);
+        const branded = applyBranding(theme, branding(ACCENT));
+        expect([surface, branded.palette.primary.main]).toEqual([surface, derived.main]);
+        expect([surface, branded.brandAccent]).toEqual([surface, derived.main]);
+      }
+    }
+  });
+
+  it('pairs every accent with a label ink and a page ink that clear AA', () => {
+    for (const scheme of SCHEMES) {
+      const member = createThemeForMode('shadcn', undefined, scheme, 'member');
+      for (const accent of ACCENTS) {
+        const branded = applyBranding(member, branding(accent));
+        expect([accent, contrastRatio(branded.palette.primary.main, branded.accentInk ?? '') >= AA_MIN])
+          .toEqual([accent, true]);
+        expect([accent, contrastRatio(branded.accentText ?? '', branded.palette.background.default) >= AA_MIN])
+          .toEqual([accent, true]);
+      }
+    }
+  });
+});
+
+describe('accentGradient', () => {
+  it('reads the cover title at AA on both stops, for any accent a tenant can pick', () => {
+    for (const accent of ACCENTS) {
+      const { from, to, ink } = accentGradient(accent);
+      expect([accent, contrastRatio(ink, from) >= AA_MIN]).toEqual([accent, true]);
+      expect([accent, contrastRatio(ink, to) >= AA_MIN]).toEqual([accent, true]);
+    }
+  });
+
+  it('reads the cover title at AA on every hue the title hash can produce', () => {
+    for (let hue = 0; hue < 360; hue += 1) {
+      const accent = deterministicAccent(String.fromCodePoint(hue));
+      const { from, to, ink } = accentGradient(accent);
+      const worst = Math.min(contrastRatio(ink, from), contrastRatio(ink, to));
+      expect([hue, worst >= AA_MIN]).toEqual([hue, true]);
+    }
   });
 });
 

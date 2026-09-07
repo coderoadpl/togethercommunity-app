@@ -7,7 +7,7 @@ import { ApiError } from '#core/client/index.js';
 import type { PublicDmMessage } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatRelativeTime } from '../../../lib/format.js';
 import {
@@ -133,9 +133,9 @@ export const ConversationPage = ({ conversationId }: { conversationId: string })
     >
       <Stack useFlexGap sx={{ rowGap: '1.25rem' }} data-testid="conversation-page">
         <Stack direction="row" useFlexGap sx={{ columnGap: '0.6rem', alignItems: 'center' }}>
-          <MemberAvatar
+          <UserAvatar
             name={conversation.otherParticipant.display}
-            avatarUrl={conversation.otherParticipant.avatarUrl}
+            imageUrl={conversation.otherParticipant.avatarUrl}
             size="sm"
           />
           {conversation.otherParticipant.isStaff ? (

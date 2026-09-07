@@ -516,7 +516,13 @@ export interface NotificationRepository {
   insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;
   listForRecipient(
     tenantId: string,
-    query: { recipientUserId: string; cursor?: string; limit: number; excludeDms?: boolean },
+    query: {
+      recipientUserId: string;
+      cursor?: string;
+      limit: number;
+      excludeDms?: boolean;
+      unreadOnly?: boolean;
+    },
   ): Promise<{ notifications: Notification[]; nextCursor: string | null }>;
   markRead(tenantId: string, input: { id: string; recipientUserId: string; readAt: string }): Promise<Notification | null>;
   markAllRead(tenantId: string, input: { recipientUserId: string; readAt: string }): Promise<number>;

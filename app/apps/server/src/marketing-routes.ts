@@ -60,6 +60,7 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps, MarketingAppDeps } from './composition.js';
+import { readJson, requireJsonContentType } from './read-json.js';
 import {
   languageFromRequest,
   renderConfirmationPage,
@@ -143,8 +144,6 @@ const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps) => {
     unsubscribeBaseUrl: async (tenantId: string) => `${await resolveOrigin(tenantId)}/u`,
   };
 };
-
-const readJson = async (request: Request): Promise<unknown> => request.json().catch(() => null);
 
 const queryObject = (url: string): Record<string, string> => Object.fromEntries(new URL(url).searchParams.entries());
 
@@ -297,6 +296,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     if (!authenticated.ok) return response(authenticated);
     const authz = authorizeTenant(authenticated.value.ctx, 'marketing:message:send');
     if (!authz.ok) return response(authz);
+    requireJsonContentType(c.req.raw);
     const rawBody = await c.req.text();
     const idempotencyKey = c.req.header('Idempotency-Key');
     if (idempotencyKey !== undefined) {

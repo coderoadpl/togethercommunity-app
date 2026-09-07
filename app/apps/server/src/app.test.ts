@@ -3162,12 +3162,59 @@ describe('API envelope totality', () => {
 });
 
 describe('server edge security baseline', () => {
+  it.each([
+    null,
+    'text/plain',
+    'application/x-www-form-urlencoded',
+    'multipart/form-data; boundary=test',
+  ])('rejects owner secret mutations with %s content type', async (contentType) => {
+    const base = deps();
+    const upsert = vi.fn(base.tenantSecrets.upsert);
+    const app = scopedApp('owner', {
+      overrides: { tenantSecrets: { ...base.tenantSecrets, upsert } },
+    });
+    const response = await app.request(API_PATHS.tenantSecrets, {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        cookie: 'session=owner-session',
+        ...(contentType === null ? {} : { 'content-type': contentType }),
+      },
+      body: new TextEncoder().encode(JSON.stringify({ key: 'bunny.apiKey', value: 'replacement-secret' })),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'Content-Type must be application/json' },
+    });
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it.each(['application/json', 'application/json; charset=utf-8'])(
+    'permits owner secret mutations with %s', async (contentType) => {
+      const base = deps();
+      const upsert = vi.fn(base.tenantSecrets.upsert);
+      const app = scopedApp('owner', {
+        overrides: { tenantSecrets: { ...base.tenantSecrets, upsert } },
+      });
+      const response = await app.request(API_PATHS.tenantSecrets, {
+        method: 'POST',
+        headers: { host: 'acme.localhost:48730', 'content-type': contentType, cookie: 'session=owner-session' },
+        body: JSON.stringify({ key: 'bunny.apiKey', value: 'replacement-secret' }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(upsert).toHaveBeenCalledOnce();
+    },
+  );
+
   it('sets secure headers and keeps authenticated responses out of shared caches', async () => {
     const response = await deps({ authenticated: true });
     const app = buildApp(response);
     const result = await app.request(API_PATHS.health);
 
     expect(result.headers.get('content-security-policy')).toContain("default-src 'self'");
+    expect(result.headers.get('content-security-policy')).toContain("form-action 'self'");
     expect(result.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
     expect(result.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
     expect(result.headers.get('x-content-type-options')).toBe('nosniff');
@@ -3183,6 +3230,9 @@ describe('server edge security baseline', () => {
     const confirmation = await app.request('/marketing/confirm/confirmation_token_123456789012345');
     const legal = await app.request('/legal/terms');
 
+    for (const response of [panel, checkout, unsubscribe, confirmation, legal]) {
+      expect(response.headers.get('content-security-policy')).toContain("form-action 'self'");
+    }
     expect(panel.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
     expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
     for (const response of [unsubscribe, confirmation, legal]) {

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { HTTPException } from 'hono/http-exception';
 import { NONCE, secureHeaders } from 'hono/secure-headers';
 
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
@@ -58,6 +59,7 @@ export const buildApp = (deps: AppDeps) => {
         imgSrc: ["'self'", 'data:', 'https:'],
         frameSrc: ['https:'],
         objectSrc: ["'none'"],
+        formAction: ["'self'"],
         baseUri: ["'self'"],
         frameAncestors: ["'none'"],
       },
@@ -94,6 +96,7 @@ export const buildApp = (deps: AppDeps) => {
   });
   app.use('*', impersonationGuard(deps));
   app.onError((error) => {
+    if (error instanceof HTTPException) return error.getResponse();
     recordException(error);
     return respond(err(internal()));
   });

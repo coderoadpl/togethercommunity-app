@@ -87,8 +87,9 @@ are normalized to stable fixture values. Routing hosts use the storage golden's
 authoring port so CORS instructions stay reproducible. The pending and active DNS
 checklist stories share the synthetic routing scenario with the live screen
 inventory. The inherited active-named goldens contain the same cached pending
-response as the pending goldens; their baseline stories say Recorded Pending.
-Separate Active variants render the verified response. The remaining settings
+response as the pending goldens; the capture mapping reuses the pending story
+and its loaded document. Recorded Pending variants expose that fixture alongside
+separate Active variants rendering the verified response. The remaining settings
 and session data come from the seed. Page stories keep
 an `auto` theme preference; use browser color-scheme emulation for light captures or dark previews.
 

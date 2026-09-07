@@ -82,14 +82,21 @@ try {
         .sort((left, right) => SCREENS.findIndex((entry) => entry.name === left.name) - SCREENS.findIndex((entry) => entry.name === right.name));
       if (specs.length === 0) continue;
       const mode = 'light';
-      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1, colorScheme: mode, locale: 'pl-PL', timezoneId: 'UTC', reducedMotion: 'reduce' });
-      await applyChrome(context);
-      await stubNonDeterministicRequests(context);
-      const page = await context.newPage();
-      await page.clock.setFixedTime(new Date(visualSeedTime));
-      const errors: string[] = [];
-      page.on('pageerror', (error) => errors.push(error.message));
+      const createCapture = async () => {
+        const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1, colorScheme: mode, locale: 'pl-PL', timezoneId: 'UTC', reducedMotion: 'reduce' });
+        await applyChrome(context);
+        await stubNonDeterministicRequests(context);
+        const page = await context.newPage();
+        await page.clock.setFixedTime(new Date(visualSeedTime));
+        const errors: string[] = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        return { context, page, errors };
+      };
+      const sharedCapture = await createCapture();
       for (const spec of specs) {
+        // Isolate the course editor from rounded-shadow caches populated by earlier pages.
+        const capture = spec.name === 'panel-course' ? await createCapture() : sharedCapture;
+        const { page, errors } = capture;
         const screen = spec.name;
         const id = pageStoryId(screen, viewport.name);
         errors.length = 0;
@@ -126,8 +133,9 @@ try {
         measurements.push(result);
         writeFileSync(join(output, 'measurements.json'), JSON.stringify({ browserVersion, milliseconds: Date.now() - startedAt, measurements }, null, 2));
         console.log(`${file}: ${result.comparison}; byte-identical=${byteIdentical}${failure ? `; ${failure}` : ''}${errors.length > 0 ? `; ${errors.join('; ')}` : ''}`);
+        if (capture !== sharedCapture) await capture.context.close();
       }
-      await context.close();
+      await sharedCapture.context.close();
     }
   }
   if (updateMode && process.exitCode !== 1) {

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const pixelmatchCli = require.resolve('pixelmatch/bin/pixelmatch');
@@ -47,6 +47,12 @@ export const comparePng = ({
       file,
       reason: `size mismatch: baseline ${baseline.width}x${baseline.height} vs current ${current.width}x${current.height}`,
     };
+  }
+
+  if (readFileSync(baselinePath).equals(readFileSync(currentPath))) {
+    rmSync(diffPath, { force: true });
+    onCompared?.(0);
+    return null;
   }
 
   const result = spawnSync(

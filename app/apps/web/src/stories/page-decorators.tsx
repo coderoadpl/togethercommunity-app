@@ -39,7 +39,7 @@ const PageRoot = () => <><LanguageSwitcher /><Outlet /></>;
 
 const PanelDashboard = () => { const { tenant, email } = usePanelContext(); return <><DashboardPanel /><StudioChecklistDock scope={`${tenant.id}:${email}`} /></>; };
 
-const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl') });
+const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl'), preloadFonts: z.boolean().optional() });
 const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> }) => {
   const [state] = useState(() => {
     const fixture = selectFixture(parameters.fixture);
@@ -141,9 +141,16 @@ const ClockBoundary = ({ parameters }: { parameters: z.infer<typeof pageParamete
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const restore = installStoryClock();
-    setReady(true);
-    return restore;
-  }, []);
+    let disposed = false;
+    if (parameters.preloadFonts ?? parameters.fixture.route.startsWith('/panel')) {
+      void Promise.all([...document.fonts]
+        .filter((font) => font.family.includes('Inter') || font.family.includes('Poppins'))
+        .map((font) => font.load())).then(() => {
+        if (!disposed) setReady(true);
+      });
+    } else setReady(true);
+    return () => { disposed = true; restore(); };
+  }, [parameters.fixture.route, parameters.preloadFonts]);
   return ready ? <PageStory parameters={parameters} /> : null;
 };
 export const withPage: Decorator = (_Story, context) => <ClockBoundary key={context.id} parameters={pageParameters.parse(context.parameters)} />;

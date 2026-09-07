@@ -65,6 +65,8 @@ export const serverHtmlScreenNames = new Set([
 ]);
 
 export const pageStoryId = (screen: string, viewport: string): string => {
+  // The active-named goldens came from a same-document navigation that retained pending DNS.
+  if (screen === 'panel-settings-domains-active') return `panel-settings-domains--shadcn--${viewport}`;
   const title = { lesson: 'lessonplayer', start: 'start', 'space-feed': 'spacefeed', 'hosted-legal-document': 'hostedlegaldocument' }[screen];
   return title ? `pages-${title}--light-${viewport === 'desktop' ? 'desktop' : 'mobile'}` : `${screen}--shadcn--${viewport}`;
 };

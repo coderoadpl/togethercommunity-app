@@ -20,22 +20,35 @@ only. `scripts/storybook-page-screens.ts` maps screens to story IDs, including
 the original Start, LessonPlayer, SpaceFeed and hosted legal document IDs.
 Every mapped viewport must exist in Storybook's built index. Every committed
 PNG must be covered; a missing story, missing golden or unmapped golden fails.
+The inherited active-named DNS goldens repeat the pending DNS capture after a
+same-document navigation. Both map to the pending story to preserve that page
+state; verified DNS has separate Active stories.
 
 The harness fixes Date to the recording time and sets locale to `pl-PL`,
 timezone to UTC, color scheme to light, scale to 1 and reduced motion. It shares
 the live harness's request policy, stream suppression, font readiness and
 animation freezing. Each story must finish its fixture calls and queries before capture; fonts and
-image decoding also settle before screenshots. The lesson-attachment scenario explicitly scrolls its HTML
-field to the recorded end position. Server HTML stories render the production HTML in a nested iframe;
+image decoding also settle before screenshots. Panel stories load their shell
+fonts before mounting to reproduce navigation within an already loaded panel.
+The email integration story preserves the initial font-loading sequence used
+by its recorded tab-underline measurement through `preloadFonts: false`.
+The lesson-attachment scenario explicitly scrolls its HTML
+field to the recorded end position. DNS fixtures open settings without an initial
+hash jump; the harness scrolls to the domain section after fonts settle so the
+sticky sidebar is first painted at the top of the document. Server HTML stories render the production HTML in a nested iframe;
 the harness waits for that document and its fonts. Captures run sequentially,
 once, with no retries. Each viewport/auth group reuses a page in inventory order, matching the
-golden authoring harness and its rounded-shadow paint caches. The shared browser
+golden authoring harness and its rounded-shadow paint caches. The course editor
+uses an isolated context so unrelated pages cannot change its upload-button shadow
+rasterization. The shared browser
 setup saves native animation-frame scheduling before Playwright installs its
 clock. Capture waits use those native frames, so paint readiness remains tied
 to rendering while application timers retain the authoring clock behavior.
 
 Pixelmatch uses threshold 0, excludes anti-aliasing and allows at most 10 counted
-pixels. Migration acceptance is stricter: each converted capture must report
+pixels. Byte-identical PNGs pass immediately with zero counted pixels and clear
+any stale diff image; every non-identical PNG still runs through Pixelmatch.
+Migration acceptance is stricter: each converted capture must report
 0 counted pixels, preferably identical bytes. Any residual pixels and their
 cause must be listed in the pull request. Browser errors, unexpected fixture
 calls, unexercised expected errors, unresolved queries and suspiciously small

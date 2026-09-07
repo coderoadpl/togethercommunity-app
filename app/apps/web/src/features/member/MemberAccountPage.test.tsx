@@ -427,6 +427,7 @@ describe('MemberAccountPage', () => {
   });
 
   it('keeps support submission inactive until both fields are filled and resets after success', async () => {
+    const user = userEvent.setup();
     let body: unknown;
     server.use(
       stubMe(),
@@ -443,7 +444,8 @@ describe('MemberAccountPage', () => {
     expect(send).toBeDisabled();
     await userEvent.type(screen.getByLabelText(pl.support.subjectLabel), 'Problem z lekcją');
     expect(send).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(pl.support.bodyLabel), 'Nie mogę uruchomić nagrania.');
+    await user.click(screen.getByLabelText(pl.support.bodyLabel));
+    await user.paste('Nie mogę uruchomić nagrania.');
     expect(send).toBeEnabled();
     await userEvent.click(send);
 

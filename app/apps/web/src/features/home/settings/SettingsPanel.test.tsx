@@ -1038,13 +1038,16 @@ const BRANDING_TEST_TIMEOUT = 10_000;
 
 describe('SettingsPanel branding', () => {
   it('saves logo, accent color and favicon through the settings endpoint', async () => {
+    const user = userEvent.setup();
     const { updates } = renderPanel();
     await openSettingsSection(pl.settingsNavigation.brand);
 
     expect(await screen.findAllByRole('button', { name: pl.imageAssets.upload })).toHaveLength(4);
-    await userEvent.type(await screen.findByTestId('branding-logo-url'), 'https://cdn.example.com/logo.svg');
+    await user.click(await screen.findByTestId('branding-logo-url'));
+    await user.paste('https://cdn.example.com/logo.svg');
     await userEvent.type(screen.getByTestId('branding-accent-color'), '#0E7490');
-    await userEvent.type(screen.getByTestId('branding-favicon-url'), 'https://cdn.example.com/favicon.svg');
+    await user.click(screen.getByTestId('branding-favicon-url'));
+    await user.paste('https://cdn.example.com/favicon.svg');
     await userEvent.click(screen.getByTestId('branding-save'));
 
     expect(await screen.findByTestId('branding-saved')).toHaveTextContent(pl.branding.saved);
@@ -1062,15 +1065,14 @@ describe('SettingsPanel branding', () => {
   }, BRANDING_TEST_TIMEOUT);
 
   it('saves and reloads social metadata through the settings endpoint', async () => {
+    const user = userEvent.setup();
     const { updates } = renderPanel();
     await openSettingsSection(pl.settingsNavigation.brand);
 
     await userEvent.type(await screen.findByTestId('branding-og-title'), 'Akademia Acme');
     await userEvent.type(screen.getByTestId('branding-og-description'), 'Praktyczna nauka');
-    await userEvent.type(
-      screen.getByTestId('branding-og-image-url'),
-      'https://cdn.example.com/social.png',
-    );
+    await user.click(screen.getByTestId('branding-og-image-url'));
+    await user.paste('https://cdn.example.com/social.png');
     await userEvent.click(screen.getByTestId('branding-save'));
 
     expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
@@ -1201,17 +1203,14 @@ describe('SettingsPanel branding', () => {
   }, BRANDING_TEST_TIMEOUT);
 
   it('saves the dark logo variant beside the light one', async () => {
+    const user = userEvent.setup();
     const { updates } = renderPanel();
     await openSettingsSection(pl.settingsNavigation.brand);
 
-    await userEvent.type(
-      await screen.findByTestId('branding-logo-url'),
-      'https://cdn.example.com/light.svg',
-    );
-    await userEvent.type(
-      screen.getByTestId('branding-logo-dark-url'),
-      'https://cdn.example.com/dark.svg',
-    );
+    await user.click(await screen.findByTestId('branding-logo-url'));
+    await user.paste('https://cdn.example.com/light.svg');
+    await user.click(screen.getByTestId('branding-logo-dark-url'));
+    await user.paste('https://cdn.example.com/dark.svg');
     await userEvent.click(screen.getByTestId('branding-save'));
 
     expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();

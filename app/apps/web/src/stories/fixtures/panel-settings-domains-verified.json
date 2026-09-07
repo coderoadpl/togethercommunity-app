@@ -452,7 +452,7 @@
     }
   },
   "principal": "creator@together.dev",
-  "route": "/panel/settings#domains",
+  "route": "/panel/settings",
   "scenario": "panel-settings-domains-verified",
   "tenant": "studio"
 }

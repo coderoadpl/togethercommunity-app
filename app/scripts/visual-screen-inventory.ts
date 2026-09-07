@@ -1,6 +1,7 @@
 import type { Locator, Page, Route } from 'playwright-core';
 import type { TenantRouting } from '#core/domain/index.js';
 import { API_PATHS } from '#core/contract/index.js';
+import { waitForPaint } from './visual-browser-setup.js';
 
 export const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900, scope: 'all' },
@@ -381,6 +382,9 @@ export const SCREENS: readonly ScreenSpec[] = [
     prepare: (page) => prepareDomainChecklist(page, active),
     ready: (page) => page.getByTestId('tenant-domain-courses.example.org').waitFor(visible),
     settled: async (page) => {
+      // The initial hash jump can precede font layout and leave stale sticky-layer pixels.
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await waitForPaint(page);
       await page.locator('#domains').evaluate((element) => element.scrollIntoView({ block: 'start' }));
     },
   })),

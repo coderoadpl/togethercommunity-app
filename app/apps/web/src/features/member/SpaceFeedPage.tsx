@@ -248,7 +248,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   if (space === undefined && locked !== undefined) {
     return (
-      <MemberSurface title={locked.name} eyebrow={t.community.feedEyebrow} width="prose">
+      <MemberSurface title={locked.name} eyebrow={t.community.feedEyebrow} width="wide">
         <Box data-testid="locked-space-view">
           <LockedSpaceCard space={locked} />
         </Box>

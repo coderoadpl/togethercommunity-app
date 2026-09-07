@@ -661,7 +661,7 @@ export const PanelLayout = () => {
   const branding = useTenantBranding();
   const theme = useMemo(
     () => applyBranding(
-      createThemeForMode('shadcn', tenant ? tenantHue(tenant.slug) : 0, resolvedScheme),
+      createThemeForMode('shadcn', tenant ? tenantHue(tenant.slug) : 0, resolvedScheme, 'studio'),
       branding,
     ),
     [tenant, branding, resolvedScheme],

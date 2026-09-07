@@ -1,30 +1,16 @@
 import type { ElementType } from 'react';
-import { Box, Button, ButtonBase, Link as MuiLink, OutlinedInput, Typography } from '@mui/material';
+import { Box, ButtonBase, Link as MuiLink, OutlinedInput, Typography } from '@mui/material';
 import { alpha, styled, type CSSObject, type PaletteMode, type Theme } from '@mui/material/styles';
 
-import { accentOnSurface } from '../../theme-branding.js';
-
-/**
- * Auth-local tokens: the surface raises its own borders and rings to the
- * non-text minimum without moving global theme tokens, so nothing here can
- * regress the signed-in app.
- */
-export const AUTH_BACKGROUND: Record<PaletteMode, string> = { light: '#F7F4EF', dark: '#0F1012' };
-export const AUTH_BORDER: Record<PaletteMode, string> = { light: '#8C8A85', dark: '#666B73' };
 const GLOW_OPACITY: Record<PaletteMode, number> = { light: 0.5, dark: 0.22 };
 
-const AUTH_TEXT_MIN = 4.5;
-
-export const authRing = (accent: string, mode: PaletteMode): string =>
-  accentOnSurface(accent, AUTH_BACKGROUND[mode]);
-
-export const authLinkInk = (accent: string, mode: PaletteMode): string =>
-  accentOnSurface(accent, AUTH_BACKGROUND[mode], AUTH_TEXT_MIN);
+/** The sign-in surface reads the member theme's accent tokens; it defines none of its own. */
+const authRing = (theme: Theme): string => theme.focusRing ?? theme.palette.primary.main;
 
 const authFocusRing = (theme: Theme): CSSObject => ({
   outlineWidth: 3,
   outlineStyle: 'solid',
-  outlineColor: authRing(theme.palette.primary.main, theme.palette.mode),
+  outlineColor: authRing(theme),
   outlineOffset: 2,
   boxShadow: 'none',
 });
@@ -42,7 +28,7 @@ export const AuthPage = styled(Box)<{ component?: ElementType }>(({ theme }) => 
   minHeight: '100dvh',
   display: 'flex',
   flexDirection: 'column',
-  backgroundColor: AUTH_BACKGROUND[theme.palette.mode],
+  backgroundColor: theme.palette.background.default,
   color: theme.palette.text.primary,
   ...authFocusScope(theme),
 }));
@@ -134,20 +120,10 @@ export const AuthHelp = styled(Typography)<{ component?: ElementType }>(({ theme
 
 export const AuthInput = styled(OutlinedInput)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
-  '& .MuiOutlinedInput-input': { fontSize: '1rem', padding: '0.7rem 0.9rem', minHeight: '1.6rem' },
-  '& .MuiOutlinedInput-notchedOutline': { borderColor: AUTH_BORDER[theme.palette.mode] },
+  '& .MuiOutlinedInput-input': { minHeight: '1.6rem' },
   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: theme.palette.text.secondary },
-  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-    borderWidth: 2,
-    borderColor: authRing(theme.palette.primary.main, theme.palette.mode),
-  },
+  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: 2 },
 }));
-
-export const AuthButton = styled(Button)<{
-  component?: ElementType;
-  href?: string;
-  to?: string;
-}>({ minHeight: 48 });
 
 export const AuthDivider = styled(Box)(({ theme }) => ({
   display: 'flex',
@@ -210,7 +186,7 @@ export const AuthMethodCard = styled('li', {
 })<{ featured?: boolean }>(({ theme, featured }) => ({
   borderRadius: 14,
   backgroundColor: theme.palette.background.paper,
-  border: `1px solid ${featured === true ? authRing(theme.palette.primary.main, theme.palette.mode) : AUTH_BORDER[theme.palette.mode]}`,
+  border: `1px solid ${featured === true ? authRing(theme) : theme.borderInput ?? theme.palette.divider}`,
 }));
 
 const methodHead: CSSObject = {
@@ -241,7 +217,7 @@ export const AuthMethodIcon = styled('span')(({ theme }) => ({
   height: 40,
   borderRadius: 10,
   backgroundColor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.14),
-  color: authRing(theme.palette.primary.main, theme.palette.mode),
+  color: theme.accentText ?? theme.palette.text.primary,
   '& .MuiSvgIcon-root': { fontSize: '1.375rem' },
 }));
 

@@ -2,6 +2,8 @@ import type { ElementType } from 'react';
 import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
+import { accentOnSurface, type AccentGradient } from './theme-branding.js';
+
 /**
  * The entire "engineer's logbook" visual language lives in this theme:
  * colors, fonts and component overrides. Pages only use MUI components
@@ -36,6 +38,12 @@ declare module '@mui/material/styles' {
     linkColor?: string;
     /** Present only when a tenant supplied an accent, so accent-driven decoration can opt out. */
     brandAccent?: string;
+    /** Input outline that clears the WCAG 1.4.11 non-text minimum against surface and background. */
+    borderInput?: string;
+    /** Label color on an accent fill. */
+    accentInk?: string;
+    /** Accent as type on the page background. */
+    accentText?: string;
   }
   interface ThemeOptions {
     headerRule?: string;
@@ -52,6 +60,9 @@ declare module '@mui/material/styles' {
     focusRing?: string;
     linkColor?: string;
     brandAccent?: string;
+    borderInput?: string;
+    accentInk?: string;
+    accentText?: string;
   }
 }
 
@@ -90,6 +101,27 @@ export const MODES = [
 type ThemeModeOption = (typeof MODES)[number];
 export type ThemeMode = ThemeModeOption['id'];
 export type ResolvedColorScheme = 'light' | 'dark';
+
+/**
+ * Member and creator surfaces share one base theme but not one control contract:
+ * the member flavour carries the sign-in tokens (warm cream / neutral ink page,
+ * perceivable input outlines, 48px controls, 44px touch targets), the studio
+ * flavour stays on the denser creator look.
+ */
+export type ThemeSurface = 'member' | 'studio';
+
+export const MEMBER_BACKGROUND: Record<ResolvedColorScheme, string> = {
+  light: '#F7F4EF',
+  dark: '#0F1012',
+};
+
+export const MEMBER_BORDER_INPUT: Record<ResolvedColorScheme, string> = {
+  light: '#8C8A85',
+  dark: '#666B73',
+};
+
+const CONTROL_MIN_HEIGHT = 48;
+const TOUCH_TARGET_MIN = 44;
 
 /**
  * Stock Material UI look. Only the per-tenant accent carries over as the
@@ -151,8 +183,9 @@ export const createThemeForMode = (
   mode: ThemeMode,
   accentHue?: number,
   scheme: ResolvedColorScheme = 'light',
+  surface: ThemeSurface = 'studio',
 ): Theme => {
-  if (scheme === 'dark') return createShadcnTheme('dark');
+  if (scheme === 'dark') return createShadcnTheme('dark', surface);
   switch (mode) {
     case 'logbook':
       return createAppTheme(accentHue);
@@ -161,7 +194,7 @@ export const createThemeForMode = (
     case 'scoreboard':
       return createScoreboardTheme();
     case 'shadcn':
-      return createShadcnTheme('light');
+      return createShadcnTheme('light', surface);
     case 'signal-mono':
       return createSignalMonoTheme();
     case 'steady-frame':
@@ -188,6 +221,7 @@ interface ShadcnTokens {
   disabledText: string;
   border: string;
   borderStrong: string;
+  borderInput: string;
   ember: string;
   emberHover: string;
   emberActive: string;
@@ -228,6 +262,7 @@ const SHADCN_LIGHT: ShadcnTokens = {
   disabledText: '#8A8781',
   border: '#E6E5E2',
   borderStrong: '#D6D4D0',
+  borderInput: '#E6E5E2',
   ember: '#E8682A',
   emberHover: '#DA5D22',
   emberActive: '#D8571F',
@@ -268,6 +303,7 @@ const SHADCN_DARK: ShadcnTokens = {
   disabledText: '#686C72',
   border: '#26282C',
   borderStrong: '#33363C',
+  borderInput: '#26282C',
   ember: '#E8682A',
   emberHover: '#EE7B40',
   emberActive: '#EE7B40',
@@ -295,8 +331,16 @@ const SHADCN_DARK: ShadcnTokens = {
   tooltipText: '#16171A',
 };
 
-const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
-  const tokens = scheme === 'dark' ? SHADCN_DARK : SHADCN_LIGHT;
+const MEMBER_TOKENS = (scheme: ResolvedColorScheme): Pick<ShadcnTokens, 'background' | 'input' | 'borderInput'> => ({
+  background: MEMBER_BACKGROUND[scheme],
+  input: scheme === 'dark' ? MEMBER_BACKGROUND[scheme] : '#FFFFFF',
+  borderInput: MEMBER_BORDER_INPUT[scheme],
+});
+
+const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 'studio'): Theme => {
+  const member = surface === 'member';
+  const base = scheme === 'dark' ? SHADCN_DARK : SHADCN_LIGHT;
+  const tokens: ShadcnTokens = member ? { ...base, ...MEMBER_TOKENS(scheme) } : base;
   const {
     background: SHADCN_BG,
     surface: SHADCN_SURFACE,
@@ -310,6 +354,7 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
     disabledText: SHADCN_DISABLED_TEXT,
     border: SHADCN_BORDER,
     borderStrong: SHADCN_BORDER_STRONG,
+    borderInput: SHADCN_BORDER_INPUT,
     ember: SHADCN_EMBER,
     emberHover: SHADCN_EMBER_HOVER,
     emberActive: SHADCN_EMBER_ACTIVE,
@@ -338,7 +383,8 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
   } = tokens;
   return createTheme({
     headerRule: `1px solid ${SHADCN_BORDER}`,
-    focusRing: SHADCN_RING,
+    focusRing: accentOnSurface(SHADCN_RING, SHADCN_BG),
+    borderInput: SHADCN_BORDER_INPUT,
     primaryActive: SHADCN_PRIMARY_ACTIVE,
     emberCta: {
       main: SHADCN_EMBER,
@@ -452,7 +498,9 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
-            padding: '0.5rem 1rem',
+            ...(member
+              ? { minHeight: CONTROL_MIN_HEIGHT, padding: '0.7rem 1rem' }
+              : { padding: '0.5rem 1rem' }),
             boxShadow: 'none',
             '&:focus-visible': {
               outline: 'none',
@@ -555,8 +603,9 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
+            ...(member ? { minHeight: CONTROL_MIN_HEIGHT } : {}),
             backgroundColor: SHADCN_INPUT,
-            '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_INPUT },
             '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_STRONG },
             '&.Mui-focused': { boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.35)}` },
             '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
@@ -565,8 +614,9 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
             },
           }),
           input: {
-            padding: '0.55rem 0.75rem',
-            fontSize: '0.875rem',
+            ...(member
+              ? { padding: '0.7rem 0.9rem', fontSize: '1rem' }
+              : { padding: '0.55rem 0.75rem', fontSize: '0.875rem' }),
             lineHeight: 1.5,
             '&[type="number"]': { fontVariantNumeric: 'tabular-nums' },
           },
@@ -729,6 +779,7 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
       MuiIconButton: {
         styleOverrides: {
           root: ({ theme }) => ({
+            ...(member ? { minWidth: TOUCH_TARGET_MIN, minHeight: TOUCH_TARGET_MIN } : {}),
             '&:focus-visible': {
               outline: 'none',
               boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.5)}`,
@@ -3163,21 +3214,37 @@ export const CoverImageElement = styled('img', forwardExceptFrame)<{ frame: Cove
   }),
 );
 
-export const CoverPlaceholderBox = styled(Box, forwardExceptFrame)<{ frame: CoverFrame }>(
-  ({ theme, frame }) => ({
-    ...coverBox(theme, frame),
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: alpha(theme.palette.text.primary, 0.06),
-    color: theme.palette.text.primary,
-  }),
-);
+export const CoverFallbackBox = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'frame' && prop !== 'gradient',
+})<{ frame: CoverFrame; gradient: AccentGradient }>(({ theme, frame, gradient }) => ({
+  ...coverBox(theme, frame),
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.6rem',
+  padding: '1rem',
+  textAlign: 'center',
+  background: `linear-gradient(135deg, ${gradient.from} 0%, ${gradient.to} 100%)`,
+  color: gradient.ink,
+}));
 
-export const CoverPlaceholderInitials = styled(Typography)<AsElement>({
+export const CoverFallbackMonogram = styled(Typography)<AsElement>({
   fontSize: '2.1rem',
   fontWeight: 700,
   letterSpacing: '0.12em',
+  lineHeight: 1,
+});
+
+export const CoverFallbackTitle = styled(Typography)<AsElement>({
+  maxWidth: '24rem',
+  fontSize: '0.9375rem',
+  fontWeight: 600,
+  lineHeight: 1.35,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
 });
 
 /** Fixed page backgrounds a logo has to sit on, so a preview shows its real contrast. */

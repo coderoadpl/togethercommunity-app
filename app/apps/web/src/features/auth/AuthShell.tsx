@@ -21,7 +21,6 @@ import {
   AuthFooterRow,
   AuthGlow,
   AuthHeader,
-  authLinkInk,
   AuthMain,
   AuthPage,
   AuthPoweredBy,
@@ -37,7 +36,7 @@ interface AuthShellProps {
 
 const authSurfaceTheme = (outer: Theme): Theme => ({
   ...outer,
-  linkColor: authLinkInk(outer.palette.primary.main, outer.palette.mode),
+  linkColor: outer.accentText ?? outer.palette.primary.dark,
 });
 
 const PoweredByTogether = () => {

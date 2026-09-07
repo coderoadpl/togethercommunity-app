@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
+import { ToastProvider } from '../../components/ui/Toast.js';
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -69,10 +70,15 @@ const renderAccount = async () => {
   await router.load();
   return renderWithProviders(
     <ThemeModeProvider>
-      <RouterProvider router={router} />
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
     </ThemeModeProvider>,
   );
 };
+
+const findToast = async (kind: 'success' | 'error') =>
+  screen.findByTestId(new RegExp(`^toast-${kind}-`));
 
 describe('MemberAccountPage', () => {
   it('mounts passkey and two-factor management on the member surface', async () => {
@@ -172,7 +178,7 @@ describe('MemberAccountPage', () => {
       .toBeInTheDocument();
     expect(screen.getByTestId('account-data-export')).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('resend-verification-email'));
-    expect(await screen.findByText(pl.emailVerification.sent)).toBeInTheDocument();
+    expect(await findToast('success')).toHaveTextContent(pl.emailVerification.sent);
     expect(body).toEqual({
       email: 'member@together.dev',
       callbackURL: 'http://localhost:3000/login?verification=verified',
@@ -201,7 +207,7 @@ describe('MemberAccountPage', () => {
     expect(save).toBeEnabled();
     await userEvent.click(save);
 
-    expect(await screen.findByTestId('account-display-name-saved')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.account.displayNameSaved,
     );
     expect(body).toEqual({ displayName: 'Ada Lovelace' });
@@ -224,7 +230,7 @@ describe('MemberAccountPage', () => {
     expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
 
-    expect(await screen.findByTestId('account-dm-opt-out-saved')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.messages.optOutSaved,
     );
     expect(body).toEqual({ dmOptOut: true });
@@ -250,7 +256,7 @@ describe('MemberAccountPage', () => {
     expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
 
-    expect(await screen.findByTestId('account-video-autoplay-saved')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.account.videoAutoplaySaved,
     );
     expect(body).toEqual({ videoAutoplay: true });
@@ -447,7 +453,7 @@ describe('MemberAccountPage', () => {
     expect(send).toBeEnabled();
     await userEvent.click(send);
 
-    expect(await screen.findByText(pl.support.sent)).toBeInTheDocument();
+    expect(await findToast('success')).toHaveTextContent(pl.support.sent);
     expect(body).toEqual({ subject: 'Problem z lekcją', body: 'Nie mogę uruchomić nagrania.' });
     expect(screen.getByLabelText(pl.support.subjectLabel)).toHaveValue('');
     expect(screen.getByLabelText(pl.support.bodyLabel)).toHaveValue('');
@@ -468,13 +474,50 @@ describe('MemberAccountPage', () => {
     await renderAccount();
 
     await userEvent.click(await screen.findByTestId('passkey-set-password'));
-    expect(await screen.findByTestId('passkey-password-setup-sent')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.security.resetSent,
     );
     expect(body).toEqual({
       email: 'member@together.dev',
       redirectTo: 'http://localhost:3000/reset-password',
     });
+  });
+
+  it('requests an account password setup link and confirms it with a toast', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    await renderAccount();
+
+    await userEvent.click(await screen.findByTestId('account-reset-password'));
+
+    expect(await findToast('success')).toHaveTextContent(pl.account.resetSent);
+    expect(body).toEqual({
+      email: 'member@together.dev',
+      redirectTo: 'http://localhost:3000/reset-password',
+    });
+  });
+
+  it('reports a failed account password setup request with an error toast', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal' } }, { status: 500 })),
+    );
+    await renderAccount();
+
+    await userEvent.click(await screen.findByTestId('account-reset-password'));
+
+    expect(await findToast('error')).toBeInTheDocument();
   });
 
   it('changes the member password and sends the revocation choice', async () => {
@@ -495,7 +538,7 @@ describe('MemberAccountPage', () => {
     await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
-    expect(await screen.findByTestId('change-password-success')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.changePassword.success,
     );
     expect(body).toEqual({
@@ -524,7 +567,7 @@ describe('MemberAccountPage', () => {
     await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
-    expect(await screen.findByTestId('change-password-remote-error')).toHaveTextContent(
+    expect(await findToast('error')).toHaveTextContent(
       pl.changePassword.credentialAccountMissing,
     );
     expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();

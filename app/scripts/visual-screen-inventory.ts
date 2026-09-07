@@ -1,4 +1,5 @@
 import type { Locator, Page, Route } from 'playwright-core';
+import type { TenantRouting } from '#core/domain/index.js';
 import { API_PATHS } from '#core/contract/index.js';
 
 export const VIEWPORTS = [
@@ -87,6 +88,37 @@ const waitForUnreadBadge = async (page: Page): Promise<void> => {
   await page
     .locator('[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)')
     .waitFor(visible);
+};
+
+export const domainChecklistRouting = (active: boolean): TenantRouting => {
+  const domain = 'courses.example.org';
+  return {
+    tenantHost: 'workspace.example.org',
+    storageCorsOrigins: ['https://workspace.example.org', `https://${domain}`],
+    canonicalOrigin: `https://${domain}`,
+    customDomainTarget: 'routing.example.org',
+    apexDomainsSupported: false,
+    canAddCustomDomain: true,
+    customDomains: [{
+      domain, verified: active, status: active ? 'active' : 'pending-dns',
+      lastCheckedAt: null, lastError: null, storageCorsStatus: 'unknown',
+      records: [
+        { type: 'CNAME', name: domain, value: 'routing.example.org', purpose: 'routing', status: active ? 'verified' : 'pending' },
+        { type: 'TXT', name: `_vercel.${domain}`, value: 'vc-domain-verify=courses.example.org,challenge', purpose: 'ownership', status: 'verified' },
+      ],
+    }],
+  };
+};
+
+const prepareDomainChecklist = async (page: Page, active: boolean): Promise<ScreenPreparation> => {
+  const handler = async (route: Route): Promise<void> => {
+    await route.fulfill({ json: { ok: true, data: { routing: domainChecklistRouting(active) } } });
+  };
+  await page.route('**/api/tenant/routing', handler);
+  return {
+    renderingInputsReady: Promise.resolve(),
+    cleanup: () => page.unroute('**/api/tenant/routing', handler),
+  };
 };
 
 export const SCREENS: readonly ScreenSpec[] = [
@@ -342,6 +374,16 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('dashboard-member-row').first().waitFor(visible);
     },
   },
+  ...[false, true].map((active): ScreenSpec => ({
+    name: active ? 'panel-settings-domains-active' : 'panel-settings-domains',
+    auth: 'creator',
+    path: '/panel/settings#domains',
+    prepare: (page) => prepareDomainChecklist(page, active),
+    ready: (page) => page.getByTestId('tenant-domain-courses.example.org').waitFor(visible),
+    settled: async (page) => {
+      await page.locator('#domains').evaluate((element) => element.scrollIntoView({ block: 'start' }));
+    },
+  })),
   {
     name: 'panel-settings-security',
     auth: 'creator',
@@ -379,6 +421,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/panel/lessons/lesson-js-zmienne-1',
     ready: (page) => page.getByTestId('lesson-attachments-empty').waitFor(visible),
     settled: async (page) => {
+      await page.locator('#block-1-html').evaluate((element) => { element.scrollTop = element.scrollHeight; });
       await page.getByTestId('lesson-attachments-editor').evaluate((element) =>
         element.scrollIntoView({ block: 'start' }),
       );

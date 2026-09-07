@@ -18,6 +18,11 @@ export const stubNonDeterministicRequests = async (context: BrowserContext): Pro
 export const applyChrome = async (context: BrowserContext): Promise<void> => {
   await context.addInitScript(
     (langKey) => {
+      // Capture waits must observe compositor frames even after Playwright installs its clock.
+      const nativeFrame = window.requestAnimationFrame.bind(window);
+      window.addEventListener('visual:paint-request', () => {
+        nativeFrame(() => nativeFrame(() => window.dispatchEvent(new Event('visual:paint-ready'))));
+      });
       Object.defineProperty(window, 'EventSource', { configurable: true, value: undefined });
       try {
         window.localStorage.setItem(langKey, 'pl');
@@ -29,10 +34,18 @@ export const applyChrome = async (context: BrowserContext): Promise<void> => {
   );
 };
 
+export const waitForPaint = async (page: Page): Promise<void> => {
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    window.addEventListener('visual:paint-ready', () => resolve(), { once: true });
+    window.dispatchEvent(new Event('visual:paint-request'));
+  }));
+};
+
 export const settlePage = async (page: Page, waitForNetworkIdle = true): Promise<void> => {
   if (waitForNetworkIdle) await page.waitForLoadState('networkidle');
   await page.evaluate(async () => {
     await document.fonts.ready;
+    await Promise.all([...document.images].filter((image) => !image.complete || image.naturalWidth > 0).map((image) => image.decode()));
   });
   await page.addStyleTag({
     content: `
@@ -43,10 +56,5 @@ export const settlePage = async (page: Page, waitForNetworkIdle = true): Promise
       }
     `,
   });
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      }),
-  );
+  await waitForPaint(page);
 };

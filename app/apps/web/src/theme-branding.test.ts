@@ -58,6 +58,13 @@ describe('applyBranding', () => {
     expect(deriveBrandPalette(ACCENT).main).toBe(ACCENT);
   });
 
+  it('flags the tenant accent only when one was supplied', () => {
+    const theme = createThemeForMode('shadcn');
+    expect(theme.brandAccent).toBeUndefined();
+    expect(applyBranding(theme, branding(null)).brandAccent).toBeUndefined();
+    expect(applyBranding(theme, branding(ACCENT)).brandAccent).toBe(deriveBrandPalette(ACCENT).main);
+  });
+
   it('tints the focus-ring token with the accent so default-theme focus states show it', () => {
     const theme = createThemeForMode('shadcn');
     const derived = deriveBrandPalette(ACCENT);

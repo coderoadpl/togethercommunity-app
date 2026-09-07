@@ -245,6 +245,10 @@ describe('m2m users import', () => {
         listByTenant: async () => [product],
         listPublishedByTenant: async () => [],
       },
+      tenantDomains: { listByTenant: async () => [] },
+      appBaseUrl: 'http://localhost:48730',
+      baseDomain: 'localhost',
+      singleTenantMode: false,
     };
     h.authUsers.set('user@example.test', {
       id: 'existing-user',
@@ -474,6 +478,10 @@ describe('m2m users import', () => {
         listByTenant: async () => [product],
         listPublishedByTenant: async () => [],
       },
+      tenantDomains: { listByTenant: async () => [] },
+      appBaseUrl: 'http://localhost:48730',
+      baseDomain: 'localhost',
+      singleTenantMode: false,
     };
     const result = await validateM2mImport(ctx, {
       datasetVersion: 'together-import/v1',

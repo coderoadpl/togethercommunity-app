@@ -34,7 +34,7 @@ import type {
   PaymentProvider,
   PaymentTransactionPort,
 } from '../ports.js';
-import { tenantUrl } from '../tenant-url.js';
+import { resolveTenantOrigin } from '../tenant-url.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
 import {
@@ -123,7 +123,7 @@ const enqueueSubscriptionNotice = async (
     deps.tenants.findSettings(tenant.id),
   ]);
   if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
-  const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
+  const tenantBaseUrl = `${await resolveTenantOrigin(tenant, deps)}/`;
   const branding = settings === null ? undefined : emailBrandingFrom(settings, tenantBaseUrl);
   const language = resolveEmailLanguage(member.language, settings?.defaultLanguage);
   const payload =

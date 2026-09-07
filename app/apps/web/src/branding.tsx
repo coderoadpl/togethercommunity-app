@@ -74,49 +74,62 @@ export const TenantLogo = () => {
   return <LogoImage surface="sidebar" src={logoUrl} alt={tenant.name} data-testid="tenant-logo" />;
 };
 
+type BrandMarkSize = 'display' | 'compact' | 'shell';
+
+const BRAND_SURFACE = { display: 'card', compact: 'compact', shell: 'sidebar' } as const;
+const BRAND_LOGO_INSET = { display: '0.45rem', compact: '0.2rem', shell: 0 } as const;
+const BRAND_TOGETHER_INSET = { display: '0.6rem', compact: '0.2rem', shell: 0 } as const;
+
+const BrandWordmark = ({ size, name }: { size: BrandMarkSize; name: string }) => {
+  if (size === 'shell') {
+    return (
+      <ShellWordmark component="p" variant="h3" noWrap data-testid="tenant-brand-name">
+        {name}
+      </ShellWordmark>
+    );
+  }
+  if (size === 'compact') {
+    return (
+      <CompactWordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
+        {name}
+      </CompactWordmark>
+    );
+  }
+  return (
+    <Wordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
+      {name}
+    </Wordmark>
+  );
+};
+
 export const BrandMark = ({
   size = 'display',
   tenantAware = true,
 }: {
-  size?: 'display' | 'compact';
+  size?: BrandMarkSize;
   tenantAware?: boolean;
 }) => {
   const theme = useTheme();
   const tenant = useTenantOffer(tenantAware);
   const logoUrl = useThemedLogo(tenant?.branding ?? EMPTY_TENANT_BRANDING);
-  const compact = size === 'compact';
-  const surface = compact ? 'compact' : 'card';
   if (tenant === null) {
     return (
       <LogoImage
-        surface={surface}
+        surface={BRAND_SURFACE[size]}
         src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
         alt="Together"
-        sx={{ mb: compact ? '0.2rem' : '0.6rem' }}
+        sx={{ mb: BRAND_TOGETHER_INSET[size] }}
       />
     );
   }
-  if (logoUrl === null) {
-    if (compact) {
-      return (
-        <CompactWordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
-          {tenant.name}
-        </CompactWordmark>
-      );
-    }
-    return (
-      <Wordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
-        {tenant.name}
-      </Wordmark>
-    );
-  }
+  if (logoUrl === null) return <BrandWordmark size={size} name={tenant.name} />;
   return (
     <LogoImage
-      surface={surface}
+      surface={BRAND_SURFACE[size]}
       src={logoUrl}
       alt={tenant.name}
       data-testid="tenant-brand-logo"
-      sx={{ mb: '0.45rem' }}
+      sx={{ mb: BRAND_LOGO_INSET[size] }}
     />
   );
 };

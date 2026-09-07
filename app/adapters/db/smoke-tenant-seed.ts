@@ -27,12 +27,6 @@ import {
   tenants,
 } from './schema.js';
 
-/**
- * The shared demo password; production seeds the smoke accounts from
- * SMOKE_MEMBER_PASSWORD and SMOKE_CREATOR_PASSWORD instead.
- */
-export const DEMO_SEED_PASSWORD = 'demo-password-15';
-
 const SMOKE_TENANT_NAME = 'Acme Courses';
 const SMOKE_TENANT_LESSON_ID = 'lesson-acme-intro';
 const SMOKE_TENANT_STUDENT_EMAIL = 'student2@together.dev';

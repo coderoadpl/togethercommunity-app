@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  DEMO_SEED_PASSWORD,
   SMOKE_TENANT_COURSE_TITLE,
   SMOKE_TENANT_MEMBER_EMAIL,
 } from '#core/domain/index.js';
@@ -352,6 +353,8 @@ const stagingHealth = (overrides: Record<string, unknown> = {}) =>
 const stagingOptions: StagingSmokeOptions = {
   baseUrl: 'https://acme.staging.togethercommunity.app/',
   tenant: 'acme',
+  publicPagePath: '/',
+  member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: DEMO_SEED_PASSWORD },
   bypassSecret: 'bypass-secret',
   productionFingerprint: PRODUCTION_FINGERPRINT,
   expectedFingerprint: STAGING_FINGERPRINT,
@@ -375,8 +378,15 @@ describe('staging smoke', () => {
       'staging-environment',
       'database-fingerprint',
       'health-deep',
+      'public-offer',
+      'public-page',
+      'member-sign-in',
+      'member-identity',
+      'student-courses',
+      'lesson-playback',
+      'studio-tenant-settings',
     ]);
-    expect(request.mock.calls).toHaveLength(2);
+    expect(request.mock.calls).toHaveLength(9);
     expect(request.mock.calls.every(([, init]) =>
       new Headers(init?.headers).get(VERCEL_BYPASS_HEADER) === 'bypass-secret')).toBe(true);
   });
@@ -489,7 +499,11 @@ describe('staging smoke', () => {
     }));
 
     expect(result.failing).toEqual(['health-attestation']);
-    expect(result.skipped).toEqual(['staging-environment', 'database-fingerprint']);
+    expect(result.skipped).toEqual([
+      'staging-environment',
+      'database-fingerprint',
+      'studio-tenant-settings',
+    ]);
     expect(result.observedFingerprint).toBeNull();
   });
 
@@ -557,6 +571,8 @@ describe('stagingSmokeOptionsFromEnv', () => {
     expect(stagingSmokeOptionsFromEnv(environment)).toEqual({
       baseUrl: environment.STAGING_BASE_URL,
       tenant: 'acme',
+      publicPagePath: '/',
+      member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: DEMO_SEED_PASSWORD },
       bypassSecret: 'bypass-secret',
       productionFingerprint: PRODUCTION_FINGERPRINT,
       expectedFingerprint: STAGING_FINGERPRINT,
@@ -585,6 +601,17 @@ describe('stagingSmokeOptionsFromEnv', () => {
     expect(stagingSmokeOptionsFromEnv({ ...environment, PRODUCTION_DATABASE_FINGERPRINT: '' }))
       .toBeNull();
     expect(stagingSmokeOptionsFromEnv({ ...environment, STAGING_BASE_URL: '' })).toBeNull();
+  });
+
+  it('targets the seeded smoke tenant even when a copied tenant override is present', () => {
+    expect(stagingSmokeOptionsFromEnv({
+      ...environment,
+      SMOKE_TENANT: 'studio',
+      SMOKE_MEMBER_PASSWORD: 'custom-password',
+    })).toMatchObject({
+      tenant: 'acme',
+      member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: 'custom-password' },
+    });
   });
 });
 

@@ -32,9 +32,25 @@ describe('normalizeCustomDomain', () => {
       .toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
-  it('accepts any domain when the deployment has no base domain', () => {
-    expect(normalizeCustomDomain('together.example', null))
-      .toEqual({ ok: true, value: 'together.example' });
+  it('accepts an apex domain when the deployment has an apex routing record', () => {
+    expect(normalizeCustomDomain('example.org', null, '192.0.2.1'))
+      .toEqual({ ok: true, value: 'example.org' });
+  });
+
+  it('rejects an apex domain with subdomain guidance when no apex routing record is configured', () => {
+    expect(normalizeCustomDomain('example.org', null))
+      .toMatchObject({
+        ok: false,
+        error: {
+          code: 'validation',
+          message: 'Apex domains are not supported by this deployment. Use a subdomain such as courses.example.org.',
+        },
+      });
+  });
+
+  it('accepts the deployment domain when it is a subdomain and no base domain is configured', () => {
+    expect(normalizeCustomDomain('start.together.example', null))
+      .toEqual({ ok: true, value: 'start.together.example' });
   });
 
   it.each([
@@ -57,8 +73,19 @@ describe('customDomainRecords', () => {
       target: 'cname.vercel-dns.com',
       verification: [{ type: 'TXT', name: '_vercel.kurs.acme.pl', value: 'vc-1' }],
     })).toEqual([
-      { type: 'CNAME', name: 'kurs.acme.pl', value: 'cname.vercel-dns.com' },
-      { type: 'TXT', name: '_vercel.kurs.acme.pl', value: 'vc-1' },
+      { type: 'CNAME', name: 'kurs.acme.pl', value: 'cname.vercel-dns.com', purpose: 'routing' },
+      { type: 'TXT', name: '_vercel.kurs.acme.pl', value: 'vc-1', purpose: 'ownership' },
+    ]);
+  });
+
+  it('uses the configured provisioner A record for an apex domain', () => {
+    expect(customDomainRecords({
+      domain: 'example.org',
+      target: 'cname.vercel-dns.com',
+      apexARecord: '192.0.2.1',
+      verification: [],
+    })).toEqual([
+      { type: 'A', name: 'example.org', value: '192.0.2.1', purpose: 'routing' },
     ]);
   });
 });

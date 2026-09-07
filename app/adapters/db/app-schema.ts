@@ -15,6 +15,7 @@ import type {
   ConsentEvidence,
   DmReportMessage,
   DnsRecord,
+  DomainDnsRecord,
   EmailEventType,
   EmailEventMailKind,
   LessonBlock,
@@ -23,6 +24,7 @@ import type {
   SchedulerRunStatus,
   SchedulerRunTotals,
   SchedulerRunTrigger,
+  StorageCorsProbeResult,
   TenantDomainEventKind,
 } from '#core/domain/index.js';
 
@@ -1766,6 +1768,8 @@ export const tenantDomains = pgTable(
     verified: boolean('verified').notNull().default(false),
     provider: text('provider', { enum: ['manual', 'vercel'] }).notNull().default('manual'),
     verification: jsonb('verification').$type<DnsRecord[]>().notNull().default([]),
+    records: jsonb('records').$type<DomainDnsRecord[]>().notNull().default([]),
+    providerVerified: boolean('provider_verified').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'string' }),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true, mode: 'string' }),
@@ -1776,6 +1780,14 @@ export const tenantDomains = pgTable(
     index('tenant_domains_pending_idx').on(table.kind, table.verified, table.lastCheckedAt),
   ],
 );
+
+export const storageCorsChecks = pgTable('storage_cors_checks', {
+  tenantId: text('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  checkedAt: timestamp('checked_at', { withTimezone: true, mode: 'string' }).notNull(),
+  results: jsonb('results').$type<StorageCorsProbeResult[]>().notNull(),
+});
 
 export const tenantRedirects = pgTable(
   'tenant_redirects',

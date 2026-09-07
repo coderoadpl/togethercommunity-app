@@ -70,6 +70,7 @@ describe('vercel domain provisioner', () => {
           name: '_vercel.kurs.acme.example',
           value: 'vc-domain-verify=kurs.acme.example,abc',
         }],
+        records: [{ type: 'TXT', name: '_vercel.kurs.acme.example', value: 'vc-domain-verify=kurs.acme.example,abc', purpose: 'ownership' }],
       },
     });
     expect(recorded).toEqual([{
@@ -116,6 +117,7 @@ describe('vercel domain provisioner', () => {
           name: '_vercel.kurs.acme.example',
           value: 'vc-domain-verify=kurs.acme.example,abc',
         }],
+        records: [{ type: 'TXT', name: '_vercel.kurs.acme.example', value: 'vc-domain-verify=kurs.acme.example,abc', purpose: 'ownership' }],
       },
     });
   });
@@ -132,7 +134,7 @@ describe('vercel domain provisioner', () => {
 
     const result = await subject.verify('kurs.acme.example');
 
-    expect(result).toEqual({ ok: true, value: { verified: true, misconfigured: false, verification: [] } });
+    expect(result).toEqual({ ok: true, value: { verified: true, misconfigured: false, verification: [], records: [] } });
     expect(recorded.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
       'POST /v9/projects/prj_1/domains/kurs.acme.example/verify',
       'GET /v9/projects/prj_1/domains/kurs.acme.example',
@@ -168,6 +170,7 @@ describe('vercel domain provisioner', () => {
           name: '_vercel.kurs.acme.example',
           value: 'vc-domain-verify=kurs.acme.example,abc',
         }],
+        records: [{ type: 'TXT', name: '_vercel.kurs.acme.example', value: 'vc-domain-verify=kurs.acme.example,abc', purpose: 'ownership' }],
       },
     });
   });

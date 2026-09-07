@@ -1151,6 +1151,52 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await reader.findMember(ACME, 'user-acme-member')).toMatchObject({ id: 'mem-acme' });
   });
 
+  it.each([
+    { records: { malformed: true } },
+    { records: [{ type: 'TXT', name: '_verification.courses.example.org', value: 'challenge', purpose: 'future-purpose' }] },
+  ])('resolves a verified domain with unsupported stored records: %j', async ({ records }) => {
+    const repo = createTenantDomainRepository(db);
+    const domain = 'future-records.example.org';
+    await repo.insert(ACME, {
+      id: 'domain-future-records', tenantId: ACME, domain, kind: 'custom',
+      verified: true, provider: 'vercel', providerVerified: true, verification: [], records: [],
+      createdAt: NOW, verifiedAt: NOW, lastCheckedAt: null, lastError: null,
+    });
+    try {
+      await db.execute(sql`
+        UPDATE tenant_domains SET records = ${JSON.stringify(records)}::jsonb
+        WHERE id = 'domain-future-records'
+      `);
+      expect(await repo.findByDomain(domain)).toMatchObject({
+        tenantId: ACME, domain, verified: true, records: [],
+      });
+    } finally {
+      await repo.remove(ACME, 'domain-future-records');
+    }
+  });
+
+  it('merges DNS records atomically across overlapping patches', async () => {
+    const repo = createTenantDomainRepository(db);
+    const routing = { type: 'CNAME' as const, name: 'courses.example.org', value: 'routing.example.org', purpose: 'routing' as const };
+    const ownership = { type: 'TXT' as const, name: '_vercel.courses.example.org', value: 'challenge', purpose: 'ownership' as const };
+    await repo.insert(ACME, {
+      id: 'domain-records', tenantId: ACME, domain: routing.name, kind: 'custom',
+      verified: false, provider: 'vercel', providerVerified: false, verification: [], records: [routing],
+      createdAt: '2026-09-01T00:00:00.000Z', verifiedAt: null, lastCheckedAt: null, lastError: null,
+    });
+    await Promise.all([
+      repo.patch(ACME, 'domain-records', { records: [routing, ownership] }),
+      repo.patch(ACME, 'domain-records', { records: [routing] }),
+    ]);
+    expect((await repo.findAnyByDomain(routing.name))?.records).toEqual([routing, ownership]);
+    const active = await repo.markVerified(ACME, 'domain-records', {
+      records: [routing], verification: [], providerVerified: true, verifiedAt: '2026-09-02T00:00:00.000Z',
+      lastCheckedAt: '2026-09-02T00:00:00.000Z', lastError: null,
+    });
+    expect(active?.records).toEqual([routing, ownership]);
+    expect((await repo.findByDomain(routing.name))?.providerVerified).toBe(true);
+  });
+
   it('inserts, patches, removes and leases custom domains one per tenant', async () => {
     const repo = createTenantDomainRepository(db);
     const events = createTenantDomainEventRepository(db);
@@ -1159,7 +1205,9 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       kind: 'custom' as const,
       verified: false,
       provider: 'vercel' as const,
+      providerVerified: false,
       verification: [{ type: 'TXT' as const, name: `_vercel.${input.domain}`, value: 'vc-1' }],
+      records: [{ type: 'TXT' as const, name: `_vercel.${input.domain}`, value: 'vc-1', purpose: 'ownership' as const }],
       createdAt: '2026-09-01T00:00:00.000Z',
       verifiedAt: null,
       lastError: null,
@@ -1190,10 +1238,13 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       lastCheckedAt: '2026-09-03T00:00:00.000Z',
       lastError: null,
       verification: [],
+      records: [],
+      providerVerified: true,
     });
     expect(patched).toMatchObject({
       verified: true,
       verification: [],
+      records: [{ type: 'TXT', name: '_vercel.a.acme.test', value: 'vc-1', purpose: 'ownership' }],
       createdAt: '2026-09-01T00:00:00.000Z',
       verifiedAt: '2026-09-03T00:00:00.000Z',
       lastCheckedAt: '2026-09-03T00:00:00.000Z',
@@ -1203,6 +1254,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       lastCheckedAt: '2026-09-04T00:00:00.000Z',
       lastError: null,
       verification: [],
+      records: [],
+      providerVerified: true,
     })).toBeNull();
     expect(await repo.patch(GLOBEX, 'dom-1', { lastError: 'foreign tenant' })).toBeNull();
     expect(await repo.findByDomain('a.acme.test')).toMatchObject({ id: 'dom-1' });

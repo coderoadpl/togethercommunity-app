@@ -18,7 +18,7 @@ import { SCREENS, VIEWPORTS, includesViewport, visible, VisualFailure, type Auth
 
 import type { ThemeMode } from '../apps/web/src/theme.js';
 import { visualSeedTime as SEED_BASE_TIME } from './visual-request-policy.js';
-import { applyChrome, settlePage, stubNonDeterministicRequests } from './visual-browser-setup.js';
+import { applyChrome, settlePage, stubNonDeterministicRequests, waitForPaint } from './visual-browser-setup.js';
 import { requestMagicLink, signInWithPassword } from './login-flow.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -308,12 +308,7 @@ try {
             await settlePage(page, screen.waitForNetworkIdle ?? true);
             if (screen.settled) {
               await screen.settled(page);
-              await page.evaluate(
-                () =>
-                  new Promise<void>((resolve) => {
-                    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-                  }),
-              );
+              await waitForPaint(page);
             }
             const shotPath = join(currentDir, file);
             await page.screenshot({

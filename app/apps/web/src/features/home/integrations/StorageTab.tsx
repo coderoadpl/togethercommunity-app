@@ -10,6 +10,7 @@ import { previewFor } from './secret-preview.js';
 export const StorageTab = () => {
   const t = useTranslations();
   const secrets = useQuery(actions.tenantSecrets);
+  const routing = useQuery(actions.tenantRouting);
 
   const storageReady =
     secrets.data?.secrets !== undefined &&
@@ -17,12 +18,15 @@ export const StorageTab = () => {
 
   return (
     <SectionCard title={t.integrations.s3Heading} description={t.integrations.s3Description}>
-      {secrets.isPending ? (
+      {secrets.isPending || routing.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
-      ) : secrets.isError ? (
-        <StatusView state={{ kind: 'error', message: localizePanelError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
+      ) : secrets.isError || routing.isError ? (
+        <StatusView state={{ kind: 'error', message: localizePanelError(secrets.error ?? routing.error, t), retry: { label: t.common.retry, onRetry: () => { void secrets.refetch(); void routing.refetch(); } } }} />
       ) : (
-        <StorageWizard configured={storageReady} />
+        <StorageWizard
+          configured={storageReady}
+          origins={routing.data.routing.storageCorsOrigins}
+        />
       )}
       <ProviderTest
         provider="storage"

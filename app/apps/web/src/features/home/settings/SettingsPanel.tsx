@@ -38,7 +38,7 @@ import {
   tenantSocialLinkSchema,
 } from '#core/domain/index.js';
 import type {
-  DnsRecord,
+  TenantRouting,
   ExemptionBasisKind,
   Language,
   TenantDomainStatus,
@@ -61,7 +61,7 @@ import {
   shortSha,
 } from '../../../lib/build-info.js';
 import { formatDateTime } from '../../../lib/format.js';
-import { BrandSwatch, Eyebrow } from '../../../theme.js';
+import { BrandSwatch, Eyebrow, QuietActionLink } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
 import { usePanelContext } from '../panel-context.js';
 import { ImageAssetField } from '../ImageAssetField.js';
@@ -1204,7 +1204,7 @@ const domainErrorMessage = (error: unknown, t: Messages): string => {
   return localizePanelError(error, t);
 };
 
-const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
+const DnsRecordRow = ({ record }: { record: TenantRouting['customDomains'][number]['records'][number] }) => {
   const t = useTranslations();
 
   return (
@@ -1213,23 +1213,51 @@ const DnsRecordRow = ({ record }: { record: DnsRecord }) => {
       spacing="0.4rem"
       data-testid={`dns-record-${record.type}-${record.name}`}
     >
-      <Typography variant="caption">
-        {t.tenantDomains.recordType}: {record.type}
-      </Typography>
+      <Stack direction="row" useFlexGap sx={{ gap: '0.5rem', alignItems: 'center' }}>
+        <Typography variant="caption">
+          {t.tenantDomains.recordType}: {record.type}
+        </Typography>
+        <Chip
+          size="small"
+          color={record.status === 'verified' ? 'success' : 'default'}
+          label={record.status === 'verified' ? t.tenantDomains.recordVerified : t.tenantDomains.recordPending}
+        />
+      </Stack>
       <CopyField
         size="small"
-        mono
         label={t.tenantDomains.recordName}
         value={record.name}
         testId={`dns-record-name-${record.type}-${record.name}`}
       />
       <CopyField
         size="small"
-        mono
         label={t.tenantDomains.recordValue}
         value={record.value}
         testId={`dns-record-value-${record.type}-${record.name}`}
       />
+    </Stack>
+  );
+};
+
+const DomainRecords = ({ entry }: { entry: TenantRouting['customDomains'][number] }) => {
+  const t = useTranslations();
+  const rows = entry.records.map((record) => (
+    <DnsRecordRow key={`${record.type}-${record.name}-${record.value}`} record={record} />
+  ));
+  if (entry.status === 'active') {
+    return (
+      <Box component="details">
+        <Typography component="summary" variant="caption" sx={{ cursor: 'pointer' }}>
+          {t.tenantDomains.recordsSummary({ count: entry.records.length })}
+        </Typography>
+        <Stack useFlexGap spacing="0.5rem">{rows}</Stack>
+      </Box>
+    );
+  }
+  return (
+    <Stack useFlexGap spacing="0.5rem">
+      <Typography variant="caption">{t.tenantDomains.recordsHeading}</Typography>
+      {rows}
     </Stack>
   );
 };
@@ -1304,15 +1332,28 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
     );
   }
 
-  const { customDomains, tenantHost, canAddCustomDomain } = routing.data.routing;
+  const {
+    customDomains,
+    tenantHost,
+    canonicalOrigin,
+    canAddCustomDomain,
+    apexDomainsSupported,
+  } = routing.data.routing;
 
   return (
     <SectionCard title={t.tenantDomains.heading} description={t.tenantDomains.intro}>
       <Stack useFlexGap spacing="1rem" data-testid="tenant-domains">
-        <Stack useFlexGap spacing="0.3rem">
-          <Eyebrow>{t.tenantDomains.workspaceAddress}</Eyebrow>
-          <Typography variant="body2">{tenantHost}</Typography>
+        <Stack useFlexGap spacing="0.3rem" data-testid="tenant-canonical-address">
+          <Eyebrow>{t.tenantDomains.canonicalAddress}</Eyebrow>
+          <Typography variant="body2">{canonicalOrigin}</Typography>
+          <Typography variant="caption">{t.tenantDomains.canonicalExplanation}</Typography>
         </Stack>
+        <CopyField
+          label={t.tenantDomains.workspaceAddress}
+          value={tenantHost}
+          mono
+          testId="tenant-workspace-address"
+        />
         {customDomains.some((entry) => entry.verified) ? null : (
           <Alert severity="warning" data-testid="tenant-domain-warning">
             {t.tenantDomains.firstDomainWarning}
@@ -1349,17 +1390,33 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
                   label={domainStatusLabel(t, entry.status)}
                   data-testid={`tenant-domain-status-${entry.domain}`}
                 />
-                <Button
-                  type="button"
-                  size="small"
-                  disabled={!canEdit || pending}
-                  onClick={() => checkDomain.mutate({ domain: entry.domain })}
-                  data-testid={`tenant-domain-check-${entry.domain}`}
-                >
-                  {busyWith(checkDomain, entry.domain)
-                    ? t.tenantDomains.checking
-                    : t.tenantDomains.check}
-                </Button>
+                {entry.status === 'active' ? (
+                  <QuietActionLink
+                    component="button"
+                    type="button"
+                    variant="caption"
+                    underline="hover"
+                    disabled={!canEdit || pending}
+                    onClick={() => checkDomain.mutate({ domain: entry.domain })}
+                    data-testid={`tenant-domain-check-${entry.domain}`}
+                  >
+                    {busyWith(checkDomain, entry.domain)
+                      ? t.tenantDomains.checking
+                      : t.tenantDomains.check}
+                  </QuietActionLink>
+                ) : (
+                  <Button
+                    type="button"
+                    size="small"
+                    disabled={!canEdit || pending}
+                    onClick={() => checkDomain.mutate({ domain: entry.domain })}
+                    data-testid={`tenant-domain-check-${entry.domain}`}
+                  >
+                    {busyWith(checkDomain, entry.domain)
+                      ? t.tenantDomains.checking
+                      : t.tenantDomains.check}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   size="small"
@@ -1379,14 +1436,16 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {entry.lastError === null ? null : (
                 <Typography variant="caption" color="error">{entry.lastError}</Typography>
               )}
-              {entry.verified ? null : (
-                <>
-                  <Typography variant="caption">{t.tenantDomains.recordsHeading}</Typography>
-                  {entry.records.map((record) => (
-                    <DnsRecordRow key={`${record.type}-${record.name}`} record={record} />
-                  ))}
-                </>
-              )}
+              {entry.verified && entry.storageCorsStatus !== 'ok' ? (
+                <Typography variant="caption" data-testid={`tenant-domain-cors-hint-${entry.domain}`}>
+                  {t.tenantDomains.storageCorsHint}
+                  {' '}
+                  <MuiLink component={Link} to="/panel/integrations" hash="storage">
+                    {t.tenantDomains.storageCorsLink}
+                  </MuiLink>
+                </Typography>
+              ) : null}
+              <DomainRecords entry={entry} />
               {entry.lastCheckedAt === null ? null : (
                 <Typography variant="caption">
                   {t.tenantDomains.lastChecked({ at: formatDateTime(entry.lastCheckedAt, language) })}
@@ -1415,6 +1474,11 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
                 onChange={(event) => setDraft(event.target.value)}
                 inputProps={{ 'data-testid': 'tenant-domain-input' }}
               />
+              {apexDomainsSupported ? null : (
+                <FormHelperText data-testid="tenant-domain-hint">
+                  {t.tenantDomains.addHint}
+                </FormHelperText>
+              )}
             </FormControl>
             <Button
               type="submit"

@@ -53,6 +53,21 @@ describe('Vercel platform entry boundary', () => {
     expect(vercel.rewrites.at(-1)).toEqual({ source: '/(.*)', destination: '/index.html' });
   });
 
+  it('sends crawler metadata files to the function for every user agent', () => {
+    const rewrites = vercel.rewrites.map(({ source }) => source);
+
+    expect(vercel.rewrites).toContainEqual({
+      source: '/robots.txt',
+      destination: '/api/index',
+    });
+    expect(vercel.rewrites).toContainEqual({
+      source: '/sitemap.xml',
+      destination: '/api/index',
+    });
+    expect(rewrites.indexOf('/robots.txt')).toBeLessThan(rewrites.indexOf('/(.*)'));
+    expect(rewrites.indexOf('/sitemap.xml')).toBeLessThan(rewrites.indexOf('/(.*)'));
+  });
+
   it('keeps API, public pages, static security headers, and Frankfurt routing explicit', () => {
     expect(vercel.regions).toEqual(['fra1']);
     expect(vercel.rewrites).toEqual(

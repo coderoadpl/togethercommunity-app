@@ -32,6 +32,7 @@ describe('visual regression determinism', () => {
     expect(harness).toContain("reducedMotion: 'reduce'");
     expect(harness).toContain('deviceScaleFactor: 1');
     expect(harness).toContain('page.clock.setFixedTime');
+    expect(storybookCapture).toContain('page.clock.setFixedTime');
     expect(harness).toContain("{ APP_COMMIT_SHA: '' }");
   });
 
@@ -46,6 +47,9 @@ describe('visual regression determinism', () => {
     expect(browserSetup).toContain('document.fonts.ready');
     expect(browserSetup).toContain('animation: none !important');
     expect(browserSetup).toContain('transition: none !important');
+    expect(browserSetup).toContain('const nativeFrame = window.requestAnimationFrame.bind(window)');
+    expect(browserSetup).toContain("window.addEventListener('visual:paint-request'");
+    for (const capture of [harness, storybookCapture]) expect(capture).toContain('await waitForPaint(page)');
   });
 
   it('shares the request policy across capture paths', () => {

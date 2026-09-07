@@ -8,6 +8,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | Route | Access | Operation | Purpose |
 |---|---|---|---|
 | `GET /manifest.webmanifest` | public | read | PWA web app manifest with tenant name |
+| `GET /robots.txt` | public | read | Tenant crawler policy must bypass the SPA and social preview fallback |
+| `GET /sitemap.xml` | public | read | Tenant public navigation must be discoverable at its canonical origin |
 | `GET /api/health/live` | public | read | Process liveness check |
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |

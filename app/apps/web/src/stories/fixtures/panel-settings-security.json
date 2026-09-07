@@ -1,5 +1,21 @@
 {
   "calls": {
+    "getTenantRouting:[]": {
+      "ok": true,
+      "value": {
+        "routing": {
+          "apexDomainsSupported": false,
+          "canAddCustomDomain": true,
+          "canonicalOrigin": "http://studio.localhost:63871",
+          "customDomains": [],
+          "customDomainTarget": "start.localhost",
+          "storageCorsOrigins": [
+            "http://studio.localhost:63871"
+          ],
+          "tenantHost": "studio.localhost:63871"
+        }
+      }
+    },
     "getTenantSettings:[]": {
       "ok": true,
       "value": {

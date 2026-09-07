@@ -26,6 +26,8 @@ const pageScreenNames = new Set([
   'panel-spaces',
   'panel-dashboard',
   'panel-settings-security',
+  'panel-settings-domains',
+  'panel-settings-domains-active',
   'panel-settings-redirects',
   'panel-storage-wizard',
   'panel-lesson-attachments',

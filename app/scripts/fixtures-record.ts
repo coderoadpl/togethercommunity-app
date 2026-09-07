@@ -12,7 +12,7 @@ import { SMOKE_TENANT_MEMBER_EMAIL, consentDefinitionSchema, marketingConsentSch
 import { tenants, tenantDocuments, tenantDocumentVersions, unsubscribeTokens, consentDefinitions, consentDefinitionVersions, marketingConsents, suppressions, consentConfirmationTokens } from '#adapters/db/schema.js';
 import { canonicalJson, fixtureKey, fixtureSchema, type Fixture } from '../apps/web/src/stories/fixture-key.js';
 import { renderConfirmationPage, renderPreferencesPage } from '../apps/server/src/public-marketing-pages.js';
-import { SCREENS } from './visual-screen-inventory.js';
+import { SCREENS, domainChecklistRouting } from './visual-screen-inventory.js';
 import { bootServer, ephemeralPort, killServer, rootDir } from './server-harness.js';
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, migrateAndSeed, dropDatabase } from './smoke-database.js';
 
@@ -53,7 +53,7 @@ const login = async (baseUrl: string, email: string, tenant: string): Promise<Ap
 
 type Scenario = { name: string; principal: string; tenant: string; page: string; route?: string; extra?: (api: ApiClient) => Promise<void>; courseId: string; lessonId: string; spaceId: string; pending?: Fixture['pending']; expectedErrors?: Record<string, AppError['code']> };
 const plan: Scenario[] = [
-  ...(['login', 'forgot-password', 'reset-password', 'reset-password-invalid'] as const).map((page) => ({ name: page, principal: 'anonymous', tenant: 'studio', page, route: page === 'reset-password' ? '/reset-password?token=visual-reset-token' : page === 'reset-password-invalid' ? '/reset-password?error=INVALID_TOKEN' : `/${page}`, courseId: '', lessonId: '', spaceId: '', extra: async (api: ApiClient) => { if (page === 'login') await api.authConfig(); } })),
+  ...(['login', 'register', 'forgot-password', 'reset-password', 'reset-password-invalid'] as const).map((page) => ({ name: page, principal: 'anonymous', tenant: 'studio', page, route: page === 'reset-password' ? '/reset-password?token=visual-reset-token' : page === 'reset-password-invalid' ? '/reset-password?error=INVALID_TOKEN' : `/${page}`, courseId: '', lessonId: '', spaceId: '', extra: async (api: ApiClient) => { await api.publicNavigation(); if (page === 'login') { await api.authConfig(); await api.resolveSignInMethods({ email: 'creator@together.dev' }); } } })),
   { name: 'checkout', principal: 'anonymous', tenant: 'studio', page: 'checkout', route: '/checkout/product-studio-kurs-101', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicPaymentConfig(); } },
   { name: 'boot-splash', principal: 'creator@together.dev', tenant: 'studio', page: 'boot-splash', route: '/panel', courseId: '', lessonId: '', spaceId: '', pending: [{ call: fixtureKey('me', []), queryKeys: [[...meQuery(abortedApi).queryKey]] }] },
   { name: 'course-not-found', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'course-not-found', route: '/my/courses/course-does-not-exist', courseId: '', lessonId: '', spaceId: '', expectedErrors: { [fixtureKey('studentCourseStructure', ['course-does-not-exist'])]: 'not_found' }, extra: async (api) => { await api.studentCourseStructure('course-does-not-exist'); await api.studentProgress('course-does-not-exist'); await api.studentCourses(); } },
@@ -81,8 +81,9 @@ const plan: Scenario[] = [
   { name: 'panel-coupon-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-coupon-detail', route: '/panel/sales/coupons/coupon-studio-partner20', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getCouponStats('coupon-studio-partner20'); } },
   { name: 'panel-order-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-order-detail', route: '/panel/sales/order-studio-aktywny-js', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getOrder('order-studio-aktywny-js'); } },
   { name: 'panel-settings-redirects', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-settings-redirects', route: '/panel/settings/redirects', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getTenantRedirects({ limit: 50, offset: 0 }); await api.listCourses(); await api.listModules(); await api.listLessons(); } },
-  { name: 'panel-settings-security', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-settings-security', route: '/panel/settings#security', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getTenantSettings(); await api.listAccountSessions(); } },
-  { name: 'panel-storage-wizard', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-storage-wizard', route: '/panel/integrations#storage', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listTenantSecrets(); } },
+  ...(['panel-settings-domains', 'panel-settings-domains-active', 'panel-settings-domains-verified'] as const).map((name) => ({ name, principal: 'creator@together.dev', tenant: 'studio', page: name, route: '/panel/settings#domains', courseId: '', lessonId: '', spaceId: '', extra: async (api: ApiClient) => { await api.listStaffSpaces(); await api.listCourses(); await api.getTenantRedirects({ limit: 0 }); await api.getTenantSettings(); await api.getTenantRouting(); await api.listAccountSessions(); } })),
+  { name: 'panel-settings-security', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-settings-security', route: '/panel/settings#security', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getTenantSettings(); await api.getTenantRouting(); await api.listAccountSessions(); } },
+  { name: 'panel-storage-wizard', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-storage-wizard', route: '/panel/integrations#storage', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listTenantSecrets(); await api.getTenantRouting(); } },
   { name: 'panel-integrations-email', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-integrations-email', route: '/panel/integrations#email', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getMarketingSesSettings(); await api.getMarketingReputation(); } },
   { name: 'panel-marketing-campaigns', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-campaigns', route: '/panel/marketing/campaigns', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingCampaigns(); await api.listMarketingConsentDefinitions(); await api.getMarketingReputation(); } },
   { name: 'panel-marketing-activity', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-activity', route: '/panel/marketing/activity', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listTenantSchedulerRuns({ limit: 25 }); } },
@@ -176,12 +177,19 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
     });
     await scenario.extra(recordingApi);
   }
-  if (scenario.page === 'account' || scenario.page === 'panel-settings-security') {
+  if (scenario.page === 'account' || scenario.page.startsWith('panel-settings-') && scenario.page !== 'panel-settings-redirects') {
     const recordPasskeys = passkeyRecorders.get(`${scenario.tenant}:${scenario.principal}`);
     if (!recordPasskeys) throw new Error('Missing passkey recorder');
     calls[fixtureKey('listPasskeys', [])] = await recordPasskeys();
   }
-  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? value.replaceAll(baseUrl, 'http://localhost:48730') : value));
+  // Both inherited DNS goldens captured the pending response cached by the live app.
+  if (scenario.page.startsWith('panel-settings-domains')) {
+    calls[fixtureKey('getTenantRouting', [])] = { ok: true, value: { routing: domainChecklistRouting(scenario.page.endsWith('-verified')) } };
+  }
+  // Routing goldens include the authoring server's port in CORS instructions.
+  const recordedTenantHost = `${scenario.tenant}.localhost:${new URL(baseUrl).port}`;
+  const goldenTenantHost = `${scenario.tenant}.localhost:63871`;
+  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? value.replaceAll(baseUrl, 'http://localhost:48730').replaceAll(recordedTenantHost, goldenTenantHost) : value));
   fixtureSchema.parse(snapshot);
   save(scenario.name, snapshot);
   console.log(`${scenario.name}: ${Object.keys(calls).length} calls`);

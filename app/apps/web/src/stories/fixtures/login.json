@@ -16,6 +16,51 @@
       },
       "ok": false
     },
+    "publicNavigation:[]": {
+      "ok": true,
+      "value": {
+        "navigation": {
+          "courses": [
+            {
+              "description": "Kompletny kurs JavaScript: od zmiennych, przez funkcje i DOM, po pierwszy projekt.",
+              "id": "course-js",
+              "imageUrl": "https://picsum.photos/seed/together-course-js/960/540",
+              "name": "Kurs JavaScript od podstaw"
+            }
+          ],
+          "defaultHomeSpaceId": "space-studio-spolecznosc",
+          "lockedSpaces": [
+            {
+              "description": "Przestrzeń dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.",
+              "id": "space-studio-klub-js",
+              "name": "Klub JavaScriptu",
+              "productIds": [
+                "product-js-full"
+              ],
+              "slug": "klub-js"
+            },
+            {
+              "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
+              "id": "space-studio-klub-react",
+              "name": "Klub Reacta",
+              "productIds": [
+                "product-react-full"
+              ],
+              "slug": "klub-react"
+            }
+          ],
+          "spaces": [
+            {
+              "description": "Otwarta przestrzeń dla wszystkich uczestników — przedstaw się i pogadaj z innymi.",
+              "id": "space-studio-spolecznosc",
+              "name": "Społeczność",
+              "position": 0,
+              "slug": "spolecznosc"
+            }
+          ]
+        }
+      }
+    },
     "publicOffer:[]": {
       "ok": true,
       "value": {
@@ -188,6 +233,15 @@
             "url": null
           }
         }
+      }
+    },
+    "resolveSignInMethods:[{\"email\":\"creator@together.dev\"}]": {
+      "ok": true,
+      "value": {
+        "methods": [
+          "password",
+          "magic-link"
+        ]
       }
     }
   },

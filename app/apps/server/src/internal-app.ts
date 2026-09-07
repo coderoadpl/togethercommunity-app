@@ -166,6 +166,7 @@ import {
   beginProductDownloadUpload,
   authenticateApiKey,
   authLinkBaseUrl,
+  createTenantOriginResolver,
   autoIssueOnPayment,
   authorizeRequiredTenant,
   authorizeTenant,
@@ -178,6 +179,7 @@ import {
   createLesson,
   createMarketingConsentDefinition,
   createModule,
+  customDomainOrigin,
   createPost,
   createProduct,
   createProductPrice,
@@ -251,6 +253,7 @@ import {
   checkTenantDomain,
   getTenantRouting,
   removeTenantDomain,
+  resubscribeSesWebhookAfterDomainRemoval,
   getTenantSecretsMasked,
   getTenantSesMarketingSettings,
   getTenantSettings,
@@ -368,6 +371,7 @@ import {
   testBunnyConnection,
   testIfirmaConnection,
   testIntegration,
+  tenantUrl,
   testKsefConnection,
   testSendCampaignToSelf,
   unfollowSpace,
@@ -438,8 +442,15 @@ const impersonationOf = (
 
 const probeCorsOrigins = async (req: HonoRequest, deps: AppDeps): Promise<string[]> => {
   const resolved = await resolveTenant(req.header('host') ?? '', req.header(TENANT_HEADER) ?? null, deps);
-  const tenantOrigin = authLinkBaseUrl(resolved.ok ? resolved.value : null, deps);
-  return [...new Set([new URL(tenantOrigin).origin, new URL(deps.appBaseUrl).origin])];
+  if (!resolved.ok || resolved.value === null) return [new URL(deps.appBaseUrl).origin];
+  const domains = await deps.tenantDomains.listByTenant(resolved.value.tenant.id);
+  return [...new Set([
+    new URL(tenantUrl(resolved.value.tenant.slug, '/', deps)).origin,
+    new URL(deps.appBaseUrl).origin,
+    ...domains
+      .filter((domain) => domain.kind === 'custom' && domain.verified)
+      .map((domain) => customDomainOrigin(domain.domain, deps)),
+  ])];
 };
 
 const emailBranding = async (
@@ -856,7 +867,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
               selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
               attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
               collectedAt: deps.clock.nowIso(),
-              confirmationBaseUrl: `${deps.appBaseUrl}/marketing/confirm`,
+              confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
               ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
             },
             createdAt: deps.clock.nowIso(),
@@ -951,7 +962,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           productId: selection.value.product.id,
           orderId: result.value.orderId,
           collectedAt: deps.clock.nowIso(),
-          confirmationBaseUrl: `${authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
+          confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
           ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
         });
         const orderDetails = deps.orderDetails;
@@ -972,7 +983,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         }
       }
 
-      const baseUrl = authLinkBaseUrl(tenant.value, deps);
+      const baseUrl = await authLinkBaseUrl(tenant.value, deps);
       const issuedMagicLink = await issueMagicLink(deps, {
         email: parsed.data.email,
         tenantId: tenant.value.tenant.id,
@@ -1222,6 +1233,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = marketingCampaignActionInputSchema.pick({ campaignId: true }).safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign test payload', parsed.error.flatten())));
+    const resolveOrigin = createTenantOriginResolver(deps);
     const result = await testSendCampaignToSelf(ctxOf(c), parsed.data, {
       definitions: deps.marketing.definitions, consents: deps.marketing.marketingConsents,
       campaigns: deps.marketing.campaigns, layouts: deps.marketing.layouts, sends: deps.marketing.campaignSends,
@@ -1231,7 +1243,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ses: deps.marketing.marketingSes, credentials: deps.marketing.marketingCredentials,
       quotaReader: deps.marketing.quotaReader, throttle: deps.marketing.throttle,
       hmac: deps.marketing.hmac, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
-      clock: deps.clock, unsubscribeBaseUrl: `${deps.appBaseUrl}/u`,
+      clock: deps.clock, unsubscribeBaseUrl: async (tenantId: string) => `${await resolveOrigin(tenantId)}/u`,
       scheduler: deps.marketing.scheduler,
       runs: deps.marketing.runs,
       outbox: { enqueue: async () => ok({ id: '' }), claimBatch: async () => ok([]), markSent: async () => ok(undefined), markFailed: async () => ok(undefined) },
@@ -1666,6 +1678,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         clock: deps.clock,
         notifications: {
           tenants: deps.tenants,
+          tenantDomains: deps.tenantDomains,
           tenantAccess: deps.tenantAccess,
           emailOutbox: deps.emailOutbox,
           appBaseUrl: deps.appBaseUrl,
@@ -2021,13 +2034,17 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   const tenantRoutingDeps = {
     tenantDomains: deps.tenantDomains,
+    storageCorsCache: deps.storageCorsCache,
     routing: {
       appBaseUrl: deps.appBaseUrl,
       baseDomain: deps.baseDomain,
       singleTenantMode: deps.singleTenantMode,
     },
     customDomainTarget: deps.customDomainTarget,
+    customDomainApexARecord: deps.customDomainApexARecord,
   };
+  const marketing = deps.marketing;
+  const sesOnboarding = marketing?.sesOnboarding;
   const tenantDomainDeps = {
     ...tenantRoutingDeps,
     domainEvents: deps.tenantDomainEvents,
@@ -2038,6 +2055,17 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     realtimeBus: deps.realtimeBus,
     ids: deps.ids,
     clock: deps.clock,
+    logger: deps.logger,
+    ...(marketing === undefined || sesOnboarding === undefined ? {} : {
+      resubscribeSesWebhookAfterDomainRemoval: (tenantId: string, domain: string) =>
+        resubscribeSesWebhookAfterDomainRemoval(tenantId, domain, {
+          settings: marketing.sesSettings,
+          credentials: sesOnboarding.credentials,
+          controlPlane: sesOnboarding.controlPlane,
+          clock: deps.clock,
+          webhookBaseUrl: sesWebhookBaseUrl,
+        }),
+    }),
   };
 
   const tenantRedirectDeps = {
@@ -2168,7 +2196,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await probeStorageConnection(
       ctxOf(c),
       parsed.data,
-      { storage: deps.storage, corsOrigins: await probeCorsOrigins(c.req, deps) },
+      {
+        storage: deps.storage,
+        corsOrigins: await probeCorsOrigins(c.req, deps),
+      },
     ));
   });
 

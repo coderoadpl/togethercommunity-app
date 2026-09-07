@@ -70,7 +70,7 @@ Storybook. Server HTML stories are compiled by TypeScript and the Storybook buil
 ## Recorded page fixtures
 
 The page catalogue covers the seeded member area, anonymous home and course
-pages, studio management pages, member details and email history, the mobile member menu, login and password recovery, checkout, a missing
+pages, studio management pages, member details and email history, the mobile member menu, login, registration and password recovery, checkout, a missing
 course, a locked lesson, and the creator boot splash. Each new page capture has a story ID matching its application golden
 name without the `.png` suffix, with the same desktop, mobile, or 375-pixel viewport.
 The original Start, LessonPlayer, SpaceFeed, and hosted legal document stories
@@ -83,7 +83,13 @@ unrecorded calls. Captures reject pending or expected-error calls that were neve
 exercised. Recorded
 tracking and read-mark failures follow the same request policy as the application
 harness. Authenticated passkey reads use the auth adapter; session IDs and times
-are normalized to stable fixture values. Page stories keep
+are normalized to stable fixture values. Routing hosts use the storage golden's
+authoring port so CORS instructions stay reproducible. The pending and active DNS
+checklist stories share the synthetic routing scenario with the live screen
+inventory. The inherited active-named goldens contain the same cached pending
+response as the pending goldens; their baseline stories say Recorded Pending.
+Separate Active variants render the verified response. The remaining settings
+and session data come from the seed. Page stories keep
 an `auto` theme preference; use browser color-scheme emulation for light captures or dark previews.
 
 Run `pnpm run fixtures:check` after `pnpm run db:up` to re-record
@@ -92,6 +98,13 @@ baseline is `apps/web/src/stories/fixtures`; an optional baseline directory supp
 drift-check diagnostics. Temporary recordings are removed on success and failure.
 CI runs this drift check in the Postgres-backed e2e auth leg. The separate
 macOS visual job builds and captures Storybook without a database.
+
+Auth page stories render the production AuthShell. The default build reproduces
+the committed goldens' unconfigured base-domain fallback. Run
+`APP_BASE_DOMAIN=localhost pnpm run storybook` to inspect the tenant public
+navigation and footer on `studio.localhost:9009`. Login's Method Cards story
+resolves the seeded creator's sign-in methods before rendering the choices.
+Registration is available at both viewport sizes without a committed golden.
 
 For serial full-gate verification, use `TOGETHER_TEST_SERIAL=1 pnpm run check`.
 

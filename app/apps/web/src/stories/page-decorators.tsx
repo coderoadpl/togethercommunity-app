@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { z } from 'zod';
 import { MEMBER_ROUTE_PATHS } from '#core/contract/index.js';
+import { RegisterRoute } from '../routes/register.js';
 import { LoginRoute } from '../routes/login.js';
 import { ForgotPasswordRoute } from '../routes/forgot-password.js';
 import { ResetPasswordRoute } from '../routes/reset-password.js';
@@ -57,6 +58,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
     const root = createRootRoute({ component: PageRoot });
     const home = createRoute({ getParentRoute: () => root, path: '/', component: HomeRoute });
     const publicRoutes = [
+      createRoute({ getParentRoute: () => root, path: '/register', component: RegisterRoute }),
       createRoute({ getParentRoute: () => root, path: '/login', component: LoginRoute }),
       createRoute({ getParentRoute: () => root, path: '/forgot-password', component: ForgotPasswordRoute }),
       createRoute({ getParentRoute: () => root, path: '/reset-password', component: ResetPasswordRoute }),

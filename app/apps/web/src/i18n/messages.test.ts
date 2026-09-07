@@ -51,12 +51,11 @@ describe('i18n dictionaries', () => {
       messages.auth.signInMethodsChoosePrompt,
       messages.auth.signInMethodsChooseMagicLink,
       messages.auth.signInMethodsChoosePassword,
-      messages.auth.magicLinkStepBody,
       messages.auth.magicLinkExpiredOnStep,
-      messages.auth.usePasswordPrompt,
-      messages.auth.usePasswordInstead,
-      messages.auth.useMagicLinkPrompt,
-      messages.auth.useMagicLinkInstead,
+      messages.auth.methodLead,
+      messages.auth.methodMagicLinkBody,
+      messages.auth.methodPasswordBody,
+      messages.auth.methodPasskeyBody,
     ]);
 
     for (const text of stepCopy) {

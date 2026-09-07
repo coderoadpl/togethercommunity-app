@@ -722,6 +722,27 @@
       "when": 1788820120000,
       "tag": "0102_tenant_redirect_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1788820180000,
+      "tag": "0103_tenant_domain_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1788820240000,
+      "tag": "0104_storage_cors_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1788820300000,
+      "tag": "0105_record_skipped_0080",
+      "breakpoints": true
     }
   ]
 }

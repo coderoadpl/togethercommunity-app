@@ -128,9 +128,9 @@ describe('email transport wizard', () => {
 
     expect(await screen.findByText(/AWS nie zgłasza już tej tożsamości/)).toBeInTheDocument();
     expect(screen.getByTestId('dkim-record-name-token._domainkey.tenant.test'))
-      .toHaveValue('token._domainkey.tenant.test');
+      .toHaveTextContent('token._domainkey.tenant.test');
     expect(screen.getByTestId('dkim-record-value-token._domainkey.tenant.test'))
-      .toHaveValue('token.dkim.amazonses.com');
+      .toHaveTextContent('token.dkim.amazonses.com');
     expect(screen.getByText(/Przekazywanie powiadomień tożsamości jest wyłączone/)).toBeInTheDocument();
 
     const testButtons = screen.getAllByRole('button', { name: 'Wyślij test do siebie' });
@@ -212,11 +212,11 @@ describe('email transport wizard', () => {
     await user.click(await screen.findByRole('button', { name: 'Utwórz infrastrukturę SES + SNS' }));
 
     expect(await screen.findByText('Infrastruktura SES + SNS jest utworzona')).toBeInTheDocument();
-    expect(screen.getByTestId('ses-configuration-set')).toHaveValue('together-tenant-1');
+    expect(screen.getByTestId('ses-configuration-set')).toHaveTextContent('together-tenant-1');
     expect(screen.getByTestId('ses-topic-arn'))
-      .toHaveValue('arn:aws:sns:eu-central-1:123:together-tenant-1');
+      .toHaveTextContent('arn:aws:sns:eu-central-1:123:together-tenant-1');
     expect(screen.getByTestId('ses-subscription-endpoint'))
-      .toHaveValue('https://app.test/api/webhooks/ses/webhook-token');
+      .toHaveTextContent('https://app.test/api/webhooks/ses/webhook-token');
     await screen.findByText(/Subskrypcja SNS czeka na potwierdzenie/);
     await vi.waitFor(() => {
       expect(settingsReads).toBeGreaterThan(1);

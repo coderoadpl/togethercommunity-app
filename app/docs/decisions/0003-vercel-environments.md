@@ -92,7 +92,9 @@ itself does not need it. `db:migrate` logs
 build log names the database it touched.
 
 Staging and preview data is seeded from the deployed code rather than copied
-from production. A platform owner listed in `PLATFORM_OWNER_EMAILS` gets a
+from production. The staging Vercel Preview deployment migrates its database,
+checks for the smoke seed markers, and runs `pnpm run db:seed` only when those
+markers are absent. A platform owner listed in `PLATFORM_OWNER_EMAILS` gets a
 "Reset data" action on the platform host that wipes the demo tenants and
 re-seeds them inside the request; `POST /api/platform/data-reset` is registered
 only when `APP_ENV` is `staging` or `preview`, so every other deployment answers
@@ -106,10 +108,9 @@ e-mail address is verified. Every attempt that reaches the reseed is recorded in
 The reseed itself refuses to run when the deployment identity reports production
 or when the fingerprint of the `DATABASE_URL` host equals
 `PRODUCTION_DATABASE_FINGERPRINT`. That refusal lives in the reseed entry point,
-so it covers the in-request use-case, `pnpm run db:reseed` and the build-time
-reseed that `STAGING_RESEED_ON_DEPLOY=true` adds after migrating, instead of
-migrating only. The wipe and the seed share one transaction and an advisory lock,
-so overlapping resets queue instead of interleaving.
+so it covers the in-request use-case and `pnpm run db:reseed`. The wipe and the
+seed share one transaction and an advisory lock, so overlapping resets queue
+instead of interleaving.
 
 A successful reset reports through a snackbar. A failure keeps the confirmation
 dialog open and shows the refusal inline rather than as a toast, so the owner can

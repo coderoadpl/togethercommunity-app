@@ -22,6 +22,7 @@ interface Hoisted {
   verifyTotp: ReturnType<typeof vi.fn>;
   verifyBackupCode: ReturnType<typeof vi.fn>;
   configureStripe: ReturnType<typeof vi.fn>;
+  getTenantRouting: ReturnType<typeof vi.fn>;
   getTenantRedirects: ReturnType<typeof vi.fn>;
   createTenantRedirect: ReturnType<typeof vi.fn>;
   deleteTenantRedirect: ReturnType<typeof vi.fn>;
@@ -48,6 +49,7 @@ const h = vi.hoisted(
     verifyTotp: vi.fn(),
     verifyBackupCode: vi.fn(),
     configureStripe: vi.fn(),
+    getTenantRouting: vi.fn(),
     getTenantRedirects: vi.fn(),
     createTenantRedirect: vi.fn(),
     deleteTenantRedirect: vi.fn(),
@@ -98,6 +100,7 @@ vi.mock('#core/client/index.js', () => ({
     health: h.health,
     configureStorage: h.configureStorage,
     configureStripe: h.configureStripe,
+    getTenantRouting: h.getTenantRouting,
     getTenantRedirects: h.getTenantRedirects,
     createTenantRedirect: h.createTenantRedirect,
     deleteTenantRedirect: h.deleteTenantRedirect,
@@ -623,5 +626,39 @@ describe('redirect commands', () => {
 
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(process.exitCode).toBe(6);
+  });
+});
+
+describe('domain show', () => {
+  const routing = {
+    tenantHost: 'workspace.example.org',
+    customDomainTarget: 'routing.example.org',
+    apexDomainsSupported: false,
+    canAddCustomDomain: true,
+    customDomains: [{
+      domain: 'courses.example.org', verified: false, status: 'pending-dns',
+      lastCheckedAt: null, lastError: null,
+      records: [
+        { type: 'CNAME', name: 'courses.example.org', value: 'routing.example.org', purpose: 'routing', status: 'pending' },
+        { type: 'TXT', name: '_vercel.courses.example.org', value: 'challenge', purpose: 'ownership', status: 'verified' },
+      ],
+    }],
+  };
+
+  it('preserves records and statuses in the JSON envelope', async () => {
+    h.getTenantRouting.mockResolvedValue(ok({ routing }));
+    await run('--json', 'domain', 'show');
+    expect(soleJson()).toEqual({ ok: true, data: { routing } });
+  });
+
+  it('prints every record and its status', async () => {
+    h.getTenantRouting.mockResolvedValue(ok({ routing }));
+    await run('domain', 'show');
+    expect(logSpy).toHaveBeenCalledWith([
+      'workspace.example.org',
+      'courses.example.org\tpending-dns',
+      'CNAME\tcourses.example.org\trouting.example.org\tpending',
+      'TXT\t_vercel.courses.example.org\tchallenge\tverified',
+    ].join('\n'));
   });
 });

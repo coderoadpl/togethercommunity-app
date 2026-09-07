@@ -7,7 +7,7 @@ always builds first so stale bundles cannot pass the gate. CI runs this gate on
 macOS 26 (arm64) with Chrome 152.0.7977.82, matching the golden authoring platform. Set
 `PLAYWRIGHT_CHROME_EXECUTABLE_PATH` to use an explicit Chrome executable.
 
-The catalogue currently covers 112 captures in Shadcn, the maintained base theme
+The catalogue currently covers 116 captures in Shadcn, the maintained base theme
 ([ADR-0010](decisions/0010-shadcn-base-theme.md)). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
 
@@ -21,13 +21,18 @@ the original Start, LessonPlayer, SpaceFeed and hosted legal document IDs.
 Every mapped viewport must exist in Storybook's built index. Every committed
 PNG must be covered; a missing story, missing golden or unmapped golden fails.
 
-The harness fixes the browser clock to the recording time, locale to `pl-PL`,
+The harness fixes Date to the recording time and sets locale to `pl-PL`,
 timezone to UTC, color scheme to light, scale to 1 and reduced motion. It shares
 the live harness's request policy, stream suppression, font readiness and
-animation freezing. Each story must finish its fixture calls and queries before
-capture. Server HTML stories render the production HTML in a nested iframe;
+animation freezing. Each story must finish its fixture calls and queries before capture; fonts and
+image decoding also settle before screenshots. The lesson-attachment scenario explicitly scrolls its HTML
+field to the recorded end position. Server HTML stories render the production HTML in a nested iframe;
 the harness waits for that document and its fonts. Captures run sequentially,
-once, with no retries.
+once, with no retries. Each viewport/auth group reuses a page in inventory order, matching the
+golden authoring harness and its rounded-shadow paint caches. The shared browser
+setup saves native animation-frame scheduling before Playwright installs its
+clock. Capture waits use those native frames, so paint readiness remains tied
+to rendering while application timers retain the authoring clock behavior.
 
 Pixelmatch uses threshold 0, excludes anti-aliasing and allows at most 10 counted
 pixels. Migration acceptance is stricter: each converted capture must report

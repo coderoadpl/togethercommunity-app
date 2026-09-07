@@ -5,6 +5,7 @@ import {
   CUSTOM_DOMAIN_CHECKS_PER_HOUR,
   err,
   MAX_CUSTOM_DOMAINS_PER_TENANT,
+  mergeDomainRecords,
   normalizeCustomDomain,
   notFound,
   ok,
@@ -31,13 +32,16 @@ import type {
   TenantAccessReader,
   TenantDomainEventRepository,
   TenantDomainRepository,
+  StorageCorsCache,
 } from '../ports.js';
-import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { canonicalTenantDomain, customDomainOrigin, tenantOriginUrl, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 
 export interface TenantRoutingDeps {
   tenantDomains: TenantDomainRepository;
+  storageCorsCache?: StorageCorsCache | undefined;
   routing: TenantUrlDeps;
   customDomainTarget: string;
+  customDomainApexARecord?: string | undefined;
 }
 
 export interface TenantDomainDeps extends TenantRoutingDeps {
@@ -49,6 +53,11 @@ export interface TenantDomainDeps extends TenantRoutingDeps {
   realtimeBus: RealtimeBusPort;
   ids: IdGenerator;
   clock: Clock;
+  logger?: { warn(message: string): void } | undefined;
+  resubscribeSesWebhookAfterDomainRemoval?: ((
+    tenantId: string,
+    domain: string,
+  ) => Promise<Result<{ endpoint: string } | null, AppError>>) | undefined;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -63,27 +72,54 @@ const TENANT_DOMAIN_CHECK_BATCH = 25;
 export const TENANT_DOMAIN_REFRESH_BUDGET_MS = 12_000;
 export const TENANT_DOMAIN_CHECK_TIME_BUDGET_MS = 20_000;
 
-const routingView = (
+const domainRecords = (domain: TenantDomain, deps: TenantRoutingDeps) =>
+  mergeDomainRecords(
+    domain.records,
+    customDomainRecords({
+      domain: domain.domain,
+      target: deps.customDomainTarget,
+      apexARecord: deps.customDomainApexARecord,
+      verification: domain.verification,
+    }),
+  );
+
+const routingView = async (
+  tenantId: string,
   tenantSlug: string | null,
   domains: TenantDomain[],
   deps: TenantRoutingDeps,
-): TenantRouting => {
+): Promise<TenantRouting> => {
   const custom = domains.filter((domain) => domain.kind === 'custom');
+  const tenantOrigin = new URL(tenantUrl(tenantSlug, '/', deps.routing)).origin;
+  const verifiedCustomOrigins = custom
+    .filter((domain) => domain.verified)
+    .map((domain) => customDomainOrigin(domain.domain, deps.routing));
+  const storageCorsOrigins = [...new Set([tenantOrigin, ...verifiedCustomOrigins])];
+  const cachedCors = await deps.storageCorsCache?.read(tenantId) ?? null;
   return {
-    tenantHost: new URL(tenantUrl(tenantSlug, '/', deps.routing)).host,
+    tenantHost: new URL(tenantOrigin).host,
+    storageCorsOrigins,
+    canonicalOrigin: tenantOriginUrl({ slug: tenantSlug, customDomain: canonicalTenantDomain(domains)?.domain ?? null }, deps.routing),
     customDomains: custom.map((domain) => ({
       domain: domain.domain,
       verified: domain.verified,
       status: tenantDomainStatus(domain),
-      records: customDomainRecords({
-        domain: domain.domain,
-        target: deps.customDomainTarget,
-        verification: domain.verification,
-      }),
+      records: domainRecords(domain, deps).map((record) => ({
+        ...record,
+        status: domain.verified || (record.purpose === 'ownership' && (domain.providerVerified || !domain.verification.some(
+          (required) => required.type === record.type
+            && required.name === record.name && required.value === record.value,
+        ))) ? 'verified' as const : 'pending' as const,
+      })),
       lastCheckedAt: domain.lastCheckedAt,
       lastError: domain.lastError,
+      storageCorsStatus: domain.verified
+        ? cachedCors?.results.find((result) =>
+          result.origin === customDomainOrigin(domain.domain, deps.routing))?.status ?? 'unknown'
+        : 'unknown',
     })),
     customDomainTarget: deps.customDomainTarget,
+    apexDomainsSupported: deps.customDomainApexARecord !== undefined,
     canAddCustomDomain: custom.length < MAX_CUSTOM_DOMAINS_PER_TENANT,
   };
 };
@@ -93,7 +129,7 @@ const readRouting = async (
   tenantSlug: string | null,
   deps: TenantRoutingDeps,
 ): Promise<TenantRouting> =>
-  routingView(tenantSlug, await deps.tenantDomains.listByTenant(tenantId), deps);
+  await routingView(tenantId, tenantSlug, await deps.tenantDomains.listByTenant(tenantId), deps);
 
 export const getTenantRouting = async (
   ctx: Ctx,
@@ -224,7 +260,11 @@ export const addTenantDomain = async (
 ): Promise<Result<TenantRouting, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
-  const normalized = normalizeCustomDomain(input.domain, deps.routing.baseDomain);
+  const normalized = normalizeCustomDomain(
+    input.domain,
+    deps.routing.baseDomain,
+    deps.customDomainApexARecord,
+  );
   if (!normalized.ok) return normalized;
   const domain = normalized.value;
   if (domain === new URL(deps.routing.appBaseUrl).hostname) {
@@ -264,7 +304,14 @@ export const addTenantDomain = async (
     kind: 'custom',
     verified: false,
     provider: deps.provisioner.provider,
+    providerVerified: added.value.verified,
     verification: added.value.verification,
+    records: mergeDomainRecords(customDomainRecords({
+      domain,
+      target: deps.customDomainTarget,
+      apexARecord: deps.customDomainApexARecord,
+      verification: added.value.verification,
+    }), added.value.records),
     createdAt: now,
     verifiedAt: null,
     lastCheckedAt: null,
@@ -297,19 +344,29 @@ const refreshTenantDomain = async (
   const state = observed.ok && !observed.value.verified
     ? await deps.provisioner.verify(row.domain, { signal: deadline })
     : observed;
+  const records = mergeDomainRecords(
+    domainRecords(row, deps),
+    observed.ok ? observed.value.records : [],
+    state.ok ? state.value.records : [],
+  );
   const now = deps.clock.nowIso();
   if (!state.ok) {
-    // Our own deadline fired, so nothing was learned about the domain: recording a
-    // failure would blame the provider for a budget the caller ran out of. The stamp
-    // still moves, or the row this deadline keeps cutting short would be picked first
-    // by every following tick and starve every other tenant.
+    // Our own deadline fired: recording a failure would blame the provider for a
+    // budget the caller ran out of. The stamp still moves, or the row this deadline
+    // keeps cutting short would be picked first by every following tick and starve
+    // every other tenant.
     if (deadline.aborted) {
-      await deps.tenantDomains.patch(row.tenantId, row.id, { lastCheckedAt: now });
+      await deps.tenantDomains.patch(row.tenantId, row.id, {
+        lastCheckedAt: now, records,
+        ...(observed.ok ? { providerVerified: observed.value.verified, verification: observed.value.verification } : {}),
+      });
       return state;
     }
     await deps.tenantDomains.patch(row.tenantId, row.id, {
       lastCheckedAt: now,
       lastError: state.error.message,
+      records,
+      ...(observed.ok ? { providerVerified: observed.value.verified, verification: observed.value.verification } : {}),
     });
     // The trail is evidence, and a domain that keeps failing the same way would add
     // one row per tick to it, so only a change is worth recording.
@@ -327,7 +384,9 @@ const refreshTenantDomain = async (
   // A provisioner is never allowed to demote: manual mode has no opinion at all,
   // and an operator-verified row stays verified until an operator says otherwise.
   const progress = {
+    providerVerified: state.value.verified,
     verification: state.value.verification,
+    records,
     lastCheckedAt: now,
     lastError: null,
   } as const;
@@ -409,6 +468,31 @@ export const removeTenantDomain = async (
     actorUserId: ctx.identity.userId,
     detail: null,
   });
+  const resubscribed = await deps.resubscribeSesWebhookAfterDomainRemoval?.(
+    tenant.value,
+    row.domain,
+  );
+  if (resubscribed !== undefined && !resubscribed.ok) {
+    deps.logger?.warn(
+      `[tenant-domain] SES webhook resubscribe failed tenant=${tenant.value} domain=${row.domain} error=${resubscribed.error.message}`,
+    );
+    await appendEvent(deps, {
+      tenantId: tenant.value,
+      domain: row.domain,
+      kind: 'ses_webhook_resubscribe_failed',
+      actorUserId: ctx.identity.userId,
+      detail: resubscribed.error.message,
+    });
+  }
+  if (resubscribed !== undefined && resubscribed.ok && resubscribed.value !== null) {
+    await appendEvent(deps, {
+      tenantId: tenant.value,
+      domain: row.domain,
+      kind: 'ses_webhook_resubscribed',
+      actorUserId: ctx.identity.userId,
+      detail: resubscribed.value.endpoint,
+    });
+  }
   const requestHost = input.requestHost?.toLowerCase().replace(/:\d+$/, '') ?? null;
   return ok({
     routing: await readRouting(tenant.value, ctx.identity.tenantSlug, deps),

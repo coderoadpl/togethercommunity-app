@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, extname, join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { z } from 'zod';
-import { applyChrome, settlePage, stubNonDeterministicRequests } from './visual-browser-setup.js';
+import { applyChrome, settlePage, stubNonDeterministicRequests, waitForPaint } from './visual-browser-setup.js';
 import { visualSeedTime } from './visual-request-policy.js';
 import { pageScreens, pageStoryId, serverHtmlScreenNames } from './storybook-page-screens.js';
 import { SCREENS, VIEWPORTS, includesViewport, type ScreenSpec } from './visual-screen-inventory.js';
@@ -75,19 +75,24 @@ try {
   for (const name of selected) {
     if (!captureScreens.some((entry) => entry.name === name)) throw new Error(`Unknown page screen ${name}`);
   }
-  for (const spec of captureScreens.filter((entry) => selected.includes(entry.name))) {
-    const screen = spec.name;
-    for (const viewport of VIEWPORTS) {
-      if (!includesViewport(spec, viewport)) continue;
-      for (const mode of ['light']) {
+  // Match the authoring order and page reuse to preserve rounded-shadow paint caches.
+  for (const viewport of VIEWPORTS) {
+    for (const auth of ['public', 'member', 'member-free', 'creator'] as const) {
+      const specs = captureScreens.filter((entry) => selected.includes(entry.name) && entry.auth === auth && includesViewport(entry, viewport))
+        .sort((left, right) => SCREENS.findIndex((entry) => entry.name === left.name) - SCREENS.findIndex((entry) => entry.name === right.name));
+      if (specs.length === 0) continue;
+      const mode = 'light';
+      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1, colorScheme: mode, locale: 'pl-PL', timezoneId: 'UTC', reducedMotion: 'reduce' });
+      await applyChrome(context);
+      await stubNonDeterministicRequests(context);
+      const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(visualSeedTime));
+      const errors: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      for (const spec of specs) {
+        const screen = spec.name;
         const id = pageStoryId(screen, viewport.name);
-        const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1, colorScheme: mode === 'dark' ? 'dark' : 'light', locale: 'pl-PL', timezoneId: 'UTC', reducedMotion: 'reduce' });
-        await applyChrome(context);
-        await stubNonDeterministicRequests(context);
-        const page = await context.newPage();
-        const errors: string[] = [];
-        page.on('pageerror', (error) => errors.push(error.message));
-        await page.clock.setFixedTime(new Date(visualSeedTime));
+        errors.length = 0;
         const captureStartedAt = Date.now();
         let failure: string | undefined;
         const file = `${screen}--shadcn--${viewport.name}`;
@@ -98,7 +103,7 @@ try {
           await settlePage(page, spec.waitForNetworkIdle ?? true);
           if (spec.settled) {
             await spec.settled(page);
-            await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+            await waitForPaint(page);
           }
         } catch (error) { failure = String(error); }
         await page.screenshot({ path: join(shots, `${file}.png`), animations: 'disabled', caret: 'hide', scale: 'css', mask: spec.mask?.(page) ?? [] });
@@ -117,12 +122,12 @@ try {
         if (updateMode && !byteIdentical) updates.push({ baseline, current: join(shots, `${file}.png`) });
         const fixturePath = resolve(`apps/web/src/stories/fixtures/${screen}.json`);
         const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');
-        const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, errors, diagnostics };
+        const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, errors: [...errors], diagnostics };
         measurements.push(result);
         writeFileSync(join(output, 'measurements.json'), JSON.stringify({ browserVersion, milliseconds: Date.now() - startedAt, measurements }, null, 2));
         console.log(`${file}: ${result.comparison}; byte-identical=${byteIdentical}${failure ? `; ${failure}` : ''}${errors.length > 0 ? `; ${errors.join('; ')}` : ''}`);
-        await context.close();
       }
+      await context.close();
     }
   }
   if (updateMode && process.exitCode !== 1) {

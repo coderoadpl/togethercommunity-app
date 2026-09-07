@@ -743,6 +743,13 @@
       "when": 1788820300000,
       "tag": "0105_record_skipped_0080",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1788820360000,
+      "tag": "0106_video_autoplay_policy",
+      "breakpoints": true
     }
   ]
 }

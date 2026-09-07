@@ -678,6 +678,49 @@ const DirectMessagesPanel = ({ canEdit }: { canEdit: boolean }) => {
   );
 };
 
+const VideoPlaybackPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+  const disabled = !canEdit || !settings.isSuccess || updateSettings.isPending;
+  const videoAutoplayDefault = settings.data?.settings.videoAutoplayDefault ?? false;
+  const memberVideoAutoplayOverride = settings.data?.settings.memberVideoAutoplayOverride ?? false;
+
+  return (
+    <SectionCard title={t.videoPlayback.heading} description={t.videoPlayback.intro}>
+      <FormControlLabel
+        control={(
+          <Switch
+            checked={videoAutoplayDefault}
+            disabled={disabled}
+            onChange={(event) => updateSettings.mutate({ videoAutoplayDefault: event.target.checked })}
+          />
+        )}
+        label={t.videoPlayback.defaultLabel}
+      />
+      <FormHelperText>{t.videoPlayback.defaultHint}</FormHelperText>
+      <FormControlLabel
+        control={(
+          <Switch
+            checked={memberVideoAutoplayOverride}
+            disabled={disabled}
+            onChange={(event) => updateSettings.mutate({ memberVideoAutoplayOverride: event.target.checked })}
+          />
+        )}
+        label={t.videoPlayback.overrideLabel}
+      />
+      <FormHelperText>{t.videoPlayback.overrideHint}</FormHelperText>
+      {updateSettings.isError ? <Alert severity="error">{localizePanelError(updateSettings.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
 const CharacterCounter = ({
   used,
   limit,
@@ -1597,6 +1640,9 @@ export const SettingsPanel = () => {
           </Box>
           <Box id="direct-messages" sx={{ scrollMarginTop: '1rem' }}>
             <DirectMessagesPanel canEdit={canEdit} />
+          </Box>
+          <Box id="video-playback" sx={{ scrollMarginTop: '1rem' }}>
+            <VideoPlaybackPanel canEdit={canEdit} />
           </Box>
           <Box id="invoice" sx={{ scrollMarginTop: '1rem' }}>
             <InvoiceSettingsPanel canEdit={canEdit} />

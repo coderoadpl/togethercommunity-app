@@ -167,6 +167,21 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        }),
+      ),
       http.get('/api/discussion', () =>
         HttpResponse.json({
           ok: true,
@@ -586,7 +601,7 @@ describe('LessonPlayerPage', () => {
     );
   });
 
-  it('starts the Bunny embed only for a member who turned autoplay on', async () => {
+  it('uses the member preference when the creator allows an override', async () => {
     const videoBlock = allBlocks[0];
     if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
     server.use(
@@ -610,6 +625,21 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: true,
+            },
+          },
+        }),
+      ),
       okStructure(),
       okProgress(),
       okLesson([{ ...videoBlock, embedUrl: 'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=false&preload=false' }]),
@@ -621,6 +651,98 @@ describe('LessonPlayerPage', () => {
         'src',
         'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=true&preload=true',
       ));
+  });
+
+  it('waits for the autoplay policy before mounting a video', async () => {
+    let settingsRequested = false;
+    let releaseSettings: () => void = () => undefined;
+    const settingsGate = new Promise<void>((resolve) => {
+      releaseSettings = resolve;
+    });
+    const videoBlock = allBlocks[0];
+    if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
+    server.use(
+      http.get('/api/tenant/settings', async () => {
+        settingsRequested = true;
+        await settingsGate;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: true,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        });
+      }),
+      okStructure(),
+      okProgress(),
+      okLesson([{ ...videoBlock, embedUrl: 'https://iframe.mediadelivery.net/embed/424242/vid-1' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await waitFor(() => expect(settingsRequested).toBe(true));
+    expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
+    releaseSettings();
+    expect(await screen.findByTestId('lesson-video')).toHaveAttribute(
+      'src',
+      'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=true&preload=true',
+    );
+  });
+
+  it('shows a failed autoplay policy request beside the lesson', async () => {
+    server.use(
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: false,
+          error: { code: 'internal', message: 'boom' },
+        }, { status: 500 })),
+      okStructure(),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByRole('button', { name: pl.common.retry })).toBeInTheDocument();
+    expect(screen.getByTestId('lesson-video')).toHaveAttribute(
+      'src',
+      'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=false&preload=false',
+    );
+  });
+
+  it('uses the tenant default when member overrides are disabled', async () => {
+    const videoBlock = allBlocks[0];
+    if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
+    server.use(
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: true,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        }),
+      ),
+      okStructure(),
+      okProgress(),
+      okLesson([{ ...videoBlock, embedUrl: 'https://iframe.mediadelivery.net/embed/424242/vid-1' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await waitFor(() => expect(screen.getByTestId('lesson-video')).toHaveAttribute(
+      'src',
+      'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=true&preload=true',
+    ));
   });
 
   it('strips a script tag from html content', async () => {

@@ -1820,6 +1820,14 @@ export interface Messages {
     intro: string;
     toggleLabel: string;
   };
+  videoPlayback: {
+    heading: string;
+    intro: string;
+    defaultLabel: string;
+    defaultHint: string;
+    overrideLabel: string;
+    overrideHint: string;
+  };
   legal: {
     heading: string;
     intro: string;

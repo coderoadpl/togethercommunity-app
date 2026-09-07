@@ -36,10 +36,17 @@ const stubMe = (
     }),
   );
 
-const stubSettings = (billingPortalUrl: string | null, supportConfigured = false) =>
+const stubSettings = (
+  billingPortalUrl: string | null,
+  supportConfigured = false,
+  memberVideoAutoplayOverride = false,
+  videoAutoplayDefault = false,
+) =>
   http.get('*/api/tenant/settings', () =>
     HttpResponse.json({ ok: true, data: { settings: {
       name: 'Akademia', socialLinks: [], billingPortalUrl, bunnyStreamLibraryId: null, supportConfigured,
+      memberVideoAutoplayOverride,
+      videoAutoplayDefault,
     } } }),
   );
 
@@ -102,7 +109,6 @@ describe('MemberAccountPage', () => {
           pl.security.heading,
           pl.messages.privacyHeading,
           pl.account.preferencesHeading,
-          pl.account.playbackHeading,
           pl.account.billingHeading,
           pl.account.invoiceOrdersHeading,
           pl.support.heading,
@@ -234,7 +240,7 @@ describe('MemberAccountPage', () => {
     let body: unknown;
     server.use(
       stubMe(true, { displayName: 'Ada' }),
-      stubSettings(null),
+      stubSettings(null, false, true),
       stubBillingOrders(),
       http.post('*/api/me/profile', async ({ request }) => {
         body = await request.json();
@@ -256,20 +262,38 @@ describe('MemberAccountPage', () => {
     expect(body).toEqual({ videoAutoplay: true });
   });
 
-  it('reflects a stored video autoplay preference and hides playback without a member row', async () => {
-    server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null), stubBillingOrders());
+  it('reflects a stored video autoplay preference and hides playback when the creator disallows it', async () => {
+    server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null, false, true), stubBillingOrders());
     const { unmount } = await renderAccount();
     expect(await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel })).toBeChecked();
     unmount();
 
     server.use(
-      stubMe(true, { staffRole: 'owner', memberId: null }),
+      stubMe(true, { videoAutoplay: true }),
       stubSettings(null),
       stubBillingOrders(),
     );
     await renderAccount();
     await screen.findByTestId('account-email');
     expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
+  });
+
+  it('hides playback without a member row even when the creator allows overrides', async () => {
+    server.use(
+      stubMe(true, { staffRole: 'owner', memberId: null }),
+      stubSettings(null, false, true),
+      stubBillingOrders(),
+    );
+    await renderAccount();
+
+    expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
+  });
+
+  it('reflects the tenant default before the member chooses an override', async () => {
+    server.use(stubMe(true, { videoAutoplay: null }), stubSettings(null, false, true, true), stubBillingOrders());
+    await renderAccount();
+
+    expect(await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel })).toBeChecked();
   });
 
   it('stores the picked e-mail language and states the stored one', async () => {

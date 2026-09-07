@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import { resolveVideoAutoplay } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -183,7 +184,14 @@ export const MemberAccountPage = () => {
   const savedDisplayName = me.data.tenant?.displayName ?? '';
   const dmOptOut = me.data.tenant?.dmOptOut ?? false;
   const emailLanguage = me.data.tenant?.language ?? null;
-  const videoAutoplay = me.data.tenant?.videoAutoplay ?? false;
+  const memberVideoAutoplayOverride =
+    tenantSettings.data?.settings.memberVideoAutoplayOverride === true;
+  const videoAutoplay = tenantSettings.data === undefined
+    ? false
+    : resolveVideoAutoplay(
+        tenantSettings.data.settings,
+        me.data.tenant?.videoAutoplay ?? null,
+      );
   const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
@@ -435,7 +443,7 @@ export const MemberAccountPage = () => {
           )}
         </SectionCard>
 
-        {!impersonating && me.data.tenant?.memberId != null ? (
+        {!impersonating && me.data.tenant?.memberId != null && memberVideoAutoplayOverride ? (
           <SectionCard
             title={t.account.playbackHeading}
             description={t.account.playbackIntro}

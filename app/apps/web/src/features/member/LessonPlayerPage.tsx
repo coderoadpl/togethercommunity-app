@@ -16,6 +16,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 import {
   groupLessonBlocks,
+  resolveVideoAutoplay,
   withVideoAutoplay,
   type LessonContentGroup,
   type RenderableLessonBlock,
@@ -233,6 +234,7 @@ export const LessonPlayerPage = ({
     isForbidden(lesson.error) ||
     (lesson.isPending && cachedMe !== undefined);
   const me = useQuery({ ...actions.me, enabled: authenticated });
+  const tenantSettings = useQuery({ ...actions.tenantSettings, enabled: authenticated });
   const ownProgress = me.data !== undefined && me.data.impersonation === null;
   const structure = useQuery({ ...actions.courseStructure(courseId), enabled: authenticated });
   const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated });
@@ -376,9 +378,25 @@ export const LessonPlayerPage = ({
     );
   }
 
+  if (authenticated && tenantSettings.isPending) {
+    return (
+      <MemberSurface
+        title={t.lesson.loading}
+        eyebrow={t.lesson.eyebrow}
+        width="wide"
+        state={{ kind: 'loading', label: t.lesson.loading }}
+      />
+    );
+  }
+
   const groups = groupLessonBlocks(lesson.data.lesson.contents);
-  const videoAutoplay = me.data?.tenant?.videoAutoplay ?? false;
-  const hasSideErrors = [structure, progress, attachments, lastViewed, complete, uncomplete]
+  const videoAutoplay = tenantSettings.data === undefined
+    ? false
+    : resolveVideoAutoplay(
+        tenantSettings.data.settings,
+        me.data?.tenant?.videoAutoplay ?? null,
+      );
+  const hasSideErrors = [tenantSettings, structure, progress, attachments, lastViewed, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
@@ -419,6 +437,7 @@ export const LessonPlayerPage = ({
           <>
         {hasSideErrors ? (
           <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
+            {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
             {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
             {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
             {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}

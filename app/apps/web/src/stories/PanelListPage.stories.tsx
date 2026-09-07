@@ -28,7 +28,7 @@ const products = [
 ];
 
 export const Products: Story = {
-  name: 'Lista produktów',
+  name: 'Product list',
   args: {
     title: 'Produkty',
     action: <Button variant="contained">+ Dodaj</Button>,

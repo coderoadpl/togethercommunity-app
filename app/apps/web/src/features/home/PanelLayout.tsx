@@ -37,6 +37,7 @@ import { actions } from '../../api.js';
 import { AppShell, BrandLoader, StatusView } from '../../components/layout/index.js';
 import { localizePanelError, useTranslations, type Messages } from '../../i18n/index.js';
 import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
+import { publicAssetUrl } from '../../theme-public-asset.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
 import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
@@ -519,9 +520,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
           </AppBarTitle>
           <LogoImage
             surface="appbar"
-            src={theme.palette.mode === 'dark'
-              ? '/brand/together-horizontal-dark.svg'
-              : '/brand/together-horizontal-light.svg'}
+            src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
             alt={t.common.appName}
             data-testid="panel-brand-lockup"
             sx={{ alignSelf: 'flex-start', opacity: 0.62 }}
@@ -596,9 +595,7 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
         <Box sx={{ display: 'flex', minWidth: 0, px: '1.25rem', pt: '0.9rem', pb: '0.75rem' }}>
           <LogoImage
             surface="appbar"
-            src={theme.palette.mode === 'dark'
-              ? '/brand/together-horizontal-dark.svg'
-              : '/brand/together-horizontal-light.svg'}
+            src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
             alt={t.common.appName}
             sx={{ alignSelf: 'flex-start', opacity: 0.62 }}
           />

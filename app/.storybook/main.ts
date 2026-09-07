@@ -14,6 +14,7 @@ const config: StorybookConfig = {
   core: { disableTelemetry: true },
   viteFinal: (config) => ({
     ...config,
+    base: './',
     define: { ...config.define, __APP_VERSION__: JSON.stringify(pkg.version), __APP_COMMIT_SHA__: JSON.stringify('unknown'), ...(appBaseDomain ? { 'import.meta.env.VITE_APP_BASE_DOMAIN': JSON.stringify(appBaseDomain) } : {}) },
     plugins: [...(config.plugins ?? []), {
       name: 'storybook-fixture-api',

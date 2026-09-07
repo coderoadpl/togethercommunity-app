@@ -49,6 +49,10 @@ diagnose it before deciding whether the stage failed:
 
 Visual verification has zero retries.
 
+## Storybook and visual verification
+
+Story titles, names and descriptions must be ASCII English; Polish belongs only in rendered product content from fixtures or i18n.
+
 ## Alerting (owner decision 2026-09-06 — HARD RULE)
 
 Every monitor that can page starts observe-only — summary and `::notice::`, no

@@ -14,6 +14,7 @@ import { SocialLinksFooter } from './branding-social.js';
 import { LogoImage } from './components/ui/LogoImage.js';
 import { useTranslations } from './i18n/index.js';
 import { isConfiguredBaseDomainHost } from './lib/tenant.js';
+import { publicAssetUrl } from './theme-public-asset.js';
 import { applyBranding } from './theme-branding.js';
 import { CompactWordmark, ShellWordmark, Wordmark } from './theme.js';
 
@@ -89,7 +90,7 @@ export const BrandMark = ({
     return (
       <LogoImage
         surface={surface}
-        src={`/brand/together-horizontal-${theme.palette.mode}.svg`}
+        src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
         alt="Together"
         sx={{ mb: compact ? '0.2rem' : '0.6rem' }}
       />

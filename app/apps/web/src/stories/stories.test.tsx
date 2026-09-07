@@ -9,14 +9,17 @@ declare global {
   }
 }
 
-const modules = import.meta.glob('./**/*.stories.tsx', { eager: true });
+const modules = import.meta.glob(['./**/*.stories.tsx', '../../../server/src/**/*.stories.tsx'], { eager: true });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 describe('Storybook stories', () => {
   it('loads every story module and validates its CSF exports', () => {
-    const storyFiles = readdirSync(import.meta.dirname, { recursive: true })
+    const storyFiles = [
+      ...readdirSync(import.meta.dirname, { recursive: true }),
+      ...readdirSync(`${import.meta.dirname}/../../../server/src`, { recursive: true }),
+    ]
       .filter((file): file is string => typeof file === 'string' && file.endsWith('.stories.tsx'));
     expect(Object.keys(modules).length).toBeGreaterThan(0);
     expect(Object.keys(modules)).toHaveLength(storyFiles.length);
@@ -35,6 +38,36 @@ describe('Storybook stories', () => {
       for (const [name, story] of Object.entries(moduleValue)) {
         if (name === 'default') continue;
         expect(isRecord(story), `${file}#${name} must be a CSF story object`).toBe(true);
+      }
+    }
+  });
+
+  it('keeps developer-facing titles, names and descriptions in ASCII English', () => {
+    const expectAscii = (value: unknown, label: string) => {
+      if (value !== undefined) {
+        expect(typeof value, label).toBe('string');
+        expect(value, label).toMatch(/^[ -~\s]+$/u);
+      }
+    };
+
+    for (const [file, moduleValue] of Object.entries(modules)) {
+      if (!isRecord(moduleValue)) continue;
+      for (const [name, entry] of Object.entries(moduleValue)) {
+        expectAscii(name, `${file} export name`);
+        if (!isRecord(entry)) continue;
+        for (const field of ['title', 'name', 'storyName', 'description']) {
+          expectAscii(entry[field], `${file}#${name}.${field}`);
+        }
+        const parameters = entry.parameters;
+        const docs = isRecord(parameters) ? parameters.docs : undefined;
+        const description = isRecord(docs) ? docs.description : undefined;
+        if (isRecord(description)) {
+          for (const [key, value] of Object.entries(description)) {
+            expectAscii(value, `${file}#${name}.parameters.docs.description.${key}`);
+          }
+        } else {
+          expectAscii(description, `${file}#${name}.parameters.docs.description`);
+        }
       }
     }
   });

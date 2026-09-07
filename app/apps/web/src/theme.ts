@@ -1,6 +1,8 @@
 import type { ElementType } from 'react';
-import { Box, Breadcrumbs, Button, ButtonBase, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
-import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
+import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, Typography } from '@mui/material';
+import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
+
+import { accentOnSurface, type AccentGradient } from './theme-branding.js';
 
 import { progressTokens } from './theme-progress.js';
 
@@ -38,6 +40,12 @@ declare module '@mui/material/styles' {
     linkColor?: string;
     /** Present only when a tenant supplied an accent, so accent-driven decoration can opt out. */
     brandAccent?: string;
+    /** Input outline that clears the WCAG 1.4.11 non-text minimum against surface and background. */
+    borderInput?: string;
+    /** Label color on an accent fill. */
+    accentInk?: string;
+    /** Accent as type on the page background. */
+    accentText?: string;
   }
   interface ThemeOptions {
     headerRule?: string;
@@ -54,6 +62,9 @@ declare module '@mui/material/styles' {
     focusRing?: string;
     linkColor?: string;
     brandAccent?: string;
+    borderInput?: string;
+    accentInk?: string;
+    accentText?: string;
   }
 }
 
@@ -92,6 +103,27 @@ export const MODES = [
 type ThemeModeOption = (typeof MODES)[number];
 export type ThemeMode = ThemeModeOption['id'];
 export type ResolvedColorScheme = 'light' | 'dark';
+
+/**
+ * Member and creator surfaces share one base theme but not one control contract:
+ * the member flavour carries the sign-in tokens (warm cream / neutral ink page,
+ * perceivable input outlines, 48px controls, 44px touch targets), the studio
+ * flavour stays on the denser creator look.
+ */
+export type ThemeSurface = 'member' | 'studio';
+
+export const MEMBER_BACKGROUND: Record<ResolvedColorScheme, string> = {
+  light: '#F7F4EF',
+  dark: '#0F1012',
+};
+
+export const MEMBER_BORDER_INPUT: Record<ResolvedColorScheme, string> = {
+  light: '#8C8A85',
+  dark: '#666B73',
+};
+
+const CONTROL_MIN_HEIGHT = 48;
+const TOUCH_TARGET_MIN = 44;
 
 /**
  * Stock Material UI look. Only the per-tenant accent carries over as the
@@ -153,8 +185,9 @@ export const createThemeForMode = (
   mode: ThemeMode,
   accentHue?: number,
   scheme: ResolvedColorScheme = 'light',
+  surface: ThemeSurface = 'studio',
 ): Theme => {
-  if (scheme === 'dark') return createShadcnTheme('dark');
+  if (scheme === 'dark') return createShadcnTheme('dark', surface);
   switch (mode) {
     case 'logbook':
       return createAppTheme(accentHue);
@@ -163,7 +196,7 @@ export const createThemeForMode = (
     case 'scoreboard':
       return createScoreboardTheme();
     case 'shadcn':
-      return createShadcnTheme('light');
+      return createShadcnTheme('light', surface);
     case 'signal-mono':
       return createSignalMonoTheme();
     case 'steady-frame':
@@ -190,6 +223,7 @@ interface ShadcnTokens {
   disabledText: string;
   border: string;
   borderStrong: string;
+  borderInput: string;
   ember: string;
   emberHover: string;
   emberActive: string;
@@ -230,6 +264,7 @@ const SHADCN_LIGHT: ShadcnTokens = {
   disabledText: '#8A8781',
   border: '#E6E5E2',
   borderStrong: '#D6D4D0',
+  borderInput: '#E6E5E2',
   ember: '#E8682A',
   emberHover: '#DA5D22',
   emberActive: '#D8571F',
@@ -270,6 +305,7 @@ const SHADCN_DARK: ShadcnTokens = {
   disabledText: '#686C72',
   border: '#26282C',
   borderStrong: '#33363C',
+  borderInput: '#26282C',
   ember: '#E8682A',
   emberHover: '#EE7B40',
   emberActive: '#EE7B40',
@@ -297,8 +333,16 @@ const SHADCN_DARK: ShadcnTokens = {
   tooltipText: '#16171A',
 };
 
-const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
-  const tokens = scheme === 'dark' ? SHADCN_DARK : SHADCN_LIGHT;
+const MEMBER_TOKENS = (scheme: ResolvedColorScheme): Pick<ShadcnTokens, 'background' | 'input' | 'borderInput'> => ({
+  background: MEMBER_BACKGROUND[scheme],
+  input: scheme === 'dark' ? MEMBER_BACKGROUND[scheme] : '#FFFFFF',
+  borderInput: MEMBER_BORDER_INPUT[scheme],
+});
+
+const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 'studio'): Theme => {
+  const member = surface === 'member';
+  const base = scheme === 'dark' ? SHADCN_DARK : SHADCN_LIGHT;
+  const tokens: ShadcnTokens = member ? { ...base, ...MEMBER_TOKENS(scheme) } : base;
   const {
     background: SHADCN_BG,
     surface: SHADCN_SURFACE,
@@ -312,6 +356,7 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
     disabledText: SHADCN_DISABLED_TEXT,
     border: SHADCN_BORDER,
     borderStrong: SHADCN_BORDER_STRONG,
+    borderInput: SHADCN_BORDER_INPUT,
     ember: SHADCN_EMBER,
     emberHover: SHADCN_EMBER_HOVER,
     emberActive: SHADCN_EMBER_ACTIVE,
@@ -340,7 +385,8 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
   } = tokens;
   return createTheme({
     headerRule: `1px solid ${SHADCN_BORDER}`,
-    focusRing: SHADCN_RING,
+    focusRing: accentOnSurface(SHADCN_RING, SHADCN_BG),
+    borderInput: SHADCN_BORDER_INPUT,
     primaryActive: SHADCN_PRIMARY_ACTIVE,
     emberCta: {
       main: SHADCN_EMBER,
@@ -454,7 +500,9 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
-            padding: '0.5rem 1rem',
+            ...(member
+              ? { minHeight: CONTROL_MIN_HEIGHT, padding: '0.7rem 1rem' }
+              : { padding: '0.5rem 1rem' }),
             boxShadow: 'none',
             '&:focus-visible': {
               outline: 'none',
@@ -557,8 +605,9 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
+            ...(member ? { minHeight: CONTROL_MIN_HEIGHT } : {}),
             backgroundColor: SHADCN_INPUT,
-            '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_INPUT },
             '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_STRONG },
             '&.Mui-focused': { boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.35)}` },
             '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
@@ -567,8 +616,9 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
             },
           }),
           input: {
-            padding: '0.55rem 0.75rem',
-            fontSize: '0.875rem',
+            ...(member
+              ? { padding: '0.7rem 0.9rem', fontSize: '1rem' }
+              : { padding: '0.55rem 0.75rem', fontSize: '0.875rem' }),
             lineHeight: 1.5,
             '&[type="number"]': { fontVariantNumeric: 'tabular-nums' },
           },
@@ -731,6 +781,7 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
       MuiIconButton: {
         styleOverrides: {
           root: ({ theme }) => ({
+            ...(member ? { minWidth: TOUCH_TARGET_MIN, minHeight: TOUCH_TARGET_MIN } : {}),
             '&:focus-visible': {
               outline: 'none',
               boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.5)}`,
@@ -2854,7 +2905,7 @@ export const LedgerTitle = styled(Typography, {
   dense === true ? { [theme.breakpoints.down('md')]: { fontSize: '1.375rem' } } : {},
 );
 
-export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
+export const FinePrint = styled(Typography)<AsElement & { dateTime?: string }>({ fontSize: '0.75rem' });
 
 
 export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
@@ -2949,11 +3000,6 @@ export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   },
 }));
 
-export const NotificationMenuItem = styled(MenuItem)({
-  whiteSpace: 'normal',
-  alignItems: 'flex-start',
-});
-
 export const NotificationTitle = styled(Typography, {
   shouldForwardProp: (prop) => prop !== 'unread',
 })<AsElement & { unread?: boolean }>(({ unread }) => ({
@@ -2970,14 +3016,6 @@ export const NotificationSnippet = styled(Typography)<AsElement>(({ theme }) => 
   overflow: 'hidden',
 }));
 
-export const NotificationRowButton = styled(ButtonBase)({
-  display: 'flex',
-  width: '100%',
-  textAlign: 'left',
-  justifyContent: 'flex-start',
-  alignItems: 'stretch',
-});
-
 export const CountBadge = styled('span')(({ theme }) => ({
   display: 'inline-flex',
   alignItems: 'center',
@@ -2991,6 +3029,11 @@ export const CountBadge = styled('span')(({ theme }) => ({
   fontSize: '0.6875rem',
   fontWeight: 600,
   flexShrink: 0,
+}));
+
+/** Direct messages stay ink: the red badge is reserved for the notification count. */
+export const InkDotBadge = styled(Badge)(({ theme }) => ({
+  '& .MuiBadge-badge': { backgroundColor: theme.palette.text.primary },
 }));
 
 export const LockedSpaceMark = styled(Box)(({ theme }) => ({
@@ -3016,6 +3059,194 @@ export const UnreadDot = styled('span')(({ theme }) => ({
 export const NotificationBellIcon = styled(SvgIcon)({
   fontSize: '1.25rem',
 });
+
+/**
+ * The unread count is the one red fill in the chrome: the tenant accent already
+ * means "brand / active" and its contrast is not guaranteed, while the error
+ * palette is fixed and contrast-tested in every scheme.
+ */
+export const NotificationCountBadge = styled(Badge)(({ theme }) => ({
+  '& .MuiBadge-badge': {
+    backgroundColor: theme.palette.error.main,
+    color: theme.palette.error.contrastText,
+    borderRadius: '999px',
+    minWidth: 18,
+    height: 18,
+    padding: '0 5px',
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+  },
+}));
+
+export const NotificationPopover = styled(Popover)(({ theme }) => ({
+  '& .MuiPaper-root': {
+    width: 'min(24rem, 92vw)',
+    backgroundColor: theme.palette.background.paper,
+    backgroundImage: 'none',
+    border: `1px solid ${theme.palette.divider}`,
+  },
+}));
+
+export const NotificationPanel = styled(Box)({
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 0,
+  maxHeight: '70vh',
+});
+
+export const NotificationPanelHeader = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  padding: '0.5rem 0.75rem',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const NotificationPanelAction = styled(Button)({
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+});
+
+export const NotificationPanelFooter = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const NotificationPanelBody = styled(Box)({
+  flex: 1,
+  minHeight: 0,
+  overflowY: 'auto',
+});
+
+export const NotificationGroupHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  display: 'block',
+  padding: '0.5rem 0.75rem 0.15rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const NotificationItems = styled('ul')({
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+});
+
+const notificationItemStyle = (theme: Theme, unread?: boolean): CSSObject => ({
+  display: 'grid',
+  gridTemplateColumns: 'auto minmax(0, 1fr)',
+  gridTemplateAreas: '"actor main" "actor meta"',
+  width: '100%',
+  gap: '0.15rem 0.6rem',
+  alignItems: 'flex-start',
+  textAlign: 'left',
+  minHeight: 56,
+  padding: '0.625rem 0.75rem',
+  backgroundColor: unread === true ? alpha(theme.palette.primary.main, 0.09) : 'transparent',
+  [theme.breakpoints.up('sm')]: {
+    display: 'flex',
+    gap: '0.6rem',
+    minHeight: 48,
+  },
+});
+
+const forwardExceptUnread = { shouldForwardProp: (prop: PropertyKey) => prop !== 'unread' };
+
+export const NotificationItem = styled(ButtonBase, forwardExceptUnread)<{ unread?: boolean }>(
+  ({ theme, unread }) => ({
+    ...notificationItemStyle(theme, unread),
+    '&:hover': { backgroundColor: theme.palette.action.hover },
+  }),
+);
+
+export const NotificationItemStatic = styled(Box, forwardExceptUnread)<{ unread?: boolean }>(
+  ({ theme, unread }) => notificationItemStyle(theme, unread),
+);
+
+export const NotificationActor = styled(Box)({
+  gridArea: 'actor',
+  position: 'relative',
+  flexShrink: 0,
+  lineHeight: 0,
+});
+
+export const NotificationActorMark = styled(Box)(({ theme }) => ({
+  width: 36,
+  height: 36,
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: '8px',
+  backgroundColor: theme.palette.action.hover,
+}));
+
+export const NotificationTypeMark = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  right: -2,
+  bottom: -2,
+  width: 16,
+  height: 16,
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: '50%',
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  '& .MuiSvgIcon-root': { fontSize: '0.7rem' },
+}));
+
+export const NotificationItemMain = styled(Box)({ gridArea: 'main', minWidth: 0, flex: 1 });
+
+export const NotificationItemMeta = styled(Box)(({ theme }) => ({
+  gridArea: 'meta',
+  display: 'flex',
+  flexDirection: 'row',
+  justifyContent: 'flex-start',
+  alignItems: 'center',
+  gap: 6,
+  flexShrink: 0,
+  [theme.breakpoints.up('sm')]: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+}));
+
+export const NotificationLine = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== 'unread',
+})<AsElement & { unread?: boolean }>(({ unread }) => ({
+  fontSize: '0.9rem',
+  fontWeight: unread === true ? 500 : 400,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}));
+
+export const NotificationSubject = styled('span')({ fontWeight: 700 });
+
+export const NotificationSnippetLine = styled(NotificationSnippet)<AsElement>(({ theme }) => ({
+  display: 'none',
+  WebkitLineClamp: 1,
+  [theme.breakpoints.up('sm')]: { display: '-webkit-box' },
+}));
+
+export const SheetDrawer = styled(Drawer)(({ theme }) => ({
+  '& .MuiDrawer-paper': {
+    backgroundColor: theme.palette.background.paper,
+    borderRight: 'none',
+    borderTop: `1px solid ${theme.palette.divider}`,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    maxHeight: '80vh',
+    paddingBottom: 'env(safe-area-inset-bottom)',
+  },
+}));
+
+export const SheetHeader = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  padding: '12px 10px 8px',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const SheetTitle = styled(Typography)<AsElement>({ fontWeight: 600 });
 
 /** The member shell keeps its identity block in the bottom-left corner, where a default snackbar would land. */
 export const SHELL_SNACKBAR_ANCHOR = { vertical: 'bottom', horizontal: 'right' } as const;
@@ -3189,21 +3420,37 @@ export const CoverImageElement = styled('img', forwardExceptFrame)<{ frame: Cove
   }),
 );
 
-export const CoverPlaceholderBox = styled(Box, forwardExceptFrame)<{ frame: CoverFrame }>(
-  ({ theme, frame }) => ({
-    ...coverBox(theme, frame),
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: alpha(theme.palette.text.primary, 0.06),
-    color: theme.palette.text.primary,
-  }),
-);
+export const CoverFallbackBox = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'frame' && prop !== 'gradient',
+})<{ frame: CoverFrame; gradient: AccentGradient }>(({ theme, frame, gradient }) => ({
+  ...coverBox(theme, frame),
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.6rem',
+  padding: '1rem',
+  textAlign: 'center',
+  background: `linear-gradient(135deg, ${gradient.from} 0%, ${gradient.to} 100%)`,
+  color: gradient.ink,
+}));
 
-export const CoverPlaceholderInitials = styled(Typography)<AsElement>({
+export const CoverFallbackMonogram = styled(Typography)<AsElement>({
   fontSize: '2.1rem',
   fontWeight: 700,
   letterSpacing: '0.12em',
+  lineHeight: 1,
+});
+
+export const CoverFallbackTitle = styled(Typography)<AsElement>({
+  maxWidth: '24rem',
+  fontSize: '0.9375rem',
+  fontWeight: 600,
+  lineHeight: 1.35,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
 });
 
 /** Fixed page backgrounds a logo has to sit on, so a preview shows its real contrast. */

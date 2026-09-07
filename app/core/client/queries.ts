@@ -166,6 +166,27 @@ const defineQuery = <TQueryFnData, TQueryKey extends QueryKey>(
   return { ...rest, queryFn: async (context) => unwrap(await call(context)) };
 };
 
+/** Cursor page parameter: `undefined` asks the route for the newest page. */
+type CursorPageParam = string | undefined;
+
+export type CursorQueryDescriptor<TPage, TQueryKey extends QueryKey> = {
+  queryKey: TQueryKey;
+  queryFn: QueryFunction<TPage, TQueryKey, CursorPageParam>;
+  initialPageParam: CursorPageParam;
+  getNextPageParam: (page: TPage) => CursorPageParam;
+};
+
+const defineCursorQuery = <TPage, TQueryKey extends QueryKey>(input: {
+  queryKey: TQueryKey;
+  call: (context: QueryFunctionContext<TQueryKey, CursorPageParam>) => Promise<ReadResult<TPage>>;
+  nextCursor: (page: TPage) => string | null;
+}): CursorQueryDescriptor<TPage, TQueryKey> => ({
+  queryKey: input.queryKey,
+  queryFn: async (context) => unwrap(await input.call(context)),
+  initialPageParam: undefined,
+  getNextPageParam: (page) => input.nextCursor(page) ?? undefined,
+});
+
 export type MutationDescriptor<TData, TVariables> = MutationOptions<
   TData,
   DefaultError,
@@ -388,7 +409,7 @@ const dmReportScopes = {
 const notificationScopes = {
   all: () => ['notifications'] as const,
   list: () => ['notifications', 'list'] as const,
-  page: (limit?: number) => ['notifications', 'page', limit ?? null] as const,
+  page: (input: NotificationsPageInput) => ['notifications', 'page', input] as const,
   unread: () => ['notifications', 'unread'] as const,
 };
 
@@ -1337,10 +1358,17 @@ export const notificationsQuery = (api: ApiClient, input: NotificationsListInput
     call: ({ signal }) => api.listNotifications(input, signal),
   });
 
-export const notificationsPageQuery = (api: ApiClient, input: NotificationsListInput = {}) =>
-  defineQuery({
-    queryKey: notificationScopes.page(input.limit),
-    call: ({ signal }) => api.listNotifications(input, signal),
+export type NotificationsPageInput = { limit?: number; unread?: boolean };
+
+export const notificationsPageQuery = (api: ApiClient, input: NotificationsPageInput = {}) =>
+  defineCursorQuery({
+    queryKey: notificationScopes.page(input),
+    call: ({ pageParam, signal }) =>
+      api.listNotifications(
+        { ...input, ...(pageParam === undefined ? {} : { cursor: pageParam }) },
+        signal,
+      ),
+    nextCursor: (page) => page.nextCursor,
   });
 
 export const unreadNotificationsQuery = (api: ApiClient) =>

@@ -110,6 +110,8 @@ const runCustomHostSignIn = async (customBaseUrl: string, tenantBaseUrl: string)
 
     await page.goto(`${customBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${customBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
@@ -154,6 +156,8 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
 
     await page.goto(`${customBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${customBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 
     await page.getByTestId('section-settings').click();
@@ -175,6 +179,8 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     await page.getByTestId('sign-out').click();
     await page.getByTestId('signin-passkey').waitFor({ state: 'visible', timeout: 20000 });
     await page.getByTestId('signin-passkey').click();
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${customBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
@@ -261,6 +267,8 @@ const runSelfServeAdd = async (input: {
     const page = await context.newPage();
     await page.goto(`${input.tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${input.tenantBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
 
@@ -330,6 +338,8 @@ const runStudioDomainStatus = async (tenantBaseUrl: string): Promise<void> => {
     const page = await context.newPage();
     await page.goto(`${tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${tenantBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
     const row = page.getByTestId(`tenant-domain-${CUSTOM_HOST}`);

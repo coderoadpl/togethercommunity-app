@@ -8,7 +8,7 @@ import pkg from '../../../../../package.json' with { type: 'json' };
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { anonymousMe, server, staffMe, tenantlessMe } from '../../test/server.js';
 import { denySiteData } from '../../test/site-data.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { LoginPage } from './LoginPage.js';
@@ -80,24 +80,37 @@ const renderLoginPage = async (
   hostname?: string,
   methods: readonly string[] = ['password', 'magic-link'],
   publicCourseIds: readonly string[] = [],
+  meHandler = anonymousMe(),
 ) => {
   stubAuthConfig(exposeMagicLinks);
   stubPublicNavigation(publicCourseIds);
   stubSignInMethods(methods);
+  server.use(meHandler);
   window.history.pushState({}, '', initialEntry);
-  const rootRoute = createRootRoute({
+  const rootRoute = createRootRoute({ component: Outlet });
+  const indexRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    component: () => <div>Signed in home</div>,
+  });
+  const loginRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/login',
     component: () => hostname === undefined ? <LoginPage /> : <LoginPage hostname={hostname} />,
   });
   const router = createRouter({
-    routeTree: rootRoute,
+    routeTree: rootRoute.addChildren([indexRoute, loginRoute]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
-  return renderWithProviders(
-    <ThemeModeProvider>
-      <RouterProvider router={router} />
-    </ThemeModeProvider>,
-  );
+  return {
+    ...renderWithProviders(
+      <ThemeModeProvider>
+        <RouterProvider router={router} />
+      </ThemeModeProvider>,
+    ),
+    router,
+  };
 };
 
 afterEach(() => {
@@ -116,6 +129,20 @@ const fillCredentials = async () => {
 };
 
 describe('LoginPage', () => {
+  it('redirects a signed-in tenant member to home', async () => {
+    const { router } = await renderLoginPage(false, '/login', undefined, ['password'], [], staffMe());
+
+    expect(await screen.findByText('Signed in home')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/');
+  });
+
+  it('keeps login available for a signed-in account without a tenant', async () => {
+    const { router } = await renderLoginPage(false, '/login', undefined, ['password'], [], tenantlessMe());
+
+    expect(await screen.findByRole('heading', { level: 1, name: pl.auth.signInTitle })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/login');
+  });
+
   it.each([
     ['configured base domain', 'togethercommunity.app'],
     ['derived start host', 'start.togethercommunity.app'],
@@ -123,6 +150,7 @@ describe('LoginPage', () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     let offerCalls = 0;
     server.use(
+      anonymousMe(),
       http.get('*/api/public/offer', () => {
         offerCalls += 1;
         return HttpResponse.json(

@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router';
 import type { Course } from '#core/domain/index.js';
 
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
-import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
+import { Cover } from '../../components/ui/Cover.js';
 import { useTranslations } from '../../i18n/index.js';
 import { CourseCardRoot, RailProgressBar } from '../../theme.js';
 import { coursePercent, isCourseDone, type CourseLessonCounts } from './course-progress.js';
@@ -13,13 +13,13 @@ export type CourseCardCourse = Pick<Course, 'id' | 'name' | 'description' | 'ima
 
 const CourseCardMedia = ({ course }: { course: CourseCardCourse }) => {
   const t = useTranslations();
-  return course.imageUrl === null ? (
-    <CoverPlaceholder title={course.name} testId={`course-cover-fallback-${course.id}`} />
-  ) : (
-    <CoverImage
+  return (
+    <Cover
       src={course.imageUrl}
+      title={course.name}
       alt={t.courseOverview.coverAlt({ name: course.name })}
       testId={`course-cover-${course.id}`}
+      fallbackTestId={`course-cover-fallback-${course.id}`}
     />
   );
 };

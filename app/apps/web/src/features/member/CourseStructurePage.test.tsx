@@ -520,17 +520,13 @@ describe('CourseStructurePage', () => {
     expect(anonStyles['max-height']).toBeUndefined();
   });
 
-  it('replaces a missing anonymous cover with the neutral placeholder', async () => {
+  it('leaves out the cover block entirely when the anonymous course has no cover', async () => {
     anonCoursePage(null);
 
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    const placeholder = await screen.findByTestId('course-cover-fallback');
-    expect(placeholder).toHaveTextContent('JF');
-    expect(stylesAt(placeholder, 1440)).toMatchObject({
-      'aspect-ratio': '16/9',
-      width: '100%',
-    });
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
+    expect(screen.queryByTestId('course-cover-fallback')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-cover')).not.toBeInTheDocument();
   });
 });

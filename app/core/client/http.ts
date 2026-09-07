@@ -1905,6 +1905,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     const params = new URLSearchParams();
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));
+    if (input.unread !== undefined) params.set('unread', String(input.unread));
     const suffix = params.toString();
     return request(
       options,

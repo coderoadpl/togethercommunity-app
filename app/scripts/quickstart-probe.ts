@@ -197,6 +197,8 @@ const driveFirstRun = async (baseUrl: string): Promise<void> => {
     await page.locator('#tenant-name').fill('Probe Community');
     await page.locator('#tenant-slug').fill('probe-community');
     await page.locator('button[type="submit"]').click();
+    await page.waitForURL('**/start', { timeout: 30_000 });
+    await page.goto(`${baseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('onboarding-checklist').waitFor({ state: 'visible', timeout: 30_000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Probe Community',

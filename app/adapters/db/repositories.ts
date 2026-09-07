@@ -2272,6 +2272,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
           eq(notifications.tenantId, tenantId),
           eq(notifications.recipientUserId, query.recipientUserId),
           ...(query.excludeDms === true ? [notDirectMessage()] : []),
+          ...(query.unreadOnly === true ? [sql`${notifications.readAt} is null`] : []),
           ...(cursor === null
             ? []
             : [sql`(${notifications.createdAt}, ${notifications.id}) < (${cursor.createdAt}, ${cursor.id})`]),

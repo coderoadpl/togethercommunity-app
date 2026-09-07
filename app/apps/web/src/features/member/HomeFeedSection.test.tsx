@@ -123,6 +123,23 @@ describe('HomeFeedSection', () => {
     expect(screen.queryByTestId('start-feed-load-more')).not.toBeInTheDocument();
   });
 
+  it('spaces the wrapped author line and keeps the post menu on the meta row', async () => {
+    server.use(okFeed({ '10': { items: [item('p1', { replyCount: 1 })], nextCursor: null } }));
+
+    await renderSection();
+
+    const card = await screen.findByTestId('home-feed-post-p1');
+    const authorRow = within(card).getByTestId('home-feed-space-p1').parentElement;
+    expect(authorRow).toHaveStyle({ rowGap: '0.375rem' });
+
+    const metaRow = within(card).getByTestId('home-feed-reply-count-p1').parentElement;
+    expect(metaRow).toHaveStyle({ alignItems: 'center' });
+    expect(metaRow).toContainElement(within(card).getByTestId('post-menu-p1'));
+    expect(within(card).getByTestId('post-menu-p1').parentElement).toHaveStyle({
+      marginLeft: 'auto',
+    });
+  });
+
   it('grows the page on load more without dropping the rendered cards', async () => {
     server.use(
       okFeed({

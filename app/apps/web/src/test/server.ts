@@ -43,3 +43,65 @@ export const server = setupServer(
     }),
   ),
 );
+
+export const anonymousMe = () =>
+  http.get('*/api/me', () =>
+    HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }));
+
+export const memberMe = () =>
+  http.get('*/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'member@example.com',
+        emailVerified: true,
+        name: 'Member',
+        tenant: {
+          id: 't1',
+          slug: 'acme',
+          name: 'Acme',
+          staffRole: null,
+          memberId: 'm1',
+          displayName: null,
+          banned: false,
+        },
+        impersonation: null,
+      },
+    }));
+
+export const staffMe = () =>
+  http.get('*/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'creator@together.dev',
+        emailVerified: true,
+        name: 'Demo',
+        tenant: {
+          id: 't1',
+          slug: 'acme',
+          name: 'Acme',
+          staffRole: 'owner',
+          memberId: null,
+          displayName: null,
+          banned: false,
+        },
+        impersonation: null,
+      },
+    }));
+
+export const tenantlessMe = () =>
+  http.get('*/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'member@example.com',
+        emailVerified: true,
+        name: 'Member',
+        tenant: null,
+        impersonation: null,
+      },
+    }));

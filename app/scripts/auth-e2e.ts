@@ -269,6 +269,8 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
 
     await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, 'demo-password-15');
+    await page.waitForURL('**/start', { timeout: 15000 });
+    await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
@@ -293,6 +295,8 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('signin-passkey').waitFor({ state: 'visible', timeout: 15000 });
 
     await page.getByTestId('signin-passkey').click();
+    await page.waitForURL('**/start', { timeout: 15000 });
+    await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',

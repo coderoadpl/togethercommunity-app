@@ -6,7 +6,7 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
-import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
+import { Cover } from '../../components/ui/Cover.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import {
   EmberCtaLink,
@@ -123,14 +123,15 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
             </StatTile>
           ) : null}
         </Box>
-        {catalogEntry === undefined ? null : catalogEntry.imageUrl === null ? (
-          <CoverPlaceholder title={course.name} frame="standalone" testId="course-cover-fallback" />
-        ) : (
-          <CoverImage
+        {catalogEntry === undefined ? null : (
+          <Cover
             src={catalogEntry.imageUrl}
+            title={course.name}
             alt={t.courseOverview.coverAlt({ name: course.name })}
             frame="standalone"
+            whenMissing="omit"
             testId="course-cover"
+            fallbackTestId="course-cover-fallback"
           />
         )}
         {catalogEntry !== undefined && catalogEntry.description !== '' && (

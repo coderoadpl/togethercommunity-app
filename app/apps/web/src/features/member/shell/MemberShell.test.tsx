@@ -99,7 +99,14 @@ const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation
     },
   ],
   lockedSpaces: [
-    { id: 's9', slug: 'premium', name: 'Premium', description: 'Tylko dla kursantów.', productIds: ['p1'] },
+    {
+      id: 's9',
+      slug: 'premium',
+      name: 'Premium',
+      description: 'Tylko dla kursantów.',
+      productIds: ['p1'],
+      products: [{ id: 'p1', title: 'Program Pro' }],
+    },
   ],
   directMessagesEnabled: true,
   ...overrides,
@@ -312,6 +319,7 @@ describe('MemberShell', () => {
   it('renders spaces, course rings and locked upsells in one sidebar list', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+    const user = userEvent.setup();
 
     await renderShell('/my');
 
@@ -333,7 +341,11 @@ describe('MemberShell', () => {
     expect(within(done).getByTestId('completion-mark')).toBeInTheDocument();
     expect(within(done).queryByTestId('progress-ring')).not.toBeInTheDocument();
 
-    expect(within(sidebar).getByTestId('sidebar-locked-s9')).toHaveAttribute('href', '/checkout/p1');
+    const locked = within(sidebar).getByTestId('sidebar-locked-s9');
+    expect(locked).toHaveAttribute('href', '/checkout/p1');
+    await user.hover(locked);
+    expect(await screen.findByText(pl.shell.lockedSpaceHint)).toBeInTheDocument();
+    expect(await screen.findByText(pl.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
     expect(within(sidebar).getByText(pl.shell.spacesSection)).toBeInTheDocument();
   });
 
@@ -773,7 +785,23 @@ describe('MemberShell', () => {
 
   it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {
     stubViewport(true);
-    server.use(okMe({ tenant: null }), okOffer(), okPublicNavigation());
+    server.use(
+      okMe({ tenant: null }),
+      okOffer(),
+      okPublicNavigation(publicNavigation({
+        lockedSpaces: [
+          {
+            id: 's9',
+            slug: 'premium',
+            name: 'Premium',
+            description: null,
+            productIds: ['p1'],
+            products: [{ id: 'p1', title: 'Program Pro' }],
+          },
+        ],
+      })),
+    );
+    const user = userEvent.setup();
 
     await renderShell('/community/s1');
 
@@ -786,10 +814,14 @@ describe('MemberShell', () => {
       'href',
       '/my/courses/c1',
     );
-    expect(within(nav).getByTestId('anon-sidebar-locked-s9')).toHaveAttribute(
+    const locked = within(nav).getByTestId('anon-sidebar-locked-s9');
+    expect(locked).toHaveAttribute(
       'href',
       '/checkout/p1',
     );
+    await user.hover(locked);
+    expect(await screen.findByText(pl.shell.lockedSpaceHint)).toBeInTheDocument();
+    expect(await screen.findByText(pl.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
     expect(within(nav).getByTestId('anon-sidebar-signin')).toHaveAttribute('href', '/login');
     expect(within(nav).queryByTestId('member-identity')).not.toBeInTheDocument();
   });

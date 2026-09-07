@@ -80,6 +80,7 @@ import {
   PanelCoursesRoute,
   PanelIndexRoute,
   PanelIntegrationsRoute,
+  PanelNotificationsRoute,
   PanelLayout,
   PanelLessonsRoute,
   PanelLessonCreateRoute,
@@ -224,9 +225,12 @@ const accountRoute = createRoute({
   path: '/account',
   component: MemberAccountRoute,
 });
+const validateNotificationsSearch = (search: Record<string, unknown>): { filter?: 'unread' } =>
+  search['filter'] === 'unread' ? { filter: 'unread' } : {};
 const notificationsRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/notifications',
+  validateSearch: validateNotificationsSearch,
   component: NotificationsRoute,
 });
 const messagesRoute = createRoute({
@@ -269,6 +273,12 @@ const panelIndexRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: '/',
   component: PanelIndexRoute,
+});
+const panelNotificationsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'notifications',
+  validateSearch: validateNotificationsSearch,
+  component: PanelNotificationsRoute,
 });
 const panelProductsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
@@ -519,6 +529,7 @@ const router = createRouter({
     ]),
     panelLayoutRoute.addChildren([
       panelIndexRoute,
+      panelNotificationsRoute,
       panelProductsRoute,
       panelProductCreateRoute,
       panelProductDetailRoute,

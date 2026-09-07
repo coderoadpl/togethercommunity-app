@@ -500,6 +500,7 @@ const notificationsListOptionsSchema = z.object({
     .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
     .transform((value) => Number.parseInt(value, 10))
     .optional(),
+  unread: z.boolean().optional(),
 });
 const notificationReadOptionsSchema = z.object({
   all: z.boolean().optional(),
@@ -2566,10 +2567,14 @@ notifications
   .command('list')
   .description('List notifications')
   .option('--limit <n>')
+  .option('--unread')
   .action(
     withInput(z.tuple([notificationsListOptionsSchema]), async (ctx, [options]) => {
       emit(
-        await ctx.api.listNotifications(options.limit === undefined ? {} : { limit: options.limit }),
+        await ctx.api.listNotifications({
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+          ...(options.unread === undefined ? {} : { unread: options.unread }),
+        }),
         ctx.json,
         (data) =>
           data.notifications.length === 0

@@ -149,6 +149,7 @@ const notificationCursorSchema = z.string().min(1).superRefine((value, ctx) => {
 export const notificationListInputSchema = z.object({
   cursor: notificationCursorSchema.optional(),
   limit: z.number().int().min(1).max(100).default(20),
+  unread: z.boolean().optional(),
 });
 
 export const notificationMarkReadInputSchema = z.object({

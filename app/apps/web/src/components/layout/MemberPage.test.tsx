@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MemberPage } from './MemberPage.js';
+import { PAGE_WIDTH } from './widths.js';
 
 const stubCompactViewport = () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -36,6 +37,25 @@ describe('MemberPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Moje kursy' })).toBeInTheDocument();
     expect(screen.getByText('biblioteka kursów')).toBeInTheDocument();
     expect(screen.getByText('Siatka kursów')).toBeInTheDocument();
+  });
+
+  it('gives every member screen the wide shell unless it asks for the reading column', () => {
+    const wide = render(
+      <MemberPage title="Start" eyebrow="" breadcrumbLabel="Okruszki" data-testid="page" />,
+    );
+    expect(screen.getByTestId('page')).toHaveStyle({ maxWidth: PAGE_WIDTH.wide });
+    wide.unmount();
+
+    render(
+      <MemberPage
+        title="Lekcja"
+        eyebrow=""
+        breadcrumbLabel="Okruszki"
+        width="prose"
+        data-testid="page"
+      />,
+    );
+    expect(screen.getByTestId('page')).toHaveStyle({ maxWidth: PAGE_WIDTH.prose });
   });
 
   it('renders breadcrumbs with links and a current-page item', () => {

@@ -3183,6 +3183,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = notificationsListInputSchema.safeParse({
       cursor: c.req.query('cursor'),
       ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+      ...(c.req.query('unread') === undefined ? {} : { unread: c.req.query('unread') === 'true' }),
     });
     if (!parsed.success) return respond(err(validation('Invalid notifications query', parsed.error.flatten())));
     return respond(await listNotifications(ctxOf(c), parsed.data, deps));

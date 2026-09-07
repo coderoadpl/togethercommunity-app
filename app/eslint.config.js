@@ -246,7 +246,10 @@ export default tseslint.config(
           type: 'web-notifications',
           pattern: [
             'apps/web/src/NotificationBell*',
+            'apps/web/src/NotificationList*',
+            'apps/web/src/notification-icons*',
             'apps/web/src/notification-links*',
+            'apps/web/src/notifications-data*',
             'apps/web/src/notifications-stream*',
             'apps/web/src/notifications-transport*',
           ],

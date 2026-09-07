@@ -82,7 +82,7 @@ export const getMemberNavigation = async (
     deps.courses.list(tenantId),
     deps.modules.list(tenantId),
     deps.lessons.list(tenantId),
-    deps.products.listByTenant(tenantId),
+    deps.products.listPublishedByTenant(tenantId),
     deps.tenants.findSettings(tenantId),
   ]);
   const coursesByProduct = courseIdsByProduct(
@@ -90,9 +90,17 @@ export const getMemberNavigation = async (
     new Set(courses.map((course) => course.id)),
   );
 
-  const publishedProductIds = new Set(
-    products.filter((product) => product.published).map((product) => product.id),
+  const publishedProductIds = new Set(products.map((product) => product.id));
+  const productsById = new Map(
+    products.map((product) => [product.id, { id: product.id, title: product.title }]),
   );
+  const publishedProductIdsForSpace = (space: Pick<Space, 'productIds'>) =>
+    space.productIds.filter((productId) => publishedProductIds.has(productId));
+  const productSummariesForIds = (productIds: string[]) =>
+    productIds.flatMap((productId) => {
+      const product = productsById.get(productId);
+      return product === undefined ? [] : [product];
+    });
   const accessibleSpaces: Space[] = [];
   const lockedSpaces: Space[] = [];
   for (const space of spaces) {
@@ -146,19 +154,25 @@ export const getMemberNavigation = async (
       slug: space.slug,
       name: space.name,
       visibility: space.visibility,
+      publicReadOnly: space.publicReadOnly,
       position: space.position,
       isFollowing: followedIds.has(space.id),
       unread: hasUnreadPosts(latestPostAt.get(space.id), seenAtBySpace.get(space.id)),
       courseIds: spaceCourseIds(space, coursesByProduct),
+      products: productSummariesForIds(space.productIds),
     })),
     courses: navigationCourses,
-    lockedSpaces: lockedSpaces.map((space) => ({
-      id: space.id,
-      slug: space.slug,
-      name: space.name,
-      description: space.description,
-      productIds: space.productIds,
-    })),
+    lockedSpaces: lockedSpaces.map((space) => {
+      const productIds = publishedProductIdsForSpace(space);
+      return {
+        id: space.id,
+        slug: space.slug,
+        name: space.name,
+        description: space.description,
+        productIds,
+        products: productSummariesForIds(productIds),
+      };
+    }),
     directMessagesEnabled: settings === null || directMessagesEnabled(settings),
   });
 };

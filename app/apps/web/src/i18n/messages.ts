@@ -1542,8 +1542,10 @@ export interface Messages {
     noSpacesTitle: string;
     noSpacesBody: string;
     staffNoMember: string;
+    publicReadOnly: string;
     membersOnly: string;
     productGated: string;
+    productGatedFor: (params: { product: string }) => string;
     followingChip: string;
     feedEyebrow: string;
     aboutHeading: string;

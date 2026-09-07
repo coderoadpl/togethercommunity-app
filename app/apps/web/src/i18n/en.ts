@@ -1914,7 +1914,7 @@ export const en: Messages = {
     playbackHeading: 'Playback',
     playbackIntro: 'Decide how the lesson video player behaves.',
     videoAutoplayLabel: 'Play videos automatically',
-    videoAutoplayHint: 'By default a video waits for you to press play.',
+    videoAutoplayHint: 'Your choice overrides the creator’s default setting.',
     videoAutoplaySaved: 'Playback preference saved.',
   },
   changePassword: {
@@ -2048,6 +2048,14 @@ export const en: Messages = {
     intro:
       'With direct messages off, members no longer see the Messages section and cannot start new conversations. Stored conversations stay in the database.',
     toggleLabel: 'Direct messages between members',
+  },
+  videoPlayback: {
+    heading: 'Video playback',
+    intro: 'Choose whether lesson videos start automatically.',
+    defaultLabel: 'Play videos automatically',
+    defaultHint: 'This applies to every member who has not chosen their own preference.',
+    overrideLabel: 'Members can change this setting',
+    overrideHint: 'When enabled, members see a playback preference on their account page.',
   },
   legal: {
     heading: 'Terms of service and privacy policy',

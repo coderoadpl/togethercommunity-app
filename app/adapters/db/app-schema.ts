@@ -57,6 +57,8 @@ export const tenants = pgTable(
     privacyUrl: text('privacy_url'),
     defaultHomeSpaceId: text('default_home_space_id'),
     directMessagesEnabled: boolean('direct_messages_enabled').notNull().default(true),
+    videoAutoplayDefault: boolean('video_autoplay_default').notNull().default(false),
+    memberVideoAutoplayOverride: boolean('member_video_autoplay_override').notNull().default(false),
     autoIssueInvoices: boolean('auto_issue_invoices').notNull().default(false),
     autoIssueInvoiceScope: text('auto_issue_invoice_scope', { enum: ['b2b_only', 'all'] })
       .notNull()
@@ -222,7 +224,7 @@ export const members = pgTable(
     email: text('email').notNull(),
     displayName: text('display_name'),
     language: text('language', { enum: ['pl', 'en'] }),
-    videoAutoplay: boolean('video_autoplay').notNull().default(false),
+    videoAutoplay: boolean('video_autoplay'),
     legacyId: text('legacy_id'),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     marketingConsents: jsonb('marketing_consents')

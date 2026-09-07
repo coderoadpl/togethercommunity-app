@@ -50,6 +50,8 @@ interface StoredSettings {
   invoiceExemptionBasis?: string | null;
   defaultHomeSpaceId?: string | null;
   directMessagesEnabled?: boolean;
+  videoAutoplayDefault?: boolean;
+  memberVideoAutoplayOverride?: boolean;
   defaultLanguage?: 'pl' | 'en';
 }
 
@@ -969,6 +971,23 @@ describe('SettingsPanel direct messages', () => {
     await userEvent.click(toggle);
 
     await waitFor(() => expect(updates).toContainEqual({ directMessagesEnabled: true }));
+  });
+});
+
+describe('SettingsPanel video playback', () => {
+  it('updates the tenant default and member override policy', async () => {
+    const { updates } = renderPanel(EMPTY_SETTINGS);
+
+    const defaultToggle = await screen.findByRole('switch', { name: pl.videoPlayback.defaultLabel });
+    const overrideToggle = screen.getByRole('switch', { name: pl.videoPlayback.overrideLabel });
+    await waitFor(() => expect(defaultToggle).toBeEnabled());
+    expect(defaultToggle).not.toBeChecked();
+    expect(overrideToggle).not.toBeChecked();
+
+    await userEvent.click(defaultToggle);
+    await waitFor(() => expect(updates).toContainEqual({ videoAutoplayDefault: true }));
+    await userEvent.click(overrideToggle);
+    await waitFor(() => expect(updates).toContainEqual({ memberVideoAutoplayOverride: true }));
   });
 });
 

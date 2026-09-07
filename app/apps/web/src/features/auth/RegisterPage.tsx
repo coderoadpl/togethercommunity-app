@@ -20,6 +20,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
 
 const baseDomainUrl = (): string => {
@@ -30,6 +31,7 @@ const baseDomainUrl = (): string => {
 export const RegisterPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  useRedirectSignedInWithTenant();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

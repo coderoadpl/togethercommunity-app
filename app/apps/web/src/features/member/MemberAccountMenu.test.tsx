@@ -9,7 +9,7 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
 
-const me = (impersonation: unknown) =>
+const me = (impersonation: unknown, staffRole: 'owner' | 'admin' | null = null) =>
   http.get('*/api/me', () =>
     HttpResponse.json({
       ok: true,
@@ -22,7 +22,7 @@ const me = (impersonation: unknown) =>
           id: 't1',
           slug: 'acme',
           name: 'Acme',
-          staffRole: null,
+          staffRole,
           memberId: 'm1',
           displayName: 'Jan',
           banned: false,
@@ -52,6 +52,27 @@ const renderMenu = async () => {
 };
 
 describe('MemberAccountMenu', () => {
+  it('shows Studio above account settings for staff', async () => {
+    server.use(me(null, 'admin'));
+
+    await renderMenu();
+
+    const studio = await screen.findByTestId('member-account-studio-link');
+    const account = screen.getByTestId('member-account-link');
+    expect(studio).toHaveAttribute('href', '/panel');
+    expect(studio).toHaveTextContent(pl.account.menuStudio);
+    expect(studio.compareDocumentPosition(account)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('hides Studio from member-only accounts', async () => {
+    server.use(me(null));
+
+    await renderMenu();
+
+    expect(screen.queryByTestId('member-account-studio-link')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('member-account-link')).toBeInTheDocument();
+  });
+
   it('signs the member out of their own session', async () => {
     const authCalls: string[] = [];
     server.use(

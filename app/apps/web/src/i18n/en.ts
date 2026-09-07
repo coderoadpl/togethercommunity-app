@@ -1855,6 +1855,7 @@ export const en: Messages = {
     noMatches: 'No space matches this filter.',
   },
   account: {
+    menuStudio: 'Studio',
     dataExportHeading: 'Download your data',
     dataExportIntro: 'Export your profile, consents, purchases, access, progress, and posts as JSON.',
     dataExportButton: 'Download my data',

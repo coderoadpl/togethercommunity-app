@@ -1650,6 +1650,7 @@ export interface Messages {
     noMatches: string;
   };
   account: {
+    menuStudio: string;
     menuAccount: string;
     title: string;
     heading: string;

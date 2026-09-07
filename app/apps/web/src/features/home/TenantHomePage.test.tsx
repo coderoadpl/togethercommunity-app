@@ -68,10 +68,10 @@ const renderHome = async (component: () => ReactNode = TenantHomePage) => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('TenantHomePage dispatcher', () => {
-  it('redirects a staff member into the creator panel', async () => {
+  it('redirects a staff member to their start page', async () => {
     server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })));
     await renderHome();
-    expect(await screen.findByText('PANEL')).toBeInTheDocument();
+    expect(await screen.findByText('START')).toBeInTheDocument();
   });
 
   it('redirects a member-only account to their start page', async () => {

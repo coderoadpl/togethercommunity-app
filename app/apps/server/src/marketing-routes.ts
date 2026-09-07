@@ -40,6 +40,7 @@ import {
   applyVerifiedSesEvent,
   authenticateApiKey,
   authLinkBaseUrl,
+  authorizeTenant,
   claimIdempotencyKey,
   completeIdempotentRequest,
   confirmMarketingConsent,
@@ -294,6 +295,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     if (!marketingResult.ok) return response(marketingResult);
     const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
+    const authz = authorizeTenant(authenticated.value.ctx, 'marketing:message:send');
+    if (!authz.ok) return response(authz);
     const rawBody = await c.req.text();
     const idempotencyKey = c.req.header('Idempotency-Key');
     if (idempotencyKey !== undefined) {
@@ -412,6 +415,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     if (!marketing.ok) return response(marketing);
     const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
+    const authz = authorizeTenant(authenticated.value.ctx, 'marketing:suppression:read');
+    if (!authz.ok) return response(authz);
     const parsed = marketingSuppressionQuerySchema.safeParse(queryObject(c.req.url));
     if (!parsed.success) return response(err(validation('Invalid suppression query', parsed.error.flatten())));
     const emailHmac = parsed.data.email === undefined ? undefined : marketing.value.hmac.compute(authenticated.value.tenant.id, normalizeEmail(parsed.data.email));
@@ -439,6 +444,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     if (!marketing.ok) return response(marketing);
     const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
+    const authz = authorizeTenant(authenticated.value.ctx, 'marketing:message:read');
+    if (!authz.ok) return response(authz);
     const parsed = marketingMessagesQuerySchema.safeParse(queryObject(c.req.url));
     if (!parsed.success) return response(err(validation('Invalid message query', parsed.error.flatten())));
     let campaignId: string | undefined;
@@ -461,6 +468,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     if (!marketing.ok) return response(marketing);
     const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
+    const authz = authorizeTenant(authenticated.value.ctx, 'marketing:message:read');
+    if (!authz.ok) return response(authz);
     const send = await marketing.value.campaignSends.findById(authenticated.value.tenant.id, c.req.param('id'));
     if (send === null) return response(err(appError('not_found', 'Marketing message was not found')));
     const events = await marketing.value.events.listByRef(
@@ -476,6 +485,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     if (!marketing.ok) return response(marketing);
     const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
+    const authz = authorizeTenant(authenticated.value.ctx, 'marketing:consent:read');
+    if (!authz.ok) return response(authz);
     const definitions = await marketing.value.definitions.list(authenticated.value.tenant.id, 'active');
     const discovered = await Promise.all(definitions.map(async (definition) => {
       const versions = await marketing.value.definitions.listVersions(
@@ -500,6 +511,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     if (!marketing.ok) return response(marketing);
     const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
+    const authz = authorizeTenant(authenticated.value.ctx, 'marketing:layout:read');
+    if (!authz.ok) return response(authz);
     const campaigns = await marketing.value.campaigns.list(authenticated.value.tenant.id);
     return response(ok({
       templates: campaigns

@@ -1047,6 +1047,7 @@ const marketingDeps = (): MarketingAppDeps => ({
 const marketingApp = (
   marketing = marketingDeps(),
   logger?: AppDeps['logger'],
+  scopes: TenantApiKey['scopes'] = null,
 ): ReturnType<typeof buildApp> => {
   const configured = deps(logger === undefined ? {} : { logger });
   configured.marketing = marketing;
@@ -1055,7 +1056,7 @@ const marketingApp = (
     create: async () => undefined,
     findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:marketing-key' ? {
       id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
-      scopes: null,
+      scopes,
       createdAt: '1998-07-22T00:00:00.000Z', expiresAt: null, revokedAt: null,
     } : null,
     revoke: async () => null,
@@ -1555,6 +1556,82 @@ describe('migration import HTTP surfaces', () => {
 });
 
 describe('marketing HTTP surfaces', () => {
+  it.each<TenantApiKeyScope>(['enrollment', 'transactional', 'import:content', 'import:users'])(
+    'denies %s keys before marketing repository access or side effects',
+    async (scope) => {
+      const marketing = marketingDeps();
+      const accesses = [
+        vi.spyOn(marketing.suppressions, 'list'),
+        vi.spyOn(marketing.hmac, 'compute'),
+        vi.spyOn(marketing.campaigns, 'list'),
+        vi.spyOn(marketing.campaigns, 'findById'),
+        vi.spyOn(marketing.campaigns, 'create'),
+        vi.spyOn(marketing.campaignSends, 'listPage'),
+        vi.spyOn(marketing.campaignSends, 'findById'),
+        vi.spyOn(marketing.campaignSends, 'claimRecipient'),
+        vi.spyOn(marketing.events, 'listByRef'),
+        vi.spyOn(marketing.events, 'append'),
+        vi.spyOn(marketing.definitions, 'list'),
+        vi.spyOn(marketing.definitions, 'listVersions'),
+        vi.spyOn(marketing.definitions, 'findById'),
+        vi.spyOn(marketing.layouts, 'list'),
+        vi.spyOn(marketing.idempotency, 'claim'),
+        vi.spyOn(marketing.idempotency, 'release'),
+        vi.spyOn(marketing.marketingSes, 'send'),
+      ];
+      const app = marketingApp(marketing, undefined, [scope]);
+      const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
+      for (const path of [
+        'suppressions?email=member@example.test',
+        'messages',
+        'messages?campaignKey=campaign-1',
+        'messages/send-1',
+        'consent-definitions',
+        'templates',
+      ]) {
+        const response = await app.request(`/api/m2m/marketing/${path}`, { headers });
+        expect(response.status, path).toBe(403);
+        expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      }
+      for (const idempotencyHeaders of [{}, { 'Idempotency-Key': 'forbidden-send' }]) {
+        for (const content of [
+          { subject: 'News', bodyHtml: '<p>News</p>' },
+          { templateId: 'template-1' },
+        ]) {
+          const response = await app.request('/api/m2m/marketing/messages', {
+            method: 'POST',
+            headers: { ...headers, ...idempotencyHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ messages: [{
+              to: 'member@example.test', consentDefinitionId: 'definition-1',
+              campaignKey: 'forbidden-campaign', ...content,
+            }] }),
+          });
+          expect(response.status).toBe(403);
+          expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+        }
+      }
+      for (const access of accesses) expect(access).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each<{ scopes: TenantApiKey['scopes'] }>([{ scopes: null }, { scopes: ['marketing'] }])(
+    'allows suppression and message reads with $scopes scopes',
+    async ({ scopes }) => {
+      const marketing = marketingDeps();
+      const suppressions = vi.spyOn(marketing.suppressions, 'list');
+      const sends = vi.spyOn(marketing.campaignSends, 'listPage');
+      const app = marketingApp(marketing, undefined, scopes);
+      const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
+      for (const path of ['suppressions', 'messages']) {
+        const response = await app.request(`/api/m2m/marketing/${path}`, { headers });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ ok: true });
+      }
+      expect(suppressions).toHaveBeenCalledWith('t-acme', { limit: 50 });
+      expect(sends).toHaveBeenCalledWith('t-acme', { limit: 50 });
+    },
+  );
+
   it('rejects staff sessions on machine-only marketing edges', async () => {
     const marketing = marketingDeps();
     const app = scopedApp('staff', { marketing });
@@ -1669,13 +1746,13 @@ describe('marketing HTTP surfaces', () => {
     expect(triggers).toEqual(['cron']);
   });
 
-  it('authenticates automation routes with the tenant API key and releases invalid idempotency claims', async () => {
+  it.each<{ scopes: TenantApiKey['scopes'] }>([{ scopes: null }, { scopes: ['marketing'] }])('authenticates automation routes with the tenant API key and releases invalid idempotency claims ($scopes)', async ({ scopes }) => {
     const marketing = marketingDeps();
     marketing.layouts = new InMemoryEmailLayoutRepository([{
       id: 'layout-1', tenantId: 't-acme', name: 'Default', bodyHtml: '<main>{{{content}}}</main>',
       createdAt: '1998-07-22T00:00:00.000Z', updatedAt: '1998-07-22T00:00:00.000Z',
     }]);
-    const app = marketingApp(marketing);
+    const app = marketingApp(marketing, undefined, scopes);
     const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
     const templates = await app.request('/api/m2m/marketing/templates', { headers });
     expect(templates.status).toBe(200);
@@ -1829,7 +1906,7 @@ describe('marketing HTTP surfaces', () => {
     expect(response.status).toBe(401);
   });
 
-  it('exposes active consent definitions and ordered message events to API clients', async () => {
+  it.each<{ scopes: TenantApiKey['scopes'] }>([{ scopes: null }, { scopes: ['marketing'] }])('exposes active consent definitions and ordered message events to API clients ($scopes)', async ({ scopes }) => {
     const marketing = await memberSurfaceMarketing();
     const now = '1998-07-22T00:00:00.000Z';
     await marketing.campaignSends.claimRecipient('t-acme', {
@@ -1868,7 +1945,7 @@ describe('marketing HTTP surfaces', () => {
       }));
     }
     const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
-    const definitions = await marketingApp(marketing).request(
+    const definitions = await marketingApp(marketing, undefined, scopes).request(
       '/api/m2m/marketing/consent-definitions',
       { headers },
     );
@@ -1884,7 +1961,7 @@ describe('marketing HTTP surfaces', () => {
         }],
       },
     });
-    const message = await marketingApp(marketing).request(
+    const message = await marketingApp(marketing, undefined, scopes).request(
       '/api/m2m/marketing/messages/send-1',
       { headers },
     );
@@ -1894,7 +1971,7 @@ describe('marketing HTTP surfaces', () => {
     });
   });
 
-  it('builds unsubscribe links from the API key tenant instead of the request host', async () => {
+  it.each<{ scopes: TenantApiKey['scopes'] }>([{ scopes: null }, { scopes: ['marketing'] }])('builds unsubscribe links from the API key tenant instead of the request host ($scopes)', async ({ scopes }) => {
     const marketing = await memberSurfaceMarketing();
     const sender = new FakeSesMarketingSender();
     marketing.marketingSes = sender;
@@ -1911,7 +1988,7 @@ describe('marketing HTTP surfaces', () => {
       reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
 
-    const response = await marketingApp(marketing).request('/api/m2m/marketing/messages', {
+    const response = await marketingApp(marketing, undefined, scopes).request('/api/m2m/marketing/messages', {
       method: 'POST',
       headers: {
         host: 'acme.localhost:9999',
@@ -1920,11 +1997,12 @@ describe('marketing HTTP surfaces', () => {
         'x-forwarded-proto': 'https',
       },
       body: JSON.stringify({ messages: [
-        { to: 'member@example.test', consentDefinitionId: 'definition-news', subject: 'News', bodyHtml: '<p>News</p>' },
+        { to: 'member@example.test', consentDefinitionId: 'definition-news', campaignKey: 'news', subject: 'News', bodyHtml: '<p>News</p>' },
       ] }),
     });
 
     expect(response.status).toBe(202);
+    expect(await marketing.campaigns.list('t-acme')).toMatchObject([{ name: 'API: news' }]);
     expect(JSON.stringify(sender.sent)).toContain('http://acme.localhost:48730/u/');
     expect(JSON.stringify(sender.sent)).not.toContain('acme.localhost:9999');
   });

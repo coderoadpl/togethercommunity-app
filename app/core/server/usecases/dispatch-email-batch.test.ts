@@ -1,27 +1,40 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { err, internal, ok } from '#core/domain/index.js';
+import { err, internal, ok, SMOKE_TENANT_ID, type EmailOutboxPayload } from '#core/domain/index.js';
+import type { EmailIntegrationTransportResolver, EmailPort, PlatformTransactionalPool } from '../ports.js';
 import {
   InMemoryEmailEventRepository,
   InMemoryEmailOutboxRepository,
   InMemorySchedulerRunRepository,
 } from '../testing/marketing-fakes.js';
 import { dispatchEmailBatch } from './dispatch-email-batch.js';
+import { createLayeredTransactionalEmailSender } from './layered-transactional-email.js';
 
 const NOW = '2026-07-26T10:00:00.000Z';
 
-const setup = async () => {
+const defaultPayload: EmailOutboxPayload = {
+  kind: 'reset-password',
+  language: 'en',
+  actionUrl: 'https://tenant.test/reset',
+};
+
+const setup = async ({
+  payload = defaultPayload,
+  tenantTransportRequired = false,
+  tenantId = 'tenant-1',
+}: {
+  payload?: EmailOutboxPayload;
+  tenantTransportRequired?: boolean;
+  tenantId?: string;
+} = {}) => {
   const events = new InMemoryEmailEventRepository();
   const emailOutbox = new InMemoryEmailOutboxRepository(events);
   await emailOutbox.enqueue({
     id: 'outbox-1',
-    tenantId: 'tenant-1',
+    tenantId,
     to: 'member@example.test',
-    payload: {
-      kind: 'reset-password',
-      language: 'en',
-      actionUrl: 'https://tenant.test/reset',
-    },
+    payload,
+    tenantTransportRequired,
     now: NOW,
   });
   return {
@@ -38,6 +51,139 @@ const setup = async () => {
     trigger: 'manual' as const,
   };
 };
+
+const authUrl = 'https://auth.example.test/verify?token=global-auth-bearer';
+const authPayloads = [
+  { kind: 'welcome-sign-in', language: 'en', tenantName: 'Example', actionUrl: authUrl },
+  { kind: 'reset-password', language: 'en', actionUrl: authUrl },
+  { kind: 'verify-email', language: 'en', actionUrl: authUrl },
+  { kind: 'magic-link', language: 'en', tenantName: 'Example', url: authUrl },
+] as const satisfies readonly EmailOutboxPayload[];
+
+const transportSetup = (configured: 'ses' | 'smtp' | 'resend' | null, smokeTenantSink?: EmailPort) => {
+  const attackerSend = vi.fn<EmailPort['send']>(async () => ok({ messageId: 'attacker-message' }));
+  const platformSend = vi.fn<EmailPort['send']>(async () => ok({ messageId: 'platform-message' }));
+  const attacker: EmailPort = {
+    send: attackerSend,
+    healthcheck: async () => ok({ healthy: true }),
+    test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
+  };
+  const resolve = vi.fn<EmailIntegrationTransportResolver['resolve']>(async (_tenantId, transport) =>
+    transport === configured ? attacker : null);
+  const reserve = vi.fn<PlatformTransactionalPool['reserve']>(async () => true);
+  const settle = vi.fn<PlatformTransactionalPool['settle']>(async () => undefined);
+  const email = createLayeredTransactionalEmailSender({
+    transports: { resolve },
+    platform: { ...attacker, send: platformSend },
+    pool: { usage: async () => ({ sent: 0, reserved: 0 }), reserve, settle },
+    platformLimit: 1000,
+    ...(smokeTenantSink === undefined ? {} : { smokeTenantSink }),
+  });
+  return { email, attackerSend, platformSend, resolve, reserve, settle };
+};
+
+describe('auth outbox transport isolation', () => {
+  it.each(authPayloads.flatMap((payload) =>
+    (['ses', 'smtp', 'resend', null] as const).flatMap((transport) =>
+      [false, true].map((tenantTransportRequired) => ({
+        kind: payload.kind, payload, transport, tenantTransportRequired,
+      })))))(
+    'sends $kind through the platform despite attacker $transport and tenantTransportRequired=$tenantTransportRequired',
+    async ({ payload, transport, tenantTransportRequired }) => {
+      const deps = await setup({ payload, tenantTransportRequired });
+      const sending = transportSetup(transport);
+
+      expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+        .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+
+      expect(sending.platformSend).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+        tenantId: 'tenant-1',
+        to: 'member@example.test',
+        text: expect.stringContaining(authUrl),
+      }));
+      expect(sending.attackerSend).not.toHaveBeenCalled();
+      expect(sending.resolve).not.toHaveBeenCalled();
+      expect(sending.reserve).toHaveBeenCalledExactlyOnceWith('tenant-1', 1000);
+      expect(sending.settle).toHaveBeenCalledExactlyOnceWith('tenant-1', true);
+      expect(deps.emailOutbox.items[0]).toMatchObject({
+        tenantId: 'tenant-1', status: 'sent', transport: 'platform',
+      });
+      expect(await deps.events.listByRef('tenant-1', 'transactional', 'outbox-1'))
+        .toEqual(expect.arrayContaining([expect.objectContaining({
+          type: 'accepted', meta: expect.objectContaining({ transport: 'platform' }),
+        })]));
+    },
+  );
+
+  it('retries a platform failure without exposing the auth bearer to tenant SMTP', async () => {
+    const deps = await setup({ payload: authPayloads[0] });
+    const sending = transportSetup('smtp');
+    sending.platformSend.mockResolvedValueOnce(err(internal('Platform unavailable')));
+
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 1, sentCount: 0, failedCount: 1 }));
+    expect(deps.emailOutbox.items[0]).toMatchObject({ status: 'failed', transport: 'platform' });
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sending.platformSend).toHaveBeenCalledTimes(2);
+    expect(sending.reserve).toHaveBeenCalledTimes(2);
+    expect(sending.settle.mock.calls).toEqual([['tenant-1', false], ['tenant-1', true]]);
+    expect(sending.attackerSend).not.toHaveBeenCalled();
+    expect(sending.resolve).not.toHaveBeenCalled();
+  });
+
+  it('does not send or fall back to tenant SMTP when the platform cap is exhausted', async () => {
+    const deps = await setup({ payload: authPayloads[0] });
+    const sending = transportSetup('smtp');
+    sending.reserve.mockResolvedValue(false);
+
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 1, sentCount: 0, failedCount: 1 }));
+    expect(sending.reserve).toHaveBeenCalledExactlyOnceWith('tenant-1', 1000);
+    expect(sending.settle).not.toHaveBeenCalled();
+    expect(sending.platformSend).not.toHaveBeenCalled();
+    expect(sending.attackerSend).not.toHaveBeenCalled();
+    expect(sending.resolve).not.toHaveBeenCalled();
+    expect(deps.emailOutbox.items[0]).toMatchObject({ status: 'failed' });
+    expect(await deps.events.listByRef('tenant-1', 'transactional', 'outbox-1'))
+      .toEqual(expect.arrayContaining([expect.objectContaining({
+        type: 'failed', meta: expect.objectContaining({ errorCode: 'transactional_platform_cap_reached' }),
+      })]));
+  });
+
+  it('keeps smoke-tenant enrollment auth mail in the production sink', async () => {
+    const deps = await setup({ payload: authPayloads[0], tenantId: SMOKE_TENANT_ID });
+    const sinkSend = vi.fn<EmailPort['send']>(async () => ok({ messageId: 'sink-message' }));
+    const sending = transportSetup('smtp', {
+      send: sinkSend,
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
+    });
+
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sinkSend).toHaveBeenCalledOnce();
+    expect(sending.platformSend).not.toHaveBeenCalled();
+    expect(sending.attackerSend).not.toHaveBeenCalled();
+    expect(sending.resolve).not.toHaveBeenCalled();
+    expect(sending.reserve).not.toHaveBeenCalled();
+    expect(sending.settle).not.toHaveBeenCalled();
+    expect(deps.emailOutbox.items[0]).toMatchObject({
+      tenantId: SMOKE_TENANT_ID, status: 'sent', transport: 'platform',
+    });
+  });
+
+  it('keeps non-auth API mail on the configured tenant SMTP transport', async () => {
+    const deps = await setup({ payload: { kind: 'm2m-transactional', subject: 'Receipt', text: 'Your receipt' }, tenantTransportRequired: true });
+    const sending = transportSetup('smtp');
+
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sending.attackerSend).toHaveBeenCalledOnce();
+    expect(sending.platformSend).not.toHaveBeenCalled();
+    expect(deps.emailOutbox.items[0]).toMatchObject({ transport: 'smtp' });
+  });
+});
 
 describe('transactional email event lifecycle', () => {
   it('attributes the claimed budget to each tenant in a shared batch', async () => {

@@ -124,6 +124,7 @@ describe('real-provider sign-in and passkey proofs', () => {
         headers: {
           'content-type': 'application/json',
           origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
           ...headers,
         },
         body: JSON.stringify(body),
@@ -233,6 +234,7 @@ describe('real-provider sign-in and passkey proofs', () => {
         headers: {
           'content-type': 'application/json',
           origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
           ...headers,
         },
         body: JSON.stringify(body),

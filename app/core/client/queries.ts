@@ -213,6 +213,8 @@ const defineMutation = <TData, TVariables>(
  */
 const meScopes = {
   all: () => ['me'] as const,
+  profile: () => ['me', 'profile'] as const,
+  avatar: (action: 'upload' | 'remove') => ['me', 'avatar', action] as const,
 };
 
 const healthScopes = {
@@ -572,8 +574,22 @@ export const meInvalidates = () => ({ queryKey: meScopes.all() });
 
 export const updateMyProfileMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: ['me', 'profile'],
+    mutationKey: meScopes.profile(),
     call: (input: MeProfileUpdateInput) => api.updateMyProfile(input),
+  });
+
+export const uploadAvatarMutation = (
+  api: ApiClient,
+): MutationDescriptor<{ url: string }, ImageAssetFileUpload> =>
+  defineMutation({
+    mutationKey: meScopes.avatar('upload'),
+    call: (input: ImageAssetFileUpload) => api.uploadAvatar(input),
+  });
+
+export const removeAvatarMutation = (api: ApiClient): MutationDescriptor<{ removed: true }, void> =>
+  defineMutation({
+    mutationKey: meScopes.avatar('remove'),
+    call: () => api.removeAvatar(),
   });
 
 export const healthQuery = (api: ApiClient) =>
@@ -1897,4 +1913,12 @@ export const signInWithGoogleMutation = (auth: AuthClientPort): MutationDescript
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-in-google'],
     call: () => auth.signInWithGoogle(),
+  });
+
+export const promptGoogleOneTapMutation = (
+  auth: AuthClientPort,
+): MutationDescriptor<void, { clientId: string; callbackURL: string }> =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'google', 'one-tap'],
+    call: (input: { clientId: string; callbackURL: string }) => auth.promptGoogleOneTap(input),
   });

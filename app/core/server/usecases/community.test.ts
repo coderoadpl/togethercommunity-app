@@ -24,7 +24,6 @@ import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -61,8 +60,6 @@ import {
 import { openHeuristicReport } from './moderation.js';
 
 const NOW = '2026-07-15T10:00:00.000Z';
-
-const contentHash: ContentHash = { sha256: (content) => `digest(${String(content)})` };
 
 const identity = (overrides: Partial<Identity>): Identity => ({
   userId: 'u1',
@@ -767,7 +764,6 @@ const deps = (
     ids: new SequenceIds(),
     clock,
     avatarSources,
-    contentHash,
   };
 };
 
@@ -1195,16 +1191,13 @@ describe('community use-cases', () => {
     if (!root.ok) throw new Error('root failed');
     await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
 
-    const avatarOf = (email: string) =>
-      `https://www.gravatar.com/avatar/digest(${email})?d=404&s=160`;
-
     const listed = await listDiscussion(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1' }, d);
     expect(listed).toMatchObject({
       ok: true,
       value: {
         threads: [{
-          authorAvatarUrl: avatarOf('u1@example.com'),
-          replies: [{ authorAvatarUrl: avatarOf('u2@example.com') }],
+          authorAvatarUrl: null,
+          replies: [{ authorAvatarUrl: null }],
         }],
       },
     });
@@ -1212,13 +1205,13 @@ describe('community use-cases', () => {
     const hits = await searchPosts(ctx({ userId: 'u1', memberId: 'm1' }), { query: 'needle' }, d);
     expect(hits).toMatchObject({
       ok: true,
-      value: [{ post: { authorAvatarUrl: avatarOf('u1@example.com') } }],
+      value: [{ post: { authorAvatarUrl: null } }],
     });
 
     const notifications = await listNotifications(ctx({ userId: 'u1', memberId: 'm1' }), {}, d);
     expect(notifications).toMatchObject({
       ok: true,
-      value: { notifications: [{ payload: { authorAvatarUrl: avatarOf('u2@example.com') } }] },
+      value: { notifications: [{ payload: { authorAvatarUrl: null } }] },
     });
   });
 });

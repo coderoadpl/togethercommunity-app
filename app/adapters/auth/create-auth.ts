@@ -8,7 +8,7 @@ import {
 } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { createCookieGetter, getCookies } from 'better-auth/cookies';
-import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
+import { bearer, magicLink, oneTap, twoFactor } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -41,6 +41,7 @@ export interface AuthSettings {
   defaultTenantName: string;
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
+  importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
   /** Resolves whether a request host is a tenant's verified custom domain. */
   isVerifiedCustomHost?(host: string): Promise<boolean>;
   validateSignUpConsent?(input: {
@@ -90,6 +91,18 @@ export const PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS = 5 * 60;
 const PASSKEY_SENSITIVE_COOKIE = 'passkey_sensitive';
 
 const passwordResetRequestSchema = z.object({ redirectTo: z.string().url() });
+const googleTokenPayloadSchema = z.object({ picture: z.string().url().optional() });
+
+const googlePictureFromIdToken = (idToken: string | null | undefined): string | null => {
+  const payload = idToken?.split('.')[1];
+  if (payload === undefined) return null;
+  try {
+    const parsed = googleTokenPayloadSchema.safeParse(JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')));
+    return parsed.success ? (parsed.data.picture ?? null) : null;
+  } catch {
+    return null;
+  }
+};
 
 export const passwordResetOriginMatches = (
   body: unknown,
@@ -457,6 +470,41 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         '/sign-in/email': { window: 60, max: 20 },
       },
     },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (createdUser) => {
+            const image = createdUser.image;
+            if (typeof image !== 'string' || !/^https?:\/\//u.test(image)) return;
+            return { data: { image: null } };
+          },
+        },
+      },
+      account: {
+        create: {
+          after: async (createdAccount) => {
+            if (createdAccount.providerId !== 'google' || settings.importGoogleAvatar === undefined) return;
+            const sourceUrl = googlePictureFromIdToken(createdAccount.idToken);
+            if (sourceUrl === null) return;
+            await settings.importGoogleAvatar({
+              userId: createdAccount.userId,
+              sourceUrl,
+            }).catch(() => undefined);
+          },
+        },
+        update: {
+          after: async (updatedAccount) => {
+            if (updatedAccount.providerId !== 'google' || settings.importGoogleAvatar === undefined) return;
+            const sourceUrl = googlePictureFromIdToken(updatedAccount.idToken);
+            if (sourceUrl === null) return;
+            await settings.importGoogleAvatar({
+              userId: updatedAccount.userId,
+              sourceUrl,
+            }).catch(() => undefined);
+          },
+        },
+      },
+    },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (IMAGE_REJECTING_PATHS.has(ctx.path) && carriesImage(ctx.body)) {
@@ -545,6 +593,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       ? { socialProviders: { google: settings.google } }
       : {}),
     plugins: [
+      ...(settings.google ? [oneTap()] : []),
       hostScopedCredentials(settings),
       bearer(),
       resetRedirectConfinement(),

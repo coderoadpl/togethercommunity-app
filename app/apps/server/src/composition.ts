@@ -56,6 +56,8 @@ import { runReseed } from '#adapters/db/reseed-run.js';
 import { runSmokeTenantReseed } from '#adapters/db/smoke-tenant-reseed.js';
 import {
   createAvatarSourceReader,
+  createAccountAvatarRepository,
+  createAccountAvatarTenantReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
   createProductDownloadAssetRepository,
@@ -128,6 +130,7 @@ import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
 import { createVercelDomainProvisioner } from '#adapters/domains/vercel.js';
 import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
+import { createAvatarImageProcessor } from '#adapters/storage/avatar-images.js';
 import { createStorageCorsCache } from '#adapters/storage/cors-cache.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createSinkEmailPort } from '#adapters/email/sink.js';
@@ -276,10 +279,12 @@ import type {
   UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
+  AccountAvatarRepository,
+  AvatarImageProcessor,
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import {
   DEMO_SEED_PASSWORD,
   isProductionEnvironment,
@@ -310,6 +315,7 @@ interface DevEndpoints {
 
 interface AuthConfig {
   googleEnabled: boolean;
+  googleClientId?: string | null;
 }
 
 /**
@@ -371,6 +377,8 @@ export interface AppDeps {
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   avatarSources: AvatarSourceReader;
+  accountAvatars: AccountAvatarRepository;
+  avatarImages: AvatarImageProcessor;
   members: MemberRepository;
   memberEvents: MemberEventRepository;
   memberErasure: MemberErasurePort;
@@ -1128,6 +1136,14 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
       : null;
 
+  const storage = createS3StorageProvider(secretResolver, {
+    corsOrigin: env.APP_BASE_URL,
+    allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
+  });
+  const accountAvatars = createAccountAvatarRepository(db);
+  const accountAvatarTenants = createAccountAvatarTenantReader(db);
+  const avatarImages = createAvatarImageProcessor(storage);
+
   const auth = createAuth(db, {
     secret: env.BETTER_AUTH_SECRET,
     baseUrl: env.APP_BASE_URL,
@@ -1141,6 +1157,13 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     dispatchEmail,
     defaultTenantName: 'Together',
     google,
+    importGoogleAvatar: async ({ userId, sourceUrl }) => {
+      const tenantIds = await accountAvatarTenants.listTenantIdsForUser(userId);
+      await Promise.all(tenantIds.map((tenantId) => importGoogleAvatar(
+        { tenantId, userId, sourceUrl },
+        { avatars: accountAvatars, avatarImages, ids, secretResolver, storage },
+      )));
+    },
     isVerifiedCustomHost: memoizeHostCheck(async (host) =>
       (await tenantDomains.findByDomain(host))?.kind === 'custom'),
     validateSignUpConsent: async ({ request, accepted }) => {
@@ -1193,6 +1216,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     avatarSources: createAvatarSourceReader(db),
+    accountAvatars,
+    avatarImages,
     members: createMemberRepository(db),
     memberEvents: createMemberEventRepository(db),
     memberErasure: createMemberErasureRepository(db, emailHmac),
@@ -1275,10 +1300,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     videoLibrary: createBunnyVideoLibrary(),
     bunnyTokenSigner: createBunnyTokenSigner(),
     playbackTokenTtlSeconds: env.PLAYBACK_TOKEN_TTL_SECONDS,
-    storage: createS3StorageProvider(secretResolver, {
-      corsOrigin: env.APP_BASE_URL,
-      allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
-    }),
+    storage,
     storageCorsCache,
     email,
     emailSender: transactionalEmail,
@@ -1326,7 +1348,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
     devEndpoints,
     ...(platformReset === undefined ? {} : { platformReset }),
-    authConfig: { googleEnabled: google !== null },
+    authConfig: { googleEnabled: google !== null, googleClientId: google?.clientId ?? null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketing: {
       runs: schedulerRuns,

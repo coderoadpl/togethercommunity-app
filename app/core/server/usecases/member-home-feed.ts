@@ -14,7 +14,6 @@ import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   PostReactionRepository,
   PostRepository,
   ProductGrantRepository,
@@ -30,7 +29,6 @@ export interface MemberHomeFeedDeps {
   posts: PostRepository;
   reactions: PostReactionRepository;
   avatarSources: AvatarSourceReader;
-  contentHash: ContentHash;
 }
 
 export const getMemberHomeFeed = async (

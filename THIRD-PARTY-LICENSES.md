@@ -65,9 +65,8 @@ files; each package carries the full license in its `LICENSE` file under
 
 The Together logo wordmarks contain letterforms of Poppins (Indian Type Foundry), used under the SIL Open Font License 1.1, converted to outlines; no font software is distributed.
 
-**sharp / libvips.** The dev-only Argos upload tooling installs sharp's
-prebuilt libvips binaries (`@img/sharp-libvips-*`, LGPL-3.0-or-later; the
-related `@img/sharp-*` prebuilds carry the same notice). They are
+**sharp / libvips.** Avatar image processing uses sharp, which installs
+prebuilt libvips binaries (`@img/sharp-libvips-*`, LGPL-3.0-or-later). They are
 platform-specific shared libraries installed under `node_modules` alongside
 sharp and loaded by it at runtime through dynamic linking. The LGPL-3.0
 obligations are satisfied by that dynamic linking together with upstream
@@ -159,6 +158,7 @@ invoices can be checked locally.
 - [@emnapi/core@1.9.2](https://github.com/toyobayashi/emnapi#readme) - MIT
 - [@emnapi/runtime@1.10.0](https://github.com/toyobayashi/emnapi#readme) - MIT
 - [@emnapi/runtime@1.11.2](https://github.com/toyobayashi/emnapi#readme) - MIT
+- [@emnapi/runtime@1.11.3](https://github.com/toyobayashi/emnapi#readme) - MIT
 - [@emnapi/runtime@1.9.2](https://github.com/toyobayashi/emnapi#readme) - MIT
 - [@emnapi/wasi-threads@1.2.1](https://github.com/toyobayashi/emnapi#readme) - MIT
 - [@emnapi/wasi-threads@1.2.2](https://github.com/toyobayashi/emnapi#readme) - MIT
@@ -276,6 +276,33 @@ invoices can be checked locally.
 - [@humanfs/types@0.15.0](https://github.com/humanwhocodes/humanfs#readme) - Apache-2.0
 - [@humanwhocodes/module-importer@1.0.1](https://github.com/humanwhocodes/module-importer#readme) - Apache-2.0
 - [@humanwhocodes/retry@0.4.3](https://github.com/humanwhocodes/retry#readme) - Apache-2.0
+- [@img/colour@1.1.0](https://github.com/lovell/colour#readme) - MIT
+- [@img/sharp-darwin-arm64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-darwin-x64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-freebsd-wasm32@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-libvips-darwin-arm64@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-darwin-x64@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-linux-arm@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-linux-arm64@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-linux-ppc64@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-linux-riscv64@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-linux-s390x@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-linux-x64@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-linuxmusl-arm64@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-libvips-linuxmusl-x64@1.3.3](https://sharp.pixelplumbing.com) - LGPL-3.0-or-later
+- [@img/sharp-linux-arm@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-linux-arm64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-linux-ppc64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-linux-riscv64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-linux-s390x@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-linux-x64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-linuxmusl-arm64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-linuxmusl-x64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-wasm32@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0 AND LGPL-3.0-or-later AND MIT
+- [@img/sharp-webcontainers-wasm32@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
+- [@img/sharp-win32-arm64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0 AND LGPL-3.0-or-later
+- [@img/sharp-win32-ia32@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0 AND LGPL-3.0-or-later
+- [@img/sharp-win32-x64@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0 AND LGPL-3.0-or-later
 - [@inquirer/ansi@2.0.7](https://github.com/SBoudrias/Inquirer.js/blob/main/packages/ansi/README.md) - MIT
 - [@inquirer/confirm@6.1.1](https://github.com/SBoudrias/Inquirer.js/blob/main/packages/confirm/README.md) - MIT
 - [@inquirer/core@11.2.1](https://github.com/SBoudrias/Inquirer.js/blob/main/packages/core/README.md) - MIT
@@ -635,6 +662,7 @@ invoices can be checked locally.
 - [defu@6.1.7](https://github.com/unjs/defu#readme) - MIT
 - [dependency-cruiser@16.10.4](https://github.com/sverweij/dependency-cruiser) - MIT
 - [dequal@2.0.3](https://github.com/lukeed/dequal#readme) - MIT
+- [detect-libc@2.1.2](https://github.com/lovell/detect-libc#readme) - Apache-2.0
 - [doctrine@2.1.0](https://github.com/eslint/doctrine) - Apache-2.0
 - [doctrine@3.0.0](https://github.com/eslint/doctrine) - Apache-2.0
 - [dom-accessibility-api@0.5.16](https://github.com/eps1lon/dom-accessibility-api#readme) - MIT
@@ -954,6 +982,7 @@ invoices can be checked locally.
 - [set-function-length@1.2.2](https://github.com/ljharb/set-function-length#readme) - MIT
 - [set-function-name@2.0.2](https://github.com/ljharb/set-function-name#readme) - MIT
 - [set-proto@1.0.0](https://github.com/ljharb/set-proto#readme) - MIT
+- [sharp@0.35.4](https://sharp.pixelplumbing.com) - Apache-2.0
 - [shebang-command@2.0.0](https://github.com/kevva/shebang-command#readme) - MIT
 - [shebang-regex@3.0.0](https://github.com/sindresorhus/shebang-regex#readme) - MIT
 - [side-channel-list@1.0.1](https://github.com/ljharb/side-channel-list#readme) - MIT

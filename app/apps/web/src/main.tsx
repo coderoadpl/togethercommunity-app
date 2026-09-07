@@ -224,6 +224,13 @@ const resetPasswordRoute = createRoute({
 const accountRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/account',
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: search['tab'] === 'security'
+      || search['tab'] === 'notifications'
+      || search['tab'] === 'playback'
+      ? search['tab']
+      : 'profile',
+  }),
   component: MemberAccountRoute,
 });
 const validateNotificationsSearch = (search: Record<string, unknown>): { filter?: 'unread' } =>

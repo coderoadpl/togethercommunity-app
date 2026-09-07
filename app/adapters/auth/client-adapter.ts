@@ -49,6 +49,36 @@ const readTwoFactorChallengeCookie = (response: Response): string | null =>
     .find((entry) => /^(?:__Secure-)?better-auth\.two_factor=/u.test(entry))
     ?.split(';')[0] ?? null;
 
+interface GoogleIdentityApi {
+  initialize(input: { client_id: string; callback(response: { credential: string }): void }): void;
+  prompt(): void;
+}
+
+declare global {
+  interface Window {
+    google?: { accounts: { id: GoogleIdentityApi } };
+  }
+}
+
+let googleIdentityScript: Promise<void> | null = null;
+
+const loadGoogleIdentityScript = (): Promise<void> => {
+  if (window.google !== undefined) return Promise.resolve();
+  if (googleIdentityScript !== null) return googleIdentityScript;
+  googleIdentityScript = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      googleIdentityScript = null;
+      reject(new Error('Google Identity Services could not load'));
+    };
+    document.head.append(script);
+  });
+  return googleIdentityScript;
+};
+
 type SignUpInput = Parameters<AuthClientPort['signUp']>[0];
 type SignInInput = Parameters<AuthClientPort['signIn']>[0];
 type MagicLinkInput = Parameters<AuthClientPort['requestMagicLink']>[0];
@@ -288,6 +318,28 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
     },
     signInWithGoogle: async () =>
       toResult(undefined, (await client.signIn.social({ provider: 'google' })).error),
+    promptGoogleOneTap: async ({ clientId, callbackURL }) => {
+      try {
+        await loadGoogleIdentityScript();
+        window.google?.accounts.id.initialize({
+          client_id: clientId,
+          callback: ({ credential }) => {
+            void fetch(baseUrl === '' ? '/api/auth/one-tap/callback' : new URL('/api/auth/one-tap/callback', baseUrl), {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ idToken: credential, callbackURL }),
+              credentials: 'include',
+            }).then((response) => {
+              if (response.ok) window.location.assign(callbackURL);
+            });
+          },
+        });
+        window.google?.accounts.id.prompt();
+        return ok(undefined);
+      } catch (cause) {
+        return err(appError('internal', `Google One Tap failed: ${String(cause)}`));
+      }
+    },
   };
 };
 
@@ -546,6 +598,7 @@ export const createCliAuthAdapter = (
     disableTwoFactor: async () => err(notSupportedInCli),
     regenerateBackupCodes: async () => err(notSupportedInCli),
     signInWithGoogle: async () => err(notSupportedInCli),
+    promptGoogleOneTap: async () => err(notSupportedInCli),
     verifyMagicLinkToken: (token) => verifyMagicLinkToken(
       endpoint,
       token,

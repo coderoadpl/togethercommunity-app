@@ -21,7 +21,7 @@ interface ImageAssetFieldProps {
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
-  kind: ImageAssetKind;
+  kind: Exclude<ImageAssetKind, 'avatar'>;
   disabled?: boolean;
   testId: string;
   previewBackground?: PreviewBackground;

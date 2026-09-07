@@ -548,6 +548,7 @@ export const listNotifications = async (
       recipientUserId: actor.value.userId,
       limit: parsed.data.limit,
       excludeDms: ctx.impersonation !== undefined,
+      ...(parsed.data.unread === undefined ? {} : { unreadOnly: parsed.data.unread }),
       ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
     }),
   );

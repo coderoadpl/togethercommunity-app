@@ -25,7 +25,6 @@ import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/lo
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
 import {
-  AuthButton,
   AuthDivider,
   AuthHelp,
   AuthIdentityAvatar,
@@ -481,7 +480,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             required
           />
         </FormControl>
-        <AuthButton
+        <Button
           type="submit"
           variant="contained"
           fullWidth
@@ -489,7 +488,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           data-testid="verify-login-totp"
         >
           {verifyTotp.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorVerifyTotp}
-        </AuthButton>
+        </Button>
         <Button
           type="button"
           variant="text"
@@ -550,22 +549,22 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         </Alert>
         <Stack useFlexGap spacing="0.75rem">
           <Typography variant="body1">{t.auth.signInMethodsChoosePrompt}</Typography>
-          <AuthButton
+          <Button
             variant="outlined"
             fullWidth
             data-testid="choose-magic-link"
             onClick={() => switchMethod('magic-link')}
           >
             {t.auth.signInMethodsChooseMagicLink}
-          </AuthButton>
-          <AuthButton
+          </Button>
+          <Button
             variant="outlined"
             fullWidth
             data-testid="choose-password"
             onClick={() => switchMethod('password')}
           >
             {t.auth.signInMethodsChoosePassword}
-          </AuthButton>
+          </Button>
         </Stack>
       </>,
       null,
@@ -621,7 +620,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               <FormHelperText id={EMAIL_ERROR_ID}>{t.auth.emailInvalid}</FormHelperText>
             ) : null}
           </FormControl>
-          <AuthButton
+          <Button
             type="submit"
             variant="contained"
             fullWidth
@@ -629,7 +628,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             data-testid="login-continue"
           >
             {resolveSignInMethods.isPending ? t.auth.identifierPending : t.auth.identifierContinue}
-          </AuthButton>
+          </Button>
           <AuthHelp component="p" id={EMAIL_HELPER_ID} data-testid="login-email-helper">
             {t.auth.emailHelper}
           </AuthHelp>
@@ -640,7 +639,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         <AuthDivider aria-hidden>{t.auth.orSeparator}</AuthDivider>
         <Stack useFlexGap spacing="0.6rem">
           {authConfig.data?.googleEnabled ? (
-            <AuthButton
+            <Button
               data-testid="continue-google"
               variant="outlined"
               fullWidth
@@ -648,7 +647,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               onClick={() => signInWithGoogle.mutate()}
             >
               {t.auth.continueWithGoogle}
-            </AuthButton>
+            </Button>
           ) : null}
           <AuthPasskeyLink
             variant="text"
@@ -738,7 +737,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                           required
                         />
                       </FormControl>
-                      <AuthButton
+                      <Button
                         type="submit"
                         variant="contained"
                         fullWidth
@@ -746,7 +745,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                         data-testid="signin-submit"
                       >
                         {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}
-                      </AuthButton>
+                      </Button>
                     </Stack>
                     <FinePrint variant="caption" component="p" sx={{ mt: '0.75rem' }}>
                       <MuiLink component={Link} to="/forgot-password" data-testid="forgot-password">
@@ -768,7 +767,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         />
         {authConfig.data?.googleEnabled ? (
           <AuthMethodCard>
-            <AuthButton
+            <Button
               data-testid="continue-google"
               variant="text"
               fullWidth
@@ -777,7 +776,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               sx={{ minHeight: 64 }}
             >
               {t.auth.continueWithGoogle}
-            </AuthButton>
+            </Button>
           </AuthMethodCard>
         ) : null}
       </AuthMethodList>

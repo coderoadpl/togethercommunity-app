@@ -8,15 +8,23 @@ import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
 import { navigateFresh } from '../../lib/navigation.js';
-import { BreakAllText, Eyebrow } from '../../theme.js';
-import { AccountIcon, SignOutIcon, StudioIcon } from './account-icons.js';
+import {
+  streamlessPollInterval,
+  UNREAD_BADGE_POLL_INTERVAL_MS,
+} from '../../notifications-stream.js';
+import { useNotificationsTransport } from '../../notifications-transport.js';
+import { BreakAllText, CountBadge, Eyebrow, InkDotBadge, VisuallyHidden } from '../../theme.js';
+import { SignOutIcon, StudioIcon } from './account-icons.js';
 import { useCanOpenStudio } from './viewer.js';
 import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { memberMessagesPath } from './shell/member-nav.js';
+import { MessagesIcon, ProductsIcon } from './shell/shell-icons.js';
 
 export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: string } = {}) => {
   const t = useTranslations();
   const me = useQuery(actions.me);
+  const navigation = useQuery(actions.memberNavigation);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -42,31 +50,53 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
 
   const email = me.data?.email ?? null;
   const displayName = me.data?.tenant?.displayName ?? me.data?.name ?? '';
+  const messagesEnabled =
+    !impersonating
+    && navigation.isSuccess
+    && navigation.data.navigation.directMessagesEnabled;
+  const { streamless } = useNotificationsTransport();
+  const unreadMessages = useQuery({
+    ...actions.unreadMessages,
+    enabled: messagesEnabled,
+    refetchInterval: streamlessPollInterval(streamless, UNREAD_BADGE_POLL_INTERVAL_MS),
+  });
+  const unreadMessageCount = unreadMessages.data?.unread ?? 0;
   const leaving = signOut.isPending || stopImpersonation.isPending;
   const failure = signOut.error ?? stopImpersonation.error;
   const dismissFailure = () => {
     signOut.reset();
     stopImpersonation.reset();
   };
+  const close = () => setAnchorEl(null);
 
   return (
     <>
       <Tooltip title={t.panel.accountMenu}>
         <IconButton
-          size="small"
           data-testid="member-account-menu"
-          aria-label={t.panel.accountMenu}
+          aria-label={
+            unreadMessageCount > 0
+              ? t.panel.accountMenuUnread({ count: unreadMessageCount })
+              : t.panel.accountMenu
+          }
           aria-haspopup="true"
           aria-expanded={open ? true : undefined}
           onClick={(event) => setAnchorEl(event.currentTarget)}
+          sx={{ minHeight: '48px', minWidth: '48px' }}
         >
-          <AccountIcon />
+          <InkDotBadge
+            variant="dot"
+            invisible={unreadMessageCount === 0}
+            data-testid="member-account-unread"
+          >
+            <MemberAvatar name={displayName} avatarUrl={me.data?.avatarUrl ?? null} />
+          </InkDotBadge>
         </IconButton>
       </Tooltip>
       <Menu
         anchorEl={anchorEl}
         open={open}
-        onClose={() => setAnchorEl(null)}
+        onClose={close}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
@@ -100,11 +130,44 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
           </MenuItem>
         ) : null}
         <MenuItem
+          component={Link}
+          to="/my/products"
+          data-testid="member-account-products"
+          onClick={close}
+        >
+          <ListItemIcon>
+            <ProductsIcon />
+          </ListItemIcon>
+          <ListItemText primary={t.student.myProducts} />
+        </MenuItem>
+        {messagesEnabled ? (
+          <MenuItem
+            component={Link}
+            to={memberMessagesPath()}
+            data-testid="member-account-messages"
+            onClick={close}
+          >
+            <ListItemIcon>
+              <MessagesIcon />
+            </ListItemIcon>
+            <ListItemText primary={t.messages.navLabel} />
+            {unreadMessageCount > 0 ? (
+              <>
+                <CountBadge aria-hidden data-testid="member-account-messages-unread">
+                  {unreadMessageCount}
+                </CountBadge>
+                <VisuallyHidden>
+                  {t.messages.unreadAria({ count: unreadMessageCount })}
+                </VisuallyHidden>
+              </>
+            ) : null}
+          </MenuItem>
+        ) : null}
+        <MenuItem
+          component={Link}
+          to="/account"
           data-testid="member-account-link"
-          onClick={() => {
-            setAnchorEl(null);
-            void navigate({ to: '/account' });
-          }}
+          onClick={close}
         >
           <ListItemIcon>
             <ManageAccountIcon />
@@ -115,7 +178,7 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
           data-testid="member-sign-out"
           disabled={leaving}
           onClick={() => {
-            setAnchorEl(null);
+            close();
             if (impersonating) stopImpersonation.mutate(undefined);
             else signOut.mutate();
           }}

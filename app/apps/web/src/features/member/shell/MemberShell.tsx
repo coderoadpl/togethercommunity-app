@@ -71,7 +71,6 @@ export const MemberShell = () => {
       courseId={courseContext.courseId}
       currentLessonId={courseContext.lessonId}
       tenantName={identity.tenantName}
-      variant="drawer"
     />
   );
 
@@ -182,13 +181,15 @@ export const MemberShell = () => {
                   </Button>
                 </Tooltip>
               ) : null}
-              {hasMobileNavigation ? <NotificationBell /> : null}
               <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
                 <ColorSchemeCycleButton />
               </Box>
-              <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
-                <MemberAccountMenu />
-              </Box>
+              {identity === null ? null : (
+                <>
+                  <NotificationBell />
+                  <MemberAccountMenu />
+                </>
+              )}
             </Toolbar>
             <ImpersonationBanner />
           </AppBar>

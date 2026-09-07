@@ -17,7 +17,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
 import { FinePrint } from '../../theme.js';
-import { AuthButton, AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
 import { AuthShell } from './AuthShell.js';
 
 const tokenFromLocation = (): string | null =>
@@ -77,9 +77,9 @@ export const ResetPasswordPage = () => {
               <AuthTitle variant="h1">{t.resetPassword.successTitle}</AuthTitle>
               <AuthLead component="p">{t.resetPassword.successBody}</AuthLead>
             </Box>
-            <AuthButton component={Link} to="/login" variant="contained" fullWidth>
+            <Button component={Link} to="/login" variant="contained" fullWidth>
               {t.resetPassword.goToLogin}
-            </AuthButton>
+            </Button>
           </Stack>
         ) : (
           <>
@@ -112,7 +112,7 @@ export const ResetPasswordPage = () => {
                   required
                 />
               </FormControl>
-              <AuthButton
+              <Button
                 type="submit"
                 variant="contained"
                 fullWidth
@@ -120,7 +120,7 @@ export const ResetPasswordPage = () => {
                 disabled={resetPassword.isPending}
               >
                 {resetPassword.isPending ? t.resetPassword.submitPending : t.resetPassword.submitIdle}
-              </AuthButton>
+              </Button>
             </Stack>
             {localError ? (
               <Alert severity="error" sx={{ mt: '0.6rem' }} data-testid="reset-local-error">

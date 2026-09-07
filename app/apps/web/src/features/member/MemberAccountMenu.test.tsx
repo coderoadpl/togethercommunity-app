@@ -94,6 +94,39 @@ describe('MemberAccountMenu', () => {
     expect(authCalls).toHaveLength(1);
   });
 
+  it('marks waiting direct messages on the avatar and next to the messages entry', async () => {
+    server.use(
+      me(null),
+      http.get('*/api/member/navigation', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            navigation: {
+              spaces: [],
+              courses: [],
+              lockedSpaces: [],
+              directMessagesEnabled: true,
+            },
+          },
+        }),
+      ),
+      http.get('*/api/messages/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 3 } }),
+      ),
+    );
+
+    await renderMenu();
+
+    expect(await screen.findByTestId('member-account-messages-unread')).toHaveTextContent('3');
+    expect(screen.getByTestId('member-account-unread')).toBeInTheDocument();
+    expect(screen.getByTestId('member-account-menu')).toHaveAccessibleName(
+      pl.panel.accountMenuUnread({ count: 3 }),
+    );
+    expect(screen.getByTestId('member-account-messages')).toHaveTextContent(
+      pl.messages.unreadAria({ count: 3 }),
+    );
+  });
+
   it('ends the view instead of the operator session while viewing as a member', async () => {
     const assign = vi.fn();
     vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, assign });

@@ -288,6 +288,7 @@ import type {
   ReportsListInput,
   SpaceFeedGetInput,
 } from '#core/contract/index.js';
+import type { NotificationsPageInput } from '#core/client/index.js';
 import type { MemberExportFormat } from '#core/domain/index.js';
 
 /**
@@ -521,7 +522,7 @@ export const actions = {
   onboardingInvalidates,
   tenantSetupReadiness: tenantSetupReadinessQuery(apiClient),
   notifications: notificationsQuery(apiClient),
-  notificationsPage: (limit: number) => notificationsPageQuery(apiClient, { limit }),
+  notificationsPage: (input: NotificationsPageInput) => notificationsPageQuery(apiClient, input),
   unreadNotifications: unreadNotificationsQuery(apiClient),
   markNotificationRead: markNotificationReadMutation(apiClient),
   markAllNotificationsRead: markAllNotificationsReadMutation(apiClient),

@@ -600,6 +600,7 @@ invoices can be checked locally.
 - [chai@5.3.3](http://chaijs.com) - MIT
 - [chalk@4.1.2](https://github.com/chalk/chalk#readme) - MIT
 - [check-error@2.1.3](https://github.com/chaijs/check-error#readme) - MIT
+- [chromatic@18.7.2](https://www.chromatic.com) - MIT
 - [cli-width@4.1.0](https://github.com/knownasilya/cli-width) - ISC
 - [cliui@8.0.1](https://github.com/yargs/cliui#readme) - ISC
 - [clsx@2.1.1](https://github.com/lukeed/clsx#readme) - MIT

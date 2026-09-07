@@ -271,45 +271,52 @@ describe('MemberShell', () => {
     expect(within(sidebar).getByText(pl.shell.spacesSection)).toBeInTheDocument();
   });
 
-  it('marks the messages row when direct messages are waiting', async () => {
+  it('moves products, messages and the account out of the sidebar into the avatar menu', async () => {
     stubViewport(true);
-    server.use(
-      okMe(),
-      okNavigation(),
-      okOffer(),
-      noNotifications(),
-      http.get('*/api/messages/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 3 } })),
-    );
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+    const user = userEvent.setup();
 
     await renderShell('/my');
 
-    const messages = await screen.findByTestId('sidebar-messages');
-    expect(messages).toHaveAttribute('href', '/messages');
-    await waitFor(() =>
-      expect(messages).toHaveAttribute('aria-label', pl.messages.unreadAria({ count: 3 })));
-    expect(within(messages).getByTestId('sidebar-messages-unread')).toBeInTheDocument();
+    const sidebar = await screen.findByTestId('member-sidebar');
+    expect(within(sidebar).queryByTestId('sidebar-products')).toBeNull();
+    expect(within(sidebar).queryByTestId('sidebar-messages')).toBeNull();
+    expect(within(sidebar).queryByTestId('sidebar-account')).toBeNull();
+    expect(within(sidebar).queryByTestId('notification-nav')).toBeNull();
+
+    await user.click(screen.getByTestId('member-account-menu'));
+
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      pl.student.myProducts,
+      pl.messages.navLabel,
+      pl.account.menuAccount,
+      pl.tenant.signOut,
+    ]);
+    expect(within(menu).getByTestId('member-account-products')).toHaveAttribute(
+      'href',
+      '/my/products',
+    );
+    expect(within(menu).getByTestId('member-account-messages')).toHaveAttribute('href', '/messages');
   });
 
-  it('hides the messages row and skips the unread poll when direct messages are off', async () => {
+  it('leaves messages out of the avatar menu when direct messages are off', async () => {
     stubViewport(true);
-    let unreadRequests = 0;
     server.use(
       okMe(),
       okNavigation(navigation({ directMessagesEnabled: false })),
       okOffer(),
       noNotifications(),
-      http.get('*/api/messages/unread-count', () => {
-        unreadRequests += 1;
-        return HttpResponse.json({ ok: false, error: { code: 'forbidden', message: 'off' } }, { status: 403 });
-      }),
     );
+    const user = userEvent.setup();
 
     await renderShell('/my');
 
-    expect(await screen.findByTestId('sidebar-products')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByTestId('sidebar-messages')).not.toBeInTheDocument());
-    expect(unreadRequests).toBe(0);
+    await user.click(await screen.findByTestId('member-account-menu'));
+
+    expect(await screen.findByTestId('member-account-products')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByTestId('member-account-messages')).not.toBeInTheDocument());
   });
 
   it('marks a space row with an unread dot and a labelled row', async () => {
@@ -443,23 +450,22 @@ describe('MemberShell', () => {
     expect(screen.getByTestId('sidebar-start')).not.toHaveAttribute('aria-current');
   });
 
-  it('keeps the bell in the sidebar on desktop and in the app bar below md', async () => {
+  it('keeps the bell in the app bar at every breakpoint', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
 
     const desktop = await renderShell(memberHomePath());
-    expect(await screen.findByTestId('notification-nav')).toBeInTheDocument();
-    expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('notification-bell')).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-nav')).not.toBeInTheDocument();
     desktop.unmount();
 
     stubViewport(false);
     await renderShell(memberHomePath());
 
     expect(await screen.findByTestId('notification-bell')).toBeInTheDocument();
-    expect(screen.queryByTestId('notification-nav')).not.toBeInTheDocument();
   });
 
-  it('shows the unread notification count next to the sidebar bell label', async () => {
+  it('shows the unread notification count on the app-bar bell', async () => {
     stubViewport(true);
     server.use(
       okMe(),
@@ -471,8 +477,8 @@ describe('MemberShell', () => {
 
     await renderShell(memberHomePath());
 
-    const bell = await screen.findByTestId('notification-nav');
-    expect(await within(bell).findByTestId('notification-bell-count')).toHaveTextContent('4');
+    const bell = await screen.findByTestId('notification-bell');
+    expect(await within(bell).findByText('4')).toBeInTheDocument();
     await waitFor(() =>
       expect(bell).toHaveAttribute('aria-label', pl.notifications.unreadAria({ count: 4 })));
   });
@@ -606,7 +612,7 @@ describe('MemberShell', () => {
     const sheet = await screen.findByTestId('member-menu-sheet');
     expect(within(sheet).getByTestId('member-sidebar')).toBeInTheDocument();
     expect(await within(sheet).findByTestId('sidebar-space-s1')).toHaveTextContent('Ogólna');
-    expect(within(sheet).getByTestId('sidebar-products')).toHaveAttribute('href', '/my/products');
+    expect(within(sheet).queryByTestId('sidebar-products')).not.toBeInTheDocument();
     expect(within(sheet).getByTestId('member-identity')).toHaveTextContent('Jan Uczestnik');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();

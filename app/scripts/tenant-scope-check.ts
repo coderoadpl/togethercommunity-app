@@ -87,6 +87,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   CliAuthAdapter: 'CLI authentication transport boundary.',
   Clock: 'Time source with no persistence access.',
   ContentHash: 'Hashing primitive with no persistence access.',
+  CursorQueryDescriptor: 'Client query descriptor: cursor bookkeeping over an already tenant-scoped route.',
   DevMarketingScheduler: 'Development scheduler control boundary.',
   DiscussionLinkPort: 'URL construction boundary with no persistence access.',
   DomainProvisionState: 'External domain-provider response shape with no persistence access.',

@@ -915,6 +915,10 @@ export const pl: Messages = {
     storageInstructionMinio:
       'Utwórz klucz dostępu, którego polityka zezwala na S3 PutObject, GetObject i DeleteObject w tym buckecie. W CORS bucketu dodaj Content-Type do AllowedHeaders. Przesyłanie z przeglądarki wymaga HTTPS, chyba że MinIO ma ten sam origin co Together. Prywatny endpoint wymaga też STORAGE_ALLOW_PRIVATE_ENDPOINTS=true na serwerze.',
     storageInstructionLink: 'Otwórz instrukcję dostawcy',
+    storageCorsHeading: 'CORS bucketu',
+    storageCorsDescription: 'Zezwól na każdy poniższy origin. Skopiuj cały JSON do ustawień CORS bucketu.',
+    storageCorsOriginLabel: ({ number }) => format('Dozwolony origin {number}', { number }),
+    storageCorsJsonLabel: 'JSON CORS',
     storageProbeDescription:
       'Together wyśle mały plik testowy, odczyta go bajt po bajcie, usunie i sprawdzi CORS dla przeglądarki. Na tym etapie nic nie zostanie zapisane.',
     storageProbeStart: 'Uruchom test na żywo',
@@ -2139,6 +2143,8 @@ export const pl: Messages = {
     firstDomainWarning:
       'Po przełączeniu na własną domenę uczestnicy zalogują się ponownie, a klucze dostępu trzeba dodać na nowo. Logowanie przez Google nie działa na własnych domenach.',
     docsLink: 'Jak działają własne domeny',
+    storageCorsHint: 'Dodaj ten adres do CORS bucketu',
+    storageCorsLink: 'Otwórz kreator magazynu',
     redirectsCount: ({ count }) => format('{count} {noun}', {
       count,
       noun: plural(count, 'przekierowanie', 'przekierowania', 'przekierowań'),

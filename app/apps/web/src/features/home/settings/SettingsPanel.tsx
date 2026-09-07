@@ -1430,6 +1430,15 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {entry.lastError === null ? null : (
                 <Typography variant="caption" color="error">{entry.lastError}</Typography>
               )}
+              {entry.verified && entry.storageCorsStatus !== 'ok' ? (
+                <Typography variant="caption" data-testid={`tenant-domain-cors-hint-${entry.domain}`}>
+                  {t.tenantDomains.storageCorsHint}
+                  {' '}
+                  <MuiLink component={Link} to="/panel/integrations" hash="storage">
+                    {t.tenantDomains.storageCorsLink}
+                  </MuiLink>
+                </Typography>
+              ) : null}
               <DomainRecords entry={entry} />
               {entry.lastCheckedAt === null ? null : (
                 <Typography variant="caption">

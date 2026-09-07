@@ -129,6 +129,7 @@ import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
 import { createVercelDomainProvisioner } from '#adapters/domains/vercel.js';
 import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
+import { createStorageCorsCache } from '#adapters/storage/cors-cache.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createSinkEmailPort } from '#adapters/email/sink.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
@@ -187,6 +188,7 @@ import type {
   DevMagicLinkReader,
   DevSinkPurge,
   StorageProvider,
+  StorageCorsCache,
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
@@ -432,6 +434,7 @@ export interface AppDeps {
   couponStats?: CouponStatsRepository;
   videoLibrary: VideoLibraryPort;
   storage: StorageProvider;
+  storageCorsCache: StorageCorsCache;
   bunnyTokenSigner: BunnyTokenSigner;
   playbackTokenTtlSeconds: number;
   email: EmailPort;
@@ -753,6 +756,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
+  const storageCorsCache = createStorageCorsCache(db);
   const tenantDomainEvents = createTenantDomainEventRepository(db);
   const domainProvisioner = selectDomainProvisioner(env);
   const customDomainTarget =
@@ -1273,6 +1277,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       corsOrigin: env.APP_BASE_URL,
       allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
     }),
+    storageCorsCache,
     email,
     emailSender: transactionalEmail,
     emailTransports,

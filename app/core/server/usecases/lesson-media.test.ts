@@ -249,6 +249,7 @@ const recordingSigner = (): { signer: StorageProvider; calls: { url: string; exp
     signer: {
       objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => {
         calls.push({ url: input.url, expiresInSeconds: input.expiresInSeconds });
@@ -409,6 +410,7 @@ describe('getPlayableLesson', () => {
     const failing: StorageProvider = {
       objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => err(validation('bad url')),
+      probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'blocked' })),
       presignPut: () => err(validation('bad url')),
       presignGet: () => err(validation('bad url')),
       delete: async () => err(validation('bad url')),

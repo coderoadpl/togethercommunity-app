@@ -67,6 +67,8 @@ import type {
   SpaceEventRsvpStatus,
   SpaceStats,
   StorageConfiguration,
+  StorageCorsCacheEntry,
+  StorageCorsProbeResult,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -1353,6 +1355,10 @@ export interface StorageProvider {
     input: StorageConfiguration,
     corsOrigins?: string[] | undefined,
   ): Promise<Result<ProviderDiagnostic, AppError>>;
+  probeCors(
+    input: StorageConfiguration,
+    origins: string[],
+  ): Promise<StorageCorsProbeResult[]>;
   presignPut(input: {
     url: string;
     accessKeyId: string;
@@ -1384,6 +1390,11 @@ export interface StorageProvider {
     tenantId: string;
     corsOrigins?: string[] | undefined;
   }): Promise<Result<ProviderDiagnostic, AppError>>;
+}
+
+export interface StorageCorsCache {
+  read(tenantId: string): Promise<StorageCorsCacheEntry | null>;
+  write(tenantId: string, entry: StorageCorsCacheEntry): Promise<void>;
 }
 
 export interface ProductPriceRepository {

@@ -9,12 +9,14 @@ import {
   type CourseLesson,
   type CourseModule,
   type SchedulerRun,
+  type StorageCorsCacheEntry,
   type Tenant,
   type TenantSecret,
   type TenantSettings,
 } from '#core/domain/index.js';
 
 import { checkDeepHealth, type DeepHealthDeps } from './deep-health.js';
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
 
 const NOW = '2026-09-05T12:00:00.000Z';
 
@@ -192,12 +194,24 @@ const deps = (overrides: Partial<DeepHealthDeps> = {}): DeepHealthDeps => ({
   storage: {
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+    probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
     presignPut: (input) => ok(input.url),
     presignGet: (input) => ok(`${input.url}?X-Amz-Signature=test`),
     delete: async () => ok({ deleted: true }),
     head: async () => ok({ sizeBytes: 1 }),
     healthcheck: async () => ok({ healthy: true }),
     test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+  },
+  storageCorsCache: {
+    read: async () => null,
+    write: async () => undefined,
+  },
+  storageCorsRateLimit: { claim: async () => true, purgeExpired: async () => 0 },
+  tenantDomains: createInMemoryTenantDomainRepository(),
+  routing: {
+    appBaseUrl: 'https://app.together.example',
+    baseDomain: 'together.example',
+    singleTenantMode: false,
   },
   emailTransports: {
     resolve: async () => ({
@@ -224,6 +238,7 @@ describe('checkDeepHealth', () => {
 
     expect(report.ok).toBe(true);
     expect(report.failing).toEqual([]);
+    expect(report.warnings).toEqual([]);
     expect(report.tenants).toBe(1);
     expect(report.checkedAt).toBe(NOW);
     expect(report.checks.map((check) => check.name)).toEqual([
@@ -235,9 +250,11 @@ describe('checkDeepHealth', () => {
       'tenant-secret-decryption',
       'email-transport',
       'storage-presign',
+      'storage-cors',
     ]);
     expect(report.checks.every((check) => check.ok && check.error === null)).toBe(true);
     expect(checkNamed(report, 'storage-presign').subjects).toBe(1);
+    expect(checkNamed(report, 'storage-cors').subjects).toBe(1);
     expect(checkNamed(report, 'course-content').subjects).toBe(1);
   });
 
@@ -249,6 +266,112 @@ describe('checkDeepHealth', () => {
 
     expect(report.ok).toBe(true);
     expect(checkNamed(report, 'course-content').subjects).toBe(1);
+  });
+
+  it('warns for blocked origins and reuses the per-tenant CORS result for ten minutes', async () => {
+    let cached: StorageCorsCacheEntry | null = null;
+    let probes = 0;
+    let claims = 0;
+    const configured = deps({
+      tenantDomains: createInMemoryTenantDomainRepository([
+        tenantDomainFixture({
+          id: 'domain-1',
+          tenantId: acme.id,
+          domain: 'courses.example.org',
+          verified: true,
+        }),
+      ]),
+      storage: {
+        ...deps().storage,
+        probeCors: async (_configuration, origins) => {
+          probes += 1;
+          return origins.map((origin) => ({
+            origin,
+            status: origin === 'https://courses.example.org' ? 'blocked' : 'ok',
+          }));
+        },
+      },
+      storageCorsCache: {
+        read: async () => cached,
+        write: async (_tenantId, entry) => { cached = entry; },
+      },
+      storageCorsRateLimit: {
+        claim: async () => { claims += 1; return true; },
+        purgeExpired: async () => 0,
+      },
+    });
+
+    const first = await checkDeepHealth(configured);
+    const second = await checkDeepHealth(configured);
+
+    expect(first.ok).toBe(true);
+    expect(first.failing).toEqual([]);
+    expect(first.warnings).toEqual(['storage-cors']);
+    expect(first.storageCors).toEqual([{
+      tenantId: acme.id,
+      cached: false,
+      results: [
+        { origin: 'https://acme.together.example', status: 'ok' },
+        { origin: 'https://courses.example.org', status: 'blocked' },
+      ],
+    }]);
+    expect(second.storageCors[0]?.cached).toBe(true);
+    expect(probes).toBe(1);
+    expect(claims).toBe(1);
+  });
+
+  it('deduplicates a platform origin that is also a verified custom domain', async () => {
+    const origins: string[][] = [];
+    const report = await checkDeepHealth(deps({
+      tenantDomains: createInMemoryTenantDomainRepository([
+        tenantDomainFixture({
+          id: 'domain-1',
+          tenantId: acme.id,
+          domain: 'app.together.example',
+          verified: true,
+        }),
+      ]),
+      routing: {
+        appBaseUrl: 'https://app.together.example',
+        baseDomain: 'together.example',
+        singleTenantMode: true,
+      },
+      storage: {
+        ...deps().storage,
+        probeCors: async (_configuration, probed) => {
+          origins.push(probed);
+          return probed.map((origin) => ({ origin, status: 'ok' }));
+        },
+      },
+    }));
+
+    expect(report.ok).toBe(true);
+    expect(origins).toEqual([['https://app.together.example']]);
+  });
+
+  it('caps all outbound CORS probes without expiring the hard health budget', async () => {
+    const tenants = [0, 1, 2, 3].map((index) => ({
+      ...acme,
+      id: `tenant-${String(index)}`,
+      slug: `tenant-${String(index)}`,
+    }));
+    let probes = 0;
+    const report = await checkDeepHealth(deps({
+      tenantDirectory: { listAll: async () => tenants },
+      storage: {
+        ...deps().storage,
+        probeCors: () => {
+          probes += 1;
+          return new Promise(() => undefined);
+        },
+      },
+    }), 1_250);
+
+    expect(report.ok).toBe(true);
+    expect(report.failing).toEqual([]);
+    expect(report.warnings).toEqual(['storage-cors']);
+    expect(report.checks.some((check) => check.name === 'deadline')).toBe(false);
+    expect(probes).toBe(1);
   });
 
   it('fails a members-only course whose module references a missing lesson', async () => {

@@ -32,11 +32,13 @@ import type {
   TenantAccessReader,
   TenantDomainEventRepository,
   TenantDomainRepository,
+  StorageCorsCache,
 } from '../ports.js';
-import { canonicalTenantDomain, tenantOriginUrl, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { canonicalTenantDomain, customDomainOrigin, tenantOriginUrl, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 
 export interface TenantRoutingDeps {
   tenantDomains: TenantDomainRepository;
+  storageCorsCache?: StorageCorsCache | undefined;
   routing: TenantUrlDeps;
   customDomainTarget: string;
 }
@@ -74,14 +76,22 @@ const domainRecords = (domain: TenantDomain, deps: TenantRoutingDeps) =>
     }),
   );
 
-const routingView = (
+const routingView = async (
+  tenantId: string,
   tenantSlug: string | null,
   domains: TenantDomain[],
   deps: TenantRoutingDeps,
-): TenantRouting => {
+): Promise<TenantRouting> => {
   const custom = domains.filter((domain) => domain.kind === 'custom');
+  const tenantOrigin = new URL(tenantUrl(tenantSlug, '/', deps.routing)).origin;
+  const verifiedCustomOrigins = custom
+    .filter((domain) => domain.verified)
+    .map((domain) => customDomainOrigin(domain.domain, deps.routing));
+  const storageCorsOrigins = [...new Set([tenantOrigin, ...verifiedCustomOrigins])];
+  const cachedCors = await deps.storageCorsCache?.read(tenantId) ?? null;
   return {
-    tenantHost: new URL(tenantUrl(tenantSlug, '/', deps.routing)).host,
+    tenantHost: new URL(tenantOrigin).host,
+    storageCorsOrigins,
     canonicalOrigin: tenantOriginUrl({ slug: tenantSlug, customDomain: canonicalTenantDomain(domains)?.domain ?? null }, deps.routing),
     customDomains: custom.map((domain) => ({
       domain: domain.domain,
@@ -96,6 +106,10 @@ const routingView = (
       })),
       lastCheckedAt: domain.lastCheckedAt,
       lastError: domain.lastError,
+      storageCorsStatus: domain.verified
+        ? cachedCors?.results.find((result) =>
+          result.origin === customDomainOrigin(domain.domain, deps.routing))?.status ?? 'unknown'
+        : 'unknown',
     })),
     customDomainTarget: deps.customDomainTarget,
     canAddCustomDomain: custom.length < MAX_CUSTOM_DOMAINS_PER_TENANT,
@@ -107,7 +121,7 @@ const readRouting = async (
   tenantSlug: string | null,
   deps: TenantRoutingDeps,
 ): Promise<TenantRouting> =>
-  routingView(tenantSlug, await deps.tenantDomains.listByTenant(tenantId), deps);
+  await routingView(tenantId, tenantSlug, await deps.tenantDomains.listByTenant(tenantId), deps);
 
 export const getTenantRouting = async (
   ctx: Ctx,

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { tenantSettingsSchema } from './tenant.js';
+import { storageCorsProbeResultSchema, type StorageCorsProbeResult } from './storage.js';
 
 const deepHealthCheckSchema = z.object({
   name: z.string().min(1),
@@ -14,17 +15,28 @@ export const deepHealthReportSchema = z.object({
   ok: z.boolean(),
   checkedAt: z.string().datetime(),
   failing: z.array(z.string().min(1)),
+  warnings: z.array(z.string().min(1)).default([]),
   checks: z.array(deepHealthCheckSchema),
+  storageCors: z.array(z.object({
+    results: z.array(storageCorsProbeResultSchema),
+  })).default([]),
 });
+
+export interface DeepHealthStorageCors {
+  tenantId: string;
+  cached: boolean;
+  results: StorageCorsProbeResult[];
+}
 
 export interface DeepHealthCheck extends z.output<typeof deepHealthCheckSchema> {
   subjects: number;
 }
 
 export interface DeepHealthReport
-  extends Omit<z.output<typeof deepHealthReportSchema>, 'checks'> {
+  extends Omit<z.output<typeof deepHealthReportSchema>, 'checks' | 'storageCors'> {
   tenants: number;
   checks: DeepHealthCheck[];
+  storageCors: DeepHealthStorageCors[];
 }
 
 /**

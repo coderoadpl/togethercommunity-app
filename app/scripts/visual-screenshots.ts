@@ -133,11 +133,13 @@ const prepareDomainChecklist = async (page: Page, active: boolean): Promise<Scre
   const handler = async (route: Route): Promise<void> => {
     await route.fulfill({ json: { ok: true, data: { routing: {
       tenantHost: 'workspace.example.org',
+      storageCorsOrigins: ['https://workspace.example.org', `https://${domain}`],
+      canonicalOrigin: `https://${domain}`,
       customDomainTarget: 'routing.example.org',
       canAddCustomDomain: true,
       customDomains: [{
         domain, verified: active, status: active ? 'active' : 'pending-dns',
-        lastCheckedAt: null, lastError: null,
+        lastCheckedAt: null, lastError: null, storageCorsStatus: 'unknown',
         records: [
           { type: 'CNAME', name: domain, value: 'routing.example.org', purpose: 'routing', status: active ? 'verified' : 'pending' },
           { type: 'TXT', name: `_vercel.${domain}`, value: 'vc-domain-verify=courses.example.org,challenge', purpose: 'ownership', status: 'verified' },

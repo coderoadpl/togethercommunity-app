@@ -229,6 +229,10 @@ describe('getTenantRouting', () => {
       ok: true,
       value: {
         tenantHost: 'acme.together.example',
+        storageCorsOrigins: [
+          'https://acme.together.example',
+          'https://kurs.acme.example',
+        ],
         canonicalOrigin: 'https://kurs.acme.example',
         customDomains: [
           {
@@ -238,6 +242,7 @@ describe('getTenantRouting', () => {
             records: [{ type: 'CNAME', name: 'kurs.acme.example', value: 'cname.vercel-dns.com', purpose: 'routing', status: 'verified' }],
             lastCheckedAt: null,
             lastError: null,
+            storageCorsStatus: 'unknown',
           },
           {
             domain: 'nowa.acme.example',
@@ -249,6 +254,7 @@ describe('getTenantRouting', () => {
             ],
             lastCheckedAt: null,
             lastError: null,
+            storageCorsStatus: 'unknown',
           },
         ],
         customDomainTarget: 'cname.vercel-dns.com',

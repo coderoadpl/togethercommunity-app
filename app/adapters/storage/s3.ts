@@ -16,6 +16,7 @@ import {
   type ProviderDiagnostic,
   type Result,
   type StorageConfiguration,
+  type StorageCorsProbeResult,
   type StorageProbeErrorCode,
 } from '#core/domain/index.js';
 import type { StorageProvider, TenantSecretResolver } from '#core/server/index.js';
@@ -24,6 +25,8 @@ const S3_HOST_PATTERN =
   /^(?<bucket>[a-z0-9][a-z0-9.-]*)\.s3(?:[.-](?<region>[a-z0-9-]+))?\.amazonaws\.com$/;
 
 const PROBE_EXPIRY_SECONDS = 60;
+const CORS_PROBE_TIMEOUT_MS = 5_000;
+const DNS_LOOKUP_TIMEOUT_MS = 5_000;
 
 const rfc3986 = (value: string): string =>
   encodeURIComponent(value).replace(
@@ -69,6 +72,7 @@ type FetchStorage = (
     headers?: Record<string, string>;
     dispatcher?: Dispatcher;
     redirect?: 'error';
+    signal?: AbortSignal;
   },
 ) => Promise<StorageResponse>;
 
@@ -199,10 +203,18 @@ const validateProbeEndpoint = async (
   }
   if (isIP(hostname) !== 0) return ok({ address: hostname });
   let addresses: string[];
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    addresses = await lookupAddresses(hostname);
+    addresses = await Promise.race([
+      lookupAddresses(hostname),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => { reject(new Error('DNS lookup timed out')); }, DNS_LOOKUP_TIMEOUT_MS);
+      }),
+    ]);
   } catch {
     return err(probeError('storage.unavailable', 'The storage endpoint hostname could not be resolved.'));
+  } finally {
+    clearTimeout(timer);
   }
   if (addresses.length === 0) {
     return err(probeError('storage.unavailable', 'The storage endpoint hostname could not be resolved.'));
@@ -243,6 +255,7 @@ const verifyCors = async (
       method: 'OPTIONS',
       dispatcher,
       redirect: 'error',
+      signal: AbortSignal.timeout(CORS_PROBE_TIMEOUT_MS),
       headers: {
         Origin: corsOrigin,
         'Access-Control-Request-Method': 'PUT',
@@ -512,10 +525,37 @@ export const createS3StorageProvider = (
       await dispatcher.destroy();
     }
   };
+  const probeCors = async (
+    input: StorageConfiguration,
+    origins: string[],
+  ): Promise<StorageCorsProbeResult[]> => {
+    const normalizedOrigins = probeOrigins(origins);
+    const target = objectUrl(input, 'together-cors-probe');
+    const safeTarget = await validateProbeEndpoint(target.origin, allowPrivateEndpoints, lookupAddresses);
+    if (!safeTarget.ok) {
+      return normalizedOrigins.map((origin) => ({ origin, status: 'unknown' }));
+    }
+    const signed = signObjectUrl('PUT', target, {
+      accessKeyId: input.accessKeyId,
+      secretAccessKey: input.secretAccessKey,
+      region: input.region,
+      expiresInSeconds: PROBE_EXPIRY_SECONDS,
+    }, now);
+    const dispatcher = pinnedDispatcher(safeTarget.value);
+    try {
+      return await Promise.all(normalizedOrigins.map(async (origin) => {
+        const result = await verifyCors(fetchStorage, signed, origin, dispatcher);
+        return { origin, status: result.ok ? 'ok' : 'blocked' };
+      }));
+    } finally {
+      await dispatcher.destroy();
+    }
+  };
 
   return {
     objectUrl,
     probe,
+    probeCors,
     presignPut: (input) => presign('PUT', input, now),
     presignGet: (input) => presign('GET', input, now),
     delete: async (input) => {

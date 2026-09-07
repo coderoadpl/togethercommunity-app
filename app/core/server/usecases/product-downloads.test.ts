@@ -161,6 +161,7 @@ const testDeps = (activeGrant = true, actualSizeBytes = 4096) => {
   const storage: StorageProvider = {
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+    probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
     presignPut: (input) => {
       signed.push({ method: 'PUT', url: input.url, expiresInSeconds: input.expiresInSeconds });
       return ok(`${input.url}?signed=put`);

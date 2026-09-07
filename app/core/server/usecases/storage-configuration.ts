@@ -12,13 +12,25 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { StorageProvider } from '../ports.js';
+import type { StorageCorsCache, StorageProvider } from '../ports.js';
 import type { TenantSecretDeps } from './tenant-secrets.js';
 
 export interface StorageConfigurationDeps extends TenantSecretDeps {
   storage: StorageProvider;
   corsOrigins?: string[] | undefined;
+  storageCorsCache?: StorageCorsCache | undefined;
 }
+
+const recordCorsSuccess = async (
+  tenantId: string,
+  deps: Pick<StorageConfigurationDeps, 'clock' | 'corsOrigins' | 'storageCorsCache'>,
+): Promise<void> => {
+  if (deps.storageCorsCache === undefined || deps.corsOrigins === undefined) return;
+  await deps.storageCorsCache.write(tenantId, {
+    checkedAt: deps.clock.nowIso(),
+    results: deps.corsOrigins.map((origin) => ({ origin, status: 'ok' })),
+  });
+};
 
 const parseConfiguration = (input: StorageConfiguration) => {
   const parsed = storageConfigurationSchema.safeParse(input);
@@ -51,7 +63,6 @@ export const configureStorageConnection = async (
   if (!parsed.ok) return parsed;
   const probed = await deps.storage.probe(parsed.value, deps.corsOrigins);
   if (!probed.ok) return probed;
-
   const encrypted = deps.secretCrypto.encrypt(JSON.stringify(parsed.value));
   const stored = await deps.tenantSecrets.upsert(tenant.value, {
     id: deps.ids.nextId(),
@@ -61,6 +72,7 @@ export const configureStorageConnection = async (
     maskedPreview: '••••',
     updatedAt: deps.clock.nowIso(),
   });
+  await recordCorsSuccess(tenant.value, deps);
   return ok({
     diagnostic: probed.value,
     secret: {

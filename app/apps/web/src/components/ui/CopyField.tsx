@@ -31,6 +31,7 @@ export const CopyField = ({
   editable = false,
   onChange,
   mono = false,
+  multiline = false,
   size = 'medium',
   testId,
 }: {
@@ -40,6 +41,7 @@ export const CopyField = ({
   editable?: boolean;
   onChange?: (next: string) => void;
   mono?: boolean;
+  multiline?: boolean;
   size?: 'small' | 'medium';
   testId?: string;
 }) => {
@@ -110,6 +112,8 @@ export const CopyField = ({
           id={inputId}
           size={size}
           value={value}
+          multiline={multiline}
+          minRows={multiline ? 8 : undefined}
           inputRef={inputRef}
           onChange={(event) => onChange?.(event.target.value)}
           inputProps={{
@@ -127,7 +131,7 @@ export const CopyField = ({
           aria-describedby={hint === undefined ? undefined : hintId}
           sx={{
             gap: '0.5rem',
-            alignItems: 'center',
+            alignItems: multiline ? 'flex-start' : 'center',
             pl: '0.875rem',
             pr: '0.25rem',
             py: size === 'small' ? '0.125rem' : '0.375rem',
@@ -136,6 +140,7 @@ export const CopyField = ({
           <CopyFieldText
             ref={textRef}
             data-testid={testId}
+            style={multiline ? { whiteSpace: 'pre-wrap' } : undefined}
             sx={{
               flex: 1,
               minWidth: 0,

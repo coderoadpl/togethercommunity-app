@@ -55,6 +55,8 @@ Existing queued messages and registered SES subscriptions are not rewritten.
 5. When the domain resolves, the row flips to *Działa*, and the owner gets an
    in-app notification. If a domain is still unresolved 24 hours after it was
    added, the owner gets a single warning notification.
+   The address also appears in the [storage CORS configuration](storage.md);
+   Settings keeps a reminder beside it until the bucket accepts its preflight.
 6. **Usuń** detaches the domain at the provider and deletes the row. If the
    request came from the domain being removed, the response carries the
    platform URL to continue on.

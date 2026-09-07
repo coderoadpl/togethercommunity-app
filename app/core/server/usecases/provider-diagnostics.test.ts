@@ -117,6 +117,7 @@ const fakeDeps = (
   storage: {
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+    probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
     presignPut: (input) => ok(input.url),
     presignGet: (input) => ok(input.url),
     delete: async () => ok({ deleted: true }),

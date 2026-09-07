@@ -1,4 +1,4 @@
-import { emailEventSchema, err, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
+import { emailEventSchema, emailOutboxPayloadSchema, err, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
 
 import type {
   Clock,
@@ -41,6 +41,16 @@ const transportFromError = (details: unknown) => {
   return transport === 'tenant-ses' || transport === 'smtp' || transport === 'resend' || transport === 'platform'
     ? transport
     : null;
+};
+
+const requiresPlatformTransport = (raw: unknown): boolean => {
+  const payload = emailOutboxPayloadSchema.safeParse(raw);
+  return payload.success && (
+    payload.data.kind === 'welcome-sign-in'
+    || payload.data.kind === 'reset-password'
+    || payload.data.kind === 'verify-email'
+    || payload.data.kind === 'magic-link'
+  );
 };
 
 export const dispatchEmailBatch = async (
@@ -113,7 +123,8 @@ export const dispatchEmailBatch = async (
         }
         const sent = rendered.success
           ? await deps.email.send({
-              tenantId: item.tenantId,
+              // Global auth bearers must never reach tenant-controlled transports.
+              tenantId: requiresPlatformTransport(item.payload) ? null : item.tenantId,
               to: item.to,
               tenantTransportRequired: item.tenantTransportRequired,
               ...rendered.data,

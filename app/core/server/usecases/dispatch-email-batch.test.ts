@@ -1,27 +1,30 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { err, internal, ok } from '#core/domain/index.js';
+import { err, internal, ok, type EmailOutboxPayload } from '#core/domain/index.js';
+import type { EmailIntegrationTransportResolver, EmailPort } from '../ports.js';
 import {
   InMemoryEmailEventRepository,
   InMemoryEmailOutboxRepository,
   InMemorySchedulerRunRepository,
 } from '../testing/marketing-fakes.js';
 import { dispatchEmailBatch } from './dispatch-email-batch.js';
+import { createLayeredTransactionalEmailSender } from './layered-transactional-email.js';
 
 const NOW = '2026-07-26T10:00:00.000Z';
 
-const setup = async () => {
+const setup = async (payload: EmailOutboxPayload = {
+  kind: 'reset-password',
+  language: 'en',
+  actionUrl: 'https://tenant.test/reset',
+}, tenantTransportRequired = false) => {
   const events = new InMemoryEmailEventRepository();
   const emailOutbox = new InMemoryEmailOutboxRepository(events);
   await emailOutbox.enqueue({
     id: 'outbox-1',
     tenantId: 'tenant-1',
     to: 'member@example.test',
-    payload: {
-      kind: 'reset-password',
-      language: 'en',
-      actionUrl: 'https://tenant.test/reset',
-    },
+    payload,
+    tenantTransportRequired,
     now: NOW,
   });
   return {
@@ -38,6 +41,94 @@ const setup = async () => {
     trigger: 'manual' as const,
   };
 };
+
+const authUrl = 'https://auth.example.test/verify?token=global-auth-bearer';
+const authPayloads: EmailOutboxPayload[] = [
+  { kind: 'welcome-sign-in', language: 'en', tenantName: 'Example', actionUrl: authUrl },
+  { kind: 'reset-password', language: 'en', actionUrl: authUrl },
+  { kind: 'verify-email', language: 'en', actionUrl: authUrl },
+  { kind: 'magic-link', language: 'en', tenantName: 'Example', url: authUrl },
+];
+
+const transportSetup = (configured: 'ses' | 'smtp' | 'resend') => {
+  const attackerSend = vi.fn<EmailPort['send']>(async () => ok({ messageId: 'attacker-message' }));
+  const platformSend = vi.fn<EmailPort['send']>(async () => ok({ messageId: 'platform-message' }));
+  const attacker: EmailPort = {
+    send: attackerSend,
+    healthcheck: async () => ok({ healthy: true }),
+    test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
+  };
+  const resolve = vi.fn<EmailIntegrationTransportResolver['resolve']>(async (_tenantId, transport) =>
+    transport === configured ? attacker : null);
+  const reserve = vi.fn(async () => false);
+  const settle = vi.fn(async () => undefined);
+  const email = createLayeredTransactionalEmailSender({
+    transports: { resolve },
+    platform: { ...attacker, send: platformSend },
+    pool: { usage: async () => ({ sent: 1000, reserved: 0 }), reserve, settle },
+    platformLimit: 1000,
+  });
+  return { email, attackerSend, platformSend, resolve, reserve, settle };
+};
+
+describe('auth outbox transport isolation', () => {
+  it.each(authPayloads.flatMap((payload) =>
+    (['ses', 'smtp', 'resend'] as const).flatMap((transport) =>
+      [false, true].map((tenantTransportRequired) => ({
+        kind: payload.kind, payload, transport, tenantTransportRequired,
+      })))))(
+    'sends $kind through the platform despite attacker $transport and tenantTransportRequired=$tenantTransportRequired',
+    async ({ payload, transport, tenantTransportRequired }) => {
+      const deps = await setup(payload, tenantTransportRequired);
+      const sending = transportSetup(transport);
+
+      expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+        .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+
+      expect(sending.platformSend).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+        to: 'member@example.test',
+        text: expect.stringContaining(authUrl),
+      }));
+      expect(sending.attackerSend).not.toHaveBeenCalled();
+      expect(sending.resolve).not.toHaveBeenCalled();
+      expect(sending.reserve).not.toHaveBeenCalled();
+      expect(sending.settle).not.toHaveBeenCalled();
+      expect(deps.emailOutbox.items[0]).toMatchObject({
+        tenantId: 'tenant-1', status: 'sent', transport: 'platform',
+      });
+      expect(await deps.events.listByRef('tenant-1', 'transactional', 'outbox-1'))
+        .toEqual(expect.arrayContaining([expect.objectContaining({
+          type: 'accepted', meta: expect.objectContaining({ transport: 'platform' }),
+        })]));
+    },
+  );
+
+  it('retries a platform failure without exposing the auth bearer to tenant SMTP', async () => {
+    const deps = await setup(authPayloads[0]);
+    const sending = transportSetup('smtp');
+    sending.platformSend.mockResolvedValueOnce(err(internal('Platform unavailable')));
+
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 1, sentCount: 0, failedCount: 1 }));
+    expect(deps.emailOutbox.items[0]).toMatchObject({ status: 'failed', transport: 'platform' });
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sending.platformSend).toHaveBeenCalledTimes(2);
+    expect(sending.attackerSend).not.toHaveBeenCalled();
+    expect(sending.resolve).not.toHaveBeenCalled();
+  });
+
+  it('keeps non-auth API mail on the configured tenant SMTP transport', async () => {
+    const deps = await setup({ kind: 'm2m-transactional', subject: 'Receipt', text: 'Your receipt' }, true);
+    const sending = transportSetup('smtp');
+
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sending.attackerSend).toHaveBeenCalledOnce();
+    expect(sending.platformSend).not.toHaveBeenCalled();
+    expect(deps.emailOutbox.items[0]).toMatchObject({ transport: 'smtp' });
+  });
+});
 
 describe('transactional email event lifecycle', () => {
   it('attributes the claimed budget to each tenant in a shared batch', async () => {

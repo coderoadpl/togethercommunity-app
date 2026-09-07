@@ -445,6 +445,21 @@ describe('Creator panel routing', () => {
       expect(window.sessionStorage.getItem('together-login-identifier')).toBeNull());
   });
 
+  it('opens the account menu from an avatar and repeats it above the name and e-mail', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    await renderPanelAt('/panel/products');
+
+    const trigger = await screen.findByTestId('user-menu');
+    expect(within(trigger).getByTestId('user-avatar')).toHaveTextContent('D');
+    await userEvent.click(trigger);
+
+    expect(await screen.findByTestId('user-menu-name')).toHaveTextContent('Demo');
+    expect(screen.getByTestId('user-menu-email')).toHaveTextContent('creator@together.dev');
+    expect(screen.getAllByTestId('user-avatar')).toHaveLength(2);
+  });
+
   it('drops the messages entry from the account menu when the community has direct messages off', async () => {
     stubViewport(true);
     commonHandlers();

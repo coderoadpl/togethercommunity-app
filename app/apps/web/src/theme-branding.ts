@@ -151,7 +151,7 @@ const accentTextOn = (accent: string, background: string): string =>
 const hexByte = (value: number): string =>
   Math.round(Math.min(255, Math.max(0, value))).toString(16).padStart(2, '0');
 
-const hslToHex = (hue: number, saturation: number, lightness: number): string => {
+export const hslToHex = (hue: number, saturation: number, lightness: number): string => {
   const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
   const secondary = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
   const offset = lightness - chroma / 2;

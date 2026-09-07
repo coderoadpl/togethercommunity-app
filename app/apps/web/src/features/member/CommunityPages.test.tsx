@@ -303,13 +303,13 @@ describe('community pages', () => {
     expect(screen.queryByTestId('reaction-p1-🎉')).not.toBeInTheDocument();
     expect(screen.getByTestId('open-thread-p1')).toHaveAttribute('href', '/community/s1/posts/p1');
     expect(screen.getByTestId('feed-post-p2')).toBeInTheDocument();
-    expect(within(screen.getByTestId('feed-post-p1')).getByTestId('member-avatar-image')).toHaveAttribute(
+    expect(within(screen.getByTestId('feed-post-p1')).getByTestId('user-avatar-image')).toHaveAttribute(
       'src',
       'https://cdn.test/ola.png',
     );
     const plainPost = within(screen.getByTestId('feed-post-p2'));
-    expect(plainPost.queryByTestId('member-avatar-image')).toBeNull();
-    expect(plainPost.getByTestId('member-avatar')).toHaveTextContent('OA');
+    expect(plainPost.queryByTestId('user-avatar-image')).toBeNull();
+    expect(plainPost.getByTestId('user-avatar')).toHaveTextContent('OA');
   });
 
   it('renders angle-bracketed post bodies as literal text in the feed', async () => {

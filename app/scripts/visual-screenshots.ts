@@ -12,7 +12,7 @@ import {
   type Page,
 } from 'playwright-core';
 
-import { API_PATHS } from '#core/contract/index.js';
+import { API_PATHS, authConfigOutputSchema, envelopeSchema } from '#core/contract/index.js';
 
 import { SCREENS, VIEWPORTS, includesViewport, visible, VisualFailure, type AuthKind, type ScreenSpec } from './visual-screen-inventory.js';
 
@@ -20,21 +20,16 @@ import type { ThemeMode } from '../apps/web/src/theme.js';
 import { visualSeedTime as SEED_BASE_TIME } from './visual-request-policy.js';
 import { applyChrome, settlePage, stubNonDeterministicRequests } from './visual-browser-setup.js';
 import { requestMagicLink, signInWithPassword } from './login-flow.js';
-import { comparePng, type PngComparisonFailure } from './visual-png-compare.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
-const goldenDir = join(rootDir, 'tasks/visual-goldens');
-const currentDir = join(rootDir, 'out/visual/current');
-const diffDir = join(rootDir, 'out/visual/diff');
+const currentDir = join(rootDir, 'out/visual-app/current');
+const appScreens = SCREENS.filter((screen) => ['boot-splash', 'login', 'lesson'].includes(screen.name));
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const chromeCdpEndpoint = process.env['PLAYWRIGHT_CHROME_CDP_ENDPOINT'];
 const playwrightWsEndpoint = process.env['PLAYWRIGHT_WS_ENDPOINT'];
-
-const updateMode = process.argv.includes('--update');
-const goldenAuthoringPlatform = 'darwin';
 
 const minPngBytes = 10 * 1024;
 
@@ -200,17 +195,6 @@ const signInMember = async (page: Page, studioBaseUrl: string): Promise<void> =>
   await page.waitForURL('**/my', { timeout: 20000 });
 };
 
-const signInFreeMember = async (page: Page, studioBaseUrl: string): Promise<void> => {
-  await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await requestMagicLink(page, 'free@together.dev');
-  const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
-  await magicLink.waitFor(visible);
-  const href = await magicLink.getAttribute('href');
-  assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');
-  await page.goto(href, { waitUntil: 'load' });
-  await page.waitForURL('**/my', { timeout: 20000 });
-};
-
 type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
 
 const bootstrapAuthState = async (
@@ -241,25 +225,17 @@ let server: ChildProcess | null = null;
 let browser: Browser | null = null;
 
 try {
-  if (updateMode && process.platform !== goldenAuthoringPlatform) {
-    fail(
-      `Baseline authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`,
-    );
-  }
-
-  mkdirSync(goldenDir, { recursive: true });
   mkdirSync(currentDir, { recursive: true });
-  mkdirSync(diffDir, { recursive: true });
 
-  console.log(`visual: preparing the dev database (SEED_BASE_TIME=${SEED_BASE_TIME})...`);
+  console.log(`visual:app: preparing the dev database (SEED_BASE_TIME=${SEED_BASE_TIME})...`);
   await prepareDatabase();
-  console.log('visual: building the web SPA...');
+  console.log('visual:app: building the web SPA...');
   await buildWeb();
 
   const port = await ephemeralPort();
   const connectUrl = `http://127.0.0.1:${port}`;
   const studioBaseUrl = `http://studio.localhost:${port}`;
-  console.log(`visual: booting server on port ${port}...`);
+  console.log(`visual:app: booting server on port ${port}...`);
   server = await bootServer(port, studioBaseUrl, connectUrl);
 
   browser = playwrightWsEndpoint !== undefined
@@ -272,24 +248,21 @@ try {
         )
       : await chromium.connectOverCDP(chromeCdpEndpoint);
 
-  console.log('visual: signing in the member and creator fixtures...');
+  console.log('visual:app: signing in the member and creator fixtures...');
   const memberState = await bootstrapAuthState(browser, studioBaseUrl, signInMember);
-  const freeMemberState = await bootstrapAuthState(browser, studioBaseUrl, signInFreeMember);
   const creatorState = await bootstrapAuthState(browser, studioBaseUrl, signInCreator);
   const stateFor = (auth: AuthKind): StorageState | undefined => {
     if (auth === 'member') return memberState;
-    if (auth === 'member-free') return freeMemberState;
     if (auth === 'creator') return creatorState;
     return undefined;
   };
 
-  const failures: PngComparisonFailure[] = [];
   let captured = 0;
 
   for (const theme of THEMES) {
     for (const viewport of VIEWPORTS) {
-      for (const auth of ['public', 'member', 'member-free', 'creator'] satisfies AuthKind[]) {
-        const screens = SCREENS.filter((screen) =>
+      for (const auth of ['public', 'member', 'creator'] satisfies AuthKind[]) {
+        const screens = appScreens.filter((screen) =>
           screen.auth === auth
           && includesViewport(screen, viewport),
         );
@@ -312,7 +285,24 @@ try {
           const file = `${screen.name}--${theme}--${viewport.name}.png`;
           const preparation = screen.prepare === undefined ? undefined : await screen.prepare(page);
           try {
-            await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
+            const authConfig = screen.name === 'login'
+              ? page.waitForResponse((response) => new URL(response.url()).pathname === API_PATHS.authConfig)
+              : undefined;
+            const response = await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
+            assert(response?.ok() === true, `${screen.name}: document did not load`);
+            if (authConfig) {
+              const configResponse = await authConfig;
+              assert(configResponse.ok(), 'Live auth config did not load');
+              const config = envelopeSchema(authConfigOutputSchema).parse(await configResponse.json());
+              assert(config.ok && config.data.exposeMagicLinks && config.data.passkeysEnabled, 'Seeded auth methods must be enabled');
+            }
+            if (screen.name === 'lesson') {
+              const policy = response?.headers()['content-security-policy'] ?? '';
+              assert(policy.includes('frame-src https:') && /script-src [^;]*'nonce-[^']+'/.test(policy), 'Lesson document is missing its media or script nonce policy');
+              await page.getByTestId('lesson-embed').waitFor(visible);
+              const source = await page.getByTestId('lesson-embed').getAttribute('src');
+              assert(source !== null && new URL(source).protocol === 'https:', 'Lesson media must use an HTTPS embed');
+            }
             await screen.ready(page);
             await preparation?.renderingInputsReady;
             await settlePage(page, screen.waitForNetworkIdle ?? true);
@@ -325,7 +315,7 @@ try {
                   }),
               );
             }
-            const shotPath = join(updateMode ? goldenDir : currentDir, file);
+            const shotPath = join(currentDir, file);
             await page.screenshot({
               path: shotPath,
               animations: 'disabled',
@@ -337,47 +327,26 @@ try {
             const minBytes = screen.minBytes ?? minPngBytes;
             assert(size > minBytes, `${file} is only ${size} bytes (expected > ${minBytes})`);
             captured += 1;
-            if (!updateMode) {
-              const failure = comparePng({
-                file,
-                baselinePath: join(goldenDir, file),
-                currentPath: shotPath,
-                diffPath: join(diffDir, file),
-                missingBaselineReason:
-                  'baseline missing — run `pnpm run visual:update` and review it',
-              });
-              if (failure !== null) failures.push(failure);
-            }
           } finally {
-            if (preparation !== undefined) await preparation.cleanup();
+            if (preparation !== undefined) {
+              await preparation.cleanup();
+              await page.getByRole('status', { name: 'Otwieranie panelu twórcy' }).waitFor({ state: 'hidden', timeout: 20000 });
+              await page.getByTestId('dashboard-tile-revenue').waitFor(visible);
+            }
           }
         }
 
         await context.close();
       }
     }
-    console.log(`visual: captured ${theme} (${captured} screenshots)`);
+    console.log(`visual:app: captured ${theme} (${captured} screenshots)`);
   }
 
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-  if (updateMode) {
-    console.log(`\nvisual:update: PASS (${seconds}s) — ${captured} baseline images written to ${goldenDir}`);
-    console.log('Review the baseline diffs and commit them with the change that caused them.');
-  } else if (failures.length > 0) {
-    console.error(`\nvisual: FAIL — ${failures.length}/${captured} screenshots differ from the baseline:\n`);
-    for (const failure of failures) {
-      console.error(`  ✗ ${failure.file}\n    ${failure.reason}`);
-    }
-    console.error(
-      '\nIntended change? Run `pnpm run visual:update`, review the baseline diffs and commit them.\nUnintended? That is a visual regression — fix it.',
-    );
-    process.exitCode = 1;
-  } else {
-    console.log(`\nvisual: PASS (${seconds}s) — ${captured} screenshots match the baseline`);
-  }
+  console.log(`\nvisual:app: PASS (${seconds}s) — ${captured} live captures verified`);
 } catch (error) {
   const message = error instanceof VisualFailure ? error.message : String(error);
-  console.error(`\nvisual: FAIL\n${message}`);
+  console.error(`\nvisual:app: FAIL\n${message}`);
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();

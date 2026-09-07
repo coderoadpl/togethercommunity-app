@@ -13,7 +13,7 @@ four non-ready `PageState` branches in
 `ThemeShowcase.stories.tsx`, presentational feature views backed by hand-written
 fixtures, and page compositions backed by recorded seed fixtures. `PageState` also contains `ready`, which renders no
 status view; loading, error, empty, and not-found are structurally unreachable
-through the populated seeded-route loop. Route goldens capture only Shadcn,
+through the populated seeded-route loop. Page goldens capture only Shadcn,
 the one maintained base theme (see
 [ADR-0010](decisions/0010-shadcn-base-theme.md)); the Storybook toolbar still
 carries all seven so the other six remain reachable as unmaintained BYO-theme
@@ -22,7 +22,7 @@ examples.
 Stories do not verify routing, data fetching, authentication, tenant
 resolution, content security policy, server-side route behavior, island
 state, or coverage. The nonce policy in `apps/server/src/app.ts` is verified by
-`pnpm run visual` and `pnpm run smoke`, never by stories. Island cores governed
+`pnpm run visual:app` and `pnpm run smoke`, never by stories. Island cores governed
 by `tsconfig.islands.json` remain DOM-free and node-tested.
 `vitest.config.ts` deliberately excludes `**/*.stories.tsx` from coverage.
 
@@ -49,16 +49,16 @@ and the licence review required by `CLAUDE.md`.
 
 ## Pixel ownership
 
-Canonical route pixels belong to `tasks/visual-goldens/` and the deterministic
+Canonical page pixels belong to `tasks/visual-goldens/` and the deterministic
 `pnpm run visual` workflow documented in the
 [visual regression policy](visual-regression.md). The hosted advisory track is
 Argos.
 
 Lost Pixel, its copied story baselines, and the replacement story-shot commands
-are retired. Storybook has no separate committed PNG baseline. The experimental
+are retired. Storybook has no separate committed PNG baseline. The
 [page capture path](visual-regression.md#storybook) compares recorded page stories
 with the application goldens. `pnpm run storybook:build` verifies that the catalogue
-compiles; `pnpm run visual` remains the runtime visual gate and
+compiles; `pnpm run visual` builds and captures the catalogue without a database and
 `pnpm run visual:update` remains the only baseline-authoring command.
 
 ## Merge gate
@@ -76,8 +76,8 @@ name without the `.png` suffix, with the same desktop, mobile, or 375-pixel view
 The original Start, LessonPlayer, SpaceFeed, and hosted legal document stories
 retain their existing IDs.
 
-The experimental page workflow records the isolated seed database with the visual harness clock:
-`pnpm exec tsx scripts/fixtures-record.ts`. An optional output directory keeps
+The page workflow records the isolated seed database with the visual harness clock:
+`pnpm run fixtures:record`. An optional output directory keeps
 recordings outside the source tree. Each recording scenario declares its principal, route and page queries. Each scenario checks its declared domain error codes and rejects expectations for
 unrecorded calls. Captures reject pending or expected-error calls that were never
 exercised. Recorded
@@ -86,12 +86,12 @@ harness. Authenticated passkey reads use the auth adapter; session IDs and times
 are normalized to stable fixture values. Page stories keep
 an `auto` theme preference; use browser color-scheme emulation for light captures or dark previews.
 
-Run `pnpm exec tsx scripts/fixtures-check.ts` after `pnpm run db:up` to re-record
+Run `pnpm run fixtures:check` after `pnpm run db:up` to re-record
 into a temporary directory and fail on any byte or file-set drift. The default
 baseline is `apps/web/src/stories/fixtures`; an optional baseline directory supports
 drift-check diagnostics. Temporary recordings are removed on success and failure.
-A future CI step would use the pinned Node/pnpm toolchain, start Postgres, and run
-this command before the Storybook build. CI does not run this experimental capture path.
+CI runs this drift check in the Postgres-backed e2e auth leg. The separate
+macOS visual job builds and captures Storybook without a database.
 
 For serial full-gate verification, use `TOGETHER_TEST_SERIAL=1 pnpm run check`.
 
@@ -122,7 +122,7 @@ consent history and confirmation state from the isolated seed database. It also
 checks that the new recorded inputs reproduce the live server HTML exactly.
 The nonce remains the stable `storybook` fixture value: Hono generates a fresh
 request nonce, but these pure renderers do not emit it into the document.
-CSP behavior remains covered by the runtime harness.
+CSP behavior remains covered by `pnpm run visual:app`.
 
 The preference-result stories cover scoped unsubscribe, global unsubscribe,
 saved preferences and pending confirmation at both viewports. These synthetic

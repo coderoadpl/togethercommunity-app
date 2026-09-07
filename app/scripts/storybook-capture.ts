@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, extname, join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { chromium } from 'playwright-core';
 import { z } from 'zod';
 import { applyChrome, settlePage, stubNonDeterministicRequests } from './visual-browser-setup.js';
@@ -12,9 +11,16 @@ import { pageScreens, pageStoryId, serverHtmlScreenNames } from './storybook-pag
 import { SCREENS, VIEWPORTS, includesViewport, type ScreenSpec } from './visual-screen-inventory.js';
 import { comparePng } from './visual-png-compare.js';
 
-const output = z.string().min(1).parse(process.argv[2]);
-const shots = join(output, 'shots');
+const updateMode = process.argv.includes('--update');
+const goldenAuthoringPlatform = 'darwin';
+if (updateMode && process.platform !== goldenAuthoringPlatform) throw new Error(`Baseline authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`);
+const args = process.argv.slice(2).filter((argument) => argument !== '--update');
+const output = resolve(args[0] ?? 'out/visual');
+const shots = join(output, 'current');
+const diffs = join(output, 'diff');
 mkdirSync(shots, { recursive: true });
+mkdirSync(diffs, { recursive: true });
+const updates: { baseline: string; current: string }[] = [];
 const root = resolve('storybook-static');
 const mime: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 const server = createServer((req, res) => {
@@ -32,7 +38,7 @@ await new Promise<void>((resolve) => server.listen(0, '0.0.0.0', resolve));
 const address = server.address();
 if (address === null || typeof address === 'string') throw new Error('Missing static server port');
 const executablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
-const browser = await chromium.launch(executablePath ? { headless: true, executablePath } : { headless: true, channel: 'chrome' });
+const browser = await chromium.launch(executablePath ? { headless: true, executablePath } : { headless: true, channel: 'chrome' }).catch((error: unknown) => { server.close(); throw error; });
 const browserVersion = browser.version();
 const measurements: unknown[] = [];
 const startedAt = Date.now();
@@ -52,18 +58,20 @@ const captureScreens: readonly ScreenSpec[] = [...pageScreens, ...[...serverHtml
 try {
   const index = z.object({ entries: z.record(z.object({ type: z.string() })) }).parse(JSON.parse(await readFile(join(root, 'index.json'), 'utf8')));
   const goldens = await readdir(resolve('tasks/visual-goldens'));
+  const expectedGoldens = new Set<string>();
   for (const spec of captureScreens) {
-    const expectedGoldens = new Set<string>();
     for (const viewport of VIEWPORTS.filter((viewport) => includesViewport(spec, viewport))) {
       const id = pageStoryId(spec.name, viewport.name);
       if (index.entries[id]?.type !== 'story') throw new Error(`Missing story ${id} for ${spec.name} at ${viewport.name}`);
-      await stat(resolve(`tasks/visual-goldens/${spec.name}--shadcn--${viewport.name}.png`));
-      expectedGoldens.add(`${spec.name}--shadcn--${viewport.name}.png`);
+      const file = `${spec.name}--shadcn--${viewport.name}.png`;
+      if (expectedGoldens.has(file)) throw new Error(`Duplicate golden mapping: ${file}`);
+      expectedGoldens.add(file);
+      if (!updateMode) await stat(resolve('tasks/visual-goldens', file));
     }
-    const skipped = goldens.filter((file) => file.startsWith(`${spec.name}--shadcn--`) && file.endsWith('.png') && !expectedGoldens.has(file));
-    if (skipped.length > 0) throw new Error(`Uncovered page goldens: ${skipped.join(', ')}`);
   }
-  const selected = process.argv[3]?.split(',') ?? captureScreens.map((entry) => entry.name);
+  const skipped = goldens.filter((file) => file.endsWith('.png') && !expectedGoldens.has(file));
+  if (skipped.length > 0) throw new Error(`Uncovered goldens: ${skipped.join(', ')}`);
+  const selected = args[1]?.split(',') ?? captureScreens.map((entry) => entry.name);
   for (const name of selected) {
     if (!captureScreens.some((entry) => entry.name === name)) throw new Error(`Unknown page screen ${name}`);
   }
@@ -82,7 +90,7 @@ try {
         await page.clock.setFixedTime(new Date(visualSeedTime));
         const captureStartedAt = Date.now();
         let failure: string | undefined;
-        const file = `${screen}--${mode}--${viewport.name}`;
+        const file = `${screen}--shadcn--${viewport.name}`;
         try {
           await page.goto(`http://${spec.tenantSlug ?? 'studio'}.localhost:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
           await spec.ready(page);
@@ -93,29 +101,33 @@ try {
             await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
           }
         } catch (error) { failure = String(error); }
-        await page.screenshot({ path: join(shots, `${file}.png`), animations: 'disabled', caret: 'hide', scale: 'css' });
+        await page.screenshot({ path: join(shots, `${file}.png`), animations: 'disabled', caret: 'hide', scale: 'css', mask: spec.mask?.(page) ?? [] });
         const size = (await stat(join(shots, `${file}.png`))).size;
         const minBytes = spec.minBytes ?? 10 * 1024;
         if (size <= minBytes) failure = [failure, `${file} is only ${size} bytes (expected > ${minBytes})`].filter(Boolean).join('; ');
         const baseline = resolve(`tasks/visual-goldens/${screen}--shadcn--${viewport.name}.png`);
-        const diff = join(shots, `${file}-diff.png`);
+        const diff = join(diffs, `${file}.png`);
         let countedPixels: number | undefined;
         const comparison = comparePng({ onCompared: (pixels) => { countedPixels = pixels; }, file, baselinePath: baseline, currentPath: join(shots, `${file}.png`), diffPath: diff, missingBaselineReason: 'Missing golden' });
         const hasBaseline = await stat(baseline).then(() => true, () => false);
-        const composition = hasBaseline ? spawnSync('python3', ['-c', 'from PIL import Image\nimport sys\nimages=[Image.open(p).convert("RGB") for p in sys.argv[1:4]]\nout=Image.new("RGB",(sum(i.width for i in images),max(i.height for i in images)),"white")\nx=0\nfor i in images:\n out.paste(i,(x,0)); x+=i.width\nout.save(sys.argv[4])', baseline, join(shots, `${file}.png`), diff, join(shots, `${file}-comparison.png`)], { encoding: 'utf8' }) : undefined;
-        if (composition && composition.status !== 0) throw new Error(composition.stderr);
         const diagnostics = await page.evaluate(() => ({ calls: document.documentElement.dataset['fixtureCalls'], missing: document.documentElement.dataset['fixtureErrors'], pending: document.documentElement.dataset['fixturePending'], fetching: document.documentElement.dataset['fixtureFetching'], text: document.body.innerText.slice(0, 2000) }));
         if (failure && diagnostics.fetching !== undefined) failure += `; fetching queries: ${diagnostics.fetching}; held calls: ${diagnostics.pending ?? '[]'}`;
-        if (comparison !== null || countedPixels !== 0 || failure || errors.length > 0 || (diagnostics.missing !== undefined && diagnostics.missing !== '[]') || diagnostics.text.includes('Something went wrong!')) process.exitCode = 1;
+        if ((!updateMode && comparison !== null) || failure || errors.length > 0 || (diagnostics.missing !== undefined && diagnostics.missing !== '[]') || diagnostics.text.includes('Something went wrong!')) process.exitCode = 1;
+        const byteIdentical = hasBaseline && (await readFile(baseline)).equals(await readFile(join(shots, `${file}.png`)));
+        if (updateMode && !byteIdentical) updates.push({ baseline, current: join(shots, `${file}.png`) });
         const fixturePath = resolve(`apps/web/src/stories/fixtures/${screen}.json`);
         const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');
-        const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical: hasBaseline && (await readFile(baseline)).equals(await readFile(join(shots, `${file}.png`))), failure, errors, diagnostics };
+        const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, errors, diagnostics };
         measurements.push(result);
         writeFileSync(join(output, 'measurements.json'), JSON.stringify({ browserVersion, milliseconds: Date.now() - startedAt, measurements }, null, 2));
-        console.log(JSON.stringify(result));
+        console.log(`${file}: ${result.comparison}; byte-identical=${byteIdentical}${failure ? `; ${failure}` : ''}${errors.length > 0 ? `; ${errors.join('; ')}` : ''}`);
         await context.close();
       }
     }
+  }
+  if (updateMode && process.exitCode !== 1) {
+    for (const update of updates) copyFileSync(update.current, update.baseline);
+    console.log(`visual:update: ${updates.length} changed baselines written`);
   }
 } catch (error) {
   process.exitCode = 1;

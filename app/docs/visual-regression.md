@@ -84,3 +84,23 @@ Pixel and its copied story baselines are retired. The catalogue is checked by
 its module tests and static build; all committed pixel comparison and baseline
 authoring use the canonical route workflow above. Storybook's scope is
 documented in [Storybook](storybook.md).
+
+## Chromatic (promotion PRs)
+
+Chromatic runs only for promotion pull requests targeting `main`, plus manual
+`workflow_dispatch` runs. It reviews Storybook UI snapshots for baseline changes
+before promotion; it is not the visual regression gate and does not replace
+`pnpm run visual` or the committed route goldens.
+
+The free plan budget is 5,000 snapshots per month in Chrome. The current
+catalogue is about 44 stories, so a full build costs about 44 snapshots. With
+TurboSnap enabled through `onlyChanged`, most promotion builds should snapshot
+only stories affected by the pull request instead of the whole catalogue. Manual
+runs still spend quota according to the number of stories Chromatic snapshots.
+
+Review Chromatic from the UI Review status on the pull request. Inspect each
+changed snapshot, accept only intentional UI baseline changes in Chromatic, and
+leave accidental changes unaccepted until the branch is fixed. The UI Review
+status is advisory: it gives reviewers visual evidence for promotion, but the
+required repository gate remains `pnpm run check` and the existing smoke/visual
+processes.

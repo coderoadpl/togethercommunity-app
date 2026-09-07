@@ -1538,6 +1538,7 @@ export interface TransactionalEmailSender {
     headers?: Record<string, string>;
     messageId?: string;
     tenantTransportRequired?: boolean;
+    forcePlatformTransport?: boolean;
   } & EmailMessage): Promise<Result<{ messageId: string; transport: TransactionalEmailTransport }, AppError>>;
 }
 

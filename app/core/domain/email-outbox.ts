@@ -56,16 +56,36 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
 
 export type EmailOutboxPayload = z.output<typeof emailOutboxPayloadSchema>;
 
+const AUTH_BEARING_EMAIL_KINDS = {
+  'welcome-sign-in': true,
+  'reset-password': true,
+  'verify-email': true,
+  'magic-link': true,
+  'thread-reply': false,
+  'lesson-question': false,
+  'space-post': false,
+  'direct-message': false,
+  'space-event': false,
+  'subscription-payment-failed': false,
+  'subscription-ended': false,
+  'support-message': false,
+  'member-erasure-request': false,
+  'reputation-alert': false,
+  'marketing-consent-confirmation': false,
+  'm2m-transactional': false,
+} satisfies Record<EmailOutboxPayload['kind'], boolean>;
+
+/** Global auth bearers must never reach tenant-controlled transports. */
+export const isAuthBearingEmailPayload = (payload: Pick<EmailOutboxPayload, 'kind'>): boolean =>
+  AUTH_BEARING_EMAIL_KINDS[payload.kind];
+
 const textFromHtml = (html: string): string => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || html;
 
 const htmlFromText = (value: string): string => `<pre>${value.replace(/[&<>]/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;',
 })[character] ?? character)}</pre>`;
 
-export const renderEmailOutboxPayload = (raw: unknown) => {
-  const payload = emailOutboxPayloadSchema.safeParse(raw);
-  if (!payload.success) return payload;
-  const value = payload.data;
+const renderParsedEmailOutboxPayload = (value: EmailOutboxPayload) => {
   if (value.kind === 'm2m-transactional') {
     if (value.html === undefined && value.text === undefined) return emailMessageSchema.safeParse({});
     return {
@@ -129,4 +149,11 @@ export const renderEmailOutboxPayload = (raw: unknown) => {
                             ? spaceEvent(value.language, value)
                             : marketingConsentConfirmation(value);
   return { success: true as const, data: emailMessageSchema.parse(message) };
+};
+
+export const renderEmailOutboxPayload = (raw: unknown) => {
+  const payload = emailOutboxPayloadSchema.safeParse(raw);
+  if (!payload.success) return payload;
+  const rendered = renderParsedEmailOutboxPayload(payload.data);
+  return rendered.success ? { ...rendered, payload: payload.data } : rendered;
 };

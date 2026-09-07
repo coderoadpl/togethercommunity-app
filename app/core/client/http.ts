@@ -9,6 +9,7 @@ import {
   apiKeysListOutputSchema,
   authConfigOutputSchema,
   authResolveOutputSchema,
+  avatarRemoveOutputSchema,
   bunnyTestConnectionOutputSchema,
   bunnyVideosOutputSchema,
   courseOutputSchema,
@@ -805,6 +806,17 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.meProfile.path,
       meProfileUpdateOutputSchema,
       input,
+      signal,
+    ),
+  uploadAvatar: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.avatarUpload, API_ROUTES.avatarComplete, input, signal),
+  removeAvatar: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.avatarRemove.method,
+      API_ROUTES.avatarRemove.path,
+      avatarRemoveOutputSchema,
+      {},
       signal,
     ),
   listAccountSessions: (signal?: AbortSignal) =>

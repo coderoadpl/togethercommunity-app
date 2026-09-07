@@ -68,4 +68,5 @@ export interface AuthClientPort {
   disableTwoFactor(password: string): Promise<WriteResult<void>>;
   regenerateBackupCodes(password: string): Promise<WriteResult<string[]>>;
   signInWithGoogle(): Promise<WriteResult<void>>;
+  promptGoogleOneTap(input: { clientId: string; callbackURL: string }): Promise<WriteResult<void>>;
 }

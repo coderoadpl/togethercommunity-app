@@ -33,7 +33,6 @@ import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseModuleRepository,
   CourseRepository,
   DiscussionLinkPort,
@@ -75,7 +74,6 @@ export interface SpacesDeps {
   ids: IdGenerator;
   clock: Clock;
   avatarSources: AvatarSourceReader;
-  contentHash: ContentHash;
 }
 
 const requireStaff = (

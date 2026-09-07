@@ -79,6 +79,8 @@ import {
   type TenantSettings,
 } from '#core/domain/index.js';
 import type {
+  AccountAvatarRepository,
+  AccountAvatarTenantReader,
   AvatarSourceReader,
   CourseLessonRepository,
   LessonAttachmentRepository,
@@ -881,9 +883,7 @@ export const createAvatarSourceReader = (db: Db): AvatarSourceReader => ({
     const rows = await db
       .select({
         userId: user.id,
-        accountEmail: user.email,
-        memberEmail: members.email,
-        image: user.image,
+        image: members.avatarUrl,
       })
       .from(user)
       .leftJoin(members, and(eq(members.tenantId, tenantId), eq(members.userId, user.id)))
@@ -905,9 +905,68 @@ export const createAvatarSourceReader = (db: Db): AvatarSourceReader => ({
       );
     return rows.map((row) => ({
       userId: row.userId,
-      email: row.memberEmail ?? row.accountEmail,
       image: row.image,
     }));
+  },
+});
+
+export const createAccountAvatarRepository = (db: Db): AccountAvatarRepository => ({
+  findState: async (tenantId, userId) => {
+    const rows = await db
+      .select({ image: members.avatarUrl, cleared: members.avatarCleared })
+      .from(members)
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.userId, userId),
+        isNull(members.deletedAt),
+      ))
+      .limit(1);
+    const row = rows[0];
+    return row === undefined ? null : { image: row.image, canImport: row.image === null && !row.cleared };
+  },
+  setAvatar: async (tenantId, userId, image) => {
+    await db
+      .update(members)
+      .set({ avatarUrl: image, avatarCleared: false })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.userId, userId),
+        isNull(members.deletedAt),
+      ));
+  },
+  setAvatarIfMissing: async (tenantId, userId, image) => {
+    const rows = await db
+      .update(members)
+      .set({ avatarUrl: image })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.userId, userId),
+        isNull(members.avatarUrl),
+        eq(members.avatarCleared, false),
+        isNull(members.deletedAt),
+      ))
+      .returning({ id: members.id });
+    return rows.length > 0;
+  },
+  removeAvatar: async (tenantId, userId) => {
+    await db
+      .update(members)
+      .set({ avatarUrl: null, avatarCleared: true })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.userId, userId),
+        isNull(members.deletedAt),
+      ));
+  },
+});
+
+export const createAccountAvatarTenantReader = (db: Db): AccountAvatarTenantReader => ({
+  listTenantIdsForUser: async (userId) => {
+    const rows = await db
+      .select({ tenantId: members.tenantId })
+      .from(members)
+      .where(and(eq(members.userId, userId), isNull(members.deletedAt)));
+    return rows.map((row) => row.tenantId);
   },
 });
 

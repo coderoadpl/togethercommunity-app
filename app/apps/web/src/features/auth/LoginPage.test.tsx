@@ -13,13 +13,14 @@ import { denySiteData } from '../../test/site-data.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { LoginPage } from './LoginPage.js';
 
-const stubAuthConfig = (exposeMagicLinks = false) =>
+const stubAuthConfig = (exposeMagicLinks = false, googleClientId: string | null = null) =>
   server.use(
     http.get('*/api/public/auth-config', () =>
       HttpResponse.json({
         ok: true,
         data: {
-          googleEnabled: false,
+          googleEnabled: googleClientId !== null,
+          googleClientId,
           passkeysEnabled: true,
           totpEnabled: true,
           exposeMagicLinks,
@@ -81,8 +82,9 @@ const renderLoginPage = async (
   methods: readonly string[] = ['password', 'magic-link'],
   publicCourseIds: readonly string[] = [],
   meHandler = anonymousMe(),
+  googleClientId: string | null = null,
 ) => {
-  stubAuthConfig(exposeMagicLinks);
+  stubAuthConfig(exposeMagicLinks, googleClientId);
   stubPublicNavigation(publicCourseIds);
   stubSignInMethods(methods);
   server.use(meHandler);
@@ -116,6 +118,7 @@ const renderLoginPage = async (
 afterEach(() => {
   vi.unstubAllEnvs();
   window.sessionStorage.clear();
+  delete window.google;
 });
 
 const continueWithEmail = async (email = 'creator@together.dev') => {
@@ -129,6 +132,20 @@ const fillCredentials = async () => {
 };
 
 describe('LoginPage', () => {
+  it('prompts with Google One Tap only for an anonymous visitor on login', async () => {
+    const prompt = vi.fn();
+    window.google = { accounts: { id: { initialize: vi.fn(), prompt } } };
+
+    const anonymous = await renderLoginPage(false, '/login', undefined, ['password'], [], anonymousMe(), 'google-client-id');
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    anonymous.unmount();
+    prompt.mockClear();
+
+    await renderLoginPage(false, '/login', undefined, ['password'], [], staffMe(), 'google-client-id');
+    await waitFor(() => expect(screen.getByText('Signed in home')).toBeInTheDocument());
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
   it('redirects a signed-in tenant member to home', async () => {
     const { router } = await renderLoginPage(false, '/login', undefined, ['password'], [], staffMe());
 

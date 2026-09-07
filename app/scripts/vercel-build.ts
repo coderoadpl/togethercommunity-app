@@ -3,14 +3,15 @@ import { join } from 'node:path';
 
 import {
   deploymentDatabaseVerdict,
-  isProductionEnvironment,
-  resettableEnvironment,
   unnamedDeploymentSlotWarning,
+  type DeploymentDatabaseVerdict,
 } from '#core/domain/index.js';
 import { deploymentMarkers } from '#adapters/db/reseed-guard.js';
+import { seedMarkersPresent } from '#adapters/db/seed-markers.js';
 
 import { deriveVersion } from './derive-version.js';
 import { stampManifestVersion } from './stamp-manifest-version.js';
+import { stagingSeedCandidate, stagingSeedDecision } from './vercel-build-policy.js';
 
 const appRoot = join(import.meta.dirname, '..');
 const manifestPath = join(appRoot, 'package.json');
@@ -37,7 +38,7 @@ const applyDerivedVersion = (): void => {
   process.stdout.write(`vercel-build: version ${derived.version}${history}${repeat}\n`);
 };
 
-const assertDeploymentDatabase = (): void => {
+const assertDeploymentDatabase = (): DeploymentDatabaseVerdict => {
   const slotWarning = unnamedDeploymentSlotWarning(process.env);
   if (slotWarning !== null) process.stdout.write(`vercel-build: ${slotWarning}\n`);
   if (process.env['DATABASE_URL'] === undefined)
@@ -51,15 +52,40 @@ const assertDeploymentDatabase = (): void => {
     process.exit(1);
   }
   if (verdict.decision === 'warned') process.stdout.write(`vercel-build: ${verdict.message}\n`);
+  return verdict;
 };
 
-const reseedOnDeploy =
-  process.env['STAGING_RESEED_ON_DEPLOY'] === 'true'
-  && resettableEnvironment(process.env['APP_ENV']) !== null
-  && !isProductionEnvironment(process.env);
+const seedEmptyStagingDeployment = async (verdict: DeploymentDatabaseVerdict): Promise<void> => {
+  const candidate = stagingSeedCandidate(process.env, verdict);
+  if (candidate.action === 'skip') {
+    if (candidate.reason === 'missing-database-url') {
+      process.stdout.write('vercel-build: staging seed skipped because DATABASE_URL is unset\n');
+    } else if (candidate.reason === 'database-not-allowed') {
+      process.stdout.write('vercel-build: staging seed skipped because the database guard did not allow data writes\n');
+    }
+    return;
+  }
+
+  let markersPresent: boolean;
+  try {
+    markersPresent = await seedMarkersPresent(candidate.databaseUrl);
+  } catch (cause) {
+    process.stderr.write(`vercel-build: seed marker probe failed — ${
+      cause instanceof Error ? cause.message : String(cause)
+    }\n`);
+    process.exit(1);
+  }
+  const decision = stagingSeedDecision(markersPresent);
+  if (decision.action === 'skip') {
+    process.stdout.write('vercel-build: staging seed skipped because seed markers already exist\n');
+    return;
+  }
+  process.stdout.write('vercel-build: staging seed markers absent, applying deployed seed\n');
+  run('pnpm', ['run', 'db:seed']);
+};
 
 applyDerivedVersion();
-assertDeploymentDatabase();
+const deploymentVerdict = assertDeploymentDatabase();
 run('pnpm', ['run', 'db:migrate']);
-if (reseedOnDeploy) run('pnpm', ['exec', 'tsx', 'adapters/db/reseed.ts']);
+await seedEmptyStagingDeployment(deploymentVerdict);
 run('pnpm', ['run', 'build']);

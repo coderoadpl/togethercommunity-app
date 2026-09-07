@@ -1,9 +1,12 @@
-import { resolveSmokeTenantPasswords, targetsProductionData } from '#core/domain/index.js';
+import {
+  DEMO_SEED_PASSWORD,
+  resolveSmokeTenantPasswords,
+  targetsProductionData,
+} from '#core/domain/index.js';
 
 import { createDb } from './client.js';
 import { reseedMarkers } from './reseed-guard.js';
 import { runSmokeTenantReseed } from './smoke-tenant-reseed.js';
-import { DEMO_SEED_PASSWORD } from './smoke-tenant-seed.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??

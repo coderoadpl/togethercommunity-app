@@ -396,9 +396,11 @@ Both results must be zero.
 The seed creates `creator@together.dev` and
 `kontakt+smoke-creator@togethercommunity.app` with `demo-password-15` (`adapters/db/seed.ts:62`; applied on creation at
 `adapters/db/seed.ts:127` and converged for existing local fixtures at
-`adapters/db/seed.ts:129`; `CLAUDE.md`). Seeding is manual. `vercel-build` runs
-only migration and build steps (`package.json:24`), so deployment does not call
-`db:seed` or `db:reseed`.
+`adapters/db/seed.ts:129`; `CLAUDE.md`). On the staging branch Preview
+deployment only, `vercel-build` runs migrations, checks for seed markers, and
+applies `db:seed` only when those markers are absent. Existing seeded staging
+data is left in place; production deployment still runs migration and build
+steps only.
 
 Never point `db:seed` or `db:reseed` at the production `DATABASE_URL`. Verify:
 
@@ -543,10 +545,10 @@ credential boundary.
 After item 16 creates `staging`, set Vercel Production Branch Tracking to
 `main` and verify that a `staging` merge creates staging only. Staging is the
 `staging`-branch Preview deployment: it must carry `APP_ENV=staging` scoped
-to Preview with branch `staging`, and its database URL must come exclusively
-from the database integration, which automatically creates and manages its
-dedicated branch per git branch. A fourth verified trap is member-role mapping
-on the hosting team: when a git identity that pushes or merges (including a machine account
+to Preview with branch `staging`, and its pooled and unpooled database URLs must
+point at the schema-only staging database branch described in
+[staging.md](staging.md). A fourth verified trap is member-role mapping on the
+hosting team: when a git identity that pushes or merges (including a machine account
 merging pull requests) maps to a hosting-team member whose role cannot create
 deployments (a read-only viewer seat), the platform silently drops every
 deployment that identity triggers — no record, no error. An UNMAPPED git
@@ -565,9 +567,9 @@ requested" badge before any deeper debugging, and re-approve deliberately
 traps: the integration only participates in
 push-triggered deployments, so a manual redeploy silently falls back to
 whatever static database variable is in scope, and a static Preview-scoped
-database URL therefore must not exist at all — remove the Preview scope from
-the integration's static entry so a missing injection fails loudly instead of
-writing to the production database. Review the
+production database URL therefore must not exist at all. Staging may carry its
+own branch-scoped static database URLs, but they must be scoped only to the
+staging branch Preview environment. Review the
 live hosting-team membership, Git integration, environment scopes, and
 production branch setting; repository files cannot prove any of them. Record
 the owner who performed the review and the target project and team in the

@@ -54,7 +54,6 @@ import { createPlatformAuditRepository } from '#adapters/db/platform-audit.js';
 import { reseedMarkers } from '#adapters/db/reseed-guard.js';
 import { runReseed } from '#adapters/db/reseed-run.js';
 import { runSmokeTenantReseed } from '#adapters/db/smoke-tenant-reseed.js';
-import { DEMO_SEED_PASSWORD } from '#adapters/db/smoke-tenant-seed.js';
 import {
   createAvatarSourceReader,
   createCourseLessonRepository,
@@ -282,6 +281,7 @@ import type {
 } from '#core/server/index.js';
 import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import {
+  DEMO_SEED_PASSWORD,
   isProductionEnvironment,
   ok,
   parsePlatformOwnerEmails,

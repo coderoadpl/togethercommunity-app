@@ -25,6 +25,7 @@ import { actions } from '../../api.js';
 import { useTranslations } from '../../i18n/index.js';
 import {
   CourseTreeChapterTitle,
+  CourseTreeModuleButton,
   CourseTreeModuleTitle,
   LessonDurationText,
   TreeLessonTitle,
@@ -136,10 +137,42 @@ const filterModules = (
     }))
     .filter((module) => module.chapters.length > 0);
 
+const SCROLL_PADDING_REM = 0.5;
+
+const nearestTreeScroller = (node: HTMLElement): HTMLElement | null =>
+  node.closest('[data-course-tree-scroll]');
+
+const nearestModuleHeader = (node: HTMLElement): HTMLElement | null => {
+  const module = node.closest('[data-course-tree-module]');
+  const header = module?.querySelector('[data-course-tree-module-header]');
+  return header instanceof HTMLElement ? header : null;
+};
+
+const scrollPaddingPx = (): number => {
+  const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return Number.isFinite(rootFontSize) ? rootFontSize * SCROLL_PADDING_REM : 8;
+};
+
+const isComfortablyVisible = (node: HTMLElement, scroller: HTMLElement): boolean => {
+  if (scroller.clientHeight <= 0) return false;
+  const padding = scrollPaddingPx();
+  const nodeRect = node.getBoundingClientRect();
+  const headerRect = nearestModuleHeader(node)?.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const visibleTop = Math.min(nodeRect.top, headerRect?.top ?? nodeRect.top);
+  return (
+    visibleTop >= scrollerRect.top + padding &&
+    nodeRect.bottom <= scrollerRect.bottom - padding
+  );
+};
+
 const useScrollIntoViewWhen = (active: boolean) => {
   const [node, setNode] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    if (active) node?.scrollIntoView({ block: 'nearest' });
+    if (!active || node === null) return;
+    const scroller = nearestTreeScroller(node);
+    if (scroller !== null && isComfortablyVisible(node, scroller)) return;
+    node.scrollIntoView({ block: 'center' });
   }, [active, node]);
   return setNode;
 };
@@ -318,16 +351,22 @@ const ModuleNode = ({
   const open = isOpen(module.id);
   const contentId = useId();
   return (
-    <Box component="li" sx={{ listStyle: 'none' }}>
+    <Box component="li" data-course-tree-module="" sx={{ listStyle: 'none' }}>
       <RowTooltip title={module.name}>
-        <ListItemButton
+        <CourseTreeModuleButton
           component="button"
           type="button"
           onClick={() => onToggle(module.id)}
           aria-expanded={open}
           aria-controls={contentId}
           data-testid={`module-toggle-${module.id}`}
-          sx={MODULE_ROW_SX}
+          data-course-tree-module-header=""
+          sx={{
+            ...MODULE_ROW_SX,
+            position: 'sticky',
+            top: `${SCROLL_PADDING_REM}rem`,
+            zIndex: 1,
+          }}
         >
           <Caret open={open} />
           <CourseTreeModuleTitle noWrap sx={{ flex: 1, minWidth: 0 }}>
@@ -341,7 +380,7 @@ const ModuleNode = ({
             <ProgressMark lessons={module.allLessons} />
             <AccessMark status={module.accessStatus} />
           </Stack>
-        </ListItemButton>
+        </CourseTreeModuleButton>
       </RowTooltip>
       <Collapse id={contentId} in={open} unmountOnExit>
         <List disablePadding component="ul" sx={{ m: 0, p: 0 }}>
@@ -427,6 +466,7 @@ export const CourseTree = ({
 
       <Box
         data-testid="course-tree-scroll"
+        data-course-tree-scroll=""
         sx={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}
       >
         {modules.length === 0 ? (

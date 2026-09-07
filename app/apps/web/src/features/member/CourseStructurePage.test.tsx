@@ -231,6 +231,32 @@ const renderPage = async (node: ReactNode) => {
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
+const lengthPx = (value: string | undefined): number | null => {
+  if (value === undefined) return null;
+  const match = /^([\d.]+)(px|rem)$/u.exec(value.trim());
+  const amount = match?.[1];
+  const unit = match?.[2];
+  if (amount === undefined || unit === undefined) return null;
+  const numeric = Number(amount);
+  if (!Number.isFinite(numeric)) return null;
+  return unit === 'rem' ? numeric * 16 : numeric;
+};
+
+const constrainedWidth = (
+  element: Element,
+  viewportWidth: number,
+  columnWidth: number,
+): number => {
+  let width = columnWidth;
+  let current: Element | null = element;
+  while (current !== null && current !== document.documentElement) {
+    const maxWidth = lengthPx(stylesAt(current, viewportWidth)['max-width']);
+    if (maxWidth !== null) width = Math.min(width, maxWidth);
+    current = current.parentElement;
+  }
+  return width;
+};
+
 describe('CourseStructurePage', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -515,6 +541,32 @@ describe('CourseStructurePage', () => {
       width: '100%',
     });
     expect(anonStyles['max-height']).toBeUndefined();
+  });
+
+  it('keeps the member course cover and about card on the same column width', async () => {
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const cover = await screen.findByTestId('course-cover');
+    const about = screen.getByTestId('course-about-card');
+    for (const columnWidth of [820, 375]) {
+      expect(constrainedWidth(cover, columnWidth, columnWidth)).toBe(
+        constrainedWidth(about, columnWidth, columnWidth),
+      );
+    }
+  });
+
+  it('keeps the anonymous course cover and about card on the same column width', async () => {
+    anonCoursePage('https://picsum.photos/seed/js/960/540');
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const cover = await screen.findByTestId('course-cover');
+    const about = screen.getByTestId('course-about-card');
+    for (const columnWidth of [820, 375]) {
+      expect(constrainedWidth(cover, columnWidth, columnWidth)).toBe(
+        constrainedWidth(about, columnWidth, columnWidth),
+      );
+    }
   });
 
   it('leaves out the cover block entirely when the anonymous course has no cover', async () => {

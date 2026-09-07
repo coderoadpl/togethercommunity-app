@@ -313,7 +313,7 @@ describe('CourseTree', () => {
     await renderFocusedTree('l3');
 
     const focused = await screen.findByTestId('lesson-button-l3');
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
     expect(scrollIntoView.mock.instances).toEqual([focused]);
     scrollIntoView.mockRestore();
   });

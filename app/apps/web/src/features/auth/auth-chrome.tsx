@@ -1,11 +1,13 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, Link as MuiLink, OutlinedInput, Typography } from '@mui/material';
+import { Box, Button, ButtonBase, Link as MuiLink, OutlinedInput, Typography } from '@mui/material';
 import { alpha, styled, type CSSObject, type PaletteMode, type Theme } from '@mui/material/styles';
 
 const GLOW_OPACITY: Record<PaletteMode, number> = { light: 0.5, dark: 0.22 };
 
 /** The sign-in surface reads the member theme's accent tokens; it defines none of its own. */
 const authRing = (theme: Theme): string => theme.focusRing ?? theme.palette.primary.main;
+
+export const authInk = (theme: Theme): string => theme.accentText ?? theme.palette.primary.dark;
 
 const authFocusRing = (theme: Theme): CSSObject => ({
   outlineWidth: 3,
@@ -28,6 +30,7 @@ export const AuthPage = styled(Box)<{ component?: ElementType }>(({ theme }) => 
   minHeight: '100dvh',
   display: 'flex',
   flexDirection: 'column',
+  paddingBottom: 'env(safe-area-inset-bottom)',
   backgroundColor: theme.palette.background.default,
   color: theme.palette.text.primary,
   ...authFocusScope(theme),
@@ -80,10 +83,10 @@ export const AuthStage = styled(Box)(({ theme }) => ({
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'flex-start',
-  padding: '0.5rem 1.25rem calc(3rem + env(safe-area-inset-bottom))',
+  padding: '0.5rem 1.25rem 1.5rem',
   [theme.breakpoints.up('sm')]: {
     justifyContent: 'center',
-    padding: '2rem clamp(1.5rem, 4vw, 3rem) 4rem',
+    padding: '1.5rem clamp(1.5rem, 4vw, 3rem)',
   },
 }));
 
@@ -277,6 +280,51 @@ export const AuthPoweredBy = styled(Box)(({ theme }) => ({
 export const AuthPoweredByLogo = styled('img')({
   display: 'block',
   width: 'auto',
-  height: '1.5rem',
+  height: '1.125rem',
   maxWidth: '100%',
 });
+
+export const AuthAccentLink = styled(MuiLink)<{ component?: ElementType; to?: string }>(({ theme }) => {
+  const ink = authInk(theme);
+  return {
+    color: ink,
+    textDecorationLine: 'underline',
+    textDecorationColor: alpha(ink, 0.4),
+    textUnderlineOffset: '0.15em',
+    '&:hover': { textDecorationColor: 'currentColor' },
+  };
+});
+
+export const AuthPublicNav = styled(Box)<{ component?: ElementType }>(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.5rem 1.5rem',
+  padding: '0.5rem 1.25rem 1.5rem',
+  fontSize: '0.875rem',
+  color: theme.palette.text.secondary,
+  [theme.breakpoints.up('sm')]: { padding: '0.5rem clamp(1.5rem, 4vw, 3rem) 1.5rem' },
+}));
+
+export const AuthPublicNavLink = styled(MuiLink)<{ component?: ElementType; to?: string }>(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.45rem',
+  minHeight: 44,
+  padding: '0 0.25rem',
+  color: 'inherit',
+  fontSize: 'inherit',
+  fontWeight: 500,
+  textDecorationLine: 'none',
+  '&:hover': { textDecorationLine: 'underline', textDecorationColor: 'currentColor' },
+  '& .MuiSvgIcon-root': { fontSize: '1.125rem', color: authInk(theme) },
+}));
+
+export const AuthPasskeyLink = styled(Button)(({ theme }) => ({
+  gap: '0.6rem',
+  color: theme.palette.text.primary,
+  fontSize: '1rem',
+  fontWeight: 600,
+  '& .MuiSvgIcon-root': { fontSize: '1.25rem' },
+}));

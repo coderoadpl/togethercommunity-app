@@ -16,10 +16,24 @@ import { AuthShell } from './AuthShell.js';
 
 const TENANT_HOST = 'akademia.togethercommunity.app';
 
+const DOWNLOAD_PRODUCT = {
+  id: 'product-1',
+  type: 'digital_download',
+  slug: 'workbook',
+  title: 'Workbook',
+  description: '',
+  coverUrl: null,
+  priceCents: 1000,
+  currency: 'PLN',
+  prices: [],
+  marketingConsents: [],
+};
+
 const stubOffer = (
   overrides: {
     legal?: { termsUrl: string | null; privacyUrl: string | null };
     support?: { url: string | null };
+    withDownload?: boolean;
   } = {},
 ) =>
   server.use(
@@ -37,7 +51,7 @@ const stubOffer = (
           },
           contentVersion: 1,
           previewLessons: [],
-          products: [],
+          products: overrides.withDownload === true ? [DOWNLOAD_PRODUCT] : [],
         },
       }),
     ),
@@ -166,9 +180,55 @@ describe('AuthShell', () => {
       'href',
       'https://example.test/terms',
     );
-    expect(screen.queryByTestId('auth-footer-community')).not.toBeInTheDocument();
     expect(screen.queryByTestId('auth-footer-privacy')).not.toBeInTheDocument();
     expect(screen.queryByTestId('auth-footer-support')).not.toBeInTheDocument();
+  });
+
+  it('closes the page with a public navigation row of icon links', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    stubOffer();
+    stubNavigation({ defaultHomeSpaceId: 'space-1', courseIds: ['course-1'] });
+
+    await renderShell(TENANT_HOST);
+
+    const strip = await screen.findByRole('navigation', { name: pl.auth.publicNavLabel });
+    expect([...strip.querySelectorAll('a')].map((link) => link.textContent)).toEqual([
+      pl.auth.publicNavCourses,
+      pl.auth.publicNavCommunity,
+    ]);
+    expect(screen.getByTestId('auth-public-nav-courses')).toHaveAttribute('href', '/');
+    expect(screen.getByTestId('auth-public-nav-community')).toHaveAttribute(
+      'href',
+      '/community/space-1',
+    );
+    for (const link of strip.querySelectorAll('a')) {
+      expect(link.querySelector('svg')).toBeInTheDocument();
+      expect(window.getComputedStyle(link).getPropertyValue('min-height')).toBe('44px');
+      expect(link).toHaveClass('MuiLink-root');
+    }
+    expect(strip.parentElement?.lastElementChild).toBe(strip);
+  });
+
+  it('drops the navigation row entries the tenant does not publish', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    stubOffer();
+    stubNavigation({ defaultHomeSpaceId: null, courseIds: ['course-1'] });
+
+    await renderShell(TENANT_HOST);
+
+    expect(await screen.findByTestId('auth-public-nav-courses')).toBeInTheDocument();
+    expect(screen.queryByTestId('auth-public-nav-community')).not.toBeInTheDocument();
+  });
+
+  it('omits the navigation row when a download is all the tenant publishes', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    stubOffer({ withDownload: true });
+    stubNavigation({ defaultHomeSpaceId: null, courseIds: [] });
+
+    await renderShell(TENANT_HOST);
+
+    await screen.findByTestId('auth-powered-by');
+    expect(screen.queryByTestId('auth-public-nav')).not.toBeInTheDocument();
   });
 
   it('underlines the footer links so they read as links beside the prose', async () => {
@@ -194,7 +254,7 @@ describe('AuthShell', () => {
     expect(screen.getByTestId('auth-glow')).toBeInTheDocument();
   });
 
-  it('puts the legal links ahead of support in the footer', async () => {
+  it('orders the footer: catalogue prompt, support prompt, legal links, Together mark', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     stubOffer({
       legal: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' },
@@ -204,42 +264,51 @@ describe('AuthShell', () => {
 
     await renderShell(TENANT_HOST);
 
-    await screen.findByTestId('auth-footer-support');
-    const links = screen.getByTestId('auth-footer-links');
-    expect([...links.querySelectorAll('a')].map((link) => link.dataset['testid'])).toEqual([
-      'auth-footer-courses',
-      'auth-footer-community',
-      'auth-footer-terms',
-      'auth-footer-privacy',
-      'auth-footer-support',
+    await screen.findByTestId('auth-footer-access');
+    const footer = screen.getByRole('contentinfo');
+    expect([...footer.children].map((child) => child.getAttribute('data-testid'))).toEqual([
+      'auth-footer-access',
+      'auth-footer-help',
+      'auth-footer-links',
+      'auth-powered-by',
     ]);
+    expect(screen.getByTestId('auth-footer-access')).toHaveTextContent(
+      `${pl.auth.noAccessPrompt} ${pl.auth.noAccessLink({ tenant: 'Akademia Demo' })}`,
+    );
+    expect(screen.getByTestId('auth-footer-help')).toHaveTextContent(
+      `${pl.auth.cannotSignInPrompt} ${pl.auth.cannotSignInLink}`,
+    );
+    expect([...screen.getByTestId('auth-footer-links').querySelectorAll('a')].map(
+      (link) => link.dataset['testid'],
+    )).toEqual(['auth-footer-terms', 'auth-footer-privacy']);
   });
 
-  it('links the home space when the tenant publishes one', async () => {
+  it('keeps the support prompt without a catalogue the tenant does not publish', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     stubOffer({ support: { url: 'https://example.test/help' } });
     stubNavigation({ defaultHomeSpaceId: 'space-1', courseIds: [] });
 
     await renderShell(TENANT_HOST);
 
-    expect(await screen.findByTestId('auth-footer-community')).toHaveAttribute(
-      'href',
-      '/community/space-1',
-    );
-    expect(screen.getByTestId('auth-footer-support')).toHaveAttribute(
+    expect(await screen.findByTestId('auth-footer-support')).toHaveAttribute(
       'href',
       'https://example.test/help',
     );
-    expect(screen.getByTestId('auth-footer-support')).toHaveTextContent(pl.auth.cannotSignIn);
-    expect(screen.queryByTestId('auth-footer-courses')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('auth-footer-access')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('auth-footer-links')).not.toBeInTheDocument();
   });
 
   it('reduces the platform surface footer to the Together wordmark alone', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     let offerCalls = 0;
+    let navigationCalls = 0;
     server.use(
       http.get('*/api/public/offer', () => {
         offerCalls += 1;
+        return HttpResponse.json({ ok: true, data: {} });
+      }),
+      http.get('*/api/public/navigation', () => {
+        navigationCalls += 1;
         return HttpResponse.json({ ok: true, data: {} });
       }),
     );
@@ -249,5 +318,7 @@ describe('AuthShell', () => {
     expect(screen.getByTestId('auth-together-logo')).toBeInTheDocument();
     expect(screen.queryByTestId('auth-footer-links')).not.toBeInTheDocument();
     await waitFor(() => expect(offerCalls).toBe(0));
+    expect(navigationCalls).toBe(0);
+    expect(screen.queryByTestId('auth-public-nav')).not.toBeInTheDocument();
   });
 });

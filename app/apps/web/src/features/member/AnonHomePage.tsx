@@ -2,6 +2,8 @@ import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
+import { PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
+
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
@@ -10,7 +12,6 @@ import { CourseCard } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
 import { PublicFeedList } from './PublicFeed.js';
-import { PUBLIC_OFFER_ANCHOR } from './shell/member-nav.js';
 import { LockedSpaceCard, SpaceCard } from './SpaceCards.js';
 import { TileSection } from './StartPage.js';
 

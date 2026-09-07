@@ -37,7 +37,7 @@ describe('CopyField', () => {
     clickCopy();
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('cname.example.test'));
-    expect(screen.getByTestId('dns-value-copied')).toHaveTextContent(pl.copyField.copied);
+    await waitFor(() => expect(screen.getByTestId('dns-value-copied')).toHaveTextContent(pl.copyField.copied));
   });
 
   it('clears the copied state once the feedback window passes', async () => {

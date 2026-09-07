@@ -3,6 +3,7 @@ export * from './http-status.js';
 export * from './routes.js';
 export {
   MEMBER_ROUTE_PATHS,
+  PUBLIC_OFFER_ANCHOR,
   communityEventPath,
   communityPostPath,
   communitySpacePath,

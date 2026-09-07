@@ -41,8 +41,10 @@ import {
   AuthMethodList,
   AuthMethodPanel,
   AuthMethodTitle,
+  AuthPasskeyLink,
   AuthTitle,
 } from './auth-chrome.js';
+import { PasskeyOutlineIcon } from './auth-icons.js';
 import { AuthShell } from './AuthShell.js';
 
 const IDENTITY_ID = 'login-identity';
@@ -151,7 +153,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const resolveTenantOffer = !isConfiguredBaseDomainHost(hostname);
   const publicOffer = useQuery({ ...actions.publicOffer, enabled: resolveTenantOffer });
   const platformSurface = usesPlatformAuthSurface(hostname);
-  const publicNavigation = useQuery({ ...actions.publicNavigation, enabled: !platformSurface });
   const tenantName = publicOffer.data?.tenant.name ?? null;
   const tenantNamePending = resolveTenantOffer && publicOffer.isPending;
 
@@ -344,15 +345,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     !twoFactorRequired &&
     requestedMagicEmail === '';
 
-  const tenantHasCourses = (publicNavigation.data?.navigation.courses.length ?? 0) > 0;
-
   const accessPrompt = platformSurface ? (
-    <FinePrint variant="caption" component="p" data-testid="login-register-prompt">
+    <FinePrint key="access" variant="caption" component="p" data-testid="login-register-prompt">
       {t.auth.registerPrompt} <MuiLink component={Link} to="/register">{t.auth.registerLink}</MuiLink>
-    </FinePrint>
-  ) : tenantHasCourses ? (
-    <FinePrint variant="caption" component="p" data-testid="login-access-prompt">
-      {t.auth.noAccessPrompt} <MuiLink component={Link} to="/">{t.auth.noAccessLink}</MuiLink>
     </FinePrint>
   ) : null;
 
@@ -364,36 +359,43 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       </Stack>
     ) : null;
 
-  const footer = (
-    <Stack useFlexGap spacing="0.6rem" sx={{ mt: '1.75rem' }}>
-      {showDemoAccount ? (
-        <FinePrint variant="caption" component="p">
-          {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
-          <DemoValue>demo-password-15</DemoValue>
+  const previewLessons = publicOffer.data?.previewLessons ?? [];
+
+  const footerItems = [
+    showDemoAccount ? (
+      <FinePrint key="demo" variant="caption" component="p">
+        {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
+        <DemoValue>demo-password-15</DemoValue>
+      </FinePrint>
+    ) : null,
+    accessPrompt,
+    previewLessons.length === 0 ? null : (
+      <Box key="preview">
+        <FinePrint variant="caption" component="p" sx={{ mb: '0.35em' }}>
+          {t.auth.previewLessons}
         </FinePrint>
-      ) : null}
-      {accessPrompt}
-      {publicOffer.data !== undefined && publicOffer.data.previewLessons.length > 0 ? (
-        <Box>
-          <FinePrint variant="caption" component="p" sx={{ mb: '0.35em' }}>
-            {t.auth.previewLessons}
-          </FinePrint>
-          <Stack useFlexGap spacing="0.25em">
-            {publicOffer.data.previewLessons.map((lesson) => (
-              <MuiLink key={`${lesson.courseId}:${lesson.id}`} component={Link} to={`/my/courses/${encodeURIComponent(lesson.courseId)}/lessons/${encodeURIComponent(lesson.id)}`}>
-                {lesson.name}
-              </MuiLink>
-            ))}
-          </Stack>
-        </Box>
-      ) : null}
-      {platformSurface ? (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
-          <BuildStamp />
-        </Box>
-      ) : null}
-    </Stack>
-  );
+        <Stack useFlexGap spacing="0.25em">
+          {previewLessons.map((lesson) => (
+            <MuiLink key={`${lesson.courseId}:${lesson.id}`} component={Link} to={`/my/courses/${encodeURIComponent(lesson.courseId)}/lessons/${encodeURIComponent(lesson.id)}`}>
+              {lesson.name}
+            </MuiLink>
+          ))}
+        </Stack>
+      </Box>
+    ),
+    platformSurface ? (
+      <Box key="build" sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+        <BuildStamp />
+      </Box>
+    ) : null,
+  ].filter((item) => item !== null);
+
+  const footer =
+    footerItems.length === 0 ? null : (
+      <Stack useFlexGap spacing="0.6rem" sx={{ mt: '1.75rem' }}>
+        {footerItems}
+      </Stack>
+    );
 
   const shell = (children: ReactNode, pageFooter: ReactNode = footer) => (
     <AuthShell hostname={hostname} footer={pageFooter}>
@@ -645,15 +647,16 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               {t.auth.continueWithGoogle}
             </Button>
           ) : null}
-          <Button
+          <AuthPasskeyLink
             variant="text"
             fullWidth
             data-testid="signin-passkey"
             disabled={signInWithPasskey.isPending}
             onClick={() => signInWithPasskey.mutate()}
           >
+            <PasskeyOutlineIcon />
             {signInWithPasskey.isPending ? t.auth.passkeyPending : t.auth.passkeyLink}
-          </Button>
+          </AuthPasskeyLink>
           {signInWithGoogle.isError ? <Alert severity="error">{localizeError(signInWithGoogle.error, t)}</Alert> : null}
           {signInWithPasskey.isError ? (
             <Alert severity="error">{localizeError(signInWithPasskey.error, t)}</Alert>

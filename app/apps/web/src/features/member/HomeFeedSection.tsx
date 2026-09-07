@@ -18,7 +18,7 @@ import {
   PostBody,
   PostMetaText,
 } from '../../theme.js';
-import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
 
@@ -41,7 +41,7 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
             flexWrap: 'wrap',
           }}
         >
-          <MemberAvatar name={item.authorDisplay} avatarUrl={item.authorAvatarUrl} size="sm" />
+          <UserAvatar name={item.authorDisplay} imageUrl={item.authorAvatarUrl} size="sm" />
           <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
           {item.authorIsStaff && (
             <AuthorChip data-testid={`home-feed-author-chip-${item.id}`}>

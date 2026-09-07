@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -125,6 +125,18 @@ describe('MemberAccountMenu', () => {
     expect(screen.getByTestId('member-account-messages')).toHaveTextContent(
       pl.messages.unreadAria({ count: 3 }),
     );
+  });
+
+  it('shows the same avatar on the trigger and in the menu header, above name and e-mail', async () => {
+    server.use(me(null));
+
+    await renderMenu();
+
+    const trigger = await screen.findByTestId('member-account-menu');
+    expect(within(trigger).getByTestId('user-avatar')).toHaveTextContent('J');
+    expect(await screen.findByTestId('member-account-name')).toHaveTextContent('Jan');
+    expect(screen.getByTestId('member-account-email')).toHaveTextContent('jan@example.com');
+    expect(screen.getAllByTestId('user-avatar')).toHaveLength(2);
   });
 
   it('ends the view instead of the operator session while viewing as a member', async () => {

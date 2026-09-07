@@ -266,14 +266,18 @@ describe('CourseSidebar', () => {
     expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-back'));
   });
 
-  it('leaves notifications and the account to the app bar', async () => {
+  it('ends with the lesson tree, leaving notifications and the account to the app bar', async () => {
     server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
 
-    await renderSidebar('l2');
+    const { container } = await renderSidebar('l2');
 
-    expect(await screen.findByTestId('course-sidebar-overview')).toBeInTheDocument();
+    expect(await screen.findByTestId('course-tree')).toBeInTheDocument();
     expect(screen.queryByText(pl.notifications.bell)).toBeNull();
+    expect(screen.queryByText(pl.account.menuAccount)).toBeNull();
     expect(screen.queryByTestId('course-sidebar-account')).toBeNull();
+    expect(screen.queryByTestId('member-identity')).toBeNull();
+    expect(container.querySelectorAll('a[href="/account"]')).toHaveLength(0);
+    expect(container.querySelectorAll('a[href="/notifications"]')).toHaveLength(0);
   });
 
   it('links to the space of the course below the overview entry', async () => {

@@ -580,6 +580,20 @@ describe('MemberShell', () => {
     expect(currentLesson).toHaveClass('Mui-selected');
   });
 
+  it('keeps the bell and the avatar menu in the app bar on a lesson page', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const bar = (await screen.findByTestId('notification-bell')).closest('header');
+    expect(bar).not.toBeNull();
+    const trigger = screen.getByTestId('member-account-menu');
+    expect(bar).toContainElement(trigger);
+    expect(within(trigger).getByTestId('user-avatar')).toHaveTextContent('JU');
+    expect(screen.getByTestId('course-sidebar')).not.toContainElement(trigger);
+  });
+
   it('restores the member bar outside course pages', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());

@@ -325,13 +325,13 @@ describe('NotificationsPage', () => {
     await renderPage();
 
     const withPicture = within(await screen.findByTestId('notification-n1'));
-    expect(withPicture.getByTestId('member-avatar-image')).toHaveAttribute(
+    expect(withPicture.getByTestId('user-avatar-image')).toHaveAttribute(
       'src',
       'https://cdn.test/ola.png',
     );
     const withInitials = within(screen.getByTestId('notification-n2'));
-    expect(withInitials.queryByTestId('member-avatar-image')).toBeNull();
-    expect(withInitials.getByTestId('member-avatar')).toHaveTextContent('O');
+    expect(withInitials.queryByTestId('user-avatar-image')).toBeNull();
+    expect(withInitials.getByTestId('user-avatar')).toHaveTextContent('O');
   });
 
   it('leaves out the avatar of a workspace notification that has no author', async () => {
@@ -357,7 +357,7 @@ describe('NotificationsPage', () => {
 
     const row = await screen.findByTestId('notification-n1');
 
-    expect(within(row).queryByTestId('member-avatar')).toBeNull();
+    expect(within(row).queryByTestId('user-avatar')).toBeNull();
     expect(row).toHaveTextContent(
       pl.notifications.tenantDomainVerified({ domain: 'kurs.acme.example' }),
     );

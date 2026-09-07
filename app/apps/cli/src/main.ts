@@ -918,6 +918,23 @@ const redirectTarget = (
     : ok({ kind: 'path', path: options.path });
 };
 
+const domain = program.command('domain').description('Custom domains in the active tenant');
+
+domain
+  .command('show')
+  .description('Show custom domains and DNS record statuses')
+  .action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {
+    emit(await ctx.api.getTenantRouting(), ctx.json, ({ routing }) => [
+      routing.tenantHost,
+      ...routing.customDomains.flatMap((entry) => [
+        `${entry.domain}\t${entry.status}`,
+        ...entry.records.map((record) =>
+          `${record.type}\t${record.name}\t${record.value}\t${record.status}`,
+        ),
+      ]),
+    ].join('\n'));
+  }));
+
 const redirect = program.command('redirect').description('Path redirects in the active tenant');
 
 redirect

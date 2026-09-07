@@ -5,6 +5,29 @@ additionally connect up to three of their own domains from
 **Panel → Ustawienia → Adresy**. Only the workspace owner sees the controls;
 administrators can read the section but cannot change it.
 
+## Canonical address
+
+Server-built email and notification links use the workspace's canonical origin.
+The canonical address is the earliest verified active custom domain, ordered by
+`verifiedAt`, with `createdAt` used for older verified rows without a verification
+timestamp. Equal timestamps are ordered by domain name. Pending and unverified
+domains are excluded. In this schema, `verified` is the active routing state.
+Without a verified custom domain, links use the platform subdomain (or the
+configured application origin in single-tenant mode).
+
+Settings → Addresses displays this derived address read-only as **Adres główny**
+in Polish. There is no primary flag or manual selection. Removing the canonical
+domain makes the next eligible domain canonical; removing the last one restores
+the platform address.
+
+Enrollment, subscription, support, erasure, notification and marketing emails,
+including campaign unsubscribe and double opt-in fallbacks, use this origin.
+Campaign unsubscribe addresses are resolved per tenant when sending, including
+scheduled sends and test sends. SES webhook subscriptions use the same resolver.
+Auth and consent links that already carry a resolved request origin retain it;
+tenant-header and single-tenant auth fallbacks use the canonical origin.
+Existing queued messages and registered SES subscriptions are not rewritten.
+
 ## How it works
 
 1. The owner types a domain and presses **Dodaj domenę**. The platform
@@ -19,13 +42,21 @@ administrators can read the section but cannot change it.
 3. The Studio shows the exact records. There is always a `CNAME` for routing,
    and — when the provider needs proof of ownership, typically because the
    domain is already registered with another account there — an extra `TXT`
-   record on `_vercel.<domain>`.
+   record on `_vercel.<domain>`. Every record stays in the checklist with its
+   type, copyable name and value, and a **Pending** or **Verified ✓** status.
+   Ownership records become verified when the provider stops requiring them or
+   confirms ownership. Routing records become verified when the domain is active.
+   Re-checks retain all previous records and merge new ones without duplicates.
+   Active domains collapse the checklist under **DNS records (N) ✓**; expanding
+   it shows the same records, all verified.
 4. Once the records are published, **Sprawdź teraz** re-reads the provider
    state immediately. A scheduled job repeats the same check every 15 minutes
    for every pending domain, so a domain also goes live on its own.
 5. When the domain resolves, the row flips to *Działa*, and the owner gets an
    in-app notification. If a domain is still unresolved 24 hours after it was
    added, the owner gets a single warning notification.
+   The address also appears in the [storage CORS configuration](storage.md);
+   Settings keeps a reminder beside it until the bucket accepts its preflight.
 6. **Usuń** detaches the domain at the provider and deletes the row. If the
    request came from the domain being removed, the response carries the
    platform URL to continue on.
@@ -44,6 +75,20 @@ the address the platform operator provides. A subdomain such as
 | Weryfikacja u dostawcy | The provider returned an ownership record that must be published before it will serve the domain. |
 | Działa | The domain resolves and serves the workspace. |
 | Błąd | The last check failed; the provider message is shown under the domain. |
+
+The domain row stores the full DNS record set in `records` (JSONB), including
+`purpose` (`ownership` or `routing`). Current ownership requirements remain in
+`verification`, unchanged even when the provider confirms ownership. The separate
+`provider_verified` flag records that confirmation so ownership records can show
+verified without changing the domain status chip. Record statuses are derived on
+read and exposed as `routing.customDomains[].records[].status` in the API. Existing ownership
+requirements are retained by the migration; records already discarded before
+this migration cannot be recovered. Existing rows receive their routing record
+on read and persist it on their next check.
+
+`together domain show` prints each domain and its records with statuses.
+`together --json domain show` returns the same records in the standard
+`{ "ok": true, "data": { "routing": ... } }` envelope.
 
 ## What changes for members
 
@@ -148,6 +193,7 @@ Set these on the deployment that terminates TLS:
 | Key | Purpose |
 |---|---|
 | `APP_CUSTOM_DOMAIN_TARGET` | The `CNAME` value shown to creators. Defaults to the platform host. |
+| `DOMAIN_PROVISIONER_APEX_A_RECORD` | Optional IPv4 `A` record shown for two-label apex domains. Without it, apex domains are rejected and creators must connect a subdomain. |
 | `DOMAIN_PROVISIONER_TOKEN` | Enables provider mode. See the warning below. |
 | `DOMAIN_PROVISIONER_PROJECT_ID` | The project the domains attach to. Required together with the token. |
 | `DOMAIN_PROVISIONER_TEAM_ID` | Set when the project lives in a team. |

@@ -1,11 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
-  Button,
+  Box,
   FormControl,
   FormLabel,
   Link as MuiLink,
-  OutlinedInput,
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
@@ -13,9 +12,10 @@ import { Link } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { actions } from '../../api.js';
-import { FocusCard } from '../../components/layout/FocusCard.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { FinePrint, Wordmark } from '../../theme.js';
+import { FinePrint } from '../../theme.js';
+import { AuthButton, AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthShell } from './AuthShell.js';
 
 const emailSchema = z.string().email();
 
@@ -42,46 +42,44 @@ export const ForgotPasswordPage = () => {
   };
 
   const footer = (
-    <FinePrint variant="caption" component="p">
+    <FinePrint variant="caption" component="p" sx={{ mt: '1.75rem' }}>
       <MuiLink component={Link} to="/login">{t.forgotPassword.backToLogin}</MuiLink>
     </FinePrint>
   );
 
   return (
-    <FocusCard
-      eyebrow={t.forgotPassword.eyebrow({ host: window.location.hostname })}
-      footer={footer}
-      {...(requestPasswordReset.isSuccess ? {} : { onSubmit: submit })}
-      data-testid="forgot-password-page"
-    >
+    <AuthShell footer={footer}>
       {requestPasswordReset.isSuccess ? (
-        <Stack useFlexGap spacing="0.8rem" data-testid="forgot-password-success">
-          <Wordmark variant="h2" component="p">
-            {t.forgotPassword.successTitle}
-          </Wordmark>
-          <FinePrint variant="body2" component="p">
-            {t.forgotPassword.successBody}
-          </FinePrint>
-        </Stack>
+        <Box data-testid="forgot-password-success">
+          <AuthTitle variant="h1">{t.forgotPassword.successTitle}</AuthTitle>
+          <AuthLead component="p">{t.forgotPassword.successBody}</AuthLead>
+        </Box>
       ) : (
         <>
-          <FinePrint variant="body2" component="p" sx={{ mb: '1rem' }}>
-            {t.forgotPassword.intro}
-          </FinePrint>
-          <Stack useFlexGap spacing="1rem">
+          <Box sx={{ mb: '1.5rem' }}>
+            <AuthTitle variant="h1">{t.forgotPassword.title}</AuthTitle>
+            <AuthLead component="p">{t.forgotPassword.intro}</AuthLead>
+          </Box>
+          <Stack
+            component="form"
+            onSubmit={submit}
+            useFlexGap
+            spacing="1rem"
+            data-testid="forgot-password-form"
+          >
             <FormControl fullWidth>
               <FormLabel htmlFor="forgot-password-email">{t.forgotPassword.emailLabel}</FormLabel>
-              <OutlinedInput
+              <AuthInput
                 id="forgot-password-email"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 autoComplete="email"
-                inputProps={{ 'data-testid': 'forgot-password-email' }}
+                inputProps={{ 'data-testid': 'forgot-password-email', inputMode: 'email' }}
                 required
               />
             </FormControl>
-            <Button
+            <AuthButton
               type="submit"
               variant="contained"
               fullWidth
@@ -91,7 +89,7 @@ export const ForgotPasswordPage = () => {
               {requestPasswordReset.isPending
                 ? t.forgotPassword.submitPending
                 : t.forgotPassword.submitIdle}
-            </Button>
+            </AuthButton>
           </Stack>
           {localError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
           {requestPasswordReset.isError ? (
@@ -99,6 +97,6 @@ export const ForgotPasswordPage = () => {
           ) : null}
         </>
       )}
-    </FocusCard>
+    </AuthShell>
   );
 };

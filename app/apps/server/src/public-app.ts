@@ -75,6 +75,7 @@ import {
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
+import { registerCrawlerFiles } from './crawler-files.js';
 import { registerDeepHealthRoute } from './deep-health-route.js';
 import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
@@ -194,7 +195,7 @@ const withAuthDeliveryContext = async (
     await setContext({
       email,
       resolved,
-      baseUrl: authLinkBaseUrl(resolved, deps),
+      baseUrl: await authLinkBaseUrl(resolved, deps),
       language: await authEmailLanguage(
         email,
         resolved,
@@ -343,6 +344,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
 
   registerManifestRoute(app, deps);
+  registerCrawlerFiles(app, deps);
 
   app.get(API_PATHS.healthLive, () =>
     respond(ok({ status: 'ok' as const, ...attestation })),
@@ -677,7 +679,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps.tenants,
     );
     if (!consent.ok) return respondPublic(consent);
-    const baseUrl = authLinkBaseUrl(tenant.value, deps);
+    const baseUrl = await authLinkBaseUrl(tenant.value, deps);
     const checkoutConsent = {
       termsAccepted: parsed.data.termsAccepted === true,
       selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,

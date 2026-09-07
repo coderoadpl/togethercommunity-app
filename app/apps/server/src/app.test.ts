@@ -397,12 +397,17 @@ const deps = (input: {
     storage: {
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
       delete: async () => ok({ deleted: true }),
       head: async () => ok({ sizeBytes: 1 }),
       healthcheck: async () => ok({ healthy: true }),
       test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+    },
+    storageCorsCache: {
+      read: async () => null,
+      write: async () => undefined,
     },
     processedPaymentEvents: {
       claim: async () => 'claimed',
@@ -747,10 +752,10 @@ const deps = (input: {
       subscribe: () => () => undefined,
     },
     links: {
-      conversationUrl: ({ conversationId }) => `http://localhost/messages/${conversationId}`,
-      eventUrl: ({ spaceId, eventId }) => `http://localhost/community/${spaceId}/events/${eventId}`,
-      lessonDiscussionUrl: ({ lessonId }) => `http://localhost/my/courses/c1/lessons/${lessonId}`,
-      spaceUrl: ({ spaceId, rootPostId }) =>
+      conversationUrl: async ({ conversationId }) => `http://localhost/messages/${conversationId}`,
+      eventUrl: async ({ spaceId, eventId }) => `http://localhost/community/${spaceId}/events/${eventId}`,
+      lessonDiscussionUrl: async ({ lessonId }) => `http://localhost/my/courses/c1/lessons/${lessonId}`,
+      spaceUrl: async ({ spaceId, rootPostId }) =>
         `http://localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
     tenantDomains: tenantDomainRepositoryStub({
@@ -2926,6 +2931,8 @@ describe('deep health route', () => {
         ok: true,
         checkedAt: expect.any(String),
         failing: [],
+        warnings: [],
+        storageCors: 'not-applicable',
         checks: [
           { name: 'tenant-directory', ok: true, ms: expect.any(Number), error: null, skipped: null },
           {
@@ -2941,6 +2948,7 @@ describe('deep health route', () => {
           { name: 'tenant-secret-decryption', ok: true, ms: expect.any(Number), error: null, skipped: null },
           { name: 'email-transport', ok: true, ms: expect.any(Number), error: null, skipped: null },
           { name: 'storage-presign', ok: true, ms: expect.any(Number), error: null, skipped: null },
+          { name: 'storage-cors', ok: true, ms: expect.any(Number), error: null, skipped: null },
         ],
       },
     });
@@ -2987,6 +2995,54 @@ describe('deep health route', () => {
     expect(payload.data.ok).toBe(false);
     expect(payload.data.failing).toEqual(['tenant-settings']);
     expect(JSON.stringify(payload)).not.toContain('portal.acme.test');
+  });
+
+  it('answers with only aggregate storage CORS status when storage is configured', async () => {
+    const configured = deps();
+    configured.tenantDomains = tenantDomainRepositoryStub({
+      listByTenant: async (tenantId) => tenantId === 't-acme'
+        ? [tenantDomainFixture({
+          id: 'domain-1',
+          tenantId,
+          domain: 'courses.example.org',
+          verified: true,
+        })]
+        : [],
+    });
+    configured.secretResolver = {
+      resolve: async (_tenantId, key) => key === 's3.configuration'
+        ? ok(JSON.stringify({
+          provider: 'minio',
+          endpoint: 'https://storage.example.test',
+          region: 'eu-central-1',
+          bucket: 'creator-files',
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        }))
+        : err(notFound('not configured')),
+    };
+    configured.storage = {
+      ...configured.storage,
+      probeCors: async (_configuration, origins) => origins.map((origin) => ({
+        origin,
+        status: origin === 'https://courses.example.org' ? 'blocked' : 'ok',
+      })),
+    };
+
+    const response = await buildApp(configured).request(API_PATHS.healthDeep);
+    const payload = deepHealthEnvelopeSchema.parse(await response.json());
+    if (!payload.ok) throw new Error('the deep health route must answer with a report');
+    const serialized = JSON.stringify(payload.data);
+
+    expect(response.status).toBe(200);
+    expect(payload.data.storageCors).toBe('warning');
+    expect(payload.data.warnings).toEqual(['storage-cors']);
+    expect(serialized).not.toContain('courses.example.org');
+    expect(serialized).not.toContain('acme.together.example');
+    expect(serialized).not.toContain('tenantId');
+    expect(serialized).not.toContain('results');
+    expect(serialized).not.toContain('tenants');
+    expect(serialized).not.toContain('subjects');
   });
 
   it('spends a dedicated per-address bucket and throttles with 429', async () => {
@@ -3179,6 +3235,7 @@ describe('lesson attachment download route', () => {
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+        probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
         presignPut: (input) => ok(input.url),
         presignGet: () => ok('https://download.example.test/signed'),
         delete: async () => ok({ deleted: true }),
@@ -3891,7 +3948,7 @@ describe('new route authorization', () => {
     expect(routed.status).toBe(200);
     expect(probedOrigins).toEqual([
       ['http://acme.localhost:48730', 'http://localhost:48730'],
-      ['http://localhost:48730'],
+      ['http://acme.localhost:48730', 'http://localhost:48730'],
     ]);
   });
 });
@@ -4197,6 +4254,38 @@ describe('social preview route', () => {
     expect(await response.text()).toContain('property="og:title" content="Acme"');
   });
 
+  it('uses the forwarded HTTPS scheme for canonical crawler metadata', async () => {
+    const response = await buildApp(deps()).request('/public?draft=1', {
+      headers: {
+        host: 'acme.localhost:48730',
+        'user-agent': 'Twitterbot/1.0',
+        'x-forwarded-proto': 'https',
+      },
+    });
+
+    const html = await response.text();
+    expect(html).toContain('property="og:url" content="https://acme.localhost:48730/public"');
+    expect(html).toContain('<link rel="canonical" href="https://acme.localhost:48730/public">');
+    expect(html).not.toContain('http://acme.localhost:48730');
+  });
+
+  it('keeps production crawler metadata on HTTPS when a proxy reports HTTP', async () => {
+    const app = buildApp({
+      ...deps(),
+      appBaseUrl: 'https://start.example.org',
+      baseDomain: 'example.org',
+    });
+    const response = await app.request('/', {
+      headers: {
+        host: 'acme.example.org',
+        'user-agent': 'Twitterbot/1.0',
+        'x-forwarded-proto': 'http',
+      },
+    });
+
+    expect(await response.text()).toContain('property="og:url" content="https://acme.example.org/"');
+  });
+
   it.each([
     ['browser', '/', 'Mozilla/5.0', 'acme.localhost:48730'],
     ['asset', '/assets/app.js', 'Twitterbot/1.0', 'acme.localhost:48730'],
@@ -4207,6 +4296,128 @@ describe('social preview route', () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('tenant crawler files', () => {
+  const publicCourse: Course = {
+    id: 'course-public',
+    tenantId: acme.id,
+    name: 'Public course',
+    description: '',
+    imageUrl: null,
+    moduleOrder: [],
+    publiclyVisible: true,
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
+  const publicSpace: Space = {
+    id: 'space-public',
+    tenantId: acme.id,
+    slug: 'public-space',
+    name: 'Public space',
+    description: null,
+    visibility: 'members',
+    productIds: [],
+    publicReadOnly: true,
+    position: 0,
+    archivedAt: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
+
+  const crawlerApp = () => {
+    const base = deps({
+      domains: [tenantDomainFixture({
+        id: 'domain-canonical',
+        tenantId: acme.id,
+        domain: 'courses.example.org',
+        verified: true,
+      })],
+    });
+    return buildApp({
+      ...base,
+      courses: { ...base.courses, list: async () => [publicCourse] },
+      spaces: { ...base.spaces, list: async () => [publicSpace] },
+    });
+  };
+
+  it('serves the tenant robots policy directly to crawler user agents', async () => {
+    const response = await crawlerApp().request('/robots.txt', {
+      headers: { host: 'acme.localhost:48730', 'user-agent': 'Googlebot/2.1' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/plain');
+    expect(await response.text()).toBe([
+      'User-agent: *',
+      'Allow: /',
+      'Allow: /my/courses/',
+      'Disallow: /my/courses/*/lessons',
+      'Disallow: /my',
+      'Disallow: /start',
+      'Disallow: /notifications',
+      'Disallow: /messages',
+      'Disallow: /panel',
+      'Disallow: /api',
+      'Disallow: /login',
+      'Sitemap: https://courses.example.org/sitemap.xml',
+      '',
+    ].join('\n'));
+  });
+
+  it('lists public home, course and navigation spaces at the canonical origin', async () => {
+    const response = await crawlerApp().request('/sitemap.xml', {
+      headers: { host: 'acme.localhost:48730', 'user-agent': 'Googlebot/2.1' },
+    });
+
+    const xml = await response.text();
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/xml');
+    expect(xml).toContain('<loc>https://courses.example.org/</loc>');
+    expect(xml).toContain('<loc>https://courses.example.org/my/courses/course-public</loc>');
+    expect(xml).toContain('<loc>https://courses.example.org/community/space-public</loc>');
+  });
+
+  it('uses the configured HTTPS tenant origin when no custom domain is verified', async () => {
+    const base = deps();
+    const app = buildApp({
+      ...base,
+      appBaseUrl: 'https://start.example.org',
+      baseDomain: 'example.org',
+    });
+    const response = await app.request('/robots.txt', {
+      headers: {
+        host: 'untrusted.example.net',
+        [TENANT_HEADER]: acme.slug,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('Sitemap: https://acme.example.org/sitemap.xml');
+  });
+
+  it('lists only the HTTPS tenant home when public navigation is empty', async () => {
+    const base = deps();
+    const app = buildApp({
+      ...base,
+      appBaseUrl: 'https://start.example.org',
+      baseDomain: 'example.org',
+    });
+    const response = await app.request('/sitemap.xml', {
+      headers: {
+        host: 'untrusted.example.net',
+        [TENANT_HEADER]: acme.slug,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe([
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      '  <url><loc>https://acme.example.org/</loc></url>',
+      '</urlset>',
+      '',
+    ].join('\n'));
   });
 });
 
@@ -6235,7 +6446,7 @@ describe('tenant-host magic links on checkout', () => {
     expect(new URL(parsed.data.magicLink.url).host).toBe('acme.localhost:48730');
   });
 
-  it('keeps the base host when the tenant comes from the x-tenant header', async () => {
+  it('uses the tenant origin when the tenant comes from the x-tenant header', async () => {
     const { app, captured } = capturingApp();
 
     const response = await purchase(
@@ -6245,7 +6456,7 @@ describe('tenant-host magic links on checkout', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(captured.request?.baseUrl).toBe('http://localhost:48730');
+    expect(captured.request?.baseUrl).toBe('http://globex.localhost:48730');
     expect(captured.request?.language).toBe('pl');
   });
 });
@@ -6368,7 +6579,7 @@ describe('tenant-host email verification', () => {
   );
 
   it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
-    'keeps %s delivery on the configured base URL for tenant-header routing',
+    'uses the tenant origin for %s delivery with tenant-header routing',
     async (path) => {
       const { app, captured } = capturingApp();
 
@@ -6384,7 +6595,7 @@ describe('tenant-host email verification', () => {
 
       expect(captured.verificationContext).toEqual({
         email: 'tenant-header@together.dev',
-        context: { language: 'pl', baseUrl: 'http://localhost:48730' },
+        context: { language: 'pl', baseUrl: 'http://globex.localhost:48730' },
       });
     },
   );
@@ -6450,7 +6661,7 @@ describe('auth link host trust', () => {
     expect(captured.context?.context.tenantName).toBeUndefined();
   });
 
-  it('keeps the reset base on APP_BASE_URL for tenant-header routing', async () => {
+  it('uses the tenant origin for reset fallback with tenant-header routing', async () => {
     const { app, captured } = capturingApp();
 
     await app.request(BETTER_AUTH_PASSWORD_RESET_PATH, {
@@ -6463,7 +6674,7 @@ describe('auth link host trust', () => {
       body: JSON.stringify({ email: 'login@together.dev' }),
     });
 
-    expect(captured.resetContext?.context.baseUrl).toBe('http://localhost:48730');
+    expect(captured.resetContext?.context.baseUrl).toBe('http://globex.localhost:48730');
   });
 
   it('still builds the reset base on the requesting tenant subdomain', async () => {
@@ -6509,6 +6720,26 @@ describe('auth link host trust', () => {
 
     expect(captured.context?.context.baseUrl).toBe('https://learn.acme.example');
   });
+
+  it.each([BETTER_AUTH_MAGIC_LINK_PATH, BETTER_AUTH_PASSWORD_RESET_PATH])(
+    'uses the canonical origin for %s without a tenant request host',
+    async (path) => {
+      const { app, captured } = capturingApp({
+        domains: [tenantDomainFixture({
+          id: 'domain-canonical', tenantId: globex.id, domain: 'courses.example.org', verified: true,
+        })],
+      });
+      await app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', host: 'localhost:48730', [TENANT_HEADER]: 'globex' },
+        body: JSON.stringify({ email: 'login@together.dev' }),
+      });
+      const baseUrl = path === BETTER_AUTH_MAGIC_LINK_PATH
+        ? captured.context?.context.baseUrl
+        : captured.resetContext?.context.baseUrl;
+      expect(baseUrl).toBe('https://courses.example.org');
+    },
+  );
 
   it('leaves no delivery-context residue when Better Auth rejects the request', async () => {
     const contexts = new Map<string, DeliveryContext>();

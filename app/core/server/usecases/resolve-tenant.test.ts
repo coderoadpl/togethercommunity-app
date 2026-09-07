@@ -286,6 +286,7 @@ describe('resolveTenant', () => {
 
 describe('authLinkBaseUrl', () => {
   const routing = {
+    tenantDomains: tenantDomainRepositoryStub({}),
     appBaseUrl: 'http://localhost:48730',
     baseDomain: 'localhost',
     singleTenantMode: false,
@@ -298,38 +299,50 @@ describe('authLinkBaseUrl', () => {
     verified: true,
   });
 
-  it('uses the tenant subdomain origin for subdomain routing', () => {
-    expect(authLinkBaseUrl({ tenant: acme, source: 'subdomain' }, routing))
+  it('uses the tenant subdomain origin for subdomain routing', async () => {
+    expect(await authLinkBaseUrl({ tenant: acme, source: 'subdomain' }, routing))
       .toBe('http://acme.localhost:48730');
   });
 
-  it('uses the verified custom domain over HTTPS', () => {
-    expect(authLinkBaseUrl({ tenant: acme, source: 'custom-domain', domain: customDomain }, routing))
+  it('uses the verified custom domain over HTTPS', async () => {
+    expect(await authLinkBaseUrl({ tenant: acme, source: 'custom-domain', domain: customDomain }, routing))
       .toBe('https://learn.acme.example');
   });
 
-  it('keeps the configured HTTPS port on the verified custom domain', () => {
-    expect(authLinkBaseUrl(
+  it('preserves request origins even when another domain is canonical', async () => {
+    const withCanonicalDomain = {
+      ...routing,
+      tenantDomains: tenantDomainRepositoryStub({ listByTenant: async () => [
+        { ...customDomain, domain: 'courses.example.org', verifiedAt: '2026-08-01T00:00:00.000Z' },
+        customDomain,
+      ] }),
+    };
+    expect(await authLinkBaseUrl({ tenant: acme, source: 'custom-domain', domain: customDomain }, withCanonicalDomain))
+      .toBe('https://learn.acme.example');
+    expect(await authLinkBaseUrl({ tenant: acme, source: 'subdomain' }, withCanonicalDomain))
+      .toBe('http://acme.localhost:48730');
+  });
+
+  it('keeps the configured HTTPS port on the verified custom domain', async () => {
+    expect(await authLinkBaseUrl(
       { tenant: acme, source: 'custom-domain', domain: customDomain },
       { ...routing, appBaseUrl: 'https://start.example:8443', baseDomain: 'example' },
     )).toBe('https://learn.acme.example:8443');
   });
 
-  it('routes a subdomain domain row through the configured tenant URL', () => {
+  it('routes a subdomain domain row through the configured tenant URL', async () => {
     const subdomainRow: TenantDomain = {
       ...customDomain,
       domain: 'acme.localhost',
       kind: 'subdomain',
     };
 
-    expect(authLinkBaseUrl({ tenant: acme, source: 'custom-domain', domain: subdomainRow }, routing))
+    expect(await authLinkBaseUrl({ tenant: acme, source: 'custom-domain', domain: subdomainRow }, routing))
       .toBe('http://acme.localhost:48730');
   });
 
   it.each([
     ['an unresolved host', null],
-    ['tenant-header routing', { tenant: acme, source: 'tenant-header' as const }],
-    ['single-tenant routing', { tenant: acme, source: 'single-tenant' as const }],
     [
       'an unverified custom domain',
       {
@@ -338,12 +351,20 @@ describe('authLinkBaseUrl', () => {
         domain: { ...customDomain, verified: false },
       },
     ],
-  ])('falls back to the configured base URL for %s', (_case, resolved) => {
-    expect(authLinkBaseUrl(resolved, routing)).toBe('http://localhost:48730');
+  ])('falls back to the configured base URL for %s', async (_case, resolved) => {
+    expect(await authLinkBaseUrl(resolved, routing)).toBe('http://localhost:48730');
   });
 
-  it('keeps the configured base URL in single-tenant mode', () => {
-    expect(authLinkBaseUrl(
+  it.each(['tenant-header', 'single-tenant'] as const)('uses the canonical origin for %s auth fallbacks', async (source) => {
+    expect(await authLinkBaseUrl({ tenant: acme, source }, {
+      ...routing,
+      tenantDomains: tenantDomainRepositoryStub({ listByTenant: async () => [customDomain] }),
+    })).toBe('https://learn.acme.example');
+    expect(await authLinkBaseUrl({ tenant: acme, source }, routing)).toBe('http://acme.localhost:48730');
+  });
+
+  it('keeps the configured base URL in single-tenant mode', async () => {
+    expect(await authLinkBaseUrl(
       { tenant: acme, source: 'subdomain' },
       { ...routing, singleTenantMode: true },
     )).toBe('http://localhost:48730');

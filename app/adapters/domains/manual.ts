@@ -8,8 +8,8 @@ import type { DomainProvisioner } from '#core/server/index.js';
  */
 export const createManualDomainProvisioner = (): DomainProvisioner => ({
   provider: 'manual',
-  add: async () => ok({ verification: [], verified: false }),
-  status: async () => ok({ verified: false, misconfigured: false, verification: [] }),
-  verify: async () => ok({ verified: false, misconfigured: false, verification: [] }),
+  add: async () => ok({ verification: [], records: [], verified: false }),
+  status: async () => ok({ verified: false, misconfigured: false, verification: [], records: [] }),
+  verify: async () => ok({ verified: false, misconfigured: false, verification: [], records: [] }),
   remove: async () => ok(undefined),
 });

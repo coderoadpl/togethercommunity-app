@@ -2,8 +2,13 @@ import pg from 'pg';
 import { hashPassword, verifyPassword } from 'better-auth/crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
+import {
+  SMOKE_TENANT_CREATOR_EMAIL,
+  SMOKE_TENANT_ID,
+  SMOKE_TENANT_MEMBER_EMAIL,
+} from '#core/domain/index.js';
 
+import { seedMarkersPresent } from './seed-markers.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl =
@@ -65,6 +70,36 @@ afterEach(async () => {
 }, 180_000);
 
 describe('demo seed lifecycle', () => {
+  it('reports no seed markers on an empty migrated database', async () => {
+    await expect(seedMarkersPresent(testDatabaseUrl)).resolves.toBe(false);
+  }, 180_000);
+
+  it('detects the smoke tenant marker', async () => {
+    await client.query(
+      `INSERT INTO tenants (id, slug, name, created_at)
+       VALUES ($1, 'acme', 'Acme Courses', '2026-01-01T00:00:00.000Z')`,
+      [SMOKE_TENANT_ID],
+    );
+
+    await expect(seedMarkersPresent(testDatabaseUrl)).resolves.toBe(true);
+  }, 180_000);
+
+  it('detects smoke user markers', async () => {
+    await client.query(
+      `INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at)
+       VALUES ($1, 'Smoke Member', $2, true, NOW(), NOW())`,
+      ['seed-marker-smoke-member', SMOKE_TENANT_MEMBER_EMAIL],
+    );
+
+    await expect(seedMarkersPresent(testDatabaseUrl)).resolves.toBe(true);
+  }, 180_000);
+
+  it('detects seed markers after the demo seed is applied', async () => {
+    runDatabaseScript('seed.ts');
+
+    await expect(seedMarkersPresent(testDatabaseUrl)).resolves.toBe(true);
+  }, 180_000);
+
   it('seeds a fresh migrated database', async () => {
     runDatabaseScript('seed.ts');
 

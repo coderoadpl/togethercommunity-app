@@ -54,7 +54,6 @@ import { createPlatformAuditRepository } from '#adapters/db/platform-audit.js';
 import { reseedMarkers } from '#adapters/db/reseed-guard.js';
 import { runReseed } from '#adapters/db/reseed-run.js';
 import { runSmokeTenantReseed } from '#adapters/db/smoke-tenant-reseed.js';
-import { DEMO_SEED_PASSWORD } from '#adapters/db/smoke-tenant-seed.js';
 import {
   createAvatarSourceReader,
   createCourseLessonRepository,
@@ -129,6 +128,7 @@ import { createManualDomainProvisioner } from '#adapters/domains/manual.js';
 import { createVercelDomainProvisioner } from '#adapters/domains/vercel.js';
 import { createBunnyTokenSigner } from '#adapters/crypto/bunny-token-signer.js';
 import { createS3StorageProvider } from '#adapters/storage/s3.js';
+import { createStorageCorsCache } from '#adapters/storage/cors-cache.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createSinkEmailPort } from '#adapters/email/sink.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
@@ -187,6 +187,7 @@ import type {
   DevMagicLinkReader,
   DevSinkPurge,
   StorageProvider,
+  StorageCorsCache,
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
@@ -278,8 +279,9 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, tenantUrl, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import {
+  DEMO_SEED_PASSWORD,
   isProductionEnvironment,
   ok,
   parsePlatformOwnerEmails,
@@ -432,6 +434,7 @@ export interface AppDeps {
   couponStats?: CouponStatsRepository;
   videoLibrary: VideoLibraryPort;
   storage: StorageProvider;
+  storageCorsCache: StorageCorsCache;
   bunnyTokenSigner: BunnyTokenSigner;
   playbackTokenTtlSeconds: number;
   email: EmailPort;
@@ -477,6 +480,7 @@ export interface AppDeps {
   singleTenantMode: boolean;
   appBaseUrl: string;
   customDomainTarget: string;
+  customDomainApexARecord?: string | undefined;
   devEndpoints: DevEndpoints;
   platformReset?: PlatformResetAppDeps;
   authConfig: AuthConfig;
@@ -753,6 +757,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
+  const storageCorsCache = createStorageCorsCache(db);
   const tenantDomainEvents = createTenantDomainEventRepository(db);
   const domainProvisioner = selectDomainProvisioner(env);
   const customDomainTarget =
@@ -855,6 +860,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const idempotency = createAutomationIdempotencyRepository(db);
   const marketingJobs = createMarketingJobRepository(db);
   const sesOnboardingControlPlane = createSesOnboardingControlPlane();
+  const resolveOrigin = createTenantOriginResolver({
+    tenants, tenantDomains, appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode,
+  });
+  const unsubscribeBaseUrl = async (tenantId: string): Promise<string> => `${await resolveOrigin(tenantId)}/u`;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants,
     tenantDomains,
@@ -1005,7 +1014,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, events: emailEvents, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
-      unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler, runs: schedulerRuns,
+      unsubscribeBaseUrl, outbox: emailOutbox, scheduler, runs: schedulerRuns,
       ...(production ? { silenceSmokeTenant: true } : {}),
     });
   };
@@ -1021,13 +1030,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     memberLanguage: null,
     memberVideoAutoplay: false,
   });
-  const reputationDashboardUrl = (tenantSlug: string): string => {
-    return tenantUrl(tenantSlug, '/panel/marketing', {
-      appBaseUrl: env.APP_BASE_URL,
-      baseDomain,
-      singleTenantMode,
-    });
-  };
+  const reputationDashboardUrl = async (tenantId: string): Promise<string> =>
+    `${await resolveOrigin(tenantId)}/panel/marketing`;
   const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
     const marketing = await runScheduledMarketingJobs({
@@ -1103,23 +1107,20 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     clock,
     routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
     customDomainTarget,
+    customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
   };
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
+  const memberLink = async (tenantId: string, tenantSlug: string | null, path: string): Promise<string> =>
+    new URL(path, await resolveTenantOrigin({ id: tenantId, slug: tenantSlug }, { ...routing, tenantDomains })).toString();
   const links: DiscussionLinkPort = {
-    lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
-      tenantUrl(tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId), routing),
-    spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
-      tenantUrl(
-        tenantSlug,
-        rootPostId === undefined
-          ? communitySpacePath(spaceId)
-          : communityPostPath(spaceId, rootPostId),
-        routing,
-      ),
-    conversationUrl: ({ tenantSlug, conversationId }) =>
-      tenantUrl(tenantSlug, conversationPath(conversationId), routing),
-    eventUrl: ({ tenantSlug, spaceId, eventId }) =>
-      tenantUrl(tenantSlug, communityEventPath(spaceId, eventId), routing),
+    lessonDiscussionUrl: ({ tenantId, tenantSlug, courseId, lessonId }) =>
+      memberLink(tenantId, tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId)),
+    spaceUrl: ({ tenantId, tenantSlug, spaceId, rootPostId }) =>
+      memberLink(tenantId, tenantSlug, rootPostId === undefined ? communitySpacePath(spaceId) : communityPostPath(spaceId, rootPostId)),
+    conversationUrl: ({ tenantId, tenantSlug, conversationId }) =>
+      memberLink(tenantId, tenantSlug, conversationPath(conversationId)),
+    eventUrl: ({ tenantId, tenantSlug, spaceId, eventId }) =>
+      memberLink(tenantId, tenantSlug, communityEventPath(spaceId, eventId)),
   };
 
   const google =
@@ -1278,6 +1279,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       corsOrigin: env.APP_BASE_URL,
       allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
     }),
+    storageCorsCache,
     email,
     emailSender: transactionalEmail,
     emailTransports,
@@ -1321,6 +1323,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
     customDomainTarget,
+    customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
     devEndpoints,
     ...(platformReset === undefined ? {} : { platformReset }),
     authConfig: { googleEnabled: google !== null },

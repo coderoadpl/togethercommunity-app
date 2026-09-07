@@ -201,10 +201,10 @@ const threadSubscriptions: ThreadSubscriptionRepository = {
 };
 
 const links: DiscussionLinkPort = {
-  lessonDiscussionUrl: () => 'http://tenant.localhost/lesson',
-  spaceUrl: ({ spaceId }) => `http://tenant.localhost/community/${spaceId}`,
-  conversationUrl: () => 'http://tenant.localhost/messages',
-  eventUrl: () => 'http://tenant.localhost/event',
+  lessonDiscussionUrl: async () => 'http://tenant.localhost/lesson',
+  spaceUrl: async ({ spaceId }) => `http://tenant.localhost/community/${spaceId}`,
+  conversationUrl: async () => 'http://tenant.localhost/messages',
+  eventUrl: async () => 'http://tenant.localhost/event',
 };
 
 const contentHash: ContentHash = { sha256: () => 'hash' };

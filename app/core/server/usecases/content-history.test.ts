@@ -284,6 +284,7 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
       objectUrl: (configuration, key) =>
         new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+      probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (request) => ok(request.url),
       presignGet: (request) => ok(request.url),
       delete: async () => ok({ deleted: true }),

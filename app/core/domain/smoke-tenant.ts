@@ -9,6 +9,7 @@ export const SMOKE_TENANT_SLUG = 'acme';
 export const SMOKE_TENANT_MEMBER_EMAIL = 'kontakt+smoke-member@togethercommunity.app';
 export const SMOKE_TENANT_CREATOR_EMAIL = 'kontakt+smoke-creator@togethercommunity.app';
 export const SMOKE_TENANT_COURSE_TITLE = 'Acme Course';
+export const DEMO_SEED_PASSWORD = 'demo-password-15';
 
 /** Every other seeded account lives on this domain; a real tenant never would. */
 const SEED_ACCOUNT_EMAIL_DOMAIN = '@together.dev';

@@ -18,6 +18,7 @@ import {
   pollSesOnboarding,
   provisionSesInfrastructure,
   refreshSesIdentity,
+  resubscribeSesWebhookAfterDomainRemoval,
   sendSesSimulatorTest,
   startSesIdentityVerification,
   type SesOnboardingControlPlane,
@@ -474,6 +475,45 @@ describe('SES onboarding wizard', () => {
     });
     expect(controlPlane.subscribedEndpoints).toEqual([WEBHOOK_URL, WEBHOOK_URL]);
     expect(controlPlane.removedEndpoints).toEqual([LEGACY_WEBHOOK_URL]);
+  });
+
+  it('resubscribes a webhook carried by a detached domain on the new canonical origin', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: NOW,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+
+    const result = await resubscribeSesWebhookAfterDomainRemoval(
+      'tenant-1',
+      'together.test',
+      deps(repository, controlPlane),
+    );
+
+    expect(result).toEqual({ ok: true, value: { endpoint: WEBHOOK_URL } });
+    expect(controlPlane.subscribedEndpoints).toEqual([WEBHOOK_URL]);
+    expect(controlPlane.removedEndpoints).toEqual([LEGACY_WEBHOOK_URL]);
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: null,
+    });
+  });
+
+  it('does not touch a subscription carried by another domain', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+
+    expect(await resubscribeSesWebhookAfterDomainRemoval(
+      'tenant-1',
+      'courses.example.org',
+      deps(repository, controlPlane),
+    )).toEqual({ ok: true, value: null });
+    expect(controlPlane.subscribedEndpoints).toEqual([]);
+    expect(controlPlane.removedEndpoints).toEqual([]);
   });
 
   it('keeps the stale subscription when SNS cannot unsubscribe it', async () => {

@@ -38,7 +38,8 @@ export const threadContextInfo = async (
     return {
       courseId: null,
       contextName: space?.name ?? '',
-      contextUrl: deps.links.spaceUrl({
+      contextUrl: await deps.links.spaceUrl({
+        tenantId,
         tenantSlug,
         spaceId: post.contextId,
         rootPostId: post.rootPostId,
@@ -55,7 +56,7 @@ export const threadContextInfo = async (
   return {
     courseId,
     contextName: lesson?.name ?? '',
-    contextUrl: deps.links.lessonDiscussionUrl({ tenantSlug, courseId, lessonId: post.contextId }),
+    contextUrl: await deps.links.lessonDiscussionUrl({ tenantId, tenantSlug, courseId, lessonId: post.contextId }),
   };
 };
 

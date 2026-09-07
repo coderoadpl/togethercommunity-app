@@ -20,10 +20,10 @@ import type {
   TenantAccessReader,
   TenantRepository,
 } from '../ports.js';
-import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 import { requireMemberOrStaff } from './community-access.js';
 
-export interface SupportMessageDeps extends TenantUrlDeps {
+export interface SupportMessageDeps extends TenantOriginDeps {
   tenants: TenantRepository;
   members: MemberRepository;
   tenantAccess: TenantAccessReader;
@@ -71,7 +71,7 @@ export const sendSupportMessage = async (
       memberDisplay: member?.displayName ?? ctx.identity.name,
       subject: parsed.data.subject,
       body: parsed.data.body,
-      branding: emailBrandingFrom(settings, tenantUrl(ctx.identity.tenantSlug, '/', deps)),
+      branding: emailBrandingFrom(settings, `${await resolveTenantOrigin({ id: actor.value.tenantId, slug: ctx.identity.tenantSlug }, deps)}/`),
     },
     now: deps.clock.nowIso(),
   });

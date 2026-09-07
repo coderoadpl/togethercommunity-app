@@ -9,7 +9,8 @@ import { localizeError, useTranslations } from '../../i18n/index.js';
 import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
 import { navigateFresh } from '../../lib/navigation.js';
 import { BreakAllText, Eyebrow } from '../../theme.js';
-import { AccountIcon, ManageAccountIcon, SignOutIcon } from './account-icons.js';
+import { AccountIcon, SignOutIcon } from './account-icons.js';
+import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
 import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
 
 export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: string } = {}) => {

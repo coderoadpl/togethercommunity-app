@@ -10,6 +10,7 @@ import { DM_REPORT_SNAPSHOT_SIZE } from '#core/domain/index.js';
 
 import {
   API_PATHS,
+  API_ROUTES,
   dmReportsListOutputSchema,
   eventIcsOutputSchema,
   eventOutputSchema,
@@ -123,6 +124,16 @@ interface BrowserResponse {
   raw: string;
 }
 
+const parseOkData = <S extends ZodTypeAny>(raw: string, label: string, schema: S): output<S> => {
+  const envelope = looseEnvelopeSchema.parse(readJson(raw, label));
+  assert(envelope.ok, `${label}: expected an ok envelope.\n${raw}`);
+  const parsed = schema.safeParse(envelope.data);
+  if (!parsed.success) {
+    throw new E2eFailure(`${label}: response did not match its contract.\n${parsed.error.message}`);
+  }
+  return parsed.data;
+};
+
 const browserRequest = async (
   page: Page,
   path: string,
@@ -149,13 +160,7 @@ const requestOk = async <S extends ZodTypeAny>(
 ): Promise<output<S>> => {
   const response = await browserRequest(page, path, init);
   assert(response.status >= 200 && response.status < 300, `${label}: HTTP ${response.status}.\n${response.raw}`);
-  const envelope = looseEnvelopeSchema.parse(readJson(response.raw, label));
-  assert(envelope.ok, `${label}: expected an ok envelope.\n${response.raw}`);
-  const parsed = schema.safeParse(envelope.data);
-  if (!parsed.success) {
-    throw new E2eFailure(`${label}: response did not match its contract.\n${parsed.error.message}`);
-  }
-  return parsed.data;
+  return parseOkData(response.raw, label, schema);
 };
 
 const pollUntil = async (
@@ -261,7 +266,19 @@ const runEventJourney = async (
     (await memberPage.getByTestId('event-going-count').textContent())?.includes('0') === true,
     'Event did not start with zero going RSVPs',
   );
+  const rsvpResponsePromise = memberPage.waitForResponse(
+    (response) =>
+      response.request().method() === API_ROUTES.eventRsvp.method
+      && new URL(response.url()).pathname === API_PATHS.eventRsvp,
+    { timeout: 15000 },
+  );
   await memberPage.getByTestId('event-rsvp-going').click();
+  const rsvpResponse = await rsvpResponsePromise;
+  const rsvpRaw = await rsvpResponse.text();
+  assert(rsvpResponse.status() >= 200 && rsvpResponse.status() < 300, `member A RSVP response: HTTP ${String(rsvpResponse.status())}.\n${rsvpRaw}`);
+  const rsvpUpdated = parseOkData(rsvpRaw, 'member A RSVP response', eventOutputSchema);
+  assert(rsvpUpdated.event.viewerRsvp === 'going', 'RSVP response did not retain member A RSVP');
+  assert(rsvpUpdated.event.goingCount === 1, `RSVP response going count was ${String(rsvpUpdated.event.goingCount)}`);
   await memberPage.getByTestId('event-rsvp-going').waitFor({ state: 'visible' });
   await pollUntil(async () => {
     assert(
@@ -561,6 +578,7 @@ try {
   server = await bootServer({
     port,
     healthUrl: `${connectUrl}/api/health`,
+    timeoutMs: 60_000,
     env: {
       DATABASE_URL: e2eDatabaseUrl,
       APP_BASE_URL: studioBaseUrl,

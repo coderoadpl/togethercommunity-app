@@ -158,6 +158,20 @@ const renderPanel = (
       return HttpResponse.json({ ok: true, data: { key: params.key } });
     }),
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('/api/tenant/routing', () => HttpResponse.json({
+      ok: true,
+      data: {
+        routing: {
+          tenantHost: 'akademia.together.example',
+          storageCorsOrigins: ['https://akademia.together.example'],
+          canonicalOrigin: 'https://akademia.together.example',
+          customDomains: [],
+          customDomainTarget: 'cname.vercel-dns.com',
+          apexDomainsSupported: false,
+          canAddCustomDomain: true,
+        },
+      },
+    })),
     http.post('/api/tenant/settings', async ({ request }) => {
       const body = await request.json();
       if (typeof body === 'object' && body !== null && 'bunnyStreamLibraryId' in body) {
@@ -367,7 +381,7 @@ describe('IntegrationsPanel', () => {
 
     expect(await screen.findByTestId('email-test-connection')).toBeInTheDocument();
     expect(await screen.findByTestId('marketing-readiness')).toBeInTheDocument();
-    expect(screen.getByTestId('marketing-webhook-url')).toHaveValue(
+    expect(screen.getByTestId('marketing-webhook-url')).toHaveTextContent(
       'https://app.example.test/api/webhooks/ses/webhook-token',
     );
     expect(screen.getByLabelText(pl.marketing.accessKeyLabel)).toBeInTheDocument();
@@ -392,7 +406,7 @@ describe('IntegrationsPanel', () => {
     expect(expiry).toHaveAttribute('max');
     await userEvent.click(screen.getByTestId('import-api-key-create'));
 
-    expect(await screen.findByLabelText(pl.integrations.importKeysSecretLabel)).toHaveValue(
+    expect(await screen.findByRole('group', { name: pl.integrations.importKeysSecretLabel })).toHaveTextContent(
       'together_import_secret',
     );
     expect(apiKeySubmissions).toHaveLength(1);
@@ -484,7 +498,7 @@ describe('IntegrationsPanel', () => {
     renderPanel();
     const url = await screen.findByTestId('stripe-webhook-url');
     await waitFor(() => {
-      expect(url).toHaveValue('https://app.example.test/base/api/webhooks/stripe/tenant-123');
+      expect(url).toHaveTextContent('https://app.example.test/base/api/webhooks/stripe/tenant-123');
     });
     expect(screen.getByText(pl.integrations.webhookUrlHint)).toBeInTheDocument();
   });

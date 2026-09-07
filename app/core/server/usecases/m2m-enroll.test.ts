@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { ok, type EmailOutboxPayload, type Language, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '#core/domain/index.js';
 
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
+
 import type {
   ApiKeyCrypto,
   AuthPort,
@@ -176,6 +178,7 @@ const harness = (options: {
       },
       ids: { nextId: () => `grant-${(seq += 1)}` },
       clock: { nowIso: () => NOW },
+      tenantDomains: createInMemoryTenantDomainRepository(),
       appBaseUrl: 'https://tenant.example',
       baseDomain: 'example',
       singleTenantMode: options.singleTenantMode ?? false,
@@ -302,6 +305,18 @@ describe('m2mEnroll', () => {
     const hidden = harness({ products: [product('p1', true)], exposeMagicLinks: false });
     const withoutLink = await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, hidden.deps);
     expect(withoutLink.ok && withoutLink.value.magicLink).toBeNull();
+  });
+
+  it('uses the canonical domain for enrollment sign-in and callback links', async () => {
+    const h = harness({ products: [product('p1', true)] });
+    h.deps.tenantDomains = createInMemoryTenantDomainRepository([
+      tenantDomainFixture({ id: 'domain-1', tenantId: TENANT.id, domain: 'courses.example.org', verified: true }),
+    ]);
+    await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
+    expect(h.captured[0]).toMatchObject({
+      callbackURL: 'https://courses.example.org/',
+      baseUrl: 'https://courses.example.org/',
+    });
   });
 
   it('requests the enrollment magic link on the tenant host', async () => {

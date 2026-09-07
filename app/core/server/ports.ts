@@ -67,6 +67,8 @@ import type {
   SpaceEventRsvpStatus,
   SpaceStats,
   StorageConfiguration,
+  StorageCorsCacheEntry,
+  StorageCorsProbeResult,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -76,6 +78,7 @@ import type {
   TenantRedirectListQuery,
   TenantRedirectPage,
   DnsRecord,
+  DomainDnsRecord,
   TenantSecret,
   TenantSecretKey,
   TenantSettings,
@@ -606,13 +609,14 @@ export interface RealtimeBusPort {
 
 export interface DiscussionLinkPort {
   lessonDiscussionUrl(input: {
+    tenantId: string;
     tenantSlug: string | null;
     courseId: string | null;
     lessonId: string;
-  }): string;
-  spaceUrl(input: { tenantSlug: string | null; spaceId: string; rootPostId?: string }): string;
-  conversationUrl(input: { tenantSlug: string | null; conversationId: string }): string;
-  eventUrl(input: { tenantSlug: string | null; spaceId: string; eventId: string }): string;
+  }): Promise<string>;
+  spaceUrl(input: { tenantId: string; tenantSlug: string | null; spaceId: string; rootPostId?: string }): Promise<string>;
+  conversationUrl(input: { tenantId: string; tenantSlug: string | null; conversationId: string }): Promise<string>;
+  eventUrl(input: { tenantId: string; tenantSlug: string | null; spaceId: string; eventId: string }): Promise<string>;
 }
 
 export interface MemberCourseProgressRepository {
@@ -1351,6 +1355,10 @@ export interface StorageProvider {
     input: StorageConfiguration,
     corsOrigins?: string[] | undefined,
   ): Promise<Result<ProviderDiagnostic, AppError>>;
+  probeCors(
+    input: StorageConfiguration,
+    origins: string[],
+  ): Promise<StorageCorsProbeResult[]>;
   presignPut(input: {
     url: string;
     accessKeyId: string;
@@ -1382,6 +1390,11 @@ export interface StorageProvider {
     tenantId: string;
     corsOrigins?: string[] | undefined;
   }): Promise<Result<ProviderDiagnostic, AppError>>;
+}
+
+export interface StorageCorsCache {
+  read(tenantId: string): Promise<StorageCorsCacheEntry | null>;
+  write(tenantId: string, entry: StorageCorsCacheEntry): Promise<void>;
 }
 
 export interface ProductPriceRepository {
@@ -1656,7 +1669,9 @@ export interface TenantDomainRepository {
     tenantId: string,
     id: string,
     patch: {
+      providerVerified?: boolean;
       verification?: DnsRecord[];
+      records?: DomainDnsRecord[];
       verifiedAt?: string | null;
       lastCheckedAt?: string | null;
       lastError?: string | null;
@@ -1671,6 +1686,8 @@ export interface TenantDomainRepository {
     id: string,
     patch: {
       verification: DnsRecord[];
+      records: DomainDnsRecord[];
+      providerVerified: boolean;
       verifiedAt: string;
       lastCheckedAt: string;
       lastError: null;
@@ -1700,6 +1717,7 @@ export interface TenantDomainEventRepository {
 }
 
 export interface DomainProvisionState {
+  records: DomainDnsRecord[];
   verified: boolean;
   misconfigured: boolean;
   verification: DnsRecord[];
@@ -1719,7 +1737,7 @@ export interface DomainProvisioner {
   add(
     domain: string,
     options?: DomainProvisionerCall & { gitBranch?: string },
-  ): Promise<Result<{ verification: DnsRecord[]; verified: boolean }, AppError>>;
+  ): Promise<Result<{ verification: DnsRecord[]; records: DomainDnsRecord[]; verified: boolean }, AppError>>;
   status(
     domain: string,
     options?: DomainProvisionerCall,

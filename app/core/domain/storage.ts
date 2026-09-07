@@ -25,6 +25,20 @@ export const storageConfigurationSchema = z.object({
 
 export type StorageConfiguration = z.infer<typeof storageConfigurationSchema>;
 
+export const storageCorsStatusSchema = z.enum(['ok', 'blocked', 'unknown']);
+
+export const storageCorsProbeResultSchema = z.object({
+  origin: z.string().url(),
+  status: storageCorsStatusSchema,
+});
+
+export type StorageCorsProbeResult = z.infer<typeof storageCorsProbeResultSchema>;
+
+export interface StorageCorsCacheEntry {
+  checkedAt: string;
+  results: StorageCorsProbeResult[];
+}
+
 export const STORAGE_PROBE_ERROR_CODES = [
   'storage.wrong_region',
   'storage.credentials',

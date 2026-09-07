@@ -50,6 +50,7 @@ const ctx = (role: 'owner' | 'admin'): Ctx => ({
 
 const harness = (probeFails = false, corsOrigins?: string[]) => {
   const rows: TenantSecret[] = [];
+  const corsWrites: string[][] = [];
   const probes: StorageConfiguration[] = [];
   const probedOrigins: (string[] | undefined)[] = [];
   const tenantSecrets: TenantSecretRepository = {
@@ -70,6 +71,7 @@ const harness = (probeFails = false, corsOrigins?: string[]) => {
         ? err(integrationAuth('rejected', { providerCode: 'storage.credentials' }))
         : ok({ code: 'storage.available', message: 'probe complete' });
     },
+    probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
     presignPut: (input) => ok(input.url),
     presignGet: (input) => ok(input.url),
     delete: async () => ok({ deleted: true }),
@@ -80,6 +82,10 @@ const harness = (probeFails = false, corsOrigins?: string[]) => {
   const deps: StorageConfigurationDeps = {
     storage,
     ...(corsOrigins === undefined ? {} : { corsOrigins }),
+    storageCorsCache: {
+      read: async () => null,
+      write: async (_tenantId, entry) => { corsWrites.push(entry.results.map((result) => result.origin)); },
+    },
     tenantSecrets,
     secretCrypto: {
       encrypt: (plaintext) => ({ ciphertext: `cipher:${plaintext}`, iv: 'iv', authTag: 'tag' }),
@@ -88,7 +94,7 @@ const harness = (probeFails = false, corsOrigins?: string[]) => {
     ids: { nextId: () => 'secret-storage' },
     clock: { nowIso: () => NOW },
   };
-  return { deps, probedOrigins, probes, rows };
+  return { corsWrites, deps, probedOrigins, probes, rows };
 };
 
 describe('storage configuration', () => {
@@ -101,6 +107,7 @@ describe('storage configuration', () => {
     });
     expect(h.probes).toEqual([configuration]);
     expect(h.rows).toEqual([]);
+    expect(h.corsWrites).toEqual([]);
   });
 
   it('re-probes and saves the complete configuration as one encrypted tenant secret', async () => {
@@ -139,6 +146,7 @@ describe('storage configuration', () => {
     await expect(configureStorageConnection(ctx('owner'), configuration, h.deps)).resolves.toMatchObject({ ok: true });
 
     expect(h.probedOrigins).toEqual([origins, origins]);
+    expect(h.corsWrites).toEqual([origins]);
   });
 
   it('rejects bucket names that could control the probe path', async () => {

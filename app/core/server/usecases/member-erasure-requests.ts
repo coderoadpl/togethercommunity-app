@@ -23,7 +23,7 @@ import type {
   TenantAccessReader,
   TenantRepository,
 } from '../ports.js';
-import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 import { tenantStaffRecipients } from './tenant-staff-recipients.js';
 
 export interface MemberErasureRequestDeps {
@@ -31,7 +31,7 @@ export interface MemberErasureRequestDeps {
   erasureRequests: MemberErasureRequestRepository;
   ids: IdGenerator;
   clock: Clock;
-  notifications?: TenantUrlDeps & {
+  notifications?: TenantOriginDeps & {
     tenants: TenantRepository;
     tenantAccess: TenantAccessReader;
     emailOutbox: EmailOutboxRepository;
@@ -95,7 +95,7 @@ export const requestMyErasure = async (
   if (deps.notifications !== undefined) {
     try {
       const staff = await tenantStaffRecipients(tenant.value, deps.notifications);
-      const panelUrl = tenantUrl(ctx.identity.tenantSlug, '/panel/members', deps.notifications);
+      const panelUrl = `${await resolveTenantOrigin({ id: tenant.value, slug: ctx.identity.tenantSlug }, deps.notifications)}/panel/members`;
       let queuedCount = 0;
       for (const recipient of staff) {
         const queued = await deps.notifications.emailOutbox.enqueue({

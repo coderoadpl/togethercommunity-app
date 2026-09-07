@@ -584,6 +584,13 @@ describe('custom-domain provisioner configuration', () => {
       expect(selectDomainProvisioner(parsed.data).provider).toBe('vercel');
     }
   });
+
+  it('accepts only an IPv4 provisioner record for apex domains', () => {
+    expect(envSchema.safeParse({ DOMAIN_PROVISIONER_APEX_A_RECORD: '192.0.2.1' }).success)
+      .toBe(true);
+    expect(envSchema.safeParse({ DOMAIN_PROVISIONER_APEX_A_RECORD: 'cname.example.org' }).success)
+      .toBe(false);
+  });
 });
 
 describe('development sink policy', () => {

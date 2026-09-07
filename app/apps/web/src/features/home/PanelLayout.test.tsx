@@ -427,6 +427,11 @@ describe('Creator panel routing', () => {
     await userEvent.click(await screen.findByTestId('user-menu'));
     expect(await screen.findByTestId('user-menu-email')).toHaveTextContent('creator@together.dev');
     expect(screen.getByText(pl.tenant.roleOwner)).toHaveClass('MuiChip-label');
+    const menu = screen.getByRole('menu');
+    const items = within(menu).getAllByRole('menuitem');
+    expect(items[0]).toHaveAccessibleName(pl.panel.myAccount);
+    expect(items[0]).toHaveAttribute('href', '/account');
+    expect(items[1]).toHaveAccessibleName(pl.tenant.signOut);
 
     await userEvent.click(screen.getByTestId('sign-out'));
 

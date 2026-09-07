@@ -121,6 +121,35 @@ const migrateStaleSubscription = async (
   }));
 };
 
+export const resubscribeSesWebhookAfterDomainRemoval = async (
+  tenantId: string,
+  removedDomain: string,
+  deps: SesOnboardingDeps,
+): Promise<Result<{ endpoint: string } | null, AppError>> => {
+  const settings = await deps.settings.findByTenant(tenantId);
+  if (
+    settings?.snsSubscriptionEndpoint === null
+    || settings?.snsSubscriptionEndpoint === undefined
+    || settings.snsTopicArn === null
+    || new URL(settings.snsSubscriptionEndpoint).hostname !== removedDomain
+  ) {
+    return ok(null);
+  }
+  const credentials = await deps.credentials.resolve(tenantId);
+  if (!credentials.ok) return credentials;
+  const migrated = await migrateStaleSubscription(deps, {
+    credentials: credentials.value,
+    tenantId,
+    settings,
+    topicArn: settings.snsTopicArn,
+    webhookUrl: `${await deps.webhookBaseUrl(tenantId)}/${settings.webhookToken}`,
+  });
+  if (!migrated.ok) return migrated;
+  return migrated.value.snsSubscriptionEndpoint === null
+    ? ok(null)
+    : ok({ endpoint: migrated.value.snsSubscriptionEndpoint });
+};
+
 export const deriveSesOnboardingChecklist = (input: {
   credentialsConfigured: boolean;
   identityVerified: boolean;

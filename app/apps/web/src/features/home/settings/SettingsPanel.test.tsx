@@ -17,6 +17,7 @@ import {
   TENANT_OG_TITLE_MAX_LENGTH,
 } from '#core/domain/index.js';
 
+import { FONT_MONO } from '../../../theme.js';
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -122,18 +123,25 @@ const customDomainEntry = (input: {
   domain: input.domain,
   verified: input.status === 'active',
   status: input.status,
-  records: [{ type: 'CNAME' as const, name: input.domain, value: 'cname.vercel-dns.com' }],
+  records: [{ type: 'CNAME' as const, name: input.domain, value: 'cname.vercel-dns.com', purpose: 'routing' as const, status: input.status === 'active' ? 'verified' as const : 'pending' as const }],
   lastCheckedAt: null,
   lastError: null,
+  storageCorsStatus: 'unknown' as const,
 });
 
 const initialRouting = () => ({
   tenantHost: 'akademia.together.example',
+  storageCorsOrigins: [
+    'https://akademia.together.example',
+    'https://kurs.acme.example',
+  ],
+  canonicalOrigin: 'https://kurs.acme.example',
   customDomains: [
     customDomainEntry({ domain: 'kurs.acme.example', status: 'active' }),
     customDomainEntry({ domain: 'nowa.acme.example', status: 'pending-dns' }),
   ],
   customDomainTarget: 'cname.vercel-dns.com',
+  apexDomainsSupported: false,
   canAddCustomDomain: true,
 });
 
@@ -302,16 +310,106 @@ describe('SettingsPanel information architecture', () => {
     expect(redirectQueries.map((query) => query.get('limit'))).toEqual(['0']);
   });
 
+  it('keeps verified ownership beside pending routing and collapses active records', async () => {
+    renderPanel();
+    await screen.findByTestId('tenant-domain-check-nowa.acme.example');
+    const host = 'courses.example.org';
+    const records = [
+      { type: 'CNAME', name: host, value: 'routing.example.org', purpose: 'routing', status: 'pending' },
+      { type: 'TXT', name: `_vercel.${host}`, value: 'challenge', purpose: 'ownership', status: 'verified' },
+    ];
+    const routing = {
+      ...initialRouting(),
+      customDomains: [{
+        domain: host, verified: false, status: 'pending-dns', records,
+        lastCheckedAt: null, lastError: null, storageCorsStatus: 'unknown' as const,
+      }],
+    };
+    server.use(
+      http.get('/api/tenant/routing', () => HttpResponse.json({ ok: true, data: { routing } })),
+      http.post('/api/tenant/domains/check', () => HttpResponse.json({ ok: true, data: { routing } })),
+    );
+    await userEvent.click(screen.getByTestId('tenant-domain-check-nowa.acme.example'));
+    const ownership = await screen.findByTestId(`dns-record-TXT-_vercel.${host}`);
+    expect(ownership).toHaveTextContent(pl.tenantDomains.recordVerified);
+    expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(pl.tenantDomains.recordPending);
+    expect(await within(ownership).findByTestId(`dns-record-name-TXT-_vercel.${host}`)).toHaveTextContent(`_vercel.${host}`);
+    expect(await within(ownership).findByTestId(`dns-record-value-TXT-_vercel.${host}`)).toHaveTextContent('challenge');
+    routing.customDomains[0] = {
+      domain: host, lastCheckedAt: null, lastError: null, verified: true, status: 'active',
+      records: records.map((record) => ({ ...record, status: 'verified' })), storageCorsStatus: 'unknown' as const,
+    };
+    await userEvent.click(screen.getByTestId(`tenant-domain-check-${host}`));
+    const summary = await screen.findByText(pl.tenantDomains.recordsSummary({ count: 2 }));
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    await userEvent.click(summary);
+    expect(summary.closest('details')).toHaveAttribute('open');
+    expect(screen.getByTestId(`dns-record-TXT-_vercel.${host}`)).toHaveTextContent(pl.tenantDomains.recordVerified);
+    expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(pl.tenantDomains.recordVerified);
+  });
+
   it('shows the workspace address with verified and pending custom domains', async () => {
     renderPanel();
 
-    expect(await screen.findByText('akademia.together.example')).toBeInTheDocument();
+    const address = await screen.findByTestId('tenant-workspace-address');
+    expect(address).toHaveTextContent('akademia.together.example');
+    expect(address).toHaveStyle({ fontFamily: FONT_MONO });
     expect(await screen.findByTestId('tenant-domain-status-kurs.acme.example'))
       .toHaveTextContent(pl.tenantDomains.statusActive);
     const pending = await screen.findByTestId('tenant-domain-nowa.acme.example');
     expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example'))
-      .toHaveValue('cname.vercel-dns.com');
+      .toHaveTextContent('cname.vercel-dns.com');
+  });
+
+  it('copies the workspace address', async () => {
+    const writeText = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderPanel();
+
+    await userEvent.click(await screen.findByTestId('tenant-workspace-address-copy'));
+
+    expect(writeText).toHaveBeenCalledWith('akademia.together.example');
+  });
+
+  it('renders active domain checks as quiet links and pending checks as buttons', async () => {
+    const { domainCalls } = renderPanel();
+
+    const active = await screen.findByTestId('tenant-domain-check-kurs.acme.example');
+    expect(active).toHaveClass('MuiLink-root', 'MuiTypography-caption');
+    expect(active).not.toHaveClass('MuiButton-root');
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiButton-root');
+    await userEvent.click(active);
+
+    await waitFor(() => { expect(domainCalls).toEqual(['check:kurs.acme.example']); });
+  });
+
+  it('shows the storage CORS hint until the verified origin passes its probe', async () => {
+    const { queryClient } = renderPanel();
+
+    const hint = await screen.findByTestId('tenant-domain-cors-hint-kurs.acme.example');
+    expect(hint).toHaveTextContent(pl.tenantDomains.storageCorsHint);
+    expect(within(hint).getByRole('link', { name: pl.tenantDomains.storageCorsLink }))
+      .toHaveAttribute('href', '/panel/integrations#storage');
+    expect(screen.queryByTestId('tenant-domain-cors-hint-nowa.acme.example')).not.toBeInTheDocument();
+
+    server.use(http.get('/api/tenant/routing', () => HttpResponse.json({
+      ok: true,
+      data: {
+        routing: {
+          ...initialRouting(),
+          customDomains: initialRouting().customDomains.map((entry) =>
+            entry.domain === 'kurs.acme.example'
+              ? { ...entry, storageCorsStatus: 'ok' }
+              : entry),
+        },
+      },
+    })));
+    await queryClient.invalidateQueries();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('tenant-domain-cors-hint-kurs.acme.example')).not.toBeInTheDocument();
+    });
   });
 
   it('warns about signing in again until a custom domain is verified', async () => {
@@ -345,6 +443,27 @@ describe('SettingsPanel information architecture', () => {
       .toHaveTextContent(pl.tenantDomains.conflict);
   });
 
+  it('advises using a subdomain unless apex routing is configured', async () => {
+    renderPanel();
+
+    expect(await screen.findByTestId('tenant-domain-hint'))
+      .toHaveTextContent(pl.tenantDomains.addHint);
+  });
+
+  it('does not advise using a subdomain when apex routing is configured', async () => {
+    const { queryClient } = renderPanel();
+    await screen.findByTestId('tenant-domain-hint');
+    server.use(http.get('/api/tenant/routing', () => HttpResponse.json({
+      ok: true,
+      data: { routing: { ...initialRouting(), apexDomainsSupported: true } },
+    })));
+    await queryClient.invalidateQueries();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('tenant-domain-hint')).not.toBeInTheDocument();
+    });
+  });
+
   it('quotes the provider when it refuses the domain for good', async () => {
     renderPanel();
 
@@ -367,6 +486,14 @@ describe('SettingsPanel information architecture', () => {
       .toHaveTextContent('Vercel: Domain is already in use by another project');
   });
 
+  it('shows the derived canonical address and its explanation', async () => {
+    renderPanel();
+    const address = await screen.findByTestId('tenant-canonical-address');
+    expect(address).toHaveTextContent(pl.tenantDomains.canonicalAddress);
+    expect(address).toHaveTextContent('https://kurs.acme.example');
+    expect(address).toHaveTextContent(pl.tenantDomains.canonicalExplanation);
+  });
+
   it('shows the recorded error after a check the provider failed', async () => {
     renderPanel();
 
@@ -378,6 +505,8 @@ describe('SettingsPanel information architecture', () => {
         data: {
           routing: {
             tenantHost: 'akademia.together.example',
+            storageCorsOrigins: ['https://akademia.together.example'],
+            canonicalOrigin: 'https://akademia.together.example',
             customDomains: [{
               domain: 'nowa.acme.example',
               verified: false,
@@ -385,8 +514,10 @@ describe('SettingsPanel information architecture', () => {
               records: [],
               lastCheckedAt: null,
               lastError: checked ? 'Vercel is unreachable' : null,
+              storageCorsStatus: 'unknown',
             }],
             customDomainTarget: 'cname.vercel-dns.com',
+            apexDomainsSupported: false,
             canAddCustomDomain: true,
           },
         },
@@ -408,6 +539,7 @@ describe('SettingsPanel information architecture', () => {
     });
     expect(screen.getByTestId('tenant-domain-nowa.acme.example'))
       .toHaveTextContent('Vercel is unreachable');
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiButton-root');
   });
 
   it('adds a domain and lists it as waiting for DNS', async () => {
@@ -419,7 +551,7 @@ describe('SettingsPanel information architecture', () => {
     const added = await screen.findByTestId('tenant-domain-sklep.acme.example');
     expect(added).toHaveTextContent(pl.tenantDomains.statusPendingDns);
     expect(screen.getByTestId('dns-record-value-CNAME-sklep.acme.example'))
-      .toHaveValue('cname.vercel-dns.com');
+      .toHaveTextContent('cname.vercel-dns.com');
     expect(domainCalls).toEqual(['add:sklep.acme.example']);
   });
 
@@ -433,6 +565,7 @@ describe('SettingsPanel information architecture', () => {
         .toHaveTextContent(pl.tenantDomains.statusActive);
     });
     expect(domainCalls).toEqual(['check:nowa.acme.example']);
+    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiLink-root');
   });
 
   it('offers the record name and value as separate copy fields', async () => {
@@ -442,7 +575,7 @@ describe('SettingsPanel information architecture', () => {
 
     const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
     expect(within(record).getByTestId('dns-record-name-CNAME-nowa.acme.example'))
-      .toHaveValue('nowa.acme.example');
+      .toHaveTextContent('nowa.acme.example');
 
     await userEvent.click(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copy'));
 

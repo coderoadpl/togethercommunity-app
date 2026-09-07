@@ -198,12 +198,14 @@ export interface Messages {
     registerPrompt: string;
     registerLink: string;
     noAccessPrompt: string;
-    noAccessLink: string;
+    noAccessLink: (params: { tenant: string }) => string;
     privacyPolicy: string;
     poweredBy: string;
-    footerCourses: string;
-    footerCommunity: string;
-    cannotSignIn: string;
+    publicNavLabel: string;
+    publicNavCourses: string;
+    publicNavCommunity: string;
+    cannotSignInPrompt: string;
+    cannotSignInLink: string;
     previewLessons: string;
     creatingAccount: string;
     createAccount: string;

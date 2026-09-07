@@ -8,6 +8,8 @@ export const MEMBER_ROUTE_PATHS = {
   conversation: '/messages/$conversationId',
 } as const;
 
+export const PUBLIC_OFFER_ANCHOR = 'offer';
+
 export const coursePath = (courseId: string): string =>
   MEMBER_ROUTE_PATHS.course.replace('$courseId', courseId);
 

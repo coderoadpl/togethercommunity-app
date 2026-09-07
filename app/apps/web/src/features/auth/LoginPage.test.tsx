@@ -223,6 +223,15 @@ describe('LoginPage', () => {
     expect(screen.queryByText('creator@together.dev')).not.toBeInTheDocument();
   });
 
+  it('offers the passkey as an icon link under the divider on the identifier step', async () => {
+    await renderLoginPage();
+
+    const passkey = screen.getByTestId('signin-passkey');
+    expect(passkey).toHaveTextContent(pl.auth.passkeyLink);
+    expect(passkey.querySelector('svg')).toBeInTheDocument();
+    expect(window.getComputedStyle(passkey).getPropertyValue('min-height')).toBe('48px');
+  });
+
   it('opens the password step for an account that has a password', async () => {
     await renderLoginPage();
     await continueWithEmail();
@@ -939,12 +948,13 @@ describe('LoginPage', () => {
         name: pl.auth.signInToTenant({ tenant: 'Akademia Demo' }),
       }),
     ).toBeInTheDocument();
-    const prompt = await screen.findByTestId('login-access-prompt');
+    const prompt = await screen.findByTestId('auth-footer-access');
     expect(prompt).toHaveTextContent(pl.auth.noAccessPrompt);
-    expect(within(prompt).getByRole('link', { name: pl.auth.noAccessLink })).toHaveAttribute(
-      'href',
-      '/',
-    );
+    expect(
+      within(prompt).getByRole('link', {
+        name: pl.auth.noAccessLink({ tenant: 'Akademia Demo' }),
+      }),
+    ).toHaveAttribute('href', '/');
     expect(screen.queryByTestId('login-register-prompt')).not.toBeInTheDocument();
     expect(screen.queryByTestId('build-stamp')).not.toBeInTheDocument();
   });
@@ -968,7 +978,7 @@ describe('LoginPage', () => {
     await renderLoginPage(false, '/login', 'akademia.togethercommunity.app');
 
     expect(await screen.findByLabelText(pl.auth.emailLabel)).toBeInTheDocument();
-    expect(screen.queryByTestId('login-access-prompt')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('auth-footer-access')).not.toBeInTheDocument();
     expect(screen.queryByTestId('login-register-prompt')).not.toBeInTheDocument();
   });
 

@@ -1,0 +1,41 @@
+# Staging
+
+Staging is the `staging` branch Vercel Preview deployment backed by a
+schema-only Neon branch. It is not a copy of production data.
+
+## Owner Runbook
+
+1. Clear the `STAGING_DATABASE_FINGERPRINT` repository variable so the next
+   staging smoke run treats the new fingerprint as unpinned, not mismatched.
+2. In Neon, create a branch named `preview/staging` from `main` with schema only
+   and no data.
+3. In Vercel, scope `DATABASE_URL` and `DATABASE_URL_UNPOOLED` for the staging
+   Preview environment to that branch. Use the pooled URL for `DATABASE_URL`
+   and the direct URL for `DATABASE_URL_UNPOOLED`.
+4. Redeploy the `staging` branch.
+5. Verify `https://acme.staging.togethercommunity.app/api/health` reports
+   `environment: "staging"`, `production: false`, `database: "up"`, and a
+   `databaseFingerprint` different from production.
+6. Sign in on the seeded `acme` tenant with
+   `kontakt+smoke-creator@togethercommunity.app` and `demo-password-15`, or
+   inspect the database for the seeded smoke users.
+7. Set or update the `STAGING_DATABASE_FINGERPRINT` repository variable from
+   the verified staging health response.
+8. Delete the old data-copied staging branch after the new deployment and smoke
+   are green.
+
+## Deployed Seed Behavior
+
+`app/scripts/vercel-build.ts` always runs migrations before the app build. On
+the staging Preview deployment, it then checks for seed markers and runs
+`pnpm run db:seed` only when the staging database has none. Production never
+runs the deployed seed path.
+
+The manual reset path remains `POST /api/platform/data-reset`, exposed only for
+`APP_ENV=staging` and `APP_ENV=preview` and guarded by platform-owner access.
+Use it to reset staging data from the deployed seed after staging already
+exists; do not use build-time seed as a reset mechanism.
+
+`POST /api/internal/sanitize-staging-secrets` remains available for the
+transition from an old copied staging branch. On a schema-only branch with no
+copied tenant secrets it has nothing to delete.

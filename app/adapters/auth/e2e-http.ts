@@ -15,6 +15,7 @@ export interface AuthE2eTransport {
   connectUrl: string;
   /** The Origin header Better Auth checks for CSRF (a trusted origin). */
   origin: string;
+  headers?: Record<string, string>;
   request?: typeof fetch;
 }
 
@@ -23,7 +24,7 @@ const requestJson = async (
   path: string,
   init: { method: 'GET' | 'POST'; token?: string; body?: unknown },
 ): Promise<AuthHttpResult> => {
-  const headers: Record<string, string> = { origin: transport.origin };
+  const headers: Record<string, string> = { origin: transport.origin, ...transport.headers };
   if (init.body !== undefined) headers['content-type'] = 'application/json';
   if (init.token !== undefined) headers.authorization = `Bearer ${init.token}`;
   const requestInit: RequestInit = { method: init.method, headers };

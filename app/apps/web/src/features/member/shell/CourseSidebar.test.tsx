@@ -163,10 +163,38 @@ describe('CourseSidebar', () => {
     expect(back).toHaveTextContent(pl.shell.backTo({ name: 'Acme' }));
 
     expect(header).toHaveTextContent('JavaScript Foundations');
-    expect(within(header).getByTestId('progress-ring')).toHaveAttribute('data-done', 'false');
+    expect(within(header).queryByTestId('completion-mark')).not.toBeInTheDocument();
     expect(screen.getByTestId('course-sidebar-totals')).toHaveTextContent(
       `33% · ${pl.shell.lessonsOf({ done: 1, total: 3 })}`,
     );
+  });
+
+  it('marks a finished course to the right of its title, without a text label', async () => {
+    const finished: CourseStructureWithAccess = {
+      ...structure,
+      completionStatus: 'fully-completed',
+      modules: structure.modules.map((module) => ({
+        ...module,
+        completionStatus: 'fully-completed',
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          completionStatus: 'fully-completed',
+          lessons: chapter.lessons.map((lesson) => ({
+            ...lesson,
+            completionStatus: 'fully-completed',
+          })),
+        })),
+      })),
+    };
+    server.use(okStructure(finished), okProgress(), okNavigation(), noNotifications());
+
+    await renderSidebar(null);
+
+    const header = await screen.findByTestId('course-sidebar-header');
+    const mark = within(header).getByTestId('completion-mark');
+    expect(mark).toHaveAccessibleName(pl.courseOverview.courseCompleted);
+    const title = within(header).getByText('JavaScript Foundations');
+    expect(title.compareDocumentPosition(mark)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it('marks the course overview as the current page on the overview route', async () => {
@@ -368,14 +396,18 @@ describe('CourseSidebar', () => {
     expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-back'));
   });
 
-  it('leaves notifications and the account to the app bar', async () => {
+  it('ends with the lesson tree, leaving notifications and the account to the app bar', async () => {
     server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
 
-    await renderSidebar('l2');
+    const { container } = await renderSidebar('l2');
 
-    expect(await screen.findByTestId('course-sidebar-overview')).toBeInTheDocument();
+    expect(await screen.findByTestId('course-tree')).toBeInTheDocument();
     expect(screen.queryByText(pl.notifications.bell)).toBeNull();
+    expect(screen.queryByText(pl.account.menuAccount)).toBeNull();
     expect(screen.queryByTestId('course-sidebar-account')).toBeNull();
+    expect(screen.queryByTestId('member-identity')).toBeNull();
+    expect(container.querySelectorAll('a[href="/account"]')).toHaveLength(0);
+    expect(container.querySelectorAll('a[href="/notifications"]')).toHaveLength(0);
   });
 
   it('links to the space of the course below the overview entry', async () => {

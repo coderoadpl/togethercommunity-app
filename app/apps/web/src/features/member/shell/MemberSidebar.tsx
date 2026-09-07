@@ -7,11 +7,12 @@ import type { MemberNavigationSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
+import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { SidebarProgressPercent } from '../../../theme.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
-import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { LockClosed } from '../tree-icons.js';
 import { nestSpacesUnderCourses } from './course-spaces.js';
 import {
@@ -74,7 +75,11 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
               data-testid={`sidebar-course-${course.courseId}`}
             >
               <ListItemIcon>
-                <ProgressRing value={percent} done={done} />
+                {done ? (
+                  <CompletionMark label={t.courseOverview.courseCompleted} />
+                ) : (
+                  <ProgressRing value={percent} />
+                )}
               </ListItemIcon>
               <Tooltip title={course.courseName} enterDelay={600} describeChild>
                 <ListItemText
@@ -184,7 +189,7 @@ export const MemberSidebar = ({
       </Box>
       <Divider sx={{ my: '0.5rem' }} />
       <IdentityRow component={Link} to="/account" data-testid="member-identity">
-        <MemberAvatar name={name} avatarUrl={avatarUrl} />
+        <UserAvatar name={name} email={email} imageUrl={avatarUrl} />
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="body2" component="p" noWrap>
             {name}

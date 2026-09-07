@@ -156,7 +156,7 @@ const SCREENS: ScreenSpec[] = [
     path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
     viewports: memberViewports,
     ready: async (page) => {
-      await page.getByLabel('breadcrumb').waitFor(visible);
+      await page.getByTestId('member-breadcrumbs').waitFor(visible);
       await page.getByTestId('discussion-composer-open').waitFor(visible);
     },
   },
@@ -410,6 +410,8 @@ const applyChrome = async (context: BrowserContext): Promise<void> => {
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await signInWithPassword(page, PASSWORD_OWNER_EMAIL, 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 20000 });
+  await page.goto(`${studioBaseUrl}/panel`, { waitUntil: 'load' });
   await page.getByTestId('tenant-name').waitFor(visible);
 };
 

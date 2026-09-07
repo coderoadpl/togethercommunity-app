@@ -10,6 +10,11 @@ export type ViewerKind = 'pending' | 'anonymous' | 'member';
 export const useImpersonation = (): ImpersonationView | null =>
   useQuery(actions.me).data?.impersonation ?? null;
 
+export const useCanOpenStudio = (): boolean => {
+  const tenant = useQuery(actions.me).data?.tenant ?? null;
+  return tenant !== null && tenant.staffRole !== null;
+};
+
 /**
  * Mirrors the `isMember` split in `MemberShell`, so pages and shell never disagree.
  * A refetch of a `me` that never carried data — the 401 an anonymous visitor gets —

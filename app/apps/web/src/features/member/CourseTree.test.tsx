@@ -202,8 +202,9 @@ describe('CourseTree', () => {
     await renderTree();
 
     const completedLesson = await screen.findByTestId('lesson-button-l1');
-    expect(within(completedLesson).getByTestId('completion-full')).toBeInTheDocument();
-    expect(within(completedLesson).getByText(pl.courseTree.completionComplete)).toBeInTheDocument();
+    expect(within(completedLesson).getByTestId('completion-mark')).toHaveAccessibleName(
+      pl.courseTree.completionComplete,
+    );
 
     const module = screen.getByTestId('module-toggle-m1');
     expect(within(module).getByText('1/3')).toBeInTheDocument();
@@ -260,6 +261,21 @@ describe('CourseTree', () => {
     expect(mark?.textContent).toBe('Scope');
   });
 
+  it('explains the filter plainly and saves the word-stem tip for an empty result', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await screen.findByText('Intro to Variables');
+    expect(screen.getByTestId('lesson-search-hint')).toHaveTextContent(pl.search.hint);
+    expect(screen.queryByText(pl.search.stemHint)).not.toBeInTheDocument();
+
+    await user.type(screen.getByTestId('lesson-search'), 'nieistniejaca');
+
+    const empty = await screen.findByTestId('tree-no-results');
+    expect(empty).toHaveTextContent(pl.courseTree.noMatches);
+    expect(empty).toHaveTextContent(pl.search.stemHint);
+  });
+
   it('keeps module and chapter counts on the full structure while filtering', async () => {
     const user = userEvent.setup();
     await renderTree();
@@ -272,11 +288,11 @@ describe('CourseTree', () => {
 
     const module = screen.getByTestId('module-toggle-m1');
     expect(within(module).getByText('1/3')).toBeInTheDocument();
-    expect(within(module).queryByTestId('completion-full')).not.toBeInTheDocument();
+    expect(within(module).queryByTestId('completion-mark')).not.toBeInTheDocument();
 
     const chapter = screen.getByTestId('chapter-toggle-c1');
     expect(within(chapter).getByText('1/2')).toBeInTheDocument();
-    expect(within(chapter).queryByTestId('completion-full')).not.toBeInTheDocument();
+    expect(within(chapter).queryByTestId('completion-mark')).not.toBeInTheDocument();
   });
 
   it('shows per-lesson durations only when present', async () => {

@@ -263,12 +263,12 @@ describe('DiscussionSection', () => {
     );
 
     const rootPost = within(screen.getByTestId('discussion-post-r1'));
-    expect(rootPost.getAllByTestId('member-avatar-image')[0]).toHaveAttribute(
+    expect(rootPost.getAllByTestId('user-avatar-image')[0]).toHaveAttribute(
       'src',
       'https://cdn.test/marta.png',
     );
-    expect(level2Container.queryByTestId('member-avatar-image')).toBeNull();
-    expect(level2Container.getAllByTestId('member-avatar')[0]).toHaveTextContent('OA');
+    expect(level2Container.queryByTestId('user-avatar-image')).toBeNull();
+    expect(level2Container.getAllByTestId('user-avatar')[0]).toHaveTextContent('OA');
   });
 
   it('collapses replies deeper than five levels behind a continue-thread link with a re-rooted subthread', async () => {
@@ -492,7 +492,7 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     expect(await screen.findByTestId('discussion-search-hint')).toHaveTextContent(
-      pl.discussion.searchWholeWordsHint,
+      pl.discussion.searchHint,
     );
     await user.type(await screen.findByTestId('discussion-search-input'), 'silnik');
 

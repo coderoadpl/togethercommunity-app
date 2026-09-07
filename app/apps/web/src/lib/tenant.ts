@@ -52,10 +52,3 @@ export const hostHasTenantSubdomain = (hostname: string, baseDomain: string = ap
 export const isTenantHost = (hostname: string): boolean =>
   hostHasTenantSubdomain(hostname) ||
   (configuredAppBaseDomain() !== undefined && !isConfiguredBaseDomainHost(hostname));
-
-/** Stable accent hue per tenant so each tenant is visibly its own world. */
-export const tenantHue = (slug: string): number => {
-  let hash = 0;
-  for (const char of slug) hash = (hash * 31 + char.charCodeAt(0)) % 997;
-  return Math.round((hash * 137.508) % 360);
-};

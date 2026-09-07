@@ -23,6 +23,7 @@ import {
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
 import { CollapsibleEmbed, LessonMediaEmbed } from '../../components/ui/LessonMedia.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
@@ -41,10 +42,9 @@ import {
 } from '../../theme.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon, LockedState } from './lesson-icons.js';
-import { lessonNeighbours, lessonPath, linearizeCourse } from './lesson-nav.js';
+import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
-import { CompletionFull } from './tree-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -164,12 +164,10 @@ const GroupBody = ({ group, autoplay }: { group: LessonContentGroup; autoplay: b
 const LockedView = ({
   courseId,
   lessonName,
-  courseName,
   unlockProductId,
 }: {
   courseId: string;
   lessonName?: string | undefined;
-  courseName?: string | undefined;
   unlockProductId?: string;
 }) => {
   const t = useTranslations();
@@ -181,17 +179,6 @@ const LockedView = ({
       title={lessonName ?? t.lesson.contentLocked}
       eyebrow={t.lesson.eyebrow}
       width="prose"
-      {...(courseName === undefined
-        ? {}
-        : {
-            breadcrumbs: [
-              {
-                label: courseName,
-                link: <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{courseName}</MuiLink>,
-              },
-              { label: lessonName ?? t.lesson.contentLocked },
-            ],
-          })}
     >
       {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
       <SectionCard
@@ -259,16 +246,7 @@ export const LessonPlayerPage = ({
 
   const location = useMemo(() => {
     const tree = structure.data?.structure;
-    if (tree === undefined) return null;
-    for (const module of tree.modules) {
-      for (const chapter of module.chapters) {
-        const row = chapter.lessons.find((entry) => entry.lessonId === lessonId);
-        if (row !== undefined) {
-          return { courseName: tree.name, module, chapter, row };
-        }
-      }
-    }
-    return { courseName: tree.name, module: null, chapter: null, row: null };
+    return tree === undefined ? null : locateLesson(tree, lessonId);
   }, [structure.data, lessonId]);
   const neighbours = useMemo(() => {
     const tree = structure.data?.structure;
@@ -298,6 +276,11 @@ export const LessonPlayerPage = ({
       chapterId: location?.chapter?.id,
     });
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
+
+  const [continuing, setContinuing] = useState(false);
+  useEffect(() => {
+    setContinuing(false);
+  }, [lessonId]);
 
   const [optimisticDone, setOptimisticDone] = useState<{
     lessonId: string;
@@ -376,7 +359,6 @@ export const LessonPlayerPage = ({
         <LockedView
           courseId={courseId}
           lessonName={lockedRow?.name}
-          courseName={structure.data?.structure.name}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -410,12 +392,15 @@ export const LessonPlayerPage = ({
     : lesson.data.lesson.name;
 
   const continueToNext = () => {
+    setContinuing(true);
     complete.mutate(
       { lessonId },
       {
         onSuccess: () => {
-          if (nextHref !== null) void navigate({ to: nextHref });
+          if (nextHref === null) setContinuing(false);
+          else void navigate({ to: nextHref });
         },
+        onError: () => setContinuing(false),
       },
     );
   };
@@ -426,19 +411,6 @@ export const LessonPlayerPage = ({
       eyebrow={t.lesson.eyebrow}
       width="wide"
       dense
-      {...(location === null
-        ? {}
-        : {
-            breadcrumbs: [
-              {
-                label: location.courseName,
-                link: <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{location.courseName}</MuiLink>,
-              },
-              ...(location.module === null ? [] : [{ label: location.module.name }]),
-              ...(location.chapter === null ? [] : [{ label: location.chapter.name }]),
-              { label: lessonName },
-            ],
-          })}
     >
       <Box sx={{ minWidth: 0 }}>
         {transitioning ? (
@@ -534,7 +506,7 @@ export const LessonPlayerPage = ({
                 </Button>
               )
             )}
-            {!completed && nextLesson !== null && (
+            {!continuing && !completed && nextLesson !== null && (
               <Button
                 component={Link}
                 to={lessonPath(courseId, nextLesson.lessonId)}
@@ -545,20 +517,20 @@ export const LessonPlayerPage = ({
               </Button>
             )}
             <Box sx={{ flex: 1 }} />
-            {progress.isSuccess && completed && (
+            {!continuing && progress.isSuccess && completed && (
               <Button
                 variant="text"
                 size="small"
                 data-testid="unmark-complete"
                 onClick={() => uncomplete.mutate({ lessonId })}
                 disabled={uncomplete.isPending}
-                startIcon={<CompletionFull />}
+                startIcon={<CompletionMark label={t.courseTree.completionComplete} />}
                 title={t.lesson.unmarkCompletedHint}
               >
                 {t.lesson.unmarkCompleted}
               </Button>
             )}
-            {progress.isSuccess && !completed && (
+            {!continuing && progress.isSuccess && !completed && (
               <Button
                 variant={nextHref === null ? 'contained' : 'text'}
                 size={nextHref === null ? 'medium' : 'small'}
@@ -569,7 +541,11 @@ export const LessonPlayerPage = ({
                 {t.lesson.markCompleted}
               </Button>
             )}
-            {!completed && nextHref !== null && (
+            {continuing ? (
+              <Button variant="contained" data-testid="complete-continue" disabled>
+                {t.lesson.completing}
+              </Button>
+            ) : !completed && nextHref !== null ? (
               <Button
                 variant="contained"
                 data-testid="complete-continue"
@@ -578,8 +554,8 @@ export const LessonPlayerPage = ({
               >
                 {t.lesson.completeContinue}
               </Button>
-            )}
-            {completed && nextLesson !== null && (
+            ) : null}
+            {!continuing && completed && nextLesson !== null && (
               <Button
                 component={Link}
                 to={lessonPath(courseId, nextLesson.lessonId)}

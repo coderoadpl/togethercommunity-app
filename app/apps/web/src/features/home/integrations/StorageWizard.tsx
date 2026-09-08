@@ -96,6 +96,50 @@ const localizedProbeError = (error: unknown, t: Messages): string => {
   return code !== null && isProbeErrorCode(code) ? messages[code] : localizePanelError(error, t);
 };
 
+const StorageCorsSettings = ({ origins }: { origins: string[] }) => {
+  const t = useTranslations();
+  const [showJson, setShowJson] = useState(false);
+
+  return (
+    <Stack useFlexGap spacing="0.75rem" data-testid="storage-cors-settings">
+      <Typography variant="subtitle2">{t.integrations.storageCorsHeading}</Typography>
+      <Typography variant="body2">{t.integrations.storageCorsDescription}</Typography>
+      {origins.map((origin, index) => (
+        <CopyField
+          key={origin}
+          value={origin}
+          label={t.integrations.storageCorsOriginLabel({ number: index + 1 })}
+          mono
+          testId={`storage-cors-origin-${String(index + 1)}`}
+        />
+      ))}
+      <Box>
+        <Button
+          type="button"
+          variant="outlined"
+          aria-expanded={showJson}
+          aria-controls={showJson ? 'storage-cors-json-panel' : undefined}
+          data-testid="storage-cors-json-toggle"
+          onClick={() => setShowJson((current) => !current)}
+        >
+          {t.integrations.storageCorsJsonToggle}
+        </Button>
+      </Box>
+      {showJson ? (
+        <Box id="storage-cors-json-panel">
+          <CopyField
+            value={storageCorsJson(origins)}
+            label={t.integrations.storageCorsJsonLabel}
+            mono
+            multiline
+            testId="storage-cors-json"
+          />
+        </Box>
+      ) : null}
+    </Stack>
+  );
+};
+
 export const StorageWizard = ({ configured, origins }: { configured: boolean; origins: string[] }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -164,26 +208,6 @@ export const StorageWizard = ({ configured, origins }: { configured: boolean; or
   return (
     <Stack useFlexGap spacing="1.25rem" data-testid="storage-wizard">
       {configured ? <Alert severity="info">{t.integrations.storageConfigured}</Alert> : null}
-      <Stack useFlexGap spacing="0.75rem" data-testid="storage-cors-settings">
-        <Typography variant="subtitle2">{t.integrations.storageCorsHeading}</Typography>
-        <Typography variant="body2">{t.integrations.storageCorsDescription}</Typography>
-        {origins.map((origin, index) => (
-          <CopyField
-            key={origin}
-            value={origin}
-            label={t.integrations.storageCorsOriginLabel({ number: index + 1 })}
-            mono
-            testId={`storage-cors-origin-${String(index + 1)}`}
-          />
-        ))}
-        <CopyField
-          value={storageCorsJson(origins)}
-          label={t.integrations.storageCorsJsonLabel}
-          mono
-          multiline
-          testId="storage-cors-json"
-        />
-      </Stack>
       <Stepper activeStep={activeStep} alternativeLabel>
         <Step><StepLabel>{t.integrations.storageProviderStep}</StepLabel></Step>
         <Step><StepLabel>{t.integrations.storageConnectionStep}</StepLabel></Step>
@@ -258,6 +282,7 @@ export const StorageWizard = ({ configured, origins }: { configured: boolean; or
                 inputProps={{ 'data-testid': 'storage-bucket' }}
               />
             </FormControl>
+            <StorageCorsSettings origins={origins} />
             <FormControl fullWidth required>
               <FormLabel htmlFor="storage-access-key">{t.integrations.s3AccessKeyIdLabel}</FormLabel>
               <OutlinedInput

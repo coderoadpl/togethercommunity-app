@@ -917,8 +917,9 @@ export const en: Messages = {
       'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket. Set bucket CORS AllowedHeaders to include Content-Type. Browser uploads require HTTPS unless MinIO shares the Together origin. Private endpoints also require STORAGE_ALLOW_PRIVATE_ENDPOINTS=true on the server.',
     storageInstructionLink: 'Open provider instructions',
     storageCorsHeading: 'Bucket CORS',
-    storageCorsDescription: 'Allow every origin below. Copy the complete JSON into your bucket CORS settings.',
+    storageCorsDescription: 'Allow every origin below. Use the CORS JSON toggle to copy the complete bucket policy.',
     storageCorsOriginLabel: ({ number }) => format('Allowed origin {number}', { number }),
+    storageCorsJsonToggle: 'Show CORS JSON',
     storageCorsJsonLabel: 'CORS JSON',
     storageProbeDescription:
       'Together will upload a small scratch object, read it back byte for byte, delete it, and verify browser CORS. Nothing is saved yet.',

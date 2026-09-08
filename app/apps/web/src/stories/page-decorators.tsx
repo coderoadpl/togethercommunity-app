@@ -27,7 +27,7 @@ import { fixtureSchema } from './fixture-key.js';
 import { PanelLayout } from '../features/home/PanelLayout.js';
 import { DashboardPanel } from '../features/home/DashboardPanel.js';
 import { usePanelContext } from '../features/home/panel-context.js';
-import { StudioChecklistDock } from '../features/onboarding/index.js';
+import { StudioChecklistDock, StudioChecklistPanel } from '../features/onboarding/index.js';
 import { PanelMemberDetailRoute, PanelCouponCreateRoute, PanelCouponDetailRoute, PanelCouponsRoute, PanelCourseDetailRoute, PanelIntegrationsRoute, PanelLessonEditRoute, PanelOrderDetailRoute, PanelProductDetailRoute, PanelProductsRoute, PanelRedirectsRoute, PanelSettingsRoute, PanelSpacesRoute } from '../features/home/panel-routes.js';
 import { CampaignsPanel } from '../features/home/marketing/CampaignsPanel.js';
 import { ConsentsPanel } from '../features/home/marketing/ConsentsPanel.js';
@@ -38,7 +38,7 @@ import { SendsPanel, SendDetailPage, validateSendsSearch } from '../features/hom
 
 const PageRoot = () => <><LanguageSwitcher /><Outlet /></>;
 
-const PanelDashboard = () => { const { tenant, email } = usePanelContext(); return <><DashboardPanel /><StudioChecklistDock scope={`${tenant.id}:${email}`} /></>; };
+const PanelDashboard = () => { const { tenant, email } = usePanelContext(); return <><DashboardPanel aside={<StudioChecklistPanel scope={`${tenant.id}:${email}`} />} /><StudioChecklistDock scope={`${tenant.id}:${email}`} /></>; };
 
 const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl'), preloadFonts: z.boolean().optional() });
 const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> }) => {

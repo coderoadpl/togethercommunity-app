@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-const NO_INSET = '0px';
+export const NO_INSET = '0px';
 
 interface BottomInsetValue {
   inset: string;

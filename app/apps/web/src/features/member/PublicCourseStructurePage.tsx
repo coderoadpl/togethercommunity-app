@@ -16,6 +16,7 @@ import {
   StatTileValue,
 } from '../../theme.js';
 import { courseTotals, formatTotalDuration } from './CourseRail.js';
+import { CourseLoading } from './CourseLoading.js';
 import { CourseTree } from './CourseTree.js';
 import { MemberSurface } from './MemberSurface.js';
 import { anonCrumbs } from './anon-crumbs.js';
@@ -31,14 +32,7 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
   const navigation = useQuery(actions.publicNavigation);
 
   if (structure.isPending) {
-    return (
-      <MemberSurface
-        title={t.courseTree.courseSyllabus}
-        eyebrow={t.anon.eyebrow}
-        width="wide"
-        state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
-      />
-    );
+    return <CourseLoading lesson={false} anonymous />;
   }
 
   if (structure.isError) {

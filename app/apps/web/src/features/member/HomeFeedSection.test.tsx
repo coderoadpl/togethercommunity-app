@@ -79,7 +79,7 @@ describe('HomeFeedSection', () => {
               reactions: [{ emoji: '👍', count: 2, viewerReacted: false }],
               authorAvatarUrl: 'https://cdn.test/ada.png',
             }),
-            item('p2', { spaceId: 's2', spaceName: 'Klub', contextId: 's2' }),
+            item('p2', { spaceId: 's2', spaceName: 'Klub', contextId: 's2', body: 'See https://courses.example.org/guide.' }),
           ],
           nextCursor: null,
         },
@@ -113,6 +113,12 @@ describe('HomeFeedSection', () => {
     );
 
     const other = screen.getByTestId('home-feed-post-p2');
+    const bodyLink = within(within(other).getByTestId('home-feed-body-p2')).getByRole('link', {
+      name: 'https://courses.example.org/guide',
+    });
+    expect(bodyLink).toHaveAttribute('href', 'https://courses.example.org/guide');
+    expect(bodyLink).toHaveAttribute('target', '_blank');
+    expect(bodyLink).toHaveAttribute('rel', 'noopener noreferrer nofollow');
     expect(within(other).queryByTestId('user-avatar-image')).toBeNull();
     expect(within(other).getByTestId('user-avatar')).toHaveTextContent('AN');
     expect(within(other).getByTestId('home-feed-space-p2')).toHaveAttribute('href', '/community/s2');

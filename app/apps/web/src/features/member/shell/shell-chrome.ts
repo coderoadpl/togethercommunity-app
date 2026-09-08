@@ -89,7 +89,7 @@ export const SidebarColumn = styled(Box)<{ component?: ElementType }>(({ theme }
   alignSelf: 'flex-start',
   position: 'sticky',
   top: 0,
-  height: '100vh',
+  height: '100dvh',
   display: 'flex',
   flexDirection: 'column',
   backgroundColor: theme.palette.background.paper,

@@ -5,7 +5,8 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { lazy, type FunctionComponent } from 'react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -166,7 +167,7 @@ const okStructure = () =>
   http.get('/api/student/courses/:courseId/structure', () =>
     HttpResponse.json({ ok: true, data: { structure: courseStructure } }));
 
-const okOffer = () =>
+const okOffer = (withSocialLinks = false) =>
   http.get('/api/public/offer', () =>
     HttpResponse.json({
       ok: true,
@@ -175,7 +176,7 @@ const okOffer = () =>
           slug: 'acme',
           name: 'Acme',
           branding: { logoUrl: null, accentColor: null, faviconUrl: null },
-          socialLinks: [],
+          socialLinks: withSocialLinks ? [{ label: 'Community', url: 'https://courses.example.org/community' }] : [],
         },
         contentVersion: 1,
         products: [],
@@ -202,7 +203,7 @@ const stubMatchingViewport = (dimension: 'min-width' | 'max-width') => {
   }));
 };
 
-const renderShell = async (path: string) => {
+const renderShell = async (path: string, lessonComponent: FunctionComponent = page('Lekcja'), courseComponent: FunctionComponent = page('Kurs')) => {
   const rootRoute = createRootRoute();
   const shellRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -219,12 +220,12 @@ const renderShell = async (path: string) => {
       createRoute({
         getParentRoute: () => shellRoute,
         path: '/my/courses/$courseId',
-        component: page('Kurs'),
+        component: courseComponent,
       }),
       createRoute({
         getParentRoute: () => shellRoute,
         path: '/my/courses/$courseId/lessons/$lessonId',
-        component: page('Lekcja'),
+        component: lessonComponent,
       }),
       createRoute({
         getParentRoute: () => shellRoute,
@@ -243,6 +244,82 @@ const renderShell = async (path: string) => {
 };
 
 describe('MemberShell', () => {
+  it.each([
+    { anonymous: false, lesson: false },
+    { anonymous: false, lesson: true },
+    { anonymous: true, lesson: false },
+    { anonymous: true, lesson: true },
+  ])('keeps a suspended course route inside the shell ($anonymous, $lesson)', async ({ anonymous, lesson }) => {
+    stubViewport(true);
+    server.use(okMe(anonymous ? { tenant: null } : {}), okNavigation(), okStructure(), okOffer(true), noNotifications(), okPublicNavigation());
+    let releaseChunk: (value: { default: FunctionComponent }) => void = () => undefined;
+    const chunk = new Promise<{ default: FunctionComponent }>((resolve) => { releaseChunk = resolve; });
+    const LazyLesson = lazy(() => chunk);
+
+    await renderShell(lesson ? '/my/courses/c1/lessons/l1' : '/my/courses/c1', LazyLesson, LazyLesson);
+
+    const sidebar = await screen.findByTestId(anonymous ? 'anon-sidebar' : 'course-sidebar');
+    const loading = screen.getByTestId('course-loading');
+    expect(loading.closest('main')).not.toBeNull();
+    expect(within(loading).getByRole('status', { name: lesson ? pl.lesson.loading : pl.courseTree.loadingCourse })).toHaveAttribute('aria-busy', 'true');
+    expect(within(loading).getByText(lesson ? pl.lesson.eyebrow : anonymous ? pl.anon.eyebrow : pl.student.courseEyebrow)).toBeInTheDocument();
+    expect(within(loading).queryByTestId('tenant-social-links')).not.toBeInTheDocument();
+    expect(within(loading).getByRole('heading', { level: 1, name: lesson ? pl.lesson.loading : pl.courseTree.loadingCourse })).toBeInTheDocument();
+    expect(screen.queryByTestId('brand-loader-mark')).not.toBeInTheDocument();
+    const appBar = anonymous
+      ? screen.getByRole('link', { name: pl.auth.signInLink }).closest('header')
+      : screen.getByTestId('shell-breadcrumbs').closest('header');
+    expect(appBar).not.toBeNull();
+
+    await act(async () => { releaseChunk({ default: page('Loaded lesson') }); });
+
+    expect(await screen.findByText('Loaded lesson')).toBeInTheDocument();
+    expect(screen.queryByTestId('course-loading')).not.toBeInTheDocument();
+    expect(sidebar).toBeInTheDocument();
+    expect(appBar).toBeInTheDocument();
+  });
+
+  it.each([767, 768, 899, 900])('switches course navigation at md (viewport: %s)', async (width) => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('min-width') && width >= Number(/min-width:\s*(\d+)/u.exec(query)?.[1]),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    if (width >= 900) {
+      expect(await screen.findByTestId('course-sidebar')).toBeInTheDocument();
+      expect(screen.queryByTestId('member-bottom-nav')).not.toBeInTheDocument();
+    } else {
+      expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
+      expect(screen.queryByTestId('course-sidebar')).not.toBeInTheDocument();
+    }
+  });
+
+  it.each(['/my/courses/c1', '/my/courses/c1/lessons/l1'])('keeps the sidebar beside the app bar with internal scrolling on %s', async (path) => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell(path);
+
+    const sidebar = await screen.findByTestId('course-sidebar');
+    expect(sidebar.closest('aside')).toHaveStyle({
+      alignSelf: 'flex-start',
+      position: 'sticky',
+      top: 'var(--member-app-bar-height)',
+      height: 'calc(100dvh - var(--member-app-bar-height))',
+      maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
+    });
+    expect(sidebar).toHaveStyle({ overflowY: 'auto' });
+  });
+
   it('carries the lesson breadcrumb in the app bar', async () => {
     stubMatchingViewport('min-width');
     server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
@@ -773,9 +850,10 @@ describe('MemberShell', () => {
 
     await renderShell('/my');
 
-    const sidebarSignIn = await screen.findByTestId('anon-sidebar-signin');
-    expect(sidebarSignIn).toHaveAttribute('href', '/login');
-    expect(sidebarSignIn).toHaveTextContent(pl.auth.signInLink);
+    const signIn = await screen.findByRole('link', { name: pl.auth.signInLink });
+    expect(signIn).toHaveAttribute('href', '/login');
+    expect(signIn.closest('header')).not.toBeNull();
+    expect(within(screen.getByTestId('anon-sidebar')).queryByRole('link', { name: pl.auth.signInLink })).toBeNull();
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
     expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
@@ -822,7 +900,8 @@ describe('MemberShell', () => {
     await user.hover(locked);
     expect(await screen.findByText(pl.shell.lockedSpaceHint)).toBeInTheDocument();
     expect(await screen.findByText(pl.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
-    expect(within(nav).getByTestId('anon-sidebar-signin')).toHaveAttribute('href', '/login');
+    expect(within(nav).queryByRole('link', { name: pl.auth.signInLink })).toBeNull();
+    expect(screen.getAllByRole('link', { name: pl.auth.signInLink })).toHaveLength(1);
     expect(within(nav).queryByTestId('member-identity')).not.toBeInTheDocument();
   });
 });

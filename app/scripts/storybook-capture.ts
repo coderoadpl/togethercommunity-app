@@ -107,7 +107,7 @@ try {
             await waitForPaint(page);
           }
         } catch (error) { failure = String(error); }
-        await page.screenshot({ path: join(shots, `${file}.png`), animations: 'disabled', caret: 'hide', scale: 'css', mask: spec.mask?.(page) ?? [] });
+        await page.screenshot({ path: join(shots, `${file}.png`), fullPage: spec.fullPage ?? false, animations: 'disabled', caret: 'hide', scale: 'css', mask: spec.mask?.(page) ?? [] });
         const size = (await stat(join(shots, `${file}.png`))).size;
         const minBytes = spec.minBytes ?? 10 * 1024;
         if (size <= minBytes) failure = [failure, `${file} is only ${size} bytes (expected > ${minBytes})`].filter(Boolean).join('; ');
@@ -121,7 +121,7 @@ try {
         if ((!updateMode && comparison !== null) || failure || errors.length > 0 || (diagnostics.missing !== undefined && diagnostics.missing !== '[]') || diagnostics.text.includes('Something went wrong!')) process.exitCode = 1;
         const byteIdentical = hasBaseline && (await readFile(baseline)).equals(await readFile(join(shots, `${file}.png`)));
         if (updateMode && !byteIdentical) updates.push({ baseline, current: join(shots, `${file}.png`) });
-        const fixturePath = resolve(`apps/web/src/stories/fixtures/${screen}.json`);
+        const fixturePath = resolve(`apps/web/src/stories/fixtures/${spec.fixtureName ?? screen}.json`);
         const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');
         const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, errors: [...errors], diagnostics };
         measurements.push(result);

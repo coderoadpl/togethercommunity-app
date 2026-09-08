@@ -18,6 +18,7 @@ import {
   PostBody,
   PostMetaText,
 } from '../../theme.js';
+import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
@@ -31,46 +32,48 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
   return (
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`home-feed-post-${item.id}`}>
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{
-            alignItems: 'center',
-            columnGap: '0.6rem',
-            rowGap: '0.375rem',
-            flexWrap: 'wrap',
-          }}
-        >
-          <UserAvatar name={item.authorDisplay} imageUrl={item.authorAvatarUrl} size="sm" />
-          <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
-          {item.authorIsStaff && (
-            <AuthorChip data-testid={`home-feed-author-chip-${item.id}`}>
-              {t.discussion.authorChip}
-            </AuthorChip>
-          )}
-          <Chip
-            size="small"
-            variant="outlined"
-            clickable
-            component={Link}
-            to={communitySpacePath(item.spaceId)}
-            label={item.spaceName}
-            data-testid={`home-feed-space-${item.id}`}
-          />
-          <PostMetaText component="time" dateTime={item.createdAt}>
-            {formatRelativeTime(item.createdAt, language)}
-          </PostMetaText>
-        </Stack>
+        <Box>
+          <Stack
+            direction="row"
+            useFlexGap
+            sx={{
+              alignItems: 'center',
+              columnGap: '0.6rem',
+              rowGap: '0.375rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <UserAvatar name={item.authorDisplay} imageUrl={item.authorAvatarUrl} size="sm" />
+            <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
+            {item.authorIsStaff && (
+              <AuthorChip data-testid={`home-feed-author-chip-${item.id}`}>
+                {t.discussion.authorChip}
+              </AuthorChip>
+            )}
+            <Chip
+              size="small"
+              variant="outlined"
+              clickable
+              component={Link}
+              to={communitySpacePath(item.spaceId)}
+              label={item.spaceName}
+              data-testid={`home-feed-space-${item.id}`}
+            />
+            <PostMetaText component="time" dateTime={item.createdAt}>
+              {formatRelativeTime(item.createdAt, language)}
+            </PostMetaText>
+          </Stack>
 
-        {deleted ? (
-          <DeletedPostText variant="body2" component="p" data-testid={`home-feed-deleted-${item.id}`}>
-            {t.discussion.deletedPost}
-          </DeletedPostText>
-        ) : (
-          <PostBody variant="body1" component="p" data-testid={`home-feed-body-${item.id}`}>
-            {item.body}
-          </PostBody>
-        )}
+          {deleted ? (
+            <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`home-feed-deleted-${item.id}`}>
+              {t.discussion.deletedPost}
+            </DeletedPostText>
+          ) : (
+            <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`home-feed-body-${item.id}`}>
+              <LinkifiedText text={item.body} />
+            </PostBody>
+          )}
+        </Box>
 
         <ReactionBar postId={item.id} reactions={item.reactions} testIdPrefix="home-feed-reaction" />
 

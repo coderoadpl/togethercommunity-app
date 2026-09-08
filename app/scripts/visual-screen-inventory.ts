@@ -16,6 +16,7 @@ export interface ScreenSpec {
   name: string;
   auth: AuthKind;
   path: string;
+  fixtureName?: string;
   viewports?: readonly ViewportName[];
   tenantSlug?: string;
   prepare?: (page: Page) => Promise<ScreenPreparation>;
@@ -23,6 +24,7 @@ export interface ScreenSpec {
   settled?: (page: Page) => Promise<void>;
   waitForNetworkIdle?: boolean;
   minBytes?: number;
+  fullPage?: boolean;
   mask?: (page: Page) => Locator[];
 }
 
@@ -266,6 +268,77 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('continue-cta').waitFor(visible);
       await page.getByTestId('course-cover').waitFor(visible);
       await page.getByTestId('course-discussion-search').waitFor(visible);
+    },
+  },
+  {
+    name: 'course-long-curriculum',
+    fixtureName: 'course',
+    auth: 'member',
+    path: '/my/courses/course-js',
+    viewports: ['desktop', 'mobile'],
+    fullPage: true,
+    ready: async (page) => {
+      await page.getByTestId('course-discussion-search').waitFor(visible);
+      await page.getByTestId('course-cover').waitFor(visible);
+      await waitForUnreadBadge(page);
+    },
+    settled: async (page) => {
+      const desktop = (page.viewportSize()?.width ?? 0) >= 900;
+      const sidebar = page.locator('aside').filter({ has: page.getByTestId('course-sidebar') });
+      const appBar = page.locator('header').filter({ has: page.getByTestId('shell-breadcrumbs') });
+      const viewportHeight = page.viewportSize()?.height ?? 0;
+      for (const atBottom of [false, true]) {
+        await page.evaluate((bottom) => window.scrollTo(0, bottom ? document.documentElement.scrollHeight : 0), atBottom);
+        await waitForPaint(page);
+        if (!desktop) continue;
+        const bounds = await sidebar.boundingBox();
+        const barBounds = await appBar.boundingBox();
+        const geometry = await sidebar.evaluate((element) => {
+          const style = getComputedStyle(element);
+          const ancestors = [];
+          for (let node = element.parentElement; node !== null; node = node.parentElement) {
+            const ancestorStyle = getComputedStyle(node);
+            ancestors.push({ tag: node.tagName, overflowX: ancestorStyle.overflowX, overflowY: ancestorStyle.overflowY });
+          }
+          return { tag: element.tagName, position: style.position, top: style.top, maxHeight: style.maxHeight, alignSelf: style.alignSelf, overflowY: style.overflowY, scrollY: window.scrollY, ancestors };
+        });
+        const diagnostic = JSON.stringify({ atBottom, bounds, barBounds, viewportHeight, geometry });
+        console.log(`Course sidebar geometry: ${diagnostic}`);
+        assert(bounds !== null && barBounds !== null && barBounds.height > 0
+          && Math.abs(barBounds.y) < 1
+          && Math.abs(bounds.y - barBounds.height) < 1
+          && Math.abs(bounds.height - (viewportHeight - barBounds.height)) < 1,
+        `Course sidebar must fill the viewport beside the app bar at both scroll positions: ${diagnostic}`);
+        assert(geometry.tag === 'ASIDE' && geometry.position === 'sticky' && geometry.alignSelf === 'flex-start'
+          && geometry.overflowY === 'auto'
+          && Math.abs(Number.parseFloat(geometry.top) - barBounds.height) < 1
+          && Math.abs(Number.parseFloat(geometry.maxHeight) - bounds.height) < 1
+          && geometry.ancestors.every((ancestor) => ancestor.overflowX === 'visible' && ancestor.overflowY === 'visible'),
+        `Course sidebar must stay sticky without ancestor overflow clipping: ${diagnostic}`);
+      }
+      assert(await page.evaluate(() => window.scrollY > 0), 'Long curriculum must scroll the document');
+      if (!desktop) {
+        await page.getByTestId('program-button').click();
+        await page.getByTestId('course-program-sheet').waitFor(visible);
+      }
+      const tree = (desktop ? sidebar : page.getByTestId('course-program-sheet')).getByTestId('course-tree-scroll');
+      const documentScroll = await page.evaluate(() => window.scrollY);
+      const treeScroll = await tree.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        return { top: element.scrollTop, height: element.clientHeight, scrollHeight: element.scrollHeight, overflowY: getComputedStyle(element).overflowY };
+      });
+      await waitForPaint(page);
+      assert(treeScroll.overflowY === 'auto' && treeScroll.top > 0
+        && Math.abs(treeScroll.top + treeScroll.height - treeScroll.scrollHeight) < 1,
+      `Long curriculum must scroll to its bottom internally: ${JSON.stringify(treeScroll)}`);
+      assert(await page.evaluate(() => window.scrollY) === documentScroll, 'Curriculum scrolling must not scroll the document');
+      await tree.evaluate((element) => { element.scrollTop = 0; });
+      if (!desktop) {
+        await page.keyboard.press('Escape');
+        await page.getByTestId('course-program-sheet').waitFor({ state: 'hidden' });
+      }
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await waitForPaint(page);
     },
   },
   {

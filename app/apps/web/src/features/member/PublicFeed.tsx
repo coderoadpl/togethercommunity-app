@@ -1,4 +1,4 @@
-import { Chip, Link as MuiLink, Stack } from '@mui/material';
+import { Box, Chip, Link as MuiLink, Stack } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
 import { communityPostPath } from '#core/contract/index.js';
@@ -6,6 +6,7 @@ import type { DiscussionPost, ReactionSummary, SpaceFeed, SpaceFeedItem } from '
 
 import { StatusView } from '../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
+import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
@@ -66,11 +67,11 @@ const PostHeader = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
 const PostText = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
   const t = useTranslations();
   return post.deletedAt === null ? (
-    <PostBody variant="body1" component="p" data-testid={`public-post-body-${post.id}`}>
-      {post.body}
+    <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`public-post-body-${post.id}`}>
+      <LinkifiedText text={post.body} />
     </PostBody>
   ) : (
-    <DeletedPostText variant="body2" component="p" data-testid={`public-deleted-post-${post.id}`}>
+    <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`public-deleted-post-${post.id}`}>
       {t.discussion.deletedPost}
     </DeletedPostText>
   );
@@ -81,8 +82,10 @@ const PublicFeedPost = ({ spaceId, item }: { spaceId: string; item: SpaceFeedIte
   return (
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`public-feed-post-${item.id}`}>
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
-        <PostHeader post={item} />
-        <PostText post={item} />
+        <Box>
+          <PostHeader post={item} />
+          <PostText post={item} />
+        </Box>
         <PublicReactions reactions={item.reactions} />
         <Stack
           direction="row"
@@ -131,10 +134,10 @@ export const PublicFeedList = ({ spaceId, feed }: { spaceId: string; feed: Space
 const PublicReply = ({ post, depth }: { post: DiscussionPost; depth: number }) => (
   <Stack useFlexGap sx={{ rowGap: '0.6rem', pl: depth === 0 ? 0 : '1.25rem' }}>
     <DiscussionThread sx={{ p: '0.85rem 1.1rem' }} data-testid={`public-reply-${post.id}`}>
-      <Stack useFlexGap sx={{ rowGap: '0.5rem' }}>
+      <Box>
         <PostHeader post={post} />
         <PostText post={post} />
-      </Stack>
+      </Box>
     </DiscussionThread>
     {post.replies.map((reply) => (
       <PublicReply key={reply.id} post={reply} depth={depth + 1} />
@@ -145,10 +148,10 @@ const PublicReply = ({ post, depth }: { post: DiscussionPost; depth: number }) =
 export const PublicThreadView = ({ root }: { root: DiscussionPost }) => (
   <Stack useFlexGap sx={{ rowGap: '1rem' }} data-testid="public-thread">
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`public-post-${root.id}`}>
-      <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
+      <Box>
         <PostHeader post={root} />
         <PostText post={root} />
-      </Stack>
+      </Box>
     </DiscussionThread>
     {root.replies.map((reply) => (
       <PublicReply key={reply.id} post={reply} depth={0} />

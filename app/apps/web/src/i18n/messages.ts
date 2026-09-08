@@ -444,6 +444,9 @@ export interface Messages {
     creating: string;
     archive: string;
     archiving: string;
+    archiveConfirmTitle: string;
+    archiveConfirmBody: (params: { code: string }) => string;
+    archiveConfirm: string;
     allCoupons: string;
     loading: string;
     empty: string;
@@ -954,6 +957,9 @@ export interface Messages {
     uploadDownload: string;
     uploadingDownload: string;
     deleteDownload: (params: { name: string }) => string;
+    deleteDownloadConfirmTitle: string;
+    deleteDownloadConfirmBody: (params: { name: string }) => string;
+    deleteDownloadConfirm: string;
     downloadStatusPending: string;
     downloadStatusReady: string;
   };
@@ -1054,6 +1060,9 @@ export interface Messages {
     removeChapterLessonCount: (params: { count: number }) => string;
     removeChapterSharedWarning: (params: { count: number }) => string;
     removeChapterConfirm: string;
+    removeContentConfirmTitle: string;
+    removeContentConfirmBody: (params: { name: string }) => string;
+    removeContentConfirm: string;
     noLessonsInChapter: string;
     lessonLabel: string;
     selectLesson: string;
@@ -1142,6 +1151,9 @@ export interface Messages {
     attachmentSize: (params: { kilobytes: number }) => string;
     attachmentPending: string;
     deleteAttachment: (params: { name: string }) => string;
+    deleteAttachmentConfirmTitle: string;
+    deleteAttachmentConfirmBody: (params: { name: string }) => string;
+    deleteAttachmentConfirm: string;
     invalidBlocks: string;
     blockNoun: (params: { count: number }) => string;
     typeVideo: string;
@@ -1912,6 +1924,7 @@ export interface Messages {
     check: string;
     checking: string;
     remove: string;
+    removeConfirmTitle: string;
     removeConfirm: (params: { domain: string }) => string;
     removing: string;
     removedRedirect: string;

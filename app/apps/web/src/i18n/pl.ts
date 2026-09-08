@@ -497,6 +497,10 @@ export const pl: Messages = {
     creating: 'Tworzenie…',
     archive: 'Archiwizuj',
     archiving: 'Archiwizowanie…',
+    archiveConfirmTitle: 'Zarchiwizować kupon?',
+    archiveConfirmBody: ({ code }) =>
+      format('Kupon {code} przestanie być dostępny w nowych płatnościach. Dotychczasowe przypisanie sprzedaży pozostanie bez zmian.', { code }),
+    archiveConfirm: 'Archiwizuj kupon',
     allCoupons: 'Wszystkie kupony',
     loading: 'Ładowanie kuponów…',
     empty: 'Nie masz jeszcze kuponów.',
@@ -1050,6 +1054,10 @@ export const pl: Messages = {
     uploadDownload: 'Dodaj plik',
     uploadingDownload: 'Przesyłanie pliku…',
     deleteDownload: ({ name }) => `Usuń plik ${name}`,
+    deleteDownloadConfirmTitle: 'Usunąć plik do pobrania?',
+    deleteDownloadConfirmBody: ({ name }) =>
+      format('Plik „{name}” przestanie być dostępny dla kupujących. Tej operacji nie można cofnąć.', { name }),
+    deleteDownloadConfirm: 'Usuń plik',
     downloadStatusPending: 'Oczekuje',
     downloadStatusReady: 'Gotowy',
   },
@@ -1173,6 +1181,10 @@ export const pl: Messages = {
         noun: plural(count, 'innym kursie', 'innych kursach', 'innych kursach'),
       }),
     removeChapterConfirm: 'Usuń rozdział',
+    removeContentConfirmTitle: 'Usunąć lekcję z rozdziału?',
+    removeContentConfirmBody: ({ name }) =>
+      format('Lekcja „{name}” zostanie usunięta z tego rozdziału. Sama lekcja zostanie w bibliotece lekcji.', { name }),
+    removeContentConfirm: 'Usuń lekcję',
     noLessonsInChapter: 'Ten rozdział nie ma jeszcze żadnych lekcji.',
     lessonLabel: 'Lekcja',
     selectLesson: 'Wybierz lekcję',
@@ -1283,6 +1295,10 @@ export const pl: Messages = {
     attachmentSize: ({ kilobytes }) => format('{kilobytes} KB', { kilobytes }),
     attachmentPending: 'Przesyłanie nieukończone',
     deleteAttachment: ({ name }) => format('Usuń załącznik {name}', { name }),
+    deleteAttachmentConfirmTitle: 'Usunąć załącznik?',
+    deleteAttachmentConfirmBody: ({ name }) =>
+      format('Załącznik „{name}” przestanie być dostępny dla uczestników. Tej operacji nie można cofnąć.', { name }),
+    deleteAttachmentConfirm: 'Usuń załącznik',
     invalidBlocks: 'Nieprawidłowe bloki lekcji',
     blockNoun: ({ count }) => plural(count, 'blok', 'bloki', 'bloków'),
     typeVideo: 'Wideo',
@@ -2172,6 +2188,7 @@ export const pl: Messages = {
     check: 'Sprawdź teraz',
     checking: 'Sprawdzam…',
     remove: 'Usuń',
+    removeConfirmTitle: 'Usunąć własną domenę?',
     removeConfirm: ({ domain }) =>
       format('Usunąć {domain}? Adres przestanie prowadzić do tej platformy.', { domain }),
     removing: 'Usuwam…',

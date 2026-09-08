@@ -73,7 +73,7 @@ const ChapterEditor = ({
   onRename: (name: string) => void;
   onRemove: () => void;
   onAddContent: (lessonId: string, name: string) => void;
-  onRemoveContent: (contentId: string) => void;
+  onRemoveContent: (contentId: string, name: string) => void;
   onMoveContent: (contentId: string, direction: -1 | 1) => void;
   onReorderContent: (contentId: string, targetContentId: string) => void;
   onMoveUp: () => void;
@@ -259,7 +259,7 @@ const ChapterEditor = ({
                   variant="text"
                   color="error"
                   disabled={pending}
-                  onClick={() => onRemoveContent(content.id)}
+                  onClick={() => onRemoveContent(content.id, content.name)}
                 >
                   {t.common.remove}
                 </Button>
@@ -367,6 +367,7 @@ const ModuleCard = ({
   const [prefix, setPrefix] = useState(module.prefix ?? '');
   const [chapterName, setChapterName] = useState('');
   const [chapterToRemove, setChapterToRemove] = useState<Chapter | null>(null);
+  const [contentToRemove, setContentToRemove] = useState<{ chapterId: string; contentId: string; name: string } | null>(null);
 
   const updateModule = useMutation({
     ...actions.updateModule,
@@ -563,7 +564,7 @@ const ModuleCard = ({
               onRename={(name) => renameChapter(chapter.id, name)}
               onRemove={() => setChapterToRemove(chapter)}
               onAddContent={(lessonId, name) => addContent(chapter.id, lessonId, name)}
-              onRemoveContent={(contentId) => removeContent(chapter.id, contentId)}
+              onRemoveContent={(contentId, name) => setContentToRemove({ chapterId: chapter.id, contentId, name })}
               onMoveContent={(contentId, direction) => moveContent(chapter.id, contentId, direction)}
               onReorderContent={(contentId, targetContentId) =>
                 reorderContent(chapter.id, contentId, targetContentId)
@@ -621,6 +622,22 @@ const ModuleCard = ({
             setChapterToRemove(null);
           }}
           confirmTestId="chapter-delete-confirm"
+        />
+      ) : null}
+      {contentToRemove ? (
+        <ConfirmDialog
+          open
+          title={t.courses.removeContentConfirmTitle}
+          body={<Typography variant="body1">{t.courses.removeContentConfirmBody({ name: contentToRemove.name })}</Typography>}
+          confirmLabel={t.courses.removeContentConfirm}
+          cancelLabel={t.common.cancel}
+          pending={pending}
+          onClose={() => setContentToRemove(null)}
+          onConfirm={() => {
+            removeContent(contentToRemove.chapterId, contentToRemove.contentId);
+            setContentToRemove(null);
+          }}
+          confirmTestId="chapter-content-remove-confirm"
         />
       ) : null}
     </ReorderCard>

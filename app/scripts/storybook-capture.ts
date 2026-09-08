@@ -98,7 +98,8 @@ try {
         let failure: string | undefined;
         const file = `${screen}--shadcn--${viewport.name}`;
         try {
-          await page.goto(`http://${spec.tenantSlug ?? 'studio'}.localhost:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
+          const host = spec.host ?? `${spec.tenantSlug ?? 'studio'}.localhost`;
+          await page.goto(`http://${host}:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
           await spec.ready(page);
           if (!serverHtmlScreenNames.has(screen)) await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
           await settlePage(page, spec.waitForNetworkIdle ?? true);
@@ -121,7 +122,7 @@ try {
         if ((!updateMode && comparison !== null) || failure || errors.length > 0 || (diagnostics.missing !== undefined && diagnostics.missing !== '[]') || diagnostics.text.includes('Something went wrong!')) process.exitCode = 1;
         const byteIdentical = hasBaseline && (await readFile(baseline)).equals(await readFile(join(shots, `${file}.png`)));
         if (updateMode && !byteIdentical) updates.push({ baseline, current: join(shots, `${file}.png`) });
-        const fixturePath = resolve(`apps/web/src/stories/fixtures/${screen}.json`);
+        const fixturePath = resolve(`apps/web/src/stories/fixtures/${spec.fixtureName ?? screen}.json`);
         const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');
         const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, errors: [...errors], diagnostics };
         measurements.push(result);

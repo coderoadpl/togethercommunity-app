@@ -68,6 +68,7 @@ import {
   authorize,
   dispatchAutoInvoiceJobs,
   type AutoInvoiceJob,
+  type CheckoutConsentJob,
   type PaymentWebhookEvent,
   type SmokeTenantReseedPort,
   type StoredEntityVersion,
@@ -512,6 +513,15 @@ const deps = (input: {
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          checkoutConsentJobs: {
+            enqueue: async () => undefined,
+            lockPending: async () => null,
+            complete: async () => undefined,
+          },
+          consentTransaction: { run: (nested) => appDeps.paymentTransaction.run(nested) },
+          consents: appDeps.consents,
+          marketingConsents: appDeps.marketing?.marketingConsents ?? new InMemoryMarketingConsentRepository(),
+          confirmations: appDeps.marketing?.confirmations ?? new InMemoryConsentConfirmationTokenRepository(),
           processedPaymentEvents: appDeps.processedPaymentEvents,
           enrollmentTransaction: appDeps.enrollmentTransaction,
         }),
@@ -843,6 +853,7 @@ const deps = (input: {
     },
     tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
+    consentTokens: { nextToken: () => `confirmation-${String(++nextId)}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined, warn: () => undefined },
     baseDomain: 'localhost',
@@ -6171,7 +6182,7 @@ describe('checkout consent ordering', () => {
     ]);
   });
 
-  it('records locally captured consent after a real webhook and stays idempotent', async () => {
+  it('records locally captured consent and replays pending consent after a real webhook without repeating fulfillment', async () => {
     const definitionId = 'webhook-news';
     const attached = {
       ...product({
@@ -6212,6 +6223,8 @@ describe('checkout consent ordering', () => {
       },
     );
     const durableJobs: AutoInvoiceJob[] = [];
+    const consentJobs: CheckoutConsentJob[] = [];
+    let captureRestored = false;
     const autoInvoiceJobs = {
       enqueue: async (_tenantId: string, job: AutoInvoiceJob) => {
         if (durableJobs.some((candidate) => candidate.webhookEventId === job.webhookEventId)) {
@@ -6366,7 +6379,7 @@ describe('checkout consent ordering', () => {
       checkoutConsentCaptures: {
         create: async () => undefined,
         findById: async (_tenantId, id) =>
-          id === 'capture-webhook'
+          id === 'capture-webhook' || (captureRestored && id === 'capture-gone')
             ? {
                 termsAccepted: true,
                 selectedDefinitionIds: [definitionId],
@@ -6417,6 +6430,37 @@ describe('checkout consent ordering', () => {
       },
       devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     } satisfies AppDeps;
+    webhookDeps.paymentTransaction = {
+      run: async (operation) => base.paymentTransaction.run((transaction) => operation({
+        ...transaction,
+        checkoutConsentJobs: {
+          enqueue: async (tenantId, job) => {
+            if (!consentJobs.some((row) => row.tenantId === tenantId && row.checkoutSessionId === job.checkoutSessionId)) {
+              consentJobs.push(job);
+            }
+          },
+          lockPending: async (tenantId, checkoutSessionId) =>
+            consentJobs.find((row) => row.tenantId === tenantId && row.checkoutSessionId === checkoutSessionId && row.completedAt === null) ?? null,
+          complete: async (tenantId, checkoutSessionId, completedAt) => {
+            const job = consentJobs.find((row) => row.tenantId === tenantId && row.checkoutSessionId === checkoutSessionId);
+            if (job !== undefined) job.completedAt = completedAt;
+          },
+        },
+        consentTransaction: {
+          run: (nested) => transaction.consentTransaction.run((repositories) => nested({
+            ...repositories,
+            consents: webhookDeps.consents,
+            marketingConsents: marketing.marketingConsents,
+            confirmations: marketing.confirmations,
+          })),
+        },
+        consents: webhookDeps.consents,
+        marketingConsents: marketing.marketingConsents,
+        confirmations: marketing.confirmations,
+        paymentRefunds: webhookDeps.paymentRefunds,
+        processedPaymentEvents: webhookDeps.processedPaymentEvents,
+      })),
+    };
     const app = buildApp(webhookDeps);
     const deliver = () =>
       app.request('/api/webhooks/stripe/t-acme', {
@@ -6464,7 +6508,7 @@ describe('checkout consent ordering', () => {
         evidence: {
           ip: '203.0.113.90',
           userAgent: 'Webhook Browser/99',
-          proofRef: 'product:webhook-product;order:order-webhook',
+          proofRef: expect.stringMatching(/^product:webhook-product;order:id-\d+$/),
         },
       },
     ]);
@@ -6495,9 +6539,6 @@ describe('checkout consent ordering', () => {
     event.objectId = 'cs_webhook_missing_order';
     orderResult = null;
     expect((await deliver()).status).toBe(200);
-    expect(logger.error).toHaveBeenCalledWith(
-      '[checkout-consent] tenant=t-acme checkout=cs_webhook_missing_order order=missing',
-    );
 
     const grantedBefore = await marketing.marketingConsents.listByEmail(
       acme.id,
@@ -6508,16 +6549,50 @@ describe('checkout consent ordering', () => {
     orderResult = order;
     if (event.checkoutSession !== null) {
       event.checkoutSession.metadata.checkoutConsentCaptureId = 'capture-gone';
+      event.checkoutSession.email = 'replay-buyer@example.test';
     }
     const recordedBefore = recorded.length;
     expect((await deliver()).status).toBe(200);
-    expect(logger.error).toHaveBeenCalledWith(
-      '[checkout-consent] tenant=t-acme capture=capture-gone missing',
-    );
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[checkout-consent] pending tenant=t-acme event=evt_webhook_missing_capture capture=capture-gone'));
     expect(recorded).toHaveLength(recordedBefore);
     expect(
       await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
     ).toEqual(grantedBefore);
+
+    expect(consentJobs).toMatchObject([{
+      tenantId: acme.id,
+      checkoutSessionId: 'cs_webhook_missing_capture',
+      captureId: 'capture-gone',
+      completedAt: null,
+    }]);
+    expect(await marketing.marketingConsents.listByEmail(acme.id, 'replay-buyer@example.test')).toEqual([]);
+    const invoiceJobsBeforeReplay = structuredClone(durableJobs);
+    const createOrder = vi.spyOn(base.orders, 'create');
+    captureRestored = true;
+    for (let delivery = 0; delivery < 2; delivery += 1) {
+      const replay = await deliver();
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toMatchObject({
+        ok: true,
+        data: { received: true, processed: false },
+      });
+      expect(recorded).toHaveLength(recordedBefore + 1);
+      expect(await marketing.marketingConsents.listByEmail(acme.id, 'replay-buyer@example.test')).toMatchObject([{
+        status: 'granted',
+        evidence: { proofRef: `product:${attached.id};order:${consentJobs[0]?.orderId}` },
+      }]);
+      expect(consentJobs).toHaveLength(1);
+      expect(consentJobs[0]?.completedAt).toBe(base.clock.nowIso());
+      expect(durableJobs).toEqual(invoiceJobsBeforeReplay);
+      expect(createOrder).not.toHaveBeenCalled();
+    }
+
+    event.id = 'evt_webhook_consent_storage';
+    webhookDeps.paymentTransaction.run = async () => err(internal('Consent storage unavailable'));
+    expect((await deliver()).status).toBe(500);
+    expect(logger.error).toHaveBeenCalledWith(
+      '[stripe-webhook] tenant=t-acme event=evt_webhook_consent_storage capture=capture-gone error=internal:Consent storage unavailable',
+    );
   });
 
   it('acknowledges a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {

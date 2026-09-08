@@ -14,7 +14,6 @@ export default defineConfig({
     testTimeout: 60000,
     coverage: {
       provider: 'v8',
-      all: true,
       reportsDirectory: './coverage',
       reporter: ['text-summary', 'json', 'json-summary'],
       include: [

@@ -1451,7 +1451,7 @@ export interface Messages {
     continueLearning: string;
     reviewAgain: string;
     courseCompleted: string;
-    goToFirstLesson: string;
+    firstIncomplete: (p: { name: string }) => string;
     curriculum: string;
     aboutCourse: string;
     coverAlt: (params: { name: string }) => string;

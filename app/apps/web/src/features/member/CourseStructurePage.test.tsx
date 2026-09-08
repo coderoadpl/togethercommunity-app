@@ -158,10 +158,12 @@ const mockPage = ({
   body = structure,
   lastViewedLessonId,
   progressPending = false,
+  resume = { target: { id: 'l2', name: 'Advanced Variables' }, firstIncomplete: { id: 'l2', name: 'Advanced Variables' }, isReview: false },
 }: {
   body?: CourseStructureWithAccess;
   lastViewedLessonId?: string;
   progressPending?: boolean;
+  resume?: ProgressView['resume'];
 } = {}) => {
   server.use(
     okMe(),
@@ -171,7 +173,7 @@ const mockPage = ({
     http.get('/api/student/progress', () =>
       progressPending
         ? new Promise<never>(() => undefined)
-        : HttpResponse.json({ ok: true, data: { progress: progressView(lastViewedLessonId) } }),
+        : HttpResponse.json({ ok: true, data: { progress: { ...progressView(lastViewedLessonId), resume } } }),
     ),
     http.get('/api/student/courses', () =>
       HttpResponse.json({ ok: true, data: { courses: catalog } }),
@@ -377,10 +379,20 @@ describe('CourseStructurePage', () => {
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
-    expect(screen.getByTestId('first-lesson-link')).toHaveAttribute(
-      'href',
-      '/my/courses/course-1/lessons/l1',
-    );
+    expect(cta).toHaveTextContent('Advanced Variables');
+    expect(cta).toHaveAttribute('title', `${pl.courseOverview.continueLearning}: Advanced Variables`);
+    expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
+  });
+
+  it('offers the server-provided first incomplete lesson beneath a different resume target', async () => {
+    mockPage({ lastViewedLessonId: 'l2', resume: {
+      target: { id: 'l2', name: 'Advanced Variables' },
+      firstIncomplete: { id: 'l1', name: 'Intro to Variables' }, isReview: false,
+    } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+    const link = await screen.findByTestId('first-lesson-link');
+    expect(link).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    expect(link).toHaveTextContent(pl.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
   });
 
   it('skips a completed last-viewed lesson and targets the first unfinished one', async () => {
@@ -390,6 +402,7 @@ describe('CourseStructurePage', () => {
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
+    expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
   });
 
   it('falls back to the first unfinished accessible lesson without a last viewed one', async () => {
@@ -440,12 +453,14 @@ describe('CourseStructurePage', () => {
         },
       ],
     };
-    mockPage({ body: completed, lastViewedLessonId: 'l2' });
+    mockPage({ body: completed, lastViewedLessonId: 'l2', resume: {
+      target: { id: 'l2', name: 'Advanced Variables' }, firstIncomplete: null, isReview: true,
+    } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveTextContent(pl.courseOverview.reviewAgain);
-    expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     const card = screen.getByTestId('course-progress-card');
     expect(within(card).getByTestId('completion-mark')).toHaveAccessibleName(
       pl.courseOverview.courseCompleted,
@@ -471,7 +486,7 @@ describe('CourseStructurePage', () => {
         })),
       })),
     };
-    mockPage({ body: locked });
+    mockPage({ body: locked, resume: { target: null, firstIncomplete: null, isReview: false } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     await screen.findByTestId('course-progress-card');

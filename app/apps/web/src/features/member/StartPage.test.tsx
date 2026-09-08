@@ -41,46 +41,13 @@ const okNavigation = (value: Partial<MemberNavigation> = {}) =>
     }),
   );
 
-const lesson = (id: string, name: string, completed: boolean) => ({
-  contentId: `content-${id}`,
-  lessonId: id,
-  name,
-  accessStatus: 'fully-accessible',
-  completionStatus: completed ? 'fully-completed' : 'not-completed',
-});
-
-const okStructures = (lessonsByCourse: Record<string, ReturnType<typeof lesson>[]>) =>
-  http.get('/api/student/courses/:courseId/structure', ({ params }) => {
-    const courseId = String(params.courseId);
-    return HttpResponse.json({
-      ok: true,
-      data: {
-        structure: {
-          courseId,
-          name: courseId,
-          accessStatus: 'fully-accessible',
-          completionStatus: 'partially-completed',
-          modules: [
-            {
-              id: `module-${courseId}`,
-              name: 'Moduł',
-              accessStatus: 'fully-accessible',
-              completionStatus: 'partially-completed',
-              chapters: [
-                {
-                  id: `chapter-${courseId}`,
-                  name: 'Rozdział',
-                  accessStatus: 'fully-accessible',
-                  completionStatus: 'partially-completed',
-                  lessons: lessonsByCourse[courseId] ?? [],
-                },
-              ],
-            },
-          ],
-        },
-      },
-    });
-  });
+const okResume = (courseId: string, id: string, name: string, isReview = false) =>
+  http.get('/api/student/progress', () => HttpResponse.json({
+    ok: true,
+    data: { progress: { courseId, completedLessonIds: [], resume: {
+      target: { id, name }, firstIncomplete: isReview ? null : { id, name }, isReview,
+    } } },
+  }));
 
 const okHomeFeed = () =>
   http.get('/api/member/home-feed', () =>
@@ -144,9 +111,7 @@ describe('StartPage', () => {
           },
         ],
       }),
-      okStructures({
-        c1: [lesson('l1', 'Wstęp', true), lesson('l2', 'Zmienne', false)],
-      }),
+      okResume('c1', 'l2', 'Zmienne'),
       noNotifications(),
     );
 
@@ -179,7 +144,7 @@ describe('StartPage', () => {
           },
         ],
       }),
-      okStructures({ c2: [lesson('l9', 'Selektory', true)] }),
+      okResume('c2', 'l9', 'Selektory', true),
       noNotifications(),
     );
 
@@ -260,7 +225,7 @@ describe('StartPage', () => {
           },
         ],
       }),
-      okStructures({ c1: [lesson('l1', 'Wstęp', false)] }),
+      okResume('c1', 'l1', 'Wstęp'),
       noNotifications(),
     );
 
@@ -350,7 +315,7 @@ describe('StartPage', () => {
           },
         ],
       }),
-      okStructures({ c1: [lesson('l1', 'Wstęp', true), lesson('l2', 'Zmienne', false)] }),
+      okResume('c1', 'l2', 'Zmienne'),
       okHomeFeed(),
       noNotifications(),
     );
@@ -378,7 +343,7 @@ describe('StartPage', () => {
           },
         ],
       }),
-      okStructures({ c1: [lesson('l1', 'Wstęp', false)] }),
+      okResume('c1', 'l1', 'Wstęp'),
       noNotifications(),
     );
 

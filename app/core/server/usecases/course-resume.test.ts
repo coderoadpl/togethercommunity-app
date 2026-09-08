@@ -5,7 +5,7 @@ import type {
   CourseStructureWithAccess,
 } from '#core/domain/index.js';
 
-import { continueLessonId } from './CourseRail.js';
+import { resolveCourseResume } from './course-resume.js';
 
 const lesson = (
   lessonId: string,
@@ -21,19 +21,19 @@ const lesson = (
 
 const structureOf = (lessons: CourseStructureLesson[]): CourseStructureWithAccess => ({
   courseId: 'c1',
-  name: 'Kurs',
+  name: 'Course',
   accessStatus: 'fully-accessible',
   completionStatus: 'partially-completed',
   modules: [
     {
       id: 'm1',
-      name: 'Moduł',
+      name: 'Module',
       accessStatus: 'fully-accessible',
       completionStatus: 'partially-completed',
       chapters: [
         {
           id: 'ch1',
-          name: 'Rozdział',
+          name: 'Chapter',
           accessStatus: 'fully-accessible',
           completionStatus: 'partially-completed',
           lessons,
@@ -43,11 +43,20 @@ const structureOf = (lessons: CourseStructureLesson[]): CourseStructureWithAcces
   ],
 });
 
-describe('continueLessonId', () => {
+describe('resolveCourseResume', () => {
+  it('starts with the first incomplete lesson without a visit', () => {
+    const structure = structureOf([lesson('l1', true), lesson('l2', false)]);
+    expect(resolveCourseResume(structure, undefined)).toEqual({
+      target: { id: 'l2', name: 'L2' },
+      firstIncomplete: { id: 'l2', name: 'L2' },
+      isReview: false,
+    });
+  });
+
   it('stays on the last viewed lesson while it is unfinished', () => {
     const structure = structureOf([lesson('l1', true), lesson('l2', false), lesson('l3', false)]);
 
-    expect(continueLessonId(structure, 'l2')).toBe('l2');
+    expect(resolveCourseResume(structure, 'l2').target?.id ?? null).toBe('l2');
   });
 
   it('moves forward from a completed last viewed lesson instead of back to the intro', () => {
@@ -57,7 +66,7 @@ describe('continueLessonId', () => {
       lesson('l3', false),
     ]);
 
-    expect(continueLessonId(structure, 'l2')).toBe('l3');
+    expect(resolveCourseResume(structure, 'l2').target?.id ?? null).toBe('l3');
   });
 
   it('skips completed lessons that follow the last viewed one', () => {
@@ -68,7 +77,7 @@ describe('continueLessonId', () => {
       lesson('l4', false),
     ]);
 
-    expect(continueLessonId(structure, 'l2')).toBe('l4');
+    expect(resolveCourseResume(structure, 'l2').target?.id ?? null).toBe('l4');
   });
 
   it('wraps to the first unfinished lesson when nothing unfinished follows', () => {
@@ -78,7 +87,7 @@ describe('continueLessonId', () => {
       lesson('l3', true),
     ]);
 
-    expect(continueLessonId(structure, 'l3')).toBe('l1');
+    expect(resolveCourseResume(structure, 'l3').target?.id ?? null).toBe('l1');
   });
 
   it('ignores lessons the member cannot open when moving forward', () => {
@@ -89,24 +98,26 @@ describe('continueLessonId', () => {
       lesson('l4', false),
     ]);
 
-    expect(continueLessonId(structure, 'l2')).toBe('l4');
+    expect(resolveCourseResume(structure, 'l2').target?.id ?? null).toBe('l4');
   });
 
   it('falls back to the first unfinished lesson when the last viewed one is unknown', () => {
     const structure = structureOf([lesson('l1', true), lesson('l2', false)]);
 
-    expect(continueLessonId(structure, 'gone')).toBe('l2');
+    expect(resolveCourseResume(structure, 'gone').target?.id ?? null).toBe('l2');
   });
 
-  it('offers the first lesson for review once the course is finished', () => {
+  it('offers the last visited lesson for review once the course is finished', () => {
     const structure = structureOf([lesson('l1', true), lesson('l2', true)]);
 
-    expect(continueLessonId(structure, 'l2')).toBe('l1');
+    expect(resolveCourseResume(structure, 'l2')).toEqual({
+      target: { id: 'l2', name: 'L2' }, firstIncomplete: null, isReview: true,
+    });
   });
 
   it('has nothing to continue without accessible lessons', () => {
     const structure = structureOf([lesson('l1', false, false)]);
 
-    expect(continueLessonId(structure, undefined)).toBeNull();
+    expect(resolveCourseResume(structure, undefined).target).toBeNull();
   });
 });

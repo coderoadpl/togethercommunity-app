@@ -41,6 +41,12 @@ afterEach(() => {
 });
 
 describe('ToastProvider', () => {
+  it('keeps the hidden live region to one pixel without extending the page', () => {
+    renderHarness();
+
+    expect(screen.getByRole('status')).toHaveStyle({ width: '1px', height: '1px', margin: '-1px' });
+  });
+
   it('keeps only the newest three toasts', async () => {
     renderHarness();
 

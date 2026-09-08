@@ -18,6 +18,7 @@ const pageScreenNames = new Set([
   'search',
   'my-courses',
   'course',
+  'course-long-curriculum',
   'my-products',
   'product-stub',
   'account',

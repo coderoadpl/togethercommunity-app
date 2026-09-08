@@ -1802,7 +1802,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       authorUserId: wygaslyUserId,
       authorDisplay: 'Kursant Wygasły',
       authorIsStaff: false,
-      body: 'Mała podpowiedź dla innych: przykłady z tej lekcji najwygodniej testować w konsoli przeglądarki (F12 → Console). Od razu widać, jak const blokuje ponowne przypisanie wartości.',
+      body: 'Mała podpowiedź dla innych: przykłady z tej lekcji najwygodniej testować w konsoli przeglądarki (F12 → Console). Od razu widać, jak const blokuje ponowne przypisanie wartości.\nMateriały: https://courses.example.org/guide?topic=const&level=1.',
       createdAt: relativeIso(-20),
       deletedAt: null,
     },

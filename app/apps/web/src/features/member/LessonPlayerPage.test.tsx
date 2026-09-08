@@ -197,6 +197,24 @@ describe('LessonPlayerPage', () => {
     );
   });
 
+  it('uses the in-shell skeleton while lesson data loads', async () => {
+    let releaseResponse: () => void = () => undefined;
+    const response = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    server.use(okStructure(), okProgress(), http.get('/api/student/lessons/:lessonId', async () => {
+      await response;
+      return HttpResponse.json({ ok: true, data: { lesson: lesson(allBlocks), authenticated: true } });
+    }));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const loading = screen.getByTestId('course-loading');
+    expect(within(loading).getByRole('status', { name: pl.lesson.loading })).toHaveAttribute('aria-busy', 'true');
+    expect(within(loading).getByRole('heading', { level: 1, name: pl.lesson.loading })).toBeInTheDocument();
+    expect(screen.queryByTestId('brand-loader-mark')).not.toBeInTheDocument();
+
+    releaseResponse();
+    expect(await screen.findByTestId('lesson-video')).toBeInTheDocument();
+  });
+
   it('renders every typed block', async () => {
     server.use(okStructure(), okProgress(), okLesson(allBlocks));
     const { container } = await renderPage(

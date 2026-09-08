@@ -108,7 +108,7 @@ try {
             await waitForPaint(page);
           }
         } catch (error) { failure = String(error); }
-        await page.screenshot({ path: join(shots, `${file}.png`), animations: 'disabled', caret: 'hide', scale: 'css', mask: spec.mask?.(page) ?? [] });
+        await page.screenshot({ path: join(shots, `${file}.png`), fullPage: spec.fullPage ?? false, animations: 'disabled', caret: 'hide', scale: 'css', mask: spec.mask?.(page) ?? [] });
         const size = (await stat(join(shots, `${file}.png`))).size;
         const minBytes = spec.minBytes ?? 10 * 1024;
         if (size <= minBytes) failure = [failure, `${file} is only ${size} bytes (expected > ${minBytes})`].filter(Boolean).join('; ');

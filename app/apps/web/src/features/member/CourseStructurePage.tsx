@@ -21,6 +21,7 @@ import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseR
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
 import { focusLesson } from './course-tree-state.js';
 import { CourseTree } from './CourseTree.js';
+import { CourseLoading } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyCourseIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
 import { PublicCourseStructurePage } from './PublicCourseStructurePage.js';
@@ -81,18 +82,10 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
 };
 
 export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
-  const t = useTranslations();
   const viewer = useViewerKind();
 
   if (viewer === 'pending') {
-    return (
-      <MemberSurface
-        title={t.student.myCourses}
-        eyebrow={t.student.courseEyebrow}
-        width="wide"
-        state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
-      />
-    );
+    return <CourseLoading lesson={false} />;
   }
 
   return viewer === 'anonymous' ? (
@@ -127,14 +120,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   }, [navigate, unauthorized]);
 
   if (structure.isPending) {
-    return (
-      <MemberSurface
-        title={t.student.myCourses}
-        eyebrow={t.student.courseEyebrow}
-        width="wide"
-        state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
-      />
-    );
+    return <CourseLoading lesson={false} />;
   }
 
   if (unauthorized) return null;

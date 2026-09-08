@@ -167,6 +167,26 @@
         }
       }
     },
+    "studentProgress:[\"course-acme\"]": {
+      "ok": true,
+      "value": {
+        "progress": {
+          "completedLessonIds": [],
+          "courseId": "course-acme",
+          "resume": {
+            "firstIncomplete": {
+              "id": "lesson-acme-intro",
+              "name": "Lekcja wprowadzająca"
+            },
+            "isReview": false,
+            "target": {
+              "id": "lesson-acme-intro",
+              "name": "Lekcja wprowadzająca"
+            }
+          }
+        }
+      }
+    },
     "unreadMessageCount:[]": {
       "ok": true,
       "value": {

@@ -25,7 +25,9 @@ provenance trail lives in the private notes.
   and seeds it, boots the real server (`entry.node.ts`) on an ephemeral port and
   drives health → sign-in → products → simulated purchase → magic-link sign-in
   through the CLI, asserting taxonomy exit codes (including unauthorized =
-  exit 3). Assumes `pnpm run db:up`. Runs in ~5s.
+  exit 3), then learning, M2M enrollment, community, messaging, spaces, events,
+  and anonymous public flows. It also verifies canonical reseeding.
+  Assumes `pnpm run db:up`.
 
 **Done = `check` green AND `smoke` green.** Static-green is not done; the app
 must actually run. Do not weaken lint rules to make either green.
@@ -109,7 +111,7 @@ patterns across every tracked file. An exception needs a line in
   words; implementing agents work from specs only and never open those sources.
   No naming derived from those tools.
 
-## Layer rules (enforced, but know them anyway)
+## Layer rules and enforcement boundaries
 
 - `core/**` is pure TypeScript: no hono, react, drizzle, better-auth, pg, commander.
 - `core/domain` depends on zod only. `core/server` = use-cases + ports.
@@ -117,7 +119,13 @@ patterns across every tracked file. An exception needs a line in
   `core/client` = the only way clients make request/response HTTP calls.
 - `apps/web/src/notifications-stream.ts` is the one streaming exception: it uses
   native `EventSource` directly for SSE notifications.
-- `adapters/**` implement ports; only `apps/server/src/composition.ts` instantiates them.
+- `adapters/**` implement server and client ports.
+  `apps/server/src/composition.ts` wires runtime server adapters and delegates
+  realtime construction to `realtime-transport.ts`. Auth client adapters are
+  constructed in the web API module and CLI context; operational scripts also
+  compose adapters. Import gates do not enforce a sole construction site.
+- The DB factory retains `node-postgres` and `neon-http` branches, but server
+  environment validation accepts only `node-postgres` for interactive transactions.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never
   `core/server`, never `adapters/db`.
 - `@vercel/*` / `@neondatabase/*` only inside `adapters/` and the reviewed
@@ -128,8 +136,13 @@ patterns across every tracked file. An exception needs a line in
   `internal`; do not catch them separately in each use-case.
   New error kinds go into `ERROR_CODES` in `core/domain/errors.ts` and get an
   HTTP status + exit code mapping in `core/contract/http-status.ts` (exhaustive).
-- Every tenant-scoped use-case takes `ctx: { identity }` first; every
-  tenant-scoped repository method requires `tenantId`.
+- Authenticated application entry points use `ctx: Ctx` and the capability
+  matrix in `core/domain/authorization.ts` through `core/server/authorize.ts`.
+  Public checkout, terms-consent helpers, and Stripe webhook processing accept
+  explicit tenant inputs without `Ctx`. The permission inventory classifies
+  exported `Ctx` functions, not every function under `core/server/usecases/`.
+  Tenant-scoped repository methods require `tenantId`; platform exceptions are
+  recorded in `scripts/tenant-scope-check.ts`.
 
 ### Lifecycle data
 
@@ -137,6 +150,11 @@ Lifecycle-bearing records use a current-state projection row plus append-only
 events by default. Projections serve lists, filters, and deduplication; events
 are the immutable ordered history. Event rows are never updated or deleted
 except by an explicit retention purge.
+
+This is the lifecycle requirement, not a verified universal property: grant
+history currently deduplicates by resulting window, and member erasure updates
+stored email-event metadata in place (`adapters/db/repositories.ts`).
+`SpaceEvent` is a mutable calendar entity, not an append-only lifecycle event.
 
 Scheduler run records are operational telemetry, not lifecycle projections.
 A run row is finalized once from `running` to `completed` or `failed`; its

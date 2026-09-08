@@ -265,6 +265,8 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('member-menu-sheet').waitFor(visible);
       await page.getByTestId('sidebar-course-course-js').waitFor(visible);
       await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
+      // The sheet covers its trigger, so the click position can hover an account action.
+      await page.mouse.move(0, 0);
     },
   },
   {

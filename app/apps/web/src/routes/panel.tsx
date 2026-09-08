@@ -3,7 +3,7 @@ import { useSearch } from '@tanstack/react-router';
 import { DashboardPanel } from '../features/home/DashboardPanel.js';
 import { usePanelContext } from '../features/home/panel-context.js';
 import { NotificationsPage } from '../features/member/NotificationsPage.js';
-import { StudioChecklistDock } from '../features/onboarding/index.js';
+import { StudioChecklistDock, StudioChecklistPanel } from '../features/onboarding/index.js';
 
 export { PanelLayout } from '../features/home/PanelLayout.js';
 export {
@@ -71,7 +71,7 @@ export const PanelIndexRoute = () => {
   const { tenant, email } = usePanelContext();
   return (
     <>
-      <DashboardPanel />
+      <DashboardPanel aside={<StudioChecklistPanel scope={`${tenant.id}:${email}`} />} />
       <StudioChecklistDock scope={`${tenant.id}:${email}`} />
     </>
   );

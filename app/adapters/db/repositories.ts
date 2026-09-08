@@ -2617,7 +2617,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         legacyId: member.legacyId,
         emailHmac: emailHmac.compute(tenantId, member.email),
         erasedAt: input.deletedAt,
-      }).onConflictDoNothing({ target: erasedMemberImports.memberId });
+      }).onConflictDoNothing({ target: [erasedMemberImports.tenantId, erasedMemberImports.memberId] });
 
       await tx.update(consents).set({ retentionStartedAt: input.deletedAt }).where(and(
         eq(consents.tenantId, tenantId),
@@ -3718,14 +3718,15 @@ export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentE
             leaseExpiresAt: lease.leaseExpiresAt,
           })
           .onConflictDoUpdate({
-            target: processedPaymentEvents.id,
+            target: [processedPaymentEvents.tenantId, processedPaymentEvents.id],
             set: {
               status: 'processing',
               workerId: lease.workerId,
               claimedAt: lease.now,
               leaseExpiresAt: lease.leaseExpiresAt,
             },
-            setWhere: sql`${processedPaymentEvents.status} = 'processing'
+            setWhere: sql`${processedPaymentEvents.tenantId} = ${tenantId}
+              and ${processedPaymentEvents.status} = 'processing'
               and ${processedPaymentEvents.leaseExpiresAt} <= ${lease.now}`,
           })
           .returning({ id: processedPaymentEvents.id });

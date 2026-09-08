@@ -4,9 +4,9 @@ import type { Theme } from '@mui/material/styles';
 
 import { contrastRatio } from './theme-branding.js';
 import {
+  BORDER_INPUT,
   createThemeForMode,
   MEMBER_BACKGROUND,
-  MEMBER_BORDER_INPUT,
   type ResolvedColorScheme,
 } from './theme.js';
 
@@ -25,7 +25,8 @@ const memberThemes = {
 };
 
 const SCHEMES: ResolvedColorScheme[] = ['light', 'dark'];
-const CONTROL_MIN_HEIGHT = 48;
+const MEMBER_CONTROL_MIN_HEIGHT = 48;
+const STUDIO_CONTROL_MIN_HEIGHT = 44;
 const TOUCH_TARGET_MIN = 44;
 
 const themeFor = (scheme: ResolvedColorScheme) => themes[scheme];
@@ -36,6 +37,11 @@ const rootStyleOf = (theme: Theme, component: 'MuiButton' | 'MuiOutlinedInput' |
 };
 
 const inputStyleOf = (theme: Theme) => theme.components?.MuiOutlinedInput?.styleOverrides?.input;
+
+const buttonVariantStyleOf = (theme: Theme, variant: 'contained' | 'outlined' | 'text') => {
+  const override = theme.components?.MuiButton?.styleOverrides?.[variant];
+  return typeof override === 'function' ? override({ theme, ownerState: {} }) : override;
+};
 
 describe('Together theme contrast', () => {
   it('uses neutral primary actions and reserves ember for the checkout CTA and focus ring', () => {
@@ -142,7 +148,7 @@ describe('Together theme contrast', () => {
 describe('member surface foundation', () => {
   it.each(SCHEMES)('gives the %s member page the sign-in surface', (scheme) => {
     expect(memberThemes[scheme].palette.background.default).toBe(MEMBER_BACKGROUND[scheme]);
-    expect(memberThemes[scheme].borderInput).toBe(MEMBER_BORDER_INPUT[scheme]);
+    expect(memberThemes[scheme].borderInput).toBe(BORDER_INPUT[scheme]);
   });
 
   it.each(SCHEMES)('perceives the %s input outline against surface and page', (scheme) => {
@@ -161,8 +167,35 @@ describe('member surface foundation', () => {
 
   it.each(SCHEMES)('sizes every %s member button, input and icon target for touch', (scheme) => {
     const theme = memberThemes[scheme];
-    expect(rootStyleOf(theme, 'MuiButton')).toMatchObject({ minHeight: CONTROL_MIN_HEIGHT });
-    expect(rootStyleOf(theme, 'MuiOutlinedInput')).toMatchObject({ minHeight: CONTROL_MIN_HEIGHT });
+    expect(rootStyleOf(theme, 'MuiButton')).toMatchObject({ minHeight: MEMBER_CONTROL_MIN_HEIGHT });
+    expect(rootStyleOf(theme, 'MuiOutlinedInput')).toMatchObject({ minHeight: MEMBER_CONTROL_MIN_HEIGHT });
+    expect(rootStyleOf(theme, 'MuiIconButton')).toMatchObject({
+      minWidth: TOUCH_TARGET_MIN,
+      minHeight: TOUCH_TARGET_MIN,
+    });
+    expect(inputStyleOf(theme)).toMatchObject({ fontSize: '1rem' });
+  });
+});
+
+describe('studio surface foundation', () => {
+  it.each(SCHEMES)('keeps the %s creator page off the member palette', (scheme) => {
+    const theme = themeFor(scheme);
+    expect(theme.palette.background.default).not.toBe(MEMBER_BACKGROUND[scheme]);
+    expect(rootStyleOf(theme, 'MuiButton')).toMatchObject({ padding: '0.5rem 1rem' });
+  });
+
+  it.each(SCHEMES)('perceives the %s studio input outline against surface and page', (scheme) => {
+    const theme = themeFor(scheme);
+    const border = theme.borderInput ?? '';
+    expect(border).toBe(BORDER_INPUT[scheme]);
+    expect(contrastRatio(border, theme.palette.background.paper)).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(border, theme.palette.background.default)).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(SCHEMES)('sizes every %s studio button, input and icon target for touch', (scheme) => {
+    const theme = themeFor(scheme);
+    expect(rootStyleOf(theme, 'MuiButton')).toMatchObject({ minHeight: STUDIO_CONTROL_MIN_HEIGHT });
+    expect(rootStyleOf(theme, 'MuiOutlinedInput')).toMatchObject({ minHeight: STUDIO_CONTROL_MIN_HEIGHT });
     expect(rootStyleOf(theme, 'MuiIconButton')).toMatchObject({
       minWidth: TOUCH_TARGET_MIN,
       minHeight: TOUCH_TARGET_MIN,
@@ -170,10 +203,19 @@ describe('member surface foundation', () => {
     expect(inputStyleOf(theme)).toMatchObject({ fontSize: '1rem' });
   });
 
-  it.each(SCHEMES)('leaves the %s creator panel on the denser studio controls', (scheme) => {
+  it.each(SCHEMES)('paints %s destructive buttons in the error colour in every variant', (scheme) => {
     const theme = themeFor(scheme);
-    expect(rootStyleOf(theme, 'MuiButton')).not.toMatchObject({ minHeight: CONTROL_MIN_HEIGHT });
-    expect(inputStyleOf(theme)).toMatchObject({ fontSize: '0.875rem' });
-    expect(theme.palette.background.default).not.toBe(MEMBER_BACKGROUND[scheme]);
+    const destructive = theme.palette.error.main;
+
+    expect(buttonVariantStyleOf(theme, 'text')).toMatchObject({
+      '&.MuiButton-colorError': { color: destructive },
+    });
+    expect(buttonVariantStyleOf(theme, 'outlined')).toMatchObject({
+      '&.MuiButton-colorError': { color: destructive },
+    });
+    expect(buttonVariantStyleOf(theme, 'contained')).toMatchObject({
+      '&.MuiButton-colorError': { backgroundColor: destructive },
+    });
+    expect(contrastRatio(destructive, theme.palette.background.paper)).toBeGreaterThanOrEqual(4.5);
   });
 });

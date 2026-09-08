@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const pixelmatchCli = require.resolve('pixelmatch/bin/pixelmatch');
@@ -27,6 +27,7 @@ interface ComparePngOptions {
   currentPath: string;
   diffPath: string;
   missingBaselineReason: string;
+  onCompared?: (countedPixels: number) => void;
 }
 
 export const comparePng = ({
@@ -35,6 +36,7 @@ export const comparePng = ({
   currentPath,
   diffPath,
   missingBaselineReason,
+  onCompared,
 }: ComparePngOptions): PngComparisonFailure | null => {
   if (!existsSync(baselinePath)) return { file, reason: missingBaselineReason };
 
@@ -47,9 +49,17 @@ export const comparePng = ({
     };
   }
 
+  if (readFileSync(baselinePath).equals(readFileSync(currentPath))) {
+    rmSync(diffPath, { force: true });
+    onCompared?.(0);
+    return null;
+  }
+
   const result = spawnSync(
     process.execPath,
     [
+      // Node 24 can deadlock joining compiler workers when the CLI calls process.exit.
+      '--jitless',
       pixelmatchCli,
       baselinePath,
       currentPath,
@@ -65,6 +75,7 @@ export const comparePng = ({
     throw new Error(result.stderr || result.stdout || `pixelmatch exited ${String(result.status)}`);
   }
   const mismatched = Number(match[1]);
+  onCompared?.(mismatched);
   if (mismatched <= maxDiffPixels) return null;
   const ratio = mismatched / (baseline.width * baseline.height);
   return {

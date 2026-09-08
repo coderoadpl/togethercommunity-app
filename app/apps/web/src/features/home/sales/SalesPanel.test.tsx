@@ -33,9 +33,13 @@ const renderOrderDetail = async () => {
 
 describe('SalesPanel', () => {
   it('renders orders, applies a server filter, and exports all filtered rows without page parameters', async () => {
+    const user = userEvent.setup();
     const listQueries: string[] = [];
     const exportQueries: string[] = [];
     server.use(
+      http.get('/api/orders/reconciliation', () =>
+        HttpResponse.json({ ok: true, data: { rows: [] } }),
+      ),
       http.get('/api/products', () =>
         HttpResponse.json({
           ok: true,
@@ -122,6 +126,7 @@ describe('SalesPanel', () => {
       routeTree: rootRoute.addChildren([salesRoute]),
       history: createMemoryHistory({ initialEntries: ['/panel/sales'] }),
     });
+    await router.load();
     renderWithProviders(<RouterProvider router={router} />);
 
     const salesRow = await screen.findByTestId('sales-row');
@@ -130,17 +135,17 @@ describe('SalesPanel', () => {
     expect(screen.getByRole('link', { name: 'Ada' }))
       .toHaveAttribute('href', '/panel/members/m1');
 
-    await userEvent.click(screen.getByLabelText(pl.sales.status));
-    await userEvent.click(await screen.findByRole('option', { name: pl.sales.paid }));
+    await user.click(screen.getByLabelText(pl.sales.status));
+    await user.click(await screen.findByRole('option', { name: pl.sales.paid }));
     await waitFor(() => expect(listQueries.some((query) => query.includes('status=paid'))).toBe(true));
 
-    await userEvent.click(screen.getByLabelText(pl.sales.coupon));
-    await userEvent.click(await screen.findByRole('option', { name: 'PARTNER20' }));
+    await user.click(screen.getByLabelText(pl.sales.coupon));
+    await user.click(await screen.findByRole('option', { name: 'PARTNER20' }));
     await waitFor(() =>
       expect(listQueries.some((query) => query.includes('couponId=coupon-1'))).toBe(true),
     );
 
-    await userEvent.click(screen.getByTestId('sales-export-csv'));
+    await user.click(screen.getByTestId('sales-export-csv'));
     await waitFor(() => expect(exportQueries).toHaveLength(1));
     expect(exportQueries[0]).toContain('format=csv');
     expect(exportQueries[0]).toContain('status=paid');

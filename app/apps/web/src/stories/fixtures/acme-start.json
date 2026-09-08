@@ -1,0 +1,187 @@
+{
+  "calls": {
+    "listUpcomingEvents:[{\"limit\":20}]": {
+      "ok": true,
+      "value": {
+        "events": []
+      }
+    },
+    "listUpcomingEvents:[{\"limit\":4}]": {
+      "ok": true,
+      "value": {
+        "events": []
+      }
+    },
+    "me:[]": {
+      "ok": true,
+      "value": {
+        "avatarUrl": null,
+        "email": "kontakt+smoke-member@togethercommunity.app",
+        "emailVerified": true,
+        "impersonation": null,
+        "name": "Smoke Member",
+        "tenant": {
+          "banned": false,
+          "displayName": "Smoke Member",
+          "dmOptOut": false,
+          "id": "tenant-acme",
+          "language": null,
+          "memberId": "member-acme-smoke",
+          "name": "Acme Courses",
+          "slug": "acme",
+          "staffRole": null,
+          "videoAutoplay": null
+        },
+        "userId": "fixture-user-f4c8ea3c4b395b33"
+      }
+    },
+    "memberHomeFeed:[{\"limit\":10}]": {
+      "ok": true,
+      "value": {
+        "feed": {
+          "items": [],
+          "nextCursor": null
+        }
+      }
+    },
+    "memberNavigation:[]": {
+      "ok": true,
+      "value": {
+        "navigation": {
+          "courses": [
+            {
+              "accessibleLessonCount": 1,
+              "completedLessonCount": 0,
+              "courseId": "course-acme",
+              "courseName": "Acme Course",
+              "lastActivityAt": null
+            }
+          ],
+          "directMessagesEnabled": true,
+          "lockedSpaces": [],
+          "spaces": []
+        }
+      }
+    },
+    "publicOffer:[]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "",
+            "id": "product-acme-course",
+            "marketingConsents": [],
+            "priceCents": 9900,
+            "prices": [
+              {
+                "amountCents": 9900,
+                "currency": "PLN",
+                "id": "price-product-acme-course",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "acme-course",
+            "title": "Acme Course",
+            "type": "course"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": null,
+            "faviconUrl": null,
+            "logoDarkUrl": null,
+            "logoUrl": null
+          },
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Acme Courses",
+          "slug": "acme",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    },
+    "studentCourses:[]": {
+      "ok": true,
+      "value": {
+        "courses": [
+          {
+            "createdAt": "2026-07-01T12:01:10.000Z",
+            "description": "Kurs demonstracyjny używany przez smoke test.",
+            "id": "course-acme",
+            "imageUrl": null,
+            "legacyId": null,
+            "moduleOrder": [
+              "module-acme-1"
+            ],
+            "name": "Acme Course",
+            "publiclyVisible": false,
+            "tenantId": "tenant-acme"
+          }
+        ]
+      }
+    },
+    "studentCourseStructure:[\"course-acme\"]": {
+      "ok": true,
+      "value": {
+        "structure": {
+          "accessStatus": "fully-accessible",
+          "completionStatus": "not-completed",
+          "courseId": "course-acme",
+          "modules": [
+            {
+              "accessStatus": "fully-accessible",
+              "chapters": [
+                {
+                  "accessStatus": "fully-accessible",
+                  "completionStatus": "not-completed",
+                  "id": "chapter-acme-1",
+                  "lessons": [
+                    {
+                      "accessStatus": "fully-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-acme-intro",
+                      "durationMinutes": 4,
+                      "lessonId": "lesson-acme-intro",
+                      "name": "Lekcja wprowadzająca"
+                    }
+                  ],
+                  "name": "Wprowadzenie"
+                }
+              ],
+              "completionStatus": "not-completed",
+              "id": "module-acme-1",
+              "name": "Część 1 - Moduł wprowadzający"
+            }
+          ],
+          "name": "Acme Course"
+        }
+      }
+    },
+    "unreadMessageCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    },
+    "unreadNotificationCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    }
+  },
+  "principal": "kontakt+smoke-member@togethercommunity.app",
+  "route": "/start",
+  "scenario": "acme-start",
+  "tenant": "acme"
+}

@@ -280,7 +280,7 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<EmailTab />);
 
-    expect(await screen.findByText(/Adres nadawcy musi należeć do domeny tenant\.test/)).toBeInTheDocument();
+    expect(await screen.findByText(/Adres nadawcy musi należeć do domeny tenant\.test/, {}, { timeout: 5_000 })).toBeInTheDocument();
     expect(screen.getByLabelText('Zweryfikowana domena lub adres')).toHaveValue('tenant.test');
     expect(screen.getByText('Sprawdzenie nastąpi po zapisaniu nadawcy')).toBeInTheDocument();
     expect(screen.getByText(/Domena jest już zweryfikowana w SES/)).toBeInTheDocument();
@@ -341,6 +341,6 @@ describe('email transport wizard', () => {
     );
     renderWithProviders(<EmailTab />);
 
-    expect(await screen.findByText(/Dodaj uprawnienie ses:GetIdentityDkimAttributes/)).toBeInTheDocument();
+    expect(await screen.findByText(/Dodaj uprawnienie ses:GetIdentityDkimAttributes/, {}, { timeout: 5_000 })).toBeInTheDocument();
   }, 15_000);
 });

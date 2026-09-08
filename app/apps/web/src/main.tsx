@@ -124,6 +124,8 @@ import {
   SpaceFeedRoute,
   SpaceThreadRoute,
   StartRoute,
+  validateLessonSearch,
+  validateAccountSearch,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
@@ -196,10 +198,6 @@ const courseStructureRoute = createRoute({
   path: MEMBER_ROUTE_PATHS.course,
   component: CourseStructureRoute,
 });
-const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {
-  const thread = search['thread'];
-  return typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {};
-};
 const lessonPlayerRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: MEMBER_ROUTE_PATHS.lesson,
@@ -224,13 +222,7 @@ const resetPasswordRoute = createRoute({
 const accountRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/account',
-  validateSearch: (search: Record<string, unknown>) => ({
-    tab: search['tab'] === 'security'
-      || search['tab'] === 'notifications'
-      || search['tab'] === 'playback'
-      ? search['tab']
-      : 'profile',
-  }),
+  validateSearch: validateAccountSearch,
   component: MemberAccountRoute,
 });
 const validateNotificationsSearch = (search: Record<string, unknown>): { filter?: 'unread' } =>

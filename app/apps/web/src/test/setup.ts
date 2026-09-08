@@ -1,9 +1,12 @@
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach } from 'vitest';
 
 import { server } from './server.js';
+
+// Dependent query renders can exceed the one-second default during the serial gate.
+configure({ asyncUtilTimeout: 5_000 });
 
 const storage = new Map<string, string>();
 const localStorageStub = {

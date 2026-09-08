@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "FSL-1.1-ALv2",
-  "description": "Together — source-available platform for creators: digital product sales, marketing, course delivery and community in one self-hostable app",
+  "description": "Together \u2014 source-available platform for creators: digital product sales, marketing, course delivery and community in one self-hostable app",
   "imports": {
     "#core/*": "./core/*",
     "#adapters/*": "./adapters/*"
@@ -57,8 +57,8 @@
     "shots:poc": "tsx scripts/poc-screenshots.ts",
     "shots:parity": "tsx scripts/parity-screenshots.ts",
     "shots:themes": "tsx scripts/theme-screenshots.ts",
-    "visual": "tsx scripts/visual-screenshots.ts",
-    "visual:update": "tsx scripts/visual-screenshots.ts --update",
+    "visual": "pnpm run storybook:build && tsx scripts/storybook-capture.ts",
+    "visual:update": "pnpm run storybook:build && tsx scripts/storybook-capture.ts --update",
     "import": "tsx scripts/import.ts",
     "e2e:auth": "tsx scripts/auth-e2e.ts",
     "e2e:two-factor": "tsx scripts/two-factor-e2e.ts",
@@ -77,7 +77,10 @@
     "storybook": "storybook dev -p 9009 --no-open",
     "storybook:build": "storybook build -o storybook-static",
     "lock-lint": "tsx scripts/lock-lint.ts",
-    "migration-lint": "tsx scripts/migration-lint.ts"
+    "migration-lint": "tsx scripts/migration-lint.ts",
+    "visual:app": "tsx scripts/visual-screenshots.ts",
+    "fixtures:record": "tsx scripts/fixtures-record.ts",
+    "fixtures:check": "tsx scripts/fixtures-check.ts"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1095.0",

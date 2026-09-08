@@ -233,7 +233,7 @@ const renderProductsPanel = async (
 };
 
 describe('ProductsPanel', () => {
-  it('lists products, creates a product without the legacy price field, and publishes a draft', async () => {
+  it('lists products and publishes a draft after confirmation', async () => {
     await renderProductsPanel();
 
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();
@@ -252,8 +252,11 @@ describe('ProductsPanel', () => {
       expect(screen.getByText(pl.products.published)).toBeInTheDocument();
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
 
-    await userEvent.click(screen.getByRole('link', { name: `+ ${pl.common.add}` }));
+  it('opens product creation from the list and continues at the price editor', async () => {
+    await renderProductsPanel();
+    await userEvent.click(await screen.findByRole('link', { name: `+ ${pl.common.add}` }));
     await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'New Workshop');
     await userEvent.type(screen.getByLabelText(pl.common.description), 'Hands-on session');
     await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
@@ -263,15 +266,18 @@ describe('ProductsPanel', () => {
   });
 
   it.each(PRODUCT_TYPES)('creates a %s product from the panel', async (type) => {
+    const user = userEvent.setup();
     const { created } = await renderProductsPanel([], '/panel/products/new');
 
-    await userEvent.click(await screen.findByRole('combobox', { name: pl.products.typeLabel }));
-    await userEvent.click(screen.getByRole('option', { name: productTypeLabel(type, pl) }));
-    await userEvent.type(screen.getByLabelText(pl.products.titleLabel), 'Creator Club');
-    await userEvent.type(screen.getByLabelText(pl.products.coverUrlLabel), 'https://cdn.test/cover.jpg');
+    await user.click(await screen.findByRole('combobox', { name: pl.products.typeLabel }));
+    await user.click(screen.getByRole('option', { name: productTypeLabel(type, pl) }));
+    await user.type(screen.getByLabelText(pl.products.titleLabel), 'Creator Club');
+    await user.click(screen.getByLabelText(pl.products.coverUrlLabel));
+    await user.paste('https://cdn.test/cover.jpg');
     expect(screen.getByTestId('product-cover-preview')).toHaveAttribute('src', 'https://cdn.test/cover.jpg');
-    await userEvent.type(screen.getByLabelText(pl.common.description), '<strong>Members only</strong>');
-    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
+    await user.click(screen.getByLabelText(pl.common.description));
+    await user.paste('<strong>Members only</strong>');
+    await user.click(screen.getByRole('button', { name: pl.products.create }));
 
     expect(await screen.findByRole('heading', { name: 'Creator Club', level: 1 })).toBeInTheDocument();
     expect(created).toEqual([

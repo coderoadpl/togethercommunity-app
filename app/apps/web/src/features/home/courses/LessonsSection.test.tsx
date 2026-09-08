@@ -218,6 +218,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
   });
 
   it('adds a video block, reorders it and creates the lesson', async () => {
+    const user = userEvent.setup();
     let lessons: CourseLesson[] = [];
     let submitted: LessonBlock[] = [];
 
@@ -252,7 +253,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
     const embedUrlInput = await screen.findByLabelText(pl.lessons.embedUrlLabel);
-    await userEvent.type(embedUrlInput, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    await user.click(embedUrlInput);
+    await user.paste('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
     expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual([
       pl.lessons.typeVideo,
@@ -521,6 +523,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
   });
 
   it('inserts markup via the toolbar and renders a sanitized live preview', async () => {
+    const user = userEvent.setup();
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
 
     const { container } = await renderLessonsAt('/panel/lessons/new');
@@ -530,7 +533,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
 
     const editor = await screen.findByLabelText(pl.lessons.htmlLabel);
-    await userEvent.type(editor, '<p>Safe body</p><script>window.__xss=1</script>');
+    await user.click(editor);
+    await user.paste('<p>Safe body</p><script>window.__xss=1</script>');
 
     await userEvent.click(screen.getByRole('button', { name: pl.htmlEditor.toolbarBold }));
     expect(editor).toHaveValue(
@@ -547,6 +551,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
   });
 
   it('previews a link block only once its URL passes the block schema', async () => {
+    const user = userEvent.setup();
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
 
     await renderLessonsAt('/panel/lessons/new');
@@ -559,11 +564,12 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     expect(urlField).toHaveAccessibleName(pl.lessons.linkUrlLabel);
     expect(urlField).toHaveAccessibleDescription(pl.lessons.technicalFieldHint({ field: 'url' }));
 
-    await userEvent.type(urlField, 'javascript:alert(1)');
+    await user.click(urlField);
+    await user.paste('javascript:alert(1)');
     expect(screen.queryByTestId('lesson-links')).not.toBeInTheDocument();
 
-    await userEvent.clear(urlField);
-    await userEvent.type(urlField, 'https://github.com/acme-courses/task-1');
+    await user.clear(urlField);
+    await user.paste('https://github.com/acme-courses/task-1');
     expect(await screen.findByTestId('lesson-links')).toBeInTheDocument();
     expect(screen.getByText(pl.lessons.blockPreviewLabel)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /github\.com/ })).toHaveAttribute(
@@ -573,6 +579,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
   });
 
   it('shows the sandbox preview in full as soon as the block editor holds one', async () => {
+    const user = userEvent.setup();
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
 
     await renderLessonsAt('/panel/lessons/new');
@@ -581,10 +588,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeLink }));
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
 
-    await userEvent.type(
-      await screen.findByLabelText(pl.lessons.linkUrlLabel),
-      'https://codesandbox.io/s/abc123',
-    );
+    await user.click(await screen.findByLabelText(pl.lessons.linkUrlLabel));
+    await user.paste('https://codesandbox.io/s/abc123');
     await userEvent.type(await screen.findByLabelText(pl.lessons.linkDescriptionLabel), 'Zadanie');
 
     const sandbox = await screen.findByTestId('lesson-sandbox');
@@ -597,6 +602,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
   });
 
   it('submits the collapsed flag from the embed block checkbox and collapses the preview', async () => {
+    const user = userEvent.setup();
     let submitted: LessonBlock[] = [];
     server.use(
       http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
@@ -626,10 +632,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.click(screen.getByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-    await userEvent.type(
-      await screen.findByLabelText(pl.lessons.embedUrlLabel),
-      'https://codesandbox.io/s/alert-demo',
-    );
+    await user.click(await screen.findByLabelText(pl.lessons.embedUrlLabel));
+    await user.paste('https://codesandbox.io/s/alert-demo');
 
     expect(await screen.findByTestId('lesson-sandbox')).toBeInTheDocument();
 

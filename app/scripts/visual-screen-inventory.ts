@@ -246,6 +246,10 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('sidebar-course-course-js').waitFor(visible);
       await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
     },
+    settled: async (page) => {
+      // The opening sheet moves its sign-out row under the menu trigger's pointer position.
+      await page.mouse.move(0, 0);
+    },
   },
   {
     name: 'search',

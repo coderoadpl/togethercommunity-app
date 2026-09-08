@@ -24,7 +24,7 @@ Platforma typu Circle.so łącząca w jednym narzędziu cztery filary pracy twó
 
 **Trzy wartości produktu (w tej kolejności): niezawodność, uniwersalność, cena.**
 
-**Pozycjonowanie — cena jest hakiem, BYO jest umożliwiaczem:** nie sprzedajemy ideologii „own your data" (grupa, którą to obchodzi, jest za mała). Sprzedajemy cenę, przy której nikt nie rezygnuje z platformy, gdy sprzedaż siada. BYO storage nie jest głównym argumentem sprzedażowym — jest tym, co czyni niską cenę fizycznie możliwą (nie da się hostować wideo w tej cenie). Ścieżka użytkownika: przychodzi po cenę → odkrywa, że wideo wkleja się linkiem z YouTube → dla większości to w zupełności wystarcza.
+**Pozycjonowanie — cena jest hakiem, BYO jest drugim argumentem (aktualizacja 2026-09-08):** sprzedajemy cenę, przy której nikt nie rezygnuje z platformy, gdy sprzedaż siada — publiczna obietnica na landingu brzmi „co najmniej 10 razy taniej niż najtańszy plan zagranicznej konkurencji, zero prowizji od sprzedaży", z przypisem wskazującym porównywany plan i datę cennika. BYO awansowało z cichego umożliwiacza do widocznego argumentu marketingowego, bo jest go dużo i układa się w spójną historię: wideo (YouTube/Vimeo/Bunny), pliki (S3-compatible), płatności (Stripe twórcy), e-mail (SES/SMTP), domena. Nadal nie sprzedajemy ideologii „own your data" jako głównego przekazu — BYO opowiadamy jako „podpinasz konta, które już masz, dlatego to może być tanie, a ty nie jesteś uwięziony". BYO pozostaje też tym, co czyni niską cenę fizycznie możliwą (nie da się hostować wideo w tej cenie). Ścieżka użytkownika: przychodzi po cenę → odkrywa, że wideo wkleja się linkiem z YouTube → dla większości to w zupełności wystarcza.
 
 **Spoiwo czterech filarów: „Klient 360" — jeden overview.** Gigantyczną wartością integracji filarów w jednym narzędziu jest jeden widok klienta: na jednej karcie członka twórca widzi **wszystkie subskrypcje, wszystkie zakupy, całą komunikację e-mail, aktywność w kursach, aktywność w społeczności, a jeśli dostępne — także wizyty na stronie**. To NIE jest CRM: żadnych lejków sprzedażowych, pipeline'ów, lead scoringu (może kiedyś — na razie nie). Klient to pojedyncza osoba kupująca, a twórca ma rozumieć jej historię bez przełączania pięciu narzędzi. W przyszłości dochodzi integracja prostego czatu (zewnętrznego, nie pisanego przez nas), żeby dosłownie cała komunikacja z klientem była w jednym miejscu.
 
@@ -314,6 +314,7 @@ Stories fazy 0 i 1 są rozpisane do poziomu implementowalnego. Fazy 2-4 — pozi
 - **US-E20 Społeczność:** spaces (otwarte / dla członków / powiązane z produktem), posty z rich text, komentarze wątkowane, reakcje, wzmianki, powiadomienia (in-app + e-mail digest), narzędzia moderacji (usuwanie, ban), profil członka. Zdarzenia społeczności (posty, komentarze) zasilają oś czasu członka (US-034).
 - **US-E30 Marketing:** tagi i segmenty członków, broadcasty e-mail, sekwencje (drip), formularze zapisu / lead magnety, landing pages z prostych bloków, kupony rabatowe (integracja ze Stripe Coupons), automatyzacje „trigger → akcja". Każdy wysłany e-mail (transakcyjny i marketingowy) zapisuje się w osi czasu członka (US-034).
 - **US-E40 Platforma hosted:** rejestracja self-service, provisioning tenantów, billing platformy (Stripe), limity planów, custom domeny (CNAME + auto-TLS), backupy i eksport danych tenanta, panel operatora.
+- **US-E50 Aplikacje mobilne (po fazie 4):** iOS i Android dla kursantów — lekcje, dyskusje, powiadomienia push; panel twórcy zostaje w przeglądarce. Zapowiedziane publicznie na landingu jako plan bez daty (2026-09-08); web responsywny pozostaje pełnoprawną ścieżką. Osobne PRD przed realizacją.
 
 ---
 
@@ -382,7 +383,6 @@ Stories fazy 0 i 1 są rozpisane do poziomu implementowalnego. Fazy 2-4 — pozi
 **Poza zakresem faz 0-3 (możliwe później):**
 - Live streaming, wideo-czaty, eventy na żywo.
 - Czat real-time (DM, kanały) — społeczność startuje jako async (posty/komentarze).
-- Aplikacje mobilne (web responsywny musi wystarczyć).
 - Gamifikacja (punkty, odznaki, leaderboardy).
 - Certyfikaty ukończenia, quizy/egzaminy.
 - Fakturowanie/VAT (twórca rozwiązuje po stronie Stripe Tax / zewnętrznej fakturowni) — do rewizji dla rynku PL.

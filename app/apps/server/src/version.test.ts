@@ -19,10 +19,12 @@ vi.mock('@opentelemetry/sdk-trace-base', () => ({
   BatchSpanProcessor: vi.fn(),
 }));
 vi.mock('@opentelemetry/sdk-trace-node', () => ({
-  NodeTracerProvider: vi.fn(() => ({
-    register: harness.register,
-    shutdown: harness.shutdown,
-  })),
+  NodeTracerProvider: vi.fn(function () {
+    return {
+      register: harness.register,
+      shutdown: harness.shutdown,
+    };
+  }),
 }));
 
 const strictSemVer =

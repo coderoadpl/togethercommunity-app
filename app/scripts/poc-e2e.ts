@@ -514,16 +514,19 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     membersExportOutputSchema,
   );
   assert(alfaCsvExport.content.includes('kursant@together.dev'), 'alfa csv export should include kursant');
+  assert(alfaCsvExport.content.includes('alfa@together.dev'), 'alfa csv export should include its owner');
   const alfaJsonExport = expectOk(
     await cli(['--tenant', 'alfa', 'member', 'export', '--format', 'json'], alfaHome),
     'alfa member export json',
     membersExportOutputSchema,
   );
   const alfaExportedMembers = exportedMembersSchema.parse(readJson(alfaJsonExport.content, 'alfa json export content'));
-  assert(alfaExportedMembers.length === 1, `alfa json export should have one member, got ${alfaExportedMembers.length}`);
-  assert(alfaExportedMembers[0]?.email === 'kursant@together.dev', 'alfa json export member email mismatch');
+  assert(alfaExportedMembers.length === 2, `alfa json export should have the owner and learner, got ${alfaExportedMembers.length}`);
+  const alfaExportedOwner = alfaExportedMembers.find((member) => member.email === 'alfa@together.dev');
+  const alfaExportedLearner = alfaExportedMembers.find((member) => member.email === 'kursant@together.dev');
+  assert(alfaExportedOwner?.productIds.length === 0, 'alfa owner membership should not create product grants');
   assert(
-    JSON.stringify(alfaExportedMembers[0]?.productIds) === JSON.stringify([kursAlfa.id]),
+    JSON.stringify(alfaExportedLearner?.productIds) === JSON.stringify([kursAlfa.id]),
     'alfa json export should contain exactly one Kurs Alfa grant',
   );
   const betaCsvExport = expectOk(

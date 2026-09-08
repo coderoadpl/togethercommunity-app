@@ -25,7 +25,6 @@ const publicServerImports = publicApp
 
 const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'authLinkBaseUrl',
-  'enforceTermsConsent',
   'fulfillStripeWebhook',
   'getPaymentConfig',
   'getPlayableLesson',
@@ -37,7 +36,6 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'getPublicSpaceEvents',
   'getPublicSpaceFeed',
   'getPublicSpaceThread',
-  'recordCheckoutMarketingConsents',
   'resolveIdentity',
   'resolveSignInMethods',
   'resolveTenant',

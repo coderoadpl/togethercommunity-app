@@ -867,6 +867,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
               attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
               collectedAt: deps.clock.nowIso(),
               confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
+              ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
               ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
             },
             createdAt: deps.clock.nowIso(),
@@ -940,30 +941,35 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       }
       if (!result.ok) return respond(result);
 
-      const terms = await enforceTermsConsent(
-        tenant.value.tenant.id,
-        {
-          accepted: parsed.data.termsAccepted,
-          userId: null,
-          email: parsed.data.email,
-          source: 'checkout',
-        },
-        deps,
-      );
-      if (!terms.ok) return respond(terms);
+      if (parsed.data.couponCode === undefined) {
+        const terms = await enforceTermsConsent(
+          tenant.value.tenant.id,
+          {
+            accepted: parsed.data.termsAccepted,
+            userId: null,
+            email: parsed.data.email,
+            source: 'checkout',
+          },
+          deps,
+        );
+        if (!terms.ok) return respond(terms);
+
+        if (result.value.orderId !== null) {
+          await recordCheckoutConsents(deps, {
+            tenant: tenant.value.tenant,
+            email: parsed.data.email,
+            selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+            attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+            productId: selection.value.product.id,
+            orderId: result.value.orderId,
+            collectedAt: deps.clock.nowIso(),
+            confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
+            ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
+          });
+        }
+      }
 
       if (result.value.orderId !== null) {
-        await recordCheckoutConsents(deps, {
-          tenant: tenant.value.tenant,
-          email: parsed.data.email,
-          selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-          attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
-          productId: selection.value.product.id,
-          orderId: result.value.orderId,
-          collectedAt: deps.clock.nowIso(),
-          confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
-          ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
-        });
         const orderDetails = deps.orderDetails;
         const paidOrder = orderDetails === undefined
           ? null

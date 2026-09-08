@@ -1,6 +1,6 @@
 {
-  "hash": "7d31f481faa16071812eb71e8e2955fe647085fcdd726314134a6af790b2fb24",
-  "shortId": "7d31f481faa1",
+  "hash": "e365fa6082dc1e8f57438e26d36e2f6e56155329849f99c3d17553ecd6b90b71",
+  "shortId": "e365fa6082dc",
   "schema": {
     "constraints": [
       {
@@ -210,6 +210,11 @@
       },
       {
         "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT",
+        "name": "checkout_consent_jobs_order_id_fkey",
+        "table": "checkout_consent_jobs"
+      },
+      {
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT",
         "name": "coupon_redemption_events_order_id_orders_id_fk",
         "table": "coupon_redemption_events"
       },
@@ -332,6 +337,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "checkout_consent_captures_tenant_id_tenants_id_fk",
         "table": "checkout_consent_captures"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "checkout_consent_jobs_tenant_id_fkey",
+        "table": "checkout_consent_jobs"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1297,6 +1307,11 @@
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "tenant_transactional_email_pools_pkey",
         "table": "tenant_transactional_email_pools"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, checkout_session_id)",
+        "name": "checkout_consent_jobs_pkey",
+        "table": "checkout_consent_jobs"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
@@ -8290,6 +8305,91 @@
           }
         ],
         "name": "checkout_consent_captures"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "capture_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_session_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "completed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "webhook_event_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "checkout_consent_jobs"
       },
       {
         "columns": [

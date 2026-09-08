@@ -185,53 +185,62 @@ export const LockedSpaceCard = ({ space }: { space: LockedSpaceCardSpace }) => {
         sx={{
           p: '1rem 1.25rem',
           display: 'flex',
-          alignItems: 'center',
-          columnGap: '0.75rem',
+          flexDirection: 'column',
           rowGap: '0.75rem',
-          flexWrap: 'wrap',
         }}
       >
-        <LockedSpaceMark>
-          <LockClosed />
-        </LockedSpaceMark>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="h3" component="h3" color="text.primary">
-            {space.name}
-          </Typography>
-          {space.description ? (
-            <Typography
-              variant="caption"
-              component="p"
-              color="text.secondary"
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            columnGap: '0.75rem',
+            rowGap: '0.75rem',
+            flexWrap: 'wrap',
+            width: '100%',
+          }}
+        >
+          <LockedSpaceMark>
+            <LockClosed />
+          </LockedSpaceMark>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="h3" component="h3" color="text.primary">
+              {space.name}
+            </Typography>
+            {space.description ? (
+              <Typography
+                variant="caption"
+                component="p"
+                color="text.secondary"
+                sx={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {space.description}
+              </Typography>
+            ) : null}
+          </Box>
+          {productId === undefined ? null : (
+            <EmberCtaLink
+              component={Link}
+              to={`/checkout/${encodeURIComponent(productId)}`}
+              size="small"
+              variant="contained"
+              data-testid={`locked-space-cta-${space.id}`}
               sx={{
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
+                flexShrink: 0,
+                alignSelf: 'center',
+                px: '0.7rem',
+                py: '0.32rem',
+                ml: { xs: 'auto', sm: 0 },
               }}
             >
-              {space.description}
-            </Typography>
-          ) : null}
+              {t.courseTree.unlockAccess}
+            </EmberCtaLink>
+          )}
         </Box>
-        {productId === undefined ? null : (
-          <EmberCtaLink
-            component={Link}
-            to={`/checkout/${encodeURIComponent(productId)}`}
-            size="small"
-            variant="contained"
-            data-testid={`locked-space-cta-${space.id}`}
-            sx={{
-              flexShrink: 0,
-              alignSelf: 'center',
-              px: '0.7rem',
-              py: '0.32rem',
-              ml: { xs: 'auto', sm: 0 },
-            }}
-          >
-            {t.courseTree.unlockAccess}
-          </EmberCtaLink>
-        )}
         <SpaceVisibilityChip
           space={productVisibilitySpace(space)}
           testId={`space-visibility-${space.id}`}

@@ -40,9 +40,17 @@ reconciliation must therefore finish before the next billing cycle.
 - deletes the `member_blocks` rows on either side of the severed `userId`;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
-  customer identifiers, legacy identifier, and ban state (`bannedAt`,
-  `bannedReason`, and `bannedByUserId`); and
+  customer identifiers, legacy identifier, avatar URL, and ban state
+  (`bannedAt`, `bannedReason`, and `bannedByUserId`); and
 - records `deletedAt`.
+
+The transaction returns the avatar URL it cleared, and `removeMember` then
+deletes the stored `image-assets/<tenantId>/avatar/<id>.webp` object through the
+tenant's storage provider. The object lives outside the database, so a storage
+failure cannot roll the transaction back: the erasure stands and the failed
+delete is logged with its tenant, member, and avatar URL for manual cleanup.
+Leaving the object would keep the member's photograph reachable through the
+unauthenticated `GET /api/public/assets/avatar/<id>.webp` redirect.
 
 Marking member subscriptions canceled locally remains true only until a late
 `invoice.paid` flips a surviving provider subscription back to `active`.

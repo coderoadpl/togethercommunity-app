@@ -3119,6 +3119,7 @@ describe('member erasure repository', () => {
   const RODO = 'tenant-rodo';
   const OTHER = 'tenant-rodo-other';
   const REMOVAL_AT = '1998-07-20T12:00:00.000Z';
+  const RODO_AVATAR_URL = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000042.webp';
 
   const pseudonymizationInput = (memberId: string) => ({
     memberId,
@@ -3159,7 +3160,7 @@ describe('member erasure repository', () => {
     }));
     await db
       .update(members)
-      .set({ legacyId: 'legacy-mem-rodo' })
+      .set({ legacyId: 'legacy-mem-rodo', avatarUrl: RODO_AVATAR_URL })
       .where(eq(members.id, 'mem-rodo'));
     await membersRepo.create(RODO, member({ id: 'mem-rodo-shared', tenantId: RODO, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
     await membersRepo.create(OTHER, member({ id: 'mem-other-shared', tenantId: OTHER, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
@@ -3448,6 +3449,7 @@ describe('member erasure repository', () => {
       alreadyDeleted: false,
       authUserErased: true,
       erasureRequestId: null,
+      avatarUrl: RODO_AVATAR_URL,
     });
 
     const rows = await db.select().from(members).where(eq(members.id, 'mem-rodo'));
@@ -3456,6 +3458,7 @@ describe('member erasure repository', () => {
       email: memberTombstone('mem-rodo').email,
       userId: memberTombstone('mem-rodo').userId,
       displayName: null,
+      avatarUrl: null,
       tags: [],
       marketingConsents: {},
       externalCustomerIds: {},
@@ -3633,6 +3636,7 @@ describe('member erasure repository', () => {
       alreadyDeleted: true,
       authUserErased: false,
       erasureRequestId: null,
+      avatarUrl: null,
     });
   });
 
@@ -3647,6 +3651,7 @@ describe('member erasure repository', () => {
       alreadyDeleted: false,
       authUserErased: false,
       erasureRequestId: null,
+      avatarUrl: null,
     });
 
     const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-shared'));

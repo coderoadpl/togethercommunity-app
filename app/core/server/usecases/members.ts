@@ -29,7 +29,10 @@ import type {
   MemberRepository,
   MemberSubscriptionRepository,
   PaymentProvider,
+  StorageProvider,
+  TenantSecretResolver,
 } from '../ports.js';
+import { deleteAvatarImage } from './image-assets.js';
 
 export interface MembersDeps {
   members: MemberRepository;
@@ -41,6 +44,8 @@ export interface MembersDeps {
 export interface MemberRemovalDeps extends MembersDeps {
   subscriptions: MemberSubscriptionRepository;
   payment: PaymentProvider;
+  secretResolver: TenantSecretResolver;
+  storage: StorageProvider;
   logger: { error(message: string): void };
 }
 
@@ -177,6 +182,16 @@ export const removeMember = async (
     postAuthorDisplay: deletedMemberDisplay(),
   });
   if (result === null) return err(notFound(`No member "${input.memberId}" in this tenant`));
+
+  if (result.avatarUrl !== null) {
+    const avatarRemoved = await deleteAvatarImage(tenant.value, result.avatarUrl, deps);
+    if (!avatarRemoved.ok) {
+      deps.logger.error(
+        `[member-removal] avatar object delete failed tenant=${tenant.value} member=${input.memberId} avatar=${result.avatarUrl} error=${avatarRemoved.error.message}`,
+      );
+    }
+  }
+
   return ok({
     memberId: input.memberId,
     subscriptionCancellations,

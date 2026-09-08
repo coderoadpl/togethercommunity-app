@@ -420,6 +420,13 @@
       "value": {
         "unread": 1
       }
+    },
+    "listSpaceEvents:[{\"limit\":5,\"scope\":\"past\",\"spaceId\":\"space-studio-spolecznosc\"}]": {
+      "ok": true,
+      "value": {
+        "events": [],
+        "nextCursor": null
+      }
     }
   },
   "principal": "kursant.aktywny@together.dev",

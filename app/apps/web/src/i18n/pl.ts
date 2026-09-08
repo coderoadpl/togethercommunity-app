@@ -556,6 +556,7 @@ export const pl: Messages = {
     accountMenu: 'Menu konta',
     accountMenuUnread: ({ count }) =>
       format('Menu konta, nieprzeczytane wiadomości: {count}', { count }),
+    memberView: 'Widok kursanta',
     myAccount: 'Moje konto',
     signedInAs: 'Zalogowano jako',
   },
@@ -666,6 +667,7 @@ export const pl: Messages = {
     panelTitle: 'Wydarzenia przestrzeni',
     manageEvents: 'Wydarzenia',
     allEvents: '← Wszystkie wydarzenia',
+    addEvent: 'Dodaj wydarzenie',
     newEvent: 'Nowe wydarzenie',
     editEvent: 'Edytuj wydarzenie',
     edit: 'Edytuj',
@@ -1756,6 +1758,7 @@ export const pl: Messages = {
       'Treść wpisu zostanie usunięta, a w wątku pozostanie informacja o usunięciu. Tej operacji nie można cofnąć.',
     deleteConfirm: 'Usuń wpis',
     deleting: 'Usuwanie…',
+    moderatorDeletedPost: 'Wpis usunięty przez moderatora.',
     deletedPost: 'Wpis został usunięty.',
     edited: '(edytowano)',
     authorChip: 'Autor',

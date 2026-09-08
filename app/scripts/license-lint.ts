@@ -100,6 +100,33 @@ const exceptions = new Map<string, LicenseException>([
       versionPattern: /^.+$/,
     },
   ],
+  [
+    '@img/sharp-libvips-*@*',
+    {
+      license: 'LGPL-3.0-or-later',
+      packagePattern: /^@img\/sharp-libvips-.+$/,
+      reason: 'The prebuilt libvips shared libraries are dynamically linked by sharp.',
+      versionPattern: /^.+$/,
+    },
+  ],
+  [
+    '@img/sharp-win32-*@*',
+    {
+      license: 'Apache-2.0 AND LGPL-3.0-or-later',
+      packagePattern: /^@img\/sharp-win32-.+$/,
+      reason: 'The Windows sharp prebuilds dynamically link their bundled libvips shared libraries.',
+      versionPattern: /^.+$/,
+    },
+  ],
+  [
+    '@img/sharp-wasm32@*',
+    {
+      license: 'Apache-2.0 AND LGPL-3.0-or-later AND MIT',
+      packagePattern: /^@img\/sharp-wasm32$/,
+      reason: 'The optional WebAssembly sharp prebuild includes libvips under the documented exception.',
+      versionPattern: /^.+$/,
+    },
+  ],
 ]);
 
 const hasAllowedAlternative = (license: string): boolean => {

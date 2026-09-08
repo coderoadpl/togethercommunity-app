@@ -1,4 +1,9 @@
-import type { CourseStructureWithAccess } from '#core/domain/index.js';
+import type {
+  CourseStructureChapter,
+  CourseStructureLesson,
+  CourseStructureModule,
+  CourseStructureWithAccess,
+} from '#core/domain/index.js';
 
 export interface LinearLesson {
   lessonId: string;
@@ -34,6 +39,26 @@ export const lessonNeighbours = (
     next: linear[index + 1] ?? null,
     nextUnlocked: linear.slice(index + 1).find((entry) => !entry.locked) ?? null,
   };
+};
+
+export interface LessonLocation {
+  courseName: string;
+  module: CourseStructureModule | null;
+  chapter: CourseStructureChapter | null;
+  row: CourseStructureLesson | null;
+}
+
+export const locateLesson = (
+  structure: CourseStructureWithAccess,
+  lessonId: string,
+): LessonLocation => {
+  for (const module of structure.modules) {
+    for (const chapter of module.chapters) {
+      const row = chapter.lessons.find((entry) => entry.lessonId === lessonId);
+      if (row !== undefined) return { courseName: structure.name, module, chapter, row };
+    }
+  }
+  return { courseName: structure.name, module: null, chapter: null, row: null };
 };
 
 export const lessonPath = (courseId: string, lessonId: string): string =>

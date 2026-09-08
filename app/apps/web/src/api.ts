@@ -136,6 +136,8 @@ import {
   meInvalidates,
   meQuery,
   updateMyProfileMutation,
+  uploadAvatarMutation,
+  removeAvatarMutation,
   membersQuery,
   membersExportQuery,
   accountSessionsQuery,
@@ -229,6 +231,7 @@ import {
   revokeApiKeyMutation,
   signInMutation,
   signInWithGoogleMutation,
+  promptGoogleOneTapMutation,
   signInWithPasskeyMutation,
   signOutMutation,
   signUpMutation,
@@ -290,6 +293,7 @@ import type {
   ReportsListInput,
   SpaceFeedGetInput,
 } from '#core/contract/index.js';
+import type { NotificationsPageInput } from '#core/client/index.js';
 import type { MemberExportFormat } from '#core/domain/index.js';
 
 /**
@@ -318,6 +322,8 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   me: meQuery(apiClient),
   meInvalidates,
   updateMyProfile: updateMyProfileMutation(apiClient),
+  uploadAvatar: uploadAvatarMutation(apiClient),
+  removeAvatar: removeAvatarMutation(apiClient),
   memberBillingOrders: memberBillingOrdersQuery(apiClient),
   publicOffer: publicOfferQuery(apiClient),
   publicOfferInvalidates,
@@ -486,6 +492,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   disableTwoFactor: disableTwoFactorMutation(authClient),
   regenerateBackupCodes: regenerateBackupCodesMutation(authClient),
   signInWithGoogle: signInWithGoogleMutation(authClient),
+  promptGoogleOneTap: promptGoogleOneTapMutation(authClient),
   tenantSecrets: tenantSecretsQuery(apiClient),
   apiKeys: apiKeysQuery(apiClient),
   apiKeyImportAudit: (id: string) => apiKeyImportAuditQuery(apiClient, { id, limit: 100 }),
@@ -523,7 +530,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   onboardingInvalidates,
   tenantSetupReadiness: tenantSetupReadinessQuery(apiClient),
   notifications: notificationsQuery(apiClient),
-  notificationsPage: (limit: number) => notificationsPageQuery(apiClient, { limit }),
+  notificationsPage: (input: NotificationsPageInput) => notificationsPageQuery(apiClient, input),
   unreadNotifications: unreadNotificationsQuery(apiClient),
   markNotificationRead: markNotificationReadMutation(apiClient),
   markAllNotificationsRead: markAllNotificationsReadMutation(apiClient),

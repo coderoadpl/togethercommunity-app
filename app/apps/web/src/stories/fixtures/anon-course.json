@@ -177,6 +177,12 @@
               "productIds": [
                 "product-js-full"
               ],
+              "products": [
+                {
+                  "id": "product-js-full",
+                  "title": "Kurs JavaScript - pełny dostęp"
+                }
+              ],
               "slug": "klub-js"
             },
             {
@@ -185,6 +191,12 @@
               "name": "Klub Reacta",
               "productIds": [
                 "product-react-full"
+              ],
+              "products": [
+                {
+                  "id": "product-react-full",
+                  "title": "React w praktyce - pełny dostęp"
+                }
               ],
               "slug": "klub-react"
             }
@@ -195,7 +207,10 @@
               "id": "space-studio-spolecznosc",
               "name": "Społeczność",
               "position": 0,
-              "slug": "spolecznosc"
+              "products": [],
+              "publicReadOnly": true,
+              "slug": "spolecznosc",
+              "visibility": "members"
             }
           ]
         }

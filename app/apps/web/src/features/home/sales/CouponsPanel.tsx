@@ -35,6 +35,7 @@ import { SUPPORTED_CURRENCIES } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import {
+  ConfirmDialog,
   ListSection,
   PanelPage,
   ResponsiveTable,
@@ -509,10 +510,12 @@ export const CouponDetailPage = ({ couponId }: { couponId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const detail = useQuery(actions.couponStatsDetail(couponId));
   const archive = useMutation({
     ...actions.archiveCoupon,
     onSuccess: async () => {
+      setConfirmArchive(false);
       await queryClient.invalidateQueries(actions.couponsInvalidates());
     },
   });
@@ -542,7 +545,7 @@ export const CouponDetailPage = ({ couponId }: { couponId: string }) => {
             variant="outlined"
             color="error"
             disabled={archive.isPending}
-            onClick={() => archive.mutate({ id: item.coupon.id })}
+            onClick={() => setConfirmArchive(true)}
           >
             {archive.isPending ? t.coupons.archiving : t.coupons.archive}
           </Button>
@@ -590,6 +593,17 @@ export const CouponDetailPage = ({ couponId }: { couponId: string }) => {
         )}
       </SectionCard>
       {archive.isError ? <Alert severity="error">{localizePanelError(archive.error, t)}</Alert> : null}
+      <ConfirmDialog
+        open={confirmArchive}
+        title={t.coupons.archiveConfirmTitle}
+        body={<Typography variant="body1">{t.coupons.archiveConfirmBody({ code: item.coupon.code })}</Typography>}
+        confirmLabel={archive.isPending ? t.coupons.archiving : t.coupons.archiveConfirm}
+        cancelLabel={t.common.cancel}
+        pending={archive.isPending}
+        onClose={() => setConfirmArchive(false)}
+        onConfirm={() => archive.mutate({ id: item.coupon.id })}
+        confirmTestId="coupon-archive-confirm"
+      />
     </PanelPage>
   );
 };

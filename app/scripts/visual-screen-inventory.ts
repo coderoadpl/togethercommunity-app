@@ -77,15 +77,8 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
-// The member shell keeps the bell in the sidebar from md up and in the top bar
-// below it — wait on the instance this viewport actually shows, otherwise a
-// shot can land before the async count arrives.
+// The count arrives asynchronously, so a shot can otherwise land on a bare bell.
 const waitForUnreadBadge = async (page: Page): Promise<void> => {
-  const width = page.viewportSize()?.width ?? 0;
-  if (width >= 900) {
-    await page.getByTestId('notification-bell-count').waitFor(visible);
-    return;
-  }
   await page
     .locator('[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)')
     .waitFor(visible);
@@ -347,7 +340,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     prepare: prepareBootSplash,
-    ready: (page) => page.getByRole('status', { name: 'Otwieranie panelu twórcy' }).waitFor(visible),
+    ready: (page) => page.getByRole('status', { name: 'Otwieranie Twojej platformy…' }).waitFor(visible),
     waitForNetworkIdle: false,
     minBytes: 7 * 1024,
   },
@@ -418,6 +411,8 @@ export const SCREENS: readonly ScreenSpec[] = [
         element.scrollIntoView({ block: 'start' }),
       );
     },
+    // CORS instructions contain the ephemeral authoring origin.
+    mask: (page) => [page.locator('[data-testid^="storage-cors-origin-"]'), page.getByTestId('storage-cors-json')],
   },
   {
     name: 'panel-lesson-attachments',

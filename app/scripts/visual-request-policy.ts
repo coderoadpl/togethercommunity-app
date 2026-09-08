@@ -13,6 +13,5 @@ export const abortVisualMutation = (method: string): boolean => Object.hasOwn(ab
 export const visualRequestPolicy = (url: URL, resourceType: string): 'abort' | 'continue' | 'placeholder' => {
   if (abortedPaths.some((path) => path.test(url.pathname))) return 'abort';
   if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname.endsWith('.localhost')) return 'continue';
-  if (url.hostname === 'www.gravatar.com') return 'abort';
   return resourceType === 'image' ? 'placeholder' : 'abort';
 };

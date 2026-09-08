@@ -86,7 +86,7 @@ describe('CheckoutPage', () => {
     expect(stylesAt(cover, 1440)['max-height']).toBeUndefined();
     expect(screen.getByText('49,00 zł')).toBeInTheDocument();
     expect(screen.getByText(pl.checkout.checkoutEyebrow)).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.simulatedPaymentDevNote)).toBeInTheDocument();
+    expect(screen.getByText(pl.checkout.simulatedPaymentNote)).toBeInTheDocument();
 
     await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
     await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
@@ -98,7 +98,7 @@ describe('CheckoutPage', () => {
     expect(screen.getByText(pl.checkout.productionNote)).toBeInTheDocument();
   });
 
-  it('gives a product without a cover the same neutral placeholder as a member card', async () => {
+  it('leaves out the cover block entirely for a product without a cover', async () => {
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
       http.get('/api/public/payment-config', () =>
@@ -108,12 +108,8 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    const placeholder = await screen.findByTestId('checkout-product-cover-fallback');
-    expect(placeholder).toHaveTextContent('IC');
-    expect(stylesAt(placeholder, 1440)).toMatchObject({
-      'aspect-ratio': '16/9',
-      width: '100%',
-    });
+    expect(await screen.findByText(pl.checkout.checkoutEyebrow)).toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-product-cover-fallback')).not.toBeInTheDocument();
     expect(screen.queryByTestId('checkout-product-cover')).not.toBeInTheDocument();
   });
 
@@ -533,7 +529,7 @@ describe('CheckoutPage', () => {
     expect(await screen.findByRole('button', { name: /^Zapłać/ })).toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Symuluj płatność/ })).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.simulatedPaymentDevNote)).toBeInTheDocument();
+    expect(screen.getByText(pl.checkout.simulatedPaymentNote)).toBeInTheDocument();
   });
 
   it('renders a picker for multiple prices and sends the recurring choice', async () => {

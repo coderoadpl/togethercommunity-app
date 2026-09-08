@@ -1,11 +1,11 @@
 import pg from 'pg';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { SmokeFailure } from './smoke-failure.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { run, tsxBin } from './server-harness.js';
-const SMOKE_DB = uniqueTestDatabaseName('together_smoke');
-export const baseDatabaseUrl =
-  process.env['DATABASE_URL'] ??
-  'postgres://together:together@localhost:48912/together';
+const SMOKE_DB = uniqueTestDatabaseName('together_smoke_test');
+export const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, SMOKE_DB, process.env);
 const smokeUrlObject = new URL(baseDatabaseUrl);
 smokeUrlObject.pathname = `/${SMOKE_DB}`;
 export const smokeDatabaseUrl = smokeUrlObject.toString();

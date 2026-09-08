@@ -181,6 +181,17 @@ describe('resolveIdentity', () => {
     });
   });
 
+  it('uses the avatar from the resolved tenant membership instead of the auth user image', async () => {
+    const avatarUrl = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp';
+    const result = await resolveIdentity(
+      { ...user, image: 'https://images.example.org/provider.png' },
+      { host: 'acme.localhost:4711', tenantHeader: null },
+      deps([], [], [{ ...member, avatarUrl }]),
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { image: avatarUrl } });
+  });
+
   it('refreshes a stale member email snapshot', async () => {
     const staleMember = { ...member, email: 'old@example.com' };
     const memberRows = [staleMember];
@@ -204,7 +215,7 @@ describe('resolveIdentity', () => {
       { host: 'localhost:4711', tenantHeader: null },
       deps([acme]),
     );
-    expect(result).toMatchObject({ ok: true, value: { tenantId: null } });
+    expect(result).toMatchObject({ ok: true, value: { tenantId: null, image: null } });
   });
 
   it('rejects unknown tenants', async () => {

@@ -25,6 +25,7 @@ const authWith = (overrides: Partial<AuthClientPort>): AuthClientPort => ({
   disableTwoFactor: vi.fn(),
   regenerateBackupCodes: vi.fn(),
   signInWithGoogle: vi.fn(),
+  promptGoogleOneTap: vi.fn(),
   ...overrides,
 });
 

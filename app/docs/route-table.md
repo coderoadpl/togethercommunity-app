@@ -141,6 +141,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/impersonation/stop` | authenticated | mutating | impersonation stop |
 | `GET /api/tenant/audit-events` | authenticated | read | tenant audit events |
 | `POST /api/me/profile` | authenticated | mutating | me profile |
+| `POST /api/me/avatar/upload` | authenticated | mutating | avatar upload |
+| `POST /api/me/avatar/complete` | authenticated | mutating | avatar complete |
+| `POST /api/me/avatar/remove` | authenticated | mutating | avatar remove |
 | `GET /api/me/sessions` | authenticated | read | account sessions |
 | `POST /api/me/sessions/revoke` | authenticated | mutating | account session revoke |
 | `POST /api/me/sessions/revoke-others` | authenticated | mutating | account sessions revoke others |

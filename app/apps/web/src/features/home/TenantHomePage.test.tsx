@@ -10,6 +10,7 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ToastProvider } from '../../components/ui/Toast.js';
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -62,16 +63,23 @@ const renderHome = async (component: () => ReactNode = TenantHomePage) => {
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
   await router.load();
-  return { ...renderWithProviders(<RouterProvider router={router} />), router };
+  return {
+    ...renderWithProviders(
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>,
+    ),
+    router,
+  };
 };
 
 afterEach(() => vi.unstubAllEnvs());
 
 describe('TenantHomePage dispatcher', () => {
-  it('redirects a staff member into the creator panel', async () => {
+  it('redirects a staff member to their start page', async () => {
     server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })));
     await renderHome();
-    expect(await screen.findByText('PANEL')).toBeInTheDocument();
+    expect(await screen.findByText('START')).toBeInTheDocument();
   });
 
   it('redirects a member-only account to their start page', async () => {

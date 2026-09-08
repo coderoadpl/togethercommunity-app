@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
+  Button,
   FormControl,
   FormLabel,
   Link as MuiLink,
@@ -18,7 +19,8 @@ import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
-import { AuthButton, AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
 
 const baseDomainUrl = (): string => {
@@ -29,6 +31,7 @@ const baseDomainUrl = (): string => {
 export const RegisterPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  useRedirectSignedInWithTenant();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -81,9 +84,9 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
           <AuthLead component="p">{t.auth.registeredOnTenantBody({ host: hostname })}</AuthLead>
         </Box>
         <Stack useFlexGap spacing="0.9rem">
-          <AuthButton variant="contained" fullWidth component="a" href={baseDomainUrl()}>
+          <Button variant="contained" fullWidth component="a" href={baseDomainUrl()}>
             {t.auth.registeredCreateOwnCta}
-          </AuthButton>
+          </Button>
           <Box>
             <FinePrint variant="caption" component="p" sx={{ mb: '0.4rem' }}>
               {t.auth.registeredBoughtHint}
@@ -145,14 +148,14 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
           {consentRequired ? (
             <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
           ) : null}
-          <AuthButton
+          <Button
             type="submit"
             variant="contained"
             fullWidth
             disabled={signUp.isPending || (resolveTenantOffer && offer.isPending)}
           >
             {signUp.isPending ? t.auth.creatingAccount : t.auth.createAccount}
-          </AuthButton>
+          </Button>
         </Stack>
         {signUp.isError ? (
           <Alert severity="error" sx={{ mt: '0.6rem' }}>

@@ -23,6 +23,7 @@
           "invoicingProvider": null,
           "logoDarkUrl": null,
           "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
           "name": "Studio Demo",
           "ogDescription": null,
           "ogImageUrl": null,
@@ -32,14 +33,15 @@
           "supportConfigured": false,
           "supportEmail": null,
           "supportUrl": null,
-          "termsUrl": null
+          "termsUrl": null,
+          "videoAutoplayDefault": false
         }
       }
     },
     "me:[]": {
       "ok": true,
       "value": {
-        "avatarUrl": "https://www.gravatar.com/avatar/89848c4c7f4fb0ff99f461dee5317db5bbf7168e3162cdec324836419ca845ed?d=404&s=160",
+        "avatarUrl": null,
         "email": "kursant.aktywny@together.dev",
         "emailVerified": true,
         "impersonation": null,
@@ -54,7 +56,7 @@
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": null,
-          "videoAutoplay": false
+          "videoAutoplay": null
         },
         "userId": "fixture-user-89848c4c7f4fb0ff"
       }
@@ -89,6 +91,12 @@
               "productIds": [
                 "product-react-full"
               ],
+              "products": [
+                {
+                  "id": "product-react-full",
+                  "title": "React w praktyce - pełny dostęp"
+                }
+              ],
               "slug": "klub-react"
             }
           ],
@@ -99,6 +107,8 @@
               "isFollowing": true,
               "name": "Społeczność",
               "position": 0,
+              "products": [],
+              "publicReadOnly": true,
               "slug": "spolecznosc",
               "unread": true,
               "visibility": "members"
@@ -111,6 +121,13 @@
               "isFollowing": true,
               "name": "Klub JavaScriptu",
               "position": 1,
+              "products": [
+                {
+                  "id": "product-js-full",
+                  "title": "Kurs JavaScript - pełny dostęp"
+                }
+              ],
+              "publicReadOnly": false,
               "slug": "klub-js",
               "unread": true,
               "visibility": "product"

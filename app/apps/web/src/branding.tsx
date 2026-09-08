@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
-import { ThemeProvider, useTheme, type Theme } from '@mui/material/styles';
+import { useEffect, useMemo, type ReactNode } from 'react';
+import { ThemeProvider, useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -136,8 +136,8 @@ export const BrandMark = ({
 
 /**
  * Applies the tenant accent over whatever theme is active and injects the
- * tenant favicon. Without branding it hands the outer theme through untouched
- * and leaves the document head alone — exactly today's look.
+ * tenant favicon. Without branding it leaves the palette and the document head
+ * alone, adding only the accent tokens every member surface reads.
  */
 export const TenantBrandingBoundary = ({
   children,
@@ -145,6 +145,8 @@ export const TenantBrandingBoundary = ({
   children: ReactNode;
 }) => {
   const branding = useTenantBranding();
+  const outer = useTheme();
+  const theme = useMemo(() => applyBranding(outer, branding), [outer, branding]);
   const faviconUrl = branding?.faviconUrl ?? null;
 
   useEffect(() => {
@@ -158,7 +160,5 @@ export const TenantBrandingBoundary = ({
     };
   }, [faviconUrl]);
 
-  return (
-    <ThemeProvider theme={(outer: Theme) => applyBranding(outer, branding)}>{children}</ThemeProvider>
-  );
+  return <ThemeProvider theme={theme}>{children}</ThemeProvider>;
 };

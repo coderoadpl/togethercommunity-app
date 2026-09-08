@@ -1,6 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import {
-  Alert,
   Button,
   Chip,
   FormControl,
@@ -40,6 +39,7 @@ import {
   StatusView,
 } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
+import { useToast } from '../../../components/ui/Toast.js';
 import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { PathText } from '../../../theme.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -67,6 +67,7 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
   onCancel: () => void;
 }) => {
   const t = useTranslations();
+  const toast = useToast();
   const queryClient = useQueryClient();
   const courses = useQuery(actions.courses);
   const modules = useQuery(actions.modules);
@@ -78,7 +79,6 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
   const [lessonId, setLessonId] = useState('');
   const [targetPath, setTargetPath] = useState('');
   const [permanent, setPermanent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const courseOptions = courses.data?.courses ?? [];
   const lessonOptions = useMemo(() => {
@@ -104,7 +104,6 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError(null);
     try {
       const created = await create.mutateAsync({ fromPath, target: target(), permanent });
       await queryClient.invalidateQueries(actions.tenantRedirectsInvalidates());
@@ -113,7 +112,7 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
       setLessonId('');
       onCreated(created.redirect.fromPath);
     } catch (cause) {
-      setError(localizePanelError(cause, t));
+      toast.error(localizePanelError(cause, t));
     }
   };
 
@@ -227,20 +226,18 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
         label={t.redirects.permanentLabel}
       />
       <Typography variant="caption" color="text.secondary">{t.redirects.permanentHint}</Typography>
-      {error === null ? null : <Alert severity="error" data-testid="redirect-add-error">{error}</Alert>}
     </SectionCard>
   );
 };
 
 export const RedirectsPanel = () => {
   const t = useTranslations();
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
-  const [notice, setNotice] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [pending, setPending] = useState<TenantRedirect | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(search);
   const remove = useMutation(actions.deleteTenantRedirect);
 
@@ -256,15 +253,14 @@ export const RedirectsPanel = () => {
 
   const confirmDelete = async () => {
     if (pending === null) return;
-    setDeleteError(null);
     try {
       await remove.mutateAsync({ id: pending.id });
       await queryClient.invalidateQueries(actions.tenantRedirectsInvalidates());
-      setNotice(t.redirects.deleted);
+      toast.success(t.redirects.deleted);
       setPage((current) => Math.min(current, lastPage(total - 1)));
       setPending(null);
     } catch (cause) {
-      setDeleteError(localizePanelError(cause, t));
+      toast.error(localizePanelError(cause, t));
     }
   };
 
@@ -274,11 +270,10 @@ export const RedirectsPanel = () => {
       description={t.redirects.description}
       backTo={<PanelBackLink to="/panel/settings">{t.redirects.backToSettings}</PanelBackLink>}
     >
-      {notice === null ? null : <Alert severity="success" data-testid="redirect-notice">{notice}</Alert>}
       {adding ? (
         <AddRedirectForm
           onCreated={(fromPath) => {
-            setNotice(t.redirects.created({ fromPath }));
+            toast.success(t.redirects.created({ fromPath }));
             setPage(0);
             setAdding(false);
           }}
@@ -374,7 +369,6 @@ export const RedirectsPanel = () => {
                         color="error"
                         data-testid={`redirect-delete-${redirect.id}`}
                         onClick={() => {
-                          setDeleteError(null);
                           setPending(redirect);
                         }}
                       >
@@ -392,14 +386,9 @@ export const RedirectsPanel = () => {
         open={pending !== null}
         title={t.redirects.deleteConfirmTitle}
         body={(
-          <>
-            <Typography variant="body1">
-              {t.redirects.deleteConfirmBody({ fromPath: pending?.fromPath ?? '' })}
-            </Typography>
-            {deleteError === null
-              ? null
-              : <Alert severity="error" data-testid="redirect-delete-error">{deleteError}</Alert>}
-          </>
+          <Typography variant="body1">
+            {t.redirects.deleteConfirmBody({ fromPath: pending?.fromPath ?? '' })}
+          </Typography>
         )}
         confirmLabel={t.redirects.deleteConfirmAction}
         cancelLabel={t.common.cancel}

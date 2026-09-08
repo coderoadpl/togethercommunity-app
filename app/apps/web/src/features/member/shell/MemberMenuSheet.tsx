@@ -3,9 +3,9 @@ import { Box, IconButton } from '@mui/material';
 
 import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { useTranslations } from '../../../i18n/index.js';
+import { SheetDrawer, SheetHeader, SheetTitle } from '../../../theme.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { MemberSidebar } from './MemberSidebar.js';
-import { SheetDrawer, SheetHeader, SheetTitle } from './shell-chrome.js';
 import { CloseIcon } from './shell-icons.js';
 
 const ShellSheet = ({
@@ -92,7 +92,6 @@ export const CourseProgramSheet = ({
         courseId={courseId}
         currentLessonId={currentLessonId}
         tenantName={tenantName}
-        variant="sheet"
       />
     </ShellSheet>
   );

@@ -38,6 +38,8 @@ import type {
 
 import type { Db } from './client.js';
 import {
+  createAccountAvatarRepository,
+  createAccountAvatarTenantReader,
   createAvatarSourceReader,
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -362,6 +364,23 @@ describe('member repository', () => {
     expect(await repo.updateDisplayName(ACME, 'mem-acme', null)).toMatchObject({
       displayName: null,
     });
+  });
+
+  it('stores a nullable video autoplay preference', async () => {
+    const repo = createMemberRepository(db);
+    const memberId = 'mem-acme-video-autoplay';
+    await repo.create(ACME, member({
+      id: memberId,
+      tenantId: ACME,
+      userId: 'user-acme-video-autoplay',
+      email: 'video-autoplay@together.dev',
+    }));
+
+    expect(await repo.findById(ACME, memberId)).toMatchObject({ videoAutoplay: null });
+    expect(await repo.updateVideoAutoplay(ACME, memberId, true)).toMatchObject({ videoAutoplay: true });
+    expect(await repo.findById(ACME, memberId)).toMatchObject({ videoAutoplay: true });
+    expect(await repo.updateVideoAutoplay(ACME, memberId, false)).toMatchObject({ videoAutoplay: false });
+    expect(await repo.findById(ACME, memberId)).toMatchObject({ videoAutoplay: false });
   });
 
   it('updates ban state and appends its event atomically', async () => {
@@ -1100,6 +1119,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       termsUrl: null,
       privacyUrl: null,
       defaultHomeSpaceId: null,
+      videoAutoplayDefault: true,
+      memberVideoAutoplayOverride: true,
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
@@ -1111,12 +1132,16 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
+      videoAutoplayDefault: true,
+      memberVideoAutoplayOverride: true,
     });
     expect(await repo.findSettings(ACME)).toMatchObject({
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
+      videoAutoplayDefault: true,
+      memberVideoAutoplayOverride: true,
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
@@ -1295,7 +1320,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     ]));
   });
 
-  it('reads avatar sources for tenant identities only, preferring the member e-mail', async () => {
+  it('reads only tenant-scoped member avatars', async () => {
     await db.insert(user).values({
       id: 'user-acme-avatar',
       name: 'Avatar Member',
@@ -1308,6 +1333,12 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       userId: 'user-acme-avatar',
       email: 'member-avatar@together.dev',
     }));
+    const avatars = createAccountAvatarRepository(db);
+    await avatars.setAvatar(
+      ACME,
+      'user-acme-avatar',
+      '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp',
+    );
 
     const reader = createAvatarSourceReader(db);
     const sources = await reader.listAvatarSources(ACME, [
@@ -1317,11 +1348,41 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     ]);
 
     expect([...sources].sort((a, b) => a.userId.localeCompare(b.userId))).toEqual([
-      { userId: 'user-acme-avatar', email: 'member-avatar@together.dev', image: 'https://lh3.googleusercontent.com/a/avatar' },
-      { userId: 'user-acme-owner', email: 'owner-acme@together.dev', image: null },
+      { userId: 'user-acme-avatar', image: '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp' },
+      { userId: 'user-acme-owner', image: null },
     ]);
     expect(await reader.listAvatarSources(GLOBEX, ['user-acme-avatar'])).toEqual([]);
     expect(await reader.listAvatarSources(ACME, [])).toEqual([]);
+  });
+
+  it('keeps avatar state independent across a user membership in two tenants', async () => {
+    await db.insert(user).values({
+      id: 'user-shared-avatar',
+      name: 'Shared Member',
+      email: 'shared-avatar@together.dev',
+    });
+    const memberRepository = createMemberRepository(db);
+    await memberRepository.create(ACME, member({
+      id: 'mem-shared-acme', tenantId: ACME, userId: 'user-shared-avatar',
+    }));
+    await memberRepository.create(GLOBEX, member({
+      id: 'mem-shared-globex', tenantId: GLOBEX, userId: 'user-shared-avatar',
+    }));
+    const avatars = createAccountAvatarRepository(db);
+    const avatarTenants = createAccountAvatarTenantReader(db);
+    const acmeAvatar = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp';
+    const globexAvatar = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp';
+
+    expect((await avatarTenants.listTenantIdsForUser('user-shared-avatar')).sort())
+      .toEqual([ACME, GLOBEX].sort());
+    await avatars.setAvatar(ACME, 'user-shared-avatar', acmeAvatar);
+    await avatars.setAvatar(GLOBEX, 'user-shared-avatar', globexAvatar);
+    await avatars.removeAvatar(ACME, 'user-shared-avatar');
+    expect(await avatars.findState(ACME, 'user-shared-avatar'))
+      .toEqual({ image: null, canImport: false });
+    expect(await avatars.findState(GLOBEX, 'user-shared-avatar'))
+      .toEqual({ image: globexAvatar, canImport: false });
+    expect(await avatars.setAvatarIfMissing(ACME, 'user-shared-avatar', acmeAvatar)).toBe(false);
   });
 
   it('stores and revokes API keys by hash within the tenant', async () => {
@@ -3058,6 +3119,7 @@ describe('member erasure repository', () => {
   const RODO = 'tenant-rodo';
   const OTHER = 'tenant-rodo-other';
   const REMOVAL_AT = '1998-07-20T12:00:00.000Z';
+  const RODO_AVATAR_URL = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000042.webp';
 
   const pseudonymizationInput = (memberId: string) => ({
     memberId,
@@ -3098,7 +3160,7 @@ describe('member erasure repository', () => {
     }));
     await db
       .update(members)
-      .set({ legacyId: 'legacy-mem-rodo' })
+      .set({ legacyId: 'legacy-mem-rodo', avatarUrl: RODO_AVATAR_URL })
       .where(eq(members.id, 'mem-rodo'));
     await membersRepo.create(RODO, member({ id: 'mem-rodo-shared', tenantId: RODO, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
     await membersRepo.create(OTHER, member({ id: 'mem-other-shared', tenantId: OTHER, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
@@ -3387,6 +3449,7 @@ describe('member erasure repository', () => {
       alreadyDeleted: false,
       authUserErased: true,
       erasureRequestId: null,
+      avatarUrl: RODO_AVATAR_URL,
     });
 
     const rows = await db.select().from(members).where(eq(members.id, 'mem-rodo'));
@@ -3395,6 +3458,7 @@ describe('member erasure repository', () => {
       email: memberTombstone('mem-rodo').email,
       userId: memberTombstone('mem-rodo').userId,
       displayName: null,
+      avatarUrl: null,
       tags: [],
       marketingConsents: {},
       externalCustomerIds: {},
@@ -3572,6 +3636,7 @@ describe('member erasure repository', () => {
       alreadyDeleted: true,
       authUserErased: false,
       erasureRequestId: null,
+      avatarUrl: null,
     });
   });
 
@@ -3586,6 +3651,7 @@ describe('member erasure repository', () => {
       alreadyDeleted: false,
       authUserErased: false,
       erasureRequestId: null,
+      avatarUrl: null,
     });
 
     const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-shared'));

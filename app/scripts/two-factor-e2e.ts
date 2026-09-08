@@ -9,7 +9,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright-core
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
 import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
-import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { signInWithPassword } from './login-flow.js';
 import {
   bootServer,
@@ -26,6 +26,7 @@ const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const E2E_DB = 'together_e2e_two_factor';
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
@@ -80,7 +81,13 @@ const buildWeb = async (): Promise<void> => {
   assert(build.code === 0, `Web build failed:\n${build.stdout}${build.stderr}`);
 };
 
-const expectAcmeWorkspace = async (page: Page): Promise<void> => {
+const expectAcmeWorkspace = async (page: Page, baseUrl: string): Promise<void> => {
+  try {
+    await page.waitForURL('**/start', { timeout: 15000 });
+    await page.goto(`${baseUrl}/panel`, { waitUntil: 'domcontentloaded' });
+  } catch (cause) {
+    throw new E2eFailure(`Acme workspace did not reach the member landing at ${page.url()}.\n${String(cause)}`);
+  }
   const tenantName = page.getByTestId('tenant-name');
   try {
     await tenantName.waitFor(visible);
@@ -148,7 +155,7 @@ const runEnrollmentJourney = async (
   baseUrl: string,
 ): Promise<{ secret: string; oldBackupCode: string }> => {
   await signInWithAccountPassword(page, baseUrl);
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   await openSecuritySettings(page, baseUrl);
 
   await page.getByTestId('enable-2fa-password').fill(account.password);
@@ -176,7 +183,7 @@ const runEnrollmentJourney = async (
     await currentTotp(secret),
     page.getByTestId('verify-totp'),
   );
-  await page.getByTestId('totp-verified').waitFor(visible);
+  await page.locator('[data-testid^="toast-success-"]').first().waitFor(visible);
   console.log('two-factor-e2e: browser enrollment and TOTP verification OK');
   return { secret, oldBackupCode };
 };
@@ -202,7 +209,7 @@ const runProvisionalChallengeJourney = async (
     await currentTotp(secret),
     page.getByTestId('verify-login-totp'),
   );
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   console.log('two-factor-e2e: provisional login challenge and invalid-code rejection OK');
 };
 
@@ -215,7 +222,7 @@ const runBackupCodeJourney = async (
   await openSecuritySettings(page, baseUrl);
   await page.getByTestId('enable-2fa-password').fill(account.password);
   await page.getByTestId('regenerate-backup-codes').click();
-  await page.getByTestId('backup-codes-regenerated').waitFor(visible);
+  await page.locator('[data-testid^="toast-success-"]').first().waitFor(visible);
   const regeneratedCodes = await backupCodes(page);
   assertBackupCodeCount(regeneratedCodes, 'Regeneration');
   assert(!regeneratedCodes.includes(oldBackupCode), 'Regeneration retained an old backup code');
@@ -238,7 +245,7 @@ const runBackupCodeJourney = async (
     oneTimeCode,
     page.getByTestId('verify-login-backup-code'),
   );
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   console.log('two-factor-e2e: regenerated backup code opened the workspace');
 
   await signOut(page);
@@ -258,7 +265,7 @@ const runBackupCodeJourney = async (
     await currentTotp(secret),
     page.getByTestId('verify-login-totp'),
   );
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   console.log('two-factor-e2e: backup-code regeneration, invalidation, one-time use, and replay rejection OK');
 };
 
@@ -266,12 +273,12 @@ const runDisableJourney = async (page: Page, baseUrl: string): Promise<void> => 
   await openSecuritySettings(page, baseUrl);
   await page.getByTestId('enable-2fa-password').fill(account.password);
   await page.getByTestId('disable-2fa').click();
-  await page.getByTestId('two-factor-disabled').waitFor(visible);
+  await page.locator('[data-testid^="toast-success-"]').first().waitFor(visible);
   assert(await page.getByTestId('backup-codes').count() === 0, 'Backup codes remained visible after disabling 2FA');
 
   await signOut(page);
   await signInWithAccountPassword(page, baseUrl);
-  await expectAcmeWorkspace(page);
+  await expectAcmeWorkspace(page, baseUrl);
   assert(
     await page.getByTestId('two-factor-challenge').count() === 0,
     'Password login still showed a two-factor challenge after disabling 2FA',

@@ -94,8 +94,7 @@ try {
       };
       const sharedCapture = await createCapture();
       for (const spec of specs) {
-        // Isolate the course editor from rounded-shadow caches populated by earlier pages.
-        const capture = spec.name === 'panel-course' ? await createCapture() : sharedCapture;
+        const capture = sharedCapture;
         const { page, errors } = capture;
         const screen = spec.name;
         const id = pageStoryId(screen, viewport.name);
@@ -133,7 +132,6 @@ try {
         measurements.push(result);
         writeFileSync(join(output, 'measurements.json'), JSON.stringify({ browserVersion, milliseconds: Date.now() - startedAt, measurements }, null, 2));
         console.log(`${file}: ${result.comparison}; byte-identical=${byteIdentical}${failure ? `; ${failure}` : ''}${errors.length > 0 ? `; ${errors.join('; ')}` : ''}`);
-        if (capture !== sharedCapture) await capture.context.close();
       }
       await sharedCapture.context.close();
     }

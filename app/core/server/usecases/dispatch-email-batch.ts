@@ -1,4 +1,4 @@
-import { emailEventSchema, err, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
+import { emailEventSchema, isAuthBearingEmailPayload, err, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
 
 import type {
   Clock,
@@ -114,6 +114,7 @@ export const dispatchEmailBatch = async (
         const sent = rendered.success
           ? await deps.email.send({
               tenantId: item.tenantId,
+              forcePlatformTransport: isAuthBearingEmailPayload(rendered.payload),
               to: item.to,
               tenantTransportRequired: item.tenantTransportRequired,
               ...rendered.data,

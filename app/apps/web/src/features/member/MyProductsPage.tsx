@@ -207,7 +207,6 @@ export const MyProductsPage = () => {
     return (
       <MemberSurface
         title={t.student.myProducts}
-        eyebrow={t.student.productsLibrary}
         state={{ kind: 'loading', label: t.student.loadingProducts }}
       />
     );
@@ -219,7 +218,6 @@ export const MyProductsPage = () => {
     return (
       <MemberSurface
         title={t.student.myProducts}
-        eyebrow={t.student.productsLibrary}
         state={{
           kind: 'error',
           message: isForbidden(products.error) ? t.student.staffNoMember : localizeError(products.error, t),
@@ -230,7 +228,7 @@ export const MyProductsPage = () => {
   }
 
   return (
-    <MemberSurface title={t.student.myProducts} eyebrow={t.student.productsLibrary}>
+    <MemberSurface title={t.student.myProducts}>
         {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
         {products.data.products.length === 0 ? (
           <StatusView

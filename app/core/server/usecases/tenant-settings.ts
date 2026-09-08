@@ -14,11 +14,12 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { SpaceRepository, TenantRepository } from '../ports.js';
+import type { ProductRepository, SpaceRepository, TenantRepository } from '../ports.js';
 
 export interface TenantSettingsDeps {
   tenants: TenantRepository;
   spaces: SpaceRepository;
+  products: Pick<ProductRepository, 'bumpContentVersion'>;
 }
 
 export const getTenantSettings = async (
@@ -78,5 +79,7 @@ export const updateTenantSettings = async (
       'VAT exemption is selected but the legal basis is missing.',
     ));
   }
-  return ok(await deps.tenants.updateSettings(tenant.value, coherent));
+  const updated = await deps.tenants.updateSettings(tenant.value, coherent);
+  await deps.products.bumpContentVersion(tenant.value);
+  return ok(updated);
 };

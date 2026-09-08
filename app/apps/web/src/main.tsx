@@ -46,6 +46,7 @@ import { TenantBrandingBoundary } from './branding.js';
 import { AppChromeProvider } from './components/ui/app-chrome.js';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { LanguageSwitcher } from './components/ui/LanguageSwitcher.js';
+import { ToastProvider } from './components/ui/Toast.js';
 import { LanguageProvider } from './i18n/index.js';
 import { NotificationsTransportProvider } from './notifications-transport.js';
 import { initWebObservability, reportError } from './observability.js';
@@ -80,6 +81,7 @@ import {
   PanelCoursesRoute,
   PanelIndexRoute,
   PanelIntegrationsRoute,
+  PanelNotificationsRoute,
   PanelLayout,
   PanelLessonsRoute,
   PanelLessonCreateRoute,
@@ -123,6 +125,7 @@ import {
   SpaceThreadRoute,
   StartRoute,
   validateLessonSearch,
+  validateAccountSearch,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ForgotPasswordRoute } from './routes/forgot-password.js';
@@ -219,11 +222,15 @@ const resetPasswordRoute = createRoute({
 const accountRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/account',
+  validateSearch: validateAccountSearch,
   component: MemberAccountRoute,
 });
+const validateNotificationsSearch = (search: Record<string, unknown>): { filter?: 'unread' } =>
+  search['filter'] === 'unread' ? { filter: 'unread' } : {};
 const notificationsRoute = createRoute({
   getParentRoute: () => memberShellRoute,
   path: '/notifications',
+  validateSearch: validateNotificationsSearch,
   component: NotificationsRoute,
 });
 const messagesRoute = createRoute({
@@ -266,6 +273,12 @@ const panelIndexRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: '/',
   component: PanelIndexRoute,
+});
+const panelNotificationsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'notifications',
+  validateSearch: validateNotificationsSearch,
+  component: PanelNotificationsRoute,
 });
 const panelProductsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
@@ -516,6 +529,7 @@ const router = createRouter({
     ]),
     panelLayoutRoute.addChildren([
       panelIndexRoute,
+      panelNotificationsRoute,
       panelProductsRoute,
       panelProductCreateRoute,
       panelProductDetailRoute,
@@ -583,14 +597,16 @@ createRoot(container).render(
           <CssBaseline />
           <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
             <QueryClientProvider client={queryClient}>
-              <RefreshSnackbar />
-              <NotificationsTransportProvider>
-                <TenantBrandingBoundary>
-                  <TenantGate>
-                    <RouterProvider router={router} />
-                  </TenantGate>
-                </TenantBrandingBoundary>
-              </NotificationsTransportProvider>
+              <ToastProvider>
+                <RefreshSnackbar />
+                <NotificationsTransportProvider>
+                  <TenantBrandingBoundary>
+                    <TenantGate>
+                      <RouterProvider router={router} />
+                    </TenantGate>
+                  </TenantBrandingBoundary>
+                </NotificationsTransportProvider>
+              </ToastProvider>
               {import.meta.env.DEV ? (
                 <Suspense fallback={null}>
                   <ReactQueryDevtools />

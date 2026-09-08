@@ -39,6 +39,7 @@ const stubViewport = (isDesktop: boolean) => {
 const okMe = (
   overrides: {
     memberId?: string | null;
+    staffRole?: 'owner' | 'admin' | null;
     banned?: boolean;
     tenant?: null;
     displayName?: string | null;
@@ -59,7 +60,7 @@ const okMe = (
               id: 't1',
               slug: 'acme',
               name: 'Acme',
-              staffRole: null,
+              staffRole: overrides.staffRole ?? null,
               memberId: overrides.memberId ?? 'm1',
               displayName: overrides.displayName ?? null,
               banned: overrides.banned ?? false,
@@ -98,7 +99,14 @@ const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation
     },
   ],
   lockedSpaces: [
-    { id: 's9', slug: 'premium', name: 'Premium', description: 'Tylko dla kursantów.', productIds: ['p1'] },
+    {
+      id: 's9',
+      slug: 'premium',
+      name: 'Premium',
+      description: 'Tylko dla kursantów.',
+      productIds: ['p1'],
+      products: [{ id: 'p1', title: 'Program Pro' }],
+    },
   ],
   directMessagesEnabled: true,
   ...overrides,
@@ -179,6 +187,21 @@ const noNotifications = () =>
   http.get('/api/notifications/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }));
 
+const page = (label: string) => () => <p>{label}</p>;
+
+const stubMatchingViewport = (dimension: 'min-width' | 'max-width') => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes(dimension),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 const renderShell = async (path: string) => {
   const rootRoute = createRootRoute();
   const shellRoute = createRoute({
@@ -186,8 +209,8 @@ const renderShell = async (path: string) => {
     id: 'member-shell',
     component: MemberShell,
   });
-  const page = (label: string) => () => <p>{label}</p>;
   const routeTree = rootRoute.addChildren([
+    createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: page('Studio') }),
     shellRoute.addChildren([
       createRoute({ getParentRoute: () => shellRoute, path: '/start', component: page('Start') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page('Szukaj') }),
@@ -220,9 +243,83 @@ const renderShell = async (path: string) => {
 };
 
 describe('MemberShell', () => {
+  it('carries the lesson breadcrumb in the app bar', async () => {
+    stubMatchingViewport('min-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const crumbs = await screen.findByTestId('member-breadcrumbs');
+    expect(screen.getByTestId('shell-breadcrumbs')).toContainElement(crumbs);
+    expect(within(crumbs).getByRole('link', { name: 'JavaScript od zera' })).toHaveAttribute(
+      'href',
+      '/my/courses/c1',
+    );
+    expect(within(crumbs).getByText('Podstawy')).toBeInTheDocument();
+    expect(within(crumbs).getByText('Start')).toBeInTheDocument();
+    expect(within(crumbs).getByText('Zmienne')).toBeInTheDocument();
+  });
+
+  it('compacts the app-bar breadcrumb to the course and the lesson below sm', async () => {
+    stubMatchingViewport('max-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const crumbs = await screen.findByTestId('member-breadcrumbs');
+    expect(within(crumbs).getByRole('link', { name: 'JavaScript od zera' })).toBeInTheDocument();
+    expect(within(crumbs).getByText('Zmienne')).toBeInTheDocument();
+    expect(within(crumbs).queryByText('Podstawy')).not.toBeInTheDocument();
+    expect(within(crumbs).queryByText('Start')).not.toBeInTheDocument();
+  });
+
+  it('gives the compact app bar to the breadcrumb instead of truncating the brand', async () => {
+    stubMatchingViewport('max-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    await screen.findByTestId('member-breadcrumbs');
+    expect(screen.queryByTestId('shell-brand')).not.toBeInTheDocument();
+  });
+
+  it('leaves the app bar without a breadcrumb outside a lesson', async () => {
+    stubMatchingViewport('min-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1');
+
+    await screen.findByTestId('course-sidebar');
+    expect(screen.queryByTestId('member-breadcrumbs')).not.toBeInTheDocument();
+  });
+
+  it('shows the Studio app-bar button only to staff', async () => {
+    stubViewport(true);
+    server.use(okMe({ staffRole: 'admin', memberId: null }), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/start');
+
+    const studioLink = await screen.findByTestId('member-studio-link');
+    expect(studioLink).toHaveAttribute('href', '/panel');
+    expect(studioLink).toHaveTextContent(pl.account.menuStudio);
+    expect(studioLink.querySelector('svg')).toBeInTheDocument();
+    expect(window.getComputedStyle(studioLink).getPropertyValue('min-height')).toBe('44px');
+  });
+
+  it('hides the Studio app-bar button from member-only accounts', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+
+    await renderShell('/start');
+
+    expect(await screen.findByText('Start')).toBeInTheDocument();
+    expect(screen.queryByTestId('member-studio-link')).not.toBeInTheDocument();
+  });
+
   it('renders spaces, course rings and locked upsells in one sidebar list', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+    const user = userEvent.setup();
 
     await renderShell('/my');
 
@@ -236,55 +333,68 @@ describe('MemberShell', () => {
     const inProgress = within(sidebar).getByTestId('sidebar-course-c1');
     expect(inProgress).toHaveAttribute('href', '/my/courses/c1');
     expect(inProgress).toHaveTextContent('33%');
-    expect(within(inProgress).getByTestId('progress-ring')).toHaveAttribute('data-done', 'false');
+    expect(within(inProgress).getByTestId('progress-ring')).toBeInTheDocument();
+    expect(within(inProgress).queryByTestId('completion-mark')).not.toBeInTheDocument();
 
     const done = within(sidebar).getByTestId('sidebar-course-c2');
     expect(done).not.toHaveTextContent('%');
-    expect(within(done).getByTestId('progress-ring')).toHaveAttribute('data-done', 'true');
+    expect(within(done).getByTestId('completion-mark')).toBeInTheDocument();
+    expect(within(done).queryByTestId('progress-ring')).not.toBeInTheDocument();
 
-    expect(within(sidebar).getByTestId('sidebar-locked-s9')).toHaveAttribute('href', '/checkout/p1');
+    const locked = within(sidebar).getByTestId('sidebar-locked-s9');
+    expect(locked).toHaveAttribute('href', '/checkout/p1');
+    await user.hover(locked);
+    expect(await screen.findByText(pl.shell.lockedSpaceHint)).toBeInTheDocument();
+    expect(await screen.findByText(pl.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
     expect(within(sidebar).getByText(pl.shell.spacesSection)).toBeInTheDocument();
   });
 
-  it('marks the messages row when direct messages are waiting', async () => {
+  it('moves products, messages and the account out of the sidebar into the avatar menu', async () => {
     stubViewport(true);
-    server.use(
-      okMe(),
-      okNavigation(),
-      okOffer(),
-      noNotifications(),
-      http.get('*/api/messages/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 3 } })),
-    );
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications());
+    const user = userEvent.setup();
 
     await renderShell('/my');
 
-    const messages = await screen.findByTestId('sidebar-messages');
-    expect(messages).toHaveAttribute('href', '/messages');
-    await waitFor(() =>
-      expect(messages).toHaveAttribute('aria-label', pl.messages.unreadAria({ count: 3 })));
-    expect(within(messages).getByTestId('sidebar-messages-unread')).toBeInTheDocument();
+    const sidebar = await screen.findByTestId('member-sidebar');
+    expect(within(sidebar).queryByTestId('sidebar-products')).toBeNull();
+    expect(within(sidebar).queryByTestId('sidebar-messages')).toBeNull();
+    expect(within(sidebar).queryByTestId('sidebar-account')).toBeNull();
+    expect(within(sidebar).queryByTestId('notification-nav')).toBeNull();
+
+    await user.click(screen.getByTestId('member-account-menu'));
+
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      pl.student.myProducts,
+      pl.messages.navLabel,
+      pl.account.menuAccount,
+      pl.tenant.signOut,
+    ]);
+    expect(within(menu).getByTestId('member-account-products')).toHaveAttribute(
+      'href',
+      '/my/products',
+    );
+    expect(within(menu).getByTestId('member-account-messages')).toHaveAttribute('href', '/messages');
   });
 
-  it('hides the messages row and skips the unread poll when direct messages are off', async () => {
+  it('leaves messages out of the avatar menu when direct messages are off', async () => {
     stubViewport(true);
-    let unreadRequests = 0;
     server.use(
       okMe(),
       okNavigation(navigation({ directMessagesEnabled: false })),
       okOffer(),
       noNotifications(),
-      http.get('*/api/messages/unread-count', () => {
-        unreadRequests += 1;
-        return HttpResponse.json({ ok: false, error: { code: 'forbidden', message: 'off' } }, { status: 403 });
-      }),
     );
+    const user = userEvent.setup();
 
     await renderShell('/my');
 
-    expect(await screen.findByTestId('sidebar-products')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByTestId('sidebar-messages')).not.toBeInTheDocument());
-    expect(unreadRequests).toBe(0);
+    await user.click(await screen.findByTestId('member-account-menu'));
+
+    expect(await screen.findByTestId('member-account-products')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByTestId('member-account-messages')).not.toBeInTheDocument());
   });
 
   it('marks a space row with an unread dot and a labelled row', async () => {
@@ -418,23 +528,22 @@ describe('MemberShell', () => {
     expect(screen.getByTestId('sidebar-start')).not.toHaveAttribute('aria-current');
   });
 
-  it('keeps the bell in the sidebar on desktop and in the app bar below md', async () => {
+  it('keeps the bell in the app bar at every breakpoint', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
 
     const desktop = await renderShell(memberHomePath());
-    expect(await screen.findByTestId('notification-nav')).toBeInTheDocument();
-    expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('notification-bell')).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-nav')).not.toBeInTheDocument();
     desktop.unmount();
 
     stubViewport(false);
     await renderShell(memberHomePath());
 
     expect(await screen.findByTestId('notification-bell')).toBeInTheDocument();
-    expect(screen.queryByTestId('notification-nav')).not.toBeInTheDocument();
   });
 
-  it('shows the unread notification count next to the sidebar bell label', async () => {
+  it('shows the unread notification count on the app-bar bell', async () => {
     stubViewport(true);
     server.use(
       okMe(),
@@ -446,8 +555,8 @@ describe('MemberShell', () => {
 
     await renderShell(memberHomePath());
 
-    const bell = await screen.findByTestId('notification-nav');
-    expect(await within(bell).findByTestId('notification-bell-count')).toHaveTextContent('4');
+    const bell = await screen.findByTestId('notification-bell');
+    expect(await within(bell).findByText('4')).toBeInTheDocument();
     await waitFor(() =>
       expect(bell).toHaveAttribute('aria-label', pl.notifications.unreadAria({ count: 4 })));
   });
@@ -549,6 +658,20 @@ describe('MemberShell', () => {
     expect(currentLesson).toHaveClass('Mui-selected');
   });
 
+  it('keeps the bell and the avatar menu in the app bar on a lesson page', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const bar = (await screen.findByTestId('notification-bell')).closest('header');
+    expect(bar).not.toBeNull();
+    const trigger = screen.getByTestId('member-account-menu');
+    expect(bar).toContainElement(trigger);
+    expect(within(trigger).getByTestId('user-avatar')).toHaveTextContent('JU');
+    expect(screen.getByTestId('course-sidebar')).not.toContainElement(trigger);
+  });
+
   it('restores the member bar outside course pages', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
@@ -581,7 +704,7 @@ describe('MemberShell', () => {
     const sheet = await screen.findByTestId('member-menu-sheet');
     expect(within(sheet).getByTestId('member-sidebar')).toBeInTheDocument();
     expect(await within(sheet).findByTestId('sidebar-space-s1')).toHaveTextContent('Ogólna');
-    expect(within(sheet).getByTestId('sidebar-products')).toHaveAttribute('href', '/my/products');
+    expect(within(sheet).queryByTestId('sidebar-products')).not.toBeInTheDocument();
     expect(within(sheet).getByTestId('member-identity')).toHaveTextContent('Jan Uczestnik');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
@@ -662,7 +785,23 @@ describe('MemberShell', () => {
 
   it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {
     stubViewport(true);
-    server.use(okMe({ tenant: null }), okOffer(), okPublicNavigation());
+    server.use(
+      okMe({ tenant: null }),
+      okOffer(),
+      okPublicNavigation(publicNavigation({
+        lockedSpaces: [
+          {
+            id: 's9',
+            slug: 'premium',
+            name: 'Premium',
+            description: null,
+            productIds: ['p1'],
+            products: [{ id: 'p1', title: 'Program Pro' }],
+          },
+        ],
+      })),
+    );
+    const user = userEvent.setup();
 
     await renderShell('/community/s1');
 
@@ -675,10 +814,14 @@ describe('MemberShell', () => {
       'href',
       '/my/courses/c1',
     );
-    expect(within(nav).getByTestId('anon-sidebar-locked-s9')).toHaveAttribute(
+    const locked = within(nav).getByTestId('anon-sidebar-locked-s9');
+    expect(locked).toHaveAttribute(
       'href',
       '/checkout/p1',
     );
+    await user.hover(locked);
+    expect(await screen.findByText(pl.shell.lockedSpaceHint)).toBeInTheDocument();
+    expect(await screen.findByText(pl.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
     expect(within(nav).getByTestId('anon-sidebar-signin')).toHaveAttribute('href', '/login');
     expect(within(nav).queryByTestId('member-identity')).not.toBeInTheDocument();
   });

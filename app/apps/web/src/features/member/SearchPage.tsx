@@ -258,7 +258,7 @@ export const SearchPage = () => {
     : [];
 
   return (
-    <MemberSurface title={t.search.title} eyebrow={t.search.eyebrow}>
+    <MemberSurface title={t.search.title}>
       <Stack useFlexGap sx={{ rowGap: '1rem' }}>
         <SearchField
           value={term}
@@ -268,7 +268,7 @@ export const SearchPage = () => {
           testId="search-input"
         />
         <Typography variant="caption" color="text.secondary" data-testid="search-hint">
-          {t.discussion.searchWholeWordsHint}
+          {t.search.hint}
         </Typography>
         {!enabled ? null : search.isPending ? (
           <Typography variant="body2">{t.discussion.searching}</Typography>
@@ -282,9 +282,12 @@ export const SearchPage = () => {
             }}
           />
         ) : hits.length === 0 ? (
-          <Typography variant="body2" data-testid="search-empty">
-            {t.search.empty}
-          </Typography>
+          <Stack useFlexGap sx={{ rowGap: '0.35rem' }} data-testid="search-empty">
+            <Typography variant="body2">{t.search.empty}</Typography>
+            <Typography variant="caption" color="text.secondary" data-testid="search-stem-hint">
+              {t.search.stemHint}
+            </Typography>
+          </Stack>
         ) : (
           <LessonIndexLoader
             courseIds={courseIds}

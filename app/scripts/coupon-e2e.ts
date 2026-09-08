@@ -7,7 +7,7 @@ import { chromium, type Browser } from 'playwright-core';
 
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 
-import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import {
   bootServer,
   ephemeralPort,
@@ -22,6 +22,7 @@ const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const E2E_DB = uniqueTestDatabaseName('together_coupon_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();

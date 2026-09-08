@@ -1,5 +1,8 @@
+import { useSearch } from '@tanstack/react-router';
+
 import { DashboardPanel } from '../features/home/DashboardPanel.js';
 import { usePanelContext } from '../features/home/panel-context.js';
+import { NotificationsPage } from '../features/member/NotificationsPage.js';
 import { StudioChecklistDock } from '../features/onboarding/index.js';
 
 export { PanelLayout } from '../features/home/PanelLayout.js';
@@ -71,5 +74,15 @@ export const PanelIndexRoute = () => {
       <DashboardPanel />
       <StudioChecklistDock scope={`${tenant.id}:${email}`} />
     </>
+  );
+};
+
+export const PanelNotificationsRoute = () => {
+  const { filter } = useSearch({ strict: false });
+  return (
+    <NotificationsPage
+      filter={filter === 'unread' ? 'unread' : 'all'}
+      basePath="/panel/notifications"
+    />
   );
 };

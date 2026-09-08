@@ -15,7 +15,7 @@
     "me:[]": {
       "ok": true,
       "value": {
-        "avatarUrl": "https://www.gravatar.com/avatar/f4c8ea3c4b395b3319842856b7e846e8926183f0724f8be620d3864a30536e51?d=404&s=160",
+        "avatarUrl": null,
         "email": "kontakt+smoke-member@togethercommunity.app",
         "emailVerified": true,
         "impersonation": null,
@@ -30,7 +30,7 @@
           "name": "Acme Courses",
           "slug": "acme",
           "staffRole": null,
-          "videoAutoplay": false
+          "videoAutoplay": null
         },
         "userId": "fixture-user-f4c8ea3c4b395b33"
       }

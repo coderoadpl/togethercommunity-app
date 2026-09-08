@@ -22,7 +22,7 @@ import {
   run,
   tsxBin,
 } from './server-harness.js';
-import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { continueWithIdentifier, signInWithPassword } from './login-flow.js';
 import { passwordFixture } from './password-fixture.js';
 
@@ -32,6 +32,7 @@ const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
 const E2E_DB = uniqueTestDatabaseName('together_auth_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
@@ -269,6 +270,8 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
 
     await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, 'demo-password-15');
+    await page.waitForURL('**/start', { timeout: 15000 });
+    await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
@@ -282,7 +285,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('passkey-proof-password').fill('demo-password-15');
     await page.getByTestId('add-passkey').click();
     try {
-      await page.getByTestId('passkey-added').waitFor({ state: 'visible', timeout: 15000 });
+      await page.locator('[data-testid^="toast-success-"]').first().waitFor({ state: 'visible', timeout: 15000 });
     } catch (cause) {
       const alert = await page.getByRole('alert').first().textContent().catch(() => null);
       throw new E2eFailure(`passkey registration did not confirm. alert=${String(alert)}\n${String(cause)}`);
@@ -293,6 +296,8 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('signin-passkey').waitFor({ state: 'visible', timeout: 15000 });
 
     await page.getByTestId('signin-passkey').click();
+    await page.waitForURL('**/start', { timeout: 15000 });
+    await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',

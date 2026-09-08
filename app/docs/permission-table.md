@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 110. Route rows: 304. Exported `Ctx` use-case rows: 245.
+Closed capability count: 110. Route rows: 307. Exported `Ctx` use-case rows: 248.
 
 ## Human-readable diff
 
@@ -160,6 +160,9 @@ no changes
 | `POST /api/impersonation/stop` | member:impersonate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenant/audit-events` | member:impersonate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/me/profile` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/upload` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/complete` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/remove` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
 | `GET /api/me/sessions` | account:session:self-read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/me/sessions/revoke` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/me/sessions/revoke-others` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -422,6 +425,9 @@ no changes
 | `image-assets.ts#completeProductCoverUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#beginBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#completeBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#beginAvatarUpload` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#completeAvatarUpload` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#removeAvatar` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
 | `impersonation.ts#startImpersonation` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
 | `impersonation.ts#stopImpersonation` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
 | `impersonation.ts#listTenantAuditEvents` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
@@ -588,19 +594,19 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:167` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1052` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1054` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1523` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1523` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:168` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1056` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1058` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1527` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1527` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
-| api-key | `apps/server/src/marketing-routes.ts:86` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
-| api-key | `apps/server/src/marketing-routes.ts:97` | `identity: apiIdentity(tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:108` | `const key = headers.get(API_KEY_HEADER);` |
-| api-key | `apps/server/src/marketing-routes.ts:110` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
-| api-key | `apps/server/src/marketing-routes.ts:116` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:647` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
+| api-key | `apps/server/src/marketing-routes.ts:99` | `identity: apiIdentity(tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:110` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/marketing-routes.ts:112` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
+| api-key | `apps/server/src/marketing-routes.ts:118` | `identity: apiIdentity(resolved.value.tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:660` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -610,9 +616,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
 | staff-role | `core/server/usecases/community-access.ts:248` | `if (ctx.identity.staffRole) return ok(space);` |
 | staff-role | `core/server/usecases/community-access.ts:264` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:234` | `if (tenantId !== null && identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:248` | `if (ctx.identity.staffRole !== null) return false;` |
-| staff-role | `core/server/usecases/community.ts:443` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| member-scope | `core/server/usecases/community.ts:232` | `if (tenantId !== null && identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:246` | `if (ctx.identity.staffRole !== null) return false;` |
+| staff-role | `core/server/usecases/community.ts:441` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
@@ -622,6 +628,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/entitlements.ts:198` | `} else if (ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/entitlements.ts:232` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
 | member-scope | `core/server/usecases/entitlements.ts:258` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/image-assets.ts:239` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
+| member-scope | `core/server/usecases/image-assets.ts:250` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
+| member-scope | `core/server/usecases/image-assets.ts:317` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/invoices.ts:459` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
@@ -639,7 +648,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/resolve-identity.ts:85` | `staffRole: staffGrant?.staffRole ?? null,` |
+| staff-role | `core/server/usecases/resolve-identity.ts:86` | `staffRole: staffGrant?.staffRole ?? null,` |
 
 ## Suspicious but preserved
 

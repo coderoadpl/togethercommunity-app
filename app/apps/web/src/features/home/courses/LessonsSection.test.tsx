@@ -174,6 +174,49 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     expect(completed).toBe(true);
   });
 
+  it('confirms before deleting an attachment', async () => {
+    const lesson: CourseLesson = {
+      id: 'lesson-1',
+      tenantId: 't1',
+      name: 'Attachment lesson',
+      isPreview: false,
+      contents: [],
+      legacyId: null,
+      createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    const attachment = {
+      id: 'attachment-1',
+      lessonId: lesson.id,
+      fileName: 'worksheet.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 7,
+      status: 'ready' as const,
+      createdAt: '2026-08-03T12:00:00.000Z',
+      downloadPath: '/api/student/lessons/lesson-1/attachments/attachment-1/download',
+    };
+    let attachments = [attachment];
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [lesson] } })),
+      http.get('/api/lessons/:lessonId/attachments', () =>
+        HttpResponse.json({ ok: true, data: { attachments } }),
+      ),
+      http.delete('/api/lessons/:lessonId/attachments/:attachmentId', ({ params }) => {
+        const attachmentId = String(params['attachmentId']);
+        attachments = attachments.filter((candidate) => candidate.id !== attachmentId);
+        return HttpResponse.json({ ok: true, data: { deleted: true } });
+      }),
+    );
+
+    await renderLessonsAt('/panel/lessons/lesson-1');
+    await userEvent.click(await screen.findByRole('button', { name: pl.lessons.deleteAttachment({ name: attachment.fileName }) }));
+
+    expect(await screen.findByText(pl.lessons.deleteAttachmentConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(pl.lessons.deleteAttachmentConfirmBody({ name: attachment.fileName }))).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('lesson-attachment-delete-confirm'));
+
+    await waitFor(() => expect(screen.queryByText(attachment.fileName)).not.toBeInTheDocument());
+  });
+
   it('adds a video block, reorders it and creates the lesson', async () => {
     const user = userEvent.setup();
     let lessons: CourseLesson[] = [];

@@ -139,6 +139,8 @@ const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() 
 const tenantSettingsOptionsSchema = z.object({
   billingPortalUrl: z.string().url().optional(),
   clearBillingPortalUrl: z.boolean().optional(),
+  videoAutoplayDefault: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  memberVideoAutoplayOverride: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
 });
 const storageConfigurationOptionsSchema = z.object({
   provider: storageProviderKindSchema,
@@ -500,6 +502,7 @@ const notificationsListOptionsSchema = z.object({
     .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
     .transform((value) => Number.parseInt(value, 10))
     .optional(),
+  unread: z.boolean().optional(),
 });
 const notificationReadOptionsSchema = z.object({
   all: z.boolean().optional(),
@@ -872,7 +875,11 @@ tenant
 tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
-      `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+      [
+        `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+        `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
+        `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
+      ].join('\n'),
     );
   }),
 );
@@ -882,19 +889,37 @@ tenant
   .description('Update tenant settings (owner only)')
   .option('--billing-portal-url <url>', 'billing portal URL shown to members')
   .option('--clear-billing-portal-url', 'remove the billing portal URL')
+  .option('--video-autoplay-default <value>', "'true' or 'false' — default lesson video autoplay")
+  .option('--member-video-autoplay-override <value>', "'true' or 'false' — let members override autoplay")
   .action(
     withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
       const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
-      if (billingPortalUrl === undefined) {
+      if (
+        billingPortalUrl === undefined &&
+        options.videoAutoplayDefault === undefined &&
+        options.memberVideoAutoplayOverride === undefined
+      ) {
         emit(
-          err(validation('Pass --billing-portal-url <url> or --clear-billing-portal-url')),
+          err(validation('Pass at least one tenant setting option')),
           ctx.json,
           () => '',
         );
         return;
       }
-      emit(await ctx.api.updateTenantSettings({ billingPortalUrl }), ctx.json, (data) =>
-        `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+      emit(await ctx.api.updateTenantSettings({
+        ...(billingPortalUrl === undefined ? {} : { billingPortalUrl }),
+        ...(options.videoAutoplayDefault === undefined
+          ? {}
+          : { videoAutoplayDefault: options.videoAutoplayDefault }),
+        ...(options.memberVideoAutoplayOverride === undefined
+          ? {}
+          : { memberVideoAutoplayOverride: options.memberVideoAutoplayOverride }),
+      }), ctx.json, (data) =>
+        [
+          `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+          `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
+          `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
+        ].join('\n'),
       );
     }),
   );
@@ -2566,10 +2591,14 @@ notifications
   .command('list')
   .description('List notifications')
   .option('--limit <n>')
+  .option('--unread')
   .action(
     withInput(z.tuple([notificationsListOptionsSchema]), async (ctx, [options]) => {
       emit(
-        await ctx.api.listNotifications(options.limit === undefined ? {} : { limit: options.limit }),
+        await ctx.api.listNotifications({
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+          ...(options.unread === undefined ? {} : { unread: options.unread }),
+        }),
         ctx.json,
         (data) =>
           data.notifications.length === 0

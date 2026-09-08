@@ -182,7 +182,7 @@ describe('member pages', () => {
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: pl.student.courseContentComingSoon })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.student.productWithoutCoursesTitle })).toBeInTheDocument();
   });
 
   it('links a purchased product to the courses the member can browse', async () => {
@@ -230,7 +230,7 @@ describe('member pages', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Intro Course');
     expect(within(screen.getByRole('banner')).queryAllByRole('link')).toHaveLength(0);
     expect(
-      screen.queryByRole('heading', { name: pl.student.courseContentComingSoon }),
+      screen.queryByRole('heading', { name: pl.student.productWithoutCoursesTitle }),
     ).not.toBeInTheDocument();
   });
 
@@ -267,8 +267,8 @@ describe('member pages', () => {
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
     expect(await screen.findByText(pl.errors.messageIntegrationUnavailable)).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: pl.student.courseContentComingSoon })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: pl.student.productWithoutCoursesTitle })).not.toBeInTheDocument();
     await userEvent.click(within(screen.getByRole('main')).getByRole('button', { name: pl.student.retryCourses }));
-    expect(await screen.findByRole('heading', { name: pl.student.courseContentComingSoon })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.student.productWithoutCoursesTitle })).toBeInTheDocument();
   });
 });

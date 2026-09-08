@@ -7,25 +7,18 @@ import type { MemberNavigationSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
+import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
-import { NotificationBell } from '../../../NotificationBell.js';
-import {
-  streamlessPollInterval,
-  UNREAD_BADGE_POLL_INTERVAL_MS,
-} from '../../../notifications-stream.js';
-import { useNotificationsTransport } from '../../../notifications-transport.js';
 import { SidebarProgressPercent } from '../../../theme.js';
-import { AccountIcon } from '../account-icons.js';
-import { useImpersonation } from '../viewer.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
-import { MemberAvatar } from '../../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { LockClosed } from '../tree-icons.js';
+import { LockedSpaceTooltipTitle } from '../SpaceCards.js';
 import { nestSpacesUnderCourses } from './course-spaces.js';
 import {
   activeNavEntry,
   memberHomePath,
-  memberMessagesPath,
   memberSearchPath,
   type MemberNavEntry,
 } from './member-nav.js';
@@ -36,34 +29,8 @@ import {
   type ShellLinkProps,
   type ShellVariant,
 } from './shell-chrome.js';
-import { MessagesIcon, ProductsIcon, SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
+import { SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-rows.js';
-
-const MessagesRow = ({ active }: { active: boolean }) => {
-  const t = useTranslations();
-  const { streamless } = useNotificationsTransport();
-  const navigation = useQuery(actions.memberNavigation);
-  const enabled = navigation.isSuccess && navigation.data.navigation.directMessagesEnabled;
-  const unread = useQuery({
-    ...actions.unreadMessages,
-    enabled,
-    refetchInterval: streamlessPollInterval(streamless, UNREAD_BADGE_POLL_INTERVAL_MS),
-  });
-  const count = unread.data?.unread ?? 0;
-
-  if (!enabled) return null;
-
-  return (
-    <LinkRow
-      to={memberMessagesPath()}
-      label={t.messages.navLabel}
-      icon={<MessagesIcon />}
-      active={active}
-      testId="sidebar-messages"
-      {...(count > 0 ? { unread: { label: t.messages.unreadAria({ count }) } } : {})}
-    />
-  );
-};
 
 const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
   const t = useTranslations();
@@ -109,7 +76,11 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
               data-testid={`sidebar-course-${course.courseId}`}
             >
               <ListItemIcon>
-                <ProgressRing value={percent} done={done} />
+                {done ? (
+                  <CompletionMark label={t.courseOverview.courseCompleted} />
+                ) : (
+                  <ProgressRing value={percent} />
+                )}
               </ListItemIcon>
               <Tooltip title={course.courseName} enterDelay={600} describeChild>
                 <ListItemText
@@ -135,7 +106,7 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
           ? { component: 'div', disabled: true }
           : { component: Link, to: `/checkout/${encodeURIComponent(productId)}` };
         return (
-          <Tooltip key={space.id} title={t.shell.lockedSpaceHint}>
+          <Tooltip key={space.id} title={<LockedSpaceTooltipTitle space={space} />}>
             <NavRow {...linkProps} data-testid={`sidebar-locked-${space.id}`}>
               <ListItemIcon>
                 <LockClosed />
@@ -163,7 +134,6 @@ export const MemberSidebar = ({
   const t = useTranslations();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const active = activeNavEntry(pathname);
-  const impersonating = useImpersonation() !== null;
 
   return (
     <Box
@@ -219,26 +189,8 @@ export const MemberSidebar = ({
         <NavigationList active={active} />
       </Box>
       <Divider sx={{ my: '0.5rem' }} />
-      <List component="div" disablePadding>
-        <LinkRow
-          to="/my/products"
-          label={t.student.myProducts}
-          icon={<ProductsIcon />}
-          active={active?.kind === 'products'}
-          testId="sidebar-products"
-        />
-        {impersonating ? null : <MessagesRow active={active?.kind === 'messages'} />}
-        {variant === 'drawer' ? <NotificationBell navLabel={t.notifications.bell} /> : null}
-        <LinkRow
-          to="/account"
-          label={t.account.menuAccount}
-          icon={<AccountIcon />}
-          active={active?.kind === 'account'}
-          testId="sidebar-account"
-        />
-      </List>
       <IdentityRow component={Link} to="/account" data-testid="member-identity">
-        <MemberAvatar name={name} avatarUrl={avatarUrl} />
+        <UserAvatar name={name} email={email} imageUrl={avatarUrl} />
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="body2" component="p" noWrap>
             {name}

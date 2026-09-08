@@ -3,7 +3,7 @@
     "me:[]": {
       "ok": true,
       "value": {
-        "avatarUrl": "https://www.gravatar.com/avatar/89848c4c7f4fb0ff99f461dee5317db5bbf7168e3162cdec324836419ca845ed?d=404&s=160",
+        "avatarUrl": null,
         "email": "kursant.aktywny@together.dev",
         "emailVerified": true,
         "impersonation": null,
@@ -18,7 +18,7 @@
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": null,
-          "videoAutoplay": false
+          "videoAutoplay": null
         },
         "userId": "fixture-user-89848c4c7f4fb0ff"
       }
@@ -53,6 +53,12 @@
               "productIds": [
                 "product-react-full"
               ],
+              "products": [
+                {
+                  "id": "product-react-full",
+                  "title": "React w praktyce - pełny dostęp"
+                }
+              ],
               "slug": "klub-react"
             }
           ],
@@ -63,6 +69,8 @@
               "isFollowing": true,
               "name": "Społeczność",
               "position": 0,
+              "products": [],
+              "publicReadOnly": true,
               "slug": "spolecznosc",
               "unread": true,
               "visibility": "members"
@@ -75,6 +83,13 @@
               "isFollowing": true,
               "name": "Klub JavaScriptu",
               "position": 1,
+              "products": [
+                {
+                  "id": "product-js-full",
+                  "title": "Kurs JavaScript - pełny dostęp"
+                }
+              ],
+              "publicReadOnly": false,
               "slug": "klub-js",
               "unread": true,
               "visibility": "product"
@@ -264,7 +279,7 @@
           {
             "lessonId": "lesson-js-zmienne-1",
             "post": {
-              "authorAvatarUrl": "https://www.gravatar.com/avatar/89848c4c7f4fb0ff99f461dee5317db5bbf7168e3162cdec324836419ca845ed?d=404&s=160",
+              "authorAvatarUrl": null,
               "authorDisplay": "Kursant Aktywny",
               "authorIsStaff": false,
               "body": "Czy jest jeszcze sens używać var? W starszych poradnikach na YouTube wszędzie widzę var, a w tej lekcji tylko let i const. Powinienem przepisywać stare przykłady, czy po prostu je pomijać?",
@@ -285,7 +300,7 @@
           {
             "lessonId": "space-studio-spolecznosc",
             "post": {
-              "authorAvatarUrl": "https://www.gravatar.com/avatar/48b35d5bade1b6c2d6d9c30e9bb0c032ec8cab6d81deca26574cb943af715bdf?d=404&s=160",
+              "authorAvatarUrl": null,
               "authorDisplay": "Konto Free",
               "authorIsStaff": false,
               "body": "Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?",
@@ -306,7 +321,7 @@
           {
             "lessonId": "lesson-js-dom-1",
             "post": {
-              "authorAvatarUrl": "https://www.gravatar.com/avatar/f9e5468247b51d08ef71d45d0320e104035ab840e84238a6121d3b0c43700e68?d=404&s=160",
+              "authorAvatarUrl": null,
               "authorDisplay": "Studio Creator",
               "authorIsStaff": true,
               "body": "Świetna obserwacja! NodeList to starszy interfejs DOM — powstał, zanim tablice miały dzisiejsze metody. Array.from albo spread [...lista] to dokładnie idiom, którego używamy w dalszej części tej lekcji.",
@@ -327,7 +342,7 @@
           {
             "lessonId": "lesson-js-zmienne-1",
             "post": {
-              "authorAvatarUrl": "https://www.gravatar.com/avatar/ce6247d6f2d48edc3bbc09b753a727d5cf84fab353dad35d0aa549cad4978528?d=404&s=160",
+              "authorAvatarUrl": null,
               "authorDisplay": "Kursant Wygasły",
               "authorIsStaff": false,
               "body": "Mała podpowiedź dla innych: przykłady z tej lekcji najwygodniej testować w konsoli przeglądarki (F12 → Console). Od razu widać, jak const blokuje ponowne przypisanie wartości.",

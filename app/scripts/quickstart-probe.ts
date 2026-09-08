@@ -9,12 +9,14 @@ import { z } from 'zod';
 
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 
+import { assertSafeE2eDatabaseReset } from './e2e-config.js';
 import { delay, ephemeralPort, rootDir, run, tsxBin } from './server-harness.js';
 
-const PROBE_DB = uniqueTestDatabaseName('together_quickstart');
+const PROBE_DB = uniqueTestDatabaseName('together_quickstart_test');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
   'postgres://together:together@localhost:48912/together';
+assertSafeE2eDatabaseReset(baseDatabaseUrl, PROBE_DB, process.env);
 const probeUrl = new URL(baseDatabaseUrl);
 probeUrl.pathname = `/${PROBE_DB}`;
 const probeDatabaseUrl = probeUrl.toString();
@@ -197,6 +199,8 @@ const driveFirstRun = async (baseUrl: string): Promise<void> => {
     await page.locator('#tenant-name').fill('Probe Community');
     await page.locator('#tenant-slug').fill('probe-community');
     await page.locator('button[type="submit"]').click();
+    await page.waitForURL('**/start', { timeout: 30_000 });
+    await page.goto(`${baseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('onboarding-checklist').waitFor({ state: 'visible', timeout: 30_000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Probe Community',

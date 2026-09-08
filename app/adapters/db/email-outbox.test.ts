@@ -108,6 +108,21 @@ describe('email outbox database adapter', () => {
     expect(await pool.usage('tenant-outbox')).toEqual({ sent: 999, reserved: 0 });
   });
 
+  it('counts cap-exempt sends past the platform limit without a reservation', async () => {
+    const pool = createPlatformTransactionalPool(db);
+
+    await pool.recordCapExemptSend('tenant-outbox');
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 1, reserved: 0 });
+
+    await db.update(tenantTransactionalEmailPools)
+      .set({ sent: 1000 })
+      .where(eq(tenantTransactionalEmailPools.tenantId, 'tenant-outbox'));
+    await pool.recordCapExemptSend('tenant-outbox');
+
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 1001, reserved: 0 });
+    expect(await pool.reserve('tenant-outbox', 1000)).toBe(false);
+  });
+
   it('reclaims platform reservations abandoned by a crashed dispatcher', async () => {
     await db.insert(tenantTransactionalEmailPools).values({
       tenantId: 'tenant-outbox',

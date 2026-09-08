@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { ThemeModeProvider } from '../../theme-mode.js';
+import { MEMBER_BACKGROUND } from '../../theme.js';
 
 const ThemeProbe = () => {
   const theme = useTheme();
@@ -15,13 +16,15 @@ const ThemeProbe = () => {
 };
 
 describe('ThemeModeProvider', () => {
-  it('provides the warm light Shadcn theme by default', () => {
+  it('provides the warm light member theme by default', () => {
     render(
       <ThemeModeProvider>
         <ThemeProbe />
       </ThemeModeProvider>,
     );
 
-    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^light:8:#FAFAF9:'Inter'/);
+    expect(screen.getByTestId('theme-probe')).toHaveTextContent(
+      `light:8:${MEMBER_BACKGROUND.light}:'Inter'`,
+    );
   });
 });

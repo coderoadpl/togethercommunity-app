@@ -1,9 +1,47 @@
 {
   "calls": {
+    "getTenantSettings:[]": {
+      "ok": true,
+      "value": {
+        "settings": {
+          "accentColor": null,
+          "autoIssueInvoices": false,
+          "autoIssueInvoiceScope": "b2b_only",
+          "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
+          "bunnyStreamCdnHostname": null,
+          "bunnyStreamLibraryId": null,
+          "defaultHomeSpaceId": "space-studio-spolecznosc",
+          "defaultLanguage": "pl",
+          "directMessagesEnabled": true,
+          "faviconUrl": null,
+          "invoiceExemptionBasis": null,
+          "invoiceExemptionBasisKind": null,
+          "invoiceSellerAddress": null,
+          "invoiceSellerName": null,
+          "invoiceVatMode": "rate",
+          "invoiceVatRatePercent": null,
+          "invoicingProvider": null,
+          "logoDarkUrl": null,
+          "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
+          "name": "Studio Demo",
+          "ogDescription": null,
+          "ogImageUrl": null,
+          "ogTitle": null,
+          "privacyUrl": null,
+          "socialLinks": [],
+          "supportConfigured": false,
+          "supportEmail": null,
+          "supportUrl": null,
+          "termsUrl": null,
+          "videoAutoplayDefault": false
+        }
+      }
+    },
     "me:[]": {
       "ok": true,
       "value": {
-        "avatarUrl": "https://www.gravatar.com/avatar/48b35d5bade1b6c2d6d9c30e9bb0c032ec8cab6d81deca26574cb943af715bdf?d=404&s=160",
+        "avatarUrl": null,
         "email": "free@together.dev",
         "emailVerified": true,
         "impersonation": null,
@@ -18,7 +56,7 @@
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": null,
-          "videoAutoplay": false
+          "videoAutoplay": null
         },
         "userId": "fixture-user-48b35d5bade1b6c2"
       }
@@ -52,6 +90,12 @@
               "productIds": [
                 "product-js-full"
               ],
+              "products": [
+                {
+                  "id": "product-js-full",
+                  "title": "Kurs JavaScript - pełny dostęp"
+                }
+              ],
               "slug": "klub-js"
             },
             {
@@ -60,6 +104,12 @@
               "name": "Klub Reacta",
               "productIds": [
                 "product-react-full"
+              ],
+              "products": [
+                {
+                  "id": "product-react-full",
+                  "title": "React w praktyce - pełny dostęp"
+                }
               ],
               "slug": "klub-react"
             }
@@ -71,6 +121,8 @@
               "isFollowing": true,
               "name": "Społeczność",
               "position": 0,
+              "products": [],
+              "publicReadOnly": true,
               "slug": "spolecznosc",
               "unread": true,
               "visibility": "members"

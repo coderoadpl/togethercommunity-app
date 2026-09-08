@@ -360,6 +360,53 @@ describe('CoursesPanel courses tab', () => {
     expect(screen.getByTestId('lesson-content-ct2')).toHaveTextContent(sourceLabel);
   });
 
+  it('confirms before removing a lesson from a chapter', async () => {
+    const chapters = [
+      {
+        id: 'ch1',
+        name: 'Chapter',
+        contents: [
+          { id: 'ct1', name: 'First lesson', lessonId: 'lesson-1' },
+          { id: 'ct2', name: 'Second lesson', lessonId: 'lesson-2' },
+        ],
+      },
+    ];
+    let modules = [courseModule({ chapters })];
+    let sentContentIds: string[] | undefined;
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [course()] } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { lessons: [lesson(), lesson({ id: 'lesson-2', name: 'Second lesson' })] },
+        }),
+      ),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/modules/update', async ({ request }) => {
+        const body = updateCourseModuleInputSchema.parse(await request.json());
+        const current = modules[0];
+        if (!current) return HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'missing' } });
+        sentContentIds = body.chapters?.[0]?.contents.map((content) => content.id);
+        const updated = { ...current, chapters: body.chapters ?? current.chapters };
+        modules = [updated];
+        return HttpResponse.json({ ok: true, data: { module: updated } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+    const content = await screen.findByTestId('lesson-content-ct1');
+
+    await userEvent.click(within(content).getByRole('button', { name: pl.common.remove }));
+
+    expect(await screen.findByText(pl.courses.removeContentConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(pl.courses.removeContentConfirmBody({ name: 'First lesson' }))).toBeInTheDocument();
+    expect(sentContentIds).toBeUndefined();
+    await userEvent.click(screen.getByTestId('chapter-content-remove-confirm'));
+
+    await waitFor(() => expect(sentContentIds).toEqual(['ct2']));
+  });
+
   it('reorders modules with the keyboard-accessible controls', async () => {
     let courses = [course({ moduleOrder: ['module-1', 'module-2'] })];
     const modules = [

@@ -49,6 +49,12 @@ const buildProbeApp = () => {
   app.get('/api/boom', () => {
     throw new Error('kaboom');
   });
+  app.get('/u/:token', (c) => c.text(c.req.param('token')));
+  app.post('/api/webhooks/ses/:webhookToken', (c) => c.text(c.req.param('webhookToken')));
+  app.post('/marketing/confirm/:token', (c) => c.text(c.req.param('token')));
+  app.all('/api/*', (c) => c.json({ ok: false }, 404));
+  app.get('*', (c) => c.text(`redirect ${c.req.path}`, 404));
+  app.get('*', (c) => c.text(`preview ${c.req.path}`, 404));
   return app;
 };
 
@@ -81,7 +87,8 @@ describe('telemetryMiddleware', () => {
     const span = await soleSpan();
     expect(span.name).toBe('GET /api/products');
     expect(span.attributes['http.request.method']).toBe('GET');
-    expect(span.attributes['url.path']).toBe('/api/products');
+    expect(span.attributes['url.path']).toBeUndefined();
+    expect(span.attributes['http.route']).toBe('/api/products');
     expect(span.attributes['http.response.status_code']).toBe(200);
     expect(typeof span.attributes['http.server.duration_ms']).toBe('number');
     expect(span.attributes['app.user.id']).toBe('user-1');
@@ -104,8 +111,37 @@ describe('telemetryMiddleware', () => {
     expect(response.status).toBe(500);
 
     const span = await soleSpan();
+    expect(span.name).toBe('GET /api/boom');
+    expect(span.attributes['url.path']).toBeUndefined();
     expect(span.attributes['http.response.status_code']).toBe(500);
     expect(span.status.code).toBe(SpanStatusCode.ERROR);
     expect(span.events.some((event) => event.name === 'exception')).toBe(true);
+  });
+
+  it.each([
+    { method: 'GET', path: '/u/live-unsubscribe-token', template: '/u/:token' },
+    { method: 'POST', path: '/marketing/confirm/live-consent-token', template: '/marketing/confirm/:token' },
+    { method: 'POST', path: '/api/webhooks/ses/live-ses-webhook-token', template: '/api/webhooks/ses/:webhookToken' },
+  ])('redacts path tokens for $method $template', async ({ method, path, template }) => {
+    const response = await buildProbeApp().request(path, { method });
+    expect(response.status).toBe(200);
+
+    const span = await soleSpan();
+    expect(span.name).toBe(`${method} ${template}`);
+    expect(span.attributes['url.path']).toBeUndefined();
+    expect(span.attributes['http.route']).toBe(template);
+    expect(span.name).not.toContain('live-');
+    expect(String(span.attributes['url.path'])).not.toContain('live-');
+  });
+
+  it('omits route attributes when only catch-all routes match', async () => {
+    const response = await buildProbeApp().request('/api/unknown/live-api-token');
+    expect(response.status).toBe(404);
+
+    const span = await soleSpan();
+    expect(span.name).toBe('GET');
+    expect(span.attributes['url.path']).toBeUndefined();
+    expect(span.attributes['http.route']).toBeUndefined();
+    expect(span.name).not.toContain('live-');
   });
 });

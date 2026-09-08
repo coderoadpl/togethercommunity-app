@@ -39,6 +39,7 @@
           "invoicingProvider": null,
           "logoDarkUrl": null,
           "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
           "name": "Studio Demo",
           "ogDescription": null,
           "ogImageUrl": null,
@@ -48,7 +49,8 @@
           "supportConfigured": false,
           "supportEmail": null,
           "supportUrl": null,
-          "termsUrl": null
+          "termsUrl": null,
+          "videoAutoplayDefault": false
         }
       }
     },
@@ -126,7 +128,7 @@
     "me:[]": {
       "ok": true,
       "value": {
-        "avatarUrl": "https://www.gravatar.com/avatar/f9e5468247b51d08ef71d45d0320e104035ab840e84238a6121d3b0c43700e68?d=404&s=160",
+        "avatarUrl": null,
         "email": "creator@together.dev",
         "emailVerified": true,
         "impersonation": null,
@@ -141,7 +143,7 @@
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": "owner",
-          "videoAutoplay": false
+          "videoAutoplay": null
         },
         "userId": "fixture-user-f9e5468247b51d08"
       }

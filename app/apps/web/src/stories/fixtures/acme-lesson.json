@@ -10,10 +10,48 @@
         }
       }
     },
+    "getTenantSettings:[]": {
+      "ok": true,
+      "value": {
+        "settings": {
+          "accentColor": null,
+          "autoIssueInvoices": false,
+          "autoIssueInvoiceScope": "b2b_only",
+          "billingPortalUrl": null,
+          "bunnyStreamCdnHostname": null,
+          "bunnyStreamLibraryId": null,
+          "defaultHomeSpaceId": null,
+          "defaultLanguage": "pl",
+          "directMessagesEnabled": true,
+          "faviconUrl": null,
+          "invoiceExemptionBasis": null,
+          "invoiceExemptionBasisKind": null,
+          "invoiceSellerAddress": null,
+          "invoiceSellerName": null,
+          "invoiceVatMode": "rate",
+          "invoiceVatRatePercent": null,
+          "invoicingProvider": null,
+          "logoDarkUrl": null,
+          "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
+          "name": "Acme Courses",
+          "ogDescription": null,
+          "ogImageUrl": null,
+          "ogTitle": null,
+          "privacyUrl": null,
+          "socialLinks": [],
+          "supportConfigured": false,
+          "supportEmail": null,
+          "supportUrl": null,
+          "termsUrl": null,
+          "videoAutoplayDefault": false
+        }
+      }
+    },
     "me:[]": {
       "ok": true,
       "value": {
-        "avatarUrl": "https://www.gravatar.com/avatar/f4c8ea3c4b395b3319842856b7e846e8926183f0724f8be620d3864a30536e51?d=404&s=160",
+        "avatarUrl": null,
         "email": "kontakt+smoke-member@togethercommunity.app",
         "emailVerified": true,
         "impersonation": null,
@@ -28,7 +66,7 @@
           "name": "Acme Courses",
           "slug": "acme",
           "staffRole": null,
-          "videoAutoplay": false
+          "videoAutoplay": null
         },
         "userId": "fixture-user-f4c8ea3c4b395b33"
       }

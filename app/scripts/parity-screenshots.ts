@@ -530,6 +530,8 @@ const captureStudentJourney = async (
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 20000 });
+  await page.goto(`${studioBaseUrl}/panel`, { waitUntil: 'load' });
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 };
 

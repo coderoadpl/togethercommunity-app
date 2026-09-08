@@ -33,6 +33,13 @@ const spaceStatsSchema = z.object({
 
 export type SpaceStats = z.output<typeof spaceStatsSchema>;
 
+export const spaceProductSummarySchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(200),
+});
+
+export type SpaceProductSummary = z.output<typeof spaceProductSummarySchema>;
+
 /** A space as its creator sees it in the panel: with engagement stats resolved server-side. */
 export const staffSpaceSchema = spaceSchema.extend({
   stats: spaceStatsSchema,
@@ -43,6 +50,7 @@ export type StaffSpace = z.output<typeof staffSpaceSchema>;
 /** A space as a member sees it: with the viewer's follow state resolved server-side. */
 export const memberSpaceSchema = spaceSchema.extend({
   isFollowing: z.boolean(),
+  products: z.array(spaceProductSummarySchema).optional(),
 });
 
 export type MemberSpace = z.output<typeof memberSpaceSchema>;

@@ -20,7 +20,6 @@ import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -59,8 +58,6 @@ import {
 } from './spaces.js';
 
 const NOW = '2026-07-15T10:00:00.000Z';
-
-const contentHash: ContentHash = { sha256: (content) => `digest(${String(content)})` };
 
 const identity = (overrides: Partial<Identity>): Identity => ({
   userId: 'u1',
@@ -620,8 +617,8 @@ const grantRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRep
   },
 });
 
-const productRepo = (contentVersionBumps: string[]): ProductRepository => ({
-  listByTenant: async () => [],
+const productRepo = (contentVersionBumps: string[], products: Product[]): ProductRepository => ({
+  listByTenant: async (tenantId) => products.filter((item) => item.tenantId === tenantId),
   listPublishedByTenant: async () => [],
   findById: async () => null,
   create: async () => 'created',
@@ -753,7 +750,7 @@ const fixture = (input: {
     modules: emptyModules,
     lessons: emptyLessons,
     grants: grantRepo(input.grants ?? [], input.products ?? []),
-    products: productRepo(contentVersionBumps),
+    products: productRepo(contentVersionBumps, input.products ?? []),
     tenants: tenantRepo(input.defaultHomeSpaceId ?? null),
     tenantAccess,
     links: {
@@ -766,7 +763,6 @@ const fixture = (input: {
     ids: new SequenceIds(),
     clock: new MutableClock(),
     avatarSources,
-    contentHash,
   };
   return { deps, contentVersionBumps, posts, reactions, spaceSubscriptions, spaceSeen, notifications, delivered };
 };
@@ -802,6 +798,22 @@ describe('space visibility', () => {
     expect(listed.ok).toBe(true);
     if (!listed.ok) return;
     expect(listed.value.map((item) => item.id)).toEqual(['s-open', 's-club']);
+  });
+
+  it('includes product summaries for visible product-gated spaces', async () => {
+    const f = fixture({
+      spaces: spaces(),
+      grants: [grant('m1', 'p-club')],
+      products: [{ ...product('p-club'), title: 'Club Pass' }],
+    });
+    const listed = await listSpacesForMember(ctx(), f.deps);
+    expect(listed).toMatchObject({
+      ok: true,
+      value: [
+        { id: 's-open', products: [] },
+        { id: 's-club', products: [{ id: 'p-club', title: 'Club Pass' }] },
+      ],
+    });
   });
 
   it('hides the product-gated space once the grant expired', async () => {
@@ -1053,8 +1065,8 @@ describe('space feed', () => {
     expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
       ok: true,
       value: {
-        pinned: [{ authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160' }],
-        items: [{ authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u2@example.com)?d=404&s=160' }],
+        pinned: [{ authorAvatarUrl: null }],
+        items: [{ authorAvatarUrl: null }],
       },
     });
   });
@@ -1257,7 +1269,7 @@ describe('space-post notifications', () => {
       courseId: null,
       lessonName: 'Klub',
       snippet: 'nowy wpis',
-      authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u1@example.com)?d=404&s=160',
+      authorAvatarUrl: null,
     });
   });
 

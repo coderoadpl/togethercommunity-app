@@ -14,7 +14,9 @@ export interface BreadcrumbItem {
 
 export interface MemberPageProps {
   title: ReactNode;
-  eyebrow: ReactNode;
+  /** Kicker above the title; omit it when it would only restate the title. */
+  eyebrow?: ReactNode;
+  /** One member shell width; `prose` is the reading column inside lesson content, never a page width. */
   width?: 'prose' | 'wide';
   breadcrumbs?: BreadcrumbItem[];
   breadcrumbLabel: string;
@@ -51,7 +53,7 @@ const Crumb = ({ item, isCurrent }: { item: BreadcrumbItem; isCurrent: boolean }
 export const MemberPage = ({
   title,
   eyebrow,
-  width = 'prose',
+  width = 'wide',
   breadcrumbs,
   breadcrumbLabel,
   actions,
@@ -108,9 +110,11 @@ export const MemberPage = ({
         >
           <Box sx={{ minWidth: 0 }}>
             <LedgerTitle variant="h1" dense={dense}>{title}</LedgerTitle>
-            <Eyebrow variant="overline" component="p">
-              {eyebrow}
-            </Eyebrow>
+            {eyebrow === undefined ? null : (
+              <Eyebrow variant="overline" component="p">
+                {eyebrow}
+              </Eyebrow>
+            )}
           </Box>
           {actions === undefined ? null : <Box sx={{ flexShrink: 0 }}>{actions}</Box>}
         </Box>

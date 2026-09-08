@@ -1,5 +1,43 @@
 {
   "calls": {
+    "getTenantSettings:[]": {
+      "ok": true,
+      "value": {
+        "settings": {
+          "accentColor": null,
+          "autoIssueInvoices": false,
+          "autoIssueInvoiceScope": "b2b_only",
+          "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
+          "bunnyStreamCdnHostname": null,
+          "bunnyStreamLibraryId": null,
+          "defaultHomeSpaceId": "space-studio-spolecznosc",
+          "defaultLanguage": "pl",
+          "directMessagesEnabled": true,
+          "faviconUrl": null,
+          "invoiceExemptionBasis": null,
+          "invoiceExemptionBasisKind": null,
+          "invoiceSellerAddress": null,
+          "invoiceSellerName": null,
+          "invoiceVatMode": "rate",
+          "invoiceVatRatePercent": null,
+          "invoicingProvider": null,
+          "logoDarkUrl": null,
+          "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
+          "name": "Studio Demo",
+          "ogDescription": null,
+          "ogImageUrl": null,
+          "ogTitle": null,
+          "privacyUrl": null,
+          "socialLinks": [],
+          "supportConfigured": false,
+          "supportEmail": null,
+          "supportUrl": null,
+          "termsUrl": null,
+          "videoAutoplayDefault": false
+        }
+      }
+    },
     "listDmReports:[{\"limit\":1,\"status\":\"open\"}]": {
       "ok": true,
       "value": {
@@ -56,7 +94,7 @@
     "me:[]": {
       "ok": true,
       "value": {
-        "avatarUrl": "https://www.gravatar.com/avatar/f9e5468247b51d08ef71d45d0320e104035ab840e84238a6121d3b0c43700e68?d=404&s=160",
+        "avatarUrl": null,
         "email": "creator@together.dev",
         "emailVerified": true,
         "impersonation": null,
@@ -71,7 +109,7 @@
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": "owner",
-          "videoAutoplay": false
+          "videoAutoplay": null
         },
         "userId": "fixture-user-f9e5468247b51d08"
       }

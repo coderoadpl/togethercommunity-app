@@ -38,9 +38,7 @@ hash jump; the harness scrolls to the domain section after fonts settle so the
 sticky sidebar is first painted at the top of the document. Server HTML stories render the production HTML in a nested iframe;
 the harness waits for that document and its fonts. Captures run sequentially,
 once, with no retries. Each viewport/auth group reuses a page in inventory order, matching the
-golden authoring harness and its rounded-shadow paint caches. The course editor
-uses an isolated context so unrelated pages cannot change its upload-button shadow
-rasterization. The shared browser
+golden authoring harness and its rounded-shadow paint caches. The shared browser
 setup saves native animation-frame scheduling before Playwright installs its
 clock. Capture waits use those native frames, so paint readiness remains tied
 to rendering while application timers retain the authoring clock behavior.
@@ -97,10 +95,9 @@ pnpm run fixtures:record
 pnpm run fixtures:check
 ```
 
-Recording creates and drops the isolated `together_smoke` database with the
+Recording creates and drops the isolated database with a unique `together_smoke_test` name with the
 fixed visual seed clock, starts the real server, and records through the client
-boundary. It does not overwrite the development database. Do not run recording,
-fixture checking or smoke concurrently: they share that isolated database.
+boundary. It does not overwrite the development database. Each process receives its own database name.
 `DATABASE_URL` selects the Postgres instance for recording; the default is the
 local development instance on port 48912.
 
@@ -125,10 +122,10 @@ preference-result stories for examples.
 ## Live application subset
 
 `pnpm run visual:app` keeps only login, boot splash and one seeded lesson, at
-their supported viewports (seven captures). It starts Postgres locally, migrates
-and reseeds the development database with the visual clock, builds the SPA and
+their supported viewports (seven captures). It starts Postgres locally, creates, migrates
+and seeds an isolated database with the visual clock, builds the SPA and
 boots the real server. In CI, `E2E_DATABASE_URL` selects the supplied database
-service and skips Docker startup. Run it separately from other database gates.
+service and skips Docker startup. The isolated database is dropped after the run.
 
 Login must receive the real auth-config and enabled seed auth methods. Real
 password and magic-link sign-in establish creator and member sessions. The boot
@@ -158,3 +155,22 @@ Pull requests to `staging` that change committed PNGs also receive a sticky
 Before/After gallery from `.github/workflows/visual-golden-gallery.yml`. Its
 images are pinned to the compared commits. The publisher uses trusted base-ref
 workflow code and never executes pull-request code.
+
+## Chromatic (promotion PRs)
+
+Chromatic runs only for promotion pull requests targeting `main`, plus manual
+`workflow_dispatch` runs. It reviews Storybook UI snapshots for baseline changes
+before promotion; it is not the visual regression gate and does not replace
+`pnpm run visual` or the committed route goldens.
+
+The free plan budget is 5,000 snapshots per month in Chrome. The snapshot cost follows the current catalogue size. With
+TurboSnap enabled through `onlyChanged`, most promotion builds should snapshot
+only stories affected by the pull request instead of the whole catalogue. Manual
+runs still spend quota according to the number of stories Chromatic snapshots.
+
+Review Chromatic from the UI Review status on the pull request. Inspect each
+changed snapshot, accept only intentional UI baseline changes in Chromatic, and
+leave accidental changes unaccepted until the branch is fixed. The UI Review
+status is advisory: it gives reviewers visual evidence for promotion, but the
+required repository gate remains `pnpm run check` and the existing smoke/visual
+processes.

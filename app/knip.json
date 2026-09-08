@@ -27,7 +27,9 @@
   "ignoreBinaries": [
     "openssl"
   ],
-  "ignoreDependencies": [],
+  "ignoreDependencies": [
+    "chromatic"
+  ],
   "rules": {
     "files": "error",
     "dependencies": "error",

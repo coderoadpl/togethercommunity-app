@@ -42,17 +42,15 @@ fixture client construction site.
 ## Dependency freeze
 
 `addons: []` stays empty. Do not add a Storybook test runner, an accessibility
-addon, Chromatic, or another hosted comparison service. Accessibility already
-belongs to the in-house browser checks in `pnpm run a11y`; hosted advisory pixels
-belong to Argos. Any Storybook dependency or addon requires an owner decision
+addon or another hosted comparison service. Accessibility already
+belongs to the in-house browser checks in `pnpm run a11y`; Chromatic provides advisory review on promotion pull requests. Any Storybook dependency or addon requires an owner decision
 and the licence review required by `CLAUDE.md`.
 
 ## Pixel ownership
 
 Canonical page pixels belong to `tasks/visual-goldens/` and the deterministic
 `pnpm run visual` workflow documented in the
-[visual regression policy](visual-regression.md). The hosted advisory track is
-Argos.
+[visual regression policy](visual-regression.md). Chromatic provides advisory snapshots for promotion pull requests.
 
 Lost Pixel, its copied story baselines, and the replacement story-shot commands
 are retired. Storybook has no separate committed PNG baseline. The
@@ -83,8 +81,8 @@ unrecorded calls. Captures reject pending or expected-error calls that were neve
 exercised. Recorded
 tracking and read-mark failures follow the same request policy as the application
 harness. Authenticated passkey reads use the auth adapter; session IDs and times
-are normalized to stable fixture values. Routing hosts use the storage golden's
-authoring port so CORS instructions stay reproducible. The pending and active DNS
+are normalized to stable fixture values. Routing hosts use a stable fixture port; the capture masks ephemeral CORS fields,
+matching the live authoring inventory. The pending and active DNS
 checklist stories share the synthetic routing scenario with the live screen
 inventory. The inherited active-named goldens contain the same cached pending
 response as the pending goldens; the capture mapping reuses the pending story
@@ -143,3 +141,7 @@ saved preferences and pending confirmation at both viewports. These synthetic
 states reuse the recorded seed brand, token and scope label. They have no entries
 in the application capture inventory and no committed goldens, so they are
 catalogue coverage only.
+
+Account page stories include the profile, security, notifications and playback tabs
+using the production search validator. Page compositions provide the application
+toast context for feedback from the current product components.

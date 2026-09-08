@@ -18,7 +18,7 @@ import {
   PostBody,
   PostMetaText,
 } from '../../theme.js';
-import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
 
@@ -34,9 +34,14 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
         <Stack
           direction="row"
           useFlexGap
-          sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}
+          sx={{
+            alignItems: 'center',
+            columnGap: '0.6rem',
+            rowGap: '0.375rem',
+            flexWrap: 'wrap',
+          }}
         >
-          <MemberAvatar name={item.authorDisplay} avatarUrl={item.authorAvatarUrl} size="sm" />
+          <UserAvatar name={item.authorDisplay} imageUrl={item.authorAvatarUrl} size="sm" />
           <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
           {item.authorIsStaff && (
             <AuthorChip data-testid={`home-feed-author-chip-${item.id}`}>
@@ -72,12 +77,7 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
         <Stack
           direction="row"
           useFlexGap
-          sx={{
-            alignItems: 'baseline',
-            columnGap: '0.75rem',
-            rowGap: '0.25rem',
-            flexWrap: 'wrap',
-          }}
+          sx={{ alignItems: 'center', columnGap: '0.75rem', minWidth: 0 }}
         >
           <PostMetaText component="span" data-testid={`home-feed-reply-count-${item.id}`}>
             {t.discussion.replyCount({ count: item.replyCount })}
@@ -89,11 +89,13 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
           >
             {t.community.openThread}
           </MuiLink>
-          <FeedPostMenu
-            postId={item.id}
-            postPath={communityPostPath(item.spaceId, item.id)}
-            canContactAuthor={!item.isOwn && !deleted}
-          />
+          <Box sx={{ ml: 'auto', flexShrink: 0 }}>
+            <FeedPostMenu
+              postId={item.id}
+              postPath={communityPostPath(item.spaceId, item.id)}
+              canContactAuthor={!item.isOwn && !deleted}
+            />
+          </Box>
         </Stack>
       </Stack>
     </DiscussionThread>

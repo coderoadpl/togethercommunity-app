@@ -18,7 +18,7 @@ import {
   run,
   tsxBin,
 } from './server-harness.js';
-import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { signInWithPassword } from './login-flow.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
@@ -31,6 +31,7 @@ const CREATOR_PASSWORD = 'demo-password-15';
 
 const E2E_DB = uniqueTestDatabaseName('together_custom_domain_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
@@ -110,6 +111,8 @@ const runCustomHostSignIn = async (customBaseUrl: string, tenantBaseUrl: string)
 
     await page.goto(`${customBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${customBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
@@ -154,6 +157,8 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
 
     await page.goto(`${customBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${customBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 
     await page.getByTestId('section-settings').click();
@@ -163,7 +168,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     await page.getByTestId('passkey-proof-password').fill(CREATOR_PASSWORD);
     await page.getByTestId('add-passkey').click();
     try {
-      await page.getByTestId('passkey-added').waitFor({ state: 'visible', timeout: 20000 });
+      await page.locator('[data-testid^="toast-success-"]').first().waitFor({ state: 'visible', timeout: 20000 });
     } catch (cause) {
       const alert = await page.getByRole('alert').first().textContent().catch(() => null);
       throw new E2eFailure(
@@ -175,6 +180,8 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     await page.getByTestId('sign-out').click();
     await page.getByTestId('signin-passkey').waitFor({ state: 'visible', timeout: 20000 });
     await page.getByTestId('signin-passkey').click();
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${customBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     assert(
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
@@ -261,12 +268,14 @@ const runSelfServeAdd = async (input: {
     const page = await context.newPage();
     await page.goto(`${input.tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${input.tenantBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
 
     await page.getByTestId('tenant-domain-input').fill('sklep.acme.localhost');
     await page.getByTestId('tenant-domain-add').click();
-    await page.getByTestId('tenant-domain-error').waitFor({ state: 'visible', timeout: 20000 });
+    await page.locator('[data-testid^="toast-error-"]').first().waitFor({ state: 'visible', timeout: 20000 });
     assert(
       await readDomainRow(input.databaseUrl, 'sklep.acme.localhost') === null,
       'the platform base domain was accepted as a custom domain',
@@ -308,8 +317,8 @@ const runSelfServeAdd = async (input: {
     console.log('custom-domain-e2e: operator flip made the self-serve host resolve OK');
 
     await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
-    page.once('dialog', (dialog) => void dialog.accept());
     await page.getByTestId(`tenant-domain-remove-${SELF_SERVE_HOST}`).click();
+    await page.getByTestId('tenant-domain-remove-confirm').click();
     await row.waitFor({ state: 'detached', timeout: 20000 });
     assert(
       await readDomainRow(input.databaseUrl, SELF_SERVE_HOST) === null,
@@ -330,6 +339,8 @@ const runStudioDomainStatus = async (tenantBaseUrl: string): Promise<void> => {
     const page = await context.newPage();
     await page.goto(`${tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${tenantBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
     const row = page.getByTestId(`tenant-domain-${CUSTOM_HOST}`);

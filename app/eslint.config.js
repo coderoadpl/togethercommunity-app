@@ -251,7 +251,10 @@ export default tseslint.config(
           type: 'web-notifications',
           pattern: [
             'apps/web/src/NotificationBell*',
+            'apps/web/src/NotificationList*',
+            'apps/web/src/notification-icons*',
             'apps/web/src/notification-links*',
+            'apps/web/src/notifications-data*',
             'apps/web/src/notifications-stream*',
             'apps/web/src/notifications-transport*',
           ],
@@ -527,7 +530,7 @@ export default tseslint.config(
             },
             {
               from: ['adapter-storage'],
-              allow: ['node:crypto', 'node:dns', 'node:net', 'undici'],
+              allow: ['node:crypto', 'node:dns', 'node:net', 'sharp', 'undici'],
             },
             {
               from: ['platform-entry'],
@@ -815,7 +818,7 @@ export default tseslint.config(
         {
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
-          rules: [{ from: ['adapter-storage'], allow: ['node:crypto', 'vitest'] }],
+          rules: [{ from: ['adapter-storage'], allow: ['node:crypto', 'sharp', 'vitest'] }],
         },
       ],
     },

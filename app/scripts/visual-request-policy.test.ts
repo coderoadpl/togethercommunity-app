@@ -9,7 +9,7 @@ describe('shared visual request policy', () => {
     expect(visualRequestPolicy(new URL(`http://studio.localhost${API_PATHS.studentLastViewed}`), 'fetch')).toBe('abort');
     expect(visualRequestPolicy(new URL(`http://studio.localhost${API_PATHS.spaceSeen.replace(':spaceId', 'space-studio-spolecznosc')}`), 'fetch')).toBe('abort');
     expect(visualRequestPolicy(new URL('http://studio.localhost/api/me'), 'fetch')).toBe('continue');
-    expect(visualRequestPolicy(new URL('https://www.gravatar.com/avatar/test'), 'image')).toBe('abort');
+    expect(visualRequestPolicy(new URL('https://www.gravatar.com/avatar/test'), 'image')).toBe('placeholder');
     expect(visualRequestPolicy(new URL('https://images.example.test/test.png'), 'image')).toBe('placeholder');
     expect(visualRequestPolicy(new URL('https://video.example.test/embed'), 'document')).toBe('abort');
   });

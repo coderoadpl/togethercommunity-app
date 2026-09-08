@@ -153,6 +153,11 @@ const renderProductsPanel = async (
       assets = [asset];
       return HttpResponse.json({ ok: true, data: { asset } });
     }),
+    http.delete('/api/products/:productId/downloads/:assetId', ({ params }) => {
+      const assetId = String(params['assetId']);
+      assets = assets.filter((asset) => asset.id !== assetId);
+      return HttpResponse.json({ ok: true, data: { deleted: true } });
+    }),
     http.post('/api/products/prices', async ({ request }) => {
       const body = await request.json();
       const parsed = typeof body === 'object' && body !== null ? body : {};
@@ -357,6 +362,36 @@ describe('ProductsPanel', () => {
     expect(await screen.findByText('workbook.pdf')).toBeInTheDocument();
     expect(screen.getByText(pl.products.downloadStatusReady)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: pl.access.heading, level: 2 })).toBeInTheDocument();
+  });
+
+  it('confirms before deleting a digital download asset', async () => {
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const download: Product = {
+      ...baseProduct,
+      id: 'download-1',
+      type: 'digital_download',
+      slug: 'creator-workbook',
+      title: 'Creator workbook',
+    };
+    const asset: ProductDownloadAssetMetadata = {
+      id: 'asset-1',
+      productId: download.id,
+      fileName: 'workbook.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 7,
+      status: 'ready',
+      createdAt: '2026-07-12T12:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/download-1', [download], [], [asset]);
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.products.deleteDownload({ name: asset.fileName }) }));
+
+    expect(await screen.findByText(pl.products.deleteDownloadConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(pl.products.deleteDownloadConfirmBody({ name: asset.fileName }))).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('product-download-delete-confirm'));
+
+    await waitFor(() => expect(screen.queryByText(asset.fileName)).not.toBeInTheDocument());
   });
 
   it('shows the product type of every listed product', async () => {

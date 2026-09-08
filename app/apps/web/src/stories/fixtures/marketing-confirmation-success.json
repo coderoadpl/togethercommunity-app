@@ -20,6 +20,7 @@
       "invoicingProvider": null,
       "logoDarkUrl": null,
       "logoUrl": "/assets/akademia-wordmark.svg",
+      "memberVideoAutoplayOverride": false,
       "name": "Akademia Samouka",
       "ogDescription": null,
       "ogImageUrl": null,
@@ -28,7 +29,8 @@
       "socialLinks": [],
       "supportEmail": null,
       "supportUrl": null,
-      "termsUrl": null
+      "termsUrl": null,
+      "videoAutoplayDefault": false
     },
     "tenant": {
       "contentVersion": 1,

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 
-import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { requestMagicLink } from './login-flow.js';
 import {
   bootServer,
@@ -21,6 +21,7 @@ const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const E2E_DB = 'together_e2e_member_shell';
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
@@ -160,20 +161,40 @@ const runMobileMenuJourney = async (page: Page): Promise<void> => {
     '/checkout/product-react-full',
     'Menu locked-space row',
   );
-  await assertHref(sheet.getByTestId('sidebar-products'), '/my/products', 'Menu products row');
-  await assertHref(sheet.getByTestId('sidebar-messages'), '/messages', 'Menu messages row');
-  await assertHref(sheet.getByTestId('sidebar-account'), '/account', 'Menu account row');
   await assertHref(sheet.getByTestId('member-identity'), '/account', 'Menu identity row');
-  assert(await sheet.getByTestId('notification-nav').count() === 0, 'Menu sheet duplicated the notification row');
+  for (const testId of ['sidebar-products', 'sidebar-messages', 'sidebar-account', 'notification-nav']) {
+    assert(
+      await sheet.getByTestId(testId).count() === 0,
+      `Menu sheet still listed "${testId}" after the move to the app bar`,
+    );
+  }
 
-  await sheet.getByTestId('sidebar-products').click();
-  await page.waitForURL('**/my/products');
+  await page.keyboard.press('Escape');
   await sheet.waitFor({ state: 'detached', timeout: 15000 });
 
   await page.getByTestId('member-tab-start').click();
   await page.waitForURL('**/start');
   await page.getByTestId('start-continue').waitFor(visible);
   console.log('member-shell-e2e: unified mobile Menu sheet journey OK');
+};
+
+const runAccountMenuJourney = async (page: Page): Promise<void> => {
+  await page.getByTestId('member-account-menu').click();
+  const products = page.getByTestId('member-account-products');
+  await products.waitFor(visible);
+  await assertHref(products, '/my/products', 'Account menu products row');
+  await assertHref(page.getByTestId('member-account-messages'), '/messages', 'Account menu messages row');
+  await assertHref(page.getByTestId('member-account-link'), '/account', 'Account menu account row');
+  await page.getByTestId('notification-bell').waitFor(visible);
+
+  await products.click();
+  await page.waitForURL('**/my/products');
+  await products.waitFor({ state: 'detached', timeout: 15000 });
+
+  await page.getByTestId('member-tab-start').click();
+  await page.waitForURL('**/start');
+  await page.getByTestId('start-continue').waitFor(visible);
+  console.log('member-shell-e2e: app-bar account menu journey OK');
 };
 
 const runCourseSidebarJourney = async (page: Page): Promise<void> => {
@@ -274,6 +295,7 @@ try {
   await signInMember(page, studioBaseUrl);
   await runMobileStartAndSearchJourney(page, studioBaseUrl);
   await runMobileMenuJourney(page);
+  await runAccountMenuJourney(page);
   await runCourseSidebarJourney(page);
   await runDesktopSwapJourney(page);
   await context.close();

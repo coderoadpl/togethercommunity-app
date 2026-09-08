@@ -209,9 +209,26 @@ jobs:
         with:
           name: visual-app
           path: app/out/visual-app
-      - run: pnpm run e2e:${{ matrix.suite }}
+      - name: Run E2E suite
+        shell: bash
+        run: |
+          mkdir -p e2e-artifacts
+          set +e
+          pnpm run e2e:${{ matrix.suite }} 2>&1 | tee "e2e-artifacts/${{ matrix.suite }}.log"
+          status="${PIPESTATUS[0]}"
+          set -e
+          exit "$status"
         env:
           PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-${{ matrix.suite }}-failure
+          path: |
+            app/e2e-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
 
   release-tag:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

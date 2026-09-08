@@ -28,6 +28,7 @@ export interface TenantScopeSource {
 }
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'AccountAvatarTenantReader.listTenantIdsForUser': 'Google sign-in discovers every member tenant before copying the provider avatar into each tenant boundary.',
   'AutoInvoiceJobRepository.claimDue': 'A platform worker leases the next due job across all tenants.',
   'AutomationIdempotencyRepository.sweepExpired': 'A platform worker removes expired keys across all tenants.',
   'ConsentEvidenceRetentionRepository.listExpiredTenantIds': 'A platform retention worker discovers tenants with expired consent evidence.',
@@ -79,6 +80,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   ApiClientOptions: 'HTTP client callback configuration with no persistence access.',
   ApiKeyCrypto: 'Cryptographic primitive with no persistence access.',
   AppDeps: 'Server composition callbacks with no direct persistence access.',
+  AvatarImageProcessor: 'Image transform boundary operating on an already tenant-scoped storage configuration.',
   AuthE2eClient: 'Authentication test-driver boundary.',
   AuthSettings: 'Authentication-provider callback configuration.',
   AuthClientPort: 'Client-side authentication transport boundary.',
@@ -87,6 +89,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   CliAuthAdapter: 'CLI authentication transport boundary.',
   Clock: 'Time source with no persistence access.',
   ContentHash: 'Hashing primitive with no persistence access.',
+  CursorQueryDescriptor: 'Client query descriptor: cursor bookkeeping over an already tenant-scoped route.',
   DevMarketingScheduler: 'Development scheduler control boundary.',
   DiscussionLinkPort: 'URL construction boundary with no persistence access.',
   DomainProvisionState: 'External domain-provider response shape with no persistence access.',
@@ -95,6 +98,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   EmailPort: 'Email delivery boundary with no persistence access.',
   Fa3Validator: 'Invoice validation boundary with no persistence access.',
   FulfillEnrollmentDeps: 'Use-case email dispatch callback.',
+  GoogleIdentityApi: 'Browser identity prompt boundary with no tenant data access.',
   IdGenerator: 'Identifier source with no persistence access.',
   SeedUsers: 'Platform identity fixtures: seeded users exist before any tenant grant.',
   SmokeTenantSeedOptions: 'Seed fixture configuration bound to one hard-coded tenant.',

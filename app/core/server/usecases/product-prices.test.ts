@@ -41,6 +41,7 @@ const product: Product = {
 
 const harness = () => {
   const prices: ProductPrice[] = [];
+  const contentVersionBumps: string[] = [];
   let sequence = 0;
   const deps: ProductPriceDeps = {
     products: {
@@ -50,7 +51,9 @@ const harness = () => {
       create: async () => 'created',
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
-      bumpContentVersion: async () => undefined,
+      bumpContentVersion: async (tenantId) => {
+        contentVersionBumps.push(tenantId);
+      },
     },
     prices: {
       listByProduct: async (_tenantId, productId) => prices.filter((price) => price.productId === productId),
@@ -69,7 +72,7 @@ const harness = () => {
     ids: { nextId: () => `price-${++sequence}` },
     clock: { nowIso: () => '2026-07-14T10:00:00.000Z' },
   };
-  return { deps, prices };
+  return { deps, prices, contentVersionBumps };
 };
 
 describe('createProductPrice', () => {
@@ -85,6 +88,21 @@ describe('createProductPrice', () => {
       value: { kind: 'recurring', interval: 'month', amountCents: 2900, currency: 'PLN', active: true },
     });
     expect(h.prices).toHaveLength(1);
+    expect(h.contentVersionBumps).toEqual(['t1']);
+  });
+
+  it('does not invalidate public caches when adding a price to a draft product', async () => {
+    const h = harness();
+    h.deps.products.findById = async () => ({ ...product, published: false });
+
+    const result = await createProductPrice(
+      { identity: identity('owner') },
+      { productId: 'p1', kind: 'one_time', amountCents: 2900 },
+      h.deps,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(h.contentVersionBumps).toEqual([]);
   });
 
   it('rejects a recurring price without an interval', async () => {
@@ -155,11 +173,54 @@ describe('listProductPrices / deactivateProductPrice', () => {
 
     const deactivated = await deactivateProductPrice({ identity: identity('admin') }, { id: 'price-1' }, h.deps);
     expect(deactivated).toMatchObject({ ok: true, value: { active: false } });
+    expect(h.contentVersionBumps).toEqual(['t1', 't1']);
   });
 
   it('is not found when deactivating an unknown price', async () => {
     const h = harness();
     const result = await deactivateProductPrice({ identity: identity('owner') }, { id: 'nope' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(h.contentVersionBumps).toEqual([]);
+  });
+
+  it('does not invalidate public caches when the price is already inactive', async () => {
+    const h = harness();
+    h.prices.push({
+      id: 'price-1',
+      tenantId: 't1',
+      productId: 'p1',
+      kind: 'one_time',
+      interval: null,
+      amountCents: 9900,
+      currency: 'PLN',
+      active: false,
+      createdAt: '2026-07-14T10:00:00.000Z',
+    });
+
+    const result = await deactivateProductPrice({ identity: identity('owner') }, { id: 'price-1' }, h.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { active: false } });
+    expect(h.contentVersionBumps).toEqual([]);
+  });
+
+  it('does not invalidate public caches when deactivating a draft product price', async () => {
+    const h = harness();
+    h.deps.products.findById = async () => ({ ...product, published: false });
+    h.prices.push({
+      id: 'price-1',
+      tenantId: 't1',
+      productId: 'p1',
+      kind: 'one_time',
+      interval: null,
+      amountCents: 9900,
+      currency: 'PLN',
+      active: true,
+      createdAt: '2026-07-14T10:00:00.000Z',
+    });
+
+    const result = await deactivateProductPrice({ identity: identity('owner') }, { id: 'price-1' }, h.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { active: false } });
+    expect(h.contentVersionBumps).toEqual([]);
   });
 });

@@ -11,8 +11,9 @@ import { ForgotPasswordRoute } from '../routes/forgot-password.js';
 import { ResetPasswordRoute } from '../routes/reset-password.js';
 import { CheckoutRoute } from '../routes/checkout.js';
 import { HomeRoute } from '../routes/home.js';
-import { CommunityRoute, CourseRoute, CourseStructureRoute, LessonPlayerRoute, MemberAccountRoute, MemberShellRoute, MyCoursesRoute, MyProductsRoute, SearchRoute, SpaceFeedRoute, StartRoute, validateLessonSearch } from '../routes/member.js';
+import { CommunityRoute, CourseRoute, CourseStructureRoute, LessonPlayerRoute, MemberAccountRoute, MemberShellRoute, MyCoursesRoute, MyProductsRoute, SearchRoute, SpaceFeedRoute, StartRoute, validateAccountSearch, validateLessonSearch } from '../routes/member.js';
 import { TenantBrandingBoundary } from '../branding.js';
+import { ToastProvider } from '../components/ui/Toast.js';
 import { LanguageSwitcher } from '../components/ui/LanguageSwitcher.js';
 import { TenantGate } from '../features/tenant-not-found/TenantNotFoundPage.js';
 import { AppChromeProvider } from '../components/ui/app-chrome.js';
@@ -74,7 +75,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
         component: LessonPlayerRoute,
       }),
       createRoute({ getParentRoute: () => shell, path: MEMBER_ROUTE_PATHS.communitySpace, component: SpaceFeedRoute }),
-      createRoute({ getParentRoute: () => shell, path: '/account', component: MemberAccountRoute }),
+      createRoute({ getParentRoute: () => shell, path: '/account', validateSearch: validateAccountSearch, component: MemberAccountRoute }),
       createRoute({ getParentRoute: () => shell, path: '/community', component: CommunityRoute }),
       createRoute({ getParentRoute: () => shell, path: MEMBER_ROUTE_PATHS.course, component: CourseStructureRoute }),
       createRoute({ getParentRoute: () => shell, path: MEMBER_ROUTE_PATHS.courseList, component: MyCoursesRoute }),
@@ -128,11 +129,11 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
   return (
     <QueryClientProvider client={state.queryClient}>
       <ThemeModeProvider>
-        <LanguageProvider><AppChromeProvider>
+        <LanguageProvider><ToastProvider><AppChromeProvider>
           <CssBaseline />
           <NotificationsTransportProvider><TenantBrandingBoundary>
           <TenantGate><RouterProvider router={state.router} /></TenantGate>
-        </TenantBrandingBoundary></NotificationsTransportProvider></AppChromeProvider></LanguageProvider>
+        </TenantBrandingBoundary></NotificationsTransportProvider></AppChromeProvider></ToastProvider></LanguageProvider>
       </ThemeModeProvider>
     </QueryClientProvider>
   );

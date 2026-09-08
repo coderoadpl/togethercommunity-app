@@ -123,6 +123,9 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
   await call('unreadMessageCount', [], () => api.unreadMessageCount());
   }
+  if (scenario.principal === 'creator@together.dev' || scenario.page === 'lesson' || scenario.page === 'lesson-locked') {
+    await call('getTenantSettings', [], () => api.getTenantSettings());
+  }
   if (scenario.principal === 'creator@together.dev') {
     await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
     await call('listReports', [{ status: 'open', limit: 1 }], () => api.listReports({ status: 'open', limit: 1 }));

@@ -143,6 +143,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
   if (path === '/api/me/profile') return 'member:profile:self-write';
+  if (path.startsWith('/api/me/avatar/')) return 'member:profile:self-write';
   if (path === '/api/me/sessions') return 'account:session:self-read';
   if (path.startsWith('/api/me/sessions/')) return 'account:session:self-revoke';
   if (path === '/api/member/navigation') return 'space:read';
@@ -263,7 +264,7 @@ const beforeForRoute = (
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
   if (path.startsWith('/api/me/sessions')) return tenantActors;
-  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/me/avatar/') || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
   if (path === '/api/member/navigation') return tenantActors;
   if (path === '/api/member/home-feed') return tenantActors;
   if (path === '/api/member/upcoming-events') return tenantActors;
@@ -510,7 +511,10 @@ const beforeForUseCase = (
   }
   if (file === 'lesson-media.ts') return tenantActors;
   if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
-  if (file === 'image-assets.ts') return capability === 'tenant:settings:write' ? owner : staff;
+  if (file === 'image-assets.ts') {
+    if (capability === 'member:profile:self-write') return member;
+    return capability === 'tenant:settings:write' ? owner : staff;
+  }
   if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'lesson-playback.ts') return tenantActors;

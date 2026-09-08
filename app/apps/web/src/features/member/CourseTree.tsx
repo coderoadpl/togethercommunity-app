@@ -8,6 +8,7 @@ import {
   OutlinedInput,
   Stack,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -22,9 +23,11 @@ import type {
 } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { useTranslations } from '../../i18n/index.js';
 import {
   CourseTreeChapterTitle,
+  CourseTreeModuleButton,
   CourseTreeModuleTitle,
   LessonDurationText,
   TreeLessonTitle,
@@ -33,7 +36,7 @@ import {
 } from '../../theme.js';
 import { branchOfLesson } from './course-tree-state.js';
 import { Highlighted } from './highlight.js';
-import { Caret, CompletionFull, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js';
+import { Caret, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js';
 
 const TITLE_TOOLTIP_DELAY_MS = 500;
 
@@ -69,15 +72,10 @@ const AccessMark = ({ status }: { status: AccessStatus }) => {
   return null;
 };
 
-const CompletionMark = ({ status }: { status: CompletionStatus }) => {
+const LessonCompletion = ({ status }: { status: CompletionStatus }) => {
   const t = useTranslations();
   if (status === 'fully-completed') {
-    return (
-      <>
-        <CompletionFull />
-        <VisuallyHidden>{t.courseTree.completionComplete}</VisuallyHidden>
-      </>
-    );
+    return <CompletionMark label={t.courseTree.completionComplete} />;
   }
   if (status === 'partially-completed') {
     return (
@@ -95,12 +93,7 @@ const ProgressMark = ({ lessons }: { lessons: CourseStructureLesson[] }) => {
   const done = lessons.filter((lesson) => lesson.completionStatus === 'fully-completed').length;
   const total = lessons.length;
   if (done === total && total > 0) {
-    return (
-      <>
-        <CompletionFull />
-        <VisuallyHidden>{t.courseTree.completionComplete}</VisuallyHidden>
-      </>
-    );
+    return <CompletionMark label={t.courseTree.completionComplete} />;
   }
   return (
     <TreeProgressCount variant="caption" component="span">
@@ -136,10 +129,42 @@ const filterModules = (
     }))
     .filter((module) => module.chapters.length > 0);
 
+const SCROLL_PADDING_REM = 0.5;
+
+const nearestTreeScroller = (node: HTMLElement): HTMLElement | null =>
+  node.closest('[data-course-tree-scroll]');
+
+const nearestModuleHeader = (node: HTMLElement): HTMLElement | null => {
+  const module = node.closest('[data-course-tree-module]');
+  const header = module?.querySelector('[data-course-tree-module-header]');
+  return header instanceof HTMLElement ? header : null;
+};
+
+const scrollPaddingPx = (): number => {
+  const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return Number.isFinite(rootFontSize) ? rootFontSize * SCROLL_PADDING_REM : 8;
+};
+
+const isComfortablyVisible = (node: HTMLElement, scroller: HTMLElement): boolean => {
+  if (scroller.clientHeight <= 0) return false;
+  const padding = scrollPaddingPx();
+  const nodeRect = node.getBoundingClientRect();
+  const headerRect = nearestModuleHeader(node)?.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const visibleTop = Math.min(nodeRect.top, headerRect?.top ?? nodeRect.top);
+  return (
+    visibleTop >= scrollerRect.top + padding &&
+    nodeRect.bottom <= scrollerRect.bottom - padding
+  );
+};
+
 const useScrollIntoViewWhen = (active: boolean) => {
   const [node, setNode] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    if (active) node?.scrollIntoView({ block: 'nearest' });
+    if (!active || node === null) return;
+    const scroller = nearestTreeScroller(node);
+    if (scroller !== null && isComfortablyVisible(node, scroller)) return;
+    node.scrollIntoView({ block: 'center' });
   }, [active, node]);
   return setNode;
 };
@@ -179,7 +204,7 @@ const LessonRow = ({
           {t.courseTree.lessonDuration({ minutes: lesson.durationMinutes })}
         </LessonDurationText>
       )}
-      <CompletionMark status={lesson.completionStatus} />
+      <LessonCompletion status={lesson.completionStatus} />
       <AccessMark status={lesson.accessStatus} />
     </Stack>
   );
@@ -318,16 +343,22 @@ const ModuleNode = ({
   const open = isOpen(module.id);
   const contentId = useId();
   return (
-    <Box component="li" sx={{ listStyle: 'none' }}>
+    <Box component="li" data-course-tree-module="" sx={{ listStyle: 'none' }}>
       <RowTooltip title={module.name}>
-        <ListItemButton
+        <CourseTreeModuleButton
           component="button"
           type="button"
           onClick={() => onToggle(module.id)}
           aria-expanded={open}
           aria-controls={contentId}
           data-testid={`module-toggle-${module.id}`}
-          sx={MODULE_ROW_SX}
+          data-course-tree-module-header=""
+          sx={{
+            ...MODULE_ROW_SX,
+            position: 'sticky',
+            top: `${SCROLL_PADDING_REM}rem`,
+            zIndex: 1,
+          }}
         >
           <Caret open={open} />
           <CourseTreeModuleTitle noWrap sx={{ flex: 1, minWidth: 0 }}>
@@ -341,7 +372,7 @@ const ModuleNode = ({
             <ProgressMark lessons={module.allLessons} />
             <AccessMark status={module.accessStatus} />
           </Stack>
-        </ListItemButton>
+        </CourseTreeModuleButton>
       </RowTooltip>
       <Collapse id={contentId} in={open} unmountOnExit>
         <List disablePadding component="ul" sx={{ m: 0, p: 0 }}>
@@ -424,14 +455,27 @@ export const CourseTree = ({
         placeholder={t.courseTree.filterPlaceholder}
         inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
       />
+      <Typography
+        variant="caption"
+        component="p"
+        color="text.secondary"
+        sx={{ mb: '0.75rem', flexShrink: 0 }}
+        data-testid="lesson-search-hint"
+      >
+        {t.courseTree.filterHint}
+      </Typography>
 
       <Box
         data-testid="course-tree-scroll"
+        data-course-tree-scroll=""
         sx={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}
       >
         {modules.length === 0 ? (
           <Box sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-no-results">
             <CourseTreeChapterTitle>{t.courseTree.noMatches}</CourseTreeChapterTitle>
+            <Typography variant="caption" component="p" color="text.secondary" sx={{ mt: '0.35rem' }}>
+              {t.search.stemHint}
+            </Typography>
           </Box>
         ) : (
           <List disablePadding component="ul" sx={{ m: 0, p: 0 }} data-testid="course-tree">

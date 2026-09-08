@@ -14,6 +14,7 @@ import {
 
 import { API_PATHS, authConfigOutputSchema, envelopeSchema } from '#core/contract/index.js';
 
+import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, migrateAndSeed, dropDatabase } from './smoke-database.js';
 import { SCREENS, VIEWPORTS, includesViewport, visible, VisualFailure, type AuthKind, type ScreenSpec } from './visual-screen-inventory.js';
 
 import type { ThemeMode } from '../apps/web/src/theme.js';
@@ -81,11 +82,7 @@ const ephemeralPort = (): Promise<number> =>
     });
   });
 
-const managedDatabaseUrl = 'postgres://together:together@localhost:48912/together';
-const devDatabaseUrl =
-  process.env['E2E_DATABASE_URL'] ??
-  process.env['DATABASE_URL'] ??
-  managedDatabaseUrl;
+const devDatabaseUrl = smokeDatabaseUrl;
 const managesPostgres = process.env['E2E_DATABASE_URL'] === undefined;
 
 const prepareDatabase = async (): Promise<void> => {
@@ -93,13 +90,8 @@ const prepareDatabase = async (): Promise<void> => {
     const up = await run('docker', ['compose', '-f', 'docker-compose.dev.yml', 'up', '-d']);
     assert(up.code === 0, `docker compose up failed:\n${up.stdout}${up.stderr}`);
   }
-  const migrate = await run(tsxBin, ['adapters/db/migrate.ts'], { DATABASE_URL: devDatabaseUrl });
-  assert(migrate.code === 0, `Migration failed:\n${migrate.stdout}${migrate.stderr}`);
-  const seed = await run(tsxBin, ['adapters/db/reseed.ts'], {
-    DATABASE_URL: devDatabaseUrl,
-    SEED_BASE_TIME,
-  });
-  assert(seed.code === 0, `Reseed failed:\n${seed.stdout}${seed.stderr}`);
+  await setupDatabase(baseDatabaseUrl);
+  await migrateAndSeed(devDatabaseUrl, { SEED_BASE_TIME });
 };
 
 const buildWeb = async (): Promise<void> => {
@@ -181,6 +173,8 @@ const killServer = async (child: ChildProcess): Promise<void> => {
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 20000 });
+  await page.goto(`${studioBaseUrl}/panel`, { waitUntil: 'load' });
   await page.getByTestId('tenant-name').waitFor(visible);
 };
 
@@ -227,7 +221,7 @@ let browser: Browser | null = null;
 try {
   mkdirSync(currentDir, { recursive: true });
 
-  console.log(`visual:app: preparing the dev database (SEED_BASE_TIME=${SEED_BASE_TIME})...`);
+  console.log(`visual:app: preparing the isolated database (SEED_BASE_TIME=${SEED_BASE_TIME})...`);
   await prepareDatabase();
   console.log('visual:app: building the web SPA...');
   await buildWeb();
@@ -325,7 +319,7 @@ try {
           } finally {
             if (preparation !== undefined) {
               await preparation.cleanup();
-              await page.getByRole('status', { name: 'Otwieranie panelu twórcy' }).waitFor({ state: 'hidden', timeout: 20000 });
+              await page.getByRole('status', { name: 'Otwieranie Twojej platformy…' }).waitFor({ state: 'hidden', timeout: 20000 });
               await page.getByTestId('dashboard-tile-revenue').waitFor(visible);
             }
           }
@@ -346,4 +340,5 @@ try {
 } finally {
   if (browser) await browser.close();
   if (server) await killServer(server);
+  await dropDatabase(baseDatabaseUrl);
 }

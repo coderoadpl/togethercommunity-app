@@ -32,6 +32,7 @@ export type Post = z.output<typeof postSchema>;
  */
 export const publicPostSchema = postSchema.omit({ authorUserId: true }).extend({
   isOwn: z.boolean(),
+  // Anonymous public JSON must not carry an e-mail hash, so authorAvatarUrl stays null here.
   authorAvatarUrl: z.string().nullable().default(null),
 });
 

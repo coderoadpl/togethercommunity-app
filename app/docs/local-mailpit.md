@@ -4,6 +4,9 @@ The database-backed sink is the default with `EMAIL_PROVIDER=dev`. Mailpit is
 an optional local SMTP target for authentication and transactional messages.
 It captures mail without external delivery, exposes SMTP on port `48925`, and
 provides its inbox and HTTP API at `http://localhost:48980`.
+Mailpit runs under the opt-in `mailpit` Compose profile, and its ports
+deliberately differ from the foundation repository's ports so both stacks can
+run at once.
 
 Set these values in the local `app/.env`:
 

@@ -263,7 +263,7 @@ export const LessonPlayerPage = ({
   const tenantSettings = useQuery({ ...actions.tenantSettings, enabled: authenticated });
   const ownProgress = me.data !== undefined && me.data.impersonation === null;
   const structure = useQuery({ ...actions.courseStructure(courseId), enabled: authenticated });
-  const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated });
+  const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated, meta: { background: true } });
   const attachments = useQuery({
     ...actions.studentLessonAttachments(lessonId),
     enabled: authenticated && lesson.isSuccess,
@@ -284,7 +284,7 @@ export const LessonPlayerPage = ({
 
   const lastViewed = useMutation({
     ...actions.updateLastViewed,
-    onError: (error) => console.warn('Failed to update last-viewed lesson', error),
+    meta: { background: true },
   });
   const lastViewedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -411,7 +411,7 @@ export const LessonPlayerPage = ({
         tenantSettings.data.settings,
         me.data?.tenant?.videoAutoplay ?? null,
       );
-  const hasSideErrors = [tenantSettings, structure, progress, attachments, lastViewed, complete, uncomplete]
+  const hasSideErrors = [tenantSettings, structure, attachments, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
@@ -454,7 +454,6 @@ export const LessonPlayerPage = ({
           <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
             {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
             {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
-            {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
             {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
             {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
             {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}

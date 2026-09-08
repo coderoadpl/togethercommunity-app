@@ -87,7 +87,9 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
             component={Link}
             {...anonOfferLink(navigation.data.navigation.defaultHomeSpaceId === spaceId)}
             variant="contained"
+            fullWidth
             data-testid="anon-join-cta"
+            sx={{ minHeight: '44px' }}
           >
             {t.anon.joinOfferCta}
           </Button>

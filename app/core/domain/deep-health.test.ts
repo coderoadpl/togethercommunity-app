@@ -50,6 +50,27 @@ describe('toPublicDeepHealthReport', () => {
     expect(serialized).not.toContain('subjects');
   });
 
+  it('redacts stored secret diagnostics without changing the operator report', () => {
+    const operatorReport = report([]);
+    operatorReport.ok = false;
+    operatorReport.failing = ['tenant-secret-decryption'];
+    operatorReport.checks = [{
+      name: 'tenant-secret-decryption', ok: false, ms: 1, subjects: 2, skipped: null,
+      error: 'secret decryption failed for keys: stripe.restrictedKey; secret decryption produced an empty value for keys: bunny.securityKey',
+    }];
+
+    const publicReport = toPublicDeepHealthReport(operatorReport);
+
+    expect(publicReport.checks).toEqual([{
+      name: 'tenant-secret-decryption', ok: false, ms: 1, skipped: null,
+      error: 'stored secret integrity check failed',
+    }]);
+    expect(publicReport.failing).toEqual(['tenant-secret-decryption']);
+    expect(JSON.stringify(publicReport)).not.toMatch(/stripe|bunny|subjects|tenants/);
+    expect(operatorReport.checks[0]?.error).toContain('stripe.restrictedKey');
+    expect(operatorReport.checks[0]?.error).toContain('bunny.securityKey');
+  });
+
   it('reports storage CORS as not applicable when no tenant was probed', () => {
     expect(toPublicDeepHealthReport(report([])).storageCors).toBe('not-applicable');
   });

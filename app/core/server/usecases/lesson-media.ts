@@ -11,6 +11,7 @@ import {
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
+  AppErrorTelemetry,
   BunnyTokenSigner,
   StorageProvider,
   TenantRepository,
@@ -19,6 +20,7 @@ import type {
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
 export interface PlayableLessonDeps extends CourseAccessDeps {
+  telemetry?: AppErrorTelemetry;
   secretResolver: TenantSecretResolver;
   storage: StorageProvider;
   bunnyTokenSigner: BunnyTokenSigner;
@@ -79,15 +81,18 @@ export const getPlayableLesson = async (
     const libraryId = settings?.bunnyStreamLibraryId ?? null;
     if (libraryId !== null) {
       const securityKey = await deps.secretResolver.resolve(tenantId, 'bunny.securityKey');
-      if (!securityKey.ok && securityKey.error.code !== 'not_found') return securityKey;
-      const expires = Math.floor(Date.parse(deps.clock.nowIso()) / 1000) + BUNNY_EMBED_URL_TTL_SECONDS;
-      contents = contents.map((block): PlayableLessonBlock => {
-        if (block.type !== 'video') return block;
-        const embedUrl = securityKey.ok
-          ? signBunnyEmbedUrl(libraryId, block, securityKey.value, expires, deps.bunnyTokenSigner)
-          : bunnyEmbedUrl(libraryId, block.streamVideoId).toString();
-        return { ...block, embedUrl };
-      });
+      const secretInvalid = !securityKey.ok && securityKey.error.code !== 'not_found';
+      if (secretInvalid) deps.telemetry?.recordAppError(securityKey.error);
+      if (!secretInvalid) {
+        const expires = Math.floor(Date.parse(deps.clock.nowIso()) / 1000) + BUNNY_EMBED_URL_TTL_SECONDS;
+        contents = contents.map((block): PlayableLessonBlock => {
+          if (block.type !== 'video') return block;
+          const embedUrl = securityKey.ok
+            ? signBunnyEmbedUrl(libraryId, block, securityKey.value, expires, deps.bunnyTokenSigner)
+            : bunnyEmbedUrl(libraryId, block.streamVideoId).toString();
+          return { ...block, embedUrl };
+        });
+      }
     }
   }
 
@@ -97,11 +102,13 @@ export const getPlayableLesson = async (
 
   const accessKeyId = await deps.secretResolver.resolve(tenantId, 's3.accessKeyId');
   if (!accessKeyId.ok) {
-    return accessKeyId.error.code === 'not_found' ? ok({ ...lesson.value, contents }) : accessKeyId;
+    if (accessKeyId.error.code !== 'not_found') deps.telemetry?.recordAppError(accessKeyId.error);
+    return ok({ ...lesson.value, contents });
   }
   const secretAccessKey = await deps.secretResolver.resolve(tenantId, 's3.secretAccessKey');
   if (!secretAccessKey.ok) {
-    return secretAccessKey.error.code === 'not_found' ? ok({ ...lesson.value, contents }) : secretAccessKey;
+    if (secretAccessKey.error.code !== 'not_found') deps.telemetry?.recordAppError(secretAccessKey.error);
+    return ok({ ...lesson.value, contents });
   }
 
   contents = contents.map((block): PlayableLessonBlock => {

@@ -140,6 +140,18 @@ const structurePayload = {
   },
 };
 
+const lessonPayload = {
+  ok: true,
+  data: {
+    authenticated: true,
+    lesson: {
+      id: 'lesson-1', tenantId: 't-acme', name: 'Lesson', isPreview: false,
+      contents: [{ type: 'html', html: '<p>Notes</p>' }],
+      legacyId: null, createdAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+};
+
 const playbackPayload = (kind: 'bunny' | 'unavailable') => ({
   ok: true,
   data: {
@@ -179,6 +191,7 @@ const stubbedFetch = (overrides: {
   deep?: { payload: unknown; status: number };
   signInStatus?: number;
   playback?: unknown;
+  lesson?: { payload: unknown; status: number };
   offer?: unknown;
   courses?: unknown;
 } = {}) =>
@@ -208,6 +221,11 @@ const stubbedFetch = (overrides: {
     if (url.pathname === '/api/student/courses/course-1/structure') {
       return Response.json(structurePayload);
     }
+    if (url.pathname === '/api/student/lessons/lesson-1') {
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer session-token');
+      const lesson = overrides.lesson ?? { payload: lessonPayload, status: 200 };
+      return Response.json(lesson.payload, { status: lesson.status });
+    }
     if (url.pathname === '/api/student/lessons/lesson-1/playback') {
       return Response.json(overrides.playback ?? playbackPayload('bunny'));
     }
@@ -233,6 +251,18 @@ describe('remote smoke', () => {
       'studio-tenant-settings',
     ]);
     expect(result.skipped).toEqual(['studio-tenant-settings']);
+  });
+
+  it.each([
+    { status: 500, payload: { ok: false, error: { code: 'internal', message: 'Unavailable' } } },
+    { status: 500, payload: lessonPayload },
+    { status: 200, payload: { ok: false, error: { code: 'internal', message: 'Unavailable' } } },
+    { status: 200, payload: { ok: true, data: { lesson: {} } } },
+  ])('fails playback smoke when the lesson does not load: %j', async (lesson) => {
+    const result = await runRemoteSmoke(options, stubbedFetch({ lesson }));
+
+    expect(result.ok).toBe(false);
+    expect(result.failing).toEqual(['lesson-playback']);
   });
 
   it('fails when a different deployment SHA answers', async () => {
@@ -386,7 +416,7 @@ describe('staging smoke', () => {
       'lesson-playback',
       'studio-tenant-settings',
     ]);
-    expect(request.mock.calls).toHaveLength(9);
+    expect(request.mock.calls).toHaveLength(10);
     expect(request.mock.calls.every(([, init]) =>
       new Headers(init?.headers).get(VERCEL_BYPASS_HEADER) === 'bypass-secret')).toBe(true);
   });

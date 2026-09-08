@@ -17,6 +17,7 @@ export interface ScreenSpec {
   auth: AuthKind;
   path: string;
   fixtureName?: string;
+  host?: string;
   viewports?: readonly ViewportName[];
   tenantSlug?: string;
   prepare?: (page: Page) => Promise<ScreenPreparation>;
@@ -122,6 +123,14 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'login',
     auth: 'public',
     path: '/login',
+    host: 'localhost',
+    ready: (page) => page.getByTestId('login-email').waitFor(visible),
+  },
+  {
+    name: 'login-tenant',
+    auth: 'public',
+    path: '/login',
+    fixtureName: 'login',
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
   },
   {

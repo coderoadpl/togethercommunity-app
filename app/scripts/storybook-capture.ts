@@ -98,7 +98,8 @@ try {
         let failure: string | undefined;
         const file = `${screen}--shadcn--${viewport.name}`;
         try {
-          await page.goto(`http://${spec.tenantSlug ?? 'studio'}.localhost:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
+          const host = spec.host ?? `${spec.tenantSlug ?? 'studio'}.localhost`;
+          await page.goto(`http://${host}:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
           await spec.ready(page);
           if (!serverHtmlScreenNames.has(screen)) await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
           await settlePage(page, spec.waitForNetworkIdle ?? true);

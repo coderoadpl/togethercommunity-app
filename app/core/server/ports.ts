@@ -134,6 +134,10 @@ import type {
  * The core never knows which database, auth provider or platform sits behind them.
  */
 
+export interface AppErrorTelemetry {
+  recordAppError(error: AppError): void;
+}
+
 /**
  * A previous-state snapshot to write into `entity_versions` in the SAME
  * transaction as the mutation that supersedes it. Passed to write-through

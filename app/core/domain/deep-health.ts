@@ -47,6 +47,9 @@ export const toPublicDeepHealthReport = (
   report: DeepHealthReport,
 ): z.output<typeof deepHealthReportSchema> => deepHealthReportSchema.parse({
   ...report,
+  checks: report.checks.map((check) => check.name === 'tenant-secret-decryption' && !check.ok
+    ? { ...check, error: 'stored secret integrity check failed' }
+    : check),
   storageCors: publicStorageCorsStatus(report.storageCors),
 });
 

@@ -75,7 +75,7 @@
     "e2e:ksef": "tsx scripts/ksef-e2e.ts",
     "e2e:storage": "tsx scripts/storage-e2e.ts",
     "storybook": "storybook dev -p 9009 --no-open",
-    "storybook:build": "storybook build -o storybook-static",
+    "storybook:build": "APP_BASE_DOMAIN=${APP_BASE_DOMAIN:-localhost} storybook build -o storybook-static",
     "lock-lint": "tsx scripts/lock-lint.ts",
     "migration-lint": "tsx scripts/migration-lint.ts",
     "visual:app": "tsx scripts/visual-screenshots.ts",

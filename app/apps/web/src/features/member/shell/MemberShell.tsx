@@ -33,6 +33,9 @@ const TOOLBAR_MIN_HEIGHT = 52;
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
 
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
+
 export const MemberShell = () => {
   useSuppressGlobalChrome();
   const t = useTranslations();
@@ -41,6 +44,10 @@ export const MemberShell = () => {
   const viewer = useViewerKind();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const courseContext = courseContextFromPath(pathname);
+  const courseStructure = useQuery({
+    ...actions.courseStructure(courseContext?.courseId ?? ''),
+    enabled: viewer === 'member' && courseContext !== null,
+  });
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [openSheet, setOpenSheet] = useState<'menu' | 'program' | null>(null);
   const canOpenStudio = useCanOpenStudio();
@@ -74,24 +81,30 @@ export const MemberShell = () => {
     }
     : null;
 
-  const lessonCrumbs = courseContext === null || courseContext.lessonId === null
+  const courseNotFound = courseStructure.isError && isNotFound(courseStructure.error);
+  const activeCourseContext = courseContext !== null && !courseNotFound ? courseContext : null;
+  const lessonCrumbs = activeCourseContext === null || activeCourseContext.lessonId === null
     ? null
-    : { courseId: courseContext.courseId, lessonId: courseContext.lessonId };
+    : { courseId: activeCourseContext.courseId, lessonId: activeCourseContext.lessonId };
   const hasMobileNavigation = identity !== null && !isDesktop;
+  const showBannedBanner = tenant?.banned === true;
   const closeSheet = () => setOpenSheet(null);
 
-  const sidebar = identity === null || !isDesktop ? null : courseContext === null ? (
+  const memberSidebar = identity === null ? null : (
     <MemberSidebar
       name={identity.name}
       email={identity.email}
       avatarUrl={identity.avatarUrl}
       variant="drawer"
     />
-  ) : (
+  );
+
+  const sidebar = identity === null || !isDesktop ? null : activeCourseContext === null ? memberSidebar : (
     <CourseSidebar
-      courseId={courseContext.courseId}
-      currentLessonId={courseContext.lessonId}
+      courseId={activeCourseContext.courseId}
+      currentLessonId={activeCourseContext.lessonId}
       tenantName={identity.tenantName}
+      notFoundFallback={memberSidebar}
     />
   );
 
@@ -105,13 +118,21 @@ export const MemberShell = () => {
         email={identity.email}
         avatarUrl={identity.avatarUrl}
       />
-      {courseContext === null ? null : (
+      {activeCourseContext === null ? null : (
         <CourseProgramSheet
           open={openSheet === 'program'}
           onClose={closeSheet}
-          courseId={courseContext.courseId}
-          currentLessonId={courseContext.lessonId}
+          courseId={activeCourseContext.courseId}
+          currentLessonId={activeCourseContext.lessonId}
           tenantName={identity.tenantName}
+          notFoundFallback={(
+            <MemberSidebar
+              name={identity.name}
+              email={identity.email}
+              avatarUrl={identity.avatarUrl}
+              variant="sheet"
+            />
+          )}
         />
       )}
     </>
@@ -135,7 +156,7 @@ export const MemberShell = () => {
           }}
         />
       ) : null}
-      {tenant?.banned === true ? <Alert severity="info">{t.community.bannedBanner}</Alert> : null}
+      {showBannedBanner ? <Alert severity="info">{t.community.bannedBanner}</Alert> : null}
     </>
   );
 
@@ -160,7 +181,7 @@ export const MemberShell = () => {
         {sidebar === null ? null : (
           <SidebarColumn
             component="aside"
-            sx={courseContext === null ? undefined : {
+            sx={activeCourseContext === null ? undefined : {
               top: 'var(--member-app-bar-height)',
               mt: 'var(--member-app-bar-height)',
               height: 'calc(100dvh - var(--member-app-bar-height))',
@@ -196,7 +217,7 @@ export const MemberShell = () => {
                   />
                 )}
               </Box>
-              {hasMobileNavigation && courseContext !== null ? (
+              {hasMobileNavigation && activeCourseContext !== null ? (
                 <>
                   <IconButton
                     color="inherit"

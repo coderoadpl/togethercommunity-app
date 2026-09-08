@@ -504,6 +504,10 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-9" />);
 
     expect(await screen.findByRole('heading', { level: 1, name: pl.courseTree.courseNotFound })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: pl.courseTree.courseNotFound })).toHaveLength(1);
+    expect(screen.getByText(pl.courseTree.courseNotInLibrary)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.courseTree.backToMyCourses })).toHaveAttribute('href', '/my');
+    expect(screen.queryByRole('button', { name: pl.common.retry })).not.toBeInTheDocument();
   });
 
   it('serves an anonymous visitor the public program without progress or discussion', async () => {

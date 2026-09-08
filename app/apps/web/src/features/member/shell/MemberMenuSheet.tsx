@@ -73,12 +73,14 @@ export const CourseProgramSheet = ({
   courseId,
   currentLessonId,
   tenantName,
+  notFoundFallback = null,
 }: {
   open: boolean;
   onClose: () => void;
   courseId: string;
   currentLessonId: string | null;
   tenantName: string;
+  notFoundFallback?: ReactNode;
 }) => {
   const t = useTranslations();
   return (
@@ -92,6 +94,7 @@ export const CourseProgramSheet = ({
         courseId={courseId}
         currentLessonId={currentLessonId}
         tenantName={tenantName}
+        notFoundFallback={notFoundFallback}
       />
     </ShellSheet>
   );

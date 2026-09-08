@@ -344,7 +344,7 @@ describe('CourseTree', () => {
     scrollIntoView.mockRestore();
   });
 
-  it('reveals a collapsed module with its marks and unlock link on demand', async () => {
+  it('reveals a collapsed module with its marks on demand', async () => {
     const user = userEvent.setup();
     await renderCollapsedTree();
 
@@ -358,7 +358,7 @@ describe('CourseTree', () => {
 
     const locked = await screen.findByTestId('lesson-button-l4');
     expect(within(locked).getByTestId('lock-closed')).toBeInTheDocument();
-    expect(screen.getByTestId('unlock-lesson-l4')).toHaveAttribute('href', '/checkout/prod-advanced');
+    expect(screen.queryByTestId('unlock-lesson-l4')).not.toBeInTheDocument();
   });
 
   it('lets the reader collapse the focused module and expand another one', async () => {
@@ -415,12 +415,11 @@ describe('CourseTree', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Intro to Variables');
   });
 
-  it('offers an unlock link only for locked lessons covered by a product', async () => {
+  it('does not add a separate unlock row for locked lessons', async () => {
     await renderTree();
 
-    const unlock = await screen.findByTestId('unlock-lesson-l4');
-    expect(unlock).toHaveAttribute('href', '/checkout/prod-advanced');
-    expect(unlock).toHaveTextContent(pl.courseTree.unlockAccess);
+    expect(screen.getByTestId('lesson-button-l4')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByTestId('unlock-lesson-l4')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlock-lesson-l5')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlock-lesson-l1')).not.toBeInTheDocument();
   });

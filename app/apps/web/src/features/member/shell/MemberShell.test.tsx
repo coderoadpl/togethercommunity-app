@@ -370,6 +370,44 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('member-breadcrumbs')).not.toBeInTheDocument();
   });
 
+  it('uses the member shell navigation for a definite missing course', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.get('/api/student/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
+      ),
+    );
+
+    await renderShell('/my/courses/c-missing');
+
+    expect(await screen.findByTestId('member-sidebar')).toBeInTheDocument();
+    expect(screen.queryByTestId('course-sidebar')).not.toBeInTheDocument();
+  });
+
+  it('does not offer an empty program sheet below md for a definite missing course', async () => {
+    stubViewport(false);
+    server.use(
+      okMe(),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.get('/api/student/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
+      ),
+    );
+
+    await renderShell('/my/courses/c-missing');
+
+    expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('program-button')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('program-button-wide')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-program-sheet')).not.toBeInTheDocument();
+  });
+
   it('shows the Studio app-bar button only to staff', async () => {
     stubViewport(true);
     server.use(okMe({ staffRole: 'admin', memberId: null }), okNavigation(), okOffer(), noNotifications());
@@ -694,6 +732,16 @@ describe('MemberShell', () => {
     await renderShell('/my');
 
     expect(await screen.findAllByText(pl.community.bannedBanner)).toHaveLength(1);
+  });
+
+  it('keeps the global banned banner on accessible lesson pages', async () => {
+    stubViewport(true);
+    server.use(okMe({ banned: true }), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    expect(await screen.findByTestId('course-sidebar')).toBeInTheDocument();
+    expect(screen.getByText(pl.community.bannedBanner)).toBeInTheDocument();
   });
 
   it('keeps the member-view banner in the sticky app bar, out of the scrolling page', async () => {

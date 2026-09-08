@@ -1149,7 +1149,7 @@ describe('LessonPlayerPage', () => {
     );
   });
 
-  it('renders a SectionCard locked state inside the member skeleton without a paid CTA', async () => {
+  it('renders a locked state inside the member skeleton without a paid CTA', async () => {
     server.use(
       http.get('/api/student/lessons/:lessonId', () =>
         HttpResponse.json(
@@ -1164,7 +1164,6 @@ describe('LessonPlayerPage', () => {
 
     expect(await screen.findByRole('heading', { name: pl.lesson.contentLocked })).toBeInTheDocument();
     expect(screen.getByTestId('locked-lesson-upsell')).toBeInTheDocument();
-    expect(screen.getByTestId('locked-state-icon')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: pl.lesson.backToCourse })).toHaveAttribute(
       'href',
       '/my/courses/course-1',
@@ -1173,6 +1172,68 @@ describe('LessonPlayerPage', () => {
   });
 
   it('shows an unlock CTA on the locked page when a product covers the lesson', async () => {
+    const lockedStructure: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          lessons: chapter.lessons.map((entry) => ({
+            ...entry,
+            accessStatus: 'not-accessible',
+            unlockProductId: 'prod-full',
+          })),
+        })),
+      })),
+    };
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () =>
+        HttpResponse.json(
+          { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
+          { status: 403 },
+        ),
+      ),
+      http.get('/api/student/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: true, data: { structure: lockedStructure } }),
+      ),
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            tenant: { slug: 'studio', name: 'Studio' },
+            contentVersion: 1,
+            products: [{
+              id: 'prod-full',
+              type: 'course',
+              slug: 'pelny-kurs-javascript',
+              title: 'Pełny kurs JavaScript',
+              description: 'Wszystkie lekcje',
+              coverUrl: null,
+              priceCents: 19900,
+              currency: 'PLN',
+              prices: [{
+                id: 'price-prod-full-monthly',
+                kind: 'recurring',
+                interval: 'month',
+                amountCents: 4900,
+                currency: 'PLN',
+              }],
+            }],
+          },
+        }),
+      ),
+      okProgress(),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const unlock = await screen.findByTestId('unlock-lesson-cta');
+    expect(unlock).toHaveAttribute('href', '/checkout/prod-full');
+    expect(unlock).toHaveTextContent('Odblokuj dostęp — 49,00 zł/mies.');
+    expect(await screen.findByRole('heading', { name: 'Pełny kurs JavaScript' })).toBeInTheDocument();
+    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent('49,00 zł/mies.');
+  });
+
+  it('falls back to the product price when the locked product has no active price rows', async () => {
     const lockedStructure: CourseStructureWithAccess = {
       ...structure,
       modules: structure.modules.map((module) => ({
@@ -1221,11 +1282,8 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    const unlock = await screen.findByTestId('unlock-lesson-cta');
-    expect(unlock).toHaveAttribute('href', '/checkout/prod-full');
-    expect(unlock).toHaveTextContent(pl.courseTree.unlockAccess);
-    expect(await screen.findByRole('heading', { name: 'Pełny kurs JavaScript' })).toBeInTheDocument();
-    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent('199');
+    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent('199,00 zł jednorazowo');
+    expect(screen.getByTestId('unlock-lesson-cta')).toHaveTextContent('Odblokuj dostęp — 199,00 zł jednorazowo');
   });
 
   it('leaves the program to the shell below md, where the program sheet carries it', async () => {

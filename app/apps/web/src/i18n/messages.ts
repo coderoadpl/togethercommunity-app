@@ -41,6 +41,9 @@ export interface Messages {
     description: string;
     noOptions: string;
     free: string;
+    priceOneTime: (params: { price: string }) => string;
+    priceMonthly: (params: { price: string }) => string;
+    priceYearly: (params: { price: string }) => string;
     add: string;
     open: string;
     close: string;
@@ -1437,6 +1440,7 @@ export interface Messages {
     courseNotFound: string;
     lessonDuration: (params: { minutes: number }) => string;
     unlockAccess: string;
+    unlockAccessWithPrice: (params: { price: string }) => string;
     accessLocked: string;
     accessPartiallyUnlocked: string;
     completionComplete: string;
@@ -1473,6 +1477,7 @@ export interface Messages {
     openPdf: string;
     contentLocked: string;
     noAccessYet: string;
+    lockedInProduct: string;
     backToCourse: string;
     browseCourses: string;
     markCompleted: string;

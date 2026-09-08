@@ -282,10 +282,10 @@ const runCourseJourney = async (page: Page, studioBaseUrl: string): Promise<void
   const locked = page.getByTestId(`lesson-button-${lockedLessonId}`);
   await locked.waitFor({ state: 'visible' });
   assert(await locked.isDisabled(), 'non-preview lesson was enabled in the public course program');
-  const unlockHref = await page.getByTestId(`unlock-lesson-${lockedLessonId}`).getAttribute('href');
+  const unlockHref = await page.getByTestId('public-course-unlock-cta-program').getAttribute('href');
   assert(
     unlockHref?.startsWith('/checkout/') === true,
-    `non-preview lesson did not link to checkout: ${String(unlockHref)}`,
+    `public course program CTA did not link to checkout: ${String(unlockHref)}`,
   );
 
   const structure = await requestOk(

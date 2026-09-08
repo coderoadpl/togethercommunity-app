@@ -462,7 +462,7 @@ export const CourseTree = ({
         sx={{ mb: '0.75rem', flexShrink: 0 }}
         data-testid="lesson-search-hint"
       >
-        {t.search.hint}
+        {t.courseTree.filterHint}
       </Typography>
 
       <Box

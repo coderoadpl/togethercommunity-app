@@ -373,7 +373,7 @@ const SCREENS: ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     prepare: prepareBootSplash,
-    ready: (page) => page.getByRole('status', { name: 'Otwieranie panelu twórcy' }).waitFor(visible),
+    ready: (page) => page.getByRole('status', { name: 'Otwieranie Twojej platformy…' }).waitFor(visible),
     waitForNetworkIdle: false,
     minBytes: 7 * 1024,
   },

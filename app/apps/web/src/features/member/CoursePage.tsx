@@ -89,8 +89,8 @@ export const CoursePage = ({ productId }: { productId: string }) => {
         <StatusView
           state={{
             kind: 'empty',
-            title: t.student.courseContentComingSoon,
-            body: t.student.courseContentArrivesLater,
+            title: t.student.productWithoutCoursesTitle,
+            body: t.student.productWithoutCoursesBody,
           }}
         />
       ) : (

@@ -594,7 +594,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
           && !paymentConfig.data.stripeConfigured
           && paymentConfig.data.simulatedPaymentsEnabled ? (
             <FinePrint component="p" variant="caption">
-              {t.checkout.simulatedPaymentDevNote}
+              {t.checkout.simulatedPaymentNote}
             </FinePrint>
           ) : null}
           {selectedAmountCents > 0 &&
@@ -625,7 +625,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
                     : t.checkout.submitIdle({ price: formattedPayable })}
               </Button>
               <FinePrint component="p" variant="caption">
-                {t.checkout.simulatedPaymentDevNote}
+                {t.checkout.simulatedPaymentNote}
               </FinePrint>
             </Stack>
           ) : null}

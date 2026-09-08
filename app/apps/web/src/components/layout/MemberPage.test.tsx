@@ -39,21 +39,23 @@ describe('MemberPage', () => {
     expect(screen.getByText('Siatka kursów')).toBeInTheDocument();
   });
 
+  it('renders no eyebrow slot when the screen does not pass one', () => {
+    render(<MemberPage title="Konto" breadcrumbLabel="Okruszki" data-testid="page" />);
+
+    const header = screen.getByRole('banner');
+    expect(within(header).getByRole('heading', { level: 1, name: 'Konto' })).toBeInTheDocument();
+    expect(within(header).queryAllByRole('paragraph')).toEqual([]);
+  });
+
   it('gives every member screen the wide shell unless it asks for the reading column', () => {
     const wide = render(
-      <MemberPage title="Start" eyebrow="" breadcrumbLabel="Okruszki" data-testid="page" />,
+      <MemberPage title="Start" breadcrumbLabel="Okruszki" data-testid="page" />,
     );
     expect(screen.getByTestId('page')).toHaveStyle({ maxWidth: PAGE_WIDTH.wide });
     wide.unmount();
 
     render(
-      <MemberPage
-        title="Lekcja"
-        eyebrow=""
-        breadcrumbLabel="Okruszki"
-        width="prose"
-        data-testid="page"
-      />,
+      <MemberPage title="Lekcja" breadcrumbLabel="Okruszki" width="prose" data-testid="page" />,
     );
     expect(screen.getByTestId('page')).toHaveStyle({ maxWidth: PAGE_WIDTH.prose });
   });

@@ -1,9 +1,14 @@
 import type { ReactNode } from 'react';
-import { Box, IconButton } from '@mui/material';
+import { Box, Divider, IconButton, List } from '@mui/material';
 
 import { ColorSchemeSwitcher } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { SheetDrawer, SheetHeader, SheetTitle } from '../../../theme.js';
+import {
+  MemberAccountActionFailure,
+  MemberAccountActionList,
+  useMemberAccountActions,
+} from '../MemberAccountActions.js';
 import { CourseSidebar } from './CourseSidebar.js';
 import { MemberSidebar } from './MemberSidebar.js';
 import { CloseIcon } from './shell-icons.js';
@@ -57,13 +62,23 @@ export const MemberMenuSheet = ({
   avatarUrl: string | null;
 }) => {
   const t = useTranslations();
+  const account = useMemberAccountActions();
   return (
-    <ShellSheet open={open} onClose={onClose} title={t.shell.menuTitle} testId="member-menu-sheet">
-      <MemberSidebar name={name} email={email} avatarUrl={avatarUrl} variant="sheet" />
-      <Box sx={{ px: '1rem', pb: '1rem' }}>
-        <ColorSchemeSwitcher compact />
-      </Box>
-    </ShellSheet>
+    <>
+      <ShellSheet open={open} onClose={onClose} title={t.shell.menuTitle} testId="member-menu-sheet">
+        <MemberSidebar name={name} email={email} avatarUrl={avatarUrl} variant="sheet" />
+        <Box sx={{ px: '1rem', pb: '1rem' }}>
+          <ColorSchemeSwitcher compact />
+        </Box>
+        <Box sx={{ px: '0.6rem', pb: '0.75rem' }}>
+          <Divider sx={{ mb: '0.5rem' }} />
+          <List component="div" disablePadding data-testid="member-menu-account-actions">
+            <MemberAccountActionList actions={account.actions} onSelect={onClose} surface="sheet" />
+          </List>
+        </Box>
+      </ShellSheet>
+      <MemberAccountActionFailure failure={account.failure} onDismiss={account.dismissFailure} />
+    </>
   );
 };
 

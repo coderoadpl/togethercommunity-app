@@ -11,6 +11,7 @@ import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { SidebarProgressPercent } from '../../../theme.js';
+import { MemberAccountIdentityBlock } from '../MemberAccountActions.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { LockClosed } from '../tree-icons.js';
@@ -160,6 +161,18 @@ export const MemberSidebar = ({
           <TenantLogo />
         </BrandLink>
       ) : null}
+      {variant === 'sheet' ? (
+        <>
+          <MemberAccountIdentityBlock
+            avatarUrl={avatarUrl}
+            displayName={name}
+            email={email}
+            surface="sheet"
+            testId="member-identity"
+          />
+          <Divider sx={{ my: '0.5rem' }} />
+        </>
+      ) : null}
       <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {variant === 'drawer' ? (
           <List component="div" disablePadding>
@@ -188,18 +201,22 @@ export const MemberSidebar = ({
         </Typography>
         <NavigationList active={active} />
       </Box>
-      <Divider sx={{ my: '0.5rem' }} />
-      <IdentityRow component={Link} to="/account" data-testid="member-identity">
-        <UserAvatar name={name} email={email} imageUrl={avatarUrl} />
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="body2" component="p" noWrap>
-            {name}
-          </Typography>
-          <Typography variant="caption" component="p" color="text.secondary" noWrap>
-            {email}
-          </Typography>
-        </Box>
-      </IdentityRow>
+      {variant === 'drawer' ? (
+        <>
+          <Divider sx={{ my: '0.5rem' }} />
+          <IdentityRow component={Link} to="/account" data-testid="member-identity">
+            <UserAvatar name={name} email={email} imageUrl={avatarUrl} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2" component="p" noWrap>
+                {name}
+              </Typography>
+              <Typography variant="caption" component="p" color="text.secondary" noWrap>
+                {email}
+              </Typography>
+            </Box>
+          </IdentityRow>
+        </>
+      ) : null}
     </Box>
   );
 };

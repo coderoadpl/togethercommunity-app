@@ -139,6 +139,7 @@ describe('MemberAccountPage', () => {
 
     const email = await screen.findByTestId('account-email');
     expect(email).toHaveTextContent('member@together.dev');
+    expect(email).toHaveStyle({ overflowWrap: 'anywhere' });
     expect(email.closest('form')).toContainElement(
       screen.getByLabelText(pl.account.displayNameLabel),
     );
@@ -782,6 +783,9 @@ describe('MemberAccountPage', () => {
     const button = await screen.findByTestId('account-erasure-create');
     expect(button).toBeDisabled();
     expect(button.parentElement).toHaveStyle({ display: 'block' });
+    expect(button).toHaveStyle({ minHeight: '44px' });
+    expect(screen.getByLabelText(pl.account.erasureConfirmLabel).closest('[data-mobile-keyboard-anchor]'))
+      .not.toBeNull();
     await userEvent.type(
       screen.getByLabelText(pl.account.erasureConfirmLabel),
       'member@together.dev',

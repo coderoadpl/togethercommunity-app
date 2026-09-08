@@ -33,7 +33,7 @@ const ShellSheet = ({
             {title}
           </SheetTitle>
           <Box sx={{ flex: 1 }} />
-          <IconButton aria-label={t.shell.closeSheet} onClick={onClose} data-testid={`${testId}-close`}>
+          <IconButton sx={{ minHeight: 44, minWidth: 44 }} aria-label={t.shell.closeSheet} onClick={onClose} data-testid={`${testId}-close`}>
             <CloseIcon />
           </IconButton>
         </SheetHeader>

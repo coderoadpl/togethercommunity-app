@@ -423,7 +423,7 @@ describe('community pages', () => {
     const user = userEvent.setup();
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    await user.click(await screen.findByTestId('space-composer-open'));
+    await user.click(await screen.findByTestId('space-composer-input'));
     await user.type(await screen.findByTestId('space-composer-input'), 'Mój nowy wpis');
     await user.click(screen.getByTestId('space-composer-submit'));
 
@@ -513,7 +513,7 @@ describe('community pages', () => {
     await waitFor(() => expect(screen.getByTestId('reaction-p1-🎉')).toHaveTextContent('1'));
   });
 
-  it('keeps the space composer collapsed behind a prompt until it is opened', async () => {
+  it('keeps the space input and publish button visible before focus and after blur', async () => {
     server.use(
       okMe(),
       noNotifications(),
@@ -525,9 +525,9 @@ describe('community pages', () => {
     const user = userEvent.setup();
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    const prompt = await screen.findByTestId('space-composer-open');
-    expect(prompt).toHaveTextContent(pl.community.composerPrompt);
-    expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
+    const prompt = await screen.findByTestId('space-composer-input');
+    expect(prompt).toHaveAttribute('placeholder', pl.community.composerPlaceholder);
+    expect(screen.getByTestId('space-composer-submit')).toBeDisabled();
 
     await user.click(prompt);
 
@@ -536,8 +536,8 @@ describe('community pages', () => {
 
     await user.tab();
 
-    await waitFor(() => expect(screen.queryByTestId('space-composer-submit')).not.toBeInTheDocument());
-    expect(screen.getByTestId('space-composer-open')).toBeInTheDocument();
+    expect(screen.getByTestId('space-composer-submit')).toBeDisabled();
+    expect(screen.getByTestId('space-composer-input')).toBeInTheDocument();
   });
 
   it('copies a post permalink from the feed overflow menu', async () => {
@@ -630,7 +630,7 @@ describe('community pages', () => {
 
     await waitFor(() => expect(seenCalls).toEqual(['s1']));
 
-    await user.click(await screen.findByTestId('space-composer-open'));
+    await user.click(await screen.findByTestId('space-composer-input'));
     await user.type(await screen.findByTestId('space-composer-input'), 'Mój nowy wpis');
     await user.click(screen.getByTestId('space-composer-submit'));
 
@@ -677,7 +677,6 @@ describe('community pages', () => {
     expect(await screen.findByText('Cześć')).toBeInTheDocument();
     expect(seenCalls).toEqual([]);
     expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('space-composer-open')).not.toBeInTheDocument();
   });
 
   it('drops the composer card and the invitation from an empty feed viewed as a member', async () => {

@@ -109,6 +109,7 @@ export const LessonSandboxEmbed = ({
       frameSx={{ ...LESSON_SANDBOX_FRAME_SX, mx: outdentX }}
       data-testid="lesson-sandbox"
       src={embedUrl}
+      externalUrl={canonicalUrl}
       title={title}
       sandbox={SANDBOX_PERMISSIONS}
       loading="lazy"

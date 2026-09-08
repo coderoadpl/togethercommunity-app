@@ -31,7 +31,7 @@ rebuild a stale bundle automatically. After pulling changes, run
 
 Transactional mail uses the database-backed development sink by default.
 To exercise the real SMTP adapter, select `EMAIL_PROVIDER=smtp` as described in
-[ADR-0007](docs/decisions/0007-local-mailpit.md), then inspect captured messages
+[Local Mailpit](docs/local-mailpit.md), then inspect captured messages
 at `http://localhost:48980`.
 
 Open **http://studio.localhost:48730** and **http://acme.localhost:48730** —
@@ -61,26 +61,28 @@ exactly the canonical state. Other tenants (e.g. imported ones) are untouched.
 | Acme Courses | http://acme.localhost:48730 | `kontakt+smoke-creator@togethercommunity.app` |
 | Akademia Samouka | http://akademia.localhost:48730 | `creator3@together.dev` |
 
-**Courses**
+**Courses** (literal seed titles with English descriptions)
 
-- **Studio** — `Kurs JavaScript od podstaw` (`course-js`): 3 modules with legacy
-  prefixes (`Część 1 - Podstawy` → 2 chapters, `Część 2 - DOM`, `Część 3 -
-  Projekty`); `React w praktyce` (`course-react`): 2 modules. Lessons mix
-  `embed` (YouTube-nocookie), `html` (Polish teaching prose), `link` and `pdf`
-  blocks.
-- **Akademia** — `Samodzielna nauka programowania` (`course-akademia`): 2 modules.
+- **Studio** — `Kurs JavaScript od podstaw` (JavaScript from scratch,
+  `course-js`): 3 modules with legacy prefixes (`Część 1 - Podstawy` (Part 1:
+  Basics) → 2 chapters, `Część 2 - DOM` (Part 2: DOM), `Część 3 - Projekty`
+  (Part 3: Projects)); `React w praktyce` (React in practice, `course-react`):
+  2 modules. Lessons mix `embed` (YouTube-nocookie), `html` (Polish teaching
+  prose), `link` and `pdf` blocks.
+- **Akademia** — `Samodzielna nauka programowania` (Self-directed programming,
+  `course-akademia`): 2 modules.
 - **Acme** keeps its original walking-skeleton data untouched.
 
 **Product tiers (Studio)** — all published, price in PLN grosze:
 
-| Product                          | Price   | Access level                                    |
-| -------------------------------- | ------- | ----------------------------------------------- |
-| `Kurs JavaScript - pełny dostęp` | 39900   | course-level → `course-js`                      |
-| `React w praktyce - pełny dostęp`| 49900   | course-level → `course-react`                   |
-| `Pakiet: moduł DOM`              | 9900    | module-level → only the DOM module of `course-js` |
-| `Free preview`                   | 0       | lesson-level → one lesson from every module of both courses |
+| Product                                                              | Price | Access level                                             |
+| -------------------------------------------------------------------- | ----- | -------------------------------------------------------- |
+| `Kurs JavaScript - pełny dostęp` (JavaScript course - full access)   | 39900 | course-level → `course-js`                               |
+| `React w praktyce - pełny dostęp` (React in practice - full access)  | 49900 | course-level → `course-react`                            |
+| `Pakiet: moduł DOM` (DOM module bundle)                              | 9900  | module-level → only the DOM module of `course-js`        |
+| `Free preview`                                                       | 0     | lesson-level → one lesson from every module of both courses |
 
-Akademia offers `Akademia - dostęp roczny` (29900, course-level).
+Akademia offers `Akademia - dostęp roczny` (annual access, 29900, course-level).
 
 **Members** — sign in **passwordlessly via magic link** (CLI `login-magic
 --email <e>`, or a checkout). Their grants exercise every access edge state:
@@ -181,7 +183,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->381<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->382<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -210,7 +212,7 @@ Lesson discussions are the first Community (Faza 2) slice:
 
 - **Discussions under lessons** — context-generic posts (`contextKind:
   'lesson'` today, spaces later) with nested replies capped at depth 3,
-  author edit + soft delete ("Wpis usunięty" placeholder keeps thread shape),
+  author edit + soft delete ("Deleted post" placeholder keeps thread shape),
   and staff moderation (staff can delete any post; staff posts carry the
   "Autor" badge).
 - **Visibility = lesson entitlement** — you read, search and write a lesson's

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { get as httpsGet } from 'node:https';
 import { join } from 'node:path';
+import { pl } from '../apps/web/src/i18n/pl.js';
 
 import pg from 'pg';
 import { chromium, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright-core';
@@ -351,7 +352,7 @@ const validateFilesAndUploadCourse = async (
   });
 
   await fileInput.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not an image') });
-  await page.getByRole('alert').filter({ hasText: 'Wybierz obraz PNG, JPEG, WebP lub SVG. Favicon może być również plikiem ICO.' }).waitFor(visible);
+  await page.getByRole('alert').filter({ hasText: pl.imageAssets.invalidType }).waitFor(visible);
   expectPutRequests(0, 'Invalid MIME selection');
 
   await fileInput.setInputFiles({
@@ -359,7 +360,7 @@ const validateFilesAndUploadCourse = async (
     mimeType: 'image/png',
     buffer: Buffer.alloc(IMAGE_ASSET_MAX_BYTES + 1),
   });
-  await page.getByRole('alert').filter({ hasText: 'Obraz nie może być większy niż 5 MB.' }).waitFor(visible);
+  await page.getByRole('alert').filter({ hasText: pl.imageAssets.tooLarge }).waitFor(visible);
   expectPutRequests(0, 'Oversized selection');
   console.log('image-assets-e2e: Polish client validation blocked invalid files before PUT OK');
 

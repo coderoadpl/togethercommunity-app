@@ -529,8 +529,8 @@ resulting `main` SHA in the launch record.
 Until those steps are complete, do not claim an enforced production-promotion
 wall. Any rehearsal remains subject to the documented owner-approval procedure
 and does not satisfy the SIL-3-shaped launch requirement by itself. The target
-topology and the distinction between decision and live state are recorded in
-[ADR-0003](decisions/0003-vercel-environments.md).
+topology and the checks needed to verify live configuration are described in
+[deployment environments](deployment-environments.md).
 
 ### 17. Production hosting account boundary
 

@@ -16,7 +16,7 @@ and `LANG=C` alone do not override them. Empty coupon validity fields must show
 native locale drift, not a changing default date.
 
 The catalogue currently covers 118 captures in Shadcn, the maintained base theme
-([ADR-0010](decisions/0010-shadcn-base-theme.md)). Other themes and synthetic
+described in the [Storybook reference](storybook.md#supported-scope). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
 
 ## Storybook

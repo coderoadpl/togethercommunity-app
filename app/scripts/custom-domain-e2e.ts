@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { pl } from '../apps/web/src/i18n/pl.js';
 
 import pg from 'pg';
 import { chromium, type Browser, type BrowserContext } from 'playwright-core';
@@ -162,7 +163,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 
     await page.getByTestId('section-settings').click();
-    await page.getByRole('tab', { name: 'Bezpieczeństwo' }).click();
+    await page.getByRole('tab', { name: pl.settingsNavigation.security }).click();
     await page.waitForURL(/#security$/);
     await page.getByTestId('passkey-name').fill('Custom Domain Passkey');
     await page.getByTestId('passkey-proof-password').fill(CREATOR_PASSWORD);
@@ -305,7 +306,7 @@ const runSelfServeAdd = async (input: {
       timeout: 20000,
     });
     assert(
-      (await page.getByTestId(`tenant-domain-status-${SELF_SERVE_HOST}`).textContent()) === 'Działa',
+      (await page.getByTestId(`tenant-domain-status-${SELF_SERVE_HOST}`).textContent()) === pl.tenantDomains.statusActive,
       'the Studio did not show the operator-verified domain as active',
     );
 

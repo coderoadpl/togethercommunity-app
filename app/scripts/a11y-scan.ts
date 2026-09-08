@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pl } from '../apps/web/src/i18n/pl.js';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 
@@ -147,7 +148,7 @@ const SCREENS: ScreenSpec[] = [
     viewports: memberViewports,
     ready: async (page) => {
       await page.getByTestId('course-tree').first().waitFor(visible);
-      await page.getByText('Przejdź do pierwszej lekcji').waitFor(visible);
+      await page.getByTestId('continue-cta').waitFor(visible);
     },
   },
   {
@@ -418,7 +419,7 @@ const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> =
 const signInMagicLink = (email: string) => async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await requestMagicLink(page, email);
-  const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
+  const magicLink = page.getByRole('link', { name: pl.auth.openMagicLink });
   await magicLink.waitFor(visible);
   const href = await magicLink.getAttribute('href');
   assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');

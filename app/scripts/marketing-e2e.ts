@@ -30,7 +30,7 @@ const tickSecret = 'marketing-e2e-tick-secret';
 const topicArn = 'arn:aws:sns:eu-central-1:123456789012:marketing-e2e';
 const legalName = 'Marketing Verify sp. z o.o.';
 const legalAddress = 'ul. Testowa 1, 00-001 Warszawa';
-const consentLabel = 'Chcę otrzymywać wiadomości o nowych materiałach';
+const consentLabel = 'I want to receive messages about new content';
 const emails = {
   confirmedA: 'confirmed-a@marketing.test',
   confirmedB: 'confirmed-b@marketing.test',

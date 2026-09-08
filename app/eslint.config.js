@@ -455,8 +455,6 @@ export default tseslint.config(
               allow: ['web-test'],
             },
             {
-              // Layout primitives are structure-only: theme atoms in, feature
-              // data/i18n out (ux-layout-system §5.3); callers pass strings.
               from: ['web-layout'],
               allow: ['web-layout', 'web-theme'],
             },

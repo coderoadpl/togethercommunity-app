@@ -1,9 +1,7 @@
 # Per-layer test coverage audit
 
-Answers the owner's question — *"czy mamy pełne pokrycie testami każdego poziomu?"*
-("do we have full test coverage of every layer?") — with numbers, a
-risk-ranked gap list, and a ratchet that stops any layer from silently
-regressing.
+Reports test coverage by layer, with measured results, a risk-ranked gap list,
+and a ratchet that stops any layer from silently regressing.
 
 ## How to read / reproduce
 

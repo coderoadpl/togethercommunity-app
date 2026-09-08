@@ -447,14 +447,14 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   }
   expectOk(
     await cli(
-      ['--tenant', 'alfa', 'support', 'send', '--subject', 'Pomoc', '--body', 'Treść zgłoszenia'],
+      ['--tenant', 'alfa', 'support', 'send', '--subject', 'Help', '--body', 'Support request body'],
       buyerHome,
     ),
     'member support request',
     supportMessageOutputSchema,
   );
   expectError(
-    await cli(['--tenant', 'alfa', 'support', 'send', '--subject', 'Pomoc', '--body', 'Treść'], anonHome),
+    await cli(['--tenant', 'alfa', 'support', 'send', '--subject', 'Help', '--body', 'Request body'], anonHome),
     'unscoped support request',
     EXIT_CODE_BY_ERROR_CODE.unauthorized,
     'unauthorized',

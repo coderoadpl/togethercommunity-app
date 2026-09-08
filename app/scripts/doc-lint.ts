@@ -65,9 +65,8 @@ const countValues: Readonly<Record<string, number>> = {
 const countTokenPattern = /<!--count:([a-z0-9-]+)-->(\d+)<!--\/count-->/g;
 const numericTestCountPatterns = [
   /\b\d+\s+test files?\b/i,
-  /\b\d+\s+plik(?:i|ów)? testow(?:e|y|ych)\b/i,
 ];
-const numericTestCountAllowlist = ['tasks/', 'app/tasks/'];
+const numericTestCountAllowlist = ['app/tasks/'];
 const requiredCountTokens: Readonly<Record<string, readonly string[]>> = {
   'app/README.md': ['test-files'],
 };
@@ -88,7 +87,7 @@ const problems: string[] = [];
 const countTokensByFile = new Map<string, Set<string>>();
 let countTokensSeen = 0;
 
-const requiredReleaseVersionRegions = ['app/docs/decisions/0011-version-surfaces.md'];
+const requiredReleaseVersionRegions = ['app/docs/version-surfaces.md'];
 const appVersion = packageJson.version;
 const releaseVersionResult = collectReleaseVersionProblems(
   markdownFiles,

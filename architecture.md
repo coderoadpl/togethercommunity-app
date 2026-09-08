@@ -1,16 +1,11 @@
 # Together architecture
 
-This document defines the foundation-level architecture of Together. Product
-scope and business decisions remain in [`tasks/`](tasks/); this file names the
-system boundaries, the vocabulary used to discuss them, and the rules that
-must remain true as the product evolves.
-
-The product vision and tenancy model come from
-[`tasks/prd-together.md`](tasks/prd-together.md). Foundation provenance and
-deliberate divergences from agentproofarch are recorded in
-[`FOUNDATION.md`](FOUNDATION.md). Where a task document records an accepted
-domain decision, it is the ADR-equivalent source linked from the relevant
-section below.
+This document defines Together's system boundaries, vocabulary, and architecture
+rules. Together combines digital product sales, marketing, course delivery,
+and community with creator-owned storage and payment accounts; authentication
+is shared globally while member relationships and data remain tenant-scoped.
+Foundation provenance and divergences from agentproofarch are recorded in
+[FOUNDATION.md](FOUNDATION.md).
 
 ## System shape
 
@@ -146,17 +141,17 @@ inside the application:
 - Worker identities are explicit and tenant-scoped; they do not become
   unrestricted application identities.
 
-The central default-deny capability matrix is implemented in
-`app/core/domain/authorization.ts` as `ROLE_CAPABILITIES`, exposed through
-`capabilitiesForPrincipal`, and enforced by `app/core/server/authorize.ts`.
-Use-cases also apply membership and entitlement checks where required. The
-permission inventory classifies exported `Ctx` functions, not every function
-under `core/server/usecases/`.
+Authorization uses a central default-deny capability model, with tenant and
+entitlement checks enforced in use-cases. New use-cases must fail closed and
+include cross-tenant tests; the generated [permission table](app/docs/permission-table.md)
+records the enforced capabilities.
 
-Community visibility and moderation decisions are recorded in
-[`tasks/community-mvp.md`](tasks/community-mvp.md). Tenant terminology shown to
-users is defined separately in
-[`tasks/terminology-glossary.md`](tasks/terminology-glossary.md).
+Lesson discussion reads, search, and writes require lesson entitlement; space
+feeds require membership or an active product grant, and archived spaces are
+hidden from members. Authors can edit or soft-delete their own posts, while
+staff can delete any post without breaking thread structure.
+User-facing terminology follows the
+[terminology glossary](app/docs/terminology-glossary.md).
 
 ## Data lifecycle
 
@@ -171,18 +166,20 @@ events by default:
 - External identifiers and idempotency keys are persisted so provider retries
   do not duplicate business effects.
 
-This convention governs coupon redemptions, email delivery, invoice and KSeF
-submission state, and other durable workflows. The accepted domain shapes are
-recorded in:
+This convention governs the following durable workflows:
 
-- [`tasks/subscriptions-sales.md`](tasks/subscriptions-sales.md) for orders,
-  subscriptions, grants, and webhook idempotency.
-- [`tasks/coupons-affiliates.md`](tasks/coupons-affiliates.md) for redemption
-  projections, events, attribution, and append-only price history.
-- [`tasks/marketing-email-spec.md`](tasks/marketing-email-spec.md) for consent,
-  suppression, campaign, and delivery lifecycles.
-- [`tasks/invoicing.md`](tasks/invoicing.md) for immutable billing snapshots,
-  invoice projections, frozen fiscal artifacts, and asynchronous KSeF state.
+- Orders form the sales ledger; paid subscription periods renew grants through
+  the period end plus a three-day grace window. Webhook processing deduplicates
+  both provider events and business objects.
+- Coupon redemptions use projections and append-only events, while revenue
+  attribution is queried from orders. Price changes append history from which
+  the lowest price over the preceding thirty days is derived.
+- Consent records preserve the wording version and timestamped evidence;
+  campaigns and deliveries keep durable state and events. Every marketing send
+  rechecks current consent and suppression, so late withdrawals take effect.
+- Paid orders retain immutable billing snapshots, and invoices use projections
+  plus events. Direct KSeF submission freezes canonical XML and its hash before
+  asynchronous delivery and retains provider references for recovery.
 
 Scheduler runs are operational telemetry, not lifecycle projections. A run is
 finalized once from `running` to `completed` or `failed`; its per-tenant result
@@ -204,9 +201,9 @@ one port operation and performs one transaction.
 Money is represented as integer minor units. Orders are the sales ledger and
 the source of truth for revenue and coupon attribution. Payment and webhook
 handlers are idempotent by provider event and business-object identity.
-Subscription access is read-time entitlement derived from grants and their
-expiry, as decided in
-[`tasks/subscriptions-sales.md`](tasks/subscriptions-sales.md).
+Subscription access is checked at read time from grants and their expiry;
+cancellation stops renewal without cutting off the already-paid period and
+its grace window.
 
 External calls cannot participate in a database transaction. Durable workflows
 therefore persist intent and checkpoints before or after the call as the domain
@@ -214,10 +211,10 @@ requires, then retry from stored state. KSeF additionally freezes canonical XML
 and its hash before submission and treats ambiguous duplicates as a conflict
 for recovery, not permission to invent a new invoice number.
 
-The DB factory in `app/adapters/db/client.ts` retains both `node-postgres` and
-`neon-http` branches. Server environment validation in
-`app/apps/server/src/env.ts` accepts only `node-postgres` because runtime
-repositories require interactive transactions.
+Runtime repositories require interactive transactions, so deployments use
+`DB_DRIVER=node-postgres` and reject `neon-http` at boot. The
+[atomicity reference](app/docs/data-atomicity.md) records the operations that
+must commit as one unit.
 
 ## Public surfaces and caching
 
@@ -238,11 +235,11 @@ when its response is independent of session identity, its tenant varies are
 correct, and errors cannot poison a shared cache. Authenticated, member,
 checkout-state, and secret-bearing responses never enter a shared cache.
 
-The product decisions for the public marketing and consent surface live in
-[`tasks/marketing-email-spec.md`](tasks/marketing-email-spec.md); public commerce
-behavior lives in
-[`tasks/subscriptions-sales.md`](tasks/subscriptions-sales.md) and
-[`tasks/coupons-affiliates.md`](tasks/coupons-affiliates.md).
+Public consent pages refer to immutable wording and legal-document versions;
+an unsubscribe GET displays preferences, while an explicit POST changes consent.
+Checkout offers the product's active one-time or recurring prices and shows the
+validated discount breakdown and lowest-thirty-day price when a coupon applies;
+coupon attribution follows paid orders without tracking cookies.
 
 ## Security baseline
 
@@ -263,11 +260,11 @@ The present baseline is defense in depth at typed and runtime boundaries:
 - Marketing suppression, consent, unsubscribe, and provider-webhook checks are
   server-side responsibilities, not UI conventions.
 
-A complete HTTP edge baseline covering security headers, CSP, request-size
-limits, explicit CORS policy, and the remaining CSRF review is deferred to the
-next foundation stage. The deferral is explicit in
-[`tasks/agentproofarch-upgrade.md`](tasks/agentproofarch-upgrade.md); this
-document does not claim those controls already exist.
+The HTTP edge applies security headers, CSP, body limits, CORS, and CSRF
+controls, with explicit public-route manifests that fail validation when an
+unlisted public mutation is added. The [security reference](app/docs/security.md)
+and [route table](app/docs/route-table.md) describe the current controls and
+exposed routes.
 
 ## Web architecture
 
@@ -283,10 +280,12 @@ branches render inside the owning skeleton so page geometry stays stable.
 
 Visual values belong to the theme system. The `sx` rule reserves layout and
 visual structure according to a shrink-only baseline. A new violation is fixed;
-the baseline is never regenerated merely to absorb it. The accepted layout
-model and enforcement decisions live in
-[`tasks/ux-layout-system.md`](tasks/ux-layout-system.md), with owner decisions in
-[`tasks/ux-decisions.md`](tasks/ux-decisions.md).
+the baseline is never regenerated merely to absorb it. Shared page skeletons
+and layout primitives own geometry, while `theme.ts` owns visual tokens and
+component overrides; features fill slots and keep state branches inside the
+same skeleton. Create flows and lesson editing use dedicated routes, buttons
+use sentence case, and mobile-first layouts receive both mobile and desktop
+visual coverage.
 
 `app/apps/web/src/features/checkout/core/` contains checkout state, events, and
 a reducer for price selection and coupon state. ESLint classifies it as an
@@ -339,7 +338,7 @@ upgrade starts from a path-scoped upstream diff against that recorded SHA.
 The evolution rules are:
 
 - **May change freely:** product domains, features, routes, theme, adapters,
-  CLI commands, product thresholds, and Together's own accepted task decisions.
+  CLI commands, and product thresholds.
 - **Should stay synchronized:** ESLint and custom rules,
   dependency-cruiser, TypeScript strictness, gate scripts, config-regression
   probes, CI, and agent instructions.
@@ -350,8 +349,8 @@ The evolution rules are:
   allowing `core/server` to import `core/contract`, permitting frameworks in
   core, dissolving the Result/error contract, enabling unrestricted external
   imports, or weakening the `any` and assertion bans.
-- **Docs stay separated:** this file and provenance describe foundation
-  doctrine; product requirements and domain decisions stay in `tasks/`.
+- **Public docs describe operation:** architecture and provenance explain
+  system boundaries; reference docs describe implemented behavior and runbooks.
 
 When a second real application consumes the same foundation, domain-free
 enforcement configuration may graduate to a versioned package. Core source does

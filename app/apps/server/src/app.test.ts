@@ -68,6 +68,7 @@ import {
   authorize,
   dispatchAutoInvoiceJobs,
   type AutoInvoiceJob,
+  type CheckoutConsentJob,
   type PaymentWebhookEvent,
   type SmokeTenantReseedPort,
   type StoredEntityVersion,
@@ -6181,7 +6182,7 @@ describe('checkout consent ordering', () => {
     ]);
   });
 
-  it('records locally captured consent after a real webhook and stays idempotent', async () => {
+  it('records locally captured consent and replays pending consent after a real webhook without repeating fulfillment', async () => {
     const definitionId = 'webhook-news';
     const attached = {
       ...product({
@@ -6222,6 +6223,8 @@ describe('checkout consent ordering', () => {
       },
     );
     const durableJobs: AutoInvoiceJob[] = [];
+    const consentJobs: CheckoutConsentJob[] = [];
+    let captureRestored = false;
     const autoInvoiceJobs = {
       enqueue: async (_tenantId: string, job: AutoInvoiceJob) => {
         if (durableJobs.some((candidate) => candidate.webhookEventId === job.webhookEventId)) {
@@ -6376,7 +6379,7 @@ describe('checkout consent ordering', () => {
       checkoutConsentCaptures: {
         create: async () => undefined,
         findById: async (_tenantId, id) =>
-          id === 'capture-webhook'
+          id === 'capture-webhook' || (captureRestored && id === 'capture-gone')
             ? {
                 termsAccepted: true,
                 selectedDefinitionIds: [definitionId],
@@ -6430,6 +6433,19 @@ describe('checkout consent ordering', () => {
     webhookDeps.paymentTransaction = {
       run: async (operation) => base.paymentTransaction.run((transaction) => operation({
         ...transaction,
+        checkoutConsentJobs: {
+          enqueue: async (tenantId, job) => {
+            if (!consentJobs.some((row) => row.tenantId === tenantId && row.checkoutSessionId === job.checkoutSessionId)) {
+              consentJobs.push(job);
+            }
+          },
+          lockPending: async (tenantId, checkoutSessionId) =>
+            consentJobs.find((row) => row.tenantId === tenantId && row.checkoutSessionId === checkoutSessionId && row.completedAt === null) ?? null,
+          complete: async (tenantId, checkoutSessionId, completedAt) => {
+            const job = consentJobs.find((row) => row.tenantId === tenantId && row.checkoutSessionId === checkoutSessionId);
+            if (job !== undefined) job.completedAt = completedAt;
+          },
+        },
         consentTransaction: {
           run: (nested) => transaction.consentTransaction.run((repositories) => nested({
             ...repositories,
@@ -6533,6 +6549,7 @@ describe('checkout consent ordering', () => {
     orderResult = order;
     if (event.checkoutSession !== null) {
       event.checkoutSession.metadata.checkoutConsentCaptureId = 'capture-gone';
+      event.checkoutSession.email = 'replay-buyer@example.test';
     }
     const recordedBefore = recorded.length;
     expect((await deliver()).status).toBe(200);
@@ -6541,6 +6558,34 @@ describe('checkout consent ordering', () => {
     expect(
       await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
     ).toEqual(grantedBefore);
+
+    expect(consentJobs).toMatchObject([{
+      tenantId: acme.id,
+      checkoutSessionId: 'cs_webhook_missing_capture',
+      captureId: 'capture-gone',
+      completedAt: null,
+    }]);
+    expect(await marketing.marketingConsents.listByEmail(acme.id, 'replay-buyer@example.test')).toEqual([]);
+    const invoiceJobsBeforeReplay = structuredClone(durableJobs);
+    const createOrder = vi.spyOn(base.orders, 'create');
+    captureRestored = true;
+    for (let delivery = 0; delivery < 2; delivery += 1) {
+      const replay = await deliver();
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toMatchObject({
+        ok: true,
+        data: { received: true, processed: false },
+      });
+      expect(recorded).toHaveLength(recordedBefore + 1);
+      expect(await marketing.marketingConsents.listByEmail(acme.id, 'replay-buyer@example.test')).toMatchObject([{
+        status: 'granted',
+        evidence: { proofRef: `product:${attached.id};order:${consentJobs[0]?.orderId}` },
+      }]);
+      expect(consentJobs).toHaveLength(1);
+      expect(consentJobs[0]?.completedAt).toBe(base.clock.nowIso());
+      expect(durableJobs).toEqual(invoiceJobsBeforeReplay);
+      expect(createOrder).not.toHaveBeenCalled();
+    }
 
     event.id = 'evt_webhook_consent_storage';
     webhookDeps.paymentTransaction.run = async () => err(internal('Consent storage unavailable'));

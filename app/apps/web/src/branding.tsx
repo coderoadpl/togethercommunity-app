@@ -60,18 +60,32 @@ export const TenantSocialLinks = ({
   return <SocialLinksFooter links={links} ariaLabel={t.branding.socialLinksAria} />;
 };
 
-export const TenantLogo = () => {
+export const TenantLogo = ({ compact = false }: { compact?: boolean } = {}) => {
   const tenant = useTenantOffer();
   const logoUrl = useThemedLogo(tenant?.branding ?? EMPTY_TENANT_BRANDING);
   if (tenant === null) return null;
   if (logoUrl === null) {
+    if (compact) {
+      return (
+        <CompactWordmark component="p" variant="h3" noWrap data-testid="tenant-name-mark">
+          {tenant.name}
+        </CompactWordmark>
+      );
+    }
     return (
       <ShellWordmark component="p" variant="h3" noWrap data-testid="tenant-name-mark">
         {tenant.name}
       </ShellWordmark>
     );
   }
-  return <LogoImage surface="sidebar" src={logoUrl} alt={tenant.name} data-testid="tenant-logo" />;
+  return (
+    <LogoImage
+      surface={compact ? 'compact' : 'sidebar'}
+      src={logoUrl}
+      alt={tenant.name}
+      data-testid="tenant-logo"
+    />
+  );
 };
 
 type BrandMarkSize = 'display' | 'compact' | 'shell';

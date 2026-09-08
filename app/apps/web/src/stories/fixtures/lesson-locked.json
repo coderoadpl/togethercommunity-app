@@ -47,7 +47,7 @@
         "impersonation": null,
         "name": "Konto Free",
         "tenant": {
-          "banned": false,
+          "banned": true,
           "displayName": "Konto Free",
           "dmOptOut": false,
           "id": "tenant-studio",

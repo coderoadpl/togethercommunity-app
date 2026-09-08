@@ -3001,7 +3001,7 @@ export const TenantListItemText = styled(ListItemText)({
   '& .MuiListItemText-primary': { fontWeight: 700 },
 });
 
-export const BreakAllText = styled(Typography)<AsElement>({ wordBreak: 'break-all' });
+export const WrapAnywhereText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
 
 export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,

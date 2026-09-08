@@ -13,7 +13,7 @@ import {
   UNREAD_BADGE_POLL_INTERVAL_MS,
 } from '../../notifications-stream.js';
 import { useNotificationsTransport } from '../../notifications-transport.js';
-import { BreakAllText, CountBadge, Eyebrow, InkDotBadge, VisuallyHidden } from '../../theme.js';
+import { CountBadge, Eyebrow, InkDotBadge, VisuallyHidden, WrapAnywhereText } from '../../theme.js';
 import { SignOutIcon, StudioIcon } from './account-icons.js';
 import { useCanOpenStudio } from './viewer.js';
 import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
@@ -122,14 +122,14 @@ export const MemberAccountMenu = ({ panelUrl = '/panel/members' }: { panelUrl?: 
                   {displayName}
                 </Typography>
               )}
-              <BreakAllText
+              <WrapAnywhereText
                 variant="caption"
                 component="p"
                 color="text.secondary"
                 data-testid="member-account-email"
               >
                 {email}
-              </BreakAllText>
+              </WrapAnywhereText>
             </Box>
           </Box>
         ) : null}

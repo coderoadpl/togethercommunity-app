@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { lazy, type FunctionComponent } from 'react';
+import { lazy, useState, type FunctionComponent } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -21,6 +21,7 @@ import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ThemeModeProvider } from '../../../theme-mode.js';
+import { PostComposer } from '../ThreadDiscussion.js';
 import { memberHomePath, memberSearchPath } from './member-nav.js';
 import { MemberShell } from './MemberShell.js';
 
@@ -35,6 +36,25 @@ const stubViewport = (isDesktop: boolean) => {
     removeEventListener: () => undefined,
     dispatchEvent: () => false,
   }));
+};
+
+const stubViewportWidth = (width: number) => {
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const minimum = /min-width:\s*(\d+)/u.exec(query)?.[1];
+    const maximum = /max-width:\s*(\d+)/u.exec(query)?.[1];
+    return {
+      matches:
+        (minimum === undefined || width >= Number(minimum)) &&
+        (maximum === undefined || width <= Number(maximum)),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    };
+  });
 };
 
 const okMe = (
@@ -770,6 +790,74 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
   });
 
+  it('hides the mobile bottom bar and reveals a focused composer above the keyboard', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const user = userEvent.setup();
+    const Composer = () => (
+      <PostComposer
+        label="Question"
+        collapsedPrompt="Write a question"
+        submitLabel="Send"
+        pendingLabel="Sending"
+        busy={false}
+        onSubmit={() => undefined}
+        testId="keyboard-composer"
+      />
+    );
+
+    await renderShell('/my/courses/c1/lessons/l1', Composer);
+    scrollIntoView.mockClear();
+    await user.click(await screen.findByTestId('keyboard-composer-open'));
+
+    const input = await screen.findByTestId('keyboard-composer-input');
+    expect(input).toHaveFocus();
+    expect(input.closest('[data-mobile-keyboard-anchor]')).toHaveStyle({
+      scrollMarginBottom: 'calc(5.5rem + env(safe-area-inset-bottom))',
+    });
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    expect(screen.queryByTestId('member-bottom-nav')).not.toBeInTheDocument();
+
+    await user.click(document.body);
+    expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it('restores the mobile bottom bar when the focused composer unmounts', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const user = userEvent.setup();
+    const RemovableComposer = () => {
+      const [visible, setVisible] = useState(true);
+      return visible ? (
+        <PostComposer
+          label="Question"
+          submitLabel="Send"
+          pendingLabel="Sending"
+          focusOnMount
+          busy={false}
+          onSubmit={() => undefined}
+          onCancel={() => setVisible(false)}
+          testId="removable-composer"
+        />
+      ) : null;
+    };
+
+    await renderShell('/my/courses/c1/lessons/l1', RemovableComposer);
+
+    expect(await screen.findByTestId('removable-composer-input')).toHaveFocus();
+    expect(screen.queryByTestId('member-bottom-nav')).not.toBeInTheDocument();
+    scrollIntoView.mockClear();
+
+    await user.click(screen.getByRole('button', { name: pl.common.cancel }));
+
+    expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    scrollIntoView.mockRestore();
+  });
+
   it('opens the menu sheet with the same navigation list and no second bell', async () => {
     stubViewport(false);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
@@ -859,6 +947,17 @@ describe('MemberShell', () => {
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
     expect(screen.getByTestId('color-scheme-cycle')).toBeInTheDocument();
     expect(screen.queryByTestId('color-scheme-switcher')).not.toBeInTheDocument();
+  });
+
+  it('keeps the public sign-in action on one line with a compact brand below 400px', async () => {
+    stubViewportWidth(390);
+    server.use(okMe({ tenant: null }), okOffer(), okPublicNavigation());
+
+    await renderShell('/my');
+
+    const signIn = await screen.findByRole('link', { name: pl.auth.signInLink });
+    expect(signIn).toHaveStyle({ whiteSpace: 'nowrap', minHeight: '44px' });
+    expect(screen.getByTestId('tenant-name-mark')).toHaveStyle({ fontSize: '0.95rem' });
   });
 
   it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {

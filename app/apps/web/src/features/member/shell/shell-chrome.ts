@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase } from '@mui/material';
+import { Box, Button, ButtonBase } from '@mui/material';
 import { styled } from '@mui/material/styles';
 
 import { PanelNavItem } from '../../../theme.js';
@@ -34,6 +34,12 @@ export const BrandLink = styled(Box)<ShellLinkProps>(({ theme }) => ({
   textDecoration: 'none',
   borderRadius: theme.shape.borderRadius,
 }));
+
+export const PublicSignInButton = styled(Button)<ShellLinkProps>({
+  minHeight: '44px',
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+});
 
 export const SectionHeadingLink = styled(Box)<ShellLinkProps>(({ theme }) => ({
   display: 'inline-flex',
@@ -95,4 +101,3 @@ export const SidebarColumn = styled(Box)<{ component?: ElementType }>(({ theme }
   backgroundColor: theme.palette.background.paper,
   borderRight: `1px solid ${theme.palette.divider}`,
 }));
-

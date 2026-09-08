@@ -69,7 +69,7 @@ export const markLessonCompleted = async (
   if (!location) return err(notFound(`No lesson "${lessonId}" in this tenant`));
 
   const lookup = await resolveMemberAccessLookup(scope.value, deps);
-  const accessible = isLessonAccessibleByLookup(lookup, {
+  const accessible = ctx.identity.staffRole !== null || isLessonAccessibleByLookup(lookup, {
     courseId: location.course.id,
     moduleId: location.moduleId,
     lessonId,
@@ -110,7 +110,7 @@ export const unmarkLessonCompleted = async (
   if (!location) return err(notFound(`No lesson "${lessonId}" in this tenant`));
 
   const lookup = await resolveMemberAccessLookup(scope.value, deps);
-  const accessible = isLessonAccessibleByLookup(lookup, {
+  const accessible = ctx.identity.staffRole !== null || isLessonAccessibleByLookup(lookup, {
     courseId: location.course.id,
     moduleId: location.moduleId,
     lessonId,

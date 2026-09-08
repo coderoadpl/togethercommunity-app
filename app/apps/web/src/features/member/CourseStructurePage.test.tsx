@@ -274,6 +274,7 @@ describe('CourseStructurePage', () => {
     const inlineProgram = within(leading).getByTestId('course-tree-inline');
 
     expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
+    expect(inlineProgram).toHaveStyle({ marginTop: '1.5rem' });
     expect(screen.getAllByTestId('course-progress-card')).toHaveLength(1);
     expect(within(trailing).getByTestId('course-discussion-search')).toBeInTheDocument();
     expect(within(inlineProgram).getByTestId('course-tree')).toBeInTheDocument();

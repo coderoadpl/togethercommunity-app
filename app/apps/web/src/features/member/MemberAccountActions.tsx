@@ -14,7 +14,7 @@ import {
   UNREAD_BADGE_POLL_INTERVAL_MS,
 } from '../../notifications-stream.js';
 import { useNotificationsTransport } from '../../notifications-transport.js';
-import { BreakAllText, CountBadge, Eyebrow, VisuallyHidden } from '../../theme.js';
+import { CountBadge, Eyebrow, VisuallyHidden, WrapAnywhereText } from '../../theme.js';
 import { SignOutIcon, StudioIcon } from './account-icons.js';
 import { memberMessagesPath } from './shell/member-nav.js';
 import { NavRow } from './shell/shell-chrome.js';
@@ -303,14 +303,14 @@ export const MemberAccountIdentityBlock = ({
             {displayName}
           </Typography>
         )}
-        <BreakAllText
+        <WrapAnywhereText
           variant="caption"
           component="p"
           color="text.secondary"
           data-testid="member-account-email"
         >
           {email}
-        </BreakAllText>
+        </WrapAnywhereText>
       </Box>
     </Box>
   );

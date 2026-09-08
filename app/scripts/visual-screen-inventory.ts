@@ -127,6 +127,14 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
   },
   {
+    name: 'login-resolve-error',
+    auth: 'public',
+    path: '/login',
+    fixtureName: 'login',
+    viewports: ['mobile'],
+    ready: (page) => page.getByTestId('sign-in-methods-unavailable').waitFor(visible),
+  },
+  {
     name: 'login-tenant',
     auth: 'public',
     path: '/login',
@@ -218,6 +226,18 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: async (page) => {
       await page.getByTestId('anon-course-program').waitFor(visible);
       await page.getByTestId('course-cover').waitFor(visible);
+    },
+  },
+  {
+    name: 'anon-space',
+    auth: 'public',
+    path: '/community/space-studio-spolecznosc',
+    fixtureName: 'anon-home-tiles',
+    viewports: ['mobile'],
+    ready: async (page) => {
+      await page.getByTestId('anon-join-cta').waitFor(visible);
+      await page.getByTestId('public-space-events-empty').waitFor(visible);
+      await page.getByTestId('public-post-body-post-spolecznosc-hello').waitFor(visible);
     },
   },
   {

@@ -541,3 +541,15 @@ describe('progress isolation', () => {
     expect(t2).toMatchObject({ ok: true, value: { courseId: 'c1', completedLessonIds: [], resume: { target: null } } });
   });
 });
+
+
+describe('staff self progress', () => {
+  it.each(['owner', 'admin'] as const)('lets %s complete and uncomplete an accessible staff lesson without a purchase grant', async (staffRole) => {
+    const store = makeProgressStore();
+    const dependencies = deps(store.repo, [], []);
+    const own = ctx({ staffRole });
+    expect(await markLessonCompleted(own, 'l1', dependencies)).toMatchObject({ ok: true, value: { memberId: own.identity.memberId, completedLessonIds: ['l1'] } });
+    expect(await unmarkLessonCompleted(own, 'l1', dependencies)).toMatchObject({ ok: true, value: { memberId: own.identity.memberId, completedLessonIds: [] } });
+    expect(await markLessonCompleted(own, 'missing', dependencies)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});

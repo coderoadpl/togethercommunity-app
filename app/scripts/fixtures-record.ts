@@ -19,6 +19,7 @@ import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, migrateAndSeed, dropD
 import { abortVisualMutation, visualSeedTime as seedTime } from './visual-request-policy.js';
 const passkeyRecorders = new Map<string, () => Promise<unknown>>();
 const sessions = new Map<string, ApiClient>();
+const staffMemberIds = new Map<string, string>();
 const output = process.argv[2] ?? join(rootDir, 'apps/web/src/stories/fixtures');
 const abortedApi = createApiClient({ baseUrl: '', fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')) });
 const success = z.object({ ok: z.literal(true), value: z.unknown() });
@@ -117,6 +118,9 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   if (!me.ok && scenario.principal !== 'anonymous') throw new Error(me.error.message);
   const recordedUserId = me.ok ? me.value.userId : null;
   const fixtureUserId = me.ok ? `fixture-user-${createHash('sha256').update(me.value.email).digest('hex').slice(0, 16)}` : null;
+  if (me.ok && me.value.tenant?.staffRole && me.value.tenant.memberId) {
+    staffMemberIds.set(me.value.tenant.memberId, `fixture-member-${createHash('sha256').update(`${me.value.tenant.id}:${me.value.email}`).digest('hex').slice(0, 16)}`);
+  }
   await call('publicOffer', [], () => api.publicOffer());
   if (scenario.principal !== 'anonymous' && scenario.principal !== 'creator@together.dev') {
   await call('memberNavigation', [], () => api.memberNavigation());
@@ -193,7 +197,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   // Routing goldens include the authoring server's port in CORS instructions.
   const recordedTenantHost = `${scenario.tenant}.localhost:${new URL(baseUrl).port}`;
   const goldenTenantHost = `${scenario.tenant}.localhost:63871`;
-  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? value.replaceAll(baseUrl, 'http://localhost:48730').replaceAll(recordedTenantHost, goldenTenantHost) : value));
+  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? staffMemberIds.get(value) ?? value.replaceAll(baseUrl, 'http://localhost:48730').replaceAll(recordedTenantHost, goldenTenantHost) : value));
   fixtureSchema.parse(snapshot);
   save(scenario.name, snapshot);
   console.log(`${scenario.name}: ${Object.keys(calls).length} calls`);

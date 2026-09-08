@@ -46,7 +46,7 @@ describe('Storybook stories', () => {
     const expectAscii = (value: unknown, label: string) => {
       if (value !== undefined) {
         expect(typeof value, label).toBe('string');
-        expect(value, label).toMatch(/^[ -~\s]+$/u);
+        expect(value, label).toMatch(/^[\x21-\x7E\s]+$/u);
       }
     };
 

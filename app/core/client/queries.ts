@@ -1784,6 +1784,10 @@ export const memberLearningSummaryInvalidates = (memberId: string) => ({
 /** Invalidation filter progress mutations apply to refresh a course's tree. */
 export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });
 
+export const studentProgressInvalidates = (courseId: string) => ({
+  queryKey: studentScopes.progress(courseId),
+});
+
 export const notificationsInvalidates = () => ({ queryKey: notificationScopes.all() });
 
 /** @public */

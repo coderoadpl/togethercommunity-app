@@ -1650,7 +1650,7 @@ export const en: Messages = {
     continueLearning: 'Continue learning',
     reviewAgain: 'Review again',
     courseCompleted: 'Course completed',
-    goToFirstLesson: 'Go to the first lesson',
+    firstIncomplete: ({ name }) => `Start from the first incomplete lesson: ${name}`,
     curriculum: 'Course curriculum',
     aboutCourse: 'About this course',
     coverAlt: ({ name }) => format('Course cover for {name}', { name }),

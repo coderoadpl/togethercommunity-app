@@ -566,6 +566,29 @@
       "value": {
         "unread": 1
       }
+    },
+    "studentProgress:[\"course-js\"]": {
+      "ok": true,
+      "value": {
+        "progress": {
+          "courseId": "course-js",
+          "completedLessonIds": [
+            "lesson-js-zmienne-1",
+            "lesson-js-zmienne-2"
+          ],
+          "resume": {
+            "target": {
+              "id": "lesson-js-funkcje-1",
+              "name": "Funkcje i argumenty"
+            },
+            "firstIncomplete": {
+              "id": "lesson-js-demo-video",
+              "name": "Demo wideo (Bunny Stream)"
+            },
+            "isReview": false
+          }
+        }
+      }
     }
   },
   "principal": "kursant.aktywny@together.dev",

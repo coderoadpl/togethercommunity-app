@@ -259,6 +259,10 @@ export const LessonPlayerPage = ({
 
   const lastViewed = useMutation({
     ...actions.updateLastViewed,
+    onSettled: (_data, _error, input) => Promise.all([
+      queryClient.invalidateQueries(actions.studentProgressInvalidates(input.courseId)),
+      queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+    ]),
     onError: (error) => console.warn('Failed to update last-viewed lesson', error),
   });
   const lastViewedRef = useRef<string | null>(null);

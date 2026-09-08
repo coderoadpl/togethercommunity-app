@@ -178,6 +178,26 @@
       "value": {
         "unread": 0
       }
+    },
+    "studentProgress:[\"course-acme\"]": {
+      "ok": true,
+      "value": {
+        "progress": {
+          "courseId": "course-acme",
+          "completedLessonIds": [],
+          "resume": {
+            "target": {
+              "id": "lesson-acme-intro",
+              "name": "Lekcja wprowadzająca"
+            },
+            "firstIncomplete": {
+              "id": "lesson-acme-intro",
+              "name": "Lekcja wprowadzająca"
+            },
+            "isReview": false
+          }
+        }
+      }
     }
   },
   "principal": "kontakt+smoke-member@togethercommunity.app",

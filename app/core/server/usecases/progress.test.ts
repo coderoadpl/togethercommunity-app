@@ -485,15 +485,32 @@ describe('updateLastViewed', () => {
 describe('getProgress', () => {
   it('returns an empty view when no row exists (no accidental create)', async () => {
     const store = makeProgressStore();
-    const result = await getProgress(ctx({}), 'c1', { progress: store.repo });
-    expect(result).toEqual({ ok: true, value: { courseId: 'c1', completedLessonIds: [] } });
+    const result = await getProgress(ctx({}), 'c1', { ...deps(store.repo), lessons: { list: async () => [] } });
+    expect(result).toMatchObject({ ok: true, value: { courseId: 'c1', completedLessonIds: [], resume: { target: { id: 'l1', name: 'C L1' }, isReview: false } } });
     expect(store.rows).toHaveLength(0);
+  });
+
+  it('derives the resume response from recorded visits and completions', async () => {
+    const store = makeProgressStore();
+    const d = { ...deps(store.repo), lessons: { list: async () => [] } };
+    await updateLastViewed(ctx({}), { courseId: 'c1', lessonId: 'l2' }, d);
+    expect(await getProgress(ctx({}), 'c1', d)).toMatchObject({ ok: true, value: {
+      resume: { target: { id: 'l2', name: 'C L2' }, firstIncomplete: { id: 'l1' }, isReview: false },
+    } });
+    await markLessonCompleted(ctx({}), 'l2', d);
+    expect(await getProgress(ctx({}), 'c1', d)).toMatchObject({ ok: true, value: {
+      resume: { target: { id: 'l1' }, isReview: false },
+    } });
+    await markLessonCompleted(ctx({}), 'l1', d);
+    expect(await getProgress(ctx({}), 'c1', d)).toMatchObject({ ok: true, value: {
+      resume: { target: { id: 'l2' }, firstIncomplete: null, isReview: true },
+    } });
   });
 
   it('returns the stored progress', async () => {
     const store = makeProgressStore();
     await markLessonCompleted(ctx({}), 'l1', deps(store.repo));
-    const result = await getProgress(ctx({}), 'c1', { progress: store.repo });
+    const result = await getProgress(ctx({}), 'c1', { ...deps(store.repo), lessons: { list: async () => [] } });
     expect(result).toMatchObject({ ok: true, value: { completedLessonIds: ['l1'] } });
   });
 });
@@ -510,8 +527,8 @@ describe('progress isolation', () => {
       deps(store.repo, [activeGrant, otherGrant]),
     );
 
-    const a = await getProgress(ctx({ memberId: 'mem1' }), 'c1', { progress: store.repo });
-    const b = await getProgress(ctx({ memberId: 'mem2' }), 'c1', { progress: store.repo });
+    const a = await getProgress(ctx({ memberId: 'mem1' }), 'c1', { ...deps(store.repo), lessons: { list: async () => [] } });
+    const b = await getProgress(ctx({ memberId: 'mem2' }), 'c1', { ...deps(store.repo), lessons: { list: async () => [] } });
     expect(a).toMatchObject({ ok: true, value: { completedLessonIds: ['l1'] } });
     expect(b).toMatchObject({ ok: true, value: { completedLessonIds: ['l2'] } });
   });
@@ -520,7 +537,7 @@ describe('progress isolation', () => {
     const store = makeProgressStore();
     await markLessonCompleted(ctx({ tenantId: 't1' }), 'l1', deps(store.repo));
 
-    const t2 = await getProgress(ctx({ tenantId: 't2' }), 'c1', { progress: store.repo });
-    expect(t2).toEqual({ ok: true, value: { courseId: 'c1', completedLessonIds: [] } });
+    const t2 = await getProgress(ctx({ tenantId: 't2' }), 'c1', { ...deps(store.repo), lessons: { list: async () => [] } });
+    expect(t2).toMatchObject({ ok: true, value: { courseId: 'c1', completedLessonIds: [], resume: { target: null } } });
   });
 });

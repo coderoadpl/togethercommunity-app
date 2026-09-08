@@ -83,6 +83,7 @@ const deps: TenantSettingsDeps = {
     },
   },
   spaces: spaceRepo(space()),
+  products: { bumpContentVersion: async () => undefined },
 };
 
 describe('getTenantSettings', () => {
@@ -106,6 +107,21 @@ describe('updateTenantSettings', () => {
     identity: identity('admin'),
     capabilities: ['tenant:settings:write' as const],
   };
+
+  it('invalidates public caches after storing settings', async () => {
+    const contentVersionBumps: string[] = [];
+    const result = await updateTenantSettings(adminCtx, { accentColor: '#0E7490' }, {
+      ...deps,
+      products: {
+        bumpContentVersion: async (tenantId) => {
+          contentVersionBumps.push(tenantId);
+        },
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { accentColor: '#0E7490' } });
+    expect(contentVersionBumps).toEqual(['tenant-1']);
+  });
 
   it('round-trips the display name and social links while keeping the slug outside settings', async () => {
     const result = await updateTenantSettings(adminCtx, {

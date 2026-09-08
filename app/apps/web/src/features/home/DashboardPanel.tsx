@@ -61,7 +61,7 @@ const DashboardTile = ({
   );
 };
 
-export const DashboardPanel = () => {
+export const DashboardPanel = ({ aside }: { aside?: ReactNode }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const navigate = useNavigate();
@@ -95,15 +95,15 @@ export const DashboardPanel = () => {
         .map((entry) => formatPrice(entry.amountCents, entry.currency, language))
         .join(' + ');
 
-  return (
-    <PanelPage title={t.dashboard.heading}>
+  const body = (
+    <>
       <Box
         data-testid="dashboard-tiles"
         sx={{
           display: 'grid',
           gap: '0.9rem',
           gridAutoRows: '1fr',
-          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' },
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
         }}
       >
         <DashboardTile
@@ -211,6 +211,31 @@ export const DashboardPanel = () => {
           </DividedList>
         )}
       </Paper>
+    </>
+  );
+
+  return (
+    <PanelPage title={t.dashboard.heading}>
+      {aside === undefined ? body : (
+        <Box
+          data-testid="dashboard-grid"
+          sx={{
+            display: 'grid',
+            gap: '1.5rem',
+            alignItems: 'start',
+            gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) minmax(16rem, 22rem)' },
+          }}
+        >
+          <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>{body}</Stack>
+          <Box
+            component="aside"
+            data-testid="dashboard-aside"
+            sx={{ display: { xs: 'none', lg: 'block' }, minWidth: 0, position: 'sticky', top: '5rem' }}
+          >
+            {aside}
+          </Box>
+        </Box>
+      )}
     </PanelPage>
   );
 };

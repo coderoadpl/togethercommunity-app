@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Divider, IconButton, Paper, Stack, SvgIcon, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import { useTheme, type Theme } from '@mui/material/styles';
 
-import { useReserveBottomInset } from '../../components/layout/index.js';
+import { NO_INSET, useReserveBottomInset } from '../../components/layout/index.js';
 import { useTranslations } from '../../i18n/index.js';
 import { persistedJsonPreference } from '../../theme-mode.js';
 import { OnboardingChecklist } from './OnboardingChecklist.js';
@@ -35,6 +35,41 @@ const dockAnchor = {
   borderRadius: '0.5rem 0.5rem 0 0',
 };
 
+export const StudioChecklistPanel = ({ scope }: { scope: string }) => {
+  const t = useTranslations();
+  const theme = useTheme();
+  const desktop = useMediaQuery(theme.breakpoints.up('lg'), { noSsr: true });
+  const dismissal = useMemo(() => flagPreferenceFor('dismissed', scope), [scope]);
+  const dismissed = dismissal.load() === true;
+
+  if (!desktop || dismissed) return null;
+
+  return (
+    <Paper
+      elevation={1}
+      id={PANEL_ID}
+      role="region"
+      aria-label={t.studioSetup.panelTitle}
+      data-testid="studio-checklist-panel"
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        p: '1rem',
+        rowGap: '1.25rem',
+      }}
+    >
+      <Typography variant="subtitle2" component="h2">
+        {t.studioSetup.panelTitle}
+      </Typography>
+      <Divider />
+      <Stack useFlexGap sx={{ rowGap: '1.25rem', minHeight: 0 }}>
+        <TenantSetupChecklist />
+        <OnboardingChecklist />
+      </Stack>
+    </Paper>
+  );
+};
+
 export const StudioChecklistDock = ({ scope }: { scope: string }) => {
   const t = useTranslations();
   const preference = useMemo(() => flagPreferenceFor('collapsed', scope), [scope]);
@@ -42,6 +77,7 @@ export const StudioChecklistDock = ({ scope }: { scope: string }) => {
   const [choice, setChoice] = useState<boolean | undefined>(preference.load);
   const [dismissed, setDismissed] = useState(() => dismissal.load() === true);
   const theme = useTheme();
+  const desktop = useMediaQuery(theme.breakpoints.up('lg'), { noSsr: true });
   const roomForPanel = useMediaQuery(theme.breakpoints.up('sm'));
   const collapsed = choice ?? !roomForPanel;
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -64,7 +100,7 @@ export const StudioChecklistDock = ({ scope }: { scope: string }) => {
     else panelRef.current?.focus();
   }, [collapsed, dismissed]);
 
-  useReserveBottomInset(dismissed ? PILL_HEIGHT : BAR_HEIGHT);
+  useReserveBottomInset(desktop ? NO_INSET : dismissed ? PILL_HEIGHT : BAR_HEIGHT);
 
   const dismiss = () => {
     dismissal.save(true);
@@ -77,6 +113,8 @@ export const StudioChecklistDock = ({ scope }: { scope: string }) => {
     movesFocus.current = true;
     setDismissed(false);
   };
+
+  if (desktop) return null;
 
   if (dismissed) {
     return (

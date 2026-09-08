@@ -776,7 +776,7 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
   });
 
-  it('opens the menu sheet with the same navigation list and no second bell', async () => {
+  it('opens the menu sheet with navigation and the avatar account actions', async () => {
     stubViewport(false);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
     const user = userEvent.setup();
@@ -786,13 +786,123 @@ describe('MemberShell', () => {
 
     const sheet = await screen.findByTestId('member-menu-sheet');
     expect(within(sheet).getByTestId('member-sidebar')).toBeInTheDocument();
-    expect(await within(sheet).findByTestId('sidebar-space-s1')).toHaveTextContent('Ogólna');
+    const identity = within(sheet).getByTestId('member-identity');
+    const space = await within(sheet).findByTestId('sidebar-space-s1');
+    const actions = within(sheet).getByTestId('member-menu-account-actions');
+    expect(space).toHaveTextContent('Ogólna');
     expect(within(sheet).queryByTestId('sidebar-products')).not.toBeInTheDocument();
-    expect(within(sheet).getByTestId('member-identity')).toHaveTextContent('Jan Uczestnik');
+    expect(identity).toHaveTextContent('Jan Uczestnik');
+    expect(identity).not.toHaveAttribute('href');
+    expect(identity.compareDocumentPosition(space)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(space.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect([
+      within(actions).getByTestId('member-account-products'),
+      within(actions).getByTestId('member-account-messages'),
+      within(actions).getByTestId('member-account-link'),
+      within(actions).getByTestId('member-sign-out'),
+    ].map((item) => item.textContent)).toEqual([
+      pl.student.myProducts,
+      pl.messages.navLabel,
+      pl.account.menuAccount,
+      pl.tenant.signOut,
+    ]);
+    expect(within(actions).getByTestId('member-account-products')).toHaveAttribute(
+      'href',
+      '/my/products',
+    );
+    expect(within(actions).getByTestId('member-account-messages')).toHaveAttribute(
+      'href',
+      '/messages',
+    );
+    expect(within(actions).getByTestId('member-account-link')).toHaveAttribute('href', '/account');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-start')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-search')).not.toBeInTheDocument();
+  });
+
+  it('includes the staff Studio row in the mobile menu account group', async () => {
+    stubViewport(false);
+    server.use(okMe({ staffRole: 'admin', memberId: null }), okNavigation(), okOffer(), noNotifications());
+    const user = userEvent.setup();
+
+    await renderShell('/my');
+    await user.click(await screen.findByTestId('member-tab-menu'));
+
+    const actions = within(await screen.findByTestId('member-menu-sheet')).getByTestId(
+      'member-menu-account-actions',
+    );
+    const studio = within(actions).getByTestId('member-account-studio-link');
+    const products = within(actions).getByTestId('member-account-products');
+    expect(studio).toHaveAttribute('href', '/panel');
+    expect(studio).toHaveTextContent(pl.account.menuStudio);
+    expect(studio.compareDocumentPosition(products)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('keeps a mobile menu sign-out failure visible after the sheet closes', async () => {
+    stubViewport(false);
+    let signOutCalls = 0;
+    server.use(
+      okMe(),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.post('*', () => {
+        signOutCalls += 1;
+        return HttpResponse.json(
+          { code: 'TEST_FAILURE', message: 'Could not sign out' },
+          { status: 500 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+
+    await renderShell('/my');
+    await user.click(await screen.findByTestId('member-tab-menu'));
+    const sheet = await screen.findByTestId('member-menu-sheet');
+    await user.click(within(sheet).getByTestId('member-sign-out'));
+
+    await waitFor(() => expect(signOutCalls).toBe(1));
+    await waitFor(() => expect(screen.queryByTestId('member-menu-sheet')).not.toBeInTheDocument());
+    expect(await screen.findByRole('alert')).toHaveTextContent(pl.errors.messageInternal);
+  });
+
+  it('exits impersonation from the mobile menu without signing out', async () => {
+    stubViewport(false);
+    const assign = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, assign });
+    let stopped = false;
+    const signOutCalls: string[] = [];
+    server.use(
+      okMe({ impersonated: true }),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.post('/api/impersonation/stop', () => {
+        stopped = true;
+        return HttpResponse.json({ ok: true, data: { ended: true } });
+      }),
+      http.post('*', ({ request }) => {
+        signOutCalls.push(new URL(request.url).pathname);
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    const user = userEvent.setup();
+
+    await renderShell('/my');
+    await user.click(await screen.findByTestId('member-tab-menu'));
+
+    const sheet = await screen.findByTestId('member-menu-sheet');
+    const control = within(sheet).getByTestId('member-sign-out');
+    await waitFor(() => expect(control).toHaveTextContent(pl.shell.impersonationExit));
+    expect(within(sheet).queryByTestId('member-account-messages')).not.toBeInTheDocument();
+    await user.click(control);
+
+    await waitFor(() => {
+      expect(stopped).toBe(true);
+      expect(assign).toHaveBeenCalledWith('/panel/members');
+    });
+    expect(signOutCalls).toEqual([]);
   });
 
   it('offers the program in both a compact and a wide app-bar control', async () => {

@@ -9,6 +9,7 @@ import type {
   PostReportStatus,
 } from '#core/domain/index.js';
 
+import { translateDeletedContent } from '../../../i18n/deleted-content.js';
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -82,7 +83,7 @@ const DmReportsSection = () => {
               <Chip size="small" label={reasonLabel(report.reason)} />
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              {t.dmReports.parties({ reporter: report.reporterDisplay, reported: report.reportedDisplay })}
+              {t.dmReports.parties({ reporter: translateDeletedContent(report.reporterDisplay, t), reported: translateDeletedContent(report.reportedDisplay, t) })}
             </Typography>
             <Stack useFlexGap sx={{ gap: '0.35rem' }} data-testid={`dm-report-snapshot-${report.id}`}>
               {report.snapshot.length === 0 ? (
@@ -90,7 +91,7 @@ const DmReportsSection = () => {
               ) : (
                 report.snapshot.map((message) => (
                   <PostBody key={message.id} variant="body2" component="p">
-                    {`${message.senderDisplay} · ${formatDateTime(message.createdAt, language)}: ${message.body}`}
+                    {`${translateDeletedContent(message.senderDisplay, t)} · ${formatDateTime(message.createdAt, language)}: ${message.body}`}
                   </PostBody>
                 ))
               )}
@@ -207,13 +208,13 @@ const PostReportsSection = () => {
                 />
               ))}
             </Stack>
-            <Typography>{post.body}</Typography>
+            <Typography>{translateDeletedContent(post.body, t)}</Typography>
             <Typography variant="body2" color="text.secondary">
-              {post.authorDisplay}{spaceName === null ? '' : ` · ${spaceName}`}
+              {translateDeletedContent(post.authorDisplay, t)}{spaceName === null ? '' : ` · ${spaceName}`}
             </Typography>
             {report.note === null ? null : <Typography variant="body2">{report.note}</Typography>}
             <Typography variant="body2" color="text.secondary">
-              {report.reporterDisplay === null ? '' : t.reports.reportedBy({ name: report.reporterDisplay })}
+              {report.reporterDisplay === null ? '' : t.reports.reportedBy({ name: translateDeletedContent(report.reporterDisplay, t) })}
               {' · '}{t.reports.otherReports({ count: openReportsForPost })}
             </Typography>
             {status === 'open' ? (

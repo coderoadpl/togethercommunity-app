@@ -5,6 +5,7 @@ import { Link } from '@tanstack/react-router';
 
 import type { CourseStructureWithAccess, PostSearchHit } from '#core/domain/index.js';
 
+import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../components/ui/SearchField.js';
@@ -102,7 +103,7 @@ export const CourseDiscussionSearch = ({
                           to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(hit.lessonId)}`}
                           data-testid={`course-search-hit-${hit.post.id}`}
                         >
-                          {hit.post.authorDisplay}
+                          {translateDeletedContent(hit.post.authorDisplay, t)}
                         </MuiLink>
                         <DiscussionHitSnippet variant="body2" component="p">
                           <Highlighted text={hit.snippet} query={debounced} />

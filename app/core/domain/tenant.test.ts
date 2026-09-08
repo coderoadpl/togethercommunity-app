@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   absoluteBrandingAssetUrl,
-  deletedMemberDisplay,
+  DELETED_MEMBER_DISPLAY,
   isReservedTenantSlug,
   resolveInvoiceVat,
   resolveTenantLogo,
@@ -336,9 +336,8 @@ describe('tenantSettingsSchema', () => {
   });
 });
 
-describe('deletedMemberDisplay', () => {
-  it('names an erased account in both languages', () => {
-    expect(deletedMemberDisplay()).toBe('Konto usunięte');
-    expect(deletedMemberDisplay('en')).toBe('Deleted account');
+describe('DELETED_MEMBER_DISPLAY', () => {
+  it('uses a language-neutral marker for an erased account', () => {
+    expect(DELETED_MEMBER_DISPLAY).toBe('[deleted-member]');
   });
 });

@@ -757,6 +757,13 @@
       "when": 1788820420000,
       "tag": "0107_member_avatar",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1788820420001,
+      "tag": "0108_english_default_language",
+      "breakpoints": true
     }
   ]
 }

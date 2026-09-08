@@ -3,6 +3,7 @@ import { format, type Messages } from './messages.js';
 const plural = (count: number, one: string, other: string): string => (count === 1 ? one : other);
 
 export const en: Messages = {
+  deletedContent: { member: 'Deleted account', post: 'Deleted post' },
   common: {
     appName: 'Together',
     language: 'Language',

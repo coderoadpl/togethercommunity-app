@@ -8,7 +8,7 @@ import {
   type TenantDomainProvider,
 } from './custom-domain.js';
 import { staffRoleSchema } from './identity.js';
-import { DEFAULT_LANGUAGE, languageSchema, type Language } from './language.js';
+import { languageSchema } from './language.js';
 import { storageCorsStatusSchema } from './storage.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
@@ -353,13 +353,7 @@ export const memberSchema = z.object({
 
 export type Member = z.infer<typeof memberSchema>;
 
-const DELETED_MEMBER_DISPLAY: Record<Language, string> = {
-  pl: 'Konto usunięte',
-  en: 'Deleted account',
-};
-
-export const deletedMemberDisplay = (language: Language = DEFAULT_LANGUAGE): string =>
-  DELETED_MEMBER_DISPLAY[language];
+export const DELETED_MEMBER_DISPLAY = '[deleted-member]';
 
 /**
  * A ban is a reversible moderation state: the person keeps their account, their

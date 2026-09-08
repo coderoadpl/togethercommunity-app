@@ -9,6 +9,7 @@ const plural = (count: number, one: string, few: string, many: string): string =
 };
 
 export const pl: Messages = {
+  deletedContent: { member: 'Konto usunięte', post: 'Wpis usunięty' },
   common: {
     appName: 'Together',
     language: 'Język',

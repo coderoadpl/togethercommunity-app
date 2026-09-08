@@ -89,3 +89,18 @@ describe('public marketing pages', () => {
     expect(languageFromRequest(new Request('https://tenant.test/u/token', { headers: { 'accept-language': 'pl-PL' } }))).toBe('pl');
   });
 });
+
+it('uses the tenant default only when the visitor has no supported preference', () => {
+  expect(languageFromRequest(new Request('https://tenant.test/u/token'), 'pl')).toBe('pl');
+  expect(languageFromRequest(new Request('https://tenant.test/u/token'))).toBe('en');
+  expect(languageFromRequest(new Request('https://tenant.test/u/token?lang=en'), 'pl')).toBe('en');
+  expect(languageFromRequest(new Request('https://tenant.test/u/token', {
+    headers: { 'accept-language': 'de-DE' },
+  }), 'pl')).toBe('pl');
+});
+
+it('recognizes a browser preference with a quality parameter', () => {
+  expect(languageFromRequest(new Request('https://tenant.test/u/token', {
+    headers: { 'accept-language': 'en;q=0.9' },
+  }), 'pl')).toBe('en');
+});

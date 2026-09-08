@@ -16,6 +16,7 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  deletedContent: { member: string; post: string };
   common: {
     appName: string;
     language: string;

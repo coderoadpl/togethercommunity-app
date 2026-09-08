@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { translateDeletedEmailContent } from './deleted-content.js';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
@@ -189,8 +190,10 @@ export const threadReply = (
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
   const lessonName = escapeHtml(input.lessonName);
-  const author = escapeHtml(input.authorDisplay);
-  const snippet = escapeHtml(input.snippet);
+  const authorDisplay = translateDeletedEmailContent(input.authorDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const author = escapeHtml(authorDisplay);
+  const snippet = escapeHtml(snippetText);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
     pl: 'możesz wyciszyć ten wątek w dyskusji',
     en: 'you can mute this thread in the discussion',
@@ -201,7 +204,7 @@ export const threadReply = (
     return emailMessageSchema.parse({
       subject: `New reply in the "${input.lessonName}" discussion`,
       html: `<p>Hello!</p><p>${author} replied in the "${lessonName}" discussion on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.authorDisplay} replied in the "${input.lessonName}" discussion on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the discussion: ${input.url}${footer.text}`,
+      text: `Hello!\n\n${authorDisplay} replied in the "${input.lessonName}" discussion on ${input.tenantName}:\n\n${snippetText}\n\nOpen the discussion: ${input.url}${footer.text}`,
     });
   }
 
@@ -209,7 +212,7 @@ export const threadReply = (
   return emailMessageSchema.parse({
     subject: `Nowa odpowiedź w dyskusji „${input.lessonName}”`,
     html: `<p>Cześć!</p><p>${author} odpowiedział(a) w dyskusji „${lessonName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} odpowiedział(a) w dyskusji „${input.lessonName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz dyskusję: ${input.url}${footer.text}`,
+    text: `Cześć!\n\n${authorDisplay} odpowiedział(a) w dyskusji „${input.lessonName}” na platformie ${input.tenantName}:\n\n${snippetText}\n\nOtwórz dyskusję: ${input.url}${footer.text}`,
   });
 };
 
@@ -219,8 +222,10 @@ export const lessonQuestion = (
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
   const lessonName = escapeHtml(input.lessonName);
-  const author = escapeHtml(input.authorDisplay);
-  const snippet = escapeHtml(input.snippet);
+  const authorDisplay = translateDeletedEmailContent(input.authorDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const author = escapeHtml(authorDisplay);
+  const snippet = escapeHtml(snippetText);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
     pl: 'możesz wyciszyć ten wątek w dyskusji',
     en: 'you can mute this thread in the discussion',
@@ -231,7 +236,7 @@ export const lessonQuestion = (
     return emailMessageSchema.parse({
       subject: `New question under “${input.lessonName}”`,
       html: `<p>Hello!</p><p>${author} asked a question under “${lessonName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.authorDisplay} asked a question under “${input.lessonName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the question: ${input.url}${footer.text}`,
+      text: `Hello!\n\n${authorDisplay} asked a question under “${input.lessonName}” on ${input.tenantName}:\n\n${snippetText}\n\nOpen the question: ${input.url}${footer.text}`,
     });
   }
 
@@ -239,7 +244,7 @@ export const lessonQuestion = (
   return emailMessageSchema.parse({
     subject: `Nowe pytanie pod lekcją „${input.lessonName}”`,
     html: `<p>Cześć!</p><p>${author} zadał(a) pytanie pod lekcją „${lessonName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} zadał(a) pytanie pod lekcją „${input.lessonName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz pytanie: ${input.url}${footer.text}`,
+    text: `Cześć!\n\n${authorDisplay} zadał(a) pytanie pod lekcją „${input.lessonName}” na platformie ${input.tenantName}:\n\n${snippetText}\n\nOtwórz pytanie: ${input.url}${footer.text}`,
   });
 };
 
@@ -249,8 +254,10 @@ export const spacePost = (
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
   const spaceName = escapeHtml(input.spaceName);
-  const author = escapeHtml(input.authorDisplay);
-  const snippet = escapeHtml(input.snippet);
+  const authorDisplay = translateDeletedEmailContent(input.authorDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const author = escapeHtml(authorDisplay);
+  const snippet = escapeHtml(snippetText);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
     pl: 'możesz przestać obserwować tę przestrzeń',
     en: 'you can unfollow the space there',
@@ -261,7 +268,7 @@ export const spacePost = (
     return emailMessageSchema.parse({
       subject: `New post in “${input.spaceName}”`,
       html: `<p>Hello!</p><p>${author} posted in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.authorDisplay} posted in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the space: ${input.url}${footer.text}`,
+      text: `Hello!\n\n${authorDisplay} posted in “${input.spaceName}” on ${input.tenantName}:\n\n${snippetText}\n\nOpen the space: ${input.url}${footer.text}`,
     });
   }
 
@@ -269,7 +276,7 @@ export const spacePost = (
   return emailMessageSchema.parse({
     subject: `Nowy wpis w przestrzeni „${input.spaceName}”`,
     html: `<p>Cześć!</p><p>${author} dodał(a) nowy wpis w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} dodał(a) nowy wpis w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz przestrzeń: ${input.url}${footer.text}`,
+    text: `Cześć!\n\n${authorDisplay} dodał(a) nowy wpis w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${snippetText}\n\nOtwórz przestrzeń: ${input.url}${footer.text}`,
   });
 };
 
@@ -279,8 +286,10 @@ export const spaceEvent = (
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
   const spaceName = escapeHtml(input.spaceName);
-  const author = escapeHtml(input.authorDisplay);
-  const snippet = escapeHtml(input.snippet);
+  const authorDisplay = translateDeletedEmailContent(input.authorDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const author = escapeHtml(authorDisplay);
+  const snippet = escapeHtml(snippetText);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
     pl: 'możesz przestać obserwować tę przestrzeń',
     en: 'you can unfollow the space there',
@@ -291,7 +300,7 @@ export const spaceEvent = (
     return emailMessageSchema.parse({
       subject: `New event in “${input.spaceName}”`,
       html: `<p>Hello!</p><p>${author} scheduled an event in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.authorDisplay} scheduled an event in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the event: ${input.url}${footer.text}`,
+      text: `Hello!\n\n${authorDisplay} scheduled an event in “${input.spaceName}” on ${input.tenantName}:\n\n${snippetText}\n\nOpen the event: ${input.url}${footer.text}`,
     });
   }
 
@@ -299,7 +308,7 @@ export const spaceEvent = (
   return emailMessageSchema.parse({
     subject: `Nowe wydarzenie w przestrzeni „${input.spaceName}”`,
     html: `<p>Cześć!</p><p>${author} zaplanował(a) wydarzenie w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} zaplanował(a) wydarzenie w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz wydarzenie: ${input.url}${footer.text}`,
+    text: `Cześć!\n\n${authorDisplay} zaplanował(a) wydarzenie w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${snippetText}\n\nOtwórz wydarzenie: ${input.url}${footer.text}`,
   });
 };
 
@@ -308,8 +317,10 @@ export const directMessage = (
   input: { tenantName: string; senderDisplay: string; snippet: string; url: string },
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
-  const sender = escapeHtml(input.senderDisplay);
-  const snippet = escapeHtml(input.snippet);
+  const senderDisplay = translateDeletedEmailContent(input.senderDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const sender = escapeHtml(senderDisplay);
+  const snippet = escapeHtml(snippetText);
   const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
     pl: 'w ustawieniach konta możesz wyłączyć wiadomości od innych uczestników',
     en: 'you can turn off messages from community members in your account settings',
@@ -318,17 +329,17 @@ export const directMessage = (
   if (languageOrDefault(language) === 'en') {
     const actionLink = link(input.url, 'Open the conversation');
     return emailMessageSchema.parse({
-      subject: `New message from ${input.senderDisplay}`,
+      subject: `New message from ${senderDisplay}`,
       html: `<p>Hello!</p><p>${sender} sent you a message on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.senderDisplay} sent you a message on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the conversation: ${input.url}${footer.text}`,
+      text: `Hello!\n\n${senderDisplay} sent you a message on ${input.tenantName}:\n\n${snippetText}\n\nOpen the conversation: ${input.url}${footer.text}`,
     });
   }
 
   const actionLink = link(input.url, 'Otwórz rozmowę');
   return emailMessageSchema.parse({
-    subject: `Nowa wiadomość od ${input.senderDisplay}`,
+    subject: `Nowa wiadomość od ${senderDisplay}`,
     html: `<p>Cześć!</p><p>${sender} wysłał(a) Ci wiadomość na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.senderDisplay} wysłał(a) Ci wiadomość na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz rozmowę: ${input.url}${footer.text}`,
+    text: `Cześć!\n\n${senderDisplay} wysłał(a) Ci wiadomość na platformie ${input.tenantName}:\n\n${snippetText}\n\nOtwórz rozmowę: ${input.url}${footer.text}`,
   });
 };
 

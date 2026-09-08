@@ -779,7 +779,7 @@ describe('community use-cases', () => {
       'Audit R3 Member',
     );
     expect(resolveAuthorDisplay({ email: 'jan.kowalski@example.com' })).toBe('Jan Kowalski');
-    expect(resolveAuthorDisplay({ name: '   ', email: '' })).toBe('Uczestnik');
+    expect(resolveAuthorDisplay({ name: '   ', email: '' })).toBe('Participant');
     expect(resolveAuthorDisplay({}, 'en')).toBe('Participant');
   });
 
@@ -1087,7 +1087,7 @@ describe('community use-cases', () => {
     if (!root.ok) throw new Error('root failed');
     await deletePost(ctx(), { id: root.value.id }, d);
     const listed = await listDiscussion(ctx(), { contextKind: 'lesson', contextId: 'l1' }, d);
-    expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: 'Wpis usunięty' }] } });
+    expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: '[deleted-post]' }] } });
   });
 
   it('filters search results by lesson entitlements and tenant', async () => {
@@ -1488,8 +1488,7 @@ describe('renderPost', () => {
     pinnedAt: null,
   });
 
-  it('replaces the body with the placeholder in both languages', () => {
-    expect(renderPost(softDeleted()).body).toBe('Wpis usunięty');
-    expect(renderPost(softDeleted(), 'en').body).toBe('Deleted post');
+  it('replaces a deleted body with a language-neutral marker', () => {
+    expect(renderPost(softDeleted()).body).toBe('[deleted-post]');
   });
 });

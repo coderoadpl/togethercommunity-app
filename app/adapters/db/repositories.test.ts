@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   NO_DM_BLOCKS,
-  deletedMemberDisplay,
+  DELETED_MEMBER_DISPLAY,
   err,
   invoiceVatTreatmentsEqual,
   memberTombstone,
@@ -3126,7 +3126,7 @@ describe('member erasure repository', () => {
     deletedAt: REMOVAL_AT,
     tombstoneEmail: memberTombstone(memberId).email,
     severedUserId: memberTombstone(memberId).userId,
-    postAuthorDisplay: deletedMemberDisplay(),
+    postAuthorDisplay: DELETED_MEMBER_DISPLAY,
   });
 
   beforeAll(async () => {
@@ -3480,12 +3480,12 @@ describe('member erasure repository', () => {
     expect(await subs.findById(RODO, 'sub-rodo')).toMatchObject({ status: 'canceled', cancelAtPeriodEnd: true });
 
     const postRows = await db.select().from(posts).where(eq(posts.id, 'post-rodo'));
-    expect(postRows[0]).toMatchObject({ authorDisplay: deletedMemberDisplay(), body: 'Świetny kurs!', deletedAt: null });
+    expect(postRows[0]).toMatchObject({ authorDisplay: DELETED_MEMBER_DISPLAY, body: 'Świetny kurs!', deletedAt: null });
 
     const reportRows = await db.select().from(postReports).where(eq(postReports.id, 'report-rodo'));
     expect(reportRows[0]).toMatchObject({
       reporterUserId: 'user-rodo-buyer',
-      reporterDisplay: deletedMemberDisplay(),
+      reporterDisplay: DELETED_MEMBER_DISPLAY,
     });
 
     const dmReportRows = await db
@@ -3496,19 +3496,19 @@ describe('member erasure repository', () => {
     expect(dmReportRows[0]).toMatchObject({
       id: 'dm-report-rodo-about',
       reporterDisplay: 'Anna Shared',
-      reportedDisplay: deletedMemberDisplay(),
+      reportedDisplay: DELETED_MEMBER_DISPLAY,
     });
     expect(dmReportRows[0]?.snapshot).toEqual([
-      { id: 'dm-rodo-1', senderDisplay: deletedMemberDisplay(), senderIsReporter: false, body: 'Pierwsza', createdAt: NOW },
+      { id: 'dm-rodo-1', senderDisplay: DELETED_MEMBER_DISPLAY, senderIsReporter: false, body: 'Pierwsza', createdAt: NOW },
       { id: 'dm-rodo-2', senderDisplay: 'Anna Shared', senderIsReporter: true, body: 'Druga', createdAt: NOW },
     ]);
     expect(dmReportRows[1]).toMatchObject({
       id: 'dm-report-rodo-by',
-      reporterDisplay: deletedMemberDisplay(),
+      reporterDisplay: DELETED_MEMBER_DISPLAY,
       reportedDisplay: 'Anna Shared',
     });
     expect(dmReportRows[1]?.snapshot.map((entry) => entry.senderDisplay)).toEqual([
-      deletedMemberDisplay(),
+      DELETED_MEMBER_DISPLAY,
       'Anna Shared',
     ]);
 

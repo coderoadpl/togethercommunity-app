@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router';
 
 import type { Notification } from '#core/domain/index.js';
 
+import { translateDeletedContent } from './i18n/deleted-content.js';
 import type { Messages } from './i18n/index.js';
 
 export type NotificationTarget =
@@ -66,7 +67,7 @@ const titleWithSubject = (t: Messages, notification: Notification, subject: stri
 };
 
 export const notificationTitle = (t: Messages, notification: Notification): string =>
-  titleWithSubject(t, notification, notificationSubject(notification));
+  titleWithSubject(t, notification, translateDeletedContent(notificationSubject(notification), t));
 
 /** A placeholder no message bundle and no user-supplied name can contain. */
 const SUBJECT_SLOT = '\u0000';
@@ -75,7 +76,7 @@ export const notificationTitleParts = (
   t: Messages,
   notification: Notification,
 ): { before: string; subject: string; after: string } => {
-  const subject = notificationSubject(notification);
+  const subject = translateDeletedContent(notificationSubject(notification), t);
   if (subject.length === 0) return { before: notificationTitle(t, notification), subject, after: '' };
   const sentence = titleWithSubject(t, notification, SUBJECT_SLOT);
   const slot = sentence.indexOf(SUBJECT_SLOT);

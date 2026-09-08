@@ -242,13 +242,16 @@ export const renderHostedMarkdown = (source: string): string => {
   return blocks.join('\n');
 };
 
-export const languageFromRequest = (request: Request): Language => {
+export const languageFromRequest = (request: Request, defaultLanguage: Language = DEFAULT_LANGUAGE): Language => {
   const queryLanguage = languageSchema.safeParse(new URL(request.url).searchParams.get('lang'));
   if (queryLanguage.success) return queryLanguage.data;
   const cookieLanguage = request.headers.get('cookie')?.match(/(?:^|;\s*)together-language=(pl|en)(?:;|$)/)?.[1];
   const parsedCookie = languageSchema.safeParse(cookieLanguage);
   if (parsedCookie.success) return parsedCookie.data;
-  return request.headers.get('accept-language')?.toLowerCase().startsWith('en') === true ? 'en' : DEFAULT_LANGUAGE;
+  const browserLanguage = languageSchema.safeParse(
+    request.headers.get('accept-language')?.split(',')[0]?.trim().toLowerCase().split(';')[0]?.split('-')[0],
+  );
+  return browserLanguage.success ? browserLanguage.data : defaultLanguage;
 };
 
 const publicStyles = `

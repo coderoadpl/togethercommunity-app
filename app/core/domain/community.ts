@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-import { DEFAULT_LANGUAGE, type Language } from './language.js';
-
 export const postContextKindSchema = z.enum(['lesson', 'space']);
 
 export type PostContextKind = z.output<typeof postContextKindSchema>;
@@ -194,14 +192,10 @@ export const postSearchHitSchema = z.object({
 
 export type PostSearchHit = z.output<typeof postSearchHitSchema>;
 
-const DELETED_POST_PLACEHOLDER: Record<Language, string> = {
-  pl: 'Wpis usunięty',
-  en: 'Deleted post',
-};
+export const DELETED_POST_PLACEHOLDER = '[deleted-post]';
 
-/** Soft-deleted posts keep the thread shape but never leak their body. */
-export const renderPost = (post: Post, language: Language = DEFAULT_LANGUAGE): Post =>
-  post.deletedAt === null ? post : { ...post, body: DELETED_POST_PLACEHOLDER[language] };
+export const renderPost = (post: Post): Post =>
+  post.deletedAt === null ? post : { ...post, body: DELETED_POST_PLACEHOLDER };
 
 /** Client projection: the raw author id is dropped, ownership pre-computed into isOwn. */
 export const toPublicPost = (

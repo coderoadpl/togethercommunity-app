@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { communityPostPath } from '#core/contract/index.js';
 import type { DiscussionPost, ReactionSummary, SpaceFeed, SpaceFeedItem } from '#core/domain/index.js';
 
+import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { StatusView } from '../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
@@ -45,7 +46,7 @@ const PostHeader = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
       useFlexGap
       sx={{ alignItems: 'baseline', columnGap: '0.6rem', flexWrap: 'wrap' }}
     >
-      <PostAuthorName component="span">{post.authorDisplay}</PostAuthorName>
+      <PostAuthorName component="span">{translateDeletedContent(post.authorDisplay, t)}</PostAuthorName>
       {post.authorIsStaff && (
         <AuthorChip data-testid={`public-author-chip-${post.id}`}>
           {t.discussion.authorChip}

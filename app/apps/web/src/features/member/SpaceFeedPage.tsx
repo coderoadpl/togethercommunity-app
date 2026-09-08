@@ -6,6 +6,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 import type { ReactionEmoji, ReactionSummary, SpaceFeedItem } from '#core/domain/index.js';
 
+import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -63,8 +64,8 @@ const FeedPost = ({
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
         <Box>
           <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}>
-            <UserAvatar name={item.authorDisplay} imageUrl={item.authorAvatarUrl} size="sm" />
-            <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
+            <UserAvatar name={translateDeletedContent(item.authorDisplay, t)} imageUrl={item.authorAvatarUrl} size="sm" />
+            <PostAuthorName component="span">{translateDeletedContent(item.authorDisplay, t)}</PostAuthorName>
             {item.authorIsStaff && <AuthorChip data-testid={`author-chip-${item.id}`}>{t.discussion.authorChip}</AuthorChip>}
             {item.pinnedAt !== null ? (
               <Chip

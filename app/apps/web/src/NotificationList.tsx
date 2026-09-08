@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 
 import type { Notification } from '#core/domain/index.js';
 
+import { translateDeletedContent } from './i18n/deleted-content.js';
 import { UserAvatar } from './components/ui/UserAvatar.js';
 import { useLanguage, useTranslations } from './i18n/index.js';
 import { formatDate, formatDateTime, formatRelativeTime } from './lib/format.js';
@@ -60,7 +61,7 @@ const NotificationBody = ({ notification, group }: { notification: Notification;
           </NotificationActorMark>
         ) : (
           <>
-            <UserAvatar name={authorDisplay} imageUrl={authorAvatarUrl} />
+            <UserAvatar name={translateDeletedContent(authorDisplay, t)} imageUrl={authorAvatarUrl} />
             <NotificationTypeMark>
               <NotificationKindIcon kind={notification.kind} />
             </NotificationTypeMark>
@@ -75,7 +76,7 @@ const NotificationBody = ({ notification, group }: { notification: Notification;
         </NotificationLine>
         {snippet.length === 0 ? null : (
           <NotificationSnippetLine variant="body2" component="p">
-            {snippet}
+            {translateDeletedContent(snippet, t)}
           </NotificationSnippetLine>
         )}
       </NotificationItemMain>

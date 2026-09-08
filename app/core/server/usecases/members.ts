@@ -1,5 +1,5 @@
 import {
-  deletedMemberDisplay,
+  DELETED_MEMBER_DISPLAY,
   err,
   memberTombstone,
   memberBanEventSchema,
@@ -179,7 +179,7 @@ export const removeMember = async (
     deletedAt: deps.clock.nowIso(),
     tombstoneEmail: tombstone.email,
     severedUserId: tombstone.userId,
-    postAuthorDisplay: deletedMemberDisplay(),
+    postAuthorDisplay: DELETED_MEMBER_DISPLAY,
   });
   if (result === null) return err(notFound(`No member "${input.memberId}" in this tenant`));
 

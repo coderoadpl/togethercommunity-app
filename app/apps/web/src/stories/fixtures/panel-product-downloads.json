@@ -51,6 +51,7 @@
             "moduleOrder": [],
             "name": "Kurs JavaScript od podstaw",
             "publiclyVisible": true,
+            "salesUrl": null,
             "tenantId": "tenant-studio"
           },
           {
@@ -62,6 +63,7 @@
             "moduleOrder": [],
             "name": "React w praktyce",
             "publiclyVisible": false,
+            "salesUrl": null,
             "tenantId": "tenant-studio"
           }
         ]

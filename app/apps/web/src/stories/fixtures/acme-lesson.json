@@ -158,6 +158,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-acme-intro",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-acme-intro",
                       "name": "Lekcja wprowadzająca"
                     }

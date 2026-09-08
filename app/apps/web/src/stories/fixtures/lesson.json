@@ -442,6 +442,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-js-demo-video",
                       "name": "Demo wideo (Bunny Stream)"
                     }
@@ -458,6 +459,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-zmienne-1",
                       "durationMinutes": 12,
+                      "isPreview": false,
                       "lessonId": "lesson-js-zmienne-1",
                       "name": "Deklarowanie zmiennych"
                     },
@@ -466,6 +468,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-zmienne-2",
                       "durationMinutes": 15,
+                      "isPreview": false,
                       "lessonId": "lesson-js-zmienne-2",
                       "name": "Typy proste i złożone"
                     }
@@ -482,6 +485,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-funkcje-1",
                       "durationMinutes": 18,
+                      "isPreview": false,
                       "lessonId": "lesson-js-funkcje-1",
                       "name": "Funkcje i argumenty"
                     },
@@ -490,6 +494,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-funkcje-2",
                       "durationMinutes": 22,
+                      "isPreview": false,
                       "lessonId": "lesson-js-funkcje-2",
                       "name": "Domknięcia i zakres"
                     }
@@ -514,6 +519,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-1",
                       "name": "Wybieranie elementów DOM"
                     },
@@ -522,6 +528,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-2",
                       "name": "Zdarzenia i interakcja"
                     }
@@ -546,6 +553,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-projekt-1",
                       "durationMinutes": 35,
+                      "isPreview": false,
                       "lessonId": "lesson-js-projekt-1",
                       "name": "Projekt: lista zadań"
                     }

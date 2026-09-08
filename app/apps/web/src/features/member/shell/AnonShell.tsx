@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AppBar, Box, Button, Toolbar, useMediaQuery } from '@mui/material';
+import { AppBar, Box, Toolbar, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { Link } from '@tanstack/react-router';
 
@@ -9,13 +9,16 @@ import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitch
 import { useTranslations } from '../../../i18n/index.js';
 import { AnonSidebar } from './AnonSidebar.js';
 import { anonHomePath } from './member-nav.js';
-import { BrandLink, SidebarColumn } from './shell-chrome.js';
+import { BrandLink, PublicSignInButton, SidebarColumn } from './shell-chrome.js';
+
+const COMPACT_PUBLIC_HEADER_QUERY = '(max-width:399px)';
 
 export const AnonShell = ({ children }: { children: ReactNode }) => {
   useSuppressGlobalChrome();
   const t = useTranslations();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
+  const compactBrand = useMediaQuery(COMPACT_PUBLIC_HEADER_QUERY);
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -34,16 +37,21 @@ export const AnonShell = ({ children }: { children: ReactNode }) => {
                 aria-label={t.shell.start}
                 data-testid="shell-brand"
               >
-                <TenantLogo />
+                <TenantLogo compact={compactBrand} />
               </BrandLink>
             </Box>
             <Box sx={{ flex: 1 }} />
             <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
               <ColorSchemeCycleButton />
             </Box>
-            <Button component={Link} to="/login" color="inherit" size="small">
+            <PublicSignInButton
+              component={Link}
+              to="/login"
+              color="inherit"
+              size="small"
+            >
               {t.auth.signInLink}
-            </Button>
+            </PublicSignInButton>
           </Toolbar>
         </AppBar>
         <Box

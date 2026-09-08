@@ -316,8 +316,8 @@ const runSelfServeAdd = async (input: {
     console.log('custom-domain-e2e: operator flip made the self-serve host resolve OK');
 
     await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
-    page.once('dialog', (dialog) => void dialog.accept());
     await page.getByTestId(`tenant-domain-remove-${SELF_SERVE_HOST}`).click();
+    await page.getByTestId('tenant-domain-remove-confirm').click();
     await row.waitFor({ state: 'detached', timeout: 20000 });
     assert(
       await readDomainRow(input.databaseUrl, SELF_SERVE_HOST) === null,

@@ -652,7 +652,7 @@
           "dmOptOut": false,
           "id": "tenant-studio",
           "language": null,
-          "memberId": null,
+          "memberId": "fixture-member-9b6fd3a284cc9b9c",
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": "owner",

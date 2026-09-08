@@ -1,4 +1,4 @@
-import { QueryCache, QueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -32,7 +32,7 @@ const isExpectedQueryFailure = (error: unknown, queryKey: readonly unknown[]): b
 const queryCache = new QueryCache({
   onError: (error, query) => {
     if (!isExpectedQueryFailure(error, query.queryKey)) reportError(error);
-    if (query.state.data === undefined) return;
+    if (query.state.data === undefined || query.meta?.background === true) return;
     refreshToastStore.show(error instanceof ApiError ? error.appError.code : null);
   },
 });
@@ -43,6 +43,11 @@ const queryCache = new QueryCache({
  */
 export const queryClient = new QueryClient({
   queryCache,
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      if (mutation.meta?.background === true) reportError(error);
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 30_000,

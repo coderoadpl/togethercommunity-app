@@ -494,7 +494,18 @@
       "value": {
         "progress": {
           "completedLessonIds": [],
-          "courseId": "course-js"
+          "courseId": "course-js",
+          "resume": {
+            "firstIncomplete": {
+              "id": "lesson-js-demo-video",
+              "name": "Demo wideo (Bunny Stream)"
+            },
+            "isReview": false,
+            "target": {
+              "id": "lesson-js-demo-video",
+              "name": "Demo wideo (Bunny Stream)"
+            }
+          }
         }
       }
     },

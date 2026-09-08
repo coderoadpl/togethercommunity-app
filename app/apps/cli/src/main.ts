@@ -1957,7 +1957,7 @@ student
   .action(
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [courseId]) => {
       emit(await ctx.api.studentProgress(courseId), ctx.json, (data) =>
-        `${data.progress.completedLessonIds.length} completed; last lesson ${data.progress.lastViewedLessonId ?? 'none'}`,
+        `${data.progress.completedLessonIds.length} completed; last lesson ${data.progress.lastViewedLessonId ?? 'none'}; ${data.progress.resume?.isReview === true ? 'review' : 'resume'} ${data.progress.resume?.target?.name ?? 'none'}`,
       );
     }),
   );

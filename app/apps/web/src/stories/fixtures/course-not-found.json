@@ -314,7 +314,12 @@
       "value": {
         "progress": {
           "completedLessonIds": [],
-          "courseId": "course-does-not-exist"
+          "courseId": "course-does-not-exist",
+          "resume": {
+            "firstIncomplete": null,
+            "isReview": false,
+            "target": null
+          }
         }
       }
     },

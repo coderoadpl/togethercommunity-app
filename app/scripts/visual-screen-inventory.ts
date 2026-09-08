@@ -268,6 +268,10 @@ export const SCREENS: readonly ScreenSpec[] = [
       // The sheet covers its trigger, so the click position can hover an account action.
       await page.mouse.move(0, 0);
     },
+    settled: async (page) => {
+      // The opening sheet moves its sign-out row under the menu trigger's pointer position.
+      await page.mouse.move(0, 0);
+    },
   },
   {
     name: 'search',

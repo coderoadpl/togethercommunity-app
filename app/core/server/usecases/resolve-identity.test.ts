@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Member, Membership, Tenant, TenantDomain } from '#core/domain/index.js';
 
@@ -81,12 +81,22 @@ const deps = (
   memberRows: Member[] = [],
   tenantRows: Tenant[] = [acme.tenant],
 ) => ({
+  authPort: {
+    getAuthenticatedUser: async () => user,
+    ensureUser: vi.fn(async () => ({ userId: user.userId, created: false })),
+    listSessions: async () => [],
+    revokeSessions: async () => undefined,
+    requestMagicLink: async () => undefined,
+    createEnrollmentMagicLink: async () => ({ url: 'https://courses.example.org/sign-in' }),
+  },
+  ids: { nextId: () => 'staff-member' },
+  clock: { nowIso: () => '2026-09-08T00:00:00.000Z' },
   tenantAccess: fakeTenantAccess(memberships, memberRows),
   members: {
     findById: async () => null,
-    findByEmail: async () => null,
+    findByEmail: async (tenantId: string, email: string) => memberRows.find((row) => row.tenantId === tenantId && row.email === email) ?? null,
     listWithProductIds: async () => [],
-    create: async () => undefined,
+    create: vi.fn(async (_tenantId: string, row: Member) => { memberRows.push(row); }),
     updateEmail: async (tenantId: string, memberId: string, email: string) => {
       const existing = memberRows.find(
         (candidate) => candidate.tenantId === tenantId && candidate.id === memberId,
@@ -112,6 +122,34 @@ const deps = (
 });
 
 describe('resolveIdentity', () => {
+  it.each(['owner', 'admin'] as const)('ensures one tenant membership for %s on entry', async (staffRole) => {
+    const rows: Member[] = [];
+    const dependencies = deps([{ ...acme, staffRole }], [], rows);
+    const request = { host: 'acme.localhost:48730', tenantHeader: null };
+    const first = await resolveIdentity(user, request, dependencies);
+    const second = await resolveIdentity(user, request, dependencies);
+    expect(first).toMatchObject({ ok: true, value: { userId: user.userId, staffRole, memberId: 'staff-member' } });
+    expect(second).toEqual(first);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tenantId: acme.tenant.id, userId: user.userId, email: user.email });
+    expect(dependencies.members.create).toHaveBeenCalledOnce();
+  });
+
+  it('preserves existing staff profile settings without creating a member', async () => {
+    const dependencies = deps([acme], [], [{ ...member, language: 'en', videoAutoplay: false }]);
+    expect(await resolveIdentity(user, { host: 'acme.localhost', tenantHeader: null }, dependencies))
+      .toMatchObject({ ok: true, value: { memberId: member.id, memberDisplayName: 'Demo', memberLanguage: 'en', memberVideoAutoplay: false } });
+    expect(dependencies.members.create).not.toHaveBeenCalled();
+  });
+
+  it('never enrolls a caller without a staff grant or on the platform host', async () => {
+    const dependencies = deps([]);
+    await resolveIdentity(user, { host: 'acme.localhost', tenantHeader: null }, dependencies);
+    await resolveIdentity(user, { host: 'start.localhost', tenantHeader: null }, dependencies);
+    expect(dependencies.members.create).not.toHaveBeenCalled();
+    expect(dependencies.authPort.ensureUser).not.toHaveBeenCalled();
+  });
+
   it('resolves an authorized user into the sole tenant without a configured base domain', async () => {
     const result = await resolveIdentity(user, { host: 'localhost:48730', tenantHeader: null }, {
       ...deps([acme]),

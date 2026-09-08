@@ -19,6 +19,7 @@ import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, migrateAndSeed, dropD
 import { abortVisualMutation, visualSeedTime as seedTime } from './visual-request-policy.js';
 const passkeyRecorders = new Map<string, () => Promise<unknown>>();
 const sessions = new Map<string, ApiClient>();
+const staffMemberIds = new Map<string, string>();
 const output = process.argv[2] ?? join(rootDir, 'apps/web/src/stories/fixtures');
 const abortedApi = createApiClient({ baseUrl: '', fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')) });
 const success = z.object({ ok: z.literal(true), value: z.unknown() });
@@ -95,7 +96,7 @@ const plan: Scenario[] = [
   { name: 'panel-marketing-layouts', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-layouts', route: '/panel/marketing/layouts', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingLayouts(); } },
   { name: 'member-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'member-detail', route: '/panel/members/member-studio-aktywny', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMembers(); await api.listProducts(); await api.getTenantSettings(); await api.listMemberGrants('member-studio-aktywny'); await api.memberCommerce('member-studio-aktywny'); await api.memberTimeline('member-studio-aktywny'); await api.memberLearningSummary('member-studio-aktywny'); } },
   { name: 'member-email-timeline', principal: 'creator@together.dev', tenant: 'studio', page: 'member-email-timeline', route: '/panel/members/member-studio-aktywny', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMembers(); await api.listProducts(); await api.getTenantSettings(); await api.listMemberGrants('member-studio-aktywny'); await api.memberCommerce('member-studio-aktywny'); await api.memberTimeline('member-studio-aktywny'); await api.memberLearningSummary('member-studio-aktywny'); await api.listMemberEmailSends('member-studio-aktywny'); } },
-  { name: 'start-menu-sheet', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'start-menu-sheet', route: '/start', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourses(); await api.memberHomeFeed({ limit: 10 }); await api.listUpcomingEvents({ limit: 4 }); await api.listUpcomingEvents({ limit: 20 }); await api.studentCourseStructure('course-js'); } },
+  { name: 'start-menu-sheet', principal: 'kursant.aktywny@together.dev', tenant: 'studio', page: 'start-menu-sheet', route: '/start', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourses(); await api.memberHomeFeed({ limit: 10 }); await api.listUpcomingEvents({ limit: 4 }); await api.listUpcomingEvents({ limit: 20 }); await api.studentCourseStructure('course-js'); await api.studentProgress('course-js'); } },
 ];
 const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Promise<void> => {
   const calls: Record<string, unknown> = {};
@@ -117,6 +118,9 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   if (!me.ok && scenario.principal !== 'anonymous') throw new Error(me.error.message);
   const recordedUserId = me.ok ? me.value.userId : null;
   const fixtureUserId = me.ok ? `fixture-user-${createHash('sha256').update(me.value.email).digest('hex').slice(0, 16)}` : null;
+  if (me.ok && me.value.tenant?.staffRole && me.value.tenant.memberId) {
+    staffMemberIds.set(me.value.tenant.memberId, `fixture-member-${createHash('sha256').update(`${me.value.tenant.id}:${me.value.email}`).digest('hex').slice(0, 16)}`);
+  }
   await call('publicOffer', [], () => api.publicOffer());
   if (scenario.principal !== 'anonymous' && scenario.principal !== 'creator@together.dev') {
   await call('memberNavigation', [], () => api.memberNavigation());
@@ -137,6 +141,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
     await call('studentCourseStructure', [courseId], () => api.studentCourseStructure(courseId));
   }
   if (scenario.page === 'start') {
+    await call('studentProgress', [courseId], () => api.studentProgress(courseId));
     await call('studentCourses', [], () => api.studentCourses());
     await call('memberHomeFeed', [{ limit: 10 }], () => api.memberHomeFeed({ limit: 10 }));
     await call('listUpcomingEvents', [{ limit: 4 }], () => api.listUpcomingEvents({ limit: 4 }));
@@ -192,7 +197,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   // Routing goldens include the authoring server's port in CORS instructions.
   const recordedTenantHost = `${scenario.tenant}.localhost:${new URL(baseUrl).port}`;
   const goldenTenantHost = `${scenario.tenant}.localhost:63871`;
-  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? value.replaceAll(baseUrl, 'http://localhost:48730').replaceAll(recordedTenantHost, goldenTenantHost) : value));
+  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? staffMemberIds.get(value) ?? value.replaceAll(baseUrl, 'http://localhost:48730').replaceAll(recordedTenantHost, goldenTenantHost) : value));
   fixtureSchema.parse(snapshot);
   save(scenario.name, snapshot);
   console.log(`${scenario.name}: ${Object.keys(calls).length} calls`);

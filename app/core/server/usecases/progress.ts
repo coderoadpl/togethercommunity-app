@@ -7,6 +7,7 @@ import {
   validation,
   type AppError,
   type Capability,
+  type CourseResume,
   type MemberCourseProgress,
   type ProgressView,
   type Result,
@@ -17,6 +18,7 @@ import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
+  CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
   IdGenerator,
@@ -24,8 +26,9 @@ import type {
   MemberRepository,
   ProductGrantRepository,
 } from '../ports.js';
-import { isLessonAccessibleByLookup, locateLesson } from './access.js';
+import { buildCourseStructure, fullCourseLookup, isLessonAccessibleByLookup, locateLesson } from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
+import { resolveCourseResume } from './course-resume.js';
 import { requireLiveMember } from './member-status.js';
 
 export interface ProgressDeps {
@@ -220,7 +223,9 @@ export const updateLastViewed = async (
 export const getProgress = async (
   ctx: Ctx,
   courseId: string,
-  deps: Pick<ProgressDeps, 'progress'>,
+  deps: Pick<ProgressDeps, 'progress' | 'courses' | 'modules' | 'grants' | 'clock'> & {
+    lessons: Pick<CourseLessonRepository, 'list'>;
+  },
 ): Promise<Result<ProgressView, AppError>> => {
   const scope = requireMember(ctx, 'member:progress:read');
   if (!scope.ok) return scope;
@@ -230,13 +235,30 @@ export const getProgress = async (
     memberId: scope.value.memberId,
     courseId,
   });
-  if (!existing) return ok({ courseId, completedLessonIds: [] });
+  const course = await deps.courses.findById(scope.value.tenantId, courseId);
+  const completedLessonIds = existing?.completedLessonIds ?? [];
+  let resume: CourseResume = { target: null, firstIncomplete: null, isReview: false };
+  if (course !== null) {
+    const [modules, lessons, lookup] = await Promise.all([
+      deps.modules.list(scope.value.tenantId),
+      deps.lessons.list(scope.value.tenantId),
+      ctx.identity.staffRole === null
+        ? resolveMemberAccessLookup(scope.value, deps)
+        : fullCourseLookup(course.id),
+    ]);
+    const structure = buildCourseStructure(
+      course, modules, new Map(lessons.map((lesson) => [lesson.id, lesson])),
+      lookup, new Set(completedLessonIds),
+    );
+    resume = resolveCourseResume(structure, existing?.lastViewedLessonId);
+  }
 
   return ok({
     courseId,
-    completedLessonIds: existing.completedLessonIds,
-    lastViewedLessonId: existing.lastViewedLessonId,
-    lastViewedModuleId: existing.lastViewedModuleId,
-    lastViewedChapterId: existing.lastViewedChapterId,
+    completedLessonIds,
+    lastViewedLessonId: existing?.lastViewedLessonId,
+    lastViewedModuleId: existing?.lastViewedModuleId,
+    lastViewedChapterId: existing?.lastViewedChapterId,
+    resume,
   });
 };

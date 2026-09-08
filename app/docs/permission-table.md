@@ -10,6 +10,8 @@ The `operator-secret` principal requires both `marketing:campaign:dispatch` and 
 
 The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.
 
+Staff acting on their own account share all member capabilities. Tenant identity resolution ensures their member row, while impersonation retains its separate read allowlist and mutation guard.
+
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
 `member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
@@ -159,18 +161,18 @@ no changes
 | `POST /api/impersonation/start` | member:impersonate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/impersonation/stop` | member:impersonate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenant/audit-events` | member:impersonate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `POST /api/me/profile` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/me/avatar/upload` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/me/avatar/complete` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/me/avatar/remove` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
+| `POST /api/me/profile` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/upload` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/complete` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/remove` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/me/sessions` | account:session:self-read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/me/sessions/revoke` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/me/sessions/revoke-others` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
-| `GET /api/me/billing-orders` | member:billing:read | member | member | yes | identity middleware + use-case guard |
-| `GET /api/me/data-export` | member:data-export:self-read | member | member | yes | identity middleware + use-case guard |
-| `GET /api/me/erasure-request` | member:erasure:self-request | member | member | yes | identity middleware + use-case guard |
-| `POST /api/me/erasure-request` | member:erasure:self-request | member | member | yes | identity middleware + use-case guard |
-| `DELETE /api/me/erasure-request` | member:erasure:self-request | member | member | yes | identity middleware + use-case guard |
+| `GET /api/me/billing-orders` | member:billing:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/me/data-export` | member:data-export:self-read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/me/erasure-request` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/erasure-request` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `DELETE /api/me/erasure-request` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/members/erasure-requests` | member:erasure:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/erasure-requests/:requestId/reject` | member:remove | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | identity middleware + use-case guard |
@@ -187,8 +189,8 @@ no changes
 | `POST /api/image-assets/product-cover/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/branding/upload` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/branding/complete` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
-| `GET /api/my/products` | member:product:read | member | member | yes | identity middleware + use-case guard |
-| `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | member | member | yes | identity middleware + use-case guard |
+| `GET /api/my/products` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/members` | member:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/export` | member:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/ban` | member:ban | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -244,7 +246,7 @@ no changes
 | `POST /api/invoices/:invoiceId/refresh` | invoice:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/invoices/:invoiceId/download` | invoice:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/invoices/:invoiceId/upo` | invoice:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `GET /api/me/invoices/:invoiceId/download` | invoice:member-read | member | member | yes | identity middleware + use-case guard |
+| `GET /api/me/invoices/:invoiceId/download` | invoice:member-read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/sales/summary` | sales:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/coupons/export` | coupon:report | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/coupons/archive` | coupon:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -277,11 +279,11 @@ no changes
 | `GET /api/student/lessons/:lessonId/attachments` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/:lessonId/playback` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
-| `POST /api/student/lessons/complete` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/student/lessons/uncomplete` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
-| `POST /api/student/progress/last-viewed` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
+| `POST /api/student/lessons/complete` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/student/lessons/uncomplete` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/student/progress/last-viewed` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/next` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
-| `GET /api/student/progress` | member:progress:read | member | member | yes | identity middleware + use-case guard |
+| `GET /api/student/progress` | member:progress:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/posts` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/support/message` | support:request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/platform/data-reset` | platform:data:reset | platform-owner | platform-owner | yes | identity middleware + use-case guard |
@@ -402,7 +404,7 @@ no changes
 | `email-send-observability.ts#getEmailSend` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
 | `email-send-observability.ts#listMemberEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
 | `email-send-observability.ts#exportEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
-| `entitlements.ts#resolveMemberEntitlements` | member:product:read | member | member | yes | core/server/usecases/entitlements.ts authorization call |
+| `entitlements.ts#resolveMemberEntitlements` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#isLessonAccessible` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#getAccessibleLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#getCourseStructureWithAccess` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
@@ -425,14 +427,14 @@ no changes
 | `image-assets.ts#completeProductCoverUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#beginBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#completeBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
-| `image-assets.ts#beginAvatarUpload` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
-| `image-assets.ts#completeAvatarUpload` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
-| `image-assets.ts#removeAvatar` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#beginAvatarUpload` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#completeAvatarUpload` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#removeAvatar` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/image-assets.ts authorization call |
 | `impersonation.ts#startImpersonation` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
 | `impersonation.ts#stopImpersonation` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
 | `impersonation.ts#listTenantAuditEvents` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
 | `invoices.ts#downloadInvoice` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
-| `invoices.ts#downloadMemberInvoice` | invoice:member-read | member | member | yes | core/server/usecases/invoices.ts authorization call |
+| `invoices.ts#downloadMemberInvoice` | invoice:member-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#downloadInvoiceUpo` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#requestInvoice` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
@@ -502,17 +504,17 @@ no changes
 | `marketing-ses-onboarding.ts#listSesIdentities` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
-| `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | member | member | yes | core/server/usecases/member-billing-orders.ts authorization call |
+| `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-billing-orders.ts authorization call |
 | `member-commerce.ts#getMemberCommerceOverview` | member:commerce:read | owner, admin | owner, admin | yes | core/server/usecases/member-commerce.ts authorization call |
-| `member-data-export.ts#exportMyData` | member:data-export:self-read | member | member | yes | core/server/usecases/member-data-export.ts authorization call |
-| `member-erasure-requests.ts#requestMyErasure` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
-| `member-erasure-requests.ts#getMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
-| `member-erasure-requests.ts#cancelMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
+| `member-data-export.ts#exportMyData` | member:data-export:self-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-data-export.ts authorization call |
+| `member-erasure-requests.ts#requestMyErasure` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
+| `member-erasure-requests.ts#getMyErasureRequest` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
+| `member-erasure-requests.ts#cancelMyErasureRequest` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-events.ts#listMemberTimeline` | member:timeline:read | owner, admin | owner, admin | yes | core/server/usecases/member-events.ts authorization call |
 | `member-home-feed.ts#getMemberHomeFeed` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-home-feed.ts authorization call |
 | `member-learning.ts#getMemberLearningSummary` | member:learning:read | owner, admin | owner, admin | yes | core/server/usecases/member-learning.ts authorization call |
 | `member-navigation.ts#getMemberNavigation` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-navigation.ts authorization call |
-| `member-profile.ts#updateMyProfile` | member:profile:self-write | member | member | yes | core/server/usecases/member-profile.ts authorization call |
+| `member-profile.ts#updateMyProfile` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-profile.ts authorization call |
 | `members.ts#listMembers` | member:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#exportMembers` | member:export | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#removeMember` | member:remove | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
@@ -525,7 +527,7 @@ no changes
 | `moderation.ts#reportDmConversation` | community:report | owner, admin, member | owner, admin, member | yes | core/server/usecases/moderation.ts authorization call |
 | `moderation.ts#listDmReports` | community:report:read | owner, admin | owner, admin | yes | core/server/usecases/moderation.ts authorization call |
 | `moderation.ts#resolveDmReport` | community:moderate | owner, admin | owner, admin | yes | core/server/usecases/moderation.ts authorization call |
-| `my-products.ts#listMyProducts` | member:product:read | member | member | yes | core/server/usecases/my-products.ts authorization call |
+| `my-products.ts#listMyProducts` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/my-products.ts authorization call |
 | `onboarding.ts#getCreatorOnboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
 | `onboarding.ts#dismissCreatorOnboarding` | tenant:onboarding:write | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
 | `order-reconciliation.ts#listPaidOrdersWithoutGrant` | order:reconcile | owner, admin | owner, admin | yes | core/server/usecases/order-reconciliation.ts authorization call |
@@ -538,7 +540,7 @@ no changes
 | `product-downloads.ts#beginProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#completeProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#listProductDownloadAssets` | product:read | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
-| `product-downloads.ts#getProductDownload` | member:product:read | member | member | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#getProductDownload` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#deleteProductDownloadAsset` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-prices.ts#listProductPrices` | product:price:read | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#createProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
@@ -548,11 +550,11 @@ no changes
 | `products.ts#updateProduct` | product:write | owner, admin | owner, admin | yes | core/server/usecases/products.ts authorization call |
 | `products.ts#publishProduct` | product:publish | owner, admin | owner, admin | yes | core/server/usecases/products.ts authorization call |
 | `products.ts#unpublishProduct` | product:publish | owner, admin | owner, admin | yes | core/server/usecases/products.ts authorization call |
-| `progress.ts#markLessonCompleted` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts authorization call |
-| `progress.ts#unmarkLessonCompleted` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts authorization call |
+| `progress.ts#markLessonCompleted` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
+| `progress.ts#unmarkLessonCompleted` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `progress.ts#resetMemberCourseProgress` | member:progress:manage | owner, admin | owner, admin | yes | core/server/usecases/progress.ts authorization call |
-| `progress.ts#updateLastViewed` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts authorization call |
-| `progress.ts#getProgress` | member:progress:read | member | member | yes | core/server/usecases/progress.ts authorization call |
+| `progress.ts#updateLastViewed` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
+| `progress.ts#getProgress` | member:progress:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `provider-diagnostics.ts#testIntegration` | integration:test | owner | owner | yes | core/server/usecases/provider-diagnostics.ts authorization call |
 | `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
@@ -648,7 +650,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/resolve-identity.ts:86` | `staffRole: staffGrant?.staffRole ?? null,` |
+| staff-role | `core/server/usecases/progress.ts:69` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
+| staff-role | `core/server/usecases/progress.ts:110` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
+| staff-role | `core/server/usecases/resolve-identity.ts:91` | `staffRole: staffGrant?.staffRole ?? null,` |
 
 ## Suspicious but preserved
 

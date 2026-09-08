@@ -4011,13 +4011,13 @@ describe('new route authorization', () => {
     ).toBe(403);
   });
 
-  it('allows only a member to export their own data', async () => {
+  it('allows members and staff to export their own data', async () => {
     expect(
       (await scopedApp('member').request(API_PATHS.memberDataExport, { headers })).status,
     ).toBe(200);
     expect(
       (await scopedApp('staff').request(API_PATHS.memberDataExport, { headers })).status,
-    ).toBe(403);
+    ).toBe(200);
     expect(
       (await scopedApp('none').request(API_PATHS.memberDataExport, { headers })).status,
     ).toBe(403);
@@ -4049,7 +4049,7 @@ describe('new route authorization', () => {
     ).toBe(404);
     expect(
       (await staffApp.request(API_PATHS.memberErasureRequest, { headers })).status,
-    ).toBe(403);
+    ).toBe(200);
     expect(
       (await noneApp.request(API_PATHS.memberErasureRequest, { headers })).status,
     ).toBe(403);
@@ -7546,5 +7546,80 @@ describe('content history HTTP surface', () => {
     });
 
     expect(response.status).toBe(403);
+  });
+});
+
+
+describe('staff member self-service routes', () => {
+  it.each(['owner', 'admin'] as const)('initializes the %s own member and serves profile, erasure and progress', async (staffRole) => {
+    const rows: Member[] = [];
+    const base = deps({ members: rows });
+    const user = { sessionId: 'staff-session', userId: 'staff-user', email: 'staff@example.org', name: 'Staff', emailVerified: true, image: null };
+    const createMember = vi.fn(async (_tenantId: string, member: Member) => { rows.push(member); });
+    const course: Course = {
+      id: 'course-1', tenantId: acme.id, name: 'Course', description: '', imageUrl: null,
+      moduleOrder: ['module-1'], publiclyVisible: false, legacyId: null, createdAt: base.clock.nowIso(),
+    };
+    const module: CourseModule = {
+      id: 'module-1', tenantId: acme.id, courseIds: [course.id], title: 'Module', prefix: null, name: 'Module',
+      chapters: [{ id: 'chapter-1', name: 'Chapter', contents: [{ id: 'content-1', name: 'Lesson', lessonId: 'lesson-1' }] }],
+      legacyId: null, createdAt: base.clock.nowIso(),
+    };
+    const findById = async (tenantId: string, memberId: string) => rows.find((row) => row.tenantId === tenantId && row.id === memberId) ?? null;
+    const updateProfile = async (tenantId: string, memberId: string, patch: Partial<Member>) => {
+      const row = await findById(tenantId, memberId);
+      if (row === null) return null;
+      Object.assign(row, patch);
+      return row;
+    };
+    const saveProgress = vi.fn(base.progress.update);
+    const app = buildApp({
+      ...base,
+      marketing: marketingDeps(),
+      authPort: { ...base.authPort, getAuthenticatedUser: async () => user, ensureUser: async () => ({ userId: user.userId, created: false }) },
+      tenantAccess: {
+        ...base.tenantAccess,
+        findStaffGrant: async () => ({ tenant: acme, staffRole }),
+        findMember: async (tenantId, userId) => rows.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null,
+      },
+      members: {
+        ...base.members, create: createMember, findById,
+        updateDisplayName: (tenantId, memberId, displayName) => updateProfile(tenantId, memberId, { displayName }),
+        updateLanguage: (tenantId, memberId, language) => updateProfile(tenantId, memberId, { language }),
+        updateVideoAutoplay: (tenantId, memberId, videoAutoplay) => updateProfile(tenantId, memberId, { videoAutoplay }),
+      },
+      courses: { ...base.courses, list: async () => [course], findById: async () => course },
+      modules: { ...base.modules, list: async () => [module] },
+      progress: { ...base.progress, update: saveProgress },
+    });
+    const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+    const profile = await app.request(API_PATHS.meProfile, {
+      method: 'POST', headers, body: JSON.stringify({ displayName: 'My name', language: 'en', videoAutoplay: false }),
+    });
+    expect(profile.status).toBe(200);
+    expect(await profile.json()).toMatchObject({ data: { displayName: 'My name', language: 'en', videoAutoplay: false } });
+    expect(rows).toHaveLength(1);
+    const ownMember = rows[0];
+    expect(ownMember).toMatchObject({ userId: user.userId, tenantId: acme.id, email: user.email });
+    const me = await app.request(API_PATHS.me, { headers });
+    expect(await me.json()).toMatchObject({ data: { tenant: { staffRole, memberId: ownMember?.id }, impersonation: null } });
+    for (const path of [API_PATHS.memberErasureRequest, API_PATHS.memberDataExport, `${API_PATHS.studentProgress}?courseId=course-1`]) {
+      const response = await app.request(path, { headers });
+      expect(response.status, path).toBe(200);
+    }
+    const erasure = await app.request(API_PATHS.memberErasureRequest, { method: 'POST', headers, body: JSON.stringify({ confirmEmail: user.email }) });
+    expect(erasure.status).toBe(200);
+    expect(await erasure.json()).toMatchObject({ data: { request: { memberId: ownMember?.id, tenantId: acme.id } } });
+    for (const [path, body] of [
+      [API_PATHS.studentLastViewed, { courseId: course.id, lessonId: 'lesson-1' }],
+      [API_PATHS.studentLessonComplete, { lessonId: 'lesson-1' }],
+      [API_PATHS.studentLessonUncomplete, { lessonId: 'lesson-1' }],
+    ] as const) {
+      const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify(body) });
+      expect(response.status, path).toBe(200);
+      expect(await response.json()).toMatchObject({ data: { progress: { courseId: course.id } } });
+    }
+    expect(saveProgress).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lastViewedLessonId: 'lesson-1' }));
+    expect(createMember).toHaveBeenCalledOnce();
   });
 });

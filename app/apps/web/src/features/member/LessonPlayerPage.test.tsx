@@ -23,6 +23,7 @@ import type {
   PlayableLessonBlock,
 } from '#core/domain/index.js';
 
+import { actions } from '../../api.js';
 import { pl } from '../../i18n/pl.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -1372,27 +1373,30 @@ describe('LessonPlayerPage', () => {
     );
   });
 
-  it('keeps last-viewed failures silent on the lesson page', async () => {
+  it.each([403, 500])('keeps background %s failures off the lesson page', async (status) => {
     let lastViewedCalls = 0;
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     server.use(
       okLesson(allBlocks),
       okStructure(),
-      okProgress(),
+      http.get('/api/student/progress', () => HttpResponse.json(
+        { ok: false, error: { code: status === 403 ? 'forbidden' : 'internal', message: 'Progress unavailable' } },
+        { status },
+      )),
       http.post('/api/student/progress/last-viewed', () => {
         lastViewedCalls += 1;
         return HttpResponse.json(
-          { ok: false, error: { code: 'internal', message: 'Write failed' } },
-          { status: 500 },
+          { ok: false, error: { code: status === 403 ? 'forbidden' : 'internal', message: 'Write failed' } },
+          { status },
         );
       }),
     );
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    const view = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-video')).toBeInTheDocument();
     await waitFor(() => expect(lastViewedCalls).toBe(1));
+    await waitFor(() => expect(view.queryClient.getQueryState(actions.studentProgress('course-1').queryKey)?.status).toBe('error'));
     await waitFor(() =>
-      expect(warn).toHaveBeenCalledWith('Failed to update last-viewed lesson', expect.any(Error)));
+      expect(view.queryClient.getMutationCache().getAll().some((mutation) => mutation.state.status === 'error')).toBe(true));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 

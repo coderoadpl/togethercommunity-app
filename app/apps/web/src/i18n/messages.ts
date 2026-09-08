@@ -1861,6 +1861,11 @@ export interface Messages {
     logoDarkHint: string;
     logoPlaceholder: string;
     accentLabel: string;
+    accentLightLabel: string;
+    accentLightHint: string;
+    darkPreview: string;
+    lightPreview: string;
+    previewAction: string;
     accentPlaceholder: string;
     accentInvalid: string;
     previewHint: string;

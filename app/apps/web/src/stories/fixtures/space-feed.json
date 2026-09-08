@@ -319,6 +319,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null

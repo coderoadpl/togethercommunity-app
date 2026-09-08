@@ -1109,7 +1109,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
       logoUrl: null,
       logoDarkUrl: null,
-      accentColor: null,
+      accentColor: '#F5C842',
+      accentLight: '#786000',
       faviconUrl: null,
       ogTitle: null,
       ogDescription: null,
@@ -1147,7 +1148,11 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       invoiceExemptionBasisKind: 'other_statute',
       invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
+    expect(await repo.findSettings(ACME)).toMatchObject({ accentColor: '#F5C842', accentLight: '#786000' });
+    expect(await repo.findSettings(GLOBEX)).toMatchObject({ accentLight: null });
     expect((await repo.findById(ACME))?.contentVersion).toBe((previousVersion ?? 0) + 1);
+    await repo.updateSettings(ACME, { ...updated, accentLight: null });
+    expect(await repo.findSettings(ACME)).toMatchObject({ accentColor: '#F5C842', accentLight: null });
   });
 
   it('rejects unsupported persisted VAT modes', async () => {

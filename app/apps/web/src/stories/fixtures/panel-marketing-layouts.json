@@ -5,6 +5,7 @@
       "value": {
         "settings": {
           "accentColor": null,
+          "accentLight": null,
           "autoIssueInvoices": false,
           "autoIssueInvoiceScope": "b2b_only",
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
@@ -277,6 +278,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null

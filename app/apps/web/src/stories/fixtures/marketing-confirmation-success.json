@@ -2,6 +2,7 @@
   "brand": {
     "settings": {
       "accentColor": "#0E7490",
+      "accentLight": null,
       "autoIssueInvoices": false,
       "autoIssueInvoiceScope": "b2b_only",
       "billingPortalUrl": null,

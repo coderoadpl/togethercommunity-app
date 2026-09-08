@@ -22,6 +22,8 @@ interface Hoisted {
   verifyTotp: ReturnType<typeof vi.fn>;
   verifyBackupCode: ReturnType<typeof vi.fn>;
   configureStripe: ReturnType<typeof vi.fn>;
+  getTenantSettings: ReturnType<typeof vi.fn>;
+  updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
   getTenantRedirects: ReturnType<typeof vi.fn>;
   createTenantRedirect: ReturnType<typeof vi.fn>;
@@ -49,6 +51,8 @@ const h = vi.hoisted(
     verifyTotp: vi.fn(),
     verifyBackupCode: vi.fn(),
     configureStripe: vi.fn(),
+    getTenantSettings: vi.fn(),
+    updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
     getTenantRedirects: vi.fn(),
     createTenantRedirect: vi.fn(),
@@ -97,6 +101,8 @@ vi.mock('./config.js', () => ({
 
 vi.mock('#core/client/index.js', () => ({
   createApiClient: () => ({
+    getTenantSettings: h.getTenantSettings,
+    updateTenantSettings: h.updateTenantSettings,
     health: h.health,
     configureStorage: h.configureStorage,
     configureStripe: h.configureStripe,
@@ -660,5 +666,22 @@ describe('domain show', () => {
       'CNAME\tcourses.example.org\trouting.example.org\tpending',
       'TXT\t_vercel.courses.example.org\tchallenge\tverified',
     ].join('\n'));
+  });
+});
+
+describe('tenant accent settings', () => {
+  it('sends both accents and clears only the light override', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { accentColor: '#F5C842', accentLight: '#786000' } }));
+    await run('--json', 'tenant', 'settings-set', '--accent-color', '#F5C842', '--accent-light', '#786000');
+    expect(h.updateTenantSettings).toHaveBeenLastCalledWith({ accentColor: '#F5C842', accentLight: '#786000' });
+    await run('--json', 'tenant', 'settings-set', '--clear-accent-light');
+    expect(h.updateTenantSettings).toHaveBeenLastCalledWith({ accentLight: null });
+  });
+
+  it('shows both accents in settings output', async () => {
+    h.getTenantSettings.mockResolvedValue(ok({ settings: { accentColor: '#F5C842', accentLight: '#786000' } }));
+    await run('tenant', 'settings');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('dark accent: #F5C842'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('light accent: #786000'));
   });
 });

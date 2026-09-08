@@ -161,11 +161,20 @@ const runMobileMenuJourney = async (page: Page): Promise<void> => {
     '/checkout/product-react-full',
     'Menu locked-space row',
   );
-  await assertHref(sheet.getByTestId('member-identity'), '/account', 'Menu identity row');
+  const identity = sheet.getByTestId('member-identity');
+  assert(await identity.getAttribute('href') === null, 'Menu identity block should not navigate');
+  for (const [testId, expected, label] of [
+    ['member-account-products', '/my/products', 'Menu account products row'],
+    ['member-account-messages', '/messages', 'Menu account messages row'],
+    ['member-account-link', '/account', 'Menu account settings row'],
+  ] as const) {
+    await assertHref(sheet.getByTestId(testId), expected, label);
+  }
+  await sheet.getByTestId('member-sign-out').waitFor(visible);
   for (const testId of ['sidebar-products', 'sidebar-messages', 'sidebar-account', 'notification-nav']) {
     assert(
       await sheet.getByTestId(testId).count() === 0,
-      `Menu sheet still listed "${testId}" after the move to the app bar`,
+      `Menu sheet still listed legacy row "${testId}" instead of the shared account group`,
     );
   }
 

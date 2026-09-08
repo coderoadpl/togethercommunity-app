@@ -106,10 +106,10 @@ export type ThemeMode = ThemeModeOption['id'];
 export type ResolvedColorScheme = 'light' | 'dark';
 
 /**
- * Member and creator surfaces share one base theme but not one control contract:
- * the member flavour carries the sign-in tokens (warm cream / neutral ink page,
- * perceivable input outlines, 48px controls, 44px touch targets), the studio
- * flavour stays on the denser creator look.
+ * Member and creator surfaces share one base theme and one accessibility floor
+ * (perceivable input outlines, touch-sized controls); only the page palette
+ * differs, so the member flavour reads as the warm sign-in surface while the
+ * studio stays on the denser creator look.
  */
 export type ThemeSurface = 'member' | 'studio';
 
@@ -118,12 +118,13 @@ export const MEMBER_BACKGROUND: Record<ResolvedColorScheme, string> = {
   dark: '#0F1012',
 };
 
-export const MEMBER_BORDER_INPUT: Record<ResolvedColorScheme, string> = {
+export const BORDER_INPUT: Record<ResolvedColorScheme, string> = {
   light: '#8C8A85',
   dark: '#666B73',
 };
 
-const CONTROL_MIN_HEIGHT = 48;
+const MEMBER_CONTROL_MIN_HEIGHT = 48;
+const STUDIO_CONTROL_MIN_HEIGHT = 44;
 const TOUCH_TARGET_MIN = 44;
 
 /**
@@ -334,16 +335,20 @@ const SHADCN_DARK: ShadcnTokens = {
   tooltipText: '#16171A',
 };
 
-const MEMBER_TOKENS = (scheme: ResolvedColorScheme): Pick<ShadcnTokens, 'background' | 'input' | 'borderInput'> => ({
+const MEMBER_TOKENS = (scheme: ResolvedColorScheme): Pick<ShadcnTokens, 'background' | 'input'> => ({
   background: MEMBER_BACKGROUND[scheme],
   input: scheme === 'dark' ? MEMBER_BACKGROUND[scheme] : '#FFFFFF',
-  borderInput: MEMBER_BORDER_INPUT[scheme],
 });
 
 const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 'studio'): Theme => {
   const member = surface === 'member';
+  const controlMinHeight = member ? MEMBER_CONTROL_MIN_HEIGHT : STUDIO_CONTROL_MIN_HEIGHT;
   const base = scheme === 'dark' ? SHADCN_DARK : SHADCN_LIGHT;
-  const tokens: ShadcnTokens = member ? { ...base, ...MEMBER_TOKENS(scheme) } : base;
+  const tokens: ShadcnTokens = {
+    ...base,
+    borderInput: BORDER_INPUT[scheme],
+    ...(member ? MEMBER_TOKENS(scheme) : {}),
+  };
   const {
     background: SHADCN_BG,
     surface: SHADCN_SURFACE,
@@ -501,9 +506,8 @@ const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
-            ...(member
-              ? { minHeight: CONTROL_MIN_HEIGHT, padding: '0.7rem 1rem' }
-              : { padding: '0.5rem 1rem' }),
+            minHeight: controlMinHeight,
+            padding: member ? '0.7rem 1rem' : '0.5rem 1rem',
             boxShadow: 'none',
             '&:focus-visible': {
               outline: 'none',
@@ -547,6 +551,15 @@ const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 
               backgroundColor: SHADCN_MUTED,
             },
             '&:active': { backgroundColor: SHADCN_PRESSED },
+            '&.MuiButton-colorError': {
+              border: `1px solid ${alpha(SHADCN_DESTRUCTIVE, 0.5)}`,
+              color: SHADCN_DESTRUCTIVE,
+              '&:hover': {
+                border: `1px solid ${SHADCN_DESTRUCTIVE}`,
+                backgroundColor: alpha(SHADCN_DESTRUCTIVE, 0.08),
+              },
+              '&:active': { backgroundColor: alpha(SHADCN_DESTRUCTIVE, 0.12) },
+            },
             '&.Mui-disabled': {
               border: `1px solid ${SHADCN_BORDER}`,
               backgroundColor: SHADCN_SURFACE,
@@ -560,6 +573,11 @@ const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 
             color: SHADCN_INK,
             '&:hover': { backgroundColor: SHADCN_MUTED },
             '&:active': { backgroundColor: SHADCN_PRESSED },
+            '&.MuiButton-colorError': {
+              color: SHADCN_DESTRUCTIVE,
+              '&:hover': { backgroundColor: alpha(SHADCN_DESTRUCTIVE, 0.08) },
+              '&:active': { backgroundColor: alpha(SHADCN_DESTRUCTIVE, 0.12) },
+            },
             '&.Mui-disabled': {
               color: SHADCN_DISABLED_TEXT,
               cursor: 'not-allowed',
@@ -606,7 +624,7 @@ const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
-            ...(member ? { minHeight: CONTROL_MIN_HEIGHT } : {}),
+            minHeight: controlMinHeight,
             backgroundColor: SHADCN_INPUT,
             '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_INPUT },
             '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_STRONG },
@@ -617,9 +635,8 @@ const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 
             },
           }),
           input: {
-            ...(member
-              ? { padding: '0.7rem 0.9rem', fontSize: '1rem' }
-              : { padding: '0.55rem 0.75rem', fontSize: '0.875rem' }),
+            padding: member ? '0.7rem 0.9rem' : '0.55rem 0.75rem',
+            fontSize: '1rem',
             lineHeight: 1.5,
             '&[type="number"]': { fontVariantNumeric: 'tabular-nums' },
           },
@@ -782,7 +799,8 @@ const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 
       MuiIconButton: {
         styleOverrides: {
           root: ({ theme }) => ({
-            ...(member ? { minWidth: TOUCH_TARGET_MIN, minHeight: TOUCH_TARGET_MIN } : {}),
+            minWidth: TOUCH_TARGET_MIN,
+            minHeight: TOUCH_TARGET_MIN,
             '&:focus-visible': {
               outline: 'none',
               boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.5)}`,

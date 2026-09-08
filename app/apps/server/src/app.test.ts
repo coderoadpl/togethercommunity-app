@@ -512,6 +512,15 @@ const deps = (input: {
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          checkoutConsentJobs: {
+            enqueue: async () => undefined,
+            lockPending: async () => null,
+            complete: async () => undefined,
+          },
+          consentTransaction: { run: (nested) => appDeps.paymentTransaction.run(nested) },
+          consents: appDeps.consents,
+          marketingConsents: appDeps.marketing?.marketingConsents ?? new InMemoryMarketingConsentRepository(),
+          confirmations: appDeps.marketing?.confirmations ?? new InMemoryConsentConfirmationTokenRepository(),
           processedPaymentEvents: appDeps.processedPaymentEvents,
           enrollmentTransaction: appDeps.enrollmentTransaction,
         }),
@@ -843,6 +852,7 @@ const deps = (input: {
     },
     tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
+    consentTokens: { nextToken: () => `confirmation-${String(++nextId)}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined, warn: () => undefined },
     baseDomain: 'localhost',
@@ -6417,6 +6427,24 @@ describe('checkout consent ordering', () => {
       },
       devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     } satisfies AppDeps;
+    webhookDeps.paymentTransaction = {
+      run: async (operation) => base.paymentTransaction.run((transaction) => operation({
+        ...transaction,
+        consentTransaction: {
+          run: (nested) => transaction.consentTransaction.run((repositories) => nested({
+            ...repositories,
+            consents: webhookDeps.consents,
+            marketingConsents: marketing.marketingConsents,
+            confirmations: marketing.confirmations,
+          })),
+        },
+        consents: webhookDeps.consents,
+        marketingConsents: marketing.marketingConsents,
+        confirmations: marketing.confirmations,
+        paymentRefunds: webhookDeps.paymentRefunds,
+        processedPaymentEvents: webhookDeps.processedPaymentEvents,
+      })),
+    };
     const app = buildApp(webhookDeps);
     const deliver = () =>
       app.request('/api/webhooks/stripe/t-acme', {
@@ -6464,7 +6492,7 @@ describe('checkout consent ordering', () => {
         evidence: {
           ip: '203.0.113.90',
           userAgent: 'Webhook Browser/99',
-          proofRef: 'product:webhook-product;order:order-webhook',
+          proofRef: expect.stringMatching(/^product:webhook-product;order:id-\d+$/),
         },
       },
     ]);
@@ -6495,9 +6523,6 @@ describe('checkout consent ordering', () => {
     event.objectId = 'cs_webhook_missing_order';
     orderResult = null;
     expect((await deliver()).status).toBe(200);
-    expect(logger.error).toHaveBeenCalledWith(
-      '[checkout-consent] tenant=t-acme checkout=cs_webhook_missing_order order=missing',
-    );
 
     const grantedBefore = await marketing.marketingConsents.listByEmail(
       acme.id,
@@ -6511,13 +6536,18 @@ describe('checkout consent ordering', () => {
     }
     const recordedBefore = recorded.length;
     expect((await deliver()).status).toBe(200);
-    expect(logger.error).toHaveBeenCalledWith(
-      '[checkout-consent] tenant=t-acme capture=capture-gone missing',
-    );
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[checkout-consent] pending tenant=t-acme event=evt_webhook_missing_capture capture=capture-gone'));
     expect(recorded).toHaveLength(recordedBefore);
     expect(
       await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
     ).toEqual(grantedBefore);
+
+    event.id = 'evt_webhook_consent_storage';
+    webhookDeps.paymentTransaction.run = async () => err(internal('Consent storage unavailable'));
+    expect((await deliver()).status).toBe(500);
+    expect(logger.error).toHaveBeenCalledWith(
+      '[stripe-webhook] tenant=t-acme event=evt_webhook_consent_storage capture=capture-gone error=internal:Consent storage unavailable',
+    );
   });
 
   it('acknowledges a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {

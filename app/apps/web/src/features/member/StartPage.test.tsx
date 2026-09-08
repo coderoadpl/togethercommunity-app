@@ -209,12 +209,19 @@ describe('StartPage', () => {
     expect(screen.queryByTestId('start-courses')).not.toBeInTheDocument();
   });
 
-  it('sells locked spaces through a checkout CTA and stays quiet without a product', async () => {
+  it('keeps locked-space visibility below the purchase row and stays quiet without a product', async () => {
     server.use(
       okCourses([]),
       okNavigation({
         lockedSpaces: [
-          { id: 's9', slug: 'premium', name: 'Premium', description: 'Tylko dla kursantów.', productIds: ['p1'] },
+          {
+            id: 's9',
+            slug: 'premium',
+            name: 'Premium',
+            description: 'Tylko dla kursantów.',
+            productIds: ['p1'],
+            products: [{ id: 'p1', title: 'Kompletny program dla zaawansowanych' }],
+          },
           { id: 's8', slug: 'orphan', name: 'Bez produktu', description: null, productIds: [] },
         ],
       }),
@@ -228,6 +235,12 @@ describe('StartPage', () => {
     const cta = within(sold).getByTestId('locked-space-cta-s9');
     expect(cta).toHaveAttribute('href', '/checkout/p1');
     expect(cta).toHaveTextContent(pl.courseTree.unlockAccess);
+    const visibility = within(sold).getByTestId('space-visibility-s9');
+    expect(visibility).toHaveTextContent(
+      pl.community.productGatedFor({ product: 'Kompletny program dla zaawansowanych' }),
+    );
+    expect(cta.parentElement).toContainElement(within(sold).getByRole('heading', { name: 'Premium' }));
+    expect(cta.parentElement).not.toContainElement(visibility);
 
     const orphan = screen.getByTestId('locked-space-card-s8');
     expect(within(orphan).queryByTestId('locked-space-cta-s8')).not.toBeInTheDocument();

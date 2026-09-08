@@ -430,18 +430,17 @@ describe('SettingsPanel information architecture', () => {
   });
 
   it('warns about signing in again until a custom domain is verified', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPanel();
 
     await screen.findByTestId('tenant-domain-kurs.acme.example');
     expect(screen.queryByTestId('tenant-domain-warning')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.acme.example'));
+    await userEvent.click(await screen.findByTestId('tenant-domain-remove-confirm'));
 
     expect(await screen.findByTestId('tenant-domain-warning'))
       .toHaveTextContent(pl.tenantDomains.firstDomainWarning);
     expect(screen.getByTestId('tenant-domain-nowa.acme.example')).toBeInTheDocument();
-    confirm.mockRestore();
   });
 
   it('reports a refused domain with one message that names no other workspace', async () => {
@@ -621,15 +620,16 @@ describe('SettingsPanel information architecture', () => {
   });
 
   it('removes a domain only after the owner confirms', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const redirectTo = 'https://akademia.together.example/panel/settings';
     const { domainCalls } = renderPanel(EMPTY_SETTINGS, true, [], [], redirectTo);
 
     await userEvent.click(await screen.findByTestId('tenant-domain-remove-kurs.acme.example'));
+    expect(await screen.findByText(pl.tenantDomains.removeConfirmTitle)).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('confirm-dialog-cancel'));
     expect(domainCalls).toEqual([]);
 
-    confirm.mockReturnValue(true);
     await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.acme.example'));
+    await userEvent.click(await screen.findByTestId('tenant-domain-remove-confirm'));
 
     await waitFor(() => {
       expect(screen.queryByTestId('tenant-domain-kurs.acme.example')).not.toBeInTheDocument();
@@ -640,7 +640,6 @@ describe('SettingsPanel information architecture', () => {
     expect(within(redirect).getByRole('link', { name: redirectTo }))
       .toHaveAttribute('href', redirectTo);
     expect(queryToast('success')).not.toBeInTheDocument();
-    confirm.mockRestore();
   });
 
   it('sends the retired billing deep link to the integrations stripe tab', async () => {

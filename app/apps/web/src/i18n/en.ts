@@ -490,6 +490,10 @@ export const en: Messages = {
     creating: 'Creating…',
     archive: 'Archive',
     archiving: 'Archiving…',
+    archiveConfirmTitle: 'Archive coupon?',
+    archiveConfirmBody: ({ code }) =>
+      format('Coupon {code} will stop being available for new checkouts. Existing attribution stays unchanged.', { code }),
+    archiveConfirm: 'Archive coupon',
     allCoupons: 'All coupons',
     loading: 'Loading coupons…',
     empty: 'No coupons yet.',
@@ -1042,6 +1046,10 @@ export const en: Messages = {
     uploadDownload: 'Add file',
     uploadingDownload: 'Uploading file…',
     deleteDownload: ({ name }) => `Delete ${name}`,
+    deleteDownloadConfirmTitle: 'Delete download file?',
+    deleteDownloadConfirmBody: ({ name }) =>
+      format('The file "{name}" will no longer be available to buyers. This cannot be undone.', { name }),
+    deleteDownloadConfirm: 'Delete file',
     downloadStatusPending: 'Pending',
     downloadStatusReady: 'Ready',
   },
@@ -1161,6 +1169,10 @@ export const en: Messages = {
         noun: plural(count, 'course', 'courses'),
       }),
     removeChapterConfirm: 'Delete chapter',
+    removeContentConfirmTitle: 'Remove lesson from chapter?',
+    removeContentConfirmBody: ({ name }) =>
+      format('The lesson "{name}" will be removed from this chapter. The lesson itself stays in the lesson library.', { name }),
+    removeContentConfirm: 'Remove lesson',
     noLessonsInChapter: 'No lessons in this chapter yet.',
     lessonLabel: 'Lesson',
     selectLesson: 'Select a lesson',
@@ -1271,6 +1283,10 @@ export const en: Messages = {
     attachmentSize: ({ kilobytes }) => format('{kilobytes} KB', { kilobytes }),
     attachmentPending: 'Upload incomplete',
     deleteAttachment: ({ name }) => format('Delete attachment {name}', { name }),
+    deleteAttachmentConfirmTitle: 'Delete attachment?',
+    deleteAttachmentConfirmBody: ({ name }) =>
+      format('The attachment "{name}" will no longer be available to members. This cannot be undone.', { name }),
+    deleteAttachmentConfirm: 'Delete attachment',
     invalidBlocks: 'Invalid lesson blocks',
     blockNoun: ({ count }) => plural(count, 'block', 'blocks'),
     typeVideo: 'Video',
@@ -2151,6 +2167,7 @@ export const en: Messages = {
     check: 'Check now',
     checking: 'Checking…',
     remove: 'Remove',
+    removeConfirmTitle: 'Remove custom domain?',
     removeConfirm: ({ domain }) =>
       format('Remove {domain}? The address will stop reaching this workspace.', { domain }),
     removing: 'Removing…',

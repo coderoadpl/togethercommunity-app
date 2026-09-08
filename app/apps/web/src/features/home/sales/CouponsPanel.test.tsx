@@ -195,6 +195,10 @@ describe('coupon sales surfaces', () => {
 
     expect(await screen.findByText('50%')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: pl.coupons.archive }));
+    expect(archived).toBe(false);
+    expect(await screen.findByText(pl.coupons.archiveConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(pl.coupons.archiveConfirmBody({ code: coupon.code }))).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('coupon-archive-confirm'));
     await waitFor(() => expect(archived).toBe(true));
   });
 });

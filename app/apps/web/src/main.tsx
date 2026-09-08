@@ -139,6 +139,9 @@ const ReactQueryDevtools = lazy(() =>
   })),
 );
 
+const devtoolsEnabled =
+  import.meta.env.DEV && new URLSearchParams(window.location.search).get('devtools') !== '0';
+
 const rootRoute = createRootRoute({
   component: () => (
     <>
@@ -607,7 +610,7 @@ createRoot(container).render(
                   </TenantBrandingBoundary>
                 </NotificationsTransportProvider>
               </ToastProvider>
-              {import.meta.env.DEV ? (
+              {devtoolsEnabled ? (
                 <Suspense fallback={null}>
                   <ReactQueryDevtools />
                 </Suspense>

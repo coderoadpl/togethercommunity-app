@@ -758,6 +758,7 @@ describe('community pages', () => {
     const cta = screen.getByTestId('anon-join-cta');
     expect(cta).toHaveAttribute('href', '/#offer');
     expect(cta).toHaveTextContent(pl.anon.joinOfferCta);
+    expect(cta).toHaveStyle({ width: '100%', minHeight: '44px' });
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('reaction-p1-👍')).not.toBeInTheDocument();

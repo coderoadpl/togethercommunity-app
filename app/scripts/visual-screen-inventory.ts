@@ -26,6 +26,7 @@ export interface ScreenSpec {
   waitForNetworkIdle?: boolean;
   minBytes?: number;
   fullPage?: boolean;
+  isolateCapture?: boolean;
   mask?: (page: Page) => Locator[];
 }
 
@@ -245,6 +246,9 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('member-menu-sheet').waitFor(visible);
       await page.getByTestId('sidebar-course-course-js').waitFor(visible);
       await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
+    },
+    settled: async (page) => {
+      await page.mouse.move(0, 0);
     },
   },
   {
@@ -617,6 +621,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'panel-course',
     auth: 'creator',
+    isolateCapture: true,
     path: '/panel/courses/course-js',
     ready: (page) => page.getByTestId('module-card').first().waitFor(visible),
   },

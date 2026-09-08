@@ -167,11 +167,12 @@ workflow code and never executes pull-request code.
 
 ## Chromatic
 
-The `preview` project publishes a Storybook preview permalink for each pull request
-targeting `staging` and for the `staging` branch on pushes, when
-`CHROMATIC_PREVIEW_PROJECT_TOKEN` is available.
-UI Tests and UI Review are disabled in `preview`, so pull-request snapshots run
-only on promotion pull requests targeting `main`.
+The `preview` project publishes a Storybook preview permalink for non-draft pull requests
+targeting `staging` and pushes to `staging` when `CHROMATIC_PREVIEW_PROJECT_TOKEN` is
+available and changes affect `app/apps/web/**`, `app/.storybook/**`,
+`app/tasks/visual-goldens/**`, or `.github/workflows/chromatic-preview.yml`.
+The preview command uses TurboSnap (`--only-changed`) to copy unchanged stories
+instead of capturing them, while retaining `--exit-zero-on-changes` and `--exit-once-uploaded`.
 
 Chromatic snapshot testing runs only for promotion pull requests targeting `main`, plus manual
 `workflow_dispatch` runs. It reviews Storybook UI snapshots for baseline changes

@@ -2596,6 +2596,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           alreadyDeleted: true,
           authUserErased: false,
           erasureRequestId: null,
+          avatarUrl: null,
         };
       }
       const [openErasureRequest] = await tx
@@ -2700,6 +2701,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           marketingConsents: {},
           externalCustomerIds: {},
           legacyId: null,
+          avatarUrl: null,
           deletedAt: input.deletedAt,
     bannedAt: null,
     bannedReason: null,
@@ -2796,6 +2798,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           alreadyDeleted: false,
           authUserErased: false,
           erasureRequestId: openErasureRequest?.id ?? null,
+          avatarUrl: member.avatarUrl,
         };
       }
 
@@ -2804,6 +2807,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         alreadyDeleted: false,
         authUserErased: true,
         erasureRequestId: openErasureRequest?.id ?? null,
+        avatarUrl: member.avatarUrl,
       };
     }),
 });

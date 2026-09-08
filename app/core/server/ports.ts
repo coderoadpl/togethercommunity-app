@@ -717,6 +717,8 @@ export interface MemberPseudonymizationResult {
   alreadyDeleted: boolean;
   authUserErased: boolean;
   erasureRequestId: string | null;
+  /** Avatar serve path cleared from the row, so the caller can delete the stored object the transaction cannot reach. */
+  avatarUrl: string | null;
 }
 
 /**

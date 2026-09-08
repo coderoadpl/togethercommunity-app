@@ -8,6 +8,7 @@ import { createTestDatabase } from './test-database-name.js';
 import {
   account,
   importAuditEvents,
+  marketingMemberSyncJobs,
   members,
   tenantApiKeys,
   tenants,
@@ -91,6 +92,7 @@ describe('users import repository', () => {
       .where(eq(importAuditEvents.id, 'audit-member-created'));
 
     expect(result).toBe('saved');
+    expect(await db.select().from(marketingMemberSyncJobs).where(eq(marketingMemberSyncJobs.memberId, 'member-source'))).toMatchObject([{ tenantId: TENANT_ID, status: 'pending' }]);
     expect(authUser).toMatchObject({ email: 'user@example.test', emailVerified: true });
     expect(credential).toBeUndefined();
     expect(member).toMatchObject({

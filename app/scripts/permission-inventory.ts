@@ -115,6 +115,11 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     || path === '/api/m2m/import/progress'
   ) return 'import:users-write';
   if (path.startsWith('/api/m2m/import/')) return 'import:content-write';
+  const directoryPath = path.replace('/api/m2m/marketing/', '/api/marketing/');
+  if (path === '/api/internal/marketing/imports/tick' || (directoryPath.startsWith('/api/marketing/') && (directoryPath.endsWith('/contacts/sync') || directoryPath.endsWith('/process')))) return 'scheduler:dispatch';
+  if (directoryPath.startsWith('/api/marketing/contacts')) return method === 'GET' ? 'marketing:contact:read' : 'marketing:contact:write';
+  if (directoryPath.startsWith('/api/marketing/lists')) return method === 'GET' || directoryPath.endsWith('/preview') ? 'marketing:list:read' : 'marketing:list:write';
+  if (directoryPath.startsWith('/api/marketing/contact-imports') || directoryPath === '/api/marketing/suppressions/import') return 'marketing:import:write';
   if (path.startsWith('/api/m2m/marketing/messages')) return method === 'GET' ? 'marketing:message:read' : 'marketing:message:send';
   if (path === '/api/m2m/marketing/eligibility') return 'marketing:consent:read';
   if (path === '/api/m2m/marketing/consents') return 'marketing:consent:write';
@@ -239,6 +244,7 @@ const beforeForRoute = (
   method: string,
   path: string,
 ): readonly Principal[] => {
+  if (/^\/api\/(?:m2m\/)?marketing\//.test(path) && (path.endsWith('/process') || path.endsWith('/contacts/sync'))) return path.startsWith('/api/m2m/') ? [] : staff;
   const route = { method, path };
   const publicEntry = publicRouteManifestEntry(route);
   if (publicEntry !== undefined) {
@@ -381,7 +387,8 @@ const capabilityFromBody = (
     ts.forEachChild(node, visit);
   };
   visit(body);
-  if (capabilities.length !== 1) {
+  const directoryConjunction = subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read';
+  if (capabilities.length !== 1 && !directoryConjunction) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
     );
@@ -496,6 +503,7 @@ const beforeForUseCase = (
   name: string,
   capability: Capability,
 ): readonly Principal[] => {
+  if (['marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
@@ -550,7 +558,8 @@ const beforeForUseCase = (
 const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
-    const reachable = before === allHumans
+    const directory = ['marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
+    const reachable = directory ? before : before === allHumans
       ? allHumans
       : before === platformOwner
         ? platformOwner
@@ -667,6 +676,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.',
     '',
     'The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.',
+    '',
+    'Directory imports additionally require the relevant contact, list, consent or suppression writes; previews and row results require corresponding reads. List previews require both `marketing:list:read` and `marketing:contact:read`. The table lists the primary capability, while use-case guards enforce these conjunctions. Marketing API keys cannot invoke scheduler operations.',
     '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',

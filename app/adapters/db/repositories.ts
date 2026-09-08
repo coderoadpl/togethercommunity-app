@@ -1,3 +1,4 @@
+import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
@@ -2610,6 +2611,8 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           ),
         )
         .limit(1);
+
+      await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
 
       await tx.insert(erasedMemberImports).values({
         memberId: member.id,

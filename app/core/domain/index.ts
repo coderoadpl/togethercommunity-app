@@ -60,3 +60,13 @@ export * from './member-erasure-request.js';
 export * from './password.js';
 export * from './platform-data-reset.js';
 export * from './smoke-tenant.js';
+
+export * from './marketing-contact.js';
+
+export * from './marketing-list.js';
+
+export * from './marketing-contact-import.js';
+
+export * from './marketing-import-csv.js';
+
+export * from './marketing-directory-event.js';

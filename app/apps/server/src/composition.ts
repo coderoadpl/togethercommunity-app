@@ -1,4 +1,7 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createMarketingImportTransaction, createMarketingImportTransactionRepos } from '#adapters/db/marketing-contact-transactions.js';
+import { createMarketingDirectoryJobs } from '#adapters/db/marketing-contact-import-repository.js';
+import type { MarketingContactDeps, MarketingDirectoryJobs } from '#core/server/index.js';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
@@ -497,6 +500,9 @@ export interface AppDeps {
   authConfig: AuthConfig;
   authTrustedProxyHeader: string | null;
   marketing?: MarketingAppDeps;
+  marketingContacts?: MarketingContactDeps;
+  marketingDirectoryJobs?: MarketingDirectoryJobs;
+  marketingImportCronSecret?: string | undefined;
 }
 
 export interface MarketingAppDeps {
@@ -1354,6 +1360,9 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     ...(platformReset === undefined ? {} : { platformReset }),
     authConfig: { googleEnabled: google !== null, googleClientId: google?.clientId ?? null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
+    marketingContacts: { ...createMarketingImportTransactionRepos(db, { ids, clock, hmac: emailHmac, contentHash: { sha256: (value) => createHash('sha256').update(value).digest('hex') } }), transaction: createMarketingImportTransaction(db, { ids, clock, hmac: emailHmac, contentHash: { sha256: (value) => createHash('sha256').update(value).digest('hex') } }), ids, clock, hmac: emailHmac, contentHash: { sha256: (value) => createHash('sha256').update(value).digest('hex') } },
+    marketingDirectoryJobs: createMarketingDirectoryJobs(db),
+    marketingImportCronSecret: env.CRON_SECRET,
     marketing: {
       runs: schedulerRuns,
       definitions,

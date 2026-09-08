@@ -97,3 +97,13 @@ export * from './usecases/marketing-management.js';
 export * from './usecases/marketing-ses-onboarding.js';
 export * from './usecases/ses-webhook-url.js';
 export * from './usecases/deep-health.js';
+
+export * from './marketing-contact-ports.js';
+
+export * from './usecases/marketing-contacts.js';
+
+export * from './usecases/marketing-lists.js';
+
+export * from './usecases/marketing-member-contacts.js';
+
+export * from './usecases/marketing-contact-imports.js';

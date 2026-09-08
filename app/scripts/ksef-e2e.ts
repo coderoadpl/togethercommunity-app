@@ -36,6 +36,8 @@ import { createFa3XsdValidator } from '#adapters/invoicing/fa3-validator.js';
 import { createKsefClient } from '#adapters/invoicing/ksef.js';
 import { dispatchKsefJob, requestInvoice } from '#core/server/index.js';
 
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
+
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const apiBaseUrl = 'https://api-test.ksef.mf.gov.pl/v2';
@@ -309,6 +311,7 @@ const run = (
 const prepareDatabase = async (
   baseDatabaseUrl: string,
 ): Promise<{ databaseUrl: string; adminUrl: string }> => {
+  assertSafeE2eDatabaseReset(baseDatabaseUrl, databaseName, process.env);
   const admin = new URL(baseDatabaseUrl);
   admin.pathname = '/postgres';
   const database = new URL(baseDatabaseUrl);
@@ -566,8 +569,7 @@ const main = async (): Promise<void> => {
   let buyerNip = generateNip();
   while (buyerNip === sellerNip) buyerNip = generateNip();
   const minted = await mintTestToken(sellerNip);
-  const baseDatabaseUrl =
-    process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
+  const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
   const prepared = await prepareDatabase(baseDatabaseUrl);
   try {
     const result = await executeAdapterE2e(

@@ -49,8 +49,8 @@ const trackedMarkdown = execFileSync(
   .filter((entry) => entry.length > 0);
 
 const vitestFiles = execFileSync(
-  process.execPath,
-  [require.resolve('vitest/vitest.mjs'), 'list', '--filesOnly'],
+  'pnpm',
+  ['exec', 'vitest', 'list', '--filesOnly'],
   {
     cwd: appRoot,
     encoding: 'utf8',

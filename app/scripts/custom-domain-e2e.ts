@@ -18,7 +18,7 @@ import {
   run,
   tsxBin,
 } from './server-harness.js';
-import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { signInWithPassword } from './login-flow.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
@@ -31,6 +31,7 @@ const CREATOR_PASSWORD = 'demo-password-15';
 
 const E2E_DB = uniqueTestDatabaseName('together_custom_domain_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();

@@ -22,7 +22,7 @@ import {
   notificationsUnreadOutputSchema,
 } from '#core/contract/index.js';
 
-import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { requestMagicLink, signInWithPassword } from './login-flow.js';
 import {
   bootServer,
@@ -39,6 +39,7 @@ const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const E2E_DB = 'together_e2e_member_activity';
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();

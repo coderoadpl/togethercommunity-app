@@ -44,6 +44,14 @@ export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPo
       ...(successful ? { sent: sql`${tenantTransactionalEmailPools.sent} + 1` } : {}),
     }).where(eq(tenantTransactionalEmailPools.tenantId, tenantId));
   },
+  recordCapExemptSend: async (tenantId) => {
+    await db.insert(tenantTransactionalEmailPools)
+      .values({ tenantId, sent: 1, reserved: 0 })
+      .onConflictDoUpdate({
+        target: tenantTransactionalEmailPools.tenantId,
+        set: { sent: sql`${tenantTransactionalEmailPools.sent} + 1` },
+      });
+  },
 });
 
 export const createEmailOutboxRepository = (

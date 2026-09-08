@@ -1573,6 +1573,7 @@ export interface PlatformTransactionalPool {
   usage(tenantId: string): Promise<{ sent: number; reserved: number }>;
   reserve(tenantId: string, limit: number): Promise<boolean>;
   settle(tenantId: string, successful: boolean): Promise<void>;
+  recordCapExemptSend(tenantId: string): Promise<void>;
 }
 
 export interface EmailEventRepository {

@@ -232,6 +232,7 @@ const platformPool = {
   usage: async () => ({ sent: 0, reserved: 0 }),
   reserve: async () => true,
   settle: async () => undefined,
+  recordCapExemptSend: async () => undefined,
 };
 
 const senderInput = {

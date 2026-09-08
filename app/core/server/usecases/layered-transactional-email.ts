@@ -68,18 +68,22 @@ export const createLayeredTransactionalEmailSender = (
     if (deps.smokeTenantSink !== undefined && isSmokeTenant(message.tenantId)) {
       return sendWith('platform', deps.smokeTenantSink, message);
     }
-    if (message.forcePlatformTransport !== true) {
-      const tenant = await resolveTenantTransactionalTransport(message.tenantId, deps.transports);
-      if (tenant !== null) return sendWith(tenant.transport, tenant.email, message);
-      if (message.tenantTransportRequired === true) {
-        return {
-          ok: false,
-          error: appError(
-            'integration_not_configured',
-            'A tenant SES, SMTP or Resend transport is required for API-submitted e-mail',
-          ),
-        };
-      }
+    // The starter pool is a lifetime allowance, so capping auth mail would lock a space out of sign-in for good.
+    if (message.forcePlatformTransport === true) {
+      const sent = await sendWith('platform', deps.platform, message);
+      if (sent.ok) await deps.pool.recordCapExemptSend(message.tenantId);
+      return sent;
+    }
+    const tenant = await resolveTenantTransactionalTransport(message.tenantId, deps.transports);
+    if (tenant !== null) return sendWith(tenant.transport, tenant.email, message);
+    if (message.tenantTransportRequired === true) {
+      return {
+        ok: false,
+        error: appError(
+          'integration_not_configured',
+          'A tenant SES, SMTP or Resend transport is required for API-submitted e-mail',
+        ),
+      };
     }
     const reserved = await deps.pool.reserve(message.tenantId, deps.platformLimit);
     if (!reserved) {

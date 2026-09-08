@@ -1466,6 +1466,11 @@ export interface Messages {
     durationMinutesOnly: (params: { minutes: number }) => string;
   };
   lesson: {
+    mediaFailedTitle: string;
+    videoFailedTitle: string;
+    videoMissingLibrary: string;
+    videoSecretInvalid: string;
+    mediaOpenExternal: string;
     loading: string;
     unavailable: string;
     eyebrow: string;

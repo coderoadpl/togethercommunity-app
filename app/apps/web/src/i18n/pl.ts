@@ -1687,6 +1687,11 @@ export const pl: Messages = {
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
   },
   lesson: {
+    mediaFailedTitle: 'Nie udało się załadować materiału',
+    videoFailedTitle: 'Nie udało się załadować wideo',
+    videoMissingLibrary: 'Wideo jest niedostępne: biblioteka wideo nie została skonfigurowana. Skontaktuj się z prowadzącym.',
+    videoSecretInvalid: 'Wideo jest niedostępne: konfiguracja dostępu do wideo wymaga poprawy. Skontaktuj się z prowadzącym.',
+    mediaOpenExternal: 'Otwórz w nowej karcie',
     loading: 'Ładowanie lekcji…',
     unavailable: 'Lekcja niedostępna',
     eyebrow: 'Lekcja',

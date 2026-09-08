@@ -1668,6 +1668,11 @@ export const en: Messages = {
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
   },
   lesson: {
+    mediaFailedTitle: 'Unable to load the material',
+    videoFailedTitle: 'Unable to load the video',
+    videoMissingLibrary: 'This video is unavailable: the video library has not been configured. Contact your instructor.',
+    videoSecretInvalid: 'This video is unavailable: its access configuration needs to be corrected. Contact your instructor.',
+    mediaOpenExternal: 'Open in a new tab',
     loading: 'Loading lesson…',
     unavailable: 'Lesson unavailable',
     eyebrow: 'Lesson',

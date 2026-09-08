@@ -1182,6 +1182,12 @@ export const studentLessonQuery = (api: ApiClient, lessonId: string) =>
     call: ({ signal }) => api.studentLesson(lessonId, signal),
   });
 
+export const studentLessonPlaybackQuery = (api: ApiClient, lessonId: string) =>
+  defineQuery({
+    queryKey: [...studentScopes.lesson(lessonId), 'playback'],
+    call: ({ signal }) => api.studentLessonPlayback(lessonId, signal),
+  });
+
 export const studentLessonAttachmentsQuery = (api: ApiClient, lessonId: string) =>
   defineQuery({
     queryKey: studentScopes.attachments(lessonId),

@@ -1,0 +1,65 @@
+name: chromatic-preview
+
+on:
+  pull_request:
+    branches: [staging]
+  push:
+    branches: [staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chromatic-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  token:
+    runs-on: ubuntu-24.04
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - id: check
+        env:
+          CHROMATIC_PREVIEW_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PREVIEW_PROJECT_TOKEN }}
+        run: |
+          if [ -n "$CHROMATIC_PREVIEW_PROJECT_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CHROMATIC_PREVIEW_PROJECT_TOKEN is not available; skipping Chromatic preview."
+          fi
+
+  chromatic-preview:
+    needs: token
+    if: needs.token.outputs.available == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Publish Chromatic preview
+        env:
+          CHROMATIC_PREVIEW_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PREVIEW_PROJECT_TOKEN }}
+        run: >
+          pnpm exec chromatic
+          --project-token="$CHROMATIC_PREVIEW_PROJECT_TOKEN"
+          --build-script-name=storybook:build
+          --exit-zero-on-changes
+          --exit-once-uploaded
+          --zip

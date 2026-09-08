@@ -51,7 +51,6 @@ export const NotificationsPage = ({
     ) : (
       <MemberSurface
         title={t.notifications.heading}
-        eyebrow={t.notifications.pageEyebrow}
         {...props}
       />
     );

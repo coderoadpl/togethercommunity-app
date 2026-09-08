@@ -266,7 +266,7 @@ describe('CourseTree', () => {
     await renderTree();
 
     await screen.findByText('Intro to Variables');
-    expect(screen.getByTestId('lesson-search-hint')).toHaveTextContent(pl.search.hint);
+    expect(screen.getByTestId('lesson-search-hint')).toHaveTextContent(pl.courseTree.filterHint);
     expect(screen.queryByText(pl.search.stemHint)).not.toBeInTheDocument();
 
     await user.type(screen.getByTestId('lesson-search'), 'nieistniejaca');

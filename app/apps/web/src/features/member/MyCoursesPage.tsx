@@ -34,7 +34,6 @@ export const MyCoursesPage = () => {
     return (
       <MemberSurface
         title={t.student.myCourses}
-        eyebrow={t.student.courseLibrary}
         width="wide"
         state={{ kind: 'loading', label: t.student.loadingCourses }}
       />
@@ -47,7 +46,6 @@ export const MyCoursesPage = () => {
     return (
       <MemberSurface
         title={t.student.myCourses}
-        eyebrow={t.student.courseLibrary}
         width="wide"
         state={{
           kind: 'error',
@@ -63,7 +61,7 @@ export const MyCoursesPage = () => {
   );
 
   return (
-    <MemberSurface title={t.student.myCourses} eyebrow={t.student.courseLibrary} width="wide">
+    <MemberSurface title={t.student.myCourses} width="wide">
         {courses.data.courses.length === 0 ? (
           <StatusView
             state={{

@@ -214,7 +214,6 @@ export const MemberAccountPage = () => {
     return (
       <MemberSurface
         title={t.account.title}
-        eyebrow={t.account.heading}
         state={{ kind: 'loading', label: t.common.loading }}
       />
     );
@@ -226,7 +225,6 @@ export const MemberAccountPage = () => {
     return (
       <MemberSurface
         title={t.account.title}
-        eyebrow={t.account.heading}
         state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }}
       />
     );
@@ -270,7 +268,7 @@ export const MemberAccountPage = () => {
   };
 
   return (
-    <MemberSurface title={t.account.title} eyebrow={t.account.heading}>
+    <MemberSurface title={t.account.title}>
       <Tabs
         value={selectedTab}
         onChange={(_event, value: AccountTab) => {

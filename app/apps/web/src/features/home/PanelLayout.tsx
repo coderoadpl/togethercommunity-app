@@ -724,7 +724,7 @@ export const PanelLayout = () => {
   if (me.isPending || unauthorized || noTenant || memberOnly) {
     return (
       <ThemeProvider theme={theme}>
-        <BrandLoader caption={t.bootSplash.opening} />
+        <BrandLoader caption={t.tenant.openingWorkspace} />
       </ThemeProvider>
     );
   }

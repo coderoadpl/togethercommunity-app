@@ -258,7 +258,7 @@ export const SearchPage = () => {
     : [];
 
   return (
-    <MemberSurface title={t.search.title} eyebrow={t.search.eyebrow}>
+    <MemberSurface title={t.search.title}>
       <Stack useFlexGap sx={{ rowGap: '1rem' }}>
         <SearchField
           value={term}

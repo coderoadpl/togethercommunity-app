@@ -97,7 +97,6 @@ export const MessagesListPage = () => {
     return (
       <MemberSurface
         title={t.messages.title}
-        eyebrow={t.messages.eyebrow}
         state={{ kind: 'loading', label: t.messages.loading }}
       />
     );
@@ -109,7 +108,6 @@ export const MessagesListPage = () => {
     return (
       <MemberSurface
         title={t.messages.title}
-        eyebrow={t.messages.eyebrow}
         state={{
           kind: 'error',
           message: localizeError(list.error, t),
@@ -132,7 +130,7 @@ export const MessagesListPage = () => {
     );
 
   return (
-    <MemberSurface title={t.messages.title} eyebrow={t.messages.eyebrow}>
+    <MemberSurface title={t.messages.title}>
       <ListSection
         data-testid="conversations-list"
         isEmpty={list.data.conversations.length === 0}

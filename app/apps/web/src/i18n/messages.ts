@@ -66,11 +66,6 @@ export interface Messages {
     remove: string;
     tooLarge: string;
   };
-  bootSplash: {
-    opening: string;
-    tenant: (params: { host: string }) => string;
-    warming: string;
-  };
   htmlEditor: {
     tabsAria: string;
     editTab: string;
@@ -273,7 +268,6 @@ export interface Messages {
     marketingDocuments: string;
     marketingLayouts: string;
     aria: string;
-    comingSoon: string;
   };
   navigationGroups: {
     content: string;
@@ -521,7 +515,6 @@ export interface Messages {
     markAllReadShort: string;
     markedAllRead: string;
     viewAll: string;
-    pageEyebrow: string;
     loadMore: string;
     filterAll: string;
     filterUnread: string;
@@ -542,7 +535,6 @@ export interface Messages {
   messages: {
     navLabel: string;
     title: string;
-    eyebrow: string;
     loading: string;
     emptyList: string;
     emptyListHint: string;
@@ -1385,7 +1377,6 @@ export interface Messages {
   };
   search: {
     title: string;
-    eyebrow: string;
     inputLabel: string;
     placeholder: string;
     hint: string;
@@ -1398,8 +1389,6 @@ export interface Messages {
   student: {
     myCourses: string;
     myProducts: string;
-    courseLibrary: string;
-    productsLibrary: string;
     loadingCourses: string;
     retryCourses: string;
     noCourses: string;
@@ -1409,8 +1398,8 @@ export interface Messages {
     productsWillAppear: string;
     staffNoMember: string;
     courseEyebrow: string;
-    courseContentComingSoon: string;
-    courseContentArrivesLater: string;
+    productWithoutCoursesTitle: string;
+    productWithoutCoursesBody: string;
     productCoursesHeading: string;
     productCoursesHint: string;
     courseNotFound: string;
@@ -1442,6 +1431,7 @@ export interface Messages {
     backToMyCourses: string;
     searchLessons: string;
     filterPlaceholder: string;
+    filterHint: string;
     noMatches: string;
     loadingCourse: string;
     courseNotFound: string;
@@ -1560,7 +1550,6 @@ export interface Messages {
   };
   community: {
     heading: string;
-    listEyebrow: string;
     loadingSpaces: string;
     noSpacesTitle: string;
     noSpacesBody: string;
@@ -1670,7 +1659,6 @@ export interface Messages {
     menuStudio: string;
     menuAccount: string;
     title: string;
-    heading: string;
     signedInAs: string;
     back: string;
     profileHeading: string;
@@ -2034,7 +2022,7 @@ export interface Messages {
     freePending: string;
     payIdle: (params: { price: string }) => string;
     payPending: string;
-    simulatedPaymentDevNote: string;
+    simulatedPaymentNote: string;
     successEyebrow: string;
     successTitle: string;
     successBody: string;

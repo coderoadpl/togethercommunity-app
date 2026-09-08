@@ -45,10 +45,10 @@ import { applyBranding } from '../../theme-branding.js';
 import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
 import {
   AppBarTitle,
-  BreakAllText,
   createThemeForMode,
   Eyebrow,
   PanelNavItem,
+  WrapAnywhereText,
 } from '../../theme.js';
 import {
   CouponsIcon,
@@ -454,14 +454,14 @@ const UserMenu = ({
                 {name}
               </Typography>
             )}
-            <BreakAllText
+            <WrapAnywhereText
               variant="caption"
               component="p"
               color="text.secondary"
               data-testid="user-menu-email"
             >
               {email}
-            </BreakAllText>
+            </WrapAnywhereText>
             <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.625rem' }} />
           </Box>
         </Box>

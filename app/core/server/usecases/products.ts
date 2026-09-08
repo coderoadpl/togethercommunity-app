@@ -134,7 +134,9 @@ export const updateProduct = async (
     coverUrl: parsed.data.coverUrl === undefined ? existing.coverUrl : parsed.data.coverUrl,
   };
   const saved = await deps.products.update(tenant.value, updated, snapshot.value);
-  return saved ? ok(saved) : err(notFound(`No product "${parsed.data.id}" in this tenant`));
+  if (!saved) return err(notFound(`No product "${parsed.data.id}" in this tenant`));
+  if (saved.published) await deps.products.bumpContentVersion(tenant.value);
+  return ok(saved);
 };
 
 export const publishProduct = async (

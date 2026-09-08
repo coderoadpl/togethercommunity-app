@@ -17,6 +17,7 @@ import {
   publicOfferOutputSchema,
   studentCoursesOutputSchema,
   studentLessonPlaybackOutputSchema,
+  studentLessonOutputSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
 
@@ -310,6 +311,18 @@ const runTenantSurfaceChecks = async (
     run.skip('lesson-playback', 'no accessible lesson was discovered');
   } else {
     await run.step('lesson-playback', async () => {
+      unwrap(
+        await envelopeOf(
+          expectStatus(
+            await run.get(`/api/student/lessons/${encodeURIComponent(lessonId)}`, authenticated),
+            'student lesson',
+            200,
+          ),
+          envelopeSchema(studentLessonOutputSchema),
+          'student lesson',
+        ),
+        'student lesson',
+      );
       const playback = unwrap(
         await envelopeOf(
           await run.get(`/api/student/lessons/${encodeURIComponent(lessonId)}/playback`, authenticated),

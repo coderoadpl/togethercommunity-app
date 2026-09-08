@@ -272,15 +272,18 @@ const probeCourseContent = (tenant: Tenant, deps: DeepHealthDeps): Probe => asyn
 
 const probeSecretDecryption = (tenant: Tenant, deps: DeepHealthDeps): Probe => async () => {
   const stored = await deps.tenantSecrets.listByTenant(tenant.id);
-  const secret = stored[0];
-  if (secret === undefined) return 'not-applicable';
-  const decrypted = deps.secretCrypto.decrypt(secret);
-  if (!decrypted.ok) {
-    throw new ProbeFailure(`secret decryption failed with ${decrypted.error.code}`);
+  if (stored.length === 0) return 'not-applicable';
+  const failedKeys: string[] = [];
+  const emptyKeys: string[] = [];
+  for (const secret of stored) {
+    const decrypted = deps.secretCrypto.decrypt(secret);
+    if (!decrypted.ok) failedKeys.push(secret.key);
+    else if (decrypted.value.length === 0) emptyKeys.push(secret.key);
   }
-  if (decrypted.value.length === 0) {
-    throw new ProbeFailure('secret decryption produced an empty value');
-  }
+  const failures: string[] = [];
+  if (failedKeys.length > 0) failures.push(`secret decryption failed for keys: ${failedKeys.join(', ')}`);
+  if (emptyKeys.length > 0) failures.push(`secret decryption produced an empty value for keys: ${emptyKeys.join(', ')}`);
+  if (failures.length > 0) throw new ProbeFailure(failures.join('; '));
   return 'checked';
 };
 

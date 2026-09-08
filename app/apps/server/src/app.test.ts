@@ -50,6 +50,7 @@ import {
   type Order,
   type Post,
   type Product,
+  type ProductPrice,
   type ProductDownloadAsset,
   type ProductGrant,
   type Space,
@@ -4771,6 +4772,53 @@ describe('public offer route', () => {
     expect(second.status).toBe(304);
     expect(second.headers.get('etag')).toBe(etag);
     expect(second.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('changes the offer ETag after adding a price to a published product', async () => {
+    const base = deps();
+    const prices: ProductPrice[] = [];
+    let contentVersion = acme.contentVersion;
+    const versionedTenant = (): Tenant => ({ ...acme, contentVersion });
+    const app = scopedApp('owner', {
+      overrides: {
+        tenants: {
+          ...base.tenants,
+          findById: async (tenantId) => tenantId === acme.id ? versionedTenant() : null,
+          findBySlug: async (slug) => slug === acme.slug ? versionedTenant() : null,
+          findSole: async () => versionedTenant(),
+        },
+        products: {
+          ...base.products,
+          bumpContentVersion: async () => {
+            contentVersion += 1;
+          },
+        },
+        prices: {
+          ...base.prices,
+          listActiveByProducts: async (_tenantId, productIds) =>
+            prices.filter((price) => price.active && productIds.includes(price.productId)),
+          create: async (_tenantId, price) => {
+            prices.push(price);
+          },
+        },
+      },
+    });
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const staleEtag = first.headers.get('etag') ?? '';
+
+    const write = await app.request(API_PATHS.productPricesCreate, {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'content-type': 'application/json' },
+      body: JSON.stringify({ productId: 'acme-published', kind: 'one_time', amountCents: 2500 }),
+    });
+    const revalidated = await requestPublicOffer(app, {
+      host: 'acme.localhost:48730',
+      'if-none-match': staleEtag,
+    });
+
+    expect(write.status).toBe(200);
+    expect(revalidated.status).toBe(200);
+    expect(revalidated.headers.get('etag')).toBe('W/"offer-t-acme-5"');
   });
 
   it('selects the tenant from x-tenant on the base domain', async () => {

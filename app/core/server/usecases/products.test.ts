@@ -366,8 +366,8 @@ describe('products use-cases', () => {
     expect(versions.get('t-acme')).toBe(2);
   });
 
-  it('updates editable metadata, preserves the slug and snapshots the previous product', async () => {
-    const { repo, store, entityVersions } = fakeRepo([draft('p1', 't-acme')]);
+  it('updates editable metadata, preserves the slug and snapshots the previous draft product', async () => {
+    const { repo, store, versions, entityVersions } = fakeRepo([draft('p1', 't-acme')]);
     const result = await updateProduct(
       { identity: identity('t-acme', 'owner') },
       {
@@ -390,5 +390,19 @@ describe('products use-cases', () => {
     expect(store[0]?.slug).toBe('product-p1');
     expect(entityVersions).toHaveLength(1);
     expect(entityVersions[0]).toMatchObject({ id: 'version-1', entityKind: 'product', entityId: 'p1' });
+    expect(versions.has('t-acme')).toBe(false);
+  });
+
+  it('invalidates public caches after updating a published product', async () => {
+    const { repo, versions } = fakeRepo([draft('p1', 't-acme', true)]);
+
+    const result = await updateProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1', title: 'Updated published product' },
+      deps(repo, ['version-1']),
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { title: 'Updated published product' } });
+    expect(versions.get('t-acme')).toBe(2);
   });
 });

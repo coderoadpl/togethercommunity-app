@@ -170,7 +170,6 @@ export const PostComposer = ({
           sx={{ minHeight: 44, minWidth: 44 }}
           disabled={disabled || busy || body.trim().length === 0}
           data-testid={`${testId}-submit`}
-          sx={{ minHeight: '44px' }}
         >
           {busy ? pendingLabel : submitLabel}
         </Button>

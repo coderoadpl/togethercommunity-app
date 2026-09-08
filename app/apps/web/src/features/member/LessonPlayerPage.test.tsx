@@ -999,7 +999,18 @@ describe('LessonPlayerPage', () => {
     }
     expect(previous).toBeDisabled();
     expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
-    expect(screen.getByRole('button', { name: pl.lesson.completeContinue })).toHaveClass('MuiButton-contained');
+    const primary = screen.getByRole('button', { name: pl.lesson.completeContinue });
+    expect(primary).toHaveClass('MuiButton-contained');
+    for (const width of [375, 390, 899]) {
+      for (const action of [previous, next, complete, primary]) {
+        const styles = stylesAt(action, width);
+        expect(styles).toMatchObject({ width: '100%', 'min-height': '48px' });
+        expect(Number.parseFloat(styles['min-width'] ?? '0')).toBeGreaterThanOrEqual(44);
+      }
+      expect(stylesAt(complete.parentElement, width)).toMatchObject({ 'flex-direction': 'column', gap: '0.75rem' });
+    }
+    expect(stylesAt(complete.parentElement, 900)).toMatchObject({ 'flex-direction': 'row' });
+    expect(stylesAt(complete.closest('footer'), 390)).toMatchObject({ position: 'sticky' });
   });
 
   it('keeps marking the final lesson complete primary on mobile', async () => {

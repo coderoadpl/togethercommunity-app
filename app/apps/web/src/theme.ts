@@ -3768,10 +3768,10 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   padding: '0.75rem',
   backgroundColor: theme.palette.background.paper,
   borderTop: theme.headerRule ?? `1px solid ${theme.palette.divider}`,
-  '& .MuiButton-root': { minHeight: 48, minWidth: 44 },
-  [theme.breakpoints.up('md')]: { bottom: 0 },
-  [theme.breakpoints.down('md')]: {
-    '& .MuiButton-root': { width: '100%' },
+  '& .MuiButton-root': { width: '100%', minHeight: 48, minWidth: 44 },
+  [theme.breakpoints.up('md')]: {
+    bottom: 0,
+    '& .MuiButton-root': { width: 'auto' },
   },
 }));
 

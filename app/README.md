@@ -102,6 +102,8 @@ entirely, while `student structure <courseId>` still resolves it as
 
 ## CLI — the agent feedback loop
 
+See [CLI usage](docs/cli.md) for lesson preview controls and the parity inventory.
+
 ```bash
 pnpm --silent run cli login --email kontakt+smoke-creator@togethercommunity.app --password demo-password-15
 pnpm --silent run cli tenant list
@@ -151,7 +153,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->381<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->382<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

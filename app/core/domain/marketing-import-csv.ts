@@ -7,7 +7,9 @@ import { MARKETING_IMPORT_LIMITS, marketingImportFieldSchema, marketingImportMap
 
 export type MarketingCsv = { headers: string[]; rows: string[][]; delimiter: ',' | ';' };
 const parseRecords = (source: string, delimiter: ',' | ';'): Result<string[][], AppError> => {
-  source = source.replace(/[\r\n \t]+$/, '');
+  let trailingEnd = source.length;
+  while (trailingEnd > 0 && ' \t\r\n'.includes(source[trailingEnd - 1] as string)) trailingEnd -= 1;
+  source = source.slice(0, trailingEnd);
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';

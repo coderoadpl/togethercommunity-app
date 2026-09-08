@@ -29,6 +29,8 @@ provenance trail lives in the private notes.
 
 **Done = `check` green AND `smoke` green.** Static-green is not done; the app
 must actually run. Do not weaken lint rules to make either green.
+Set `E2E_ALLOW_REMOTE_DATABASE_RESET=true` only for disposable CI database
+servers; local runs should use the default local Postgres target.
 
 The toolchain is pinned to Node 24 by `.nvmrc` and `engines.node`, and to pnpm
 10.34.5 by `packageManager`. Run `nvm use` before installing dependencies or

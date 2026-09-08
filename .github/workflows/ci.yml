@@ -180,9 +180,6 @@ jobs:
           name: e2e-${{ matrix.suite }}-failure
           path: |
             app/e2e-artifacts/
-            app/test-results/
-            app/playwright-report/
-            app/blob-report/
           if-no-files-found: ignore
           retention-days: 7
 

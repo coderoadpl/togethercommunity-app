@@ -42,6 +42,8 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const apiBaseUrl = 'https://api-test.ksef.mf.gov.pl/v2';
 const databaseName = uniqueTestDatabaseName('together_ksef_e2e');
+const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, databaseName, process.env);
 const authNamespace = 'http://ksef.mf.gov.pl/auth/token/2.1';
 const signatureNamespace = 'http://www.w3.org/2000/09/xmldsig#';
 const xadesNamespace = 'http://uri.etsi.org/01903/v1.3.2#';
@@ -308,10 +310,7 @@ const run = (
     });
   });
 
-const prepareDatabase = async (
-  baseDatabaseUrl: string,
-): Promise<{ databaseUrl: string; adminUrl: string }> => {
-  assertSafeE2eDatabaseReset(baseDatabaseUrl, databaseName, process.env);
+const prepareDatabase = async (): Promise<{ databaseUrl: string; adminUrl: string }> => {
   const admin = new URL(baseDatabaseUrl);
   admin.pathname = '/postgres';
   const database = new URL(baseDatabaseUrl);
@@ -569,8 +568,7 @@ const main = async (): Promise<void> => {
   let buyerNip = generateNip();
   while (buyerNip === sellerNip) buyerNip = generateNip();
   const minted = await mintTestToken(sellerNip);
-  const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
-  const prepared = await prepareDatabase(baseDatabaseUrl);
+  const prepared = await prepareDatabase();
   try {
     const result = await executeAdapterE2e(
       prepared.databaseUrl,

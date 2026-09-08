@@ -36,11 +36,18 @@ describe('assertSafeE2eDatabaseReset', () => {
     ).not.toThrow();
   });
 
-  it('allows the designated Postgres service host', () => {
+  it('allows smoke and quickstart test database names on a local host', () => {
     expect(() =>
       assertSafeE2eDatabaseReset(
-        'postgres://together:together@postgres:5432/together',
-        'together_e2e_member_shell',
+        'postgres://together:together@localhost:5432/together',
+        'together_smoke_test_123',
+        {},
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertSafeE2eDatabaseReset(
+        'postgres://together:together@localhost:5432/together',
+        'together_quickstart_test_123',
         {},
       ),
     ).not.toThrow();
@@ -54,6 +61,24 @@ describe('assertSafeE2eDatabaseReset', () => {
         {},
       ),
     ).toThrow('the target database name must include "e2e" or "test"');
+  });
+
+  it('refuses an invalid database URL', () => {
+    expect(() =>
+      assertSafeE2eDatabaseReset('not a database URL', 'together_auth_e2e_123', {}),
+    ).toThrow('the resolved database URL is invalid');
+  });
+
+  it('refuses the Postgres service host without an explicit opt-in', () => {
+    expect(() =>
+      assertSafeE2eDatabaseReset(
+        'postgres://together:together@postgres:5432/together',
+        'together_e2e_member_shell',
+        {},
+      ),
+    ).toThrow(
+      'set E2E_ALLOW_REMOTE_DATABASE_RESET=true only for a disposable CI database server',
+    );
   });
 
   it('refuses a remote host without an explicit opt-in', () => {

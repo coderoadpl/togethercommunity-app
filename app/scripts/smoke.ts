@@ -20,6 +20,8 @@ import {
 import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
 import { DEV_EMAIL_DISPATCH_SECRET } from '../apps/server/src/env.js';
+import { assertSafeE2eDatabaseReset } from './e2e-config.js';
+import { passwordFixture } from './password-fixture.js';
 import {
   bootServer,
   delay,
@@ -30,12 +32,12 @@ import {
   tsxBin,
 } from './server-harness.js';
 import { ensureWebBundleFresh } from './web-bundle-freshness.js';
-import { passwordFixture } from './password-fixture.js';
 
-const SMOKE_DB = uniqueTestDatabaseName('together_smoke');
+const SMOKE_DB = uniqueTestDatabaseName('together_smoke_test');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
   'postgres://together:together@localhost:48912/together';
+assertSafeE2eDatabaseReset(baseDatabaseUrl, SMOKE_DB, process.env);
 const smokeUrlObject = new URL(baseDatabaseUrl);
 smokeUrlObject.pathname = `/${SMOKE_DB}`;
 const smokeDatabaseUrl = smokeUrlObject.toString();

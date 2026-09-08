@@ -5,7 +5,7 @@ type DatabaseEnvironment = Readonly<{
 }>;
 
 const defaultDatabaseUrl = 'postgres://together:together@localhost:48912/together';
-const localDatabaseHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]', 'postgres']);
+const localDatabaseHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]']);
 const destructiveDatabaseNamePattern = /(^|_)(e2e|test)(_|$)/;
 const enabledValues = new Set(['1', 'true', 'yes']);
 

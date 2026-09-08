@@ -1,10 +1,11 @@
 import { context, propagation, SpanStatusCode, trace, type Span } from '@opentelemetry/api';
 import {
+  ATTR_HTTP_ROUTE,
   ATTR_HTTP_REQUEST_METHOD,
   ATTR_HTTP_RESPONSE_STATUS_CODE,
-  ATTR_URL_PATH,
 } from '@opentelemetry/semantic-conventions';
 import { type Context, type Next } from 'hono';
+import { matchedRoutes } from 'hono/route';
 
 import type { AppError, Identity, ImpersonationPrincipal } from '#core/domain/index.js';
 
@@ -50,6 +51,15 @@ const annotateImpersonation = (span: Span, impersonation: ImpersonationPrincipal
   span.setAttribute('app.impersonation.actor.email', impersonation.actorEmail);
 };
 
+const matchedConcreteRoutePath = (c: Context<TelemetryVars>): string | undefined => {
+  const routes = matchedRoutes(c);
+  for (let index = routes.length - 1; index >= 0; index -= 1) {
+    const path = routes[index]?.path;
+    if (path && !path.includes('*')) return path;
+  }
+  return undefined;
+};
+
 /**
  * The one request-scoped wide event. Opens a single span, continues an
  * incoming W3C `traceparent`, accrues infra context as the request runs and
@@ -59,16 +69,18 @@ const annotateImpersonation = (span: Span, impersonation: ImpersonationPrincipal
 export const telemetryMiddleware = async (c: Context<TelemetryVars>, next: Next): Promise<void> => {
   const carrier = Object.fromEntries(c.req.raw.headers);
   const parent = propagation.extract(context.active(), carrier);
-  const path = new URL(c.req.url).pathname;
   const startedAt = Date.now();
+  const method = c.req.method;
 
-  await tracer.startActiveSpan(`${c.req.method} ${path}`, {}, parent, async (span) => {
+  await tracer.startActiveSpan(method, {}, parent, async (span) => {
     try {
       await next();
     } finally {
       const status = c.res.status;
-      span.setAttribute(ATTR_HTTP_REQUEST_METHOD, c.req.method);
-      span.setAttribute(ATTR_URL_PATH, path);
+      const routeTemplate = matchedConcreteRoutePath(c);
+      span.updateName(routeTemplate ? `${method} ${routeTemplate}` : method);
+      span.setAttribute(ATTR_HTTP_REQUEST_METHOD, method);
+      if (routeTemplate) span.setAttribute(ATTR_HTTP_ROUTE, routeTemplate);
       span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, status);
       span.setAttribute('http.server.duration_ms', Date.now() - startedAt);
       const identity = c.get('identity');

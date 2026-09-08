@@ -5,6 +5,7 @@ import {
   campaignSends,
   campaigns,
   checkoutConsentCaptures,
+  checkoutConsentJobs,
   consentConfirmationTokens,
   consentDefinitionVersions,
   consentDefinitions,
@@ -88,6 +89,7 @@ export type DemoTenantWipeTable = AnyPgTable & { tenantId: AnyPgColumn };
 export const DEMO_TENANT_WIPE_TABLES: readonly DemoTenantWipeTable[] = [
   autoInvoiceJobs,
   checkoutConsentCaptures,
+  checkoutConsentJobs,
   productDownloadAssets,
   consentConfirmationTokens,
   consentDefinitionVersions,

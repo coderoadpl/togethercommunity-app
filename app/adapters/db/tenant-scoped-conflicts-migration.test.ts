@@ -40,7 +40,7 @@ describe('tenant-scoped conflict migration', () => {
         payments: await migrationDb.select().from(processedPaymentEvents),
         history: await migrationDb.select().from(memberEvents),
       };
-      const migration = readFileSync('drizzle/0108_tenant_scoped_conflicts.sql', 'utf8');
+      const migration = readFileSync('drizzle/0109_tenant_scoped_conflicts.sql', 'utf8');
       await migrationDb.transaction(async (tx) => {
         for (const statement of migration.split('--> statement-breakpoint')) {
           await tx.execute(sql.raw(statement));

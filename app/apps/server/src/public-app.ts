@@ -73,6 +73,7 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
+import { readJson, requireJsonContentType } from './read-json.js';
 import type { AppVars } from './app-vars.js';
 import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerCrawlerFiles } from './crawler-files.js';
@@ -175,6 +176,7 @@ const withAuthDeliveryContext = async (
   }) => Promise<void> | void,
   clearContext: (email: string) => void,
 ): Promise<Response> => {
+  requireJsonContentType(c.req.raw);
   const rawBody = await c.req.text();
   let payload: unknown = null;
   try {
@@ -614,7 +616,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = couponCheckoutValidationRequestSchema.safeParse(body);
     if (!parsed.success) {
       return respondPublic(err(validation('Invalid coupon payload', parsed.error.flatten())));
@@ -661,7 +663,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
     if (parsed.data.couponCode === undefined) {
@@ -762,7 +764,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   });
 
   app.post(API_PATHS.authResolve, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = authResolveRequestSchema.safeParse(body);
     if (!parsed.success) {
       return respondPublic(err(validation('Invalid sign-in lookup payload', parsed.error.flatten())));

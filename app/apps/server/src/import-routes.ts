@@ -23,12 +23,11 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
+import { readJson } from './read-json.js';
 import { authenticateMarketingApiKey } from './marketing-routes.js';
 import { respond } from './respond.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
-
-const readJson = async (request: Request): Promise<unknown> => request.json().catch(() => null);
 
 const retryHeaders = <T>(result: Result<T, AppError>): HeadersInit | undefined => {
   if (result.ok || result.error.code !== 'rate_limited') return undefined;

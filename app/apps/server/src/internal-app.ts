@@ -404,6 +404,7 @@ import {
 
 import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
+import { readJson } from './read-json.js';
 import { impersonationDeps } from './impersonation-guard.js';
 import { checkoutConsentEvidence } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
@@ -772,7 +773,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!tenant.value) return respond(err(tenantNotFound()));
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
     if (!user) return respond(err(unauthorized()));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = termsConsentRequestSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid consent payload', parsed.error.flatten())));
@@ -789,7 +790,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   app.post(API_PATHS.tenants, async (c) => {
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
     if (!user) return respond(err(unauthorized()));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = tenantCreateInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid tenant payload', parsed.error.flatten())));
@@ -804,7 +805,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       if (!tenant.ok) return respond(tenant);
       if (!tenant.value) return respond(err(tenantNotFound()));
 
-      const body: unknown = await c.req.json().catch(() => null);
+      const body: unknown = await readJson(c.req.raw);
       const parsed = simulatePurchaseInputSchema.safeParse(body);
       if (!parsed.success) return respond(err(validation('Invalid purchase payload', parsed.error.flatten())));
 
@@ -1015,7 +1016,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       if (!tenant.ok) return respond(tenant);
       if (!tenant.value) return respond(err(tenantNotFound()));
 
-      const body: unknown = await c.req.json().catch(() => null);
+      const body: unknown = await readJson(c.req.raw);
       const parsed = devGrantInputSchema.safeParse(body);
       if (!parsed.success) return respond(err(validation('Invalid grant payload', parsed.error.flatten())));
 
@@ -1031,7 +1032,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         if (!tenant.ok) return respond(tenant);
         if (!tenant.value) return respond(err(tenantNotFound()));
 
-        const body: unknown = await c.req.json().catch(() => null);
+        const body: unknown = await readJson(c.req.raw);
         const parsed = subscriptionSimulateInputSchema.safeParse(body);
         if (!parsed.success) return respond(err(validation('Invalid subscription payload', parsed.error.flatten())));
 
@@ -1060,7 +1061,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(forbidden('enrollment:create is not permitted')));
     }
 
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = m2mEnrollRequestSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid enrollment payload', parsed.error.flatten())));
 
@@ -1133,7 +1134,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingConsentDefinitionCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid consent definition payload', parsed.error.flatten())));
     return respond(await createMarketingConsentDefinition(ctxOf(c), parsed.data, {
@@ -1152,7 +1153,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingConsentDefinitionUpdate, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingConsentDefinitionUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid consent definition payload', parsed.error.flatten())));
     return respond(await updateMarketingConsentDefinition(ctxOf(c), parsed.data, {
@@ -1171,7 +1172,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingCampaigns, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingCampaignCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign payload', parsed.error.flatten())));
     const result = await createCampaign(ctxOf(c), parsed.data, {
@@ -1184,7 +1185,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingCampaignSchedule, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingCampaignScheduleInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign schedule payload', parsed.error.flatten())));
     const result = await scheduleCampaign(ctxOf(c), parsed.data, {
@@ -1206,7 +1207,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingCampaignUpdate, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingCampaignUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign payload', parsed.error.flatten())));
     return respond(await updateMarketingCampaign(ctxOf(c), parsed.data, {
@@ -1216,7 +1217,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingCampaignAction, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingCampaignActionInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign action payload', parsed.error.flatten())));
     const campaignDeps = {
@@ -1233,7 +1234,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingCampaignTest, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingCampaignActionInputSchema.pick({ campaignId: true }).safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign test payload', parsed.error.flatten())));
     const resolveOrigin = createTenantOriginResolver(deps);
@@ -1256,7 +1257,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingAudiencePreview, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingAudiencePreviewInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid audience preview payload', parsed.error.flatten())));
     return respond(await previewMarketingAudience(ctxOf(c), parsed.data, {
@@ -1271,7 +1272,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingDocuments, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingDocumentCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid hosted document payload', parsed.error.flatten())));
     return respond(await createTenantDocument(ctxOf(c), parsed.data, {
@@ -1288,7 +1289,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingDocumentUpdate, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingDocumentUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid hosted document payload', parsed.error.flatten())));
     return respond(await saveTenantDocumentDraft(ctxOf(c), parsed.data, {
@@ -1298,7 +1299,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingDocumentPublish, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingDocumentPublishInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid hosted document publish payload', parsed.error.flatten())));
     return respond(await publishTenantDocument(ctxOf(c), parsed.data, {
@@ -1313,7 +1314,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingLayouts, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingLayoutSaveInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid e-mail layout payload', parsed.error.flatten())));
     return respond(await saveEmailLayout(ctxOf(c), parsed.data, {
@@ -1343,7 +1344,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingSesSettings, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingSesSettingsUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid SES settings payload', parsed.error.flatten())));
     return respond(await updateTenantSesMarketingSettings(ctxOf(c), parsed.data, {
@@ -1391,7 +1392,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (deps.marketing?.sesOnboarding === undefined) {
       return respond(err(internal('SES onboarding is not configured')));
     }
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingSesIdentityStartInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid SES identity payload', parsed.error.flatten())));
     return respond(await startSesIdentityVerification(ctxOf(c), parsed.data, {
@@ -1501,7 +1502,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.marketingStaffSuppressions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = marketingSuppressionCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid suppression payload', parsed.error.flatten())));
     const result = await addManualSuppression(ctxOf(c), parsed.data, {
@@ -1543,7 +1544,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.impersonationStart, async (c) => {
-    const parsed = impersonationStartRequestSchema.safeParse(await c.req.json().catch(() => null));
+    const parsed = impersonationStartRequestSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) {
       return respond(err(validation('Invalid impersonation payload', parsed.error.flatten())));
     }
@@ -1577,7 +1578,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.meProfile, async (c) => {
-    const parsed = meProfileUpdateInputSchema.safeParse(await c.req.json().catch(() => null));
+    const parsed = meProfileUpdateInputSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) {
       return respond(err(validation('Invalid profile payload', parsed.error.flatten())));
     }
@@ -1620,7 +1621,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   )));
 
   app.post(API_PATHS.accountSessionRevoke, async (c) => {
-    const parsed = accountSessionRevokeInputSchema.safeParse(await c.req.json().catch(() => null));
+    const parsed = accountSessionRevokeInputSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) {
       return respond(err(validation('Invalid session payload', parsed.error.flatten())));
     }
@@ -1689,7 +1690,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.memberErasureRequest, async (c) => {
-    const parsed = memberErasureRequestCreateInputSchema.safeParse(await c.req.json());
+    const parsed = memberErasureRequestCreateInputSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) {
       return respond(err(validation('Invalid erasure request', parsed.error.flatten())));
     }
@@ -1748,7 +1749,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.memberErasureReject, async (c) => {
-    const parsed = memberErasureRejectInputSchema.safeParse(await c.req.json());
+    const parsed = memberErasureRejectInputSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) {
       return respond(err(validation('Invalid erasure rejection', parsed.error.flatten())));
     }
@@ -1782,7 +1783,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productDownloadUpload, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = productDownloadUploadRequestSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid download payload', parsed.error.flatten())));
     const result = await beginProductDownloadUpload(
@@ -1838,32 +1839,32 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.courseCoverUpload, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     return respondImageAssetUpload(beginCourseCoverUpload, ctxOf(c), body, deps);
   });
 
   app.post(API_PATHS.courseCoverComplete, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     return respondImageAssetCompletion(completeCourseCoverUpload, ctxOf(c), body, deps);
   });
 
   app.post(API_PATHS.productCoverUpload, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     return respondImageAssetUpload(beginProductCoverUpload, ctxOf(c), body, deps);
   });
 
   app.post(API_PATHS.productCoverComplete, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     return respondImageAssetCompletion(completeProductCoverUpload, ctxOf(c), body, deps);
   });
 
   app.post(API_PATHS.brandingAssetUpload, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     return respondImageAssetUpload(beginBrandingAssetUpload, ctxOf(c), body, deps);
   });
 
   app.post(API_PATHS.brandingAssetComplete, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     return respondImageAssetCompletion(completeBrandingAssetUpload, ctxOf(c), body, deps);
   });
 
@@ -1917,7 +1918,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.memberBan, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = memberBanInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid member ban payload', parsed.error.flatten())));
     const result = await setMemberBanned(ctxOf(c), parsed.data, deps);
@@ -1957,7 +1958,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.memberProgressReset, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = memberProgressResetInputSchema.safeParse(
       typeof body === 'object' && body !== null
         ? { ...body, memberId: c.req.param('memberId') }
@@ -1975,7 +1976,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.grantsCreate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = grantCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid grant payload', parsed.error.flatten())));
     return respond(await grantProductToMember(ctxOf(c), parsed.data, deps));
@@ -1993,7 +1994,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.apiKeys, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = apiKeyCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid API key payload', parsed.error.flatten())));
     const result = await createTenantApiKey(ctxOf(c), parsed.data, deps);
@@ -2030,7 +2031,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   );
 
   app.post(API_PATHS.tenantSecrets, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = tenantSecretSetInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid secret payload', parsed.error.flatten())));
     const marketing = deps.marketing;
@@ -2119,7 +2120,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.tenantRedirectCreate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = tenantRedirectCreateSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid redirect payload', parsed.error.flatten())));
     const result = await createTenantRedirect(ctxOf(c), parsed.data, tenantRedirectDeps);
@@ -2127,7 +2128,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.tenantRedirectDelete, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = tenantRedirectDeleteSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid redirect payload', parsed.error.flatten())));
     const result = await deleteTenantRedirect(ctxOf(c), parsed.data, tenantRedirectDeps);
@@ -2140,7 +2141,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   const parseTenantDomainInput = async (c: Context<AppVars>) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     return tenantDomainInputSchema.safeParse(body);
   };
 
@@ -2170,7 +2171,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.tenantSettingsUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = tenantSettingsUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid tenant settings payload', parsed.error.flatten())));
     const result = await updateTenantSettings(ctxOf(c), parsed.data, deps);
@@ -2198,7 +2199,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.integrationTest, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = integrationTestInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid integration test payload', parsed.error.flatten())));
     return respond(await testIntegration(
@@ -2218,7 +2219,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.storageProbe, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = storageProbeInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid storage probe payload', parsed.error.flatten())));
     return respond(await probeStorageConnection(
@@ -2232,7 +2233,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.storageConfigure, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = storageConfigureInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid storage configuration payload', parsed.error.flatten())));
     return respond(await configureStorageConnection(
@@ -2243,7 +2244,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.stripeConfigure, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = stripeConfigureInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid Stripe configuration', parsed.error.flatten())));
     return respond(await configureStripe(
@@ -2286,7 +2287,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   );
 
   app.post(API_PATHS.products, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = productsCreateInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid product payload', parsed.error.flatten())));
@@ -2296,7 +2297,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productsUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = productsUpdateInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid product update payload', parsed.error.flatten())));
@@ -2306,7 +2307,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productsPublish, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = productsPublishInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid publish payload', parsed.error.flatten())));
@@ -2316,7 +2317,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productsUnpublish, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = productsUnpublishInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid unpublish payload', parsed.error.flatten())));
@@ -2326,7 +2327,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productsAccessItems, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = productsAccessItemsInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid product access items payload', parsed.error.flatten())));
@@ -2346,7 +2347,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productPricesCreate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = productPriceCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid price payload', parsed.error.flatten())));
     const result = await createProductPrice(ctxOf(c), parsed.data, deps);
@@ -2354,7 +2355,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productPriceDeactivate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = productPriceDeactivateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid price payload', parsed.error.flatten())));
     const result = await deactivateProductPrice(ctxOf(c), parsed.data, deps);
@@ -2569,7 +2570,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.couponArchive, async (c) => {
     if (deps.coupons === undefined) return respond(err(internal('Coupon management is unavailable')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = couponArchiveRequestSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid coupon archive payload', parsed.error.flatten())));
     return respond(
@@ -2625,7 +2626,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.post(API_PATHS.couponsCreate, async (c) => {
     if (deps.coupons === undefined) return respond(err(internal('Coupon management is unavailable')));
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = couponCreateRequestSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid coupon payload', parsed.error.flatten())));
     return respond(
@@ -2654,7 +2655,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.courses, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = courseCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid course payload', parsed.error.flatten())));
     const result = await createCourse(ctxOf(c), parsed.data, deps);
@@ -2662,7 +2663,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.coursesUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = courseUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid course update payload', parsed.error.flatten())));
     const result = await updateCourse(ctxOf(c), parsed.data, deps);
@@ -2677,7 +2678,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.coursesHistoryRestore, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = contentVersionRestoreInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid restore request', parsed.error.flatten())));
     const result = await restoreContentVersion(ctxOf(c), parsed.data, deps);
@@ -2699,7 +2700,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.modulesCreate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = moduleCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid module payload', parsed.error.flatten())));
     const result = await createModule(ctxOf(c), parsed.data, deps);
@@ -2707,7 +2708,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.modulesUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = moduleUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid module update payload', parsed.error.flatten())));
     const result = await updateModule(ctxOf(c), parsed.data, deps);
@@ -2715,7 +2716,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.modulesAttach, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = moduleAttachInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid module attach payload', parsed.error.flatten())));
     const result = await attachModuleToCourse(ctxOf(c), parsed.data, deps);
@@ -2723,7 +2724,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.modulesDetach, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = moduleDetachInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid module detach payload', parsed.error.flatten())));
     const result = await detachModuleFromCourse(ctxOf(c), parsed.data, deps);
@@ -2736,7 +2737,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.lessonsCreate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = lessonCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson payload', parsed.error.flatten())));
     const result = await createLesson(ctxOf(c), parsed.data, deps);
@@ -2744,7 +2745,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.lessonsUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = lessonUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson update payload', parsed.error.flatten())));
     const result = await updateLesson(ctxOf(c), parsed.data, deps);
@@ -2775,7 +2776,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.lessonAttachmentUpload, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = lessonAttachmentUploadRequestSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid attachment payload', parsed.error.flatten())));
     const result = await beginLessonAttachmentUpload(
@@ -2864,7 +2865,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.studentLessonComplete, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = lessonCompleteInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson completion payload', parsed.error.flatten())));
     const result = await markLessonCompleted(ctxOf(c), parsed.data.lessonId, deps);
@@ -2872,7 +2873,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.studentLessonUncomplete, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = lessonUncompleteInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson un-completion payload', parsed.error.flatten())));
     const result = await unmarkLessonCompleted(ctxOf(c), parsed.data.lessonId, deps);
@@ -2880,7 +2881,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.studentLastViewed, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = lastViewedInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid last-viewed payload', parsed.error.flatten())));
     const result = await updateLastViewed(ctxOf(c), parsed.data, deps);
@@ -2902,7 +2903,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.postsCreate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = postCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid post payload', parsed.error.flatten())));
     const result = await createPost(ctxOf(c), parsed.data, deps);
@@ -2910,7 +2911,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.supportMessage, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = supportMessageInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid support message', parsed.error.flatten())));
@@ -2921,7 +2922,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   if (deps.platformReset !== undefined) {
     const platformReset = deps.platformReset;
     app.post(API_PATHS.platformDataReset, async (c) => {
-      const body: unknown = await c.req.json().catch(() => null);
+      const body: unknown = await readJson(c.req.raw);
       const parsed = platformDataResetInputSchema.safeParse(body);
       if (!parsed.success) {
         return respond(err(validation('Invalid data reset payload', parsed.error.flatten())));
@@ -2946,7 +2947,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   }
 
   app.post(API_PATHS.postsPin, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = postPinInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid post pin payload', parsed.error.flatten())));
@@ -2960,7 +2961,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.postsReport, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = postReportInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid report payload', parsed.error.flatten())));
     const result = await reportPost(ctxOf(c), parsed.data, deps);
@@ -2979,7 +2980,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.reportResolve, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = reportResolveInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid report resolution', parsed.error.flatten())));
     const result = await resolveReport(ctxOf(c), parsed.data, deps);
@@ -2998,7 +2999,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.dmReportResolve, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = dmReportResolveInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid report resolution', parsed.error.flatten())));
     const result = await resolveDmReport({ identity: c.get('identity') }, parsed.data, deps);
@@ -3006,7 +3007,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.postsUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = postUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid post update payload', parsed.error.flatten())));
     const result = await editPost(ctxOf(c), parsed.data, deps);
@@ -3033,13 +3034,13 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.threadSubscribe, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const result = await subscribeThread(ctxOf(c), body, deps);
     return respond(result);
   });
 
   app.post(API_PATHS.threadMute, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const result = await muteThread(ctxOf(c), body, deps);
     return respond(result);
   });
@@ -3057,14 +3058,14 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.postsReact, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = postReactInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid reaction payload', parsed.error.flatten())));
     return respond(await reactToPost(ctxOf(c), parsed.data, deps));
   });
 
   app.post(API_PATHS.postsUnreact, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = postReactInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid reaction payload', parsed.error.flatten())));
     return respond(await unreactToPost(ctxOf(c), parsed.data, deps));
@@ -3081,7 +3082,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.spacesArchive, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = spaceArchiveInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid space archive payload', parsed.error.flatten())));
     const result = await setSpaceArchived(ctxOf(c), parsed.data, deps);
@@ -3089,7 +3090,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.spaces, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = spaceCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid space payload', parsed.error.flatten())));
     const result = await createSpace(ctxOf(c), parsed.data, deps);
@@ -3097,7 +3098,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.spacesUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = spaceUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid space update payload', parsed.error.flatten())));
     const result = await updateSpace(ctxOf(c), parsed.data, deps);
@@ -3122,14 +3123,14 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.spaceFollow, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = spaceFollowInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid space follow payload', parsed.error.flatten())));
     return respond(await followSpace(ctxOf(c), parsed.data, deps));
   });
 
   app.post(API_PATHS.spaceUnfollow, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = spaceFollowInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid space follow payload', parsed.error.flatten())));
     return respond(await unfollowSpace(ctxOf(c), parsed.data, deps));
@@ -3163,7 +3164,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.eventsCreate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = eventCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid event payload', parsed.error.flatten())));
     const result = await createEvent(ctxOf(c), parsed.data, deps);
@@ -3171,7 +3172,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.eventsUpdate, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = eventUpdateInputSchema.safeParse(body);
     if (!parsed.success) {
       return respond(err(validation('Invalid event update payload', parsed.error.flatten())));
@@ -3181,7 +3182,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.eventRsvp, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = eventRsvpInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid rsvp payload', parsed.error.flatten())));
     const result = await rsvpEvent(ctxOf(c), parsed.data, deps);
@@ -3218,7 +3219,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.notificationRead, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = notificationReadInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid notification payload', parsed.error.flatten())));
     const result = await markNotificationRead(ctxOf(c), parsed.data, deps);
@@ -3247,7 +3248,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   );
 
   app.post(API_PATHS.messagesStart, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = messagesStartInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
     const result = await startDmConversation(ctxOf(c), parsed.data, deps);
@@ -3255,7 +3256,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.messagesSend, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = messagesSendInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid message payload', parsed.error.flatten())));
     const result = await sendDmMessage(ctxOf(c), parsed.data, deps);
@@ -3263,14 +3264,14 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.messagesRead, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = messagesReadInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
     return respond(await markDmConversationRead(ctxOf(c), parsed.data, deps));
   });
 
   app.post(API_PATHS.messagesBlock, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = messagesBlockInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
     const result = await blockDmParticipant({ identity: c.get('identity') }, parsed.data, deps);
@@ -3278,7 +3279,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.messagesUnblock, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = messagesBlockInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid conversation payload', parsed.error.flatten())));
     const result = await unblockDmParticipant({ identity: c.get('identity') }, parsed.data, deps);
@@ -3286,7 +3287,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.messagesReport, async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
+    const body: unknown = await readJson(c.req.raw);
     const parsed = dmReportInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid report payload', parsed.error.flatten())));
     const result = await reportDmConversation({ identity: c.get('identity') }, parsed.data, deps);

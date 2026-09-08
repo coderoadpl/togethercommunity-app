@@ -91,6 +91,16 @@ export const getPublicNavigation = async (
     deps.tenants.findSettings(tenant.id),
   ]);
   const publishedProductIds = new Set(products.map((product) => product.id));
+  const productsById = new Map(
+    products.map((product) => [product.id, { id: product.id, title: product.title }]),
+  );
+  const publishedProductIdsForSpace = (space: Pick<Space, 'productIds'>) =>
+    space.productIds.filter((productId) => publishedProductIds.has(productId));
+  const productSummariesForIds = (productIds: string[]) =>
+    productIds.flatMap((productId) => {
+      const product = productsById.get(productId);
+      return product === undefined ? [] : [product];
+    });
   const publicSpaces = spaces.filter((space) => space.publicReadOnly).sort(byPosition);
   const lockedSpaces = spaces
     .filter(
@@ -111,7 +121,10 @@ export const getPublicNavigation = async (
       slug: space.slug,
       name: space.name,
       description: space.description,
+      visibility: space.visibility,
+      publicReadOnly: space.publicReadOnly,
       position: space.position,
+      products: productSummariesForIds(space.productIds),
     })),
     courses: courses
       .filter((course) => course.publiclyVisible)
@@ -121,13 +134,17 @@ export const getPublicNavigation = async (
         description: course.description,
         imageUrl: course.imageUrl,
       })),
-    lockedSpaces: lockedSpaces.map((space) => ({
-      id: space.id,
-      slug: space.slug,
-      name: space.name,
-      description: space.description,
-      productIds: space.productIds,
-    })),
+    lockedSpaces: lockedSpaces.map((space) => {
+      const productIds = publishedProductIdsForSpace(space);
+      return {
+        id: space.id,
+        slug: space.slug,
+        name: space.name,
+        description: space.description,
+        productIds,
+        products: productSummariesForIds(productIds),
+      };
+    }),
   });
 };
 

@@ -208,6 +208,7 @@ describe('marketing management use-cases', () => {
       usage: async () => ({ sent: 0, reserved: 0 }),
       reserve: async () => true,
       settle: async () => undefined,
+      recordCapExemptSend: async () => undefined,
     };
     const read = await getTenantSesMarketingSettings(ctx, { webhookBaseUrl: async () => 'https://tenant.test/api/webhooks/ses' }, {
       settings: repository, secrets, pool, snsDeliveries,
@@ -324,6 +325,7 @@ describe('marketing management use-cases', () => {
       usage: async () => ({ sent: 0, reserved: 0 }),
       reserve: async () => true,
       settle: async () => undefined,
+      recordCapExemptSend: async () => undefined,
     };
     const save = (snsTopicArn: string | null) => updateTenantSesMarketingSettings(ctx, {
       fromAddress: stored.fromAddress, fromName: stored.fromName, identity: stored.identity,
@@ -381,6 +383,7 @@ describe('marketing management use-cases', () => {
           usage: async () => ({ sent: 0, reserved: 0 }),
           reserve: async () => true,
           settle: async () => undefined,
+          recordCapExemptSend: async () => undefined,
         },
         snsDeliveries,
       },
@@ -420,6 +423,7 @@ describe('marketing management use-cases', () => {
       usage: async () => ({ sent: 0, reserved: 0 }),
       reserve: async () => true,
       settle: async () => undefined,
+      recordCapExemptSend: async () => undefined,
     };
     const settings = new InMemoryTenantSesSettingsRepository();
 

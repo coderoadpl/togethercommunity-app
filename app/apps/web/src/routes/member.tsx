@@ -39,6 +39,19 @@ export const CourseStructureRoute = () => {
   return <CourseStructurePage courseId={params.courseId ?? ''} />;
 };
 
+export const validateAccountSearch = (search: Record<string, unknown>) => ({
+  tab: search['tab'] === 'security'
+    || search['tab'] === 'notifications'
+    || search['tab'] === 'playback'
+    ? search['tab']
+    : 'profile',
+});
+
+export const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {
+  const thread = search['thread'];
+  return typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {};
+};
+
 export const LessonPlayerRoute = () => {
   const params = useParams({ strict: false });
   const { thread } = useSearch({ strict: false });
@@ -51,7 +64,10 @@ export const LessonPlayerRoute = () => {
   );
 };
 
-export const NotificationsRoute = () => <NotificationsPage />;
+export const NotificationsRoute = () => {
+  const { filter } = useSearch({ strict: false });
+  return <NotificationsPage filter={filter === 'unread' ? 'unread' : 'all'} />;
+};
 
 export const MessagesRoute = () => <MessagesListPage />;
 

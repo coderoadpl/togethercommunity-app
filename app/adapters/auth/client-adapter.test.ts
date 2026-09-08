@@ -462,3 +462,19 @@ describe('two-factor and passkey client semantics', () => {
     ]);
   });
 });
+
+describe('authenticated passkey recording', () => {
+  it('forwards the supplied session and normalizes the provider response', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      { id: 'studio-passkey', name: null, createdAt: '2026-07-01T12:00:00Z' },
+    ]), { headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetch);
+    const auth = createBetterAuthClientAdapter('https://studio.example', { Authorization: 'Bearer studio-session' });
+    expect(await auth.listPasskeys()).toEqual({ ok: true, value: [
+      { id: 'studio-passkey', name: '', createdAt: '2026-07-01T12:00:00.000Z' },
+    ] });
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(String(url)).toBe('https://studio.example/api/auth/passkey/list-user-passkeys');
+    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer studio-session');
+  });
+});

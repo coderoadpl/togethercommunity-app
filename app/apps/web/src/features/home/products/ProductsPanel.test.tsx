@@ -153,6 +153,11 @@ const renderProductsPanel = async (
       assets = [asset];
       return HttpResponse.json({ ok: true, data: { asset } });
     }),
+    http.delete('/api/products/:productId/downloads/:assetId', ({ params }) => {
+      const assetId = String(params['assetId']);
+      assets = assets.filter((asset) => asset.id !== assetId);
+      return HttpResponse.json({ ok: true, data: { deleted: true } });
+    }),
     http.post('/api/products/prices', async ({ request }) => {
       const body = await request.json();
       const parsed = typeof body === 'object' && body !== null ? body : {};
@@ -228,7 +233,7 @@ const renderProductsPanel = async (
 };
 
 describe('ProductsPanel', () => {
-  it('lists products, creates a product without the legacy price field, and publishes a draft', async () => {
+  it('lists products and publishes a draft after confirmation', async () => {
     await renderProductsPanel();
 
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();
@@ -247,8 +252,11 @@ describe('ProductsPanel', () => {
       expect(screen.getByText(pl.products.published)).toBeInTheDocument();
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
 
-    await userEvent.click(screen.getByRole('link', { name: `+ ${pl.common.add}` }));
+  it('opens product creation from the list and continues at the price editor', async () => {
+    await renderProductsPanel();
+    await userEvent.click(await screen.findByRole('link', { name: `+ ${pl.common.add}` }));
     await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'New Workshop');
     await userEvent.type(screen.getByLabelText(pl.common.description), 'Hands-on session');
     await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
@@ -258,15 +266,18 @@ describe('ProductsPanel', () => {
   });
 
   it.each(PRODUCT_TYPES)('creates a %s product from the panel', async (type) => {
+    const user = userEvent.setup();
     const { created } = await renderProductsPanel([], '/panel/products/new');
 
-    await userEvent.click(await screen.findByRole('combobox', { name: pl.products.typeLabel }));
-    await userEvent.click(screen.getByRole('option', { name: productTypeLabel(type, pl) }));
-    await userEvent.type(screen.getByLabelText(pl.products.titleLabel), 'Creator Club');
-    await userEvent.type(screen.getByLabelText(pl.products.coverUrlLabel), 'https://cdn.test/cover.jpg');
+    await user.click(await screen.findByRole('combobox', { name: pl.products.typeLabel }));
+    await user.click(screen.getByRole('option', { name: productTypeLabel(type, pl) }));
+    await user.type(screen.getByLabelText(pl.products.titleLabel), 'Creator Club');
+    await user.click(screen.getByLabelText(pl.products.coverUrlLabel));
+    await user.paste('https://cdn.test/cover.jpg');
     expect(screen.getByTestId('product-cover-preview')).toHaveAttribute('src', 'https://cdn.test/cover.jpg');
-    await userEvent.type(screen.getByLabelText(pl.common.description), '<strong>Members only</strong>');
-    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
+    await user.click(screen.getByLabelText(pl.common.description));
+    await user.paste('<strong>Members only</strong>');
+    await user.click(screen.getByRole('button', { name: pl.products.create }));
 
     expect(await screen.findByRole('heading', { name: 'Creator Club', level: 1 })).toBeInTheDocument();
     expect(created).toEqual([
@@ -351,6 +362,36 @@ describe('ProductsPanel', () => {
     expect(await screen.findByText('workbook.pdf')).toBeInTheDocument();
     expect(screen.getByText(pl.products.downloadStatusReady)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: pl.access.heading, level: 2 })).toBeInTheDocument();
+  });
+
+  it('confirms before deleting a digital download asset', async () => {
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const download: Product = {
+      ...baseProduct,
+      id: 'download-1',
+      type: 'digital_download',
+      slug: 'creator-workbook',
+      title: 'Creator workbook',
+    };
+    const asset: ProductDownloadAssetMetadata = {
+      id: 'asset-1',
+      productId: download.id,
+      fileName: 'workbook.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 7,
+      status: 'ready',
+      createdAt: '2026-07-12T12:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/download-1', [download], [], [asset]);
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.products.deleteDownload({ name: asset.fileName }) }));
+
+    expect(await screen.findByText(pl.products.deleteDownloadConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(pl.products.deleteDownloadConfirmBody({ name: asset.fileName }))).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('product-download-delete-confirm'));
+
+    await waitFor(() => expect(screen.queryByText(asset.fileName)).not.toBeInTheDocument());
   });
 
   it('shows the product type of every listed product', async () => {

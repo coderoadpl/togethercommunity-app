@@ -15,7 +15,7 @@ import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { anonymousMe, memberMe, server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { RegisterPage } from './RegisterPage.js';
 
@@ -40,11 +40,14 @@ const renderRegisterPage = async (hostname?: string) => {
     history: createMemoryHistory({ initialEntries: ['/register'] }),
   });
   await router.load();
-  return renderWithProviders(
-    <ThemeModeProvider>
-      <RouterProvider router={router} />
-    </ThemeModeProvider>,
-  );
+  return {
+    ...renderWithProviders(
+      <ThemeModeProvider>
+        <RouterProvider router={router} />
+      </ThemeModeProvider>,
+    ),
+    router,
+  };
 };
 
 const tenantOffer = (legal: { termsUrl: string | null; privacyUrl: string | null }) => ({
@@ -62,8 +65,17 @@ const noTenantOffer = http.get('/api/public/offer', () =>
 afterEach(() => vi.unstubAllEnvs());
 
 describe('RegisterPage', () => {
+  it('redirects a signed-in tenant member to home', async () => {
+    server.use(memberMe());
+
+    const view = await renderRegisterPage();
+
+    expect(await screen.findByText('Home after registration')).toBeInTheDocument();
+    expect(view.router.state.location.pathname).toBe('/');
+  });
+
   it('sits on the auth shell, signed once with the Together wordmark', async () => {
-    server.use(noTenantOffer);
+    server.use(anonymousMe(), noTenantOffer);
 
     await renderRegisterPage();
 
@@ -78,6 +90,7 @@ describe('RegisterPage', () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     let offerCalls = 0;
     server.use(
+      anonymousMe(),
       http.get('/api/public/offer', () => {
         offerCalls += 1;
         return HttpResponse.json(
@@ -97,6 +110,7 @@ describe('RegisterPage', () => {
   it('blocks a password below the shared minimum', async () => {
     let requested = false;
     server.use(
+      anonymousMe(),
       noTenantOffer,
       http.post('*', () => {
         requested = true;
@@ -118,6 +132,7 @@ describe('RegisterPage', () => {
 
   it('creates an account and lands on home', async () => {
     server.use(
+      anonymousMe(),
       noTenantOffer,
       http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })),
     );
@@ -134,6 +149,7 @@ describe('RegisterPage', () => {
 
   it('accepts configured documents and lands on home when a tenant offer resolves on the bare host', async () => {
     server.use(
+      anonymousMe(),
       http.get('/api/public/offer', () =>
         HttpResponse.json({
           ok: true,
@@ -161,6 +177,7 @@ describe('RegisterPage', () => {
     const signupBodies: unknown[] = [];
     const signupLanguages: Array<string | null> = [];
     server.use(
+      anonymousMe(),
       http.get('/api/public/offer', () =>
         HttpResponse.json({
           ok: true,
@@ -214,6 +231,7 @@ describe('RegisterPage', () => {
 
   it('shows no consent checkbox on a tenant without configured documents', async () => {
     server.use(
+      anonymousMe(),
       http.get('/api/public/offer', () =>
         HttpResponse.json({ ok: true, data: tenantOffer({ termsUrl: null, privacyUrl: null }) }),
       ),

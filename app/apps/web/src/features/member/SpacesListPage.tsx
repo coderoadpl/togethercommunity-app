@@ -32,7 +32,6 @@ export const SpacesListPage = () => {
     return (
       <MemberSurface
         title={t.community.heading}
-        eyebrow={t.community.listEyebrow}
         width="wide"
         state={{ kind: 'loading', label: t.community.loadingSpaces }}
       />
@@ -45,7 +44,6 @@ export const SpacesListPage = () => {
     return (
       <MemberSurface
         title={t.community.heading}
-        eyebrow={t.community.listEyebrow}
         width="wide"
         state={{
           kind: 'error',
@@ -57,7 +55,7 @@ export const SpacesListPage = () => {
   }
 
   return (
-    <MemberSurface title={t.community.heading} eyebrow={t.community.listEyebrow} width="wide">
+    <MemberSurface title={t.community.heading} width="wide">
       {spaces.data.spaces.length === 0 ? (
         <StatusView
           state={{

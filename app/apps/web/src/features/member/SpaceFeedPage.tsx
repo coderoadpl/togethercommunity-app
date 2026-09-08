@@ -22,10 +22,10 @@ import {
 import { EmptyFeedIcon } from './community-icons.js';
 import { LiveNowBanner } from './events/LiveNowBanner.js';
 import { SpaceEventsSection } from './events/SpaceEventsSection.js';
-import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
-import { LockedSpaceCard } from './SpaceCards.js';
+import { LockedSpaceCard, SpaceVisibilityChip } from './SpaceCards.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
@@ -61,7 +61,7 @@ const FeedPost = ({
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`feed-post-${item.id}`}>
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}>
-          <MemberAvatar name={item.authorDisplay} avatarUrl={item.authorAvatarUrl} size="sm" />
+          <UserAvatar name={item.authorDisplay} imageUrl={item.authorAvatarUrl} size="sm" />
           <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
           {item.authorIsStaff && <AuthorChip data-testid={`author-chip-${item.id}`}>{t.discussion.authorChip}</AuthorChip>}
           {item.pinnedAt !== null ? (
@@ -172,6 +172,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   const { mutate: markSeen } = useMutation({
     ...actions.markSpaceSeen,
+    onError: (error) => console.warn('Failed to mark space seen', error),
     onSettled: () => queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
   });
   const invalidateSpaces = async () => {
@@ -248,7 +249,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   if (space === undefined && locked !== undefined) {
     return (
-      <MemberSurface title={locked.name} eyebrow={t.community.feedEyebrow} width="prose">
+      <MemberSurface title={locked.name} eyebrow={t.community.feedEyebrow} width="wide">
         <Box data-testid="locked-space-view">
           <LockedSpaceCard space={locked} />
         </Box>
@@ -297,12 +298,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
         <PostBody variant="body2" component="p" color="text.secondary">
           {space.description ?? t.community.noDescription}
         </PostBody>
-        <Chip
-          size="small"
-          variant="outlined"
-          label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
-          sx={{ alignSelf: 'flex-start' }}
-        />
+        <SpaceVisibilityChip space={space} />
         <Box>
           <Button
             variant={isFollowing ? 'outlined' : 'contained'}

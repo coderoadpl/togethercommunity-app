@@ -1,0 +1,59 @@
+{
+  "brand": {
+    "settings": {
+      "accentColor": "#0E7490",
+      "autoIssueInvoices": false,
+      "autoIssueInvoiceScope": "b2b_only",
+      "billingPortalUrl": null,
+      "bunnyStreamCdnHostname": null,
+      "bunnyStreamLibraryId": null,
+      "defaultHomeSpaceId": null,
+      "defaultLanguage": "pl",
+      "directMessagesEnabled": true,
+      "faviconUrl": "/assets/akademia-logo.svg",
+      "invoiceExemptionBasis": null,
+      "invoiceExemptionBasisKind": null,
+      "invoiceSellerAddress": null,
+      "invoiceSellerName": null,
+      "invoiceVatMode": "rate",
+      "invoiceVatRatePercent": null,
+      "invoicingProvider": null,
+      "logoDarkUrl": null,
+      "logoUrl": "/assets/akademia-wordmark.svg",
+      "memberVideoAutoplayOverride": false,
+      "name": "Akademia Samouka",
+      "ogDescription": null,
+      "ogImageUrl": null,
+      "ogTitle": null,
+      "privacyUrl": null,
+      "socialLinks": [],
+      "supportEmail": null,
+      "supportUrl": null,
+      "termsUrl": null,
+      "videoAutoplayDefault": false
+    },
+    "tenant": {
+      "contentVersion": 1,
+      "id": "tenant-akademia",
+      "name": "Akademia Samouka",
+      "plan": "self_hosted",
+      "slug": "akademia",
+      "status": "active"
+    }
+  },
+  "definitions": [
+    {
+      "active": true,
+      "id": "consent-definition-akademia-news",
+      "label": "Chcę otrzymywać aktualności i praktyczne materiały e-mailem",
+      "pendingConfirmation": false
+    }
+  ],
+  "email": "kursant.akademia@together.dev",
+  "globallySuppressed": false,
+  "language": "pl",
+  "nonce": "storybook",
+  "scope": "consent:consent-definition-akademia-news",
+  "scopeLabel": "Chcę otrzymywać aktualności i praktyczne materiały e-mailem",
+  "token": "unsubscribe_akademia_visual_123456"
+}

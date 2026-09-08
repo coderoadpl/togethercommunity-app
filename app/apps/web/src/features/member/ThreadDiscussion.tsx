@@ -23,7 +23,7 @@ import {
   PostToolbarButton,
   ReplyIndent,
 } from '../../theme.js';
-import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
 import { useImpersonation } from './viewer.js';
@@ -230,7 +230,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
   return (
     <Box data-testid={`discussion-post-${post.id}`}>
       <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}>
-        <MemberAvatar name={post.authorDisplay} avatarUrl={post.authorAvatarUrl} size="sm" />
+        <UserAvatar name={post.authorDisplay} imageUrl={post.authorAvatarUrl} size="sm" />
         <PostAuthorName component="span">{post.authorDisplay}</PostAuthorName>
         {post.authorIsStaff && (
           <AuthorChip data-testid={`author-chip-${post.id}`}>{t.discussion.authorChip}</AuthorChip>

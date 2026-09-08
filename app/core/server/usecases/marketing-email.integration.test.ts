@@ -4,6 +4,7 @@ import {
   emailEventSchema,
   err,
   integrationAuth,
+  notFound,
   ok,
   SMOKE_TENANT_ID,
   tenantSettingsSchema,
@@ -884,6 +885,7 @@ describe('marketing e-mail use-case integration', () => {
           alreadyDeleted: false,
           authUserErased: true,
           erasureRequestId: null,
+          avatarUrl: null,
         };
       },
     };
@@ -912,6 +914,18 @@ describe('marketing e-mail use-case integration', () => {
         cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
         verifyWebhookEvent: async () =>
           ok({ id: 'evt_1', type: 'ignored', objectId: null, checkoutSession: null }),
+      },
+      secretResolver: { resolve: async () => err(notFound('Storage is not configured')) },
+      storage: {
+        objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+        probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+        probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' as const })),
+        presignPut: (input) => ok(input.url),
+        presignGet: (input) => ok(input.url),
+        delete: async () => ok({ deleted: true }),
+        head: async () => ok({ sizeBytes: 0 }),
+        healthcheck: async () => ok({ healthy: true }),
+        test: async () => ok({ code: 'storage.available', message: 'ok' }),
       },
       logger: { error: () => undefined },
     });

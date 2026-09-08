@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   deletedMemberDisplay,
   err,
+  integrationUnavailable,
   memberTombstone,
   ok,
   validation,
+  type AppError,
   type Identity,
   type Member,
   type MemberErasureRequest,
@@ -13,6 +15,7 @@ import {
   type MemberErasureRequestWithMember,
   type MemberSubscription,
   type MemberWithProductIds,
+  type Result,
 } from '#core/domain/index.js';
 
 import type {
@@ -22,6 +25,7 @@ import type {
   MemberRepository,
   MemberSubscriptionRepository,
   PaymentProvider,
+  StorageProvider,
 } from '../ports.js';
 import {
   exportMembers,
@@ -102,6 +106,7 @@ const erasureFor = (
   byTenant: Record<string, MemberWithProductIds[]>,
   calls: Array<{ tenantId: string; input: MemberPseudonymization }> = [],
   onPseudonymize: (() => void) | undefined = undefined,
+  avatarUrl: string | null = null,
 ): MemberErasurePort => ({
   pseudonymize: async (tenantId, input) => {
     onPseudonymize?.();
@@ -114,6 +119,7 @@ const erasureFor = (
         alreadyDeleted: true,
         authUserErased: false,
         erasureRequestId: null,
+        avatarUrl: null,
       };
     }
     row.deletedAt = input.deletedAt;
@@ -126,6 +132,7 @@ const erasureFor = (
       alreadyDeleted: false,
       authUserErased: true,
       erasureRequestId: null,
+      avatarUrl,
     };
   },
 });
@@ -175,6 +182,33 @@ const paymentFor = (
     ok({ id: 'evt_1', type: 'ignored', objectId: null, checkoutSession: null }),
 });
 
+const STORAGE_CONFIGURATION = JSON.stringify({
+  provider: 'minio',
+  endpoint: 'https://storage.example.test',
+  region: 'eu-central-1',
+  bucket: 'private-assets',
+  accessKeyId: 'access-key',
+  secretAccessKey: 'secret-key',
+});
+
+const storageFor = (
+  deletions: string[],
+  deleteResult: Result<{ deleted: true }, AppError> = ok({ deleted: true }),
+): StorageProvider => ({
+  objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+  probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+  probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' as const })),
+  presignPut: (input) => ok(`${input.url}?signed=put`),
+  presignGet: (input) => ok(`${input.url}?signed=get`),
+  delete: async (input) => {
+    deletions.push(input.url);
+    return deleteResult;
+  },
+  head: async () => ok({ sizeBytes: 1024 }),
+  healthcheck: async () => ok({ healthy: true }),
+  test: async () => ok({ code: 'storage.available', message: 'ok' }),
+});
+
 const depsFor = (
   byTenant: Record<string, MemberWithProductIds[]>,
   calls: Array<{ tenantId: string; input: MemberPseudonymization }> = [],
@@ -183,14 +217,19 @@ const depsFor = (
     cancelSubscription?: PaymentProvider['cancelSubscription'];
     errors?: string[];
     onPseudonymize?: () => void;
+    avatarUrl?: string | null;
+    deletions?: string[];
+    deleteResult?: Result<{ deleted: true }, AppError>;
   } = {},
 ) => ({
   members: membersFor(byTenant),
-  memberErasure: erasureFor(byTenant, calls, options.onPseudonymize),
+  memberErasure: erasureFor(byTenant, calls, options.onPseudonymize, options.avatarUrl ?? null),
   clock,
   ids: { nextId: () => 'event-1' },
   subscriptions: subscriptionsFor(options.subscriptions ?? []),
   payment: paymentFor(options.cancelSubscription),
+  secretResolver: { resolve: async () => ok(STORAGE_CONFIGURATION) },
+  storage: storageFor(options.deletions ?? [], options.deleteResult),
   logger: { error: (message: string) => options.errors?.push(message) },
 });
 
@@ -381,6 +420,58 @@ describe('removeMember', () => {
       deletedAt: clock.nowIso(),
     });
     expect(byTenant['t-globex'][0]).toMatchObject({ id: 'm1', deletedAt: null });
+  });
+
+  it('deletes the stored avatar object cleared by the pseudonymization', async () => {
+    const deletions: string[] = [];
+    const errors: string[] = [];
+
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor({ 't-acme': [memberRow({ id: 'm1' })] }, [], {
+        avatarUrl: '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp',
+        deletions,
+        errors,
+      }),
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(deletions).toEqual([
+      'https://storage.example.test/private-assets/image-assets/t-acme/avatar/00000000-0000-4000-8000-000000000002.webp',
+    ]);
+    expect(errors).toEqual([]);
+  });
+
+  it('reports the erasure and logs the object key when the avatar delete fails', async () => {
+    const errors: string[] = [];
+
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor({ 't-acme': [memberRow({ id: 'm1' })] }, [], {
+        avatarUrl: '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp',
+        deleteResult: err(integrationUnavailable('Storage refused the delete')),
+        errors,
+      }),
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(errors).toEqual([
+      '[member-removal] avatar object delete failed tenant=t-acme member=m1 avatar=/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp error=Storage refused the delete',
+    ]);
+  });
+
+  it('leaves storage untouched when the member has no avatar', async () => {
+    const deletions: string[] = [];
+
+    await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor({ 't-acme': [memberRow({ id: 'm1' })] }, [], { deletions }),
+    );
+
+    expect(deletions).toEqual([]);
   });
 
   it('keeps the member row so exports and sales history survive removal', async () => {

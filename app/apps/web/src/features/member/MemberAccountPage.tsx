@@ -8,15 +8,17 @@ import {
   FormHelperText,
   FormLabel,
   OutlinedInput,
-  Snackbar,
   Stack,
   Switch,
+  Tab,
+  Tabs,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import { AVATAR_IMAGE_MAX_BYTES, resolveVideoAutoplay } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -25,15 +27,26 @@ import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
+import { useToastOutcome } from '../../components/ui/Toast.js';
 import { EmailLanguagePicker, useEmailLanguagePreference } from '../../EmailLanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText } from '../../theme.js';
-import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { useImpersonation } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
+
+type AccountTab = 'profile' | 'security' | 'notifications' | 'playback';
+
+const accountTabFrom = (value: unknown): AccountTab =>
+  value === 'security' || value === 'notifications' || value === 'playback' ? value : 'profile';
+
+const avatarContentType = (value: string): 'image/png' | 'image/jpeg' | 'image/webp' | null => {
+  if (value === 'image/png' || value === 'image/jpeg' || value === 'image/webp') return value;
+  return null;
+};
 
 const SignedInAddress = ({ email, variant }: { email: string; variant: 'card' | 'inline' }) => {
   const t = useTranslations();
@@ -65,6 +78,7 @@ export const MemberAccountPage = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const search = useSearch({ strict: false });
   const me = useQuery(actions.me);
   const impersonating = useImpersonation() !== null;
   const ownAccount = me.data !== undefined && me.data.impersonation === null;
@@ -86,10 +100,23 @@ export const MemberAccountPage = () => {
     },
   });
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const updateProfile = useMutation({
     ...actions.updateMyProfile,
     onSuccess: async () => {
       setDisplayNameDraft(null);
+      await queryClient.invalidateQueries(actions.meInvalidates());
+    },
+  });
+  const uploadAvatar = useMutation({
+    ...actions.uploadAvatar,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.meInvalidates());
+    },
+  });
+  const removeAvatar = useMutation({
+    ...actions.removeAvatar,
+    onSuccess: async () => {
       await queryClient.invalidateQueries(actions.meInvalidates());
     },
   });
@@ -157,11 +184,36 @@ export const MemberAccountPage = () => {
   const changePassword = useMutation(actions.changePassword);
   const resendVerification = useMutation(actions.sendVerificationEmail);
 
+  useToastOutcome(
+    updateProfile.isSuccess,
+    t.account.displayNameSaved,
+    updateProfile.error === null ? null : localizeError(updateProfile.error, t),
+  );
+  useToastOutcome(
+    updatePrivacy.isSuccess,
+    t.messages.optOutSaved,
+    updatePrivacy.error === null ? null : localizeError(updatePrivacy.error, t),
+  );
+  useToastOutcome(
+    updatePlayback.isSuccess,
+    t.account.videoAutoplaySaved,
+    updatePlayback.error === null ? null : localizeError(updatePlayback.error, t),
+  );
+  useToastOutcome(
+    requestPasswordReset.isSuccess,
+    t.account.resetSent,
+    requestPasswordReset.error === null ? null : localizeError(requestPasswordReset.error, t),
+  );
+  useToastOutcome(
+    support.isSuccess,
+    t.support.sent,
+    support.error === null ? null : localizeError(support.error, t),
+  );
+
   if (me.isPending) {
     return (
       <MemberSurface
         title={t.account.title}
-        eyebrow={t.account.heading}
         state={{ kind: 'loading', label: t.common.loading }}
       />
     );
@@ -173,7 +225,6 @@ export const MemberAccountPage = () => {
     return (
       <MemberSurface
         title={t.account.title}
-        eyebrow={t.account.heading}
         state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }}
       />
     );
@@ -183,7 +234,19 @@ export const MemberAccountPage = () => {
   const savedDisplayName = me.data.tenant?.displayName ?? '';
   const dmOptOut = me.data.tenant?.dmOptOut ?? false;
   const emailLanguage = me.data.tenant?.language ?? null;
-  const videoAutoplay = me.data.tenant?.videoAutoplay ?? false;
+  const memberVideoAutoplayOverride =
+    tenantSettings.data?.settings.memberVideoAutoplayOverride === true;
+  const videoAutoplay = tenantSettings.data === undefined
+    ? false
+    : resolveVideoAutoplay(
+        tenantSettings.data.settings,
+        me.data.tenant?.videoAutoplay ?? null,
+      );
+  const requestedTab = accountTabFrom(search['tab']);
+  const selectedTab = (requestedTab === 'security' && impersonating) ||
+    (requestedTab === 'playback' && (me.data.tenant?.memberId == null || !memberVideoAutoplayOverride))
+    ? 'profile'
+    : requestedTab;
   const displayName = displayNameDraft ?? savedDisplayName;
   const passwordSetupInput = {
     email,
@@ -205,9 +268,36 @@ export const MemberAccountPage = () => {
   };
 
   return (
-    <MemberSurface title={t.account.title} eyebrow={t.account.heading}>
-      <Stack component="section" useFlexGap spacing="1.5rem">
-        {me.data.tenant?.memberId ? (
+    <MemberSurface title={t.account.title}>
+      <Tabs
+        value={selectedTab}
+        onChange={(_event, value: AccountTab) => {
+          void navigate({ to: '/account', search: { tab: value } });
+        }}
+        aria-label={t.account.tabsLabel}
+        variant="scrollable"
+        allowScrollButtonsMobile
+      >
+        <Tab id="account-tab-profile" aria-controls="account-panel-profile" value="profile" label={t.account.tabs.profile} />
+        {impersonating ? null : (
+          <Tab id="account-tab-security" aria-controls="account-panel-security" value="security" label={t.account.tabs.security} />
+        )}
+        <Tab id="account-tab-notifications" aria-controls="account-panel-notifications" value="notifications" label={t.account.tabs.notifications} />
+        {me.data.tenant?.memberId == null || !memberVideoAutoplayOverride ? null : (
+          <Tab id="account-tab-playback" aria-controls="account-panel-playback" value="playback" label={t.account.tabs.playback} />
+        )}
+      </Tabs>
+      <Stack
+        component="section"
+        useFlexGap
+        spacing="1.5rem"
+        role="tabpanel"
+        id={`account-panel-${selectedTab}`}
+        aria-labelledby={`account-tab-${selectedTab}`}
+        tabIndex={0}
+        sx={{ mt: '1.5rem' }}
+      >
+        {selectedTab === 'profile' && me.data.tenant?.memberId ? (
           <SectionCard
             title={t.account.profileHeading}
             onSubmit={(event: FormEvent) => {
@@ -217,15 +307,61 @@ export const MemberAccountPage = () => {
           >
             <SignedInAddress email={email} variant="inline" />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <MemberAvatar
+              <UserAvatar
                 name={displayName.trim() === '' ? me.data.name : displayName}
-                avatarUrl={me.data.avatarUrl}
+                email={email}
+                imageUrl={me.data.avatarUrl}
                 size="lg"
               />
               <Typography variant="caption" color="text.secondary">
                 {t.account.avatarHint}
               </Typography>
             </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
+              <Button component="label" variant="outlined" disabled={uploadAvatar.isPending}>
+                {uploadAvatar.isPending ? t.account.avatarUploading : t.account.avatarUpload}
+                <input
+                  hidden
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file !== undefined && file.size > AVATAR_IMAGE_MAX_BYTES) {
+                      setAvatarError(t.account.avatarTooLarge);
+                      return;
+                    }
+                    const contentType = file === undefined ? null : avatarContentType(file.type);
+                    if (file === undefined || contentType === null) return;
+                    setAvatarError(null);
+                    uploadAvatar.mutate({
+                      kind: 'avatar',
+                      fileName: file.name,
+                      contentType,
+                      sizeBytes: file.size,
+                      body: file,
+                    });
+                  }}
+                />
+              </Button>
+              {me.data.avatarUrl === null ? null : (
+                <Button
+                  variant="text"
+                  color="error"
+                  disabled={removeAvatar.isPending}
+                  onClick={() => removeAvatar.mutate(undefined)}
+                >
+                  {t.account.avatarRemove}
+                </Button>
+              )}
+            </Stack>
+            {uploadAvatar.isError ? (
+              <Alert severity="error">{localizeError(uploadAvatar.error, t)}</Alert>
+            ) : null}
+            {avatarError === null ? null : <Alert severity="error">{avatarError}</Alert>}
+            {removeAvatar.isError ? (
+              <Alert severity="error">{localizeError(removeAvatar.error, t)}</Alert>
+            ) : null}
             <FormControl fullWidth>
               <FormLabel htmlFor="account-display-name">{t.account.displayNameLabel}</FormLabel>
               <OutlinedInput
@@ -248,22 +384,19 @@ export const MemberAccountPage = () => {
                 {t.account.displayNameSave}
               </Button>
             </Box>
-            {updateProfile.isError ? (
-              <Alert severity="error">{localizeError(updateProfile.error, t)}</Alert>
-            ) : null}
           </SectionCard>
-        ) : (
+        ) : selectedTab === 'profile' ? (
           <SignedInAddress email={email} variant="card" />
-        )}
+        ) : null}
 
-        {billingOrders.isError ? (
+        {selectedTab === 'profile' && billingOrders.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(billingOrders.error, t), retry: { label: t.common.retry, onRetry: () => void billingOrders.refetch() } }} />
         ) : null}
-        {tenantSettings.isError ? (
+        {selectedTab === 'profile' && tenantSettings.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} />
         ) : null}
 
-        {impersonating ? null : (
+        {selectedTab === 'security' && !impersonating ? (
           <>
             <SectionCard title={t.emailVerification.heading}>
               <EmailVerificationStatus
@@ -299,14 +432,6 @@ export const MemberAccountPage = () => {
                       : t.account.setOrResetPassword}
                   </Button>
                 </Box>
-                {requestPasswordReset.isSuccess ? (
-                  <Typography variant="caption" component="p" data-testid="account-reset-sent">
-                    {t.account.resetSent}
-                  </Typography>
-                ) : null}
-                {requestPasswordReset.isError ? (
-                  <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert>
-                ) : null}
             </SectionCard>
 
             <SectionCard title={t.security.heading} data-testid="account-security-methods">
@@ -382,9 +507,9 @@ export const MemberAccountPage = () => {
               />
             </SectionCard>
           </>
-        )}
+        ) : null}
 
-        {!impersonating && me.data.tenant?.memberId !== undefined && me.data.tenant.memberId !== null ? (
+        {selectedTab === 'notifications' && !impersonating && me.data.tenant?.memberId !== undefined && me.data.tenant.memberId !== null ? (
           <SectionCard
             title={t.messages.privacyHeading}
             description={t.messages.optOutHint}
@@ -400,13 +525,10 @@ export const MemberAccountPage = () => {
               )}
               label={t.messages.optOutLabel}
             />
-            {updatePrivacy.isError ? (
-              <Alert severity="error">{localizeError(updatePrivacy.error, t)}</Alert>
-            ) : null}
           </SectionCard>
         ) : null}
 
-        <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
+        {selectedTab === 'notifications' ? <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
             <EmailLanguagePicker preference={emailLanguagePreference} />
             <ColorSchemeSwitcher />
@@ -432,9 +554,9 @@ export const MemberAccountPage = () => {
               )}
             </>
           )}
-        </SectionCard>
+        </SectionCard> : null}
 
-        {!impersonating && me.data.tenant?.memberId != null ? (
+        {selectedTab === 'playback' && !impersonating && me.data.tenant?.memberId != null && memberVideoAutoplayOverride ? (
           <SectionCard
             title={t.account.playbackHeading}
             description={t.account.playbackIntro}
@@ -451,13 +573,10 @@ export const MemberAccountPage = () => {
               label={t.account.videoAutoplayLabel}
             />
             <FormHelperText>{t.account.videoAutoplayHint}</FormHelperText>
-            {updatePlayback.isError ? (
-              <Alert severity="error">{localizeError(updatePlayback.error, t)}</Alert>
-            ) : null}
           </SectionCard>
         ) : null}
 
-        {billingPortalUrl ? (
+        {selectedTab === 'profile' && billingPortalUrl ? (
           <SectionCard title={t.account.billingHeading} description={t.account.billingIntro}>
               <Box>
                 <Button
@@ -474,7 +593,7 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {billedOrders.length > 0 ? (
+        {selectedTab === 'profile' && billedOrders.length > 0 ? (
           <SectionCard title={t.account.invoiceOrdersHeading}>
             <Stack useFlexGap spacing="1rem">
               {billedOrders.map((order) => (
@@ -512,7 +631,7 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {tenantSettings.data?.settings.supportConfigured === true ? (
+        {selectedTab === 'profile' && tenantSettings.data?.settings.supportConfigured === true ? (
           <SectionCard
             title={t.support.heading}
             description={t.support.intro}
@@ -550,14 +669,10 @@ export const MemberAccountPage = () => {
                 {support.isPending ? t.support.sending : t.support.send}
               </Button>
             </Box>
-            {support.isSuccess ? <Typography>{t.support.sent}</Typography> : null}
-            {support.isError ? (
-              <Alert severity="error">{localizeError(support.error, t)}</Alert>
-            ) : null}
           </SectionCard>
         ) : null}
 
-        {tenantSettings.data?.settings.supportUrl ? (
+        {selectedTab === 'profile' && tenantSettings.data?.settings.supportUrl ? (
           <Button
             component="a"
             href={tenantSettings.data.settings.supportUrl}
@@ -568,7 +683,7 @@ export const MemberAccountPage = () => {
           </Button>
         ) : null}
 
-        {impersonating ? null : (
+        {selectedTab === 'profile' && !impersonating ? (
           <SectionCard
             title={t.account.dataExportHeading}
             description={t.account.dataExportIntro}
@@ -589,9 +704,9 @@ export const MemberAccountPage = () => {
               />
             ) : null}
           </SectionCard>
-        )}
+        ) : null}
 
-        <SectionCard
+        {selectedTab === 'profile' ? <SectionCard
           title={t.account.erasureHeading}
           description={t.account.erasureIntro}
         >
@@ -667,37 +782,7 @@ export const MemberAccountPage = () => {
             <Alert severity="error">{localizeError(createErasureRequest.error, t)}</Alert>
           ) : null}
           {cancelErasureRequest.isError ? <Alert severity="error">{localizeError(cancelErasureRequest.error, t)}</Alert> : null}
-        </SectionCard>
-
-        <Snackbar
-          open={updateProfile.isSuccess}
-          autoHideDuration={4000}
-          onClose={() => updateProfile.reset()}
-        >
-          <Alert severity="success" data-testid="account-display-name-saved">
-            {t.account.displayNameSaved}
-          </Alert>
-        </Snackbar>
-
-        <Snackbar
-          open={updatePrivacy.isSuccess}
-          autoHideDuration={4000}
-          onClose={() => updatePrivacy.reset()}
-        >
-          <Alert severity="success" data-testid="account-dm-opt-out-saved">
-            {t.messages.optOutSaved}
-          </Alert>
-        </Snackbar>
-
-        <Snackbar
-          open={updatePlayback.isSuccess}
-          autoHideDuration={4000}
-          onClose={() => updatePlayback.reset()}
-        >
-          <Alert severity="success" data-testid="account-video-autoplay-saved">
-            {t.account.videoAutoplaySaved}
-          </Alert>
-        </Snackbar>
+        </SectionCard> : null}
       </Stack>
     </MemberSurface>
   );

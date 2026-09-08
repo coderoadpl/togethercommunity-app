@@ -79,6 +79,8 @@ import {
   type TenantSettings,
 } from '#core/domain/index.js';
 import type {
+  AccountAvatarRepository,
+  AccountAvatarTenantReader,
   AvatarSourceReader,
   CourseLessonRepository,
   LessonAttachmentRepository,
@@ -881,9 +883,7 @@ export const createAvatarSourceReader = (db: Db): AvatarSourceReader => ({
     const rows = await db
       .select({
         userId: user.id,
-        accountEmail: user.email,
-        memberEmail: members.email,
-        image: user.image,
+        image: members.avatarUrl,
       })
       .from(user)
       .leftJoin(members, and(eq(members.tenantId, tenantId), eq(members.userId, user.id)))
@@ -905,9 +905,68 @@ export const createAvatarSourceReader = (db: Db): AvatarSourceReader => ({
       );
     return rows.map((row) => ({
       userId: row.userId,
-      email: row.memberEmail ?? row.accountEmail,
       image: row.image,
     }));
+  },
+});
+
+export const createAccountAvatarRepository = (db: Db): AccountAvatarRepository => ({
+  findState: async (tenantId, userId) => {
+    const rows = await db
+      .select({ image: members.avatarUrl, cleared: members.avatarCleared })
+      .from(members)
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.userId, userId),
+        isNull(members.deletedAt),
+      ))
+      .limit(1);
+    const row = rows[0];
+    return row === undefined ? null : { image: row.image, canImport: row.image === null && !row.cleared };
+  },
+  setAvatar: async (tenantId, userId, image) => {
+    await db
+      .update(members)
+      .set({ avatarUrl: image, avatarCleared: false })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.userId, userId),
+        isNull(members.deletedAt),
+      ));
+  },
+  setAvatarIfMissing: async (tenantId, userId, image) => {
+    const rows = await db
+      .update(members)
+      .set({ avatarUrl: image })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.userId, userId),
+        isNull(members.avatarUrl),
+        eq(members.avatarCleared, false),
+        isNull(members.deletedAt),
+      ))
+      .returning({ id: members.id });
+    return rows.length > 0;
+  },
+  removeAvatar: async (tenantId, userId) => {
+    await db
+      .update(members)
+      .set({ avatarUrl: null, avatarCleared: true })
+      .where(and(
+        eq(members.tenantId, tenantId),
+        eq(members.userId, userId),
+        isNull(members.deletedAt),
+      ));
+  },
+});
+
+export const createAccountAvatarTenantReader = (db: Db): AccountAvatarTenantReader => ({
+  listTenantIdsForUser: async (userId) => {
+    const rows = await db
+      .select({ tenantId: members.tenantId })
+      .from(members)
+      .where(and(eq(members.userId, userId), isNull(members.deletedAt)));
+    return rows.map((row) => row.tenantId);
   },
 });
 
@@ -2272,6 +2331,7 @@ export const createNotificationRepository = (db: Db): NotificationRepository => 
           eq(notifications.tenantId, tenantId),
           eq(notifications.recipientUserId, query.recipientUserId),
           ...(query.excludeDms === true ? [notDirectMessage()] : []),
+          ...(query.unreadOnly === true ? [sql`${notifications.readAt} is null`] : []),
           ...(cursor === null
             ? []
             : [sql`(${notifications.createdAt}, ${notifications.id}) < (${cursor.createdAt}, ${cursor.id})`]),
@@ -2536,6 +2596,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           alreadyDeleted: true,
           authUserErased: false,
           erasureRequestId: null,
+          avatarUrl: null,
         };
       }
       const [openErasureRequest] = await tx
@@ -2640,6 +2701,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           marketingConsents: {},
           externalCustomerIds: {},
           legacyId: null,
+          avatarUrl: null,
           deletedAt: input.deletedAt,
     bannedAt: null,
     bannedReason: null,
@@ -2736,6 +2798,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           alreadyDeleted: false,
           authUserErased: false,
           erasureRequestId: openErasureRequest?.id ?? null,
+          avatarUrl: member.avatarUrl,
         };
       }
 
@@ -2744,6 +2807,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         alreadyDeleted: false,
         authUserErased: true,
         erasureRequestId: openErasureRequest?.id ?? null,
+        avatarUrl: member.avatarUrl,
       };
     }),
 });
@@ -3968,6 +4032,8 @@ export const createTenantRepository = (
         privacyUrl: tenants.privacyUrl,
         defaultHomeSpaceId: tenants.defaultHomeSpaceId,
         directMessagesEnabled: tenants.directMessagesEnabled,
+        videoAutoplayDefault: tenants.videoAutoplayDefault,
+        memberVideoAutoplayOverride: tenants.memberVideoAutoplayOverride,
         autoIssueInvoices: tenants.autoIssueInvoices,
         autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
         invoiceVatRatePercent: tenants.invoiceVatRatePercent,
@@ -4003,6 +4069,8 @@ export const createTenantRepository = (
           privacyUrl: row.privacyUrl,
           defaultHomeSpaceId: row.defaultHomeSpaceId,
           directMessagesEnabled: row.directMessagesEnabled,
+          videoAutoplayDefault: row.videoAutoplayDefault,
+          memberVideoAutoplayOverride: row.memberVideoAutoplayOverride,
           autoIssueInvoices: row.autoIssueInvoices,
           autoIssueInvoiceScope: row.autoIssueInvoiceScope,
           invoiceVatRatePercent:
@@ -4054,6 +4122,8 @@ export const createTenantRepository = (
         privacyUrl: settings.privacyUrl,
         defaultHomeSpaceId: settings.defaultHomeSpaceId,
         directMessagesEnabled: settings.directMessagesEnabled,
+        videoAutoplayDefault: settings.videoAutoplayDefault,
+        memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride,
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
         invoiceVatRatePercent: settings.invoiceVatRatePercent,
@@ -4085,6 +4155,8 @@ export const createTenantRepository = (
       privacyUrl: settings.privacyUrl,
       defaultHomeSpaceId: settings.defaultHomeSpaceId,
       directMessagesEnabled: settings.directMessagesEnabled,
+      videoAutoplayDefault: settings.videoAutoplayDefault,
+      memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride,
       autoIssueInvoices: settings.autoIssueInvoices,
       autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
       invoiceVatRatePercent: settings.invoiceVatRatePercent,

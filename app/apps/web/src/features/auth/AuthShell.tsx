@@ -5,6 +5,7 @@ import { Link } from '@tanstack/react-router';
 
 import { communitySpacePath } from '#core/contract/index.js';
 
+import { publicAssetUrl } from '../../theme-public-asset.js';
 import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
@@ -23,7 +24,7 @@ import {
   AuthGlow,
   AuthHeader,
   AuthHelp,
-  authLinkInk,
+  authInk,
   AuthMain,
   AuthPage,
   AuthPoweredBy,
@@ -42,7 +43,7 @@ interface AuthShellProps {
 
 const authSurfaceTheme = (outer: Theme): Theme => ({
   ...outer,
-  linkColor: authLinkInk(outer.palette.primary.main, outer.palette.mode),
+  linkColor: authInk(outer),
 });
 
 const PoweredByTogether = () => {
@@ -52,7 +53,7 @@ const PoweredByTogether = () => {
     <AuthPoweredBy data-testid="auth-powered-by">
       <span>{t.auth.poweredBy}</span>
       <AuthPoweredByLogo
-        src={`/brand/together-horizontal-${theme.palette.mode}.svg`}
+        src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
         alt="Together"
         data-testid="auth-together-logo"
       />

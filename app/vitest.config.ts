@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     hookTimeout: 60000,
     maxWorkers: 4,
+    fileParallelism: process.env['TOGETHER_TEST_SERIAL'] !== '1',
     testTimeout: 60000,
     coverage: {
       provider: 'v8',

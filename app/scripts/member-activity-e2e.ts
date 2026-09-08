@@ -22,7 +22,7 @@ import {
   notificationsUnreadOutputSchema,
 } from '#core/contract/index.js';
 
-import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { requestMagicLink, signInWithPassword } from './login-flow.js';
 import {
   bootServer,
@@ -39,6 +39,7 @@ const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const E2E_DB = 'together_e2e_member_activity';
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
@@ -191,6 +192,8 @@ const setEnglish = async (context: BrowserContext): Promise<void> => {
 const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 15000 });
+  await page.goto(`${baseUrl}/panel`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
 };
 
@@ -259,7 +262,7 @@ const runEventJourney = async (
   assert(eventNotification !== undefined, 'Member A did not receive the space-event notification');
 
   await memberPage.goto(`${baseUrl}/notifications`, { waitUntil: 'domcontentloaded' });
-  await memberPage.getByTestId(`notification-open-${eventNotification.id}`).click();
+  await memberPage.getByTestId(`notification-${eventNotification.id}`).click();
   await memberPage.waitForURL(`**/community/${studioSpaceId}/events/${event.id}`, { timeout: 15000 });
   await memberPage.getByTestId('event-live-embed').waitFor({ state: 'visible', timeout: 15000 });
   assert(
@@ -440,7 +443,7 @@ const runDirectMessageJourney = async (
   const notification = unreadDmNotifications[0];
   assert(notification !== undefined, 'Collapsed DM notification was unavailable');
   await memberAPage.goto(`${baseUrl}/notifications`, { waitUntil: 'domcontentloaded' });
-  await memberAPage.getByTestId(`notification-open-${notification.id}`).click();
+  await memberAPage.getByTestId(`notification-${notification.id}`).click();
   await memberAPage.waitForURL(`**/messages/${conversationId}`, { timeout: 15000 });
   await memberAPage.getByText(replies[2] ?? '', { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
 

@@ -50,7 +50,7 @@ export const resolveIdentity = async (
     email: user.email,
     name: user.name,
     emailVerified: user.emailVerified,
-    image: user.image,
+    image: null,
     tenantId: null,
     tenantSlug: null,
     tenantName: null,
@@ -60,7 +60,7 @@ export const resolveIdentity = async (
     memberBannedAt: null,
     memberDmOptOutAt: null,
     memberLanguage: null,
-    memberVideoAutoplay: false,
+    memberVideoAutoplay: null,
   };
 
   if (!tenant.value) return ok(base);
@@ -79,6 +79,7 @@ export const resolveIdentity = async (
 
   return ok({
     ...base,
+    image: member?.avatarUrl ?? null,
     tenantId: tenant.value.tenant.id,
     tenantSlug: tenant.value.tenant.slug,
     tenantName: tenant.value.tenant.name,
@@ -88,6 +89,6 @@ export const resolveIdentity = async (
     memberBannedAt: member?.bannedAt ?? null,
     memberDmOptOutAt: member?.dmOptOutAt ?? null,
     memberLanguage: member?.language ?? null,
-    memberVideoAutoplay: member?.videoAutoplay ?? false,
+    memberVideoAutoplay: member?.videoAutoplay ?? null,
   });
 };

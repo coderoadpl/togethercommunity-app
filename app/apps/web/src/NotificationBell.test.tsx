@@ -9,7 +9,7 @@ import {
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { notificationMarkReadInputSchema } from '#core/domain/index.js';
 
@@ -17,6 +17,19 @@ import { pl } from './i18n/pl.js';
 import { renderWithProviders } from './test/render.js';
 import { server } from './test/server.js';
 import { NotificationBell } from './NotificationBell.js';
+
+const stubViewport = (isDesktop: boolean) => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: isDesktop,
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
 
 const notification = (input: {
   id: string;
@@ -46,6 +59,16 @@ const notification = (input: {
   createdAt: '2026-07-15T08:00:00.000Z',
 });
 
+const okUnread = (unread: number) =>
+  http.get('/api/notifications/unread-count', () =>
+    HttpResponse.json({ ok: true, data: { unread } }),
+  );
+
+const okList = (notifications: ReturnType<typeof notification>[]) =>
+  http.get('/api/notifications', () =>
+    HttpResponse.json({ ok: true, data: { notifications, nextCursor: null } }),
+  );
+
 const impersonatedMe = () =>
   http.get('/api/me', () =>
     HttpResponse.json({
@@ -74,9 +97,10 @@ const impersonatedMe = () =>
     }),
   );
 
-const renderBell = async ({ tabLabel, live = true }: { tabLabel?: string; live?: boolean } = {}) => {
+const renderBell = async ({ desktop = true }: { desktop?: boolean } = {}) => {
+  stubViewport(desktop);
   const rootRoute = createRootRoute({
-    component: () => <NotificationBell {...(tabLabel === undefined ? {} : { tabLabel })} live={live} />,
+    component: () => <NotificationBell />,
   });
   const router = createRouter({
     routeTree: rootRoute,
@@ -86,11 +110,14 @@ const renderBell = async ({ tabLabel, live = true }: { tabLabel?: string; live?:
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
-const renderRoutedBell = async () => {
+const renderRoutedBell = async (
+  { viewAllTo }: { viewAllTo?: '/panel/notifications' } = {},
+) => {
+  stubViewport(true);
   const rootRoute = createRootRoute({
     component: () => (
       <>
-        <NotificationBell />
+        {viewAllTo === undefined ? <NotificationBell /> : <NotificationBell viewAllTo={viewAllTo} />}
         <Outlet />
       </>
     ),
@@ -104,6 +131,11 @@ const renderRoutedBell = async () => {
     getParentRoute: () => rootRoute,
     path: '/notifications',
     component: () => <p>all notifications</p>,
+  });
+  const panelNotificationsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/notifications',
+    component: () => <p>all studio notifications</p>,
   });
   const spaceThreadRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -121,6 +153,7 @@ const renderRoutedBell = async () => {
     routeTree: rootRoute.addChildren([
       indexRoute,
       notificationsRoute,
+      panelNotificationsRoute,
       spaceThreadRoute,
       lessonRoute,
     ]),
@@ -131,32 +164,43 @@ const renderRoutedBell = async () => {
 };
 
 describe('NotificationBell', () => {
-  it('adds an ellipsis and native title to the narrow notification tab label', async () => {
-    await renderBell({ tabLabel: pl.notifications.bell, live: false });
+  it('counts unread notifications in the badge and in the button label', async () => {
+    server.use(okUnread(3));
 
-    const label = screen.getByTitle(pl.notifications.bell);
-    expect(label).toHaveClass('MuiTypography-noWrap');
-    expect(label).toHaveAttribute('title', pl.notifications.bell);
+    await renderBell();
+
+    expect(await screen.findByText('3')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId('notification-bell')).toHaveAttribute(
+        'aria-label',
+        pl.notifications.unreadAria({ count: 3 }),
+      ),
+    );
   });
 
-  it('shows the unread badge and marks a notification read on open', async () => {
+  it('caps the badge at 99+ and hides it when nothing is unread', async () => {
+    server.use(okUnread(150));
+
+    const many = await renderBell();
+    expect(await screen.findByText('99+')).toBeInTheDocument();
+    many.unmount();
+
+    server.use(okUnread(0));
+    await renderBell();
+
+    const bell = await screen.findByTestId('notification-bell');
+    await waitFor(() => expect(bell).toHaveAttribute('aria-label', pl.notifications.bell));
+    expect(bell.querySelector('.MuiBadge-badge')).toHaveClass('MuiBadge-invisible');
+  });
+
+  it('opens a grouped panel and marks a notification read on open', async () => {
     const readIds: string[] = [];
     server.use(
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 2 } }),
-      ),
-      http.get('/api/notifications', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            notifications: [
-              notification({ id: 'n1', read: false }),
-              notification({ id: 'n2', read: true }),
-            ],
-            nextCursor: null,
-          },
-        }),
-      ),
+      okUnread(2),
+      okList([
+        notification({ id: 'n1', read: false, courseId: 'c1' }),
+        notification({ id: 'n2', read: true, courseId: 'c1' }),
+      ]),
       http.post('/api/notifications/read', async ({ request }) => {
         const body = notificationMarkReadInputSchema.parse(await request.json());
         readIds.push(body.id);
@@ -169,15 +213,17 @@ describe('NotificationBell', () => {
 
     await renderBell();
 
-    expect(await screen.findByText('2')).toBeInTheDocument();
+    await userEvent.click(await screen.findByTestId('notification-bell'));
 
-    await userEvent.click(screen.getByRole('button', { name: pl.notifications.bell }));
-
-    const items = await screen.findAllByText(
+    const panel = await screen.findByTestId('notifications-panel');
+    expect(panel).toHaveAttribute('role', 'dialog');
+    expect(screen.getByTestId('notification-group-earlier')).toHaveTextContent(
+      pl.notifications.groupEarlier,
+    );
+    expect(screen.getByTestId('notification-n1')).toHaveTextContent(
       pl.notifications.threadReply({ author: 'Ola', lesson: 'Hamaki w kamperze' }),
     );
-    expect(items).toHaveLength(2);
-    expect(screen.getAllByText('Świetne pytanie, już odpowiadam!')).toHaveLength(2);
+    expect(screen.queryByTestId('notifications-panel-close')).toBeNull();
 
     await userEvent.click(screen.getByTestId('notification-n1'));
 
@@ -188,18 +234,8 @@ describe('NotificationBell', () => {
     let readCalls = 0;
     server.use(
       impersonatedMe(),
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 1 } }),
-      ),
-      http.get('/api/notifications', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            notifications: [notification({ id: 'n1', read: false, courseId: 'c1' })],
-            nextCursor: null,
-          },
-        }),
-      ),
+      okUnread(1),
+      okList([notification({ id: 'n1', read: false, courseId: 'c1' })]),
       http.post('/api/notifications/read', () => {
         readCalls += 1;
         return HttpResponse.json({
@@ -211,7 +247,7 @@ describe('NotificationBell', () => {
 
     const { router } = await renderRoutedBell();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-bell'));
     await waitFor(() =>
       expect(screen.getByTestId('notifications-popover-mark-all-read')).toBeDisabled(),
     );
@@ -219,21 +255,13 @@ describe('NotificationBell', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/c1/lessons/l1'));
     expect(readCalls).toBe(0);
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('marks all notifications read from the dropdown', async () => {
+  it('marks all notifications read from the panel', async () => {
     let readAllCalls = 0;
     server.use(
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 1 } }),
-      ),
-      http.get('/api/notifications', () =>
-        HttpResponse.json({
-          ok: true,
-          data: { notifications: [notification({ id: 'n1', read: false })], nextCursor: null },
-        }),
-      ),
+      okUnread(1),
+      okList([notification({ id: 'n1', read: false })]),
       http.post('/api/notifications/read-all', () => {
         readAllCalls += 1;
         return HttpResponse.json({ ok: true, data: { read: 1 } });
@@ -242,50 +270,38 @@ describe('NotificationBell', () => {
 
     await renderBell();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-bell'));
     await userEvent.click(await screen.findByTestId('notifications-popover-mark-all-read'));
 
     await waitFor(() => expect(readAllCalls).toBe(1));
   });
 
-  it('renders an author avatar on every popover row', async () => {
+  it('renders an author avatar on every panel row', async () => {
     server.use(
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 1 } }),
-      ),
-      http.get('/api/notifications', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            notifications: [
-              notification({ id: 'n1', read: false, authorAvatarUrl: 'https://cdn.test/ola.png' }),
-              notification({ id: 'n2', read: true }),
-            ],
-            nextCursor: null,
-          },
-        }),
-      ),
+      okUnread(1),
+      okList([
+        notification({ id: 'n1', read: false, authorAvatarUrl: 'https://cdn.test/ola.png' }),
+        notification({ id: 'n2', read: true }),
+      ]),
     );
 
     await renderBell();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-bell'));
 
     const withPicture = within(await screen.findByTestId('notification-n1'));
-    expect(withPicture.getByTestId('member-avatar-image')).toHaveAttribute(
+    expect(withPicture.getByTestId('user-avatar-image')).toHaveAttribute(
       'src',
       'https://cdn.test/ola.png',
     );
     const withInitials = within(screen.getByTestId('notification-n2'));
-    expect(withInitials.queryByTestId('member-avatar-image')).toBeNull();
-    expect(withInitials.getByTestId('member-avatar')).toHaveTextContent('O');
+    expect(withInitials.queryByTestId('user-avatar-image')).toBeNull();
+    expect(withInitials.getByTestId('user-avatar')).toHaveTextContent('O');
   });
 
   it('leaves out the avatar of a workspace notification that has no author', async () => {
     server.use(
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 1 } }),
-      ),
+      okUnread(1),
       http.get('/api/notifications', () =>
         HttpResponse.json({
           ok: true,
@@ -315,82 +331,60 @@ describe('NotificationBell', () => {
 
     await renderBell();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-bell'));
 
-    const row = within(await screen.findByTestId('notification-n1'));
-    expect(row.queryByTestId('member-avatar')).toBeNull();
-    expect(row.getByText(pl.notifications.tenantDomainVerified({ domain: 'kurs.acme.example' })))
-      .toBeInTheDocument();
+    const row = await screen.findByTestId('notification-n1');
+    expect(within(row).queryByTestId('user-avatar')).toBeNull();
+    expect(row).toHaveTextContent(
+      pl.notifications.tenantDomainVerified({ domain: 'kurs.acme.example' }),
+    );
   });
 
-  it('shows the empty state when there are no notifications', async () => {
-    server.use(
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 0 } }),
-      ),
-      http.get('/api/notifications', () =>
-        HttpResponse.json({ ok: true, data: { notifications: [], nextCursor: null } }),
-      ),
-    );
+  it('shows the empty state with its hint when there are no notifications', async () => {
+    server.use(okUnread(0), okList([]));
 
     await renderBell();
 
-    await userEvent.click(screen.getByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-bell'));
 
-    expect(await screen.findByText(pl.notifications.empty)).toBeInTheDocument();
+    const empty = await screen.findByTestId('notifications-empty');
+    expect(empty).toHaveTextContent(pl.notifications.empty);
+    expect(empty).toHaveTextContent(pl.notifications.emptyHint);
+  });
+
+  it('opens a bottom sheet with a close control below md', async () => {
+    server.use(okUnread(0), okList([]));
+
+    await renderBell({ desktop: false });
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+
+    expect(await screen.findByTestId('notifications-panel-close')).toBeInTheDocument();
+    expect(document.querySelector('.MuiDrawer-root')).not.toBeNull();
   });
 
   it('opens a space notification on the thread page of its root post', async () => {
     server.use(
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 0 } }),
-      ),
-      http.get('/api/notifications', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            notifications: [
-              notification({
-                id: 'n1',
-                read: true,
-                kind: 'space-post',
-                contextKind: 'space',
-                contextId: 's1',
-              }),
-            ],
-            nextCursor: null,
-          },
-        }),
-      ),
+      okUnread(0),
+      okList([
+        notification({ id: 'n1', read: true, kind: 'space-post', contextKind: 'space', contextId: 's1' }),
+      ]),
     );
 
     const { router } = await renderRoutedBell();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-bell'));
     await userEvent.click(await screen.findByTestId('notification-n1'));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/community/s1/posts/p1'));
   });
 
   it('opens a lesson notification with its thread pinned in the URL', async () => {
-    server.use(
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 0 } }),
-      ),
-      http.get('/api/notifications', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            notifications: [notification({ id: 'n1', read: true, courseId: 'c1' })],
-            nextCursor: null,
-          },
-        }),
-      ),
-    );
+    server.use(okUnread(0), okList([notification({ id: 'n1', read: true, courseId: 'c1' })]));
 
     const { router } = await renderRoutedBell();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-bell'));
     await userEvent.click(await screen.findByTestId('notification-n1'));
 
     await waitFor(() =>
@@ -399,19 +393,12 @@ describe('NotificationBell', () => {
     expect(router.state.location.searchStr).toBe('?thread=p1');
   });
 
-  it('links from the popover to the full notifications page', async () => {
-    server.use(
-      http.get('/api/notifications/unread-count', () =>
-        HttpResponse.json({ ok: true, data: { unread: 0 } }),
-      ),
-      http.get('/api/notifications', () =>
-        HttpResponse.json({ ok: true, data: { notifications: [], nextCursor: null } }),
-      ),
-    );
+  it('links from the panel to the full notifications page', async () => {
+    server.use(okUnread(0), okList([]));
 
     const { router } = await renderRoutedBell();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.notifications.bell }));
+    await userEvent.click(await screen.findByTestId('notification-bell'));
 
     const viewAll = await screen.findByTestId('notifications-view-all');
     expect(viewAll).toHaveTextContent(pl.notifications.viewAll);
@@ -419,5 +406,47 @@ describe('NotificationBell', () => {
     await userEvent.click(viewAll);
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/notifications'));
+  });
+
+  it('keeps the studio bell inside the panel when viewing every notification', async () => {
+    server.use(okUnread(0), okList([]));
+
+    const { router } = await renderRoutedBell({ viewAllTo: '/panel/notifications' });
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+    await userEvent.click(await screen.findByTestId('notifications-view-all'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/panel/notifications'));
+  });
+
+  it('moves focus to the first notification when the panel opens', async () => {
+    server.use(
+      okUnread(1),
+      okList([
+        notification({ id: 'n1', read: false, courseId: 'c1' }),
+        notification({ id: 'n2', read: true, courseId: 'c1' }),
+      ]),
+    );
+
+    await renderBell();
+
+    await userEvent.click(await screen.findByTestId('notification-bell'));
+
+    await waitFor(() => expect(screen.getByTestId('notification-n1')).toHaveFocus());
+  });
+
+  it('closes the panel on Escape and gives focus back to the bell', async () => {
+    server.use(okUnread(1), okList([notification({ id: 'n1', read: false, courseId: 'c1' })]));
+
+    await renderBell();
+
+    const bell = await screen.findByTestId('notification-bell');
+    await userEvent.click(bell);
+    await waitFor(() => expect(screen.getByTestId('notification-n1')).toHaveFocus());
+
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByTestId('notifications-panel')).not.toBeInTheDocument());
+    expect(bell).toHaveFocus();
   });
 });

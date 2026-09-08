@@ -167,15 +167,34 @@ export interface UserDisplayReader {
 }
 
 export interface AvatarSourceReader {
-  /**
-   * Avatar sources for identities that belong to the tenant: the tenant-scoped
-   * member e-mail when a member row exists, the account e-mail otherwise, plus
-   * the provider picture from the auth user row.
-   */
   listAvatarSources(
     tenantId: string,
     userIds: string[],
-  ): Promise<Array<{ userId: string; email: string; image: string | null }>>;
+  ): Promise<Array<{ userId: string; image: string | null }>>;
+}
+
+export interface AccountAvatarRepository {
+  findState(tenantId: string, userId: string): Promise<{ image: string | null; canImport: boolean } | null>;
+  setAvatar(tenantId: string, userId: string, image: string): Promise<void>;
+  setAvatarIfMissing(tenantId: string, userId: string, image: string): Promise<boolean>;
+  removeAvatar(tenantId: string, userId: string): Promise<void>;
+}
+
+export interface AccountAvatarTenantReader {
+  listTenantIdsForUser(userId: string): Promise<string[]>;
+}
+
+export interface AvatarImageProcessor {
+  processStored(input: {
+    configuration: StorageConfiguration;
+    sourceKey: string;
+    targetKey: string;
+  }): Promise<Result<void, AppError>>;
+  importRemote(input: {
+    configuration: StorageConfiguration;
+    sourceUrl: string;
+    targetKey: string;
+  }): Promise<Result<void, AppError>>;
 }
 
 export interface ProductRepository {
@@ -516,7 +535,13 @@ export interface NotificationRepository {
   insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;
   listForRecipient(
     tenantId: string,
-    query: { recipientUserId: string; cursor?: string; limit: number; excludeDms?: boolean },
+    query: {
+      recipientUserId: string;
+      cursor?: string;
+      limit: number;
+      excludeDms?: boolean;
+      unreadOnly?: boolean;
+    },
   ): Promise<{ notifications: Notification[]; nextCursor: string | null }>;
   markRead(tenantId: string, input: { id: string; recipientUserId: string; readAt: string }): Promise<Notification | null>;
   markAllRead(tenantId: string, input: { recipientUserId: string; readAt: string }): Promise<number>;
@@ -692,6 +717,8 @@ export interface MemberPseudonymizationResult {
   alreadyDeleted: boolean;
   authUserErased: boolean;
   erasureRequestId: string | null;
+  /** Avatar serve path cleared from the row, so the caller can delete the stored object the transaction cannot reach. */
+  avatarUrl: string | null;
 }
 
 /**
@@ -1532,6 +1559,7 @@ export interface TransactionalEmailSender {
     headers?: Record<string, string>;
     messageId?: string;
     tenantTransportRequired?: boolean;
+    forcePlatformTransport?: boolean;
   } & EmailMessage): Promise<Result<{ messageId: string; transport: TransactionalEmailTransport }, AppError>>;
 }
 
@@ -1547,6 +1575,7 @@ export interface PlatformTransactionalPool {
   usage(tenantId: string): Promise<{ sent: number; reserved: number }>;
   reserve(tenantId: string, limit: number): Promise<boolean>;
   settle(tenantId: string, successful: boolean): Promise<void>;
+  recordCapExemptSend(tenantId: string): Promise<void>;
 }
 
 export interface EmailEventRepository {

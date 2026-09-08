@@ -1,0 +1,519 @@
+{
+  "calls": {
+    "getTenantSettings:[]": {
+      "ok": true,
+      "value": {
+        "settings": {
+          "accentColor": null,
+          "autoIssueInvoices": false,
+          "autoIssueInvoiceScope": "b2b_only",
+          "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
+          "bunnyStreamCdnHostname": null,
+          "bunnyStreamLibraryId": null,
+          "defaultHomeSpaceId": "space-studio-spolecznosc",
+          "defaultLanguage": "pl",
+          "directMessagesEnabled": true,
+          "faviconUrl": null,
+          "invoiceExemptionBasis": null,
+          "invoiceExemptionBasisKind": null,
+          "invoiceSellerAddress": null,
+          "invoiceSellerName": null,
+          "invoiceVatMode": "rate",
+          "invoiceVatRatePercent": null,
+          "invoicingProvider": null,
+          "logoDarkUrl": null,
+          "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
+          "name": "Studio Demo",
+          "ogDescription": null,
+          "ogImageUrl": null,
+          "ogTitle": null,
+          "privacyUrl": null,
+          "socialLinks": [],
+          "supportConfigured": false,
+          "supportEmail": null,
+          "supportUrl": null,
+          "termsUrl": null,
+          "videoAutoplayDefault": false
+        }
+      }
+    },
+    "me:[]": {
+      "ok": true,
+      "value": {
+        "avatarUrl": null,
+        "email": "free@together.dev",
+        "emailVerified": true,
+        "impersonation": null,
+        "name": "Konto Free",
+        "tenant": {
+          "banned": true,
+          "displayName": "Konto Free",
+          "dmOptOut": false,
+          "id": "tenant-studio",
+          "language": null,
+          "memberId": "member-studio-free",
+          "name": "Studio Demo",
+          "slug": "studio",
+          "staffRole": null,
+          "videoAutoplay": null
+        },
+        "userId": "fixture-user-48b35d5bade1b6c2"
+      }
+    },
+    "memberNavigation:[]": {
+      "ok": true,
+      "value": {
+        "navigation": {
+          "courses": [
+            {
+              "accessibleLessonCount": 4,
+              "completedLessonCount": 0,
+              "courseId": "course-js",
+              "courseName": "Kurs JavaScript od podstaw",
+              "lastActivityAt": null
+            },
+            {
+              "accessibleLessonCount": 2,
+              "completedLessonCount": 0,
+              "courseId": "course-react",
+              "courseName": "React w praktyce",
+              "lastActivityAt": null
+            }
+          ],
+          "directMessagesEnabled": true,
+          "lockedSpaces": [
+            {
+              "description": "Przestrzeń dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.",
+              "id": "space-studio-klub-js",
+              "name": "Klub JavaScriptu",
+              "productIds": [
+                "product-js-full"
+              ],
+              "products": [
+                {
+                  "id": "product-js-full",
+                  "title": "Kurs JavaScript - pełny dostęp"
+                }
+              ],
+              "slug": "klub-js"
+            },
+            {
+              "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
+              "id": "space-studio-klub-react",
+              "name": "Klub Reacta",
+              "productIds": [
+                "product-react-full"
+              ],
+              "products": [
+                {
+                  "id": "product-react-full",
+                  "title": "React w praktyce - pełny dostęp"
+                }
+              ],
+              "slug": "klub-react"
+            }
+          ],
+          "spaces": [
+            {
+              "courseIds": [],
+              "id": "space-studio-spolecznosc",
+              "isFollowing": true,
+              "name": "Społeczność",
+              "position": 0,
+              "products": [],
+              "publicReadOnly": true,
+              "slug": "spolecznosc",
+              "unread": true,
+              "visibility": "members"
+            }
+          ]
+        }
+      }
+    },
+    "publicOffer:[]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-kurs-101",
+            "marketingConsents": [],
+            "priceCents": 19900,
+            "prices": [
+              {
+                "amountCents": 19900,
+                "currency": "PLN",
+                "id": "price-product-studio-kurs-101",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "kurs-together-101",
+            "title": "Kurs Together 101",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "id": "product-js-full",
+            "marketingConsents": [],
+            "priceCents": 39900,
+            "prices": [
+              {
+                "amountCents": 39900,
+                "currency": "PLN",
+                "id": "price-product-js-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-full",
+            "title": "Kurs JavaScript - pełny dostęp",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Pełny dostęp do kursu React w praktyce.",
+            "id": "product-react-full",
+            "marketingConsents": [],
+            "priceCents": 49900,
+            "prices": [
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-product-react-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "react-full",
+            "title": "React w praktyce - pełny dostęp",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "id": "product-js-dom-module",
+            "marketingConsents": [],
+            "priceCents": 9900,
+            "prices": [
+              {
+                "amountCents": 9900,
+                "currency": "PLN",
+                "id": "price-product-js-dom-module",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-dom-module",
+            "title": "Pakiet: moduł DOM",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "id": "product-free-preview",
+            "marketingConsents": [],
+            "priceCents": 0,
+            "prices": [
+              {
+                "amountCents": 0,
+                "currency": "PLN",
+                "id": "price-product-free-preview",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "free-preview",
+            "title": "Free preview",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "id": "product-club",
+            "marketingConsents": [],
+            "priceCents": 4900,
+            "prices": [
+              {
+                "amountCents": 4900,
+                "currency": "PLN",
+                "id": "price-club-monthly",
+                "interval": "month",
+                "kind": "recurring"
+              },
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-club-yearly",
+                "interval": "year",
+                "kind": "recurring"
+              }
+            ],
+            "slug": "club",
+            "title": "Klub Studio — subskrypcja",
+            "type": "membership"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "id": "product-download-workbook",
+            "marketingConsents": [],
+            "priceCents": 7900,
+            "prices": [
+              {
+                "amountCents": 7900,
+                "currency": "PLN",
+                "id": "price-product-download-workbook",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "download-workbook",
+            "title": "Workbook twórcy",
+            "type": "digital_download"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": null,
+            "faviconUrl": null,
+            "logoDarkUrl": null,
+            "logoUrl": null
+          },
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Studio Demo",
+          "slug": "studio",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    },
+    "studentCourseStructure:[\"course-js\"]": {
+      "ok": true,
+      "value": {
+        "structure": {
+          "accessStatus": "partially-accessible",
+          "completionStatus": "not-completed",
+          "courseId": "course-js",
+          "modules": [
+            {
+              "accessStatus": "partially-accessible",
+              "chapters": [
+                {
+                  "accessStatus": "fully-accessible",
+                  "completionStatus": "not-completed",
+                  "id": "chapter-js-demo",
+                  "lessons": [
+                    {
+                      "accessStatus": "fully-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-js-demo-video",
+                      "durationMinutes": 4,
+                      "lessonId": "lesson-js-demo-video",
+                      "name": "Demo wideo (Bunny Stream)"
+                    }
+                  ],
+                  "name": "Wprowadzenie"
+                },
+                {
+                  "accessStatus": "partially-accessible",
+                  "completionStatus": "not-completed",
+                  "id": "chapter-js-zmienne",
+                  "lessons": [
+                    {
+                      "accessStatus": "fully-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-js-zmienne-1",
+                      "durationMinutes": 12,
+                      "lessonId": "lesson-js-zmienne-1",
+                      "name": "Deklarowanie zmiennych"
+                    },
+                    {
+                      "accessStatus": "not-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-js-zmienne-2",
+                      "durationMinutes": 15,
+                      "lessonId": "lesson-js-zmienne-2",
+                      "name": "Typy proste i złożone",
+                      "unlockProductId": "product-club"
+                    }
+                  ],
+                  "name": "Zmienne i typy"
+                },
+                {
+                  "accessStatus": "not-accessible",
+                  "completionStatus": "not-completed",
+                  "id": "chapter-js-funkcje",
+                  "lessons": [
+                    {
+                      "accessStatus": "not-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-js-funkcje-1",
+                      "durationMinutes": 18,
+                      "lessonId": "lesson-js-funkcje-1",
+                      "name": "Funkcje i argumenty",
+                      "unlockProductId": "product-club"
+                    },
+                    {
+                      "accessStatus": "not-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-js-funkcje-2",
+                      "durationMinutes": 22,
+                      "lessonId": "lesson-js-funkcje-2",
+                      "name": "Domknięcia i zakres",
+                      "unlockProductId": "product-club"
+                    }
+                  ],
+                  "name": "Funkcje"
+                }
+              ],
+              "completionStatus": "not-completed",
+              "id": "module-js-podstawy",
+              "name": "Część 1 - Podstawy"
+            },
+            {
+              "accessStatus": "partially-accessible",
+              "chapters": [
+                {
+                  "accessStatus": "partially-accessible",
+                  "completionStatus": "not-completed",
+                  "id": "chapter-js-dom",
+                  "lessons": [
+                    {
+                      "accessStatus": "fully-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-js-dom-1",
+                      "durationMinutes": 14,
+                      "lessonId": "lesson-js-dom-1",
+                      "name": "Wybieranie elementów DOM"
+                    },
+                    {
+                      "accessStatus": "not-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-js-dom-2",
+                      "durationMinutes": 19,
+                      "lessonId": "lesson-js-dom-2",
+                      "name": "Zdarzenia i interakcja",
+                      "unlockProductId": "product-club"
+                    }
+                  ],
+                  "name": "Manipulacja DOM"
+                }
+              ],
+              "completionStatus": "not-completed",
+              "id": "module-js-dom",
+              "name": "Część 2 - DOM"
+            },
+            {
+              "accessStatus": "fully-accessible",
+              "chapters": [
+                {
+                  "accessStatus": "fully-accessible",
+                  "completionStatus": "not-completed",
+                  "id": "chapter-js-projekty",
+                  "lessons": [
+                    {
+                      "accessStatus": "fully-accessible",
+                      "completionStatus": "not-completed",
+                      "contentId": "content-lesson-js-projekt-1",
+                      "durationMinutes": 35,
+                      "lessonId": "lesson-js-projekt-1",
+                      "name": "Projekt: lista zadań"
+                    }
+                  ],
+                  "name": "Projekt końcowy"
+                }
+              ],
+              "completionStatus": "not-completed",
+              "id": "module-js-projekty",
+              "name": "Część 3 - Projekty"
+            }
+          ],
+          "name": "Kurs JavaScript od podstaw"
+        }
+      }
+    },
+    "studentLesson:[\"lesson-js-dom-1\"]": {
+      "ok": true,
+      "value": {
+        "authenticated": true,
+        "lesson": {
+          "contents": [
+            {
+              "embedUrl": "https://www.youtube-nocookie.com/embed/0ik6X4DJKCc",
+              "type": "embed"
+            },
+            {
+              "html": "<h3>Drzewo DOM</h3><p>DOM (Document Object Model) to reprezentacja strony w postaci drzewa węzłów. Elementy wybieramy metodami <code>querySelector</code> oraz <code>querySelectorAll</code>.</p><ul><li><code>document.querySelector(&quot;.klasa&quot;)</code> — pierwszy pasujący element.</li><li><code>document.querySelectorAll(&quot;li&quot;)</code> — lista wszystkich elementów.</li></ul>",
+              "type": "html"
+            },
+            {
+              "name": "Ściąga: metody DOM (PDF)",
+              "pdfUrl": "/assets/sample-lekcja.pdf",
+              "type": "pdf"
+            }
+          ],
+          "createdAt": "2026-07-01T12:00:10.000Z",
+          "durationMinutes": 14,
+          "id": "lesson-js-dom-1",
+          "isPreview": false,
+          "legacyId": null,
+          "name": "Wybieranie elementów DOM",
+          "tenantId": "tenant-studio"
+        }
+      }
+    },
+    "studentLesson:[\"lesson-js-zmienne-2\"]": {
+      "error": {
+        "code": "forbidden",
+        "message": "This lesson is not accessible"
+      },
+      "ok": false
+    },
+    "studentProgress:[\"course-js\"]": {
+      "ok": true,
+      "value": {
+        "progress": {
+          "completedLessonIds": [],
+          "courseId": "course-js"
+        }
+      }
+    },
+    "unreadMessageCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    },
+    "unreadNotificationCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    }
+  },
+  "expectedErrors": {
+    "studentLesson:[\"lesson-js-zmienne-2\"]": "forbidden"
+  },
+  "principal": "free@together.dev",
+  "route": "/my/courses/course-js/lessons/lesson-js-zmienne-2",
+  "scenario": "lesson-locked",
+  "tenant": "studio"
+}

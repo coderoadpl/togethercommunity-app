@@ -9,13 +9,13 @@ import { TenantLogo } from '../../../branding.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { AccountIcon } from '../account-icons.js';
 import { LockClosed } from '../tree-icons.js';
+import { LockedSpaceTooltipTitle } from '../SpaceCards.js';
 import { activeNavEntry, anonHomePath, type MemberNavEntry } from './member-nav.js';
 import { BrandLink, NavRow, type ShellLinkProps, type ShellVariant } from './shell-chrome.js';
 import { CourseOverviewIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
 
 const AnonNavigationList = ({ active }: { active: MemberNavEntry | null }) => {
-  const t = useTranslations();
   const navigation = useQuery(actions.publicNavigation);
 
   if (navigation.isPending) return <SidebarLoading />;
@@ -54,7 +54,7 @@ const AnonNavigationList = ({ active }: { active: MemberNavEntry | null }) => {
           ? { component: 'div', disabled: true }
           : { component: Link, to: `/checkout/${encodeURIComponent(productId)}` };
         return (
-          <Tooltip key={space.id} title={t.shell.lockedSpaceHint}>
+          <Tooltip key={space.id} title={<LockedSpaceTooltipTitle space={space} />}>
             <NavRow {...linkProps} data-testid={`anon-sidebar-locked-${space.id}`}>
               <ListItemIcon>
                 <LockClosed />

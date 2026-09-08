@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MemberPage } from './MemberPage.js';
+import { PAGE_WIDTH } from './widths.js';
 
 const stubCompactViewport = () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -36,6 +37,27 @@ describe('MemberPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Moje kursy' })).toBeInTheDocument();
     expect(screen.getByText('biblioteka kursów')).toBeInTheDocument();
     expect(screen.getByText('Siatka kursów')).toBeInTheDocument();
+  });
+
+  it('renders no eyebrow slot when the screen does not pass one', () => {
+    render(<MemberPage title="Konto" breadcrumbLabel="Okruszki" data-testid="page" />);
+
+    const header = screen.getByRole('banner');
+    expect(within(header).getByRole('heading', { level: 1, name: 'Konto' })).toBeInTheDocument();
+    expect(within(header).queryAllByRole('paragraph')).toEqual([]);
+  });
+
+  it('gives every member screen the wide shell unless it asks for the reading column', () => {
+    const wide = render(
+      <MemberPage title="Start" breadcrumbLabel="Okruszki" data-testid="page" />,
+    );
+    expect(screen.getByTestId('page')).toHaveStyle({ maxWidth: PAGE_WIDTH.wide });
+    wide.unmount();
+
+    render(
+      <MemberPage title="Lekcja" breadcrumbLabel="Okruszki" width="prose" data-testid="page" />,
+    );
+    expect(screen.getByTestId('page')).toHaveStyle({ maxWidth: PAGE_WIDTH.prose });
   });
 
   it('renders breadcrumbs with links and a current-page item', () => {

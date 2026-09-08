@@ -24,7 +24,7 @@ import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
-import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
+import { Cover } from '../../components/ui/Cover.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -230,7 +230,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
           <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
-          <Button variant="contained" color="secondary" onClick={retry}>{t.checkout.retry}</Button>
+          <Button variant="contained" onClick={retry}>{t.checkout.retry}</Button>
         </Stack>
       </FocusCard>
     );
@@ -347,20 +347,15 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
               </DataValue>
             </CheckoutPrice>
           ) : null}
-          {product.coverUrl === null ? (
-            <CoverPlaceholder
-              title={product.title}
-              frame="standalone"
-              testId="checkout-product-cover-fallback"
-            />
-          ) : (
-            <CoverImage
-              src={product.coverUrl}
-              alt={product.title}
-              frame="standalone"
-              testId="checkout-product-cover"
-            />
-          )}
+          <Cover
+            src={product.coverUrl}
+            title={product.title}
+            alt={product.title}
+            frame="standalone"
+            whenMissing="omit"
+            testId="checkout-product-cover"
+            fallbackTestId="checkout-product-cover-fallback"
+          />
           <RichTextContent html={product.description} />
           {product.prices.length > 1 ? (
             <FormControl>
@@ -599,7 +594,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
           && !paymentConfig.data.stripeConfigured
           && paymentConfig.data.simulatedPaymentsEnabled ? (
             <FinePrint component="p" variant="caption">
-              {t.checkout.simulatedPaymentDevNote}
+              {t.checkout.simulatedPaymentNote}
             </FinePrint>
           ) : null}
           {selectedAmountCents > 0 &&
@@ -630,7 +625,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
                     : t.checkout.submitIdle({ price: formattedPayable })}
               </Button>
               <FinePrint component="p" variant="caption">
-                {t.checkout.simulatedPaymentDevNote}
+                {t.checkout.simulatedPaymentNote}
               </FinePrint>
             </Stack>
           ) : null}

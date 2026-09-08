@@ -9,7 +9,7 @@ import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
-import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
+import { Cover } from '../../components/ui/Cover.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import {
   CourseStatTile,
@@ -195,18 +195,19 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
         {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
         {courses.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} /> : null}
         <CourseStatTiles structure={course} />
-        {catalogEntry === undefined ? null : catalogEntry.imageUrl === null ? (
-          <CoverPlaceholder title={course.name} frame="standalone" testId="course-cover-fallback" />
-        ) : (
-          <CoverImage
+        {catalogEntry === undefined ? null : (
+          <Cover
             src={catalogEntry.imageUrl}
+            title={course.name}
             alt={t.courseOverview.coverAlt({ name: course.name })}
             frame="standalone"
+            whenMissing="omit"
             testId="course-cover"
+            fallbackTestId="course-cover-fallback"
           />
         )}
         {catalogEntry !== undefined && catalogEntry.description !== '' && (
-          <Paper elevation={1} sx={{ p: '1.5rem' }}>
+          <Paper elevation={1} sx={{ p: '1.5rem' }} data-testid="course-about-card">
             <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
               {t.courseOverview.aboutCourse}
             </Eyebrow>

@@ -3,6 +3,7 @@ import { Box, Divider, Paper } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 
 import { Eyebrow } from '../../theme.js';
+import { publicAssetUrl } from '../../theme-public-asset.js';
 import { PAGE_WIDTH } from './widths.js';
 
 interface FocusCardProps {
@@ -22,7 +23,7 @@ const DefaultBrand = () => {
   return (
     <Box
       component="img"
-      src={`/brand/together-horizontal-${theme.palette.mode}.svg`}
+      src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
       alt="Together"
       sx={{ display: 'block', height: '2.5rem', mb: '0.6rem' }}
     />

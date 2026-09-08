@@ -11,7 +11,6 @@ import type {
 import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
-  ContentHash,
   PostReactionRepository,
   PostRepository,
   ProductGrantRepository,
@@ -20,8 +19,6 @@ import type {
 import { getMemberHomeFeed, type MemberHomeFeedDeps } from './member-home-feed.js';
 
 const NOW = '2026-07-15T10:00:00.000Z';
-
-const contentHash: ContentHash = { sha256: (content) => `digest(${String(content)})` };
 
 const avatarSources: AvatarSourceReader = {
   listAvatarSources: async (_tenantId, userIds) =>
@@ -200,7 +197,6 @@ const fixture = (input: {
     posts: posts.repo,
     reactions: reactionsRepository(input.reactions ?? new Map()),
     avatarSources,
-    contentHash,
   };
   return { deps, feedCalls: posts.callCount };
 };
@@ -231,7 +227,7 @@ describe('member home feed', () => {
     expect(feed.value.items[0]).toMatchObject({
       spaceId: 's2',
       replyCount: 1,
-      authorAvatarUrl: 'https://www.gravatar.com/avatar/digest(u2@example.com)?d=404&s=160',
+      authorAvatarUrl: null,
     });
     expect(feed.value.nextCursor).toBeNull();
   });

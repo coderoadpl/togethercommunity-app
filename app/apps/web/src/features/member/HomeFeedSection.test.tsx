@@ -107,20 +107,37 @@ describe('HomeFeedSection', () => {
       '/community/s1/posts/p1',
     );
 
-    expect(within(card).getByTestId('member-avatar-image')).toHaveAttribute(
+    expect(within(card).getByTestId('user-avatar-image')).toHaveAttribute(
       'src',
       'https://cdn.test/ada.png',
     );
 
     const other = screen.getByTestId('home-feed-post-p2');
-    expect(within(other).queryByTestId('member-avatar-image')).toBeNull();
-    expect(within(other).getByTestId('member-avatar')).toHaveTextContent('AN');
+    expect(within(other).queryByTestId('user-avatar-image')).toBeNull();
+    expect(within(other).getByTestId('user-avatar')).toHaveTextContent('AN');
     expect(within(other).getByTestId('home-feed-space-p2')).toHaveAttribute('href', '/community/s2');
     expect(within(other).getByTestId('home-feed-open-p2')).toHaveAttribute(
       'href',
       '/community/s2/posts/p2',
     );
     expect(screen.queryByTestId('start-feed-load-more')).not.toBeInTheDocument();
+  });
+
+  it('spaces the wrapped author line and keeps the post menu on the meta row', async () => {
+    server.use(okFeed({ '10': { items: [item('p1', { replyCount: 1 })], nextCursor: null } }));
+
+    await renderSection();
+
+    const card = await screen.findByTestId('home-feed-post-p1');
+    const authorRow = within(card).getByTestId('home-feed-space-p1').parentElement;
+    expect(authorRow).toHaveStyle({ rowGap: '0.375rem' });
+
+    const metaRow = within(card).getByTestId('home-feed-reply-count-p1').parentElement;
+    expect(metaRow).toHaveStyle({ alignItems: 'center' });
+    expect(metaRow).toContainElement(within(card).getByTestId('post-menu-p1'));
+    expect(within(card).getByTestId('post-menu-p1').parentElement).toHaveStyle({
+      marginLeft: 'auto',
+    });
   });
 
   it('grows the page on load more without dropping the rendered cards', async () => {

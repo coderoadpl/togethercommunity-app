@@ -4,6 +4,7 @@ import {
   createRoute,
   createRouter,
   RouterProvider,
+  useSearch,
 } from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
@@ -94,12 +95,19 @@ const unauthorizedList = () =>
     ),
   );
 
+const NotificationsRouteComponent = () => {
+  const { filter } = useSearch({ strict: false });
+  return <NotificationsPage filter={filter === 'unread' ? 'unread' : 'all'} />;
+};
+
 const renderPage = async () => {
   const rootRoute = createRootRoute();
   const notificationsRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/notifications',
-    component: NotificationsPage,
+    validateSearch: (search: Record<string, unknown>): { filter?: 'unread' } =>
+      search['filter'] === 'unread' ? { filter: 'unread' } : {},
+    component: NotificationsRouteComponent,
   });
   const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -132,7 +140,7 @@ const renderPage = async () => {
 };
 
 describe('NotificationsPage', () => {
-  it('lists notifications, marks unread ones and clears them all', async () => {
+  it('lists notifications by day, marks unread ones and clears them all', async () => {
     let readAllCalls = 0;
     server.use(
       okUnread(1),
@@ -145,14 +153,15 @@ describe('NotificationsPage', () => {
 
     await renderPage();
 
-    expect(await screen.findByTestId('notification-row-n1')).toHaveTextContent(
+    expect(await screen.findByTestId('notification-n1')).toHaveTextContent(
       pl.notifications.threadReply({ author: 'Ola', lesson: 'Hamaki w kamperze' }),
     );
-    expect(screen.getByTestId('notification-row-n1')).toHaveTextContent('Treść n1');
-    expect(screen.getByTestId('notification-row-n1')).toHaveTextContent(
-      pl.notifications.unreadLabel,
+    expect(screen.getByTestId('notification-group-earlier')).toHaveTextContent(
+      pl.notifications.groupEarlier,
     );
-    expect(screen.getByTestId('notification-row-n2')).not.toHaveTextContent(
+    expect(screen.getByTestId('notification-n1')).toHaveTextContent('Treść n1');
+    expect(screen.getByTestId('notification-n1')).toHaveTextContent(pl.notifications.unreadLabel);
+    expect(screen.getByTestId('notification-n2')).not.toHaveTextContent(
       pl.notifications.unreadLabel,
     );
 
@@ -173,20 +182,18 @@ describe('NotificationsPage', () => {
     expect(screen.queryByTestId('notifications-mark-all-read')).not.toBeInTheDocument();
   });
 
-  it('grows the page while the server reports more notifications', async () => {
-    const limits: string[] = [];
+  it('follows the server cursor instead of growing the page size', async () => {
+    const cursors: Array<string | null> = [];
     server.use(
       okUnread(0),
       http.get('/api/notifications', ({ request }) => {
-        const limit = Number(new URL(request.url).searchParams.get('limit'));
-        limits.push(String(limit));
+        const cursor = new URL(request.url).searchParams.get('cursor');
+        cursors.push(cursor);
         return HttpResponse.json({
           ok: true,
           data: {
-            notifications: Array.from({ length: limit }, (_unused, index) =>
-              notification({ id: `n${String(index)}`, read: true }),
-            ),
-            nextCursor: '2026-08-15T08:00:00.000Z|n1',
+            notifications: [notification({ id: cursor === null ? 'n1' : 'n2', read: true })],
+            nextCursor: cursor === null ? '2026-08-15T08:00:00.000Z|n1' : null,
           },
         });
       }),
@@ -196,38 +203,39 @@ describe('NotificationsPage', () => {
 
     await userEvent.click(await screen.findByTestId('notifications-load-more'));
 
-    await waitFor(() => expect(screen.getByTestId('notification-row-n20')).toBeInTheDocument());
-    expect(limits).toEqual(['20', '40']);
+    await waitFor(() => expect(screen.getByTestId('notification-n2')).toBeInTheDocument());
+    expect(screen.getByTestId('notification-n1')).toBeInTheDocument();
+    expect(cursors).toEqual([null, '2026-08-15T08:00:00.000Z|n1']);
+    await waitFor(() =>
+      expect(screen.queryByTestId('notifications-load-more')).not.toBeInTheDocument(),
+    );
   });
 
-  it('caps the page at the server limit and says so', async () => {
+  it('asks the server for unread notifications only when the filter is on', async () => {
+    const requested: Array<string | null> = [];
     server.use(
       okUnread(0),
       http.get('/api/notifications', ({ request }) => {
-        const limit = Number(new URL(request.url).searchParams.get('limit'));
+        const unread = new URL(request.url).searchParams.get('unread');
+        requested.push(unread);
         return HttpResponse.json({
           ok: true,
-          data: {
-            notifications: Array.from({ length: Math.min(limit, 2) }, (_unused, index) =>
-              notification({ id: `n${String(index)}`, read: true }),
-            ),
-            nextCursor: '2026-08-15T08:00:00.000Z|n1',
-          },
+          data: { notifications: unread === 'true' ? [] : [notification({ id: 'n1' })], nextCursor: null },
         });
       }),
     );
 
-    await renderPage();
+    const { router } = await renderPage();
 
-    await userEvent.click(await screen.findByTestId('notifications-load-more'));
-    await userEvent.click(await screen.findByTestId('notifications-load-more'));
-    await userEvent.click(await screen.findByTestId('notifications-load-more'));
-    await userEvent.click(await screen.findByTestId('notifications-load-more'));
+    await screen.findByTestId('notification-n1');
+    await userEvent.click(screen.getByTestId('notifications-filter-unread'));
 
-    expect(await screen.findByTestId('notifications-truncated')).toHaveTextContent(
-      pl.notifications.olderTruncated,
+    await waitFor(() => expect(router.state.location.searchStr).toBe('?filter=unread'));
+    expect(await screen.findByTestId('notifications-page-all-read')).toHaveTextContent(
+      pl.notifications.allRead,
     );
-    expect(screen.queryByTestId('notifications-load-more')).not.toBeInTheDocument();
+    expect(requested).toEqual([null, 'true']);
+    expect(screen.getByTestId('notifications-filter')).toBeInTheDocument();
   });
 
   it('opens a space notification on its thread page and marks it read', async () => {
@@ -247,7 +255,7 @@ describe('NotificationsPage', () => {
 
     const { router } = await renderPage();
 
-    await userEvent.click(await screen.findByTestId('notification-open-n1'));
+    await userEvent.click(await screen.findByTestId('notification-n1'));
 
     await waitFor(() =>
       expect(router.state.location.pathname).toBe('/community/s1/posts/root-n1'),
@@ -275,7 +283,7 @@ describe('NotificationsPage', () => {
     await waitFor(() =>
       expect(screen.getByTestId('notifications-mark-all-read')).toBeDisabled(),
     );
-    await userEvent.click(await screen.findByTestId('notification-open-n1'));
+    await userEvent.click(await screen.findByTestId('notification-n1'));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/c1/lessons/l1'));
     expect(readCalls).toBe(0);
@@ -287,7 +295,7 @@ describe('NotificationsPage', () => {
 
     const { router } = await renderPage();
 
-    await userEvent.click(await screen.findByTestId('notification-open-n1'));
+    await userEvent.click(await screen.findByTestId('notification-n1'));
 
     await waitFor(() =>
       expect(router.state.location.pathname).toBe('/my/courses/c1/lessons/l1'),
@@ -300,8 +308,9 @@ describe('NotificationsPage', () => {
 
     await renderPage();
 
-    expect(await screen.findByTestId('notification-row-n1')).toBeInTheDocument();
-    expect(screen.queryByTestId('notification-open-n1')).not.toBeInTheDocument();
+    const row = await screen.findByTestId('notification-n1');
+    expect(row.tagName).toBe('DIV');
+    expect(within(row).queryByRole('button')).toBeNull();
   });
 
   it('shows the author picture when the payload carries one and initials otherwise', async () => {
@@ -315,14 +324,14 @@ describe('NotificationsPage', () => {
 
     await renderPage();
 
-    const withPicture = within(await screen.findByTestId('notification-row-n1'));
-    expect(withPicture.getByTestId('member-avatar-image')).toHaveAttribute(
+    const withPicture = within(await screen.findByTestId('notification-n1'));
+    expect(withPicture.getByTestId('user-avatar-image')).toHaveAttribute(
       'src',
       'https://cdn.test/ola.png',
     );
-    const withInitials = within(screen.getByTestId('notification-row-n2'));
-    expect(withInitials.queryByTestId('member-avatar-image')).toBeNull();
-    expect(withInitials.getByTestId('member-avatar')).toHaveTextContent('O');
+    const withInitials = within(screen.getByTestId('notification-n2'));
+    expect(withInitials.queryByTestId('user-avatar-image')).toBeNull();
+    expect(withInitials.getByTestId('user-avatar')).toHaveTextContent('O');
   });
 
   it('leaves out the avatar of a workspace notification that has no author', async () => {
@@ -346,11 +355,12 @@ describe('NotificationsPage', () => {
 
     await renderPage();
 
-    const row = within(await screen.findByTestId('notification-row-n1'));
+    const row = await screen.findByTestId('notification-n1');
 
-    expect(row.queryByTestId('member-avatar')).toBeNull();
-    expect(row.getByText(pl.notifications.tenantDomainVerified({ domain: 'kurs.acme.example' })))
-      .toBeInTheDocument();
+    expect(within(row).queryByTestId('user-avatar')).toBeNull();
+    expect(row).toHaveTextContent(
+      pl.notifications.tenantDomainVerified({ domain: 'kurs.acme.example' }),
+    );
   });
 
   it('sends an unauthenticated visitor to the login page', async () => {

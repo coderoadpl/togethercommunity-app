@@ -16,6 +16,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 import {
   groupLessonBlocks,
+  resolveVideoAutoplay,
   withVideoAutoplay,
   type LessonContentGroup,
   type RenderableLessonBlock,
@@ -23,6 +24,7 @@ import {
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
 import { CollapsibleEmbed, LessonMediaEmbed } from '../../components/ui/LessonMedia.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
@@ -41,10 +43,9 @@ import {
 } from '../../theme.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon, LockedState } from './lesson-icons.js';
-import { lessonNeighbours, lessonPath, linearizeCourse } from './lesson-nav.js';
+import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
-import { CompletionFull } from './tree-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -164,12 +165,10 @@ const GroupBody = ({ group, autoplay }: { group: LessonContentGroup; autoplay: b
 const LockedView = ({
   courseId,
   lessonName,
-  courseName,
   unlockProductId,
 }: {
   courseId: string;
   lessonName?: string | undefined;
-  courseName?: string | undefined;
   unlockProductId?: string;
 }) => {
   const t = useTranslations();
@@ -181,17 +180,6 @@ const LockedView = ({
       title={lessonName ?? t.lesson.contentLocked}
       eyebrow={t.lesson.eyebrow}
       width="prose"
-      {...(courseName === undefined
-        ? {}
-        : {
-            breadcrumbs: [
-              {
-                label: courseName,
-                link: <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{courseName}</MuiLink>,
-              },
-              { label: lessonName ?? t.lesson.contentLocked },
-            ],
-          })}
     >
       {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
       <SectionCard
@@ -246,6 +234,7 @@ export const LessonPlayerPage = ({
     isForbidden(lesson.error) ||
     (lesson.isPending && cachedMe !== undefined);
   const me = useQuery({ ...actions.me, enabled: authenticated });
+  const tenantSettings = useQuery({ ...actions.tenantSettings, enabled: authenticated });
   const ownProgress = me.data !== undefined && me.data.impersonation === null;
   const structure = useQuery({ ...actions.courseStructure(courseId), enabled: authenticated });
   const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated });
@@ -259,16 +248,7 @@ export const LessonPlayerPage = ({
 
   const location = useMemo(() => {
     const tree = structure.data?.structure;
-    if (tree === undefined) return null;
-    for (const module of tree.modules) {
-      for (const chapter of module.chapters) {
-        const row = chapter.lessons.find((entry) => entry.lessonId === lessonId);
-        if (row !== undefined) {
-          return { courseName: tree.name, module, chapter, row };
-        }
-      }
-    }
-    return { courseName: tree.name, module: null, chapter: null, row: null };
+    return tree === undefined ? null : locateLesson(tree, lessonId);
   }, [structure.data, lessonId]);
   const neighbours = useMemo(() => {
     const tree = structure.data?.structure;
@@ -276,7 +256,10 @@ export const LessonPlayerPage = ({
   }, [structure.data, lessonId]);
   const transitioning = lesson.isPlaceholderData;
 
-  const lastViewed = useMutation(actions.updateLastViewed);
+  const lastViewed = useMutation({
+    ...actions.updateLastViewed,
+    onError: (error) => console.warn('Failed to update last-viewed lesson', error),
+  });
   const lastViewedRef = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -295,6 +278,11 @@ export const LessonPlayerPage = ({
       chapterId: location?.chapter?.id,
     });
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
+
+  const [continuing, setContinuing] = useState(false);
+  useEffect(() => {
+    setContinuing(false);
+  }, [lessonId]);
 
   const [optimisticDone, setOptimisticDone] = useState<{
     lessonId: string;
@@ -373,7 +361,6 @@ export const LessonPlayerPage = ({
         <LockedView
           courseId={courseId}
           lessonName={lockedRow?.name}
-          courseName={structure.data?.structure.name}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -394,9 +381,25 @@ export const LessonPlayerPage = ({
     );
   }
 
+  if (authenticated && tenantSettings.isPending) {
+    return (
+      <MemberSurface
+        title={t.lesson.loading}
+        eyebrow={t.lesson.eyebrow}
+        width="wide"
+        state={{ kind: 'loading', label: t.lesson.loading }}
+      />
+    );
+  }
+
   const groups = groupLessonBlocks(lesson.data.lesson.contents);
-  const videoAutoplay = me.data?.tenant?.videoAutoplay ?? false;
-  const hasSideErrors = [structure, progress, attachments, lastViewed, complete, uncomplete]
+  const videoAutoplay = tenantSettings.data === undefined
+    ? false
+    : resolveVideoAutoplay(
+        tenantSettings.data.settings,
+        me.data?.tenant?.videoAutoplay ?? null,
+      );
+  const hasSideErrors = [tenantSettings, structure, progress, attachments, lastViewed, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
@@ -407,12 +410,15 @@ export const LessonPlayerPage = ({
     : lesson.data.lesson.name;
 
   const continueToNext = () => {
+    setContinuing(true);
     complete.mutate(
       { lessonId },
       {
         onSuccess: () => {
-          if (nextHref !== null) void navigate({ to: nextHref });
+          if (nextHref === null) setContinuing(false);
+          else void navigate({ to: nextHref });
         },
+        onError: () => setContinuing(false),
       },
     );
   };
@@ -423,19 +429,6 @@ export const LessonPlayerPage = ({
       eyebrow={t.lesson.eyebrow}
       width="wide"
       dense
-      {...(location === null
-        ? {}
-        : {
-            breadcrumbs: [
-              {
-                label: location.courseName,
-                link: <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{location.courseName}</MuiLink>,
-              },
-              ...(location.module === null ? [] : [{ label: location.module.name }]),
-              ...(location.chapter === null ? [] : [{ label: location.chapter.name }]),
-              { label: lessonName },
-            ],
-          })}
     >
       <Box sx={{ minWidth: 0 }}>
         {transitioning ? (
@@ -447,10 +440,10 @@ export const LessonPlayerPage = ({
           <>
         {hasSideErrors ? (
           <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
+            {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
             {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
             {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
             {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
-            {lastViewed.isError ? <Alert severity="error">{localizeError(lastViewed.error, t)}</Alert> : null}
             {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
             {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
           </Stack>
@@ -532,7 +525,7 @@ export const LessonPlayerPage = ({
                 </Button>
               )
             )}
-            {!completed && nextLesson !== null && (
+            {!continuing && !completed && nextLesson !== null && (
               <Button
                 component={Link}
                 to={lessonPath(courseId, nextLesson.lessonId)}
@@ -543,20 +536,20 @@ export const LessonPlayerPage = ({
               </Button>
             )}
             <Box sx={{ flex: 1 }} />
-            {progress.isSuccess && completed && (
+            {!continuing && progress.isSuccess && completed && (
               <Button
                 variant="text"
                 size="small"
                 data-testid="unmark-complete"
                 onClick={() => uncomplete.mutate({ lessonId })}
                 disabled={uncomplete.isPending}
-                startIcon={<CompletionFull />}
+                startIcon={<CompletionMark label={t.courseTree.completionComplete} />}
                 title={t.lesson.unmarkCompletedHint}
               >
                 {t.lesson.unmarkCompleted}
               </Button>
             )}
-            {progress.isSuccess && !completed && (
+            {!continuing && progress.isSuccess && !completed && (
               <Button
                 variant={nextHref === null ? 'contained' : 'text'}
                 size={nextHref === null ? 'medium' : 'small'}
@@ -567,7 +560,11 @@ export const LessonPlayerPage = ({
                 {t.lesson.markCompleted}
               </Button>
             )}
-            {!completed && nextHref !== null && (
+            {continuing ? (
+              <Button variant="contained" data-testid="complete-continue" disabled>
+                {t.lesson.completing}
+              </Button>
+            ) : !completed && nextHref !== null ? (
               <Button
                 variant="contained"
                 data-testid="complete-continue"
@@ -576,8 +573,8 @@ export const LessonPlayerPage = ({
               >
                 {t.lesson.completeContinue}
               </Button>
-            )}
-            {completed && nextLesson !== null && (
+            ) : null}
+            {!continuing && completed && nextLesson !== null && (
               <Button
                 component={Link}
                 to={lessonPath(courseId, nextLesson.lessonId)}

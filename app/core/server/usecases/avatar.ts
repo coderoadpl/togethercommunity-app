@@ -1,21 +1,17 @@
-import type { AvatarSourceReader, ContentHash } from '../ports.js';
+import type { AvatarSourceReader } from '../ports.js';
 
-const GRAVATAR_SIZE = 160;
+const avatarAssetPathPattern = /^\/api\/public\/assets\/avatar\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.webp$/iu;
 
-export const gravatarUrl = (hash: ContentHash, email: string): string =>
-  `https://www.gravatar.com/avatar/${hash.sha256(email.trim().toLocaleLowerCase())}?d=404&s=${GRAVATAR_SIZE}`;
-
-export const avatarUrlFor = (
-  hash: ContentHash,
-  source: { image: string | null; email: string },
-): string => source.image ?? gravatarUrl(hash, source.email);
+export const avatarUrlFor = (image: string | null): string | null =>
+  image !== null && avatarAssetPathPattern.test(image)
+  ? image
+  : null;
 
 export interface AvatarDeps {
   avatarSources: AvatarSourceReader;
-  contentHash: ContentHash;
 }
 
-export type AvatarUrlMap = ReadonlyMap<string, string>;
+export type AvatarUrlMap = ReadonlyMap<string, string | null>;
 
 export const avatarUrlsFor = async (
   tenantId: string,
@@ -25,7 +21,7 @@ export const avatarUrlsFor = async (
   const distinct = [...new Set(authorUserIds)];
   if (distinct.length === 0) return new Map();
   const sources = await deps.avatarSources.listAvatarSources(tenantId, distinct);
-  return new Map(sources.map((source) => [source.userId, avatarUrlFor(deps.contentHash, source)]));
+  return new Map(sources.map((source) => [source.userId, avatarUrlFor(source.image)]));
 };
 
 export const avatarUrlForAuthor = async (

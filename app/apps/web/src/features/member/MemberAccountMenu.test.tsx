@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,7 +9,7 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
 
-const me = (impersonation: unknown) =>
+const me = (impersonation: unknown, staffRole: 'owner' | 'admin' | null = null) =>
   http.get('*/api/me', () =>
     HttpResponse.json({
       ok: true,
@@ -22,7 +22,7 @@ const me = (impersonation: unknown) =>
           id: 't1',
           slug: 'acme',
           name: 'Acme',
-          staffRole: null,
+          staffRole,
           memberId: 'm1',
           displayName: 'Jan',
           banned: false,
@@ -52,6 +52,27 @@ const renderMenu = async () => {
 };
 
 describe('MemberAccountMenu', () => {
+  it('shows Studio above account settings for staff', async () => {
+    server.use(me(null, 'admin'));
+
+    await renderMenu();
+
+    const studio = await screen.findByTestId('member-account-studio-link');
+    const account = screen.getByTestId('member-account-link');
+    expect(studio).toHaveAttribute('href', '/panel');
+    expect(studio).toHaveTextContent(pl.account.menuStudio);
+    expect(studio.compareDocumentPosition(account)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('hides Studio from member-only accounts', async () => {
+    server.use(me(null));
+
+    await renderMenu();
+
+    expect(screen.queryByTestId('member-account-studio-link')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('member-account-link')).toBeInTheDocument();
+  });
+
   it('signs the member out of their own session', async () => {
     const authCalls: string[] = [];
     server.use(
@@ -71,6 +92,51 @@ describe('MemberAccountMenu', () => {
       expect(window.sessionStorage.getItem('together-login-identifier')).toBeNull();
     });
     expect(authCalls).toHaveLength(1);
+  });
+
+  it('marks waiting direct messages on the avatar and next to the messages entry', async () => {
+    server.use(
+      me(null),
+      http.get('*/api/member/navigation', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            navigation: {
+              spaces: [],
+              courses: [],
+              lockedSpaces: [],
+              directMessagesEnabled: true,
+            },
+          },
+        }),
+      ),
+      http.get('*/api/messages/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 3 } }),
+      ),
+    );
+
+    await renderMenu();
+
+    expect(await screen.findByTestId('member-account-messages-unread')).toHaveTextContent('3');
+    expect(screen.getByTestId('member-account-unread')).toBeInTheDocument();
+    expect(screen.getByTestId('member-account-menu')).toHaveAccessibleName(
+      pl.panel.accountMenuUnread({ count: 3 }),
+    );
+    expect(screen.getByTestId('member-account-messages')).toHaveTextContent(
+      pl.messages.unreadAria({ count: 3 }),
+    );
+  });
+
+  it('shows the same avatar on the trigger and in the menu header, above name and e-mail', async () => {
+    server.use(me(null));
+
+    await renderMenu();
+
+    const trigger = await screen.findByTestId('member-account-menu');
+    expect(within(trigger).getByTestId('user-avatar')).toHaveTextContent('J');
+    expect(await screen.findByTestId('member-account-name')).toHaveTextContent('Jan');
+    expect(screen.getByTestId('member-account-email')).toHaveTextContent('jan@example.com');
+    expect(screen.getAllByTestId('user-avatar')).toHaveLength(2);
   });
 
   it('ends the view instead of the operator session while viewing as a member', async () => {

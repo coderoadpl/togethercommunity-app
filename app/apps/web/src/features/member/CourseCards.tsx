@@ -3,22 +3,23 @@ import { Link } from '@tanstack/react-router';
 
 import type { Course } from '#core/domain/index.js';
 
-import { CoverImage, CoverPlaceholder } from '../../components/ui/CoverImage.js';
+import { CompletionMark } from '../../components/ui/CompletionMark.js';
+import { Cover } from '../../components/ui/Cover.js';
 import { useTranslations } from '../../i18n/index.js';
 import { CourseCardRoot, RailProgressBar } from '../../theme.js';
-import { coursePercent, type CourseLessonCounts } from './course-progress.js';
+import { coursePercent, isCourseDone, type CourseLessonCounts } from './course-progress.js';
 
 export type CourseCardCourse = Pick<Course, 'id' | 'name' | 'description' | 'imageUrl'>;
 
 const CourseCardMedia = ({ course }: { course: CourseCardCourse }) => {
   const t = useTranslations();
-  return course.imageUrl === null ? (
-    <CoverPlaceholder title={course.name} testId={`course-cover-fallback-${course.id}`} />
-  ) : (
-    <CoverImage
+  return (
+    <Cover
       src={course.imageUrl}
+      title={course.name}
       alt={t.courseOverview.coverAlt({ name: course.name })}
       testId={`course-cover-${course.id}`}
+      fallbackTestId={`course-cover-fallback-${course.id}`}
     />
   );
 };
@@ -26,6 +27,7 @@ const CourseCardMedia = ({ course }: { course: CourseCardCourse }) => {
 const CourseCardProgress = ({ courseId, counts }: { courseId: string; counts: CourseLessonCounts }) => {
   const t = useTranslations();
   const percent = coursePercent(counts);
+  const done = isCourseDone(counts);
   return (
     <Stack
       direction="row"
@@ -42,6 +44,7 @@ const CourseCardProgress = ({ courseId, counts }: { courseId: string; counts: Co
       <Typography variant="caption" color="text.secondary" component="span" data-testid={`course-progress-${courseId}`}>
         {t.courseOverview.percentValue({ percent })}
       </Typography>
+      {done ? <CompletionMark label={t.courseOverview.courseCompleted} /> : null}
     </Stack>
   );
 };

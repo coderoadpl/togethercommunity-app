@@ -62,6 +62,7 @@ export const createProductPrice = async (
     createdAt: deps.clock.nowIso(),
   };
   await deps.prices.create(tenant.value, price);
+  if (product.published) await deps.products.bumpContentVersion(tenant.value);
   return ok(price);
 };
 
@@ -72,7 +73,12 @@ export const deactivateProductPrice = async (
 ): Promise<Result<ProductPrice, AppError>> => {
   const tenant = authorizeTenant(ctx, 'product:price:write');
   if (!tenant.ok) return tenant;
+  const existing = await deps.prices.findById(tenant.value, input.id);
+  if (!existing) return err(notFound(`No price "${input.id}" in this tenant`));
+  if (!existing.active) return ok(existing);
   const updated = await deps.prices.setActive(tenant.value, input.id, false);
   if (!updated) return err(notFound(`No price "${input.id}" in this tenant`));
+  const product = await deps.products.findById(tenant.value, updated.productId);
+  if (product?.published) await deps.products.bumpContentVersion(tenant.value);
   return ok(updated);
 };

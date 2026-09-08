@@ -1,107 +1,39 @@
-import { useEffect, useState } from 'react';
-import { Alert, Box, Button, Snackbar, Stack, Typography } from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, type ReactNode } from 'react';
+import { Alert, Button, Snackbar, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { Notification } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { ListSection } from '../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { formatDate } from '../../lib/format.js';
-import {
-  notificationTarget,
-  notificationTitle,
-  useNotificationNavigation,
-} from '../../notification-links.js';
-import {
-  DiscussionThread,
-  FinePrint,
-  NotificationRowButton,
-  NotificationSnippet,
-  NotificationTitle,
-  SHELL_SNACKBAR_ANCHOR,
-  UnreadDot,
-  VisuallyHidden,
-} from '../../theme.js';
-import { MemberAvatar } from '../../components/ui/MemberAvatar.js';
+import { ListSection, PanelPage, type PageState } from '../../components/layout/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
+import { NotificationList } from '../../NotificationList.js';
+import { notificationTarget, useNotificationNavigation } from '../../notification-links.js';
+import { useNotifications } from '../../notifications-data.js';
+import { SHELL_SNACKBAR_ANCHOR } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
-import { useImpersonation } from './viewer.js';
 
-const PAGE_SIZE = 20;
-const MAX_LIMIT = 100;
+export type NotificationsFilter = 'all' | 'unread';
+
+export type NotificationsBasePath = '/notifications' | '/panel/notifications';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
 
-const NotificationBody = ({ notification }: { notification: Notification }) => {
-  const t = useTranslations();
-  const { language } = useLanguage();
-  const unread = notification.readAt === null;
-  return (
-    <Stack direction="row" useFlexGap sx={{ columnGap: '0.6rem', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
-      {unread ? (
-        <>
-          <UnreadDot aria-hidden />
-          <VisuallyHidden>{t.notifications.unreadLabel}</VisuallyHidden>
-        </>
-      ) : null}
-      {notification.payload.contextKind === 'tenant' ? null : (
-        <MemberAvatar
-          name={notification.payload.authorDisplay ?? ''}
-          avatarUrl={notification.payload.authorAvatarUrl}
-          size="sm"
-        />
-      )}
-      <Box sx={{ minWidth: 0, flex: 1 }}>
-        <NotificationTitle component="p" unread={unread}>
-          {notificationTitle(t, notification)}
-        </NotificationTitle>
-        <NotificationSnippet variant="body2" component="p">
-          {notification.payload.snippet}
-        </NotificationSnippet>
-        <FinePrint component="p">{formatDate(notification.createdAt, language)}</FinePrint>
-      </Box>
-    </Stack>
-  );
-};
-
-const NotificationRow = ({
-  notification,
-  onOpen,
-}: {
-  notification: Notification;
-  onOpen: () => void;
-}) => (
-  <DiscussionThread sx={{ p: '0.9rem 1.1rem' }} data-testid={`notification-row-${notification.id}`}>
-    {notificationTarget(notification).kind === 'none' ? (
-      <NotificationBody notification={notification} />
-    ) : (
-      <NotificationRowButton data-testid={`notification-open-${notification.id}`} onClick={onOpen}>
-        <NotificationBody notification={notification} />
-      </NotificationRowButton>
-    )}
-  </DiscussionThread>
-);
-
-export const NotificationsPage = () => {
+export const NotificationsPage = ({
+  filter = 'all',
+  basePath = '/notifications',
+}: { filter?: NotificationsFilter; basePath?: NotificationsBasePath } = {}) => {
   const t = useTranslations();
   const navigate = useNavigate();
   const navigateToTarget = useNotificationNavigation();
-  const impersonating = useImpersonation() !== null;
-  const queryClient = useQueryClient();
-  const [limit, setLimit] = useState(PAGE_SIZE);
+  const { impersonating, unread, unreadCount, markRead, markAllRead } = useNotifications();
 
-  const list = useQuery({
-    ...actions.notificationsPage(limit),
-    placeholderData: (previous) => previous,
+  const list = useInfiniteQuery({
+    ...actions.notificationsPage(filter === 'unread' ? { unread: true } : {}),
   });
-  const unread = useQuery(actions.unreadNotifications);
-
-  const invalidate = () => queryClient.invalidateQueries(actions.notificationsInvalidates());
-  const markRead = useMutation({ ...actions.markNotificationRead, onSuccess: invalidate });
-  const markAllRead = useMutation({ ...actions.markAllNotificationsRead, onSuccess: invalidate });
 
   const unauthorized = isUnauthorized(list.error) || isUnauthorized(unread.error);
   useEffect(() => {
@@ -113,97 +45,121 @@ export const NotificationsPage = () => {
     navigateToTarget(notificationTarget(notification));
   };
 
-  if (list.isPending) {
-    return (
+  const surface = (props: { state?: PageState; children?: ReactNode }) =>
+    basePath === '/panel/notifications' ? (
+      <PanelPage title={t.notifications.heading} {...props} />
+    ) : (
       <MemberSurface
         title={t.notifications.heading}
-        eyebrow={t.notifications.pageEyebrow}
-        state={{ kind: 'loading', label: t.notifications.loading }}
+        {...props}
       />
     );
+
+  if (list.isPending) {
+    return surface({ state: { kind: 'loading', label: t.notifications.loading } });
   }
 
   if (unauthorized) return null;
 
   if (list.isError) {
-    return (
-      <MemberSurface
-        title={t.notifications.heading}
-        eyebrow={t.notifications.pageEyebrow}
-        state={{
-          kind: 'error',
-          message: localizeError(list.error, t),
-          retry: { label: t.common.retry, onRetry: () => void list.refetch() },
-        }}
-      />
-    );
+    return surface({
+      state: {
+        kind: 'error',
+        message: localizeError(list.error, t),
+        retry: { label: t.common.retry, onRetry: () => void list.refetch() },
+      },
+    });
   }
 
-  const unreadCount = unread.data?.unread ?? 0;
-  const pagination =
-    list.data.nextCursor === null ? null : limit >= MAX_LIMIT ? (
-      <FinePrint component="p" data-testid="notifications-truncated">
-        {t.notifications.olderTruncated}
-      </FinePrint>
-    ) : (
-      <Button
-        variant="outlined"
-        data-testid="notifications-load-more"
-        disabled={list.isFetching}
-        onClick={() => setLimit((previous) => Math.min(previous + PAGE_SIZE, MAX_LIMIT))}
-      >
-        {t.notifications.loadMore}
-      </Button>
-    );
+  const notifications = list.data.pages.flatMap((page) => page.notifications);
 
-  return (
-    <MemberSurface title={t.notifications.heading} eyebrow={t.notifications.pageEyebrow}>
-      <ListSection
-        data-testid="notifications-list"
-        isEmpty={list.data.notifications.length === 0}
-        empty={
-          <Typography variant="body2" data-testid="notifications-page-empty">
-            {t.notifications.empty}
-          </Typography>
-        }
-        toolbar={{
-          actions: (
-            <Button
-              variant="outlined"
-              data-testid="notifications-mark-all-read"
-              disabled={markAllRead.isPending || impersonating || unreadCount === 0}
-              onClick={() => markAllRead.mutate()}
-            >
-              {t.notifications.markAllRead}
-            </Button>
-          ),
-        }}
-        {...(pagination === null ? {} : { pagination })}
-      >
-        <Stack useFlexGap sx={{ rowGap: '0.75rem' }}>
-          {list.data.notifications.map((notification) => (
-            <NotificationRow
-              key={notification.id}
-              notification={notification}
-              onOpen={() => openNotification(notification)}
-            />
-          ))}
-        </Stack>
-      </ListSection>
-      {markRead.isError ? <Alert severity="error">{localizeError(markRead.error, t)}</Alert> : null}
-      {markAllRead.isError ? (
-        <Alert severity="error">{localizeError(markAllRead.error, t)}</Alert>
-      ) : null}
-      <Snackbar
-        open={markAllRead.isSuccess}
-        autoHideDuration={4000}
-        anchorOrigin={SHELL_SNACKBAR_ANCHOR}
-        onClose={() => markAllRead.reset()}
-      >
-        <Alert severity="success" onClose={() => markAllRead.reset()}>
-          {t.notifications.markedAllRead}
-        </Alert>
-      </Snackbar>
-    </MemberSurface>
-  );
+  return surface({
+    children: (
+      <>
+        <ListSection
+          data-testid="notifications-list"
+          isEmpty={filter === 'all' && notifications.length === 0}
+          empty={
+            <Typography variant="body2" data-testid="notifications-page-empty">
+              {t.notifications.empty}
+            </Typography>
+          }
+          {...(filter === 'unread' && notifications.length === 0
+            ? {
+              noMatches: (
+                <Typography variant="body2" data-testid="notifications-page-all-read">
+                  {t.notifications.allRead}
+                </Typography>
+              ),
+            }
+            : {})}
+          toolbar={{
+            filters: (
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={filter}
+                data-testid="notifications-filter"
+                sx={{ '& .MuiToggleButton-root': { minHeight: '48px' } }}
+                onChange={(_event, next: NotificationsFilter | null) => {
+                  if (next === null) return;
+                  void navigate({
+                    to: basePath,
+                    search: next === 'unread' ? { filter: 'unread' } : {},
+                  });
+                }}
+              >
+                <ToggleButton value="all" data-testid="notifications-filter-all">
+                  {t.notifications.filterAll}
+                </ToggleButton>
+                <ToggleButton value="unread" data-testid="notifications-filter-unread">
+                  {t.notifications.filterUnread}
+                </ToggleButton>
+              </ToggleButtonGroup>
+            ),
+            actions: (
+              <Button
+                variant="outlined"
+                data-testid="notifications-mark-all-read"
+                disabled={markAllRead.isPending || impersonating || unreadCount === 0}
+                onClick={() => markAllRead.mutate()}
+              >
+                {t.notifications.markAllRead}
+              </Button>
+            ),
+          }}
+          {...(list.hasNextPage
+            ? {
+              pagination: (
+                <Button
+                  variant="outlined"
+                  data-testid="notifications-load-more"
+                  disabled={list.isFetchingNextPage}
+                  onClick={() => void list.fetchNextPage()}
+                >
+                  {t.notifications.loadMore}
+                </Button>
+              ),
+            }
+            : {})}
+        >
+          <NotificationList notifications={notifications} onOpen={openNotification} />
+        </ListSection>
+        {markRead.isError ? <Alert severity="error">{localizeError(markRead.error, t)}</Alert> : null}
+        {markAllRead.isError ? (
+          <Alert severity="error">{localizeError(markAllRead.error, t)}</Alert>
+        ) : null}
+        <Snackbar
+          open={markAllRead.isSuccess}
+          autoHideDuration={4000}
+          anchorOrigin={SHELL_SNACKBAR_ANCHOR}
+          onClose={() => markAllRead.reset()}
+        >
+          <Alert severity="success" onClose={() => markAllRead.reset()}>
+            {t.notifications.markedAllRead}
+          </Alert>
+        </Snackbar>
+      </>
+    ),
+  });
 };

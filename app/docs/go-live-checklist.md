@@ -599,6 +599,13 @@ SHA, and approving owner. Repeat the same mandatory-SHA check on staging before
 promotion and on production after promotion. This owner sign-off is a manual
 post-deployment attestation, not an automated CI or hosting gate.
 
+Migration `0105_record_skipped_0080` repairs a historical Drizzle registry gap
+by recording the already-rescued `0080_next_martin_li` row with its original
+hash and timestamp when that row is absent. It is a migration because the
+registry is production database state owned by the migrator, and applying the
+repair through the same ordered path makes health counts converge without a
+special-case offset.
+
 ### 19. Realtime listener connection
 
 **STATUS:** pre-launch-verify

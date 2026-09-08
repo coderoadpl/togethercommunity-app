@@ -388,6 +388,7 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
+  const [deletingAsset, setDeletingAsset] = useState<{ id: string; fileName: string } | null>(null);
   const assets = useQuery(actions.productDownloadAssets(productId));
   const refresh = async () => {
     await queryClient.invalidateQueries(actions.productDownloadAssetsInvalidates(productId));
@@ -398,7 +399,10 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
   });
   const remove = useMutation({
     ...actions.deleteProductDownload,
-    onSuccess: refresh,
+    onSuccess: async () => {
+      setDeletingAsset(null);
+      await refresh();
+    },
   });
   const selectFile = (file: File | undefined) => {
     if (file === undefined) return;
@@ -446,7 +450,7 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
                 color="error"
                 aria-label={t.products.deleteDownload({ name: asset.fileName })}
                 disabled={remove.isPending}
-                onClick={() => remove.mutate({ productId, assetId: asset.id })}
+                onClick={() => setDeletingAsset({ id: asset.id, fileName: asset.fileName })}
               >
                 {t.common.remove}
               </Button>
@@ -470,6 +474,19 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
       </Box>
       {upload.isError ? <Alert severity="error">{localizePanelError(upload.error, t)}</Alert> : null}
       {remove.isError ? <Alert severity="error">{localizePanelError(remove.error, t)}</Alert> : null}
+      {deletingAsset ? (
+        <ConfirmDialog
+          open
+          title={t.products.deleteDownloadConfirmTitle}
+          body={<Typography variant="body1">{t.products.deleteDownloadConfirmBody({ name: deletingAsset.fileName })}</Typography>}
+          confirmLabel={t.products.deleteDownloadConfirm}
+          cancelLabel={t.common.cancel}
+          pending={remove.isPending}
+          onClose={() => setDeletingAsset(null)}
+          onConfirm={() => remove.mutate({ productId, assetId: deletingAsset.id })}
+          confirmTestId="product-download-delete-confirm"
+        />
+      ) : null}
     </SectionCard>
   );
 };

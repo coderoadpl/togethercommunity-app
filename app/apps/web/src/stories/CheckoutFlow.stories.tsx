@@ -33,7 +33,7 @@ const marketingConsents = [{
 }];
 
 export const PriceSelection: Story = {
-  name: 'Wybór ceny',
+  name: 'Price selection',
   args: {
     eyebrow: 'Kasa · Studio Anny',
     width: 'wide',
@@ -85,7 +85,7 @@ export const PriceSelection: Story = {
 };
 
 export const Success: Story = {
-  name: 'Sukces',
+  name: 'Success',
   args: {
     eyebrow: 'Płatność potwierdzona',
     children: (

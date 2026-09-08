@@ -29,6 +29,8 @@ provenance trail lives in the private notes.
 
 **Done = `check` green AND `smoke` green.** Static-green is not done; the app
 must actually run. Do not weaken lint rules to make either green.
+Set `E2E_ALLOW_REMOTE_DATABASE_RESET=true` only for disposable CI database
+servers; local runs should use the default local Postgres target.
 
 The toolchain is pinned to Node 24 by `.nvmrc` and `engines.node`, and to pnpm
 10.34.5 by `packageManager`. Run `nvm use` before installing dependencies or
@@ -48,6 +50,10 @@ diagnose it before deciding whether the stage failed:
   `apps/web/src/features/home/courses/CoursesPanel.test.tsx`
 
 Visual verification has zero retries.
+
+## Storybook and visual verification
+
+Story titles, names and descriptions must be ASCII English; Polish belongs only in rendered product content from fixtures or i18n.
 
 ## Alerting (owner decision 2026-09-06 — HARD RULE)
 

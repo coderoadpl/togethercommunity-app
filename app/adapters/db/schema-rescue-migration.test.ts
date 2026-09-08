@@ -206,12 +206,12 @@ describe('schema rescue migration', () => {
       await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
 
       const rows = await migrationRows(pool);
-      expect(rows).toHaveLength(expected - 1);
-      expect(rows.some((row) => Number(row.created_at) === migration0080When)).toBe(false);
+      expect(rows).toHaveLength(expected);
+      expect(rows.filter((row) => Number(row.created_at) === migration0080When)).toHaveLength(1);
       await expectRescuedSchema(pool);
       expect(await health.schemaStatus()).toEqual({
         expectedMigrations: expected,
-        appliedMigrations: expected - 1,
+        appliedMigrations: expected,
         schemaCurrent: true,
         schemaFingerprint: expect.stringMatching(/^[0-9a-f]{12}$/),
         schemaFingerprintMatch: expect.any(Boolean),
@@ -227,7 +227,9 @@ describe('schema rescue migration', () => {
 
       await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
 
-      expect(await migrationRows(pool)).toHaveLength(expected);
+      const rows = await migrationRows(pool);
+      expect(rows).toHaveLength(expected);
+      expect(rows.filter((row) => Number(row.created_at) === migration0080When)).toHaveLength(1);
       await expectRescuedSchema(pool);
       expect(await createHealthPort(drizzle(pool, { schema: dbSchema })).schemaStatus()).toEqual({
         expectedMigrations: expected,
@@ -242,12 +244,17 @@ describe('schema rescue migration', () => {
   it('is a no-op after 0080 on a fresh database and remains migrator-idempotent', async () => {
     await withDatabase('together_schema_rescue_fresh', async (pool) => {
       await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
-      expect(await migrationRows(pool)).toHaveLength(expected);
+      const rows = await migrationRows(pool);
+      expect(rows).toHaveLength(expected);
+      expect(rows.filter((row) => Number(row.created_at) === migration0080When)).toHaveLength(1);
       await expectRescuedSchema(pool);
 
       await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
 
-      expect(await migrationRows(pool)).toHaveLength(expected);
+      const repeatedRows = await migrationRows(pool);
+      expect(repeatedRows).toHaveLength(expected);
+      expect(repeatedRows.filter((row) => Number(row.created_at) === migration0080When))
+        .toHaveLength(1);
       await expectRescuedSchema(pool);
     });
   }, 60_000);

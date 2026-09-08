@@ -19,10 +19,10 @@ const adapterPaymentTestExternal = 'node_modules/(stripe|vitest)(/|$)';
 const adapterVideoExternal = 'node_modules/zod(/|$)';
 const adapterVideoTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterNotificationsTestExternal = 'node_modules/vitest(/|$)';
-const adapterStorageExternal = 'node_modules/undici(/|$)';
+const adapterStorageExternal = 'node_modules/(sharp|undici)(/|$)';
 const adapterDomainsExternal = 'node_modules/zod(/|$)';
 const adapterDomainsTestExternal = 'node_modules/(vitest|zod)(/|$)';
-const adapterStorageTestExternal = 'node_modules/vitest(/|$)';
+const adapterStorageTestExternal = 'node_modules/(sharp|vitest)(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appCliTestExternal = 'node_modules/vitest(/|$)';
@@ -38,6 +38,12 @@ const scriptsTestExternal =
 
 module.exports = {
   forbidden: [
+    {
+      name: 'visual-support-only-client-contract',
+      severity: 'error',
+      from: { path: '^scripts/(story-clock|visual-request-policy)\\.ts$' },
+      to: { pathNot: '^(core/(client|contract)/|scripts/(story-clock|visual-request-policy)\\.ts$)' },
+    },
     { name: 'no-circular', severity: 'error', from: {}, to: { circular: true } },
     {
       name: 'core-domain-depends-on-nothing',
@@ -301,8 +307,14 @@ module.exports = {
     {
       name: 'app-web-external-allowlist',
       severity: 'error',
-      from: { path: '^apps/web' },
+      from: { path: '^apps/web', pathNot: '^apps/web/src/stories/page-decorators\\.tsx$' },
       to: { path: external, pathNot: webExternal },
+    },
+    {
+      name: 'page-decorator-external-allowlist',
+      severity: 'error',
+      from: { path: '^apps/web/src/stories/page-decorators\\.tsx$' },
+      to: { path: external, pathNot: 'node_modules/(@storybook/react-vite|@mui/material|@tanstack/react-query|@tanstack/react-router|react|zod)(/|$)' },
     },
     {
       name: 'app-cli-external-allowlist',
@@ -391,7 +403,7 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
-    exclude: { path: '^apps/web/src/stories/' },
+    exclude: { path: '\\.stories\\.tsx$' },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.json' },
   },

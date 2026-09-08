@@ -159,7 +159,7 @@ describe('Creator panel routing', () => {
 
     await renderPanelAt('/panel');
 
-    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.queryByTestId('dashboard-tiles')).not.toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('Creator panel routing', () => {
 
     const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
 
-    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: '/login' }));
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
@@ -199,7 +199,7 @@ describe('Creator panel routing', () => {
 
     const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
 
-    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: destination }));
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
@@ -429,13 +429,69 @@ describe('Creator panel routing', () => {
     expect(screen.getByText(pl.tenant.roleOwner)).toHaveClass('MuiChip-label');
     const menu = screen.getByRole('menu');
     const items = within(menu).getAllByRole('menuitem');
-    expect(items[0]).toHaveAccessibleName(pl.panel.myAccount);
-    expect(items[0]).toHaveAttribute('href', '/account');
-    expect(items[1]).toHaveAccessibleName(pl.tenant.signOut);
+    expect(items.map((item) => item.textContent)).toEqual([
+      pl.student.myProducts,
+      pl.messages.navLabel,
+      pl.panel.myAccount,
+      pl.tenant.signOut,
+    ]);
+    expect(items[0]).toHaveAttribute('href', '/my/products');
+    expect(items[1]).toHaveAttribute('href', '/messages');
+    expect(items[2]).toHaveAttribute('href', '/account');
 
     await userEvent.click(screen.getByTestId('sign-out'));
 
     await waitFor(() =>
       expect(window.sessionStorage.getItem('together-login-identifier')).toBeNull());
+  });
+
+  it('opens the account menu from an avatar and repeats it above the name and e-mail', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    await renderPanelAt('/panel/products');
+
+    const trigger = await screen.findByTestId('user-menu');
+    expect(within(trigger).getByTestId('user-avatar')).toHaveTextContent('D');
+    await userEvent.click(trigger);
+
+    expect(await screen.findByTestId('user-menu-name')).toHaveTextContent('Demo');
+    expect(screen.getByTestId('user-menu-email')).toHaveTextContent('creator@together.dev');
+    expect(screen.getAllByTestId('user-avatar')).toHaveLength(2);
+  });
+
+  it('drops the messages entry from the account menu when the community has direct messages off', async () => {
+    stubViewport(true);
+    commonHandlers();
+    server.use(
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              bunnyStreamCdnHostname: null,
+              logoUrl: null,
+              logoDarkUrl: null,
+              accentColor: null,
+              faviconUrl: null,
+              termsUrl: null,
+              privacyUrl: null,
+              directMessagesEnabled: false,
+            },
+          },
+        }),
+      ),
+    );
+
+    await renderPanelAt('/panel/products');
+
+    await userEvent.click(await screen.findByTestId('user-menu'));
+
+    await waitFor(() => expect(screen.queryByTestId('user-menu-messages')).toBeNull());
+    expect(screen.getByTestId('user-menu-products')).toBeInTheDocument();
   });
 });

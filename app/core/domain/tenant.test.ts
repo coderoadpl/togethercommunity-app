@@ -7,6 +7,7 @@ import {
   resolveInvoiceVat,
   resolveTenantLogo,
   resolveTenantSocial,
+  resolveVideoAutoplay,
   tenantSchema,
   tenantSettingsSchema,
   updateTenantSettingsInputSchema,
@@ -55,6 +56,25 @@ describe('isReservedTenantSlug', () => {
     expect(isReservedTenantSlug('start')).toBe(true);
     expect(isReservedTenantSlug('starter')).toBe(false);
   });
+});
+
+describe('resolveVideoAutoplay', () => {
+  it.each([
+    { defaultValue: false, overrideAllowed: false, memberValue: null, expected: false },
+    { defaultValue: true, overrideAllowed: false, memberValue: false, expected: true },
+    { defaultValue: false, overrideAllowed: true, memberValue: null, expected: false },
+    { defaultValue: true, overrideAllowed: true, memberValue: null, expected: true },
+    { defaultValue: false, overrideAllowed: true, memberValue: true, expected: true },
+    { defaultValue: true, overrideAllowed: true, memberValue: false, expected: false },
+  ])(
+    'resolves default=$defaultValue override=$overrideAllowed member=$memberValue',
+    ({ defaultValue, overrideAllowed, memberValue, expected }) => {
+      expect(resolveVideoAutoplay({
+        videoAutoplayDefault: defaultValue,
+        memberVideoAutoplayOverride: overrideAllowed,
+      }, memberValue)).toBe(expected);
+    },
+  );
 });
 
 describe('tenantSchema', () => {

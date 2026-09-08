@@ -66,11 +66,6 @@ export interface Messages {
     remove: string;
     tooLarge: string;
   };
-  bootSplash: {
-    opening: string;
-    tenant: (params: { host: string }) => string;
-    warming: string;
-  };
   htmlEditor: {
     tabsAria: string;
     editTab: string;
@@ -273,7 +268,6 @@ export interface Messages {
     marketingDocuments: string;
     marketingLayouts: string;
     aria: string;
-    comingSoon: string;
   };
   navigationGroups: {
     content: string;
@@ -444,6 +438,9 @@ export interface Messages {
     creating: string;
     archive: string;
     archiving: string;
+    archiveConfirmTitle: string;
+    archiveConfirmBody: (params: { code: string }) => string;
+    archiveConfirm: string;
     allCoupons: string;
     loading: string;
     empty: string;
@@ -503,6 +500,7 @@ export interface Messages {
     openNavigation: string;
     closeNavigation: string;
     accountMenu: string;
+    accountMenuUnread: (params: { count: number }) => string;
     myAccount: string;
     signedInAs: string;
   };
@@ -510,13 +508,19 @@ export interface Messages {
     bell: string;
     heading: string;
     empty: string;
+    emptyHint: string;
+    allRead: string;
     loading: string;
     markAllRead: string;
+    markAllReadShort: string;
     markedAllRead: string;
     viewAll: string;
-    pageEyebrow: string;
     loadMore: string;
-    olderTruncated: string;
+    filterAll: string;
+    filterUnread: string;
+    groupToday: string;
+    groupYesterday: string;
+    groupEarlier: string;
     unreadLabel: string;
     unreadAria: (params: { count: number }) => string;
     threadReply: (params: { author: string; lesson: string }) => string;
@@ -531,7 +535,6 @@ export interface Messages {
   messages: {
     navLabel: string;
     title: string;
-    eyebrow: string;
     loading: string;
     emptyList: string;
     emptyListHint: string;
@@ -946,6 +949,9 @@ export interface Messages {
     uploadDownload: string;
     uploadingDownload: string;
     deleteDownload: (params: { name: string }) => string;
+    deleteDownloadConfirmTitle: string;
+    deleteDownloadConfirmBody: (params: { name: string }) => string;
+    deleteDownloadConfirm: string;
     downloadStatusPending: string;
     downloadStatusReady: string;
   };
@@ -1046,6 +1052,9 @@ export interface Messages {
     removeChapterLessonCount: (params: { count: number }) => string;
     removeChapterSharedWarning: (params: { count: number }) => string;
     removeChapterConfirm: string;
+    removeContentConfirmTitle: string;
+    removeContentConfirmBody: (params: { name: string }) => string;
+    removeContentConfirm: string;
     noLessonsInChapter: string;
     lessonLabel: string;
     selectLesson: string;
@@ -1134,6 +1143,9 @@ export interface Messages {
     attachmentSize: (params: { kilobytes: number }) => string;
     attachmentPending: string;
     deleteAttachment: (params: { name: string }) => string;
+    deleteAttachmentConfirmTitle: string;
+    deleteAttachmentConfirmBody: (params: { name: string }) => string;
+    deleteAttachmentConfirm: string;
     invalidBlocks: string;
     blockNoun: (params: { count: number }) => string;
     typeVideo: string;
@@ -1365,9 +1377,10 @@ export interface Messages {
   };
   search: {
     title: string;
-    eyebrow: string;
     inputLabel: string;
     placeholder: string;
+    hint: string;
+    stemHint: string;
     empty: string;
     lessonsHeading: string;
     spacesHeading: string;
@@ -1376,8 +1389,6 @@ export interface Messages {
   student: {
     myCourses: string;
     myProducts: string;
-    courseLibrary: string;
-    productsLibrary: string;
     loadingCourses: string;
     retryCourses: string;
     noCourses: string;
@@ -1387,8 +1398,8 @@ export interface Messages {
     productsWillAppear: string;
     staffNoMember: string;
     courseEyebrow: string;
-    courseContentComingSoon: string;
-    courseContentArrivesLater: string;
+    productWithoutCoursesTitle: string;
+    productWithoutCoursesBody: string;
     productCoursesHeading: string;
     productCoursesHint: string;
     courseNotFound: string;
@@ -1420,6 +1431,7 @@ export interface Messages {
     backToMyCourses: string;
     searchLessons: string;
     filterPlaceholder: string;
+    filterHint: string;
     noMatches: string;
     loadingCourse: string;
     courseNotFound: string;
@@ -1463,6 +1475,7 @@ export interface Messages {
     unmarkCompleted: string;
     unmarkCompletedHint: string;
     completeContinue: string;
+    completing: string;
     previousLesson: string;
     nextLesson: string;
     firstLesson: string;
@@ -1528,7 +1541,7 @@ export interface Messages {
     backToAll: string;
     loadMore: string;
     searchLabel: string;
-    searchWholeWordsHint: string;
+    searchHint: string;
     searching: string;
     searchEmpty: string;
     searchCourseHeading: string;
@@ -1537,13 +1550,14 @@ export interface Messages {
   };
   community: {
     heading: string;
-    listEyebrow: string;
     loadingSpaces: string;
     noSpacesTitle: string;
     noSpacesBody: string;
     staffNoMember: string;
+    publicReadOnly: string;
     membersOnly: string;
     productGated: string;
+    productGatedFor: (params: { product: string }) => string;
     followingChip: string;
     feedEyebrow: string;
     aboutHeading: string;
@@ -1642,17 +1656,23 @@ export interface Messages {
     noMatches: string;
   };
   account: {
+    menuStudio: string;
     menuAccount: string;
     title: string;
-    heading: string;
     signedInAs: string;
     back: string;
     profileHeading: string;
+    tabsLabel: string;
+    tabs: { profile: string; security: string; notifications: string; playback: string };
     displayNameLabel: string;
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
     avatarHint: string;
+    avatarUpload: string;
+    avatarUploading: string;
+    avatarRemove: string;
+    avatarTooLarge: string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;
@@ -1806,6 +1826,14 @@ export interface Messages {
     intro: string;
     toggleLabel: string;
   };
+  videoPlayback: {
+    heading: string;
+    intro: string;
+    defaultLabel: string;
+    defaultHint: string;
+    overrideLabel: string;
+    overrideHint: string;
+  };
   legal: {
     heading: string;
     intro: string;
@@ -1884,6 +1912,7 @@ export interface Messages {
     check: string;
     checking: string;
     remove: string;
+    removeConfirmTitle: string;
     removeConfirm: (params: { domain: string }) => string;
     removing: string;
     removedRedirect: string;
@@ -1993,7 +2022,7 @@ export interface Messages {
     freePending: string;
     payIdle: (params: { price: string }) => string;
     payPending: string;
-    simulatedPaymentDevNote: string;
+    simulatedPaymentNote: string;
     successEyebrow: string;
     successTitle: string;
     successBody: string;

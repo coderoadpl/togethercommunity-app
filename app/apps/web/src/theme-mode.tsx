@@ -3,7 +3,7 @@ import { ThemeProvider } from '@mui/material';
 
 import { DEFAULT_LANGUAGE, languageSchema, type Language } from '#core/domain/index.js';
 
-import { createThemeForMode, type ResolvedColorScheme } from './theme.js';
+import { createThemeForMode, MEMBER_BACKGROUND, type ResolvedColorScheme } from './theme.js';
 
 /**
  * The one module allowed to touch localStorage (see eslint boundary). Every
@@ -112,18 +112,18 @@ export const ThemeModeProvider = ({ children }: { children: ReactNode }) => {
     : colorScheme;
 
   useEffect(() => {
-    document.documentElement.style.backgroundColor = resolvedScheme === 'dark' ? '#101113' : '#FAFAF9';
+    document.documentElement.style.backgroundColor = MEMBER_BACKGROUND[resolvedScheme];
     document.documentElement.style.colorScheme = resolvedScheme;
     const lightMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
     const darkMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
-    if (lightMeta !== null) lightMeta.content = '#FAFAF9';
-    if (darkMeta !== null) darkMeta.content = '#101113';
+    if (lightMeta !== null) lightMeta.content = MEMBER_BACKGROUND.light;
+    if (darkMeta !== null) darkMeta.content = MEMBER_BACKGROUND.dark;
     if (colorScheme === 'auto' || (resolvedScheme === 'dark') === prefersDark) return;
     const activeMeta = prefersDark ? darkMeta : lightMeta;
-    if (activeMeta !== null) activeMeta.content = resolvedScheme === 'dark' ? '#101113' : '#FAFAF9';
+    if (activeMeta !== null) activeMeta.content = MEMBER_BACKGROUND[resolvedScheme];
   }, [colorScheme, prefersDark, resolvedScheme]);
 
-  const theme = useMemo(() => createThemeForMode('shadcn', undefined, resolvedScheme), [resolvedScheme]);
+  const theme = useMemo(() => createThemeForMode('shadcn', undefined, resolvedScheme, 'member'), [resolvedScheme]);
   const value = useMemo<ColorSchemeContextValue>(() => ({
     colorScheme,
     resolvedScheme,

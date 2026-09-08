@@ -1,22 +1,20 @@
 import { useMemo } from 'react';
-import { Box, Divider, List, Stack, Typography } from '@mui/material';
+import { Box, List, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ProgressRing } from '../../../components/ui/ProgressRing.js';
+import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { useTranslations } from '../../../i18n/index.js';
-import { NotificationBell } from '../../../NotificationBell.js';
 import { RailProgressBar } from '../../../theme.js';
-import { AccountIcon } from '../account-icons.js';
 import { courseTotals } from '../CourseRail.js';
 import { focusLesson } from '../course-tree-state.js';
 import { CourseTree } from '../CourseTree.js';
 import { spacesForCourse } from './course-spaces.js';
 import { memberHomePath } from './member-nav.js';
-import { BrandLink, type ShellVariant } from './shell-chrome.js';
+import { BrandLink } from './shell-chrome.js';
 import { BackIcon, CourseOverviewIcon, SpaceIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
 
@@ -28,10 +26,10 @@ const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) =
   return (
     <Box sx={{ px: '0.6rem', pb: '0.75rem' }} data-testid="course-sidebar-header">
       <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.5rem' }}>
-        <ProgressRing value={totals.percent} done={done} />
         <Typography variant="subtitle1" component="p" noWrap sx={{ minWidth: 0 }}>
           {structure.name}
         </Typography>
+        {done ? <CompletionMark label={t.courseOverview.courseCompleted} /> : null}
       </Stack>
       <RailProgressBar
         variant="determinate"
@@ -81,12 +79,10 @@ export const CourseSidebar = ({
   courseId,
   currentLessonId,
   tenantName,
-  variant,
 }: {
   courseId: string;
   currentLessonId: string | null;
   tenantName: string;
-  variant: ShellVariant;
 }) => {
   const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
@@ -169,21 +165,6 @@ export const CourseSidebar = ({
           />
         </>
       )}
-      {variant === 'drawer' ? (
-        <Box sx={{ flexShrink: 0 }}>
-          <Divider sx={{ my: '0.5rem' }} />
-          <List component="div" disablePadding>
-            <NotificationBell navLabel={t.notifications.bell} />
-            <LinkRow
-              to="/account"
-              label={t.account.menuAccount}
-              icon={<AccountIcon />}
-              active={false}
-              testId="course-sidebar-account"
-            />
-          </List>
-        </Box>
-      ) : null}
     </Box>
   );
 };

@@ -25,6 +25,7 @@ import {
   type Result,
   type Space,
   type SpaceFeed,
+  type SpaceProductSummary,
   type StaffSpace,
 } from '#core/domain/index.js';
 
@@ -32,7 +33,6 @@ import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseModuleRepository,
   CourseRepository,
   DiscussionLinkPort,
@@ -74,7 +74,6 @@ export interface SpacesDeps {
   ids: IdGenerator;
   clock: Clock;
   avatarSources: AvatarSourceReader;
-  contentHash: ContentHash;
 }
 
 const requireStaff = (
@@ -92,6 +91,15 @@ const isDefaultHomeSpace = async (
   spaceId: string,
   deps: Pick<SpacesDeps, 'tenants'>,
 ): Promise<boolean> => (await deps.tenants.findSettings(tenantId))?.defaultHomeSpaceId === spaceId;
+
+const productSummariesForSpace = (
+  space: Pick<Space, 'productIds'>,
+  productsById: Map<string, SpaceProductSummary>,
+): SpaceProductSummary[] =>
+  space.productIds.flatMap((productId) => {
+    const product = productsById.get(productId);
+    return product === undefined ? [] : [product];
+  });
 
 export const createSpace = async (
   ctx: Ctx,
@@ -219,15 +227,23 @@ export const listSpacesForMember = async (
 ): Promise<Result<MemberSpace[], AppError>> => {
   const actor = requireMemberOrStaff(ctx, 'space:read');
   if (!actor.ok) return actor;
-  const visible = await listAccessibleSpaces(ctx, deps);
+  const [visible, products] = await Promise.all([
+    listAccessibleSpaces(ctx, deps),
+    deps.products.listByTenant(actor.value.tenantId),
+  ]);
   if (!visible.ok) return visible;
+  const productsById = new Map(products.map((product) => [product.id, { id: product.id, title: product.title }]));
   const followed = await deps.spaceSubscriptions.listForUser(actor.value.tenantId, {
     userId: actor.value.userId,
     spaceIds: visible.value.map((space) => space.id),
   });
   const followedIds = new Set(followed.map((subscription) => subscription.spaceId));
   return ok(
-    visible.value.map((space): MemberSpace => ({ ...space, isFollowing: followedIds.has(space.id) })),
+    visible.value.map((space): MemberSpace => ({
+      ...space,
+      isFollowing: followedIds.has(space.id),
+      products: productSummariesForSpace(space, productsById),
+    })),
   );
 };
 

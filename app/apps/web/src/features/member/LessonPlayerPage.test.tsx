@@ -70,44 +70,6 @@ const structure = structureOf([
   entry('l2', 'Advanced Variables'),
 ]);
 
-const chapterOf = (
-  id: string,
-  name: string,
-  lessons: CourseStructureLesson[],
-): CourseStructureWithAccess['modules'][number]['chapters'][number] => ({
-  id,
-  name,
-  accessStatus: 'fully-accessible',
-  completionStatus: 'not-completed',
-  lessons,
-});
-
-const multiModuleStructure: CourseStructureWithAccess = {
-  ...structureOf([]),
-  modules: [
-    {
-      id: 'm1',
-      name: '01 - Fundamentals',
-      accessStatus: 'fully-accessible',
-      completionStatus: 'not-completed',
-      chapters: [
-        chapterOf('c1', 'Getting started', [entry('l1', 'Intro to Variables')]),
-        chapterOf('c2', 'Types', [entry('l2', 'Advanced Variables')]),
-      ],
-    },
-    {
-      id: 'm2',
-      name: '02 - The DOM',
-      accessStatus: 'fully-accessible',
-      completionStatus: 'not-completed',
-      chapters: [
-        chapterOf('c3', 'Selecting elements', [entry('l3', 'Query selectors')]),
-        chapterOf('c4', 'Events', [entry('l4', 'Listening for clicks')]),
-      ],
-    },
-  ],
-};
-
 const allBlocks: PlayableLessonBlock[] = [
   {
     type: 'video',
@@ -162,19 +124,6 @@ const okProgress = (completedLessonIds: string[] = []) =>
     HttpResponse.json({ ok: true, data: { progress: progress(completedLessonIds) } }),
   );
 
-const stubCompactViewport = () => {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query.includes('max-width'),
-    media: query,
-    onchange: null,
-    addListener: () => undefined,
-    removeListener: () => undefined,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-    dispatchEvent: () => false,
-  }));
-};
-
 const stubDesktopViewport = () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: query.includes('min-width'),
@@ -218,6 +167,21 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        }),
+      ),
       http.get('/api/discussion', () =>
         HttpResponse.json({
           ok: true,
@@ -226,6 +190,9 @@ describe('LessonPlayerPage', () => {
       ),
       http.get('/api/student/lessons/:lessonId/attachments', () =>
         HttpResponse.json({ ok: true, data: { attachments: [] } }),
+      ),
+      http.post('/api/student/progress/last-viewed', () =>
+        HttpResponse.json({ ok: true, data: { progress: progress([]) } }),
       ),
     );
   });
@@ -637,7 +604,7 @@ describe('LessonPlayerPage', () => {
     );
   });
 
-  it('starts the Bunny embed only for a member who turned autoplay on', async () => {
+  it('uses the member preference when the creator allows an override', async () => {
     const videoBlock = allBlocks[0];
     if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
     server.use(
@@ -661,6 +628,21 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: true,
+            },
+          },
+        }),
+      ),
       okStructure(),
       okProgress(),
       okLesson([{ ...videoBlock, embedUrl: 'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=false&preload=false' }]),
@@ -672,6 +654,98 @@ describe('LessonPlayerPage', () => {
         'src',
         'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=true&preload=true',
       ));
+  });
+
+  it('waits for the autoplay policy before mounting a video', async () => {
+    let settingsRequested = false;
+    let releaseSettings: () => void = () => undefined;
+    const settingsGate = new Promise<void>((resolve) => {
+      releaseSettings = resolve;
+    });
+    const videoBlock = allBlocks[0];
+    if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
+    server.use(
+      http.get('/api/tenant/settings', async () => {
+        settingsRequested = true;
+        await settingsGate;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: true,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        });
+      }),
+      okStructure(),
+      okProgress(),
+      okLesson([{ ...videoBlock, embedUrl: 'https://iframe.mediadelivery.net/embed/424242/vid-1' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await waitFor(() => expect(settingsRequested).toBe(true));
+    expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
+    releaseSettings();
+    expect(await screen.findByTestId('lesson-video')).toHaveAttribute(
+      'src',
+      'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=true&preload=true',
+    );
+  });
+
+  it('shows a failed autoplay policy request beside the lesson', async () => {
+    server.use(
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: false,
+          error: { code: 'internal', message: 'boom' },
+        }, { status: 500 })),
+      okStructure(),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByRole('button', { name: pl.common.retry })).toBeInTheDocument();
+    expect(screen.getByTestId('lesson-video')).toHaveAttribute(
+      'src',
+      'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=false&preload=false',
+    );
+  });
+
+  it('uses the tenant default when member overrides are disabled', async () => {
+    const videoBlock = allBlocks[0];
+    if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
+    server.use(
+      http.get('/api/tenant/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: true,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        }),
+      ),
+      okStructure(),
+      okProgress(),
+      okLesson([{ ...videoBlock, embedUrl: 'https://iframe.mediadelivery.net/embed/424242/vid-1' }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await waitFor(() => expect(screen.getByTestId('lesson-video')).toHaveAttribute(
+      'src',
+      'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=true&preload=true',
+    ));
   });
 
   it('strips a script tag from html content', async () => {
@@ -703,37 +777,14 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
   });
 
-  it('renders breadcrumbs from the course structure', async () => {
+  it('leaves the breadcrumb trail to the member app bar', async () => {
     server.use(okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    const crumbs = await screen.findByLabelText(pl.common.breadcrumbs);
-    expect(within(crumbs).getByRole('link', { name: 'JavaScript Foundations' })).toBeInTheDocument();
-    expect(within(crumbs).getByText('01 - Fundamentals')).toBeInTheDocument();
-    expect(within(crumbs).getByText('Getting started')).toBeInTheDocument();
-  });
-
-  it('breadcrumbs name the module and chapter of a lesson outside the first module', async () => {
-    server.use(okStructureOf(multiModuleStructure), okProgress(), okLesson(allBlocks));
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l4" />);
-
-    const crumbs = await screen.findByLabelText(pl.common.breadcrumbs);
-    expect(within(crumbs).getByRole('link', { name: 'JavaScript Foundations' })).toBeInTheDocument();
-    expect(within(crumbs).getByText('02 - The DOM')).toBeInTheDocument();
-    expect(within(crumbs).getByText('Events')).toBeInTheDocument();
-    expect(within(crumbs).queryByText('01 - Fundamentals')).not.toBeInTheDocument();
-    expect(within(crumbs).queryByText('Selecting elements')).not.toBeInTheDocument();
-  });
-
-  it('keeps the module and chapter in the compact breadcrumb trail', async () => {
-    stubCompactViewport();
-    server.use(okStructureOf(multiModuleStructure), okProgress(), okLesson(allBlocks));
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l4" />);
-
-    const crumbs = await screen.findByLabelText(pl.common.breadcrumbs);
-    expect(within(crumbs).getByRole('link', { name: 'JavaScript Foundations' })).toBeInTheDocument();
-    expect(within(crumbs).getByText('02 - The DOM')).toBeInTheDocument();
-    expect(within(crumbs).getByText('Events')).toBeInTheDocument();
+    await screen.findByTestId('lesson-html');
+    expect(screen.queryByLabelText(pl.common.breadcrumbs)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Intro to Variables' })).toBeInTheDocument();
+    expect(screen.getByText(pl.lesson.eyebrow)).toBeInTheDocument();
   });
 
   it('completes the lesson: optimistic checkmark, disabled button and invalidation', async () => {
@@ -763,7 +814,7 @@ describe('LessonPlayerPage', () => {
     await user.click(button);
 
     const unmarkButton = await screen.findByTestId('unmark-complete');
-    expect(within(unmarkButton).getByTestId('completion-full')).toBeInTheDocument();
+    expect(within(unmarkButton).getByTestId('completion-mark')).toBeInTheDocument();
     expect(unmarkButton).toBeEnabled();
     expect(completeCalls).toBe(1);
     await waitFor(() => expect(progressReads).toBeGreaterThan(readsBefore));
@@ -792,6 +843,88 @@ describe('LessonPlayerPage', () => {
 
     await waitFor(() => expect(screen.getByTestId('mark-complete')).toBeInTheDocument());
     expect(uncompleteCalls).toBe(1);
+  });
+
+  it('holds a pending state on continue until the next lesson is on screen', async () => {
+    let releaseComplete: () => void = () => undefined;
+    const completeGate = new Promise<void>((resolve) => {
+      releaseComplete = resolve;
+    });
+    server.use(
+      okStructure(),
+      okProgress(),
+      http.get('/api/student/lessons/:lessonId', ({ params }) => {
+        const id = String(params.lessonId);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            lesson: {
+              ...lesson([{ type: 'html', html: `<p>${id} body</p>` }]),
+              id,
+              name: id === 'l2' ? 'Advanced Variables' : 'Intro to Variables',
+            },
+            authenticated: true,
+          },
+        });
+      }),
+      http.post('/api/student/lessons/complete', async () => {
+        await completeGate;
+        return HttpResponse.json({ ok: true, data: { progress: progress(['l1']) } });
+      }),
+    );
+
+    const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+    };
+    const lessonRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/my/courses/$courseId/lessons/$lessonId',
+      component: LessonRouteComponent,
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([lessonRoute]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1'] }),
+    });
+    await router.load();
+    const user = userEvent.setup();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    await user.click(await screen.findByTestId('complete-continue'));
+
+    const pending = screen.getByTestId('complete-continue');
+    expect(pending).toHaveTextContent(pl.lesson.completing);
+    expect(pending).toBeDisabled();
+    expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
+    expect(screen.queryByText(pl.lesson.next({ name: 'Advanced Variables' })))
+      .not.toBeInTheDocument();
+    expect(screen.queryByTestId('unmark-complete')).not.toBeInTheDocument();
+
+    releaseComplete();
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l2'));
+    await waitFor(() => expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument());
+  });
+
+  it('completes the last lesson in place instead of navigating', async () => {
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    expect(await screen.findByTestId('mark-complete')).toBeInTheDocument();
+    expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
+  });
+
+  it('left-aligns the reading column of an html block', async () => {
+    server.use(okStructure(), okProgress(), okLesson([{ type: 'html', html: '<p>Body</p>' }]));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(stylesAt(await screen.findByTestId('lesson-html'), 1440)).toMatchObject({
+      'margin-inline': '0px',
+      'text-align': 'left',
+    });
   });
 
   it('makes continue the primary action and demotes marking the lesson complete', async () => {
@@ -1083,7 +1216,8 @@ describe('LessonPlayerPage', () => {
 
     expect(stylesAt(screen.getByTestId('lesson-html'), desktop)).toMatchObject({
       'max-width': '44rem',
-      'margin-inline': 'auto',
+      'margin-inline': '0px',
+      'text-align': 'left',
     });
   });
 
@@ -1142,17 +1276,17 @@ describe('LessonPlayerPage', () => {
     renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('L1 body');
-    const breadcrumbs = await screen.findByTestId('member-breadcrumbs');
+    const heading = await screen.findByRole('heading', { level: 1 });
     await user.click(screen.getByTestId('next-lesson'));
 
-    expect(screen.getByTestId('member-breadcrumbs')).toBe(breadcrumbs);
+    expect(screen.getByRole('heading', { level: 1 })).toBe(heading);
     expect(screen.getByTestId('lesson-transition-loading')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: pl.auth.signInLink })).not.toBeInTheDocument();
 
     releaseLesson();
 
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('L2 body');
-    expect(screen.getByTestId('member-breadcrumbs')).toBe(breadcrumbs);
+    expect(screen.getByRole('heading', { level: 1 })).toBe(heading);
   });
 
   it('shows a friendly empty state for a lesson without blocks', async () => {
@@ -1187,6 +1321,30 @@ describe('LessonPlayerPage', () => {
         chapterId: 'c1',
       }),
     );
+  });
+
+  it('keeps last-viewed failures silent on the lesson page', async () => {
+    let lastViewedCalls = 0;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', () => {
+        lastViewedCalls += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'internal', message: 'Write failed' } },
+          { status: 500 },
+        );
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('lesson-video')).toBeInTheDocument();
+    await waitFor(() => expect(lastViewedCalls).toBe(1));
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith('Failed to update last-viewed lesson', expect.any(Error)));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 
   it('skips the last-viewed write and its error alert while viewing as a member', async () => {

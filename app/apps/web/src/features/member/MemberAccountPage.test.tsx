@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
+import { ToastProvider } from '../../components/ui/Toast.js';
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -18,6 +19,7 @@ const stubMe = (
   emailVerified = true,
   tenant: Record<string, unknown> = {},
   impersonation: unknown = null,
+  avatarUrl: string | null = null,
 ) =>
   http.get('*/api/me', () =>
     HttpResponse.json({
@@ -27,6 +29,7 @@ const stubMe = (
         email: 'member@together.dev',
         name: 'Member',
         emailVerified,
+        avatarUrl,
         tenant: {
           id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1', banned: false,
           ...tenant,
@@ -36,10 +39,17 @@ const stubMe = (
     }),
   );
 
-const stubSettings = (billingPortalUrl: string | null, supportConfigured = false) =>
+const stubSettings = (
+  billingPortalUrl: string | null,
+  supportConfigured = false,
+  memberVideoAutoplayOverride = false,
+  videoAutoplayDefault = false,
+) =>
   http.get('*/api/tenant/settings', () =>
     HttpResponse.json({ ok: true, data: { settings: {
       name: 'Akademia', socialLinks: [], billingPortalUrl, bunnyStreamLibraryId: null, supportConfigured,
+      memberVideoAutoplayOverride,
+      videoAutoplayDefault,
     } } }),
   );
 
@@ -53,7 +63,7 @@ const stubErasureRequest = () =>
     HttpResponse.json({ ok: true, data: { request: null } }),
   );
 
-const renderAccount = async () => {
+const renderAccount = async (initialEntry = '/account') => {
   server.use(
     stubErasureRequest(),
     http.get('*', ({ request }) =>
@@ -64,20 +74,25 @@ const renderAccount = async () => {
   const rootRoute = createRootRoute({ component: MemberAccountPage });
   const router = createRouter({
     routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ['/account'] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return renderWithProviders(
     <ThemeModeProvider>
-      <RouterProvider router={router} />
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
     </ThemeModeProvider>,
   );
 };
 
+const findToast = async (kind: 'success' | 'error') =>
+  screen.findByTestId(new RegExp(`^toast-${kind}-`));
+
 describe('MemberAccountPage', () => {
   it('mounts passkey and two-factor management on the member surface', async () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
-    await renderAccount();
+    await renderAccount('/account?tab=security');
 
     expect(await screen.findByTestId('account-security-methods')).toBeInTheDocument();
     expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(pl.security.noPasskeys);
@@ -85,7 +100,7 @@ describe('MemberAccountPage', () => {
     expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
   });
 
-  it('orders the sections from identity through security to the danger zone', async () => {
+  it('renders accessible tabs and keeps profile as the default deep-link target', async () => {
     server.use(
       stubMe(true, { displayName: 'Ada' }),
       stubSettings('https://billing.stripe.com/p/login/test_example', true),
@@ -93,22 +108,14 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
-    await waitFor(() =>
-      expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
-        .toEqual([
-          pl.account.profileHeading,
-          pl.emailVerification.heading,
-          pl.account.passwordHeading,
-          pl.security.heading,
-          pl.messages.privacyHeading,
-          pl.account.preferencesHeading,
-          pl.account.playbackHeading,
-          pl.account.billingHeading,
-          pl.account.invoiceOrdersHeading,
-          pl.support.heading,
-          pl.account.dataExportHeading,
-          pl.account.erasureHeading,
-        ]));
+    const profileTab = await screen.findByRole('tab', { name: pl.account.tabs.profile });
+    expect(profileTab).toHaveAttribute('aria-selected', 'true');
+    expect(profileTab).toHaveAttribute('aria-controls', 'account-panel-profile');
+    expect(screen.getByRole('tablist', { name: pl.account.tabsLabel })).toBeInTheDocument();
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'account-panel-profile');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'account-tab-profile');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('tabindex', '0');
+    expect(screen.queryByRole('heading', { name: pl.security.heading })).not.toBeInTheDocument();
   });
 
   it('keeps the identity card above page-level fetch errors', async () => {
@@ -155,6 +162,106 @@ describe('MemberAccountPage', () => {
       .toBeGreaterThan(0);
   });
 
+  it('uploads an avatar through the presigned image pipeline', async () => {
+    const requests: string[] = [];
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/avatar/upload', async ({ request }) => {
+        requests.push('begin');
+        expect(await request.json()).toEqual({
+          kind: 'avatar',
+          fileName: 'avatar.png',
+          contentType: 'image/png',
+          sizeBytes: 6,
+        });
+        return HttpResponse.json({ ok: true, data: {
+          key: 'image-assets/t1/avatar/00000000-0000-4000-8000-000000000001.png',
+          servePath: '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.png',
+          upload: {
+            url: 'https://storage.example.test/avatar-upload',
+            headers: { 'content-type': 'image/png' },
+            expiresAt: '2026-09-07T12:15:00.000Z',
+          },
+        } });
+      }),
+      http.put('https://storage.example.test/avatar-upload', () => {
+        requests.push('put');
+        return new HttpResponse(null, { status: 200 });
+      }),
+      http.post('*/api/me/avatar/complete', async ({ request }) => {
+        requests.push('complete');
+        expect(await request.json()).toEqual({
+          key: 'image-assets/t1/avatar/00000000-0000-4000-8000-000000000001.png',
+        });
+        return HttpResponse.json({ ok: true, data: {
+          url: '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp',
+        } });
+      }),
+    );
+    await renderAccount();
+
+    await userEvent.upload(
+      await screen.findByLabelText(pl.account.avatarUpload),
+      new File(['avatar'], 'avatar.png', { type: 'image/png' }),
+    );
+
+    await waitFor(() => expect(requests).toEqual(['begin', 'put', 'complete']));
+  });
+
+  it('rejects an oversized avatar before starting an upload', async () => {
+    let requests = 0;
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/avatar/upload', () => {
+        requests += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'unexpected' } });
+      }),
+    );
+    await renderAccount();
+
+    await userEvent.upload(
+      await screen.findByLabelText(pl.account.avatarUpload),
+      new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'large.jpg', { type: 'image/jpeg' }),
+    );
+
+    expect(await screen.findByText(pl.account.avatarTooLarge)).toBeInTheDocument();
+    expect(requests).toBe(0);
+  });
+
+  it('removes a stored avatar and returns to initials', async () => {
+    let removed = false;
+    server.use(
+      stubMe(true, { displayName: 'Ada' }, null, '/api/public/assets/avatar/avatar.webp'),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/avatar/remove', () => {
+        removed = true;
+        return HttpResponse.json({ ok: true, data: { removed: true } });
+      }),
+    );
+    await renderAccount();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.account.avatarRemove }));
+
+    await waitFor(() => expect(removed).toBe(true));
+  });
+
+  it('opens the security deep link and updates tab semantics', async () => {
+    server.use(stubMe(), stubSettings(null), stubBillingOrders());
+    await renderAccount('/account?tab=security');
+
+    const securityTab = await screen.findByRole('tab', { name: pl.account.tabs.security });
+    expect(securityTab).toHaveAttribute('aria-selected', 'true');
+    expect(securityTab).toHaveAttribute('aria-controls', 'account-panel-security');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'account-panel-security');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'account-tab-security');
+    expect(screen.getByTestId('account-security-methods')).toBeInTheDocument();
+  });
+
   it('shows the member verification state and resends without blocking the account', async () => {
     let body: unknown;
     server.use(
@@ -166,13 +273,13 @@ describe('MemberAccountPage', () => {
         return HttpResponse.json({ status: true });
       }),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=security');
 
     expect(await screen.findByText(pl.emailVerification.pending({ email: 'member@together.dev' })))
       .toBeInTheDocument();
-    expect(screen.getByTestId('account-data-export')).toBeInTheDocument();
+    expect(screen.queryByTestId('account-data-export')).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('resend-verification-email'));
-    expect(await screen.findByText(pl.emailVerification.sent)).toBeInTheDocument();
+    expect(await findToast('success')).toHaveTextContent(pl.emailVerification.sent);
     expect(body).toEqual({
       email: 'member@together.dev',
       callbackURL: 'http://localhost:3000/login?verification=verified',
@@ -201,7 +308,7 @@ describe('MemberAccountPage', () => {
     expect(save).toBeEnabled();
     await userEvent.click(save);
 
-    expect(await screen.findByTestId('account-display-name-saved')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.account.displayNameSaved,
     );
     expect(body).toEqual({ displayName: 'Ada Lovelace' });
@@ -218,13 +325,13 @@ describe('MemberAccountPage', () => {
         return HttpResponse.json({ ok: true, data: { displayName: 'Ada', dmOptOut: true } });
       }),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=notifications');
 
     const toggle = await screen.findByRole('switch', { name: pl.messages.optOutLabel });
     expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
 
-    expect(await screen.findByTestId('account-dm-opt-out-saved')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.messages.optOutSaved,
     );
     expect(body).toEqual({ dmOptOut: true });
@@ -234,7 +341,7 @@ describe('MemberAccountPage', () => {
     let body: unknown;
     server.use(
       stubMe(true, { displayName: 'Ada' }),
-      stubSettings(null),
+      stubSettings(null, false, true),
       stubBillingOrders(),
       http.post('*/api/me/profile', async ({ request }) => {
         body = await request.json();
@@ -244,32 +351,58 @@ describe('MemberAccountPage', () => {
         });
       }),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=playback');
 
     const toggle = await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel });
     expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
 
-    expect(await screen.findByTestId('account-video-autoplay-saved')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.account.videoAutoplaySaved,
     );
     expect(body).toEqual({ videoAutoplay: true });
   });
 
   it('reflects a stored video autoplay preference and hides playback without a member row', async () => {
-    server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null), stubBillingOrders());
-    const { unmount } = await renderAccount();
+    server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null, false, true), stubBillingOrders());
+    const { unmount } = await renderAccount('/account?tab=playback');
     expect(await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel })).toBeChecked();
     unmount();
 
     server.use(
-      stubMe(true, { staffRole: 'owner', memberId: null }),
-      stubSettings(null),
+      stubMe(true, { videoAutoplay: true, memberId: null }),
+      stubSettings(null, false, true),
       stubBillingOrders(),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=playback');
     await screen.findByTestId('account-email');
     expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
+  });
+
+  it('hides playback when the creator disallows overriding autoplay', async () => {
+    server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null), stubBillingOrders());
+    await renderAccount('/account?tab=playback');
+
+    await screen.findByTestId('account-email');
+    expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
+  });
+
+  it('hides playback without a member row even when the creator allows overrides', async () => {
+    server.use(
+      stubMe(true, { staffRole: 'owner', memberId: null }),
+      stubSettings(null, false, true),
+      stubBillingOrders(),
+    );
+    await renderAccount('/account?tab=playback');
+
+    expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
+  });
+
+  it('reflects the tenant default before the member chooses an override', async () => {
+    server.use(stubMe(true, { videoAutoplay: null }), stubSettings(null, false, true, true), stubBillingOrders());
+    await renderAccount('/account?tab=playback');
+
+    expect(await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel })).toBeChecked();
   });
 
   it('stores the picked e-mail language and states the stored one', async () => {
@@ -283,7 +416,7 @@ describe('MemberAccountPage', () => {
         return HttpResponse.json({ ok: true, data: { displayName: 'Ada', language: 'en' } });
       }),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=notifications');
 
     expect(await screen.findByTestId('member-email-language')).toHaveTextContent(
       pl.account.emailLanguage.pl,
@@ -295,7 +428,7 @@ describe('MemberAccountPage', () => {
 
   it('names the platform default when the member has no stored e-mail language', async () => {
     server.use(stubMe(true, { displayName: 'Ada' }), stubSettings(null), stubBillingOrders());
-    await renderAccount();
+    await renderAccount('/account?tab=notifications');
 
     expect(await screen.findByTestId('member-email-language')).toHaveTextContent(
       pl.account.emailLanguage.unset,
@@ -314,7 +447,7 @@ describe('MemberAccountPage', () => {
         return HttpResponse.json({ ok: true, data: { displayName: 'Ada', language: null } });
       }),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=notifications');
 
     await userEvent.click(await screen.findByTestId('member-email-language-reset'));
 
@@ -329,7 +462,7 @@ describe('MemberAccountPage', () => {
       http.post('*/api/me/profile', () =>
         HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=notifications');
 
     await userEvent.click(await screen.findByRole('button', { name: 'en' }));
 
@@ -347,7 +480,7 @@ describe('MemberAccountPage', () => {
         return HttpResponse.json({ ok: true, data: { displayName: null, language: 'en' } });
       }),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=notifications');
 
     await userEvent.click(await screen.findByRole('button', { name: 'en' }));
 
@@ -362,7 +495,7 @@ describe('MemberAccountPage', () => {
       stubSettings(null),
       stubBillingOrders(),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=notifications');
 
     expect(await screen.findByRole('switch', { name: pl.messages.optOutLabel })).toBeChecked();
   });
@@ -409,6 +542,25 @@ describe('MemberAccountPage', () => {
     expect(sessionCalls).toBe(0);
   });
 
+  it('omits security while impersonating and redirects its deep link to the profile panel', async () => {
+    server.use(
+      stubMe(true, {}, {
+        id: 'imp-2',
+        subjectMemberId: 'm1',
+        subjectName: 'Member',
+        actorName: 'Owner',
+        expiresAt: '2026-09-03T11:00:00.000Z',
+      }),
+      stubSettings(null),
+      stubBillingOrders(),
+    );
+    await renderAccount('/account?tab=security');
+
+    expect(await screen.findByRole('tabpanel')).toHaveAttribute('id', 'account-panel-profile');
+    expect(screen.queryByRole('tab', { name: pl.account.tabs.security })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-security-methods')).not.toBeInTheDocument();
+  });
+
   it('hides the manage-payments link when no billing portal URL is set', async () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
     await renderAccount();
@@ -427,6 +579,7 @@ describe('MemberAccountPage', () => {
   });
 
   it('keeps support submission inactive until both fields are filled and resets after success', async () => {
+    const user = userEvent.setup();
     let body: unknown;
     server.use(
       stubMe(),
@@ -443,11 +596,12 @@ describe('MemberAccountPage', () => {
     expect(send).toBeDisabled();
     await userEvent.type(screen.getByLabelText(pl.support.subjectLabel), 'Problem z lekcją');
     expect(send).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(pl.support.bodyLabel), 'Nie mogę uruchomić nagrania.');
+    await user.click(screen.getByLabelText(pl.support.bodyLabel));
+    await user.paste('Nie mogę uruchomić nagrania.');
     expect(send).toBeEnabled();
     await userEvent.click(send);
 
-    expect(await screen.findByText(pl.support.sent)).toBeInTheDocument();
+    expect(await findToast('success')).toHaveTextContent(pl.support.sent);
     expect(body).toEqual({ subject: 'Problem z lekcją', body: 'Nie mogę uruchomić nagrania.' });
     expect(screen.getByLabelText(pl.support.subjectLabel)).toHaveValue('');
     expect(screen.getByLabelText(pl.support.bodyLabel)).toHaveValue('');
@@ -465,16 +619,53 @@ describe('MemberAccountPage', () => {
         return HttpResponse.json({ status: true });
       }),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=security');
 
     await userEvent.click(await screen.findByTestId('passkey-set-password'));
-    expect(await screen.findByTestId('passkey-password-setup-sent')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.security.resetSent,
     );
     expect(body).toEqual({
       email: 'member@together.dev',
       redirectTo: 'http://localhost:3000/reset-password',
     });
+  });
+
+  it('requests an account password setup link and confirms it with a toast', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('account-reset-password'));
+
+    expect(await findToast('success')).toHaveTextContent(pl.account.resetSent);
+    expect(body).toEqual({
+      email: 'member@together.dev',
+      redirectTo: 'http://localhost:3000/reset-password',
+    });
+  });
+
+  it('reports a failed account password setup request with an error toast', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal' } }, { status: 500 })),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('account-reset-password'));
+
+    expect(await findToast('error')).toBeInTheDocument();
   });
 
   it('changes the member password and sends the revocation choice', async () => {
@@ -488,14 +679,14 @@ describe('MemberAccountPage', () => {
         return HttpResponse.json({ status: true });
       }),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=security');
 
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
     await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
     await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
-    expect(await screen.findByTestId('change-password-success')).toHaveTextContent(
+    expect(await findToast('success')).toHaveTextContent(
       pl.changePassword.success,
     );
     expect(body).toEqual({
@@ -517,14 +708,14 @@ describe('MemberAccountPage', () => {
           { status: 400 },
         )),
     );
-    await renderAccount();
+    await renderAccount('/account?tab=security');
 
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
     await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
     await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
-    expect(await screen.findByTestId('change-password-remote-error')).toHaveTextContent(
+    expect(await findToast('error')).toHaveTextContent(
       pl.changePassword.credentialAccountMissing,
     );
     expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();

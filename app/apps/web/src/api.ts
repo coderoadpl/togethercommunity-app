@@ -25,6 +25,8 @@ import {
   coursesInvalidates,
   coursesQuery,
   createApiClient,
+  type ApiClient,
+  type AuthClientPort,
   createApiKeyMutation,
   createCourseMutation,
   createCheckoutSessionMutation,
@@ -134,6 +136,8 @@ import {
   meInvalidates,
   meQuery,
   updateMyProfileMutation,
+  uploadAvatarMutation,
+  removeAvatarMutation,
   membersQuery,
   membersExportQuery,
   accountSessionsQuery,
@@ -227,6 +231,7 @@ import {
   revokeApiKeyMutation,
   signInMutation,
   signInWithGoogleMutation,
+  promptGoogleOneTapMutation,
   signInWithPasskeyMutation,
   signOutMutation,
   signUpMutation,
@@ -288,6 +293,7 @@ import type {
   ReportsListInput,
   SpaceFeedGetInput,
 } from '#core/contract/index.js';
+import type { NotificationsPageInput } from '#core/client/index.js';
 import type { MemberExportFormat } from '#core/domain/index.js';
 
 /**
@@ -311,11 +317,13 @@ const authClient = createBetterAuthClientAdapter('');
  * transport (ApiClient, AuthClientPort) exactly once here; features import
  * these ready actions and never see a client, a port or an adapter.
  */
-export const actions = {
+export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClientPort, 'listPasskeys'> = authClient) => ({
   health: healthQuery(apiClient),
   me: meQuery(apiClient),
   meInvalidates,
   updateMyProfile: updateMyProfileMutation(apiClient),
+  uploadAvatar: uploadAvatarMutation(apiClient),
+  removeAvatar: removeAvatarMutation(apiClient),
   memberBillingOrders: memberBillingOrdersQuery(apiClient),
   publicOffer: publicOfferQuery(apiClient),
   publicOfferInvalidates,
@@ -474,7 +482,7 @@ export const actions = {
   devMagicLink: (email: string) => devMagicLinkQuery(apiClient, email),
   signOut: signOutMutation(authClient),
   registerPasskey: registerPasskeyMutation(authClient),
-  passkeys: passkeysQuery(authClient),
+  passkeys: passkeysQuery({ ...authClient, ...authOverrides }),
   passkeysInvalidates,
   removePasskey: removePasskeyMutation(authClient),
   signInWithPasskey: signInWithPasskeyMutation(authClient),
@@ -484,6 +492,7 @@ export const actions = {
   disableTwoFactor: disableTwoFactorMutation(authClient),
   regenerateBackupCodes: regenerateBackupCodesMutation(authClient),
   signInWithGoogle: signInWithGoogleMutation(authClient),
+  promptGoogleOneTap: promptGoogleOneTapMutation(authClient),
   tenantSecrets: tenantSecretsQuery(apiClient),
   apiKeys: apiKeysQuery(apiClient),
   apiKeyImportAudit: (id: string) => apiKeyImportAuditQuery(apiClient, { id, limit: 100 }),
@@ -521,7 +530,7 @@ export const actions = {
   onboardingInvalidates,
   tenantSetupReadiness: tenantSetupReadinessQuery(apiClient),
   notifications: notificationsQuery(apiClient),
-  notificationsPage: (limit: number) => notificationsPageQuery(apiClient, { limit }),
+  notificationsPage: (input: NotificationsPageInput) => notificationsPageQuery(apiClient, input),
   unreadNotifications: unreadNotificationsQuery(apiClient),
   markNotificationRead: markNotificationReadMutation(apiClient),
   markAllNotificationsRead: markAllNotificationsReadMutation(apiClient),
@@ -580,4 +589,6 @@ export const actions = {
   schedulerRun: (id: string) => schedulerRunQuery(apiClient, id),
   updateMarketingSesSettings: updateMarketingSesSettingsMutation(apiClient),
   marketingInvalidates,
-};
+});
+
+export const actions = bindActions(apiClient);

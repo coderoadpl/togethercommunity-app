@@ -189,6 +189,8 @@ const captureCreatorPanel = async (
 
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 20000 });
+  await page.goto(`${studioBaseUrl}/panel`, { waitUntil: 'load' });
 
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
   assert(
@@ -261,6 +263,8 @@ const captureDarkCreatorStates = async (
 
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL('**/start', { timeout: 20000 });
+  await page.goto(`${studioBaseUrl}/panel`, { waitUntil: 'load' });
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 
   const coursesNav = page.getByTestId('section-courses');

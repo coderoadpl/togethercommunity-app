@@ -736,6 +736,27 @@
       "when": 1788820240000,
       "tag": "0104_storage_cors_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1788820300000,
+      "tag": "0105_record_skipped_0080",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1788820360000,
+      "tag": "0106_video_autoplay_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1788820420000,
+      "tag": "0107_member_avatar",
+      "breakpoints": true
     }
   ]
 }

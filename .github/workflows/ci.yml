@@ -52,8 +52,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
       - run: pnpm install --frozen-lockfile
       - run: pnpm run db:migrate
-      - run: pnpm run check
-      - run: pnpm run storybook:build
+      - run: TOGETHER_TEST_SERIAL=1 pnpm run check
       - name: pnpm audit --prod --audit-level=moderate
         run: |
           for attempt in 1 2 3 4 5; do
@@ -66,6 +65,46 @@ jobs:
             echo "pnpm audit failed (attempt $attempt/5), retrying in 30s..."
             sleep 30
           done
+
+  visual:
+    runs-on: macos-26
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - id: setup-chrome
+        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd
+        with:
+          chrome-version: 152.0.7977.82
+      - run: '"$CHROME_PATH" --version'
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+      - name: Pin native macOS date controls to the golden authoring locale
+        run: |
+          defaults write NSGlobalDomain AppleLocale -string en_PL
+          defaults write NSGlobalDomain AppleLanguages -array en-PL
+          defaults write NSGlobalDomain AppleICUForce24HourTime -bool true
+      - run: pnpm run visual
+        env:
+          PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: visual
+          path: app/out/visual
 
   smoke:
     runs-on: ubuntu-24.04
@@ -162,13 +201,43 @@ jobs:
         run: '"$CHROME_PATH" --version'
         env:
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
-      - run: pnpm run e2e:${{ matrix.suite }}
+      - if: matrix.suite == 'auth'
+        run: pnpm run fixtures:check
+        env:
+          DATABASE_URL: postgres://together:together@localhost:5432/together
+      - if: matrix.suite == 'auth'
+        run: pnpm run visual:app
         env:
           PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+      - if: always() && matrix.suite == 'auth'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: visual-app
+          path: app/out/visual-app
+      - name: Run E2E suite
+        shell: bash
+        run: |
+          mkdir -p e2e-artifacts
+          set +e
+          pnpm run e2e:${{ matrix.suite }} 2>&1 | tee "e2e-artifacts/${{ matrix.suite }}.log"
+          status="${PIPESTATUS[0]}"
+          set -e
+          exit "$status"
+        env:
+          PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-${{ matrix.suite }}-failure
+          path: |
+            app/e2e-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
 
   release-tag:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [check, smoke, e2e]
+    needs: [check, visual, smoke, e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

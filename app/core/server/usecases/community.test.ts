@@ -24,7 +24,6 @@ import type { Ctx } from '../context.js';
 import type {
   AvatarSourceReader,
   Clock,
-  ContentHash,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -61,8 +60,6 @@ import {
 import { openHeuristicReport } from './moderation.js';
 
 const NOW = '2026-07-15T10:00:00.000Z';
-
-const contentHash: ContentHash = { sha256: (content) => `digest(${String(content)})` };
 
 const identity = (overrides: Partial<Identity>): Identity => ({
   userId: 'u1',
@@ -585,12 +582,19 @@ class FakeNotifications implements NotificationRepository {
 
   async listForRecipient(
     tenantId: string,
-    query: { recipientUserId: string; cursor?: string; limit: number; excludeDms?: boolean },
+    query: {
+      recipientUserId: string;
+      cursor?: string;
+      limit: number;
+      excludeDms?: boolean;
+      unreadOnly?: boolean;
+    },
   ): Promise<{ notifications: Notification[]; nextCursor: string | null }> {
     return {
       notifications: this.rows
         .filter((item) => item.tenantId === tenantId && item.recipientUserId === query.recipientUserId)
         .filter((item) => query.excludeDms !== true || item.payload.contextKind !== 'dm')
+        .filter((item) => query.unreadOnly !== true || item.readAt === null)
         .slice(0, query.limit),
       nextCursor: null,
     };
@@ -760,7 +764,6 @@ const deps = (
     ids: new SequenceIds(),
     clock,
     avatarSources,
-    contentHash,
   };
 };
 
@@ -1112,6 +1115,24 @@ describe('community use-cases', () => {
     expect(await markAllNotificationsRead(ctx({ userId: 'u1', memberId: 'm1' }), d)).toEqual({ ok: true, value: { read: 1 } });
   });
 
+  it('lists only unread notifications when the caller asks for them', async () => {
+    const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
+    const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    if (!root.ok) throw new Error('root failed');
+    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'first' }, d);
+    await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'second' }, d);
+    const recipient = ctx({ userId: 'u1', memberId: 'm1' });
+    const all = await listNotifications(recipient, { limit: 10 }, d);
+    if (!all.ok) throw new Error('list failed');
+    await markNotificationRead(recipient, { id: all.value.notifications[0]?.id }, d);
+
+    const unreadOnly = await listNotifications(recipient, { limit: 10, unread: true }, d);
+    if (!unreadOnly.ok) throw new Error('list failed');
+    expect(unreadOnly.value.notifications).toHaveLength(1);
+    expect(unreadOnly.value.notifications[0]?.readAt).toBeNull();
+    expect((await listNotifications(recipient, { limit: 10 }, d)).ok).toBe(true);
+  });
+
   it('hides direct-message notifications from the list and the unread badge under impersonation', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
     const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
@@ -1170,16 +1191,13 @@ describe('community use-cases', () => {
     if (!root.ok) throw new Error('root failed');
     await createPost(ctx({ userId: 'u2', memberId: 'm2' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
 
-    const avatarOf = (email: string) =>
-      `https://www.gravatar.com/avatar/digest(${email})?d=404&s=160`;
-
     const listed = await listDiscussion(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1' }, d);
     expect(listed).toMatchObject({
       ok: true,
       value: {
         threads: [{
-          authorAvatarUrl: avatarOf('u1@example.com'),
-          replies: [{ authorAvatarUrl: avatarOf('u2@example.com') }],
+          authorAvatarUrl: null,
+          replies: [{ authorAvatarUrl: null }],
         }],
       },
     });
@@ -1187,13 +1205,13 @@ describe('community use-cases', () => {
     const hits = await searchPosts(ctx({ userId: 'u1', memberId: 'm1' }), { query: 'needle' }, d);
     expect(hits).toMatchObject({
       ok: true,
-      value: [{ post: { authorAvatarUrl: avatarOf('u1@example.com') } }],
+      value: [{ post: { authorAvatarUrl: null } }],
     });
 
     const notifications = await listNotifications(ctx({ userId: 'u1', memberId: 'm1' }), {}, d);
     expect(notifications).toMatchObject({
       ok: true,
-      value: { notifications: [{ payload: { authorAvatarUrl: avatarOf('u2@example.com') } }] },
+      value: { notifications: [{ payload: { authorAvatarUrl: null } }] },
     });
   });
 });

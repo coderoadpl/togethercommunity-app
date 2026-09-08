@@ -8,18 +8,19 @@ import pkg from '../../../../../package.json' with { type: 'json' };
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
-import { server } from '../../test/server.js';
+import { anonymousMe, server, staffMe, tenantlessMe } from '../../test/server.js';
 import { denySiteData } from '../../test/site-data.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { LoginPage } from './LoginPage.js';
 
-const stubAuthConfig = (exposeMagicLinks = false) =>
+const stubAuthConfig = (exposeMagicLinks = false, googleClientId: string | null = null) =>
   server.use(
     http.get('*/api/public/auth-config', () =>
       HttpResponse.json({
         ok: true,
         data: {
-          googleEnabled: false,
+          googleEnabled: googleClientId !== null,
+          googleClientId,
           passkeysEnabled: true,
           totpEnabled: true,
           exposeMagicLinks,
@@ -80,29 +81,44 @@ const renderLoginPage = async (
   hostname?: string,
   methods: readonly string[] = ['password', 'magic-link'],
   publicCourseIds: readonly string[] = [],
+  meHandler = anonymousMe(),
+  googleClientId: string | null = null,
 ) => {
-  stubAuthConfig(exposeMagicLinks);
+  stubAuthConfig(exposeMagicLinks, googleClientId);
   stubPublicNavigation(publicCourseIds);
   stubSignInMethods(methods);
+  server.use(meHandler);
   window.history.pushState({}, '', initialEntry);
-  const rootRoute = createRootRoute({
+  const rootRoute = createRootRoute({ component: Outlet });
+  const indexRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    component: () => <div>Signed in home</div>,
+  });
+  const loginRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/login',
     component: () => hostname === undefined ? <LoginPage /> : <LoginPage hostname={hostname} />,
   });
   const router = createRouter({
-    routeTree: rootRoute,
+    routeTree: rootRoute.addChildren([indexRoute, loginRoute]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
-  return renderWithProviders(
-    <ThemeModeProvider>
-      <RouterProvider router={router} />
-    </ThemeModeProvider>,
-  );
+  return {
+    ...renderWithProviders(
+      <ThemeModeProvider>
+        <RouterProvider router={router} />
+      </ThemeModeProvider>,
+    ),
+    router,
+  };
 };
 
 afterEach(() => {
   vi.unstubAllEnvs();
   window.sessionStorage.clear();
+  delete window.google;
 });
 
 const continueWithEmail = async (email = 'creator@together.dev') => {
@@ -116,6 +132,34 @@ const fillCredentials = async () => {
 };
 
 describe('LoginPage', () => {
+  it('prompts with Google One Tap only for an anonymous visitor on login', async () => {
+    const prompt = vi.fn();
+    window.google = { accounts: { id: { initialize: vi.fn(), prompt } } };
+
+    const anonymous = await renderLoginPage(false, '/login', undefined, ['password'], [], anonymousMe(), 'google-client-id');
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    anonymous.unmount();
+    prompt.mockClear();
+
+    await renderLoginPage(false, '/login', undefined, ['password'], [], staffMe(), 'google-client-id');
+    await waitFor(() => expect(screen.getByText('Signed in home')).toBeInTheDocument());
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
+  it('redirects a signed-in tenant member to home', async () => {
+    const { router } = await renderLoginPage(false, '/login', undefined, ['password'], [], staffMe());
+
+    expect(await screen.findByText('Signed in home')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/');
+  });
+
+  it('keeps login available for a signed-in account without a tenant', async () => {
+    const { router } = await renderLoginPage(false, '/login', undefined, ['password'], [], tenantlessMe());
+
+    expect(await screen.findByRole('heading', { level: 1, name: pl.auth.signInTitle })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/login');
+  });
+
   it.each([
     ['configured base domain', 'togethercommunity.app'],
     ['derived start host', 'start.togethercommunity.app'],
@@ -123,6 +167,7 @@ describe('LoginPage', () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     let offerCalls = 0;
     server.use(
+      anonymousMe(),
       http.get('*/api/public/offer', () => {
         offerCalls += 1;
         return HttpResponse.json(

@@ -2,7 +2,8 @@
 
 Status: accepted, 2026-07-28. Amended 2026-08-04 to add the deployment-risk
 profile and distinguish the target production topology from its outstanding
-owner actions and adopt the platform-default branch model.
+owner actions and adopt the platform-default branch model. Amended 2026-09-08
+to build on GitHub Actions and deploy prebuilt output with isolated credentials.
 
 ## Context
 
@@ -24,9 +25,9 @@ the migration path to another driver are defined in
 | Environment | Source | Vercel deployment | Database |
 |---|---|---|---|
 | Development | local worktree | local Node entry | local Docker Postgres |
-| Preview | pull request to `staging` | automatic Preview | disposable Neon preview branch |
-| Staging | `staging` | stable Preview alias | automatic integration-managed Neon staging branch |
-| Production | `main` | Vercel Production Branch | Neon production branch |
+| Preview | pull request to `staging` | no deployment from the prebuilt workflow | disposable database for separately provisioned previews |
+| Staging | push to `staging` | Actions prebuilt Preview, all stable staging aliases | existing Neon staging branch |
+| Production | push to `main` | Actions prebuilt Production (`--prod`) | Neon production branch |
 
 This table is the target release topology, not evidence of live configuration.
 Earlier on 2026-08-04, the remote had no `production` branch and no
@@ -39,11 +40,22 @@ database integrations, which assume that the default branch is production.
 
 `main` is now the default and production branch. `staging` is the integration
 trunk where feature pull requests merge, and a production release is an
-owner-approved pull request from `staging` to `main`. Vercel Production Branch
-Tracking must point to `main`; merges to `staging` must create Preview
-deployments only. The database integration automatically creates and manages
-the `staging` database branch used by that stable staging deployment. The
-legacy `production` branch is not a deployment or promotion target.
+owner-approved pull request from `staging` to `main`. The `deploy` workflow builds
+on GitHub runners and uploads prebuilt output; `main` uses `--prod` and `staging`
+uses Preview plus an explicit list of all staging aliases. The existing staging
+database remains separate from production; verify its URL and branch overrides
+before disconnecting the Git integration. Pull requests receive neither database
+nor hosting secrets and do not create deployments through this workflow. Vercel
+Production Branch Tracking points to `main` if the Git integration is restored.
+The legacy `production` branch is not a deployment or promotion target.
+
+GitHub environments isolate credentials: `staging-build` / `production-build`
+contain database credentials, and `staging-deploy` / `production-deploy` contain
+the hosting token. Both pairs restrict branches to `staging` / `main` respectively.
+Build environments disable deployment records; only the deploy job records a
+deployment. The deploy job runs no repository code. See the
+[prebuilt deployment runbook](../../../docs/deploy.md) for owner setup, the required
+per-variable build environment audit, domain inventory, cutover and Git rollback.
 
 GitHub enforces rulesets and branch protection on public repositories on the
 Free plan, but repository files cannot prove that the live approval wall is
@@ -54,9 +66,11 @@ boundary, and manual SHA attestation are tracked in items 16–18 of the
 The Vercel project root is `app`. `api/index.ts` delegates to
 `apps/server/src/entry.vercel.ts`, while local and smoke processes keep using
 `entry.node.ts`. `NODEJS_HELPERS=0` is mandatory because the Hono node-style
-handler owns request-body consumption. Vercel provisions this as a project-level
-environment setting through the dashboard or CLI; its per-function
-`vercel.json` schema cannot express environment variables. The platform entry
+handler owns request-body consumption. This is a build-time Node builder switch:
+the GitHub build step explicitly sets it to `0`. Keep the Vercel project-level
+setting at `0` for Git-build rollback; that setting alone cannot affect a GitHub
+prebuild. The per-function `vercel.json` schema cannot express environment
+variables. The platform entry
 maps `VERCEL_GIT_COMMIT_SHA` to the neutral `APP_COMMIT_SHA` used by health
 attestation.
 
@@ -87,7 +101,8 @@ warning, so an environment that has not been configured yet still deploys; so
 does a build with no `DATABASE_URL`, which leaves the guard nothing to compare.
 Set `PRODUCTION_DATABASE_FINGERPRINT` in the Preview and Staging scopes to the
 `databaseFingerprint` that production's `/api/health` reports; production
-itself does not need it. `db:migrate` logs
+does not need it for that guard, but the GitHub workflow requires it in both build
+environments. `db:migrate` logs
 `Migrating database <fingerprint> (environment <VERCEL_ENV|APP_ENV>)`, so every
 build log names the database it touched.
 
@@ -99,8 +114,10 @@ markers are absent. A platform owner listed in `PLATFORM_OWNER_EMAILS` gets a
 re-seeds them inside the request; `POST /api/platform/data-reset` is registered
 only when `APP_ENV` is `staging` or `preview`, so every other deployment answers
 404 for every caller and role. The route has its own Vercel function,
-`api/platform-reset.ts`, whose exported `maxDuration` of 300 s covers the
-reseed without raising the 30 s ceiling of the shared `api/index.ts` function.
+`api/platform-reset.ts`, whose exported `maxDuration` of 300 s is read by the Node
+builder through static configuration. `app/vercel.json` repeats that 300 s limit
+as an additional declaration, without raising the shared `api/index.ts` ceiling
+of 30 s.
 The action is offered and the capability granted only to a platform owner whose
 e-mail address is verified. Every attempt that reaches the reseed is recorded in
 `platform_audit_events`, a platform-scoped table the wipe never touches.
@@ -156,10 +173,14 @@ pnpm run smoke:remote
 
 The command checks the health/database/SHA attestation, the public offer API
 using the tenant header, and the public web page. It does not mutate deployed
-data. No workflow currently invokes it or turns its result into an automated
-acceptance gate.
-Before deployment, confirm `NODEJS_HELPERS=0` is set for every target Vercel
-environment.
+data. After a successful Actions `deploy`, production and staging smoke workflows
+attest the deployed commit from `workflow_run.head_sha`. Production also retains
+the Git integration's successful `Production` deployment trigger. The workflows
+perform their existing reseeds before checks and retain SMS alert gating; see
+[observability](../observability.md#post-deploy-remote-smoke). These are post-deploy
+checks, not a gate before traffic switches.
+Before deployment, confirm `NODEJS_HELPERS=0` reaches the GitHub build and remains
+set for every target Vercel environment for rollback.
 The first platform login, project linkage, environment provisioning, and first
 deployment remain owner actions.
 

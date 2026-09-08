@@ -6,6 +6,9 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 30
+    },
+    "api/platform-reset.ts": {
+      "maxDuration": 300
     }
   },
   "rewrites": [

@@ -1,6 +1,8 @@
 name: staging-smoke
 on:
-  push:
+  workflow_run:
+    workflows: [deploy]
+    types: [completed]
     branches: [staging]
   schedule:
     - cron: '17 6 * * *'
@@ -22,6 +24,13 @@ concurrency:
   cancel-in-progress: true
 jobs:
   smoke:
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'staging' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -43,14 +52,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_BASE_URL: ${{ inputs.base_url }}
           DISPATCH_SHA: ${{ inputs.expected_sha }}
-          PUSH_SHA: ${{ github.sha }}
+          DEPLOYMENT_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "base_url=${DISPATCH_BASE_URL:-$STAGING_HOST_URL}" >> "$GITHUB_OUTPUT"
             echo "expected_sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT_NAME" = "push" ]; then
+          elif [ "$EVENT_NAME" = "workflow_run" ]; then
             echo "base_url=$STAGING_HOST_URL" >> "$GITHUB_OUTPUT"
-            echo "expected_sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
+            echo "expected_sha=$DEPLOYMENT_SHA" >> "$GITHUB_OUTPUT"
           else
             echo "base_url=$STAGING_HOST_URL" >> "$GITHUB_OUTPUT"
             echo "expected_sha=" >> "$GITHUB_OUTPUT"

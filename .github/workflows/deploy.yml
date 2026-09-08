@@ -1,0 +1,216 @@
+name: deploy
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VERCEL_CLI_PACKAGE: vercel@59.11.7
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production-build' || 'staging-build' }}
+      deployment: false
+    concurrency:
+      group: vercel-build-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - name: Install Vercel CLI
+        run: |
+          cd "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/vercel-cli" --no-save --package-lock=false --ignore-scripts "$VERCEL_CLI_PACKAGE"
+      - run: pnpm install --frozen-lockfile
+      - name: Write local Vercel settings
+        env:
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          node --input-type=module <<'JS'
+          import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          const { VERCEL_ORG_ID: orgId, VERCEL_PROJECT_ID: projectId } = process.env;
+          if (!orgId || !projectId) throw new Error('Set VERCEL_ORG_ID and VERCEL_PROJECT_ID');
+          const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
+          mkdirSync('.vercel', { recursive: true });
+          writeFileSync('.vercel/project.json', JSON.stringify({
+            orgId,
+            projectId,
+            settings: {
+              framework: null,
+              rootDirectory: null,
+              nodeVersion: '24.x',
+              buildCommand: config.buildCommand,
+              outputDirectory: config.outputDirectory,
+              installCommand: 'pnpm install --frozen-lockfile',
+              devCommand: null,
+              directoryListing: false,
+            },
+          }));
+          JS
+      - name: Build prebuilt deployment
+        env:
+          NODEJS_HELPERS: '0'
+          VERCEL_API_FUNCTION_BUNDLING: ${{ vars.VERCEL_API_FUNCTION_BUNDLING }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PRODUCTION_DATABASE_FINGERPRINT: ${{ vars.PRODUCTION_DATABASE_FINGERPRINT }}
+          APP_BASE_DOMAIN: ${{ vars.APP_BASE_DOMAIN }}
+          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+          APP_COMMIT_SHA: ${{ github.sha }}
+          VERCEL_GIT_COMMIT_SHA: ${{ github.sha }}
+          VERCEL_GIT_COMMIT_REF: ${{ github.ref_name }}
+          APP_ENV: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+          VERCEL_ENV: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+          VERCEL_TELEMETRY_DISABLED: '1'
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          test -n "$DATABASE_URL"
+          test -n "$APP_BASE_DOMAIN"
+          test -n "$PRODUCTION_DATABASE_FINGERPRINT"
+          args=()
+          if [ "$GITHUB_REF" = refs/heads/main ]; then args+=(--prod); fi
+          if [ -z "$VERCEL_API_FUNCTION_BUNDLING" ]; then unset VERCEL_API_FUNCTION_BUNDLING; fi
+          "$RUNNER_TEMP/vercel-cli/node_modules/.bin/vercel" build "${args[@]}"
+      - name: Package prebuilt output
+        run: tar -czf "$RUNNER_TEMP/vercel-prebuilt.tar.gz" .vercel/output .vercel/project.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vercel-prebuilt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/vercel-prebuilt.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production-deploy' || 'staging-deploy' }}
+      url: ${{ steps.deploy.outputs.url }}
+    concurrency:
+      group: vercel-deploy-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Install Vercel CLI
+        run: |
+          cd "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/vercel-cli" --no-save --package-lock=false --ignore-scripts "$VERCEL_CLI_PACKAGE"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: vercel-prebuilt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/vercel-artifact
+      - name: Prepare deployment files
+        env:
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import tarfile
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          destination = root / 'vercel-deploy'
+          destination.mkdir()
+
+          def artifact_member(member, extraction_path):
+              member = tarfile.data_filter(member, extraction_path)
+              path = PurePosixPath(member.name)
+              if path.is_absolute() or '..' in path.parts:
+                  raise ValueError('Invalid artifact path')
+              if str(path) == '.vercel/project.json' and member.isfile():
+                  return member
+              if path.parts[:2] != ('.vercel', 'output'):
+                  raise ValueError('Unexpected artifact file')
+              output = (destination / '.vercel/output').resolve()
+              target = destination / member.name
+              if not target.resolve().is_relative_to(output):
+                  raise ValueError('Artifact path escapes output')
+              if member.issym() or member.islnk():
+                  base = target.parent if member.issym() else destination
+                  if not (base / member.linkname).resolve().is_relative_to(output):
+                      raise ValueError('Artifact link escapes output')
+              return member
+
+          with tarfile.open(root / 'vercel-artifact/vercel-prebuilt.tar.gz') as archive:
+              archive.extractall(destination, filter=artifact_member)
+          project = destination / '.vercel/project.json'
+          project.unlink()
+          org_id = os.environ['VERCEL_ORG_ID']
+          project_id = os.environ['VERCEL_PROJECT_ID']
+          if not org_id or not project_id:
+              raise ValueError('Set VERCEL_ORG_ID and VERCEL_PROJECT_ID')
+          project.write_text(json.dumps({'orgId': org_id, 'projectId': project_id}))
+          (destination / 'app').mkdir()
+          (destination / 'app/vercel.json').write_text('{}')
+          PY
+      - name: Deploy prebuilt output
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          STAGING_ALIASES: ${{ vars.STAGING_ALIASES }}
+          VERCEL_TELEMETRY_DISABLED: '1'
+        run: |
+          test -n "$VERCEL_TOKEN"
+          aliases=()
+          if [ "$GITHUB_REF" = refs/heads/staging ]; then
+            while IFS= read -r hostname; do
+              [ -z "$hostname" ] && continue
+              if [[ ! "$hostname" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$ ]]; then
+                echo 'STAGING_ALIASES must contain one bare hostname per line' >&2
+                exit 1
+              fi
+              aliases+=("$hostname")
+            done <<< "$STAGING_ALIASES"
+            if [ "${#aliases[@]}" -eq 0 ]; then
+              echo 'Set STAGING_ALIASES to every staging hostname' >&2
+              exit 1
+            fi
+          fi
+          cd "$RUNNER_TEMP/vercel-deploy"
+          vercel="$RUNNER_TEMP/vercel-cli/node_modules/.bin/vercel"
+          args=()
+          if [ "$GITHUB_REF" = refs/heads/main ]; then args+=(--prod); fi
+          "$vercel" deploy --prebuilt --regions fra1 --yes --json "${args[@]}" \
+            --scope "$VERCEL_ORG_ID" \
+            --meta "githubOrg=$GITHUB_REPOSITORY_OWNER" \
+            --meta "githubRepo=${GITHUB_REPOSITORY#*/}" \
+            --meta "githubCommitRef=$GITHUB_REF_NAME" \
+            --meta "githubCommitSha=$GITHUB_SHA" > "$RUNNER_TEMP/vercel-deployment.json"
+          url=$(jq -er '.url // .deployment.url' "$RUNNER_TEMP/vercel-deployment.json")
+          if [[ ! "$url" =~ ^https://[a-zA-Z0-9.-]+\.vercel\.app$ ]]; then
+            echo 'Vercel did not return a deployment URL' >&2
+            exit 1
+          fi
+          for hostname in "${aliases[@]}"; do
+            "$vercel" alias set "$url" "$hostname" --scope "$VERCEL_ORG_ID"
+          done
+          if [ "${#aliases[@]}" -gt 0 ]; then url="https://${aliases[0]}"; fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"

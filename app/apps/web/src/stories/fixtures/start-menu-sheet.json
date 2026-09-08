@@ -555,6 +555,32 @@
         }
       }
     },
+    "studentProgress:[\"course-js\"]": {
+      "ok": true,
+      "value": {
+        "progress": {
+          "completedLessonIds": [
+            "lesson-js-zmienne-1",
+            "lesson-js-zmienne-2"
+          ],
+          "courseId": "course-js",
+          "lastViewedChapterId": "chapter-js-funkcje",
+          "lastViewedLessonId": "lesson-js-funkcje-1",
+          "lastViewedModuleId": "module-js-podstawy",
+          "resume": {
+            "firstIncomplete": {
+              "id": "lesson-js-demo-video",
+              "name": "Demo wideo (Bunny Stream)"
+            },
+            "isReview": false,
+            "target": {
+              "id": "lesson-js-funkcje-1",
+              "name": "Funkcje i argumenty"
+            }
+          }
+        }
+      }
+    },
     "unreadMessageCount:[]": {
       "ok": true,
       "value": {
@@ -565,29 +591,6 @@
       "ok": true,
       "value": {
         "unread": 1
-      }
-    },
-    "studentProgress:[\"course-js\"]": {
-      "ok": true,
-      "value": {
-        "progress": {
-          "courseId": "course-js",
-          "completedLessonIds": [
-            "lesson-js-zmienne-1",
-            "lesson-js-zmienne-2"
-          ],
-          "resume": {
-            "target": {
-              "id": "lesson-js-funkcje-1",
-              "name": "Funkcje i argumenty"
-            },
-            "firstIncomplete": {
-              "id": "lesson-js-demo-video",
-              "name": "Demo wideo (Bunny Stream)"
-            },
-            "isReview": false
-          }
-        }
       }
     }
   },

@@ -544,6 +544,24 @@ describe('progress isolation', () => {
 
 
 describe('staff self progress', () => {
+  it.each(['owner', 'admin'] as const)('resumes the last visited lesson for %s without a purchase grant', async (staffRole) => {
+    const store = makeProgressStore();
+    const dependencies = { ...deps(store.repo, [], []), lessons: { list: async () => [] } };
+    const own = ctx({ staffRole });
+    await updateLastViewed(own, { courseId: 'c1', lessonId: 'l2' }, dependencies);
+
+    expect(await getProgress(own, 'c1', dependencies)).toMatchObject({
+      ok: true,
+      value: {
+        resume: {
+          target: { id: 'l2', name: 'C L2' },
+          firstIncomplete: { id: 'l1', name: 'C L1' },
+          isReview: false,
+        },
+      },
+    });
+  });
+
   it.each(['owner', 'admin'] as const)('lets %s complete and uncomplete an accessible staff lesson without a purchase grant', async (staffRole) => {
     const store = makeProgressStore();
     const dependencies = deps(store.repo, [], []);

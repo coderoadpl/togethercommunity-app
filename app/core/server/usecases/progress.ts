@@ -26,7 +26,7 @@ import type {
   MemberRepository,
   ProductGrantRepository,
 } from '../ports.js';
-import { buildCourseStructure, isLessonAccessibleByLookup, locateLesson } from './access.js';
+import { buildCourseStructure, fullCourseLookup, isLessonAccessibleByLookup, locateLesson } from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
 import { resolveCourseResume } from './course-resume.js';
 import { requireLiveMember } from './member-status.js';
@@ -242,7 +242,9 @@ export const getProgress = async (
     const [modules, lessons, lookup] = await Promise.all([
       deps.modules.list(scope.value.tenantId),
       deps.lessons.list(scope.value.tenantId),
-      resolveMemberAccessLookup(scope.value, deps),
+      ctx.identity.staffRole === null
+        ? resolveMemberAccessLookup(scope.value, deps)
+        : fullCourseLookup(course.id),
     ]);
     const structure = buildCourseStructure(
       course, modules, new Map(lessons.map((lesson) => [lesson.id, lesson])),

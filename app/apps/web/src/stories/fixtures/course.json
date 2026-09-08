@@ -455,15 +455,15 @@
           "lastViewedLessonId": "lesson-js-funkcje-1",
           "lastViewedModuleId": "module-js-podstawy",
           "resume": {
-            "target": {
-              "id": "lesson-js-funkcje-1",
-              "name": "Funkcje i argumenty"
-            },
             "firstIncomplete": {
               "id": "lesson-js-demo-video",
               "name": "Demo wideo (Bunny Stream)"
             },
-            "isReview": false
+            "isReview": false,
+            "target": {
+              "id": "lesson-js-funkcje-1",
+              "name": "Funkcje i argumenty"
+            }
           }
         }
       }

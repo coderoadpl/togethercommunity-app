@@ -10,7 +10,7 @@
               "authorAvatarUrl": null,
               "authorDisplay": "Kursant Wygasły",
               "authorIsStaff": false,
-              "body": "Mała podpowiedź dla innych: przykłady z tej lekcji najwygodniej testować w konsoli przeglądarki (F12 → Console). Od razu widać, jak const blokuje ponowne przypisanie wartości.",
+              "body": "Mała podpowiedź dla innych: przykłady z tej lekcji najwygodniej testować w konsoli przeglądarki (F12 → Console). Od razu widać, jak const blokuje ponowne przypisanie wartości.\nMateriały: https://courses.example.org/guide?topic=const&level=1.",
               "contextId": "lesson-js-zmienne-1",
               "contextKind": "lesson",
               "createdAt": "2026-06-11T12:00:00.000Z",

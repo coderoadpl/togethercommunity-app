@@ -143,7 +143,7 @@ server-side report available to operator-authenticated code paths.
 | `tenant-settings` | per tenant | Loads the settings row and parses it through `tenantSettingsSchema` — the same parse the Studio settings response goes through. |
 | `public-offer` | per tenant | Builds the public offer (products, prices, preview lessons, branding). |
 | `course-content` | per tenant | Loads a course and the first lesson it references: the first publicly visible course through the anonymous structure, or — when every course is members-only — the first course through its modules. |
-| `tenant-secret-decryption` | per tenant | Decrypts one stored secret with the master key. The plaintext is discarded, never returned. |
+| `tenant-secret-decryption` | per tenant | Decrypts every stored secret with the master key. The operator report names keys with decryption failures or empty values; the public report exposes only a generic failure. Secret values are never returned or logged. |
 | `email-transport` | per tenant | Resolves the transactional transport (tenant SES → SMTP → Resend). Tenants on the platform pool are skipped. |
 | `storage-presign` | per tenant | Signs a GET URL for the configured bucket. No request is sent to the bucket. |
 | `storage-cors` | per tenant | Sends a presigned `PUT` preflight for the platform origin and every verified custom domain. Database-backed results and rate limits are shared for ten minutes; blocked, unknown, and budget-limited origins add a warning without failing deep health. The public response exposes only the aggregate `storageCors` status, never origins or per-tenant entries. |
@@ -191,7 +191,7 @@ Checks, in order:
 5. `member-sign-in` — password sign-in of the synthetic member.
 6. `member-identity` — `/api/me` reports a membership on the tenant.
 7. `student-courses` — the member's course list; on the smoke tenant the seeded `Acme Course` must appear, and its structure must expose an accessible lesson.
-8. `lesson-playback` — the accessible lesson resolves a playback URL that is not `unavailable`; on the smoke tenant the seeded lesson carries a Bunny Stream video, so a `bunny` playback URL must resolve.
+8. `lesson-playback` — the accessible lesson loads with HTTP 200 and a valid student lesson envelope, and resolves a playback URL that is not `unavailable`; on the smoke tenant the seeded lesson carries a Bunny Stream video, so a `bunny` playback URL must resolve.
 9. `studio-tenant-settings` — **skipped**. Tenant API key scopes cover marketing, transactional, enrollment and import capabilities only; none of them grants `tenant:settings:read`, so a Studio settings read cannot be authenticated by a key from a workflow. No `SMOKE_STUDIO_API_KEY` secret is needed today. Re-enable this check by adding a read scope to `capabilitiesByScope` in `core/domain/api-key.ts` first.
 
 ### Member checks without credentials
@@ -297,7 +297,7 @@ Checks, in order:
 7. `member-sign-in` — password sign-in of the seeded smoke member.
 8. `member-identity` — `/api/me` reports a membership on the seeded tenant.
 9. `student-courses` — the seeded smoke member sees `Acme Course` and has an accessible lesson.
-10. `lesson-playback` — the seeded lesson resolves a playable Bunny Stream URL.
+10. `lesson-playback` — the seeded lesson loads with HTTP 200 and a valid student lesson envelope, and resolves a playable Bunny Stream URL.
 11. `studio-tenant-settings` — skipped for the same API-key scope reason as production smoke.
 
 A staging deployment wired to the production database therefore fails within a

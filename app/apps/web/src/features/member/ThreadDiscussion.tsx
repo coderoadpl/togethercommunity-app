@@ -23,6 +23,7 @@ import {
   PostToolbarButton,
   ReplyIndent,
 } from '../../theme.js';
+import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
@@ -213,8 +214,8 @@ interface ThreadActions {
 const PendingPostView = ({ author, body }: { author: string; body: string }) => (
   <PendingPostBox data-testid="pending-post">
     <PostAuthorName component="span">{author}</PostAuthorName>
-    <PostBody variant="body1" component="p">
-      {body}
+    <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }}>
+      <LinkifiedText text={body} />
     </PostBody>
   </PendingPostBox>
 );
@@ -244,11 +245,11 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
       </Stack>
 
       {deleted ? (
-        <DeletedPostText variant="body2" component="p" data-testid={`deleted-post-${post.id}`}>
+        <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`deleted-post-${post.id}`}>
           {t.discussion.deletedPost}
         </DeletedPostText>
       ) : a.editingId === post.id ? (
-        <Box sx={{ mt: '0.5rem' }}>
+        <Box sx={{ mt: '0.75rem' }}>
           <PostComposer
             label={t.discussion.editLabel}
             submitLabel={t.common.save}
@@ -263,8 +264,8 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
           />
         </Box>
       ) : (
-        <PostBody variant="body1" component="p" data-testid={`post-body-${post.id}`}>
-          {post.body}
+        <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`post-body-${post.id}`}>
+          <LinkifiedText text={post.body} />
         </PostBody>
       )}
 

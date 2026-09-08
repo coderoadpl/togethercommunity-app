@@ -4,9 +4,11 @@ import { TenantSocialLinks } from '../../branding.js';
 import { MemberPage } from '../../components/layout/index.js';
 import { useTranslations } from '../../i18n/index.js';
 
-type Props = Omit<ComponentProps<typeof MemberPage>, 'breadcrumbLabel'>;
+type Props = Omit<ComponentProps<typeof MemberPage>, 'breadcrumbLabel'> & {
+  hideSocialLinks?: boolean;
+};
 
-export const MemberSurface = (props: Props) => {
+export const MemberSurface = ({ hideSocialLinks = false, ...props }: Props) => {
   const t = useTranslations();
   return (
     <MemberPage
@@ -15,7 +17,7 @@ export const MemberSurface = (props: Props) => {
       children={(
         <>
           {props.children}
-          <TenantSocialLinks />
+          {hideSocialLinks ? null : <TenantSocialLinks />}
         </>
       )}
     />

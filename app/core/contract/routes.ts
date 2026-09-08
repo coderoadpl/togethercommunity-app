@@ -994,7 +994,7 @@ const externalPlaybackVideoSchema = z.object({
 const unavailablePlaybackVideoSchema = z.object({
   kind: z.literal('unavailable'),
   storageKey: z.string().min(1),
-  reason: z.literal('missing_library_id'),
+  reason: z.enum(['missing_library_id', 'secret_invalid']),
 });
 
 export const lessonPlaybackVideoSchema = z.discriminatedUnion('kind', [

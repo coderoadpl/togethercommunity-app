@@ -27,7 +27,7 @@ import { fixtureSchema } from './fixture-key.js';
 import { PanelLayout } from '../features/home/PanelLayout.js';
 import { DashboardPanel } from '../features/home/DashboardPanel.js';
 import { usePanelContext } from '../features/home/panel-context.js';
-import { StudioChecklistDock } from '../features/onboarding/index.js';
+import { StudioChecklistDock, StudioChecklistPanel } from '../features/onboarding/index.js';
 import { PanelMemberDetailRoute, PanelCouponCreateRoute, PanelCouponDetailRoute, PanelCouponsRoute, PanelCourseDetailRoute, PanelIntegrationsRoute, PanelLessonEditRoute, PanelOrderDetailRoute, PanelProductDetailRoute, PanelProductsRoute, PanelRedirectsRoute, PanelSettingsRoute, PanelSpacesRoute } from '../features/home/panel-routes.js';
 import { CampaignsPanel } from '../features/home/marketing/CampaignsPanel.js';
 import { ConsentsPanel } from '../features/home/marketing/ConsentsPanel.js';
@@ -38,9 +38,9 @@ import { SendsPanel, SendDetailPage, validateSendsSearch } from '../features/hom
 
 const PageRoot = () => <><LanguageSwitcher /><Outlet /></>;
 
-const PanelDashboard = () => { const { tenant, email } = usePanelContext(); return <><DashboardPanel /><StudioChecklistDock scope={`${tenant.id}:${email}`} /></>; };
+const PanelDashboard = () => { const { tenant, email } = usePanelContext(); return <><DashboardPanel aside={<StudioChecklistPanel scope={`${tenant.id}:${email}`} />} /><StudioChecklistDock scope={`${tenant.id}:${email}`} /></>; };
 
-const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl'), preloadFonts: z.boolean().optional() });
+const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl'), colorScheme: z.enum(['light', 'dark', 'auto']).default('auto'), preloadFonts: z.boolean().optional() });
 const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> }) => {
   const [state] = useState(() => {
     const fixture = selectFixture(parameters.fixture);
@@ -53,7 +53,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
     }
     window.history.replaceState(null, '', location);
     languagePreference.save(parameters.locale);
-    colorSchemePreference.save('auto');
+    colorSchemePreference.save(parameters.colorScheme);
     Object.defineProperty(window, 'EventSource', { configurable: true, value: undefined });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false }, mutations: { retry: false } } });
     const root = createRootRoute({ component: PageRoot });

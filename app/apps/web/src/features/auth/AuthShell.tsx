@@ -46,11 +46,11 @@ const authSurfaceTheme = (outer: Theme): Theme => ({
   linkColor: authInk(outer),
 });
 
-const PoweredByTogether = () => {
+const PoweredByTogether = ({ separated = false }: { separated?: boolean }) => {
   const t = useTranslations();
   const theme = useTheme();
   return (
-    <AuthPoweredBy data-testid="auth-powered-by">
+    <AuthPoweredBy data-testid="auth-powered-by" sx={separated ? { mt: '0.35rem' } : undefined}>
       <span>{t.auth.poweredBy}</span>
       <AuthPoweredByLogo
         src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
@@ -77,8 +77,9 @@ const usePublicSurface = (hostname: string) => {
 
 const TenantFooter = ({ hostname }: { hostname: string }) => {
   const t = useTranslations();
-  const { tenantName, legal, supportUrl, socialLinks, hasCourses } = usePublicSurface(hostname);
+  const { tenantName, legal, supportUrl, socialLinks, homeSpaceId, hasCourses } = usePublicSurface(hostname);
   const hasLegal = legal?.termsUrl != null || legal?.privacyUrl != null;
+  const hasPublicNav = hasCourses || homeSpaceId !== null;
 
   return (
     <AuthFooter component="footer" data-testid="auth-footer">
@@ -113,16 +114,14 @@ const TenantFooter = ({ hostname }: { hostname: string }) => {
         </AuthFooterRow>
       ) : null}
       {socialLinks.length === 0 ? null : <TenantSocialLinks links={socialLinks} />}
-      <PoweredByTogether />
+      {hasPublicNav ? <TenantPublicNav homeSpaceId={homeSpaceId} hasCourses={hasCourses} /> : null}
+      <PoweredByTogether separated={hasPublicNav} />
     </AuthFooter>
   );
 };
 
-const TenantPublicNav = ({ hostname }: { hostname: string }) => {
+const TenantPublicNav = ({ homeSpaceId, hasCourses }: { homeSpaceId: string | null; hasCourses: boolean }) => {
   const t = useTranslations();
-  const { homeSpaceId, hasCourses } = usePublicSurface(hostname);
-
-  if (!hasCourses && homeSpaceId === null) return null;
 
   return (
     <AuthPublicNav component="nav" aria-label={t.auth.publicNavLabel} data-testid="auth-public-nav">
@@ -186,7 +185,6 @@ export const AuthShell = ({
             )}
           </AuthColumn>
         </AuthStage>
-        {platformSurface ? null : <TenantPublicNav hostname={hostname} />}
       </AuthPage>
     </ThemeProvider>
   );

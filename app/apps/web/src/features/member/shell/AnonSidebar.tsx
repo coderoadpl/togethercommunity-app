@@ -1,4 +1,4 @@
-import { Box, Divider, List, ListItemIcon, ListItemText, Tooltip, Typography } from '@mui/material';
+import { Box, List, ListItemIcon, ListItemText, Tooltip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 
@@ -7,7 +7,6 @@ import { communitySpacePath } from '#core/contract/index.js';
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
 import { useTranslations } from '../../../i18n/index.js';
-import { AccountIcon } from '../account-icons.js';
 import { LockClosed } from '../tree-icons.js';
 import { LockedSpaceTooltipTitle } from '../SpaceCards.js';
 import { activeNavEntry, anonHomePath, type MemberNavEntry } from './member-nav.js';
@@ -113,16 +112,6 @@ export const AnonSidebar = ({ variant }: { variant: ShellVariant }) => {
         </Typography>
         <AnonNavigationList active={active} />
       </Box>
-      <Divider sx={{ my: '0.5rem' }} />
-      <List component="div" disablePadding>
-        <LinkRow
-          to="/login"
-          label={t.auth.signInLink}
-          icon={<AccountIcon />}
-          active={false}
-          testId="anon-sidebar-signin"
-        />
-      </List>
     </Box>
   );
 };

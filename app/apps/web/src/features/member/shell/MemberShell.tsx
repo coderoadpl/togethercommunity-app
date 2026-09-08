@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, AppBar, Box, Button, IconButton, Toolbar, Tooltip, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
@@ -16,6 +16,7 @@ import { NotificationBell } from '../../../NotificationBell.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { StudioIcon } from '../account-icons.js';
 import { useCanOpenStudio, useViewerKind } from '../viewer.js';
+import { CourseLoading } from '../CourseLoading.js';
 import { AnonShell } from './AnonShell.js';
 import { CourseBreadcrumbs } from './CourseBreadcrumbs.js';
 import { CourseSidebar } from './CourseSidebar.js';
@@ -27,6 +28,8 @@ import { MemberSidebar } from './MemberSidebar.js';
 import { BrandLink, SidebarColumn } from './shell-chrome.js';
 import { ProgramIcon } from './shell-icons.js';
 
+const TOOLBAR_MIN_HEIGHT = 52;
+
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
 
@@ -34,13 +37,27 @@ export const MemberShell = () => {
   useSuppressGlobalChrome();
   const t = useTranslations();
   const theme = useTheme();
-  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const me = useQuery(actions.me);
   const viewer = useViewerKind();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const courseContext = courseContextFromPath(pathname);
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [openSheet, setOpenSheet] = useState<'menu' | 'program' | null>(null);
   const canOpenStudio = useCanOpenStudio();
+  const shellRef = useRef<HTMLDivElement>(null);
+  const appBarRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    const appBar = appBarRef.current;
+    if (shell === null || appBar === null) return;
+    const measure = () => shell.style.setProperty('--member-app-bar-height', `${appBar.getBoundingClientRect().height}px`);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(appBar);
+    return () => observer.disconnect();
+  }, [viewer]);
 
   useEffect(() => {
     setOpenSheet(null);
@@ -122,22 +139,41 @@ export const MemberShell = () => {
     </>
   );
 
+  const outlet = courseContext === null ? <Outlet /> : (
+    <Suspense fallback={<CourseLoading lesson={courseContext.lessonId !== null} anonymous={viewer === 'anonymous'} />}>
+      <Outlet />
+    </Suspense>
+  );
+
   if (viewer === 'anonymous') {
     return (
       <AnonShell>
         {notices}
-        <Outlet />
+        {outlet}
       </AnonShell>
     );
   }
 
   return (
     <>
-      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-        {sidebar === null ? null : <SidebarColumn component="aside">{sidebar}</SidebarColumn>}
+      <Box ref={shellRef} sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${TOOLBAR_MIN_HEIGHT + 1}px` }}>
+        {sidebar === null ? null : (
+          <SidebarColumn
+            component="aside"
+            sx={courseContext === null ? undefined : {
+              top: 'var(--member-app-bar-height)',
+              mt: 'var(--member-app-bar-height)',
+              height: 'calc(100dvh - var(--member-app-bar-height))',
+              maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
+              overflowY: 'auto',
+            }}
+          >
+            {sidebar}
+          </SidebarColumn>
+        )}
         <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
-          <AppBar position="sticky">
-            <Toolbar variant="dense" sx={{ minHeight: '52px', px: '1.25rem', gap: '0.75rem' }}>
+          <AppBar ref={appBarRef} position="sticky">
+            <Toolbar variant="dense" sx={{ minHeight: `${TOOLBAR_MIN_HEIGHT}px`, px: '1.25rem', gap: '0.75rem' }}>
               {lessonCrumbs === null ? (
                 <Box sx={{ display: { xs: 'flex', md: 'none' }, flex: '1 1 auto', minWidth: 0 }}>
                   {brand}
@@ -226,7 +262,7 @@ export const MemberShell = () => {
             }}
           >
             {notices}
-            <Outlet />
+            {outlet}
           </Box>
         </Box>
       </Box>

@@ -8,6 +8,7 @@ import {
   deepHealthOutputSchema,
   envelopeSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
+  studentLessonOutputSchema,
   TENANT_HEADER,
 } from '#core/contract/index.js';
 import {
@@ -165,6 +166,7 @@ const deps = (input: {
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
   const appDeps: AppDeps = {
+    telemetry: { recordAppError: vi.fn() },
     auth: {
       handler: async () => new Response(null, { status: 404 }),
       setMagicLinkDeliveryContext: () => undefined,
@@ -3044,6 +3046,28 @@ describe('deep health route', () => {
     });
   });
 
+  it('redacts secret key names on the anonymous endpoint', async () => {
+    const configured = deps({ tenants: [acme] });
+    configured.tenantSecrets.listByTenant = async () => [{
+      id: 'secret-1', tenantId: acme.id, key: 'bunny.securityKey',
+      ciphertext: 'private-ciphertext', iv: 'iv', authTag: 'tag', maskedPreview: 'masked',
+      updatedAt: '2026-09-07T10:00:00.000Z',
+    }];
+    configured.secretCrypto.decrypt = () => err(internal('private failure detail'));
+
+    const response = await buildApp(configured).request(API_PATHS.healthDeep);
+
+    expect(response.status).toBe(500);
+    const payload = deepHealthEnvelopeSchema.parse(await response.json());
+    expect(payload).toMatchObject({ ok: true, data: {
+      ok: false, failing: ['tenant-secret-decryption'],
+      checks: expect.arrayContaining([expect.objectContaining({
+        name: 'tenant-secret-decryption', ok: false, error: 'stored secret integrity check failed',
+      })]),
+    } });
+    expect(JSON.stringify(payload)).not.toMatch(/bunny|private-ciphertext|private failure detail/);
+  });
+
   it('serves the cached report for a minute and recomputes afterwards', async () => {
     const configured = deps();
     const directory = countingDirectory(configured);
@@ -3414,6 +3438,58 @@ describe('lesson attachment download route', () => {
 });
 
 describe('student lesson playback route', () => {
+  it.each([API_PATHS.studentLesson, API_PATHS.studentLessonPlayback])(
+    'serves %s and records telemetry when a stored video secret fails integrity verification',
+    async (path) => {
+      const failure = internal('Stored secret failed integrity verification');
+      const recordAppError = vi.fn();
+      const lesson: CourseLesson = {
+        id: 'lesson-secret-invalid', tenantId: acme.id, name: 'Video lesson', isPreview: false,
+        contents: [
+          { type: 'html', html: '<p>Lesson notes</p>' },
+          { type: 'video', storageKey: 'videos/one', streamLibraryId: 'library-1', streamVideoId: 'video-1' },
+        ],
+        legacyId: null, createdAt: '1998-08-07T00:00:00.000Z',
+      };
+      const base = deps();
+      const resolve = vi.fn(async () => err(failure));
+      const app = scopedApp('owner', {
+        overrides: {
+          lessons: { ...base.lessons, findById: async () => lesson },
+          tenants: {
+            ...base.tenants,
+            findSettings: async (tenantId) => {
+              const settings = await base.tenants.findSettings(tenantId);
+              return settings === null ? null : { ...settings, bunnyStreamLibraryId: 'library-1' };
+            },
+          },
+          secretResolver: { resolve },
+          telemetry: { recordAppError },
+        },
+      });
+
+      const response = await app.request(path.replace(':lessonId', lesson.id), {
+        headers: { host: 'acme.localhost:48730' },
+      });
+
+      expect(response.status).toBe(200);
+      const body: unknown = await response.json();
+      if (path === API_PATHS.studentLesson) {
+        const payload = envelopeSchema(studentLessonOutputSchema).parse(body);
+        expect(payload).toMatchObject({ ok: true, data: { lesson, authenticated: true } });
+        if (!payload.ok) throw new Error('Expected a successful lesson envelope');
+        expect(payload.data.lesson.contents).toEqual(lesson.contents);
+      } else {
+        expect(body).toMatchObject({
+          ok: true,
+          data: { videos: [{ kind: 'unavailable', storageKey: 'videos/one', reason: 'secret_invalid' }] },
+        });
+      }
+      expect(resolve).toHaveBeenCalledExactlyOnceWith(acme.id, 'bunny.securityKey');
+      expect(recordAppError).toHaveBeenCalledExactlyOnceWith(failure);
+    },
+  );
+
   it('returns contract-checked signed playback URLs without caching', async () => {
     const playbackLesson: CourseLesson = {
       id: 'lesson-playback',

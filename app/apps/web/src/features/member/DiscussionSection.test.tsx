@@ -89,6 +89,30 @@ const okDiscussion = (
   );
 
 describe('DiscussionSection', () => {
+  it('spaces post bodies and safely links URLs in roots and replies', async () => {
+    const body = '<img src=x onerror=alert(1)> Read https://courses.example.org/guide?a=1&b=2.\njavascript:alert(1)';
+    server.use(okMe(), okDiscussion([
+      asThread(post({ id: 'root', body }), [
+        asThread(post({ id: 'reply', body: 'See www.courses.example.org/notes.', parentPostId: 'root', rootPostId: 'root' })),
+      ]),
+    ]));
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    const root = await screen.findByTestId('post-body-root');
+    expect(root.textContent).toBe(body);
+    expect(root.querySelector('img')).toBeNull();
+    expect(root).toHaveStyle({ marginTop: '0.75rem', whiteSpace: 'pre-wrap' });
+    expect(within(root).getAllByRole('link')).toHaveLength(1);
+    const link = within(root).getByRole('link');
+    expect(link).toHaveAttribute('href', 'https://courses.example.org/guide?a=1&b=2');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(link).toHaveStyle({ textDecoration: 'underline' });
+    const reply = screen.getByTestId('post-body-reply');
+    expect(reply).toHaveStyle({ marginTop: '0.75rem' });
+    expect(within(reply).getByRole('link')).toHaveAttribute('href', 'https://www.courses.example.org/notes');
+  });
+
   it('shows a discussion-specific error and retries the failed request', async () => {
     let reads = 0;
     server.use(

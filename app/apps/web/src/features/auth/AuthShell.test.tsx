@@ -184,7 +184,7 @@ describe('AuthShell', () => {
     expect(screen.queryByTestId('auth-footer-support')).not.toBeInTheDocument();
   });
 
-  it('closes the page with a public navigation row of icon links', async () => {
+  it('puts the public navigation row before the final Together line', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     stubOffer();
     stubNavigation({ defaultHomeSpaceId: 'space-1', courseIds: ['course-1'] });
@@ -206,7 +206,10 @@ describe('AuthShell', () => {
       expect(window.getComputedStyle(link).getPropertyValue('min-height')).toBe('44px');
       expect(link).toHaveClass('MuiLink-root');
     }
-    expect(strip.parentElement?.lastElementChild).toBe(strip);
+    const footer = screen.getByRole('contentinfo');
+    expect(strip.parentElement).toBe(footer);
+    expect(footer.children.item(footer.children.length - 2)).toBe(strip);
+    expect(footer.lastElementChild).toBe(screen.getByTestId('auth-powered-by'));
   });
 
   it('drops the navigation row entries the tenant does not publish', async () => {
@@ -254,7 +257,7 @@ describe('AuthShell', () => {
     expect(screen.getByTestId('auth-glow')).toBeInTheDocument();
   });
 
-  it('orders the footer: catalogue prompt, support prompt, legal links, Together mark', async () => {
+  it('orders the footer: catalogue prompt, support prompt, legal links, public nav, Together mark', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     stubOffer({
       legal: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' },
@@ -270,6 +273,7 @@ describe('AuthShell', () => {
       'auth-footer-access',
       'auth-footer-help',
       'auth-footer-links',
+      'auth-public-nav',
       'auth-powered-by',
     ]);
     expect(screen.getByTestId('auth-footer-access')).toHaveTextContent(

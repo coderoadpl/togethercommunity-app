@@ -145,7 +145,7 @@ const feedItem = (input: Partial<SpaceFeedItem> & { id: string }): SpaceFeedItem
   ...input,
 });
 
-const markupLikeBody = 'Generic<T> plus <script>alert(1)</script>';
+const markupLikeBody = 'Generic<T> plus <script>alert(1)</script> https://courses.example.org/guide.';
 
 const okMemberNavigation = (lockedSpaces: MemberNavigation['lockedSpaces']) =>
   http.get('/api/member/navigation', () =>
@@ -373,6 +373,10 @@ describe('community pages', () => {
     expect(body.textContent).toBe(markupLikeBody);
     expect(body.querySelector('script')).toBeNull();
     expect(body.innerHTML).toContain('&lt;script&gt;');
+    expect(body).toHaveStyle({ marginTop: '0.75rem' });
+    expect(within(body).getByRole('link')).toHaveAttribute('href', 'https://courses.example.org/guide');
+    expect(within(body).getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(within(body).getByRole('link')).toHaveAttribute('target', '_blank');
   });
 
   it('renders angle-bracketed post bodies as literal text in the thread view', async () => {
@@ -735,12 +739,17 @@ describe('community pages', () => {
     server.use(
       anonMe(),
       okPublicNavigation(),
-      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Publiczny wpis', replyCount: 2 })]),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Publiczny wpis https://courses.example.org/guide.', replyCount: 2 })]),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
     expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Publiczny wpis');
+    const body = screen.getByTestId('public-post-body-p1');
+    expect(body).toHaveStyle({ marginTop: '0.75rem' });
+    expect(within(body).getByRole('link')).toHaveAttribute('href', 'https://courses.example.org/guide');
+    expect(within(body).getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(within(body).getByRole('link')).toHaveAttribute('target', '_blank');
     expect(screen.getByTestId('public-open-thread-p1')).toHaveAttribute(
       'href',
       '/community/s1/posts/p1',

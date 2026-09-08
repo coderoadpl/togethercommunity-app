@@ -467,6 +467,57 @@ describe('checkDeepHealth', () => {
     expect(checkNamed(report, 'scheduler-freshness').error).toContain('240 minutes ago');
   });
 
+  it.each([false, true])('decrypts every tenant secret with integrity failure=%s', async (broken) => {
+    const base = deps();
+    const stored = [secret, { ...secret, key: 'bunny.securityKey' as const },
+      { ...secret, key: 'bunny.apiKey' as const }];
+    const decrypted: string[] = [];
+    const report = await checkDeepHealth({
+      ...base,
+      tenantSecrets: { ...base.tenantSecrets, listByTenant: async (tenantId) => {
+        expect(tenantId).toBe(acme.id);
+        return stored;
+      } },
+      secretCrypto: { ...base.secretCrypto, decrypt: (value) => {
+        decrypted.push(value.ciphertext);
+        return broken && decrypted.length > 1
+          ? err(integrationNotConfigured('private error detail'))
+          : ok('private plaintext');
+      } },
+    });
+
+    expect(decrypted).toHaveLength(3);
+    expect(checkNamed(report, 'tenant-secret-decryption')).toMatchObject({
+      ok: !broken,
+      error: broken ? 'secret decryption failed for keys: bunny.securityKey, bunny.apiKey' : null,
+    });
+    expect(report.ok).toBe(!broken);
+    expect(JSON.stringify(report)).not.toMatch(/private plaintext|private error detail|cipher/);
+  });
+
+  it('distinguishes empty plaintext from decryption failures in the operator report', async () => {
+    const base = deps();
+    const report = await checkDeepHealth({
+      ...base,
+      tenantSecrets: {
+        ...base.tenantSecrets,
+        listByTenant: async () => [secret, { ...secret, key: 'bunny.securityKey', ciphertext: 'empty-ciphertext' }],
+      },
+      secretCrypto: {
+        ...base.secretCrypto,
+        decrypt: (stored) => stored.ciphertext === 'empty-ciphertext'
+          ? ok('')
+          : err(integrationNotConfigured('private error detail')),
+      },
+    });
+
+    expect(checkNamed(report, 'tenant-secret-decryption')).toMatchObject({
+      ok: false,
+      error: 'secret decryption failed for keys: stripe.restrictedKey; secret decryption produced an empty value for keys: bunny.securityKey',
+    });
+    expect(JSON.stringify(report)).not.toContain('private error detail');
+  });
+
   it('keeps the failing check name without leaking the stored secret', async () => {
     const report = await checkDeepHealth(deps({
       secretCrypto: {
@@ -477,7 +528,8 @@ describe('checkDeepHealth', () => {
 
     expect(report.failing).toEqual(['tenant-secret-decryption']);
     expect(checkNamed(report, 'tenant-secret-decryption').error)
-      .toBe('secret decryption failed with integration_not_configured');
+      .toBe('secret decryption failed for keys: stripe.restrictedKey');
+    expect(JSON.stringify(report)).not.toContain('sk_live_supersecret');
   });
 
   it('reports an unexpected cause as its type instead of the driver message', async () => {

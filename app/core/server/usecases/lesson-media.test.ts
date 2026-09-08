@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   computeCourseModuleName,
@@ -316,6 +316,29 @@ describe('getPlayableLesson', () => {
     expect(urls[1]?.searchParams.get('token')).not.toBe(urls[0]?.searchParams.get('token'));
   });
 
+  it('preserves text and videos without embed URLs when the security key fails integrity verification', async () => {
+    const failure = internal('Stored secret failed integrity verification');
+    const recordAppError = vi.fn();
+    const videoLesson: CourseLesson = {
+      ...pdfLesson,
+      contents: [
+        { type: 'html', html: '<p>Notes</p>' },
+        { type: 'video', storageKey: 'videos/one', streamVideoId: 'video-1' },
+        { type: 'video', storageKey: 'videos/two', streamVideoId: 'video-2' },
+      ],
+    };
+    const result = await getPlayableLesson(ctx(), 'l1', deps({
+      lessons: lessonsRepoWith(videoLesson),
+      secretResolver: { resolve: async () => err(failure) },
+      telemetry: { recordAppError },
+    }));
+
+    expect(result).toEqual(ok(videoLesson));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value).toBe(videoLesson);
+    expect(recordAppError).toHaveBeenCalledExactlyOnceWith(failure);
+  });
+
   it('adds a raw Bunny embed url when the security key is not configured', async () => {
     const video = {
       type: 'video' as const,
@@ -397,13 +420,14 @@ describe('getPlayableLesson', () => {
     expect(result.value).toEqual(pdfLesson);
   });
 
-  it('propagates resolver failures other than not_found', async () => {
+  it('preserves lesson content and reports broken S3 secrets', async () => {
+    const recordAppError = vi.fn();
     const broken: TenantSecretResolver = {
       resolve: async () => err(internal('secret decryption failed')),
     };
-    const result = await getPlayableLesson(ctx(), 'l1', deps({ secretResolver: broken }));
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe('internal');
+    const result = await getPlayableLesson(ctx(), 'l1', deps({ secretResolver: broken, telemetry: { recordAppError } }));
+    expect(result).toEqual(ok(pdfLesson));
+    expect(recordAppError).toHaveBeenCalledWith(internal('secret decryption failed'));
   });
 
   it('keeps the original url when the signer fails', async () => {

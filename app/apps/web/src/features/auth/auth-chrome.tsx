@@ -299,12 +299,11 @@ export const AuthPublicNav = styled(Box)<{ component?: ElementType }>(({ theme }
   display: 'flex',
   flexWrap: 'wrap',
   alignItems: 'center',
-  justifyContent: 'center',
+  justifyContent: 'flex-start',
   gap: '0.5rem 1.5rem',
-  padding: '0.5rem 1.25rem 1.5rem',
+  padding: '0.25rem 0 0',
   fontSize: '0.875rem',
   color: theme.palette.text.secondary,
-  [theme.breakpoints.up('sm')]: { padding: '0.5rem clamp(1.5rem, 4vw, 3rem) 1.5rem' },
 }));
 
 export const AuthPublicNavLink = styled(MuiLink)<{ component?: ElementType; to?: string }>(({ theme }) => ({

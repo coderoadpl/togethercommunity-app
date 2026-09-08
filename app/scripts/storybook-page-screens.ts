@@ -2,6 +2,7 @@ import { SCREENS, type ScreenSpec } from './visual-screen-inventory.js';
 
 const pageScreenNames = new Set([
   'login',
+  'login-tenant',
   'forgot-password',
   'reset-password',
   'reset-password-invalid',
@@ -17,6 +18,7 @@ const pageScreenNames = new Set([
   'search',
   'my-courses',
   'course',
+  'course-long-curriculum',
   'my-products',
   'product-stub',
   'account',

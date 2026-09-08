@@ -44,6 +44,7 @@ import {
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon, LockedState } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
+import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
 
@@ -330,14 +331,7 @@ export const LessonPlayerPage = ({
   }, [queryClient, nextLesson]);
 
   if (lesson.isPending) {
-    return (
-      <MemberSurface
-          title={t.lesson.loading}
-        eyebrow={t.lesson.eyebrow}
-        width="wide"
-        state={{ kind: 'loading', label: t.lesson.loading }}
-      />
-    );
+    return <CourseLoading />;
   }
 
   if (unauthorized) return null;
@@ -382,14 +376,7 @@ export const LessonPlayerPage = ({
   }
 
   if (authenticated && tenantSettings.isPending) {
-    return (
-      <MemberSurface
-        title={t.lesson.loading}
-        eyebrow={t.lesson.eyebrow}
-        width="wide"
-        state={{ kind: 'loading', label: t.lesson.loading }}
-      />
-    );
+    return <CourseLoading />;
   }
 
   const groups = groupLessonBlocks(lesson.data.lesson.contents);
@@ -432,8 +419,8 @@ export const LessonPlayerPage = ({
     >
       <Box sx={{ minWidth: 0 }}>
         {transitioning ? (
-          <StatusView
-            state={{ kind: 'loading', label: t.lesson.loading }}
+          <CourseLoadingContent
+            label={t.lesson.loading}
             data-testid="lesson-transition-loading"
           />
         ) : (

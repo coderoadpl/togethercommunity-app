@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   computeCourseModuleName,
@@ -334,12 +334,17 @@ describe('getLessonPlayback', () => {
     expect(recording).toEqual({ secretCalls: 1, embedCalls: 0, hlsCalls: 0 });
   });
 
-  it('propagates non-not_found secret failures unchanged', async () => {
-    const failure = internal('secret store failed');
-    const { deps } = dependencies({ secret: err(failure) });
-    const result = await getLessonPlayback(ctx(), lesson.id, deps);
+  it('reports invalid secrets and returns unavailable playback without signing', async () => {
+    const failure = internal('Stored secret failed integrity verification');
+    const recordAppError = vi.fn();
+    const { deps, recording } = dependencies({ secret: err(failure) });
+    const result = await getLessonPlayback(ctx(), lesson.id, { ...deps, telemetry: { recordAppError } });
 
-    expect(result).toEqual(err(failure));
+    expect(result).toMatchObject({ ok: true, value: { videos: [{
+      kind: 'unavailable', storageKey: 'videos/one', reason: 'secret_invalid',
+    }] } });
+    expect(recordAppError).toHaveBeenCalledExactlyOnceWith(failure);
+    expect(recording).toEqual({ secretCalls: 1, embedCalls: 0, hlsCalls: 0 });
   });
 
   it('returns a signed embed without HLS when the CDN hostname is absent', async () => {

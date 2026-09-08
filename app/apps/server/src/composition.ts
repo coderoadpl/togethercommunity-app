@@ -152,6 +152,7 @@ import { createSesOnboardingControlPlane } from '#adapters/email/ses-onboarding.
 import { createSnsVerifier } from '#adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '#adapters/scheduler/marketing.js';
 import type {
+  AppErrorTelemetry,
   ApiKeyCrypto,
   AuthPort,
   Clock,
@@ -303,6 +304,7 @@ import {
 import { capabilitiesForPrincipal, communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import { createCoalescedRunner } from './coalesced-runner.js';
+import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
@@ -356,6 +358,7 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
+  telemetry: AppErrorTelemetry;
   auth: Pick<
     Auth,
     | 'handler'
@@ -1204,6 +1207,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   });
 
   const deps: AppDeps = {
+    telemetry: { recordAppError },
     auth,
     authPort: createAuthPort(auth),
     products: createProductRepository(db),

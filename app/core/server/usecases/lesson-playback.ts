@@ -8,10 +8,11 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { BunnyTokenSigner, TenantRepository, TenantSecretResolver } from '../ports.js';
+import type { AppErrorTelemetry, BunnyTokenSigner, TenantRepository, TenantSecretResolver } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
 export interface LessonPlaybackDeps extends CourseAccessDeps {
+  telemetry?: AppErrorTelemetry;
   tenants: TenantRepository;
   secretResolver: TenantSecretResolver;
   bunnyTokenSigner: BunnyTokenSigner;
@@ -31,7 +32,7 @@ type PlaybackVideo =
       signed: boolean;
     }
   | { kind: 'external'; embedUrl: string }
-  | { kind: 'unavailable'; storageKey: string; reason: 'missing_library_id' };
+  | { kind: 'unavailable'; storageKey: string; reason: 'missing_library_id' | 'secret_invalid' };
 
 interface LessonPlaybackOutput {
   lessonId: string;
@@ -57,11 +58,15 @@ export const getLessonPlayback = async (
     (block) => block.type === 'video' && block.streamLibraryId !== undefined,
   );
   let securityKey: string | null = null;
+  let secretInvalid = false;
   let cdnHostname: string | null = null;
 
   if (hasBunnyBlock && tenantId !== null) {
     const resolved = await deps.secretResolver.resolve(tenantId, 'bunny.securityKey');
-    if (!resolved.ok && resolved.error.code !== 'not_found') return resolved;
+    if (!resolved.ok && resolved.error.code !== 'not_found') {
+      secretInvalid = true;
+      deps.telemetry?.recordAppError(resolved.error);
+    }
     securityKey = resolved.ok ? resolved.value : null;
     const settings = await deps.tenants.findSettings(tenantId);
     cdnHostname = settings?.bunnyStreamCdnHostname ?? null;
@@ -78,6 +83,10 @@ export const getLessonPlayback = async (
         storageKey: block.storageKey,
         reason: 'missing_library_id',
       };
+    }
+
+    if (secretInvalid) {
+      return { kind: 'unavailable', storageKey: block.storageKey, reason: 'secret_invalid' };
     }
 
     const embedUrl = bunnyEmbedUrl(block.streamLibraryId, block.streamVideoId);

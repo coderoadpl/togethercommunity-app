@@ -92,6 +92,11 @@ jobs:
       - run: '"$CHROME_PATH" --version'
         env:
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+      - name: Pin native macOS date controls to the golden authoring locale
+        run: |
+          defaults write NSGlobalDomain AppleLocale -string en_PL
+          defaults write NSGlobalDomain AppleLanguages -array en-PL
+          defaults write NSGlobalDomain AppleICUForce24HourTime -bool true
       - run: pnpm run visual
         env:
           PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}

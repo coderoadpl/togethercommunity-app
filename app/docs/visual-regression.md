@@ -7,6 +7,14 @@ always builds first so stale bundles cannot pass the gate. CI runs this gate on
 macOS 26 (arm64) with Chrome 152.0.7977.82, matching the golden authoring platform. Set
 `PLAYWRIGHT_CHROME_EXECUTABLE_PATH` to use an explicit Chrome executable.
 
+Native macOS date controls also read the OS region and hour-cycle preferences,
+independently of Playwright's browser locale and the frozen JavaScript clock.
+Goldens use the `en_PL` macOS locale with English UI and 24-hour time. CI pins
+these preferences on its disposable runner before launching Chrome. `TZ=UTC`
+and `LANG=C` alone do not override them. Empty coupon validity fields must show
+`dd/mm/yyyy, --:--`; an `mm/dd/yyyy` placeholder with an AM/PM field indicates
+native locale drift, not a changing default date.
+
 The catalogue currently covers 116 captures in Shadcn, the maintained base theme
 ([ADR-0010](decisions/0010-shadcn-base-theme.md)). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
@@ -24,7 +32,8 @@ The inherited active-named DNS goldens repeat the pending DNS capture after a
 same-document navigation. Both map to the pending story to preserve that page
 state; verified DNS has separate Active stories.
 
-The harness fixes Date to the recording time and sets locale to `pl-PL`,
+Both capture paths use `createVisualCapture` in `scripts/visual-browser-setup.ts`.
+It fixes Date to the recording time and sets locale to `pl-PL`,
 timezone to UTC, color scheme to light, scale to 1 and reduced motion. It shares
 the live harness's request policy, stream suppression, font readiness and
 animation freezing. Each story must finish its fixture calls and queries before capture; fonts and

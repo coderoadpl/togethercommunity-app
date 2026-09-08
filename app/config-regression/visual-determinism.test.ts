@@ -26,22 +26,35 @@ const comparator = readFileSync(
 
 describe('visual regression determinism', () => {
   it('pins browser rendering inputs', () => {
-    expect(harness).toContain("colorScheme: 'light'");
-    expect(harness).toContain("locale: 'pl-PL'");
-    expect(harness).toContain("timezoneId: 'UTC'");
-    expect(harness).toContain("reducedMotion: 'reduce'");
-    expect(harness).toContain('deviceScaleFactor: 1');
-    expect(harness).toContain('page.clock.setFixedTime');
-    expect(storybookCapture).toContain('page.clock.setFixedTime');
+    expect(browserSetup).toContain("colorScheme: 'light'");
+    expect(browserSetup).toContain("locale: 'pl-PL'");
+    expect(browserSetup).toContain("timezoneId: 'UTC'");
+    expect(browserSetup).toContain("reducedMotion: 'reduce'");
+    expect(browserSetup).toContain('deviceScaleFactor: 1');
+    expect(browserSetup).toContain('page.clock.setFixedTime(new Date(visualSeedTime))');
+    for (const capture of [harness, storybookCapture]) {
+      expect(capture).toContain('await createVisualCapture(browser, viewport');
+      expect(capture).not.toContain('page.clock.setFixedTime');
+      expect(capture).not.toContain('timezoneId:');
+    }
     expect(harness).toContain("{ APP_COMMIT_SHA: '' }");
+  });
+
+  it('pins the native macOS date controls independently of JavaScript emulation', () => {
+    const workflow = readFileSync(join(import.meta.dirname, '..', '..', '.github', 'workflows', 'ci.yml'), 'utf8');
+    const nativeLocale = 'defaults write NSGlobalDomain AppleLocale -string en_PL';
+    expect(workflow).toContain(nativeLocale);
+    expect(workflow).toContain('defaults write NSGlobalDomain AppleLanguages -array en-PL');
+    expect(workflow).toContain('defaults write NSGlobalDomain AppleICUForce24HourTime -bool true');
+    expect(workflow.indexOf(nativeLocale)).toBeLessThan(workflow.indexOf('- run: pnpm run visual\n'));
   });
 
   it('settles the page before every capture', () => {
     for (const capture of [harness, storybookCapture]) {
       expect(capture).toContain("from './visual-browser-setup.js'");
-      expect(capture).toContain('await applyChrome(context)');
       expect(capture).toContain('await settlePage(page');
     }
+    expect(browserSetup).toContain('await applyChrome(context)');
     expect(browserSetup).toContain("Object.defineProperty(window, 'EventSource'");
     expect(browserSetup).toContain("page.waitForLoadState('networkidle')");
     expect(browserSetup).toContain('document.fonts.ready');
@@ -54,11 +67,10 @@ describe('visual regression determinism', () => {
 
   it('shares the request policy across capture paths', () => {
     for (const capture of [harness, storybookCapture]) {
-      expect(capture).toContain("from './visual-request-policy.js'");
-      expect(capture).toContain('await stubNonDeterministicRequests(context)');
       expect(capture).not.toContain('context.route(');
     }
     expect(browserSetup).toContain("from './visual-request-policy.js'");
+    expect(browserSetup).toContain('await stubNonDeterministicRequests(context)');
     expect(browserSetup).toContain('const policy = visualRequestPolicy(');
     expect(requestPolicy).toContain('API_PATHS.studentLastViewed');
     expect(requestPolicy).toContain('API_PATHS.spaceSeen');

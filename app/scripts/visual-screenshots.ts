@@ -19,7 +19,7 @@ import { SCREENS, VIEWPORTS, includesViewport, visible, VisualFailure, type Auth
 
 import type { ThemeMode } from '../apps/web/src/theme.js';
 import { visualSeedTime as SEED_BASE_TIME } from './visual-request-policy.js';
-import { applyChrome, settlePage, stubNonDeterministicRequests, waitForPaint } from './visual-browser-setup.js';
+import { applyChrome, createVisualCapture, settlePage, waitForPaint } from './visual-browser-setup.js';
 import { requestMagicLink, signInWithPassword } from './login-flow.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -261,19 +261,7 @@ try {
           && includesViewport(screen, viewport),
         );
         const storageState = stateFor(auth);
-        const context = await browser.newContext({
-          viewport: { width: viewport.width, height: viewport.height },
-          deviceScaleFactor: 1,
-          colorScheme: 'light',
-          locale: 'pl-PL',
-          timezoneId: 'UTC',
-          reducedMotion: 'reduce',
-          ...(storageState === undefined ? {} : { storageState }),
-        });
-        await applyChrome(context);
-        await stubNonDeterministicRequests(context);
-        const page = await context.newPage();
-        await page.clock.setFixedTime(new Date(SEED_BASE_TIME));
+        const { context, page } = await createVisualCapture(browser, viewport, storageState);
 
         for (const screen of screens) {
           const file = `${screen.name}--${theme}--${viewport.name}.png`;

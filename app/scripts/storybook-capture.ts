@@ -5,8 +5,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, extname, join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { z } from 'zod';
-import { applyChrome, settlePage, stubNonDeterministicRequests, waitForPaint } from './visual-browser-setup.js';
-import { visualSeedTime } from './visual-request-policy.js';
+import { createVisualCapture, settlePage, waitForPaint } from './visual-browser-setup.js';
 import { pageScreens, pageStoryId, serverHtmlScreenNames } from './storybook-page-screens.js';
 import { SCREENS, VIEWPORTS, includesViewport, type ScreenSpec } from './visual-screen-inventory.js';
 import { comparePng } from './visual-png-compare.js';
@@ -83,11 +82,7 @@ try {
       if (specs.length === 0) continue;
       const mode = 'light';
       const createCapture = async () => {
-        const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1, colorScheme: mode, locale: 'pl-PL', timezoneId: 'UTC', reducedMotion: 'reduce' });
-        await applyChrome(context);
-        await stubNonDeterministicRequests(context);
-        const page = await context.newPage();
-        await page.clock.setFixedTime(new Date(visualSeedTime));
+        const { context, page } = await createVisualCapture(browser, viewport);
         const errors: string[] = [];
         page.on('pageerror', (error) => errors.push(error.message));
         return { context, page, errors };

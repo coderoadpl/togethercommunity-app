@@ -72,14 +72,15 @@ const transportSetup = (configured: 'ses' | 'smtp' | 'resend' | null, smokeTenan
     transport === configured ? attacker : null);
   const reserve = vi.fn<PlatformTransactionalPool['reserve']>(async () => true);
   const settle = vi.fn<PlatformTransactionalPool['settle']>(async () => undefined);
+  const recordCapExemptSend = vi.fn<PlatformTransactionalPool['recordCapExemptSend']>(async () => undefined);
   const email = createLayeredTransactionalEmailSender({
     transports: { resolve },
     platform: { ...attacker, send: platformSend },
-    pool: { usage: async () => ({ sent: 0, reserved: 0 }), reserve, settle },
+    pool: { usage: async () => ({ sent: 0, reserved: 0 }), reserve, settle, recordCapExemptSend },
     platformLimit: 1000,
     ...(smokeTenantSink === undefined ? {} : { smokeTenantSink }),
   });
-  return { email, attackerSend, platformSend, resolve, reserve, settle };
+  return { email, attackerSend, platformSend, resolve, reserve, settle, recordCapExemptSend };
 };
 
 describe('auth outbox transport isolation', () => {
@@ -103,8 +104,9 @@ describe('auth outbox transport isolation', () => {
       }));
       expect(sending.attackerSend).not.toHaveBeenCalled();
       expect(sending.resolve).not.toHaveBeenCalled();
-      expect(sending.reserve).toHaveBeenCalledExactlyOnceWith('tenant-1', 1000);
-      expect(sending.settle).toHaveBeenCalledExactlyOnceWith('tenant-1', true);
+      expect(sending.recordCapExemptSend).toHaveBeenCalledExactlyOnceWith('tenant-1');
+      expect(sending.reserve).not.toHaveBeenCalled();
+      expect(sending.settle).not.toHaveBeenCalled();
       expect(deps.emailOutbox.items[0]).toMatchObject({
         tenantId: 'tenant-1', status: 'sent', transport: 'platform',
       });
@@ -126,29 +128,25 @@ describe('auth outbox transport isolation', () => {
     expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
       .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
     expect(sending.platformSend).toHaveBeenCalledTimes(2);
-    expect(sending.reserve).toHaveBeenCalledTimes(2);
-    expect(sending.settle.mock.calls).toEqual([['tenant-1', false], ['tenant-1', true]]);
+    expect(sending.recordCapExemptSend).toHaveBeenCalledExactlyOnceWith('tenant-1');
     expect(sending.attackerSend).not.toHaveBeenCalled();
     expect(sending.resolve).not.toHaveBeenCalled();
   });
 
-  it('does not send or fall back to tenant SMTP when the platform cap is exhausted', async () => {
+  it('still delivers auth mail when the platform cap is exhausted, without touching tenant SMTP', async () => {
     const deps = await setup({ payload: authPayloads[0] });
     const sending = transportSetup('smtp');
     sending.reserve.mockResolvedValue(false);
 
     expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
-      .toEqual(ok({ attemptsMade: 1, sentCount: 0, failedCount: 1 }));
-    expect(sending.reserve).toHaveBeenCalledExactlyOnceWith('tenant-1', 1000);
+      .toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sending.platformSend).toHaveBeenCalledOnce();
+    expect(sending.recordCapExemptSend).toHaveBeenCalledExactlyOnceWith('tenant-1');
+    expect(sending.reserve).not.toHaveBeenCalled();
     expect(sending.settle).not.toHaveBeenCalled();
-    expect(sending.platformSend).not.toHaveBeenCalled();
     expect(sending.attackerSend).not.toHaveBeenCalled();
     expect(sending.resolve).not.toHaveBeenCalled();
-    expect(deps.emailOutbox.items[0]).toMatchObject({ status: 'failed' });
-    expect(await deps.events.listByRef('tenant-1', 'transactional', 'outbox-1'))
-      .toEqual(expect.arrayContaining([expect.objectContaining({
-        type: 'failed', meta: expect.objectContaining({ errorCode: 'transactional_platform_cap_reached' }),
-      })]));
+    expect(deps.emailOutbox.items[0]).toMatchObject({ status: 'sent', transport: 'platform' });
   });
 
   it('keeps smoke-tenant enrollment auth mail in the production sink', async () => {
@@ -168,6 +166,7 @@ describe('auth outbox transport isolation', () => {
     expect(sending.resolve).not.toHaveBeenCalled();
     expect(sending.reserve).not.toHaveBeenCalled();
     expect(sending.settle).not.toHaveBeenCalled();
+    expect(sending.recordCapExemptSend).not.toHaveBeenCalled();
     expect(deps.emailOutbox.items[0]).toMatchObject({
       tenantId: SMOKE_TENANT_ID, status: 'sent', transport: 'platform',
     });

@@ -1021,6 +1021,7 @@ const marketingDeps = (): MarketingAppDeps => ({
     usage: async () => ({ sent: 0, reserved: 0 }),
     reserve: async () => true,
     settle: async () => undefined,
+    recordCapExemptSend: async () => undefined,
   },
   documents: {
     create: async () => undefined,

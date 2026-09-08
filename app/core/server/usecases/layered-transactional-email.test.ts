@@ -45,6 +45,10 @@ class MemoryPool implements PlatformTransactionalPool {
     this.reserved -= 1;
     if (successful) this.sent += 1;
   }
+
+  async recordCapExemptSend() {
+    this.sent += 1;
+  }
 }
 
 const port = (
@@ -137,7 +141,7 @@ describe('layered transactional e-mail sender', () => {
     expect(calls).toEqual(['tenant-ses']);
   });
 
-  it.each([false, true])('enforces the platform cap at exactly 1000 with forcePlatformTransport=%s', async (forcePlatformTransport) => {
+  it('enforces the platform cap at exactly 1000', async () => {
     const calls: string[] = [];
     const pool = new MemoryPool(1000);
     const sender = createLayeredTransactionalEmailSender({
@@ -147,12 +151,35 @@ describe('layered transactional e-mail sender', () => {
       platformLimit: 1000,
     });
 
-    const sent = await sender.send({ forcePlatformTransport, tenantId: 'tenant-1', to: 'member@example.test', ...message });
+    const sent = await sender.send({ tenantId: 'tenant-1', to: 'member@example.test', ...message });
 
     expect(sent.ok).toBe(false);
     if (!sent.ok) expect(sent.error.code).toBe('transactional_platform_cap_reached');
     expect(calls).toEqual([]);
     expect(pool.sent).toBe(1000);
+  });
+
+  it('sends auth mail past an exhausted platform cap and still counts it', async () => {
+    const calls: string[] = [];
+    const pool = new MemoryPool(1000);
+    const sender = createLayeredTransactionalEmailSender({
+      transports: transports({ ses: port('tenant-ses', calls), smtp: null, resend: null }),
+      platform: port('platform', calls),
+      pool,
+      platformLimit: 1000,
+    });
+
+    const sent = await sender.send({
+      forcePlatformTransport: true,
+      tenantId: 'tenant-1',
+      to: 'member@example.test',
+      ...message,
+    });
+
+    expect(sent).toEqual(ok({ messageId: 'platform-message', transport: 'platform' }));
+    expect(calls).toEqual(['platform']);
+    expect(pool.sent).toBe(1001);
+    expect(pool.reserved).toBe(0);
   });
 
   it('never uses the platform pool when a tenant transport is required', async () => {
@@ -175,7 +202,7 @@ describe('layered transactional e-mail sender', () => {
     expect(pool.sent).toBe(0);
   });
 
-  it.each([false, true])('allows only the remaining platform slots under concurrent sends with forcePlatformTransport=%s', async (forcePlatformTransport) => {
+  it('allows only the remaining platform slots under concurrent sends', async () => {
     const pool = new MemoryPool(998);
     const calls: string[] = [];
     const sender = createLayeredTransactionalEmailSender({
@@ -186,11 +213,29 @@ describe('layered transactional e-mail sender', () => {
     });
 
     const results = await Promise.all(Array.from({ length: 5 }, (_, index) =>
-      sender.send({ forcePlatformTransport, tenantId: 'tenant-1', to: `member-${String(index)}@example.test`, ...message })));
+      sender.send({ tenantId: 'tenant-1', to: `member-${String(index)}@example.test`, ...message })));
 
     expect(results.filter((result) => result.ok)).toHaveLength(2);
     expect(results.filter((result) => !result.ok)).toHaveLength(3);
     expect(pool.sent).toBe(1000);
+    expect(pool.reserved).toBe(0);
+  });
+
+  it('never denies concurrent auth sends that cross the platform cap', async () => {
+    const pool = new MemoryPool(998);
+    const calls: string[] = [];
+    const sender = createLayeredTransactionalEmailSender({
+      transports: transports({ ses: null, smtp: null, resend: null }),
+      platform: port('platform', calls),
+      pool,
+      platformLimit: 1000,
+    });
+
+    const results = await Promise.all(Array.from({ length: 5 }, (_, index) =>
+      sender.send({ forcePlatformTransport: true, tenantId: 'tenant-1', to: `member-${String(index)}@example.test`, ...message })));
+
+    expect(results.filter((result) => result.ok)).toHaveLength(5);
+    expect(pool.sent).toBe(1003);
     expect(pool.reserved).toBe(0);
   });
 

@@ -86,7 +86,7 @@ describe('CheckoutPage', () => {
     expect(stylesAt(cover, 1440)['max-height']).toBeUndefined();
     expect(screen.getByText('49,00 zł')).toBeInTheDocument();
     expect(screen.getByText(pl.checkout.checkoutEyebrow)).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.simulatedPaymentDevNote)).toBeInTheDocument();
+    expect(screen.getByText(pl.checkout.simulatedPaymentNote)).toBeInTheDocument();
 
     await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
     await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
@@ -529,7 +529,7 @@ describe('CheckoutPage', () => {
     expect(await screen.findByRole('button', { name: /^Zapłać/ })).toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Symuluj płatność/ })).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.simulatedPaymentDevNote)).toBeInTheDocument();
+    expect(screen.getByText(pl.checkout.simulatedPaymentNote)).toBeInTheDocument();
   });
 
   it('renders a picker for multiple prices and sends the recurring choice', async () => {

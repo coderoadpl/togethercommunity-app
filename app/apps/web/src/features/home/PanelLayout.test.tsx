@@ -159,7 +159,7 @@ describe('Creator panel routing', () => {
 
     await renderPanelAt('/panel');
 
-    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.queryByTestId('dashboard-tiles')).not.toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('Creator panel routing', () => {
 
     const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
 
-    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: '/login' }));
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
@@ -199,7 +199,7 @@ describe('Creator panel routing', () => {
 
     const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
 
-    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: destination }));
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();

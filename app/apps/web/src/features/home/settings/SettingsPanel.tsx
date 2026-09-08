@@ -46,7 +46,7 @@ import type {
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ActiveSessions } from '../../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
@@ -1345,6 +1345,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const routing = useQuery(actions.tenantRouting);
   const [draft, setDraft] = useState('');
   const [removedRedirectTo, setRemovedRedirectTo] = useState<string | null>(null);
+  const [removingDomain, setRemovingDomain] = useState<string | null>(null);
   const invalidate = async () => {
     await queryClient.invalidateQueries(actions.tenantRoutingInvalidates());
   };
@@ -1353,6 +1354,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const removeDomain = useMutation({
     ...actions.removeTenantDomain,
     onSuccess: async (result) => {
+      setRemovingDomain(null);
       setRemovedRedirectTo(result.redirectTo);
       await invalidate();
     },
@@ -1482,10 +1484,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
                   size="small"
                   color="error"
                   disabled={!canEdit || pending}
-                  onClick={() => {
-                    if (!window.confirm(t.tenantDomains.removeConfirm({ domain: entry.domain }))) return;
-                    removeDomain.mutate({ domain: entry.domain });
-                  }}
+                  onClick={() => setRemovingDomain(entry.domain)}
                   data-testid={`tenant-domain-remove-${entry.domain}`}
                 >
                   {busyWith(removeDomain, entry.domain)
@@ -1554,6 +1553,19 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
             {t.tenantDomains.limitReached({ max: MAX_CUSTOM_DOMAINS_PER_TENANT })}
           </Typography>
         )}
+        {removingDomain ? (
+          <ConfirmDialog
+            open
+            title={t.tenantDomains.removeConfirmTitle}
+            body={<Typography variant="body1">{t.tenantDomains.removeConfirm({ domain: removingDomain })}</Typography>}
+            confirmLabel={busyWith(removeDomain, removingDomain) ? t.tenantDomains.removing : t.tenantDomains.remove}
+            cancelLabel={t.common.cancel}
+            pending={removeDomain.isPending}
+            onClose={() => setRemovingDomain(null)}
+            onConfirm={() => removeDomain.mutate({ domain: removingDomain })}
+            confirmTestId="tenant-domain-remove-confirm"
+          />
+        ) : null}
       </Stack>
     </SectionCard>
   );

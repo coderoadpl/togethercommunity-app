@@ -421,6 +421,7 @@ const BlockFields = ({
 const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const [deletingAttachment, setDeletingAttachment] = useState<{ id: string; fileName: string } | null>(null);
   const attachments = useQuery(actions.lessonAttachments(lessonId));
   const refresh = async () => {
     await queryClient.invalidateQueries(actions.lessonAttachmentsInvalidates(lessonId));
@@ -431,6 +432,7 @@ const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
   });
   const remove = useMutation({
     ...actions.deleteLessonAttachment,
+    onSuccess: () => setDeletingAttachment(null),
     onSettled: refresh,
   });
   const selectFile = (file: File | undefined) => {
@@ -475,7 +477,7 @@ const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
                 color="error"
                 aria-label={t.lessons.deleteAttachment({ name: attachment.fileName })}
                 disabled={remove.isPending}
-                onClick={() => remove.mutate({ lessonId, attachmentId: attachment.id })}
+                onClick={() => setDeletingAttachment({ id: attachment.id, fileName: attachment.fileName })}
               >
                 {t.common.remove}
               </Button>
@@ -499,6 +501,19 @@ const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
       </Box>
       {upload.isError ? <MutationError error={upload.error} /> : null}
       {remove.isError ? <MutationError error={remove.error} /> : null}
+      {deletingAttachment ? (
+        <ConfirmDialog
+          open
+          title={t.lessons.deleteAttachmentConfirmTitle}
+          body={<Typography variant="body1">{t.lessons.deleteAttachmentConfirmBody({ name: deletingAttachment.fileName })}</Typography>}
+          confirmLabel={remove.isPending ? t.lessons.deleting : t.lessons.deleteAttachmentConfirm}
+          cancelLabel={t.common.cancel}
+          pending={remove.isPending}
+          onClose={() => setDeletingAttachment(null)}
+          onConfirm={() => remove.mutate({ lessonId, attachmentId: deletingAttachment.id })}
+          confirmTestId="lesson-attachment-delete-confirm"
+        />
+      ) : null}
     </Stack>
   );
 };

@@ -61,3 +61,26 @@ export const LongCurriculumMobile: Story = {
   parameters: { __id: 'course-long-curriculum--shadcn--mobile', fixture: longFixture, viewport: { defaultViewport: 'mobile' } },
   globals: { viewport: { value: 'mobile' } },
 };
+
+const progressCall = fixture.calls['studentProgress:["course-js"]'];
+const longLessonName = 'Practical exercises: functions, arguments, closures, scope, and debugging complex applications';
+export const LongResumeLabel: Story = {
+  parameters: {
+    __id: 'course-long-resume-label--shadcn--mobile-375',
+    fixture: {
+      ...fixture,
+      calls: {
+        ...fixture.calls,
+        'studentProgress:["course-js"]': {
+          ...progressCall,
+          value: { progress: { ...progressCall.value.progress, resume: {
+            ...progressCall.value.progress.resume,
+            target: { ...progressCall.value.progress.resume.target, name: longLessonName },
+          } } },
+        },
+      },
+    },
+    viewport: { defaultViewport: 'mobile-375' },
+  },
+  globals: { viewport: { value: 'mobile-375' } },
+};

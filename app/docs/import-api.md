@@ -116,6 +116,19 @@ One grant per member and product. Collapse renewals and repeated purchases in yo
 
 ### Progress
 
+The member progress endpoint (`GET /api/student/progress?courseId=...`) adds
+`resume: { target, firstIncomplete, isReview }`. Both lesson references are
+`{ id, name }` or `null`. Start and the course progress card consume this target.
+Among accessible lessons in curriculum order, resume keeps the last visited
+lesson if incomplete; otherwise it selects the next incomplete lesson, wrapping
+to the first incomplete lesson. With no valid visit it starts at the first
+incomplete lesson. When all accessible lessons are complete, it offers the last
+visited lesson for review (or the first lesson if the visit no longer exists).
+No accessible lessons means a null target. Imported last-viewed and completion
+records participate in the same rule. The sequential lesson-next endpoint is
+unchanged. The CLI's `student progress` output includes the resume/review target.
+
+
 Progress is explicitly enabled in the initial rollout. There can be only one progress record per imported member and imported course; using another `importKey` for the same pair fails with `conflict`. Access never depends on progress.
 
 ```jsonl

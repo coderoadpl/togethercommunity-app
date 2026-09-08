@@ -212,7 +212,18 @@
       "value": {
         "progress": {
           "completedLessonIds": [],
-          "courseId": "course-acme"
+          "courseId": "course-acme",
+          "resume": {
+            "firstIncomplete": {
+              "id": "lesson-acme-intro",
+              "name": "Lekcja wprowadzająca"
+            },
+            "isReview": false,
+            "target": {
+              "id": "lesson-acme-intro",
+              "name": "Lekcja wprowadzająca"
+            }
+          }
         }
       }
     },

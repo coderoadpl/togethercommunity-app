@@ -30,6 +30,18 @@ describe('permission inventory', () => {
     expect(changes).toEqual([]);
   });
 
+  it('classifies member self-service routes for staff and completion writes consistently', () => {
+    const routes = new Map(collectPermissionInventory().routes.map((row) => [row.subject, row]));
+    for (const subject of [
+      'POST /api/me/profile', 'GET /api/me/erasure-request', 'GET /api/me/data-export',
+      'GET /api/student/progress', 'POST /api/student/progress/last-viewed',
+      'POST /api/student/lessons/complete', 'POST /api/student/lessons/uncomplete',
+    ]) {
+      expect(routes.get(subject)?.after, subject).toEqual(['owner', 'admin', 'member']);
+    }
+    expect(routes.get('POST /api/student/lessons/uncomplete')?.capability).toBe('member:progress:self-write');
+  });
+
   it('reads use-case capabilities from their authorization calls', () => {
     const useCases = new Map(
       collectPermissionInventory().useCases.map((row) => [row.subject, row]),

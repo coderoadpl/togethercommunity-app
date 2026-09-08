@@ -127,6 +127,14 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
   },
   {
+    name: 'login-resolve-error',
+    auth: 'public',
+    path: '/login',
+    fixtureName: 'login',
+    viewports: ['mobile'],
+    ready: (page) => page.getByTestId('sign-in-methods-unavailable').waitFor(visible),
+  },
+  {
     name: 'login-tenant',
     auth: 'public',
     path: '/login',
@@ -221,6 +229,18 @@ export const SCREENS: readonly ScreenSpec[] = [
     },
   },
   {
+    name: 'anon-space',
+    auth: 'public',
+    path: '/community/space-studio-spolecznosc',
+    fixtureName: 'anon-home-tiles',
+    viewports: ['mobile'],
+    ready: async (page) => {
+      await page.getByTestId('anon-join-cta').waitFor(visible);
+      await page.getByTestId('public-space-events-empty').waitFor(visible);
+      await page.getByTestId('public-post-body-post-spolecznosc-hello').waitFor(visible);
+    },
+  },
+  {
     // Waits target the LAST async element of each screen (waterfall queries),
     // otherwise a shot can land mid-load and produce a flaky golden.
     name: 'start',
@@ -245,6 +265,10 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('member-menu-sheet').waitFor(visible);
       await page.getByTestId('sidebar-course-course-js').waitFor(visible);
       await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
+    },
+    settled: async (page) => {
+      // The opening sheet moves its sign-out row under the menu trigger's pointer position.
+      await page.mouse.move(0, 0);
     },
   },
   {

@@ -163,10 +163,10 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
           <CourseProgressCard
             courseId={courseId}
             structure={course}
-            lastViewedLessonId={lastViewedLessonId}
+            resume={progress.data?.progress.resume}
           />
           {hasModules && isCompact ? (
-            <Box data-testid="course-tree-inline">
+            <Box data-testid="course-tree-inline" sx={{ mt: '1.5rem' }}>
               <Typography variant="overline" component="h2">
                 {t.courseOverview.curriculum}
               </Typography>

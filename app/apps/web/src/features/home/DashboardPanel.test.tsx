@@ -125,6 +125,32 @@ describe('DashboardPanel', () => {
     expect(screen.queryByTestId('onboarding-checklist')).not.toBeInTheDocument();
   });
 
+  it('places the provided aside beside the dashboard content', async () => {
+    server.use(
+      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [] } })),
+      http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members } })),
+      http.get('/api/sales/summary', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            summary: { revenueLast30Days: [], activeSubscriptions: 0, ordersLast30Days: 0 },
+          },
+        }),
+      ),
+    );
+
+    renderWithProviders(<DashboardPanel aside={<div data-testid="dashboard-provided-aside" />} />);
+
+    const grid = await screen.findByTestId('dashboard-grid');
+    const tiles = screen.getByTestId('dashboard-tiles');
+    const aside = screen.getByTestId('dashboard-aside');
+    expect(grid.children).toHaveLength(2);
+    expect(grid.children[0]).toContainElement(tiles);
+    expect(grid.children[1]).toBe(aside);
+    expect(aside).toContainElement(screen.getByTestId('dashboard-provided-aside'));
+  });
+
   it('shows counts for products, courses, members and active grants plus recent members', async () => {
     server.use(
       http.get('/api/products', () =>

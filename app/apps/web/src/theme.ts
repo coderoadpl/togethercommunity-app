@@ -3001,7 +3001,7 @@ export const TenantListItemText = styled(ListItemText)({
   '& .MuiListItemText-primary': { fontWeight: 700 },
 });
 
-export const BreakAllText = styled(Typography)<AsElement>({ wordBreak: 'break-all' });
+export const WrapAnywhereText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
 
 export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
@@ -3761,7 +3761,14 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
 }));
 
 export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
-  borderTop: `1px solid ${theme.palette.divider}`,
+  position: 'sticky',
+  bottom: 'calc(4.5rem + env(safe-area-inset-bottom))',
+  zIndex: theme.zIndex.appBar - 1,
+  padding: '0.75rem',
+  backgroundColor: theme.palette.background.paper,
+  borderTop: theme.headerRule ?? `1px solid ${theme.palette.divider}`,
+  '& .MuiButton-root': { minHeight: 48 },
+  [theme.breakpoints.up('md')]: { bottom: 0 },
 }));
 
 export const LessonBlockIcon = styled(SvgIcon)(({ theme }) => ({

@@ -1,1 +1,1 @@
-export { StudioChecklistDock } from './StudioChecklistDock.js';
+export { StudioChecklistDock, StudioChecklistPanel } from './StudioChecklistDock.js';

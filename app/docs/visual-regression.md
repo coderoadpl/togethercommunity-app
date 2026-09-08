@@ -165,9 +165,16 @@ Before/After gallery from `.github/workflows/visual-golden-gallery.yml`. Its
 images are pinned to the compared commits. The publisher uses trusted base-ref
 workflow code and never executes pull-request code.
 
-## Chromatic (promotion PRs)
+## Chromatic
 
-Chromatic runs only for promotion pull requests targeting `main`, plus manual
+The `preview` project publishes a Storybook preview permalink for non-draft pull requests
+targeting `staging` and pushes to `staging` when `CHROMATIC_PREVIEW_PROJECT_TOKEN` is
+available and changes affect `app/apps/web/**`, `app/.storybook/**`,
+`app/tasks/visual-goldens/**`, or `.github/workflows/chromatic-preview.yml`.
+The preview command uses TurboSnap (`--only-changed`) to copy unchanged stories
+instead of capturing them, while retaining `--exit-zero-on-changes` and `--exit-once-uploaded`.
+
+Chromatic snapshot testing runs only for promotion pull requests targeting `main`, plus manual
 `workflow_dispatch` runs. It reviews Storybook UI snapshots for baseline changes
 before promotion; it is not the visual regression gate and does not replace
 `pnpm run visual` or the committed route goldens.

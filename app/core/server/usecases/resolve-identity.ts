@@ -10,11 +10,11 @@ import {
 
 import type {
   AuthenticatedUser,
-  MemberRepository,
   TenantAccessReader,
   TenantDomainRepository,
   TenantRepository,
 } from '../ports.js';
+import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';
 import { resolveTenant } from './resolve-tenant.js';
 
 export interface TenantRequestInfo {
@@ -24,10 +24,9 @@ export interface TenantRequestInfo {
   tenantHeader: string | null;
 }
 
-export interface ResolveIdentityDeps {
+export interface ResolveIdentityDeps extends EnsureMemberDeps {
   tenantDomains: TenantDomainRepository;
   tenantAccess: TenantAccessReader;
-  members: MemberRepository;
   tenants: TenantRepository;
   /** e.g. "localhost" in dev, "together.example" in prod. */
   baseDomain: string;
@@ -67,6 +66,12 @@ export const resolveIdentity = async (
 
   const staffGrant = await deps.tenantAccess.findStaffGrant(user.userId, { tenantId: tenant.value.tenant.id });
   let member = await deps.tenantAccess.findMember(tenant.value.tenant.id, user.userId);
+
+  if (staffGrant && !member) {
+    const ensured = await ensureMember(tenant.value.tenant.id, user.email, deps);
+    if (!ensured.ok) return ensured;
+    member = ensured.value;
+  }
 
   if (member && member.email !== user.email) {
     const refreshedMember = await deps.members.updateEmail(tenant.value.tenant.id, member.id, user.email);

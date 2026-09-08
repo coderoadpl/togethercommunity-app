@@ -23,6 +23,7 @@ import type {
   PlayableLessonBlock,
 } from '#core/domain/index.js';
 
+import { actions } from '../../api.js';
 import { pl } from '../../i18n/pl.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -187,6 +188,9 @@ describe('LessonPlayerPage', () => {
           ok: true,
           data: { discussion: { threads: [], nextCursor: null, viewerSubscriptions: {} } },
         }),
+      ),
+      http.get('/api/student/lessons/:lessonId/playback', () =>
+        HttpResponse.json({ ok: true, data: { lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [] } }),
       ),
       http.get('/api/student/lessons/:lessonId/attachments', () =>
         HttpResponse.json({ ok: true, data: { attachments: [] } }),
@@ -585,11 +589,12 @@ describe('LessonPlayerPage', () => {
       http.get('/api/student/lessons/:lessonId', () => HttpResponse.json({
         ok: true,
         data: {
-          lesson: { ...lesson([{ type: 'html', html: '<p>Preview body</p>' }]), isPreview: true },
+          lesson: { ...lesson([{ type: 'html', html: '<p>Preview body</p>' }, { type: 'video', storageKey: 'preview-video', streamVideoId: 'preview-video' }]), isPreview: true },
           authenticated: false,
         },
       })),
       http.get('/api/me', countMemberOnly),
+      http.get('/api/student/lessons/:lessonId/playback', countMemberOnly),
       http.get('/api/student/courses/:courseId/structure', countMemberOnly),
       http.get('/api/student/progress', countMemberOnly),
       http.get('/api/discussion', countMemberOnly),
@@ -599,6 +604,9 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Preview body');
+    expect(screen.getByTestId('lesson-video-placeholder')).toHaveTextContent(pl.lesson.videoPlaceholder);
+    expect(screen.queryByText(pl.lesson.videoFailedTitle)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: pl.common.retry })).not.toBeInTheDocument();
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-section')).not.toBeInTheDocument();
     expect(memberOnlyRequests).toBe(0);
@@ -795,6 +803,27 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['missing_library_id', pl.lesson.videoMissingLibrary],
+    ['secret_invalid', pl.lesson.videoSecretInvalid],
+  ])('explains unavailable video reason %s and retries playback', async (reason, message) => {
+    let recovered = false;
+    server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
+      http.get('/api/student/lessons/:lessonId/playback', () => HttpResponse.json({ ok: true, data: {
+        lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [recovered
+          ? { kind: 'bunny', storageKey: 'k1', videoId: 'vid-1', libraryId: '1', embedUrl: 'https://courses.example.org/video', hlsUrl: null, signed: false }
+          : { kind: 'unavailable', storageKey: 'k1', reason }],
+      } })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
+    recovered = true;
+    await userEvent.setup().click(screen.getByRole('button', { name: pl.common.retry }));
+    expect(await screen.findByTestId('lesson-video')).toHaveAttribute('src', 'https://courses.example.org/video');
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
+  });
+
   it('leaves the breadcrumb trail to the member app bar', async () => {
     server.use(okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
@@ -952,7 +981,7 @@ describe('LessonPlayerPage', () => {
     const primary = await screen.findByTestId('complete-continue');
     expect(primary).toHaveTextContent(pl.lesson.completeContinue);
     expect(primary.className).toContain('MuiButton-contained');
-    expect(screen.getByTestId('mark-complete').className).toContain('MuiButton-text');
+    expect(screen.getByTestId('mark-complete').className).toContain('MuiButton-outlined');
     expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
   });
 
@@ -1003,7 +1032,7 @@ describe('LessonPlayerPage', () => {
     expect(primary).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     expect(primary).toHaveTextContent('Advanced Variables');
     expect(primary.className).toContain('MuiButton-contained');
-    expect(screen.getByTestId('unmark-complete').className).toContain('MuiButton-text');
+    expect(screen.getByTestId('unmark-complete').className).toContain('MuiButton-outlined');
     expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
   });
 
@@ -1089,6 +1118,9 @@ describe('LessonPlayerPage', () => {
       okStructure(),
       okProgress(),
       okLesson(allBlocks),
+      http.get('/api/student/lessons/:lessonId/playback', () =>
+        HttpResponse.json({ ok: true, data: { lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [] } }),
+      ),
       http.get('/api/student/lessons/:lessonId/attachments', () =>
         HttpResponse.json({
           ok: true,
@@ -1341,27 +1373,30 @@ describe('LessonPlayerPage', () => {
     );
   });
 
-  it('keeps last-viewed failures silent on the lesson page', async () => {
+  it.each([403, 500])('keeps background %s failures off the lesson page', async (status) => {
     let lastViewedCalls = 0;
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     server.use(
       okLesson(allBlocks),
       okStructure(),
-      okProgress(),
+      http.get('/api/student/progress', () => HttpResponse.json(
+        { ok: false, error: { code: status === 403 ? 'forbidden' : 'internal', message: 'Progress unavailable' } },
+        { status },
+      )),
       http.post('/api/student/progress/last-viewed', () => {
         lastViewedCalls += 1;
         return HttpResponse.json(
-          { ok: false, error: { code: 'internal', message: 'Write failed' } },
-          { status: 500 },
+          { ok: false, error: { code: status === 403 ? 'forbidden' : 'internal', message: 'Write failed' } },
+          { status },
         );
       }),
     );
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    const view = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-video')).toBeInTheDocument();
     await waitFor(() => expect(lastViewedCalls).toBe(1));
+    await waitFor(() => expect(view.queryClient.getQueryState(actions.studentProgress('course-1').queryKey)?.status).toBe('error'));
     await waitFor(() =>
-      expect(warn).toHaveBeenCalledWith('Failed to update last-viewed lesson', expect.any(Error)));
+      expect(view.queryClient.getMutationCache().getAll().some((mutation) => mutation.state.status === 'error')).toBe(true));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 

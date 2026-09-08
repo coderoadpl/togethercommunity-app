@@ -36,7 +36,7 @@ interface ScreenPreparation {
 
 export const visible = { state: 'visible', timeout: 20000 } as const;
 
-const CHECKLIST_DOCK_MIN_WIDTH = 600;
+const DASHBOARD_ASIDE_MIN_WIDTH = 1200;
 
 const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   let release = (): void => undefined;
@@ -125,6 +125,14 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/login',
     host: 'localhost',
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
+  },
+  {
+    name: 'login-resolve-error',
+    auth: 'public',
+    path: '/login',
+    fixtureName: 'login',
+    viewports: ['mobile'],
+    ready: (page) => page.getByTestId('sign-in-methods-unavailable').waitFor(visible),
   },
   {
     name: 'login-tenant',
@@ -218,6 +226,18 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: async (page) => {
       await page.getByTestId('anon-course-program').waitFor(visible);
       await page.getByTestId('course-cover').waitFor(visible);
+    },
+  },
+  {
+    name: 'anon-space',
+    auth: 'public',
+    path: '/community/space-studio-spolecznosc',
+    fixtureName: 'anon-home-tiles',
+    viewports: ['mobile'],
+    ready: async (page) => {
+      await page.getByTestId('anon-join-cta').waitFor(visible);
+      await page.getByTestId('public-space-events-empty').waitFor(visible);
+      await page.getByTestId('public-post-body-post-spolecznosc-hello').waitFor(visible);
     },
   },
   {
@@ -440,7 +460,8 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     ready: async (page) => {
-      if ((page.viewportSize()?.width ?? 0) >= CHECKLIST_DOCK_MIN_WIDTH) {
+      const desktop = (page.viewportSize()?.width ?? 0) >= DASHBOARD_ASIDE_MIN_WIDTH;
+      if (desktop) {
         await page.getByTestId('studio-checklist-panel').waitFor(visible);
         await page.getByTestId('onboarding-checklist').waitFor(visible);
       } else {
@@ -448,6 +469,16 @@ export const SCREENS: readonly ScreenSpec[] = [
       }
       await page.getByTestId('dashboard-tile-revenue').waitFor(visible);
       await page.getByTestId('dashboard-member-row').first().waitFor(visible);
+      if (!desktop) return;
+      await page.getByTestId('dashboard-aside').waitFor(visible);
+      const manage = page.getByTestId('dashboard-member-row').first().getByRole('button', { name: 'Zarządzaj' });
+      await manage.waitFor(visible);
+      const hit = await manage.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return { clear: top !== null && (element === top || element.contains(top)), topTestId: top instanceof HTMLElement ? top.dataset['testid'] ?? null : null, topTag: top?.tagName ?? null };
+      });
+      assert(hit.clear, `Dashboard member manage action must not be covered: ${JSON.stringify(hit)}`);
     },
   },
   ...[false, true].map((active): ScreenSpec => ({

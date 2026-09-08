@@ -122,3 +122,30 @@ describe('query error reporting', () => {
     expect(reportError).toHaveBeenCalledWith(error);
   });
 });
+
+
+describe('background request failures', () => {
+  it('reports a failed background progress refresh without a toast', async () => {
+    const error = new ApiError({ code: 'forbidden', message: 'Progress rejected' });
+    queryClient.setQueryData(['background-progress'], { completedLessonIds: [] });
+    await expect(queryClient.fetchQuery({
+      queryKey: ['background-progress'],
+      queryFn: () => failingQuery(error),
+      meta: { background: true },
+      staleTime: 0,
+    })).rejects.toThrow('Progress rejected');
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(error);
+    expect(refreshToastStore.snapshot()).toBeNull();
+  });
+
+  it('reports a failed background visit mutation without a toast', async () => {
+    const error = new ApiError({ code: 'forbidden', message: 'Visit rejected' });
+    const mutation = queryClient.getMutationCache().build(queryClient, {
+      mutationFn: () => failingQuery(error),
+      meta: { background: true },
+    });
+    await expect(mutation.execute(undefined)).rejects.toThrow('Visit rejected');
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(error);
+    expect(refreshToastStore.snapshot()).toBeNull();
+  });
+});

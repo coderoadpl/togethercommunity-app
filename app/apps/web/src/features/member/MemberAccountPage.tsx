@@ -30,7 +30,7 @@ import { EmailVerificationStatus } from '../../components/ui/EmailVerificationSt
 import { useToastOutcome } from '../../components/ui/Toast.js';
 import { EmailLanguagePicker, useEmailLanguagePreference } from '../../EmailLanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { BreakAllText } from '../../theme.js';
+import { WrapAnywhereText } from '../../theme.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { useImpersonation } from './viewer.js';
@@ -54,9 +54,9 @@ const SignedInAddress = ({ email, variant }: { email: string; variant: 'card' | 
   if (variant === 'card') {
     return (
       <SectionCard title={t.account.signedInAs}>
-        <BreakAllText variant="body1" data-testid="account-email">
+        <WrapAnywhereText variant="body1" data-testid="account-email">
           {email}
-        </BreakAllText>
+        </WrapAnywhereText>
       </SectionCard>
     );
   }
@@ -66,9 +66,9 @@ const SignedInAddress = ({ email, variant }: { email: string; variant: 'card' | 
       <Typography component="dt" variant="caption" color="text.secondary">
         {t.account.signedInAs}
       </Typography>
-      <BreakAllText component="dd" variant="body1" sx={{ m: 0 }} data-testid="account-email">
+      <WrapAnywhereText component="dd" variant="body1" sx={{ m: 0 }} data-testid="account-email">
         {email}
-      </BreakAllText>
+      </WrapAnywhereText>
     </Stack>
   );
 };
@@ -715,7 +715,12 @@ export const MemberAccountPage = () => {
           ) : erasureRequest.isError ? (
             <StatusView state={{ kind: 'error', message: localizeError(erasureRequest.error, t), retry: { label: t.common.retry, onRetry: () => void erasureRequest.refetch() } }} />
           ) : erasureRequest.data.request === null ? (
-            <>
+            <Stack
+              useFlexGap
+              spacing="1rem"
+              data-mobile-keyboard-anchor
+              sx={{ scrollMarginBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
+            >
               <FormControl fullWidth>
                 <FormLabel htmlFor="erasure-confirm-email">
                   {t.account.erasureConfirmLabel}
@@ -738,11 +743,12 @@ export const MemberAccountPage = () => {
                   onClick={() =>
                     createErasureRequest.mutate({ confirmEmail: erasureConfirmEmail })
                   }
+                  sx={{ minHeight: '44px' }}
                 >
                   {t.account.erasureRequestButton}
                 </Button>
               </Box>
-            </>
+            </Stack>
           ) : erasureRequest.data.request.status === 'open' ? (
             <>
               <Typography>

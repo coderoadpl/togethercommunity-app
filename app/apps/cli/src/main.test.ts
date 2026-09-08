@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { appError, err, ok, PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+import { appError, err, ok, PASSWORD_MIN_LENGTH, type AppError, type Result } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
 
@@ -16,7 +16,9 @@ interface Hoisted {
   listCourses: ReturnType<typeof vi.fn>;
   listModules: ReturnType<typeof vi.fn>;
   listLessons: ReturnType<typeof vi.fn>;
-  updateLesson: ReturnType<typeof vi.fn>;
+  updateLesson: ReturnType<typeof vi.fn<
+    (input: { id: string; isPreview?: boolean }) => Promise<Result<{ lesson: unknown }, AppError>>
+  >>;
   health: ReturnType<typeof vi.fn>;
   configureStorage: ReturnType<typeof vi.fn>;
   changePassword: ReturnType<typeof vi.fn>;
@@ -47,7 +49,9 @@ const h = vi.hoisted(
     listCourses: vi.fn(),
     listModules: vi.fn(),
     listLessons: vi.fn(),
-    updateLesson: vi.fn(),
+    updateLesson: vi.fn<
+      (input: { id: string; isPreview?: boolean }) => Promise<Result<{ lesson: unknown }, AppError>>
+    >(),
     health: vi.fn(),
     configureStorage: vi.fn(),
     changePassword: vi.fn(),
@@ -772,7 +776,7 @@ describe('lesson preview commands', () => {
   });
 
   it('prints the human table before writing', async () => {
-    h.updateLesson.mockImplementation((input: { id: string; isPreview: boolean }) => {
+    h.updateLesson.mockImplementation((input: { id: string; isPreview?: boolean }) => {
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Module\tLesson\tCurrent -> new'));
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Lesson four (four)\tfalse -> true'));
       return Promise.resolve(ok({ lesson: previewLesson(input.id, input.isPreview) }));
@@ -785,10 +789,10 @@ describe('lesson preview commands', () => {
   it('is idempotent when the command is repeated', async () => {
     const lessons = [previewLesson('one'), previewLesson('two'), previewLesson('three'), previewLesson('four')];
     h.listLessons.mockResolvedValue(ok({ lessons }));
-    h.updateLesson.mockImplementation((input: { id: string; isPreview: boolean }) => {
+    h.updateLesson.mockImplementation((input: { id: string; isPreview?: boolean }) => {
       const lesson = lessons.find((item) => item.id === input.id);
       if (lesson === undefined) throw new Error('Unexpected lesson');
-      lesson.isPreview = input.isPreview;
+      lesson.isPreview = input.isPreview ?? false;
       return Promise.resolve(ok({ lesson }));
     });
     await select('--all');

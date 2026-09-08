@@ -243,12 +243,15 @@ export const lessonBlockSchema = z.discriminatedUnion('type', [
 
 export type LessonBlock = z.infer<typeof lessonBlockSchema>;
 
+const salesUrlSchema = z.string().trim().url().regex(/^https:\/\//iu, 'Sales URL must use HTTPS');
+
 export const courseSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
   name: requiredNameSchema,
   description: z.string(),
   imageUrl: z.union([z.string().url(), z.string().regex(/^\/\S+$/)]).nullable(),
+  salesUrl: salesUrlSchema.nullable().optional(),
   moduleOrder: z.array(z.string()),
   publiclyVisible: z.boolean().default(false),
   legacyId: z.string().nullable(),
@@ -370,6 +373,7 @@ const courseStructureLessonSchema = z.object({
   completionStatus: completionStatusSchema,
   durationMinutes: lessonDurationSchema.optional(),
   unlockProductId: z.string().optional(),
+  isPreview: z.boolean().optional(),
 });
 
 export type CourseStructureLesson = z.infer<typeof courseStructureLessonSchema>;
@@ -395,6 +399,18 @@ const courseStructureModuleSchema = z.object({
 export type CourseStructureModule = z.infer<typeof courseStructureModuleSchema>;
 
 export const courseStructureWithAccessSchema = z.object({
+  offer: z.object({
+    description: z.string(),
+    imageUrl: courseSchema.shape.imageUrl,
+    salesUrl: salesUrlSchema.nullable(),
+    supportUrl: z.string().url().nullable(),
+    product: z.object({
+      id: z.string(),
+      priceCents: z.number().int().nonnegative(),
+      currency: z.string(),
+      interval: z.enum(['month', 'year']).nullable(),
+    }).nullable(),
+  }).optional(),
   courseId: z.string(),
   name: z.string(),
   accessStatus: accessStatusSchema,
@@ -433,6 +449,7 @@ export const updateLastViewedInputSchema = z.object({
 export type UpdateLastViewedInput = z.input<typeof updateLastViewedInputSchema>;
 
 export const newCourseSchema = z.object({
+  salesUrl: salesUrlSchema.nullable().optional(),
   name: requiredNameSchema,
   description: z.string().default(''),
   imageUrl: z.union([z.string().url(), z.string().regex(/^\/\S+$/)]).nullable().default(null),
@@ -441,6 +458,7 @@ export const newCourseSchema = z.object({
 });
 
 export const updateCourseInputSchema = z.object({
+  salesUrl: salesUrlSchema.nullable().optional(),
   id: z.string().min(1),
   name: requiredNameSchema.optional(),
   description: z.string().optional(),

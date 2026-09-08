@@ -1088,6 +1088,8 @@ export const en: Messages = {
     newCourse: 'New course',
     detailsHeading: 'Course details',
     titleLabel: 'Title',
+    salesUrl: 'Sales page URL',
+    salesUrlHint: 'Optional HTTPS address. Used when no published product is linked.',
     imageUrl: 'Image URL',
     imagePreview: 'Course cover preview',
     creating: 'Creating…',
@@ -1199,6 +1201,7 @@ export const en: Messages = {
     versionEmptyList: '— no items —',
     versionCurrentMissing: 'The item no longer exists, so there is nothing to compare against.',
     versionField: {
+      salesUrl: 'Sales page URL',
       title: 'Title',
       description: 'Description',
       imageUrl: 'Cover',
@@ -1559,6 +1562,11 @@ export const en: Messages = {
     emptyBody: 'Access comes with a purchase — check what you already own under your products.',
   },
   anon: {
+    salesCta: 'See offer',
+    contactCreator: 'Contact the creator',
+    previewChip: 'Preview',
+    monthlyPrice: (params: { price: string }) => `${params.price} / month`,
+    yearlyPrice: (params: { price: string }) => `${params.price} / year`,
     eyebrow: 'Visitor preview',
     homeTitle: 'Look inside',
     coursesSection: 'Courses',

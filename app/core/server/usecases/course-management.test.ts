@@ -352,11 +352,11 @@ describe('course management use-cases', () => {
     expect(store[0]?.name).toBe('Updated');
   });
 
-  it('invalidates the public offer only when the public visibility of a course changes', async () => {
+  it('invalidates the public offer when visibility or visible offer details change', async () => {
     const contentVersionBumps: string[] = [];
     const d = deps({
       courses: [course('c1', 't-acme')],
-      ids: ['snapshot-1', 'snapshot-2', 'snapshot-3'],
+      ids: ['snapshot-1', 'snapshot-2', 'snapshot-3', 'snapshot-4'],
       contentVersionBumps,
     });
     const ctx = { identity: identity('t-acme', 'owner') };
@@ -372,6 +372,8 @@ describe('course management use-cases', () => {
 
     expect(await updateCourse(ctx, { id: 'c1', publiclyVisible: true }, d)).toMatchObject({ ok: true });
     expect(contentVersionBumps).toEqual(['t-acme']);
+    expect(await updateCourse(ctx, { id: 'c1', salesUrl: 'https://courses.example.org/offer' }, d)).toMatchObject({ ok: true });
+    expect(contentVersionBumps).toEqual(['t-acme', 't-acme']);
   });
 
   it('refuses to make a lesson a free preview outside a publicly visible course', async () => {
@@ -441,7 +443,7 @@ describe('course management use-cases', () => {
       id: 'snapshot-1',
       entityKind: 'course',
       entityId: 'c1',
-      schemaVersion: 4,
+      schemaVersion: 5,
       createdBy: 'u1',
     });
     // The snapshot captures the PREVIOUS name, not the new one.
@@ -900,6 +902,18 @@ describe('course management guard and fallback branches', () => {
     const d = deps({ courses: [course('c1', 't-acme')], modules: [module('m1', 't-acme')] });
     const result = await detachModuleFromCourse(owner, { courseId: 'c1', moduleId: 'm1' }, d);
     expect(result).toMatchObject({ ok: true, value: { id: 'm1' } });
+  });
+
+
+  it('sets, preserves and clears the course sales URL', async () => {
+    const d = deps({ courses: [course('c1', 't-acme')], ids: ['v1', 'v2', 'v3'] });
+    const ctx = { identity: identity('t-acme', 'owner') };
+    expect(await updateCourse(ctx, { id: 'c1', salesUrl: 'https://courses.example.org/offer' }, d))
+      .toMatchObject({ ok: true, value: { salesUrl: 'https://courses.example.org/offer' } });
+    expect(await updateCourse(ctx, { id: 'c1', name: 'Updated course' }, d))
+      .toMatchObject({ ok: true, value: { salesUrl: 'https://courses.example.org/offer' } });
+    expect(await updateCourse(ctx, { id: 'c1', salesUrl: null }, d))
+      .toMatchObject({ ok: true, value: { salesUrl: null } });
   });
 
   it('keeps existing fields on a partial course update and can set an image url', async () => {

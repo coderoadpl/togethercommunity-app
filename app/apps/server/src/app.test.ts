@@ -7475,10 +7475,11 @@ describe('content history HTTP surface', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       data: {
-        version: { ordinal: 2, currentSchemaVersion: 4 },
+        version: { ordinal: 2, currentSchemaVersion: 5 },
         preview: {
           fields: expect.arrayContaining([
             { name: 'title', value: { kind: 'text', value: 'Older name' } },
+            { name: 'salesUrl', value: { kind: 'text', value: '' } },
           ]),
         },
         current: {

@@ -32,6 +32,7 @@ import type {
   PostReactionRepository,
   PostRepository,
   ProductRepository,
+  ProductPriceRepository,
   SpaceEventRepository,
   SpaceEventRsvpRepository,
   SpaceRepository,
@@ -53,6 +54,8 @@ export interface PublicNavigationDeps {
 }
 
 export interface PublicCourseStructureDeps {
+  prices: Pick<ProductPriceRepository, 'listActiveByProducts'>;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   courses: Pick<CourseRepository, 'findById'>;
   modules: Pick<CourseModuleRepository, 'list'>;
   lessons: Pick<CourseLessonRepository, 'list'>;
@@ -170,8 +173,16 @@ export const getPublicCourseStructure = async (
     deps.lessons.list(tenant.id),
     deps.products.listPublishedByTenant(tenant.id),
   ]);
-  return ok(
-    buildCourseStructure(
+  const product = products
+    .filter((entry) => entry.published && entry.accessItems.some((item) => item.courseId === courseId))
+    .sort((a, b) => a.priceCents - b.priceCents || a.id.localeCompare(b.id))[0];
+  const [prices, settings] = await Promise.all([
+    product === undefined ? Promise.resolve([]) : deps.prices.listActiveByProducts(tenant.id, [product.id]),
+    deps.tenants.findSettings(tenant.id),
+  ]);
+  const price = prices[0];
+  return ok({
+    ...buildCourseStructure(
       course,
       modules,
       new Map(lessons.map((lesson) => [lesson.id, lesson])),
@@ -179,7 +190,19 @@ export const getPublicCourseStructure = async (
       new Set(),
       products,
     ),
-  );
+    offer: {
+      description: course.description,
+      imageUrl: course.imageUrl,
+      salesUrl: course.salesUrl ?? null,
+      supportUrl: settings?.supportUrl ?? null,
+      product: product === undefined ? null : {
+        id: product.id,
+        priceCents: price?.amountCents ?? product.priceCents,
+        currency: price?.currency ?? product.currency,
+        interval: price?.interval ?? null,
+      },
+    },
+  });
 };
 
 const publiclyReadableSpace = async (

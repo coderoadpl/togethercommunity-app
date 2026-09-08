@@ -484,6 +484,7 @@ export const createCourseRepository = (db: Db): CourseRepository => ({
           name: course.name,
           description: course.description,
           imageUrl: course.imageUrl,
+          salesUrl: course.salesUrl ?? null,
           moduleOrder: course.moduleOrder,
           publiclyVisible: course.publiclyVisible,
           legacyId: course.legacyId,

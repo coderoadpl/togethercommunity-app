@@ -1,13 +1,13 @@
 import { Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
-import type { CourseStructureLesson, CourseStructureWithAccess } from '#core/domain/index.js';
+import type { CourseResume, CourseStructureLesson, CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { useTranslations, type Messages } from '../../i18n/index.js';
 import { Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
 
-export const flattenLessons = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
+const flattenLessons = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
   structure.modules.flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons));
 
 export interface CourseTotals {
@@ -29,31 +29,6 @@ export const courseTotals = (structure: CourseStructureWithAccess): CourseTotals
   };
 };
 
-const firstAccessibleLessonId = (structure: CourseStructureWithAccess): string | null =>
-  flattenLessons(structure).find((lesson) => lesson.accessStatus === 'fully-accessible')?.lessonId ??
-  null;
-
-export const continueLessonId = (
-  structure: CourseStructureWithAccess,
-  lastViewedLessonId: string | undefined,
-): string | null => {
-  const accessible = flattenLessons(structure).filter(
-    (lesson) => lesson.accessStatus === 'fully-accessible',
-  );
-  const unfinished = (lesson: CourseStructureLesson) =>
-    lesson.completionStatus !== 'fully-completed';
-  const lastViewedIndex = accessible.findIndex(
-    (lesson) => lesson.lessonId === lastViewedLessonId,
-  );
-  if (lastViewedIndex !== -1) {
-    const lastViewed = accessible[lastViewedIndex];
-    if (lastViewed !== undefined && unfinished(lastViewed)) return lastViewed.lessonId;
-    const following = accessible.slice(lastViewedIndex + 1).find(unfinished);
-    if (following !== undefined) return following.lessonId;
-  }
-  return accessible.find(unfinished)?.lessonId ?? accessible[0]?.lessonId ?? null;
-};
-
 export const formatTotalDuration = (t: Messages, totalMinutes: number): string =>
   totalMinutes >= 60
     ? t.courseOverview.durationHoursMinutes({
@@ -65,21 +40,18 @@ export const formatTotalDuration = (t: Messages, totalMinutes: number): string =
 export const CourseProgressCard = ({
   courseId,
   structure,
-  lastViewedLessonId,
+  resume,
 }: {
   courseId: string;
   structure: CourseStructureWithAccess;
-  lastViewedLessonId: string | undefined;
+  resume: CourseResume | undefined;
 }) => {
   const t = useTranslations();
   const totals = courseTotals(structure);
-  const continueTarget = continueLessonId(structure, lastViewedLessonId);
-  const firstTarget = firstAccessibleLessonId(structure);
-  const targetLesson =
-    continueTarget === null
-      ? undefined
-      : flattenLessons(structure).find((lesson) => lesson.lessonId === continueTarget);
-  const isReview = targetLesson?.completionStatus === 'fully-completed';
+  const target = resume?.target;
+  const firstTarget = resume?.firstIncomplete;
+  const isReview = resume?.isReview === true;
+  const label = target == null ? '' : `${isReview ? t.courseOverview.reviewAgain : t.courseOverview.continueLearning}: ${target.name}`;
   const courseCompleted = totals.total > 0 && totals.done === totals.total;
 
   return (
@@ -108,26 +80,29 @@ export const CourseProgressCard = ({
         sx={{ mt: '0.6rem' }}
         aria-label={t.courseOverview.progressTitle}
       />
-      {continueTarget !== null && (
+      {target != null && (
         <Stack useFlexGap sx={{ mt: '1.25rem', rowGap: '0.75rem' }}>
           <Button
             variant={isReview ? 'outlined' : 'contained'}
             fullWidth
             component={Link}
-            to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(continueTarget)}`}
+            to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(target.id)}`}
             data-testid="continue-cta"
+            title={label}
+            sx={{ minWidth: 0 }}
           >
-            {isReview ? t.courseOverview.reviewAgain : t.courseOverview.continueLearning}
+            <Typography component="span" variant="inherit" noWrap sx={{ minWidth: 0 }}>{label}</Typography>
           </Button>
-          {firstTarget !== null && firstTarget !== continueTarget && (
+          {firstTarget != null && firstTarget.id !== target.id && (
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
               <MuiLink
                 component={Link}
-                to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(firstTarget)}`}
+                to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(firstTarget.id)}`}
                 variant="body2"
+                color="text.secondary"
                 data-testid="first-lesson-link"
               >
-                {t.courseOverview.goToFirstLesson}
+                {t.courseOverview.firstIncomplete({ name: firstTarget.name })}
               </MuiLink>
             </Box>
           )}

@@ -202,24 +202,30 @@ export const MemberShell = () => {
         onBlurCapture={handleMobileBlur}
         sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${TOOLBAR_MIN_HEIGHT + 1}px` }}
       >
-        {sidebar === null ? null : (
-          <SidebarColumn
-            component="aside"
-            sx={courseContext === null ? undefined : {
-              top: 'var(--member-app-bar-height)',
-              mt: 'var(--member-app-bar-height)',
-              height: 'calc(100dvh - var(--member-app-bar-height))',
-              maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
-              overflowY: 'auto',
-            }}
-          >
-            {sidebar}
-          </SidebarColumn>
+        {sidebar === null ? null : courseContext === null ? (
+          <SidebarColumn component="aside">{sidebar}</SidebarColumn>
+        ) : (
+          <Box sx={{ flexShrink: 0 }}>
+            <SidebarColumn sx={{ height: 'var(--member-app-bar-height)', justifyContent: 'center', px: '1.2rem' }}>
+              {brand}
+            </SidebarColumn>
+            <SidebarColumn
+              component="aside"
+              sx={{
+                top: 'var(--member-app-bar-height)',
+                height: 'calc(100dvh - var(--member-app-bar-height))',
+                maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
+                overflowY: 'auto',
+              }}
+            >
+              {sidebar}
+            </SidebarColumn>
+          </Box>
         )}
         <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
           <AppBar ref={appBarRef} position="sticky">
             <Toolbar variant="dense" sx={{ minHeight: `${TOOLBAR_MIN_HEIGHT}px`, px: '1.25rem', gap: '0.75rem' }}>
-              {lessonCrumbs === null ? (
+              {lessonCrumbs === null && (courseContext === null || !isDesktop) ? (
                 <Box sx={{ display: { xs: 'flex', md: 'none' }, flex: '1 1 auto', minWidth: 0 }}>
                   {brand}
                 </Box>

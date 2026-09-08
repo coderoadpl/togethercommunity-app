@@ -130,28 +130,58 @@ production-access answers, and transactional SMTP fallbacks are in the
 ## Architecture in one screen
 
 ```
-core/domain     entities, Result, error taxonomy          → zod only
-core/contract   API routes + schemas (single source)      → domain
-core/server     use-cases + ports (interfaces)            → domain
-core/client     typed HTTP client + query definitions     → contract
-adapters/db     Drizzle repos, driver factory (pg|neon)   → implements ports
-adapters/auth   Better Auth (server + client adapter)     → implements ports
-apps/server     Hono wiring + composition root            → the only place adapters are instantiated
-apps/web        React SPA (Vite, TanStack Router/Query)   → core/client only
-apps/cli        commander commands                        → core/client only
+core/domain          entities, Result, error taxonomy          → zod only
+core/contract        shared API routes + schemas               → domain
+core/server          use-cases + ports (interfaces)            → domain
+core/client          typed HTTP client + query definitions     → contract, domain
+adapters/db          Drizzle repos, PostgreSQL runtime         → implements server ports
+adapters/auth        Better Auth (server + client adapter)     → implements ports
+apps/server          Hono wiring + runtime composition         → domain, contract, server, adapters
+apps/web             React SPA (Vite, TanStack Router/Query)   → client, contract, domain, auth adapter
+apps/cli             commander commands                        → client, contract, domain, auth adapter
+api/                 Vercel function entry points              → apps/server platform entry
+packages/client-sdk  typed API client package                  → client, contract, domain, auth adapter
+config-regression/   architecture gate regression probes       → enforcement configuration
+scripts/             gates, e2e drivers, operational tools     → verification and operations
 ```
 
-Rules are **machine-enforced**: `eslint-plugin-boundaries` + `dependency-cruiser`
-fail the build on any cross-layer import, on `@vercel/*`/`@neondatabase/*`
-outside `adapters/`, and on any framework import inside `core/`. `any` and
-type assertions (`as`, except `as const`) are lint errors.
+`eslint-plugin-boundaries` and `dependency-cruiser` enforce the configured
+import directions and external dependency allowlists. Clients cannot import
+`core/server` or database adapters. `@vercel/*` and `@neondatabase/*` are confined
+to adapters and the reviewed `apps/server/src/entry.vercel.ts` boundary.
+Framework imports in core, `any`, and type assertions other than `as const`
+are prohibited.
+
+`composition.ts` wires server adapters and delegates realtime selection and
+construction to `realtime-transport.ts`. The web API module and CLI context
+construct auth client adapters; operational scripts also compose adapters.
+The gates constrain imports, not exclusive adapter construction. The DB factory
+retains both driver branches, but `apps/server/src/env.ts` accepts only
+`node-postgres` because runtime repositories require interactive transactions.
+
+- `pnpm run check` = `typecheck` + `typecheck:islands` + `lint` + `lock-lint` +
+  `license-lint` + `migration-lint` + `tenant-scope-check` + `tenant-neutral-lint` +
+  `depcruise` + `knip` + `doc-lint` + `test` —
+  the **static** gate.
+- `pnpm run smoke` is the runtime gate: a fresh isolated database, real server
+  boot, and CLI roundtrips.
 
 ```bash
-pnpm run check   # typecheck + lint + dependency graph + tests — the static gate
-pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
+pnpm run check
+pnpm run smoke
 ```
 
-The Vitest projects currently discover <!--count:test-files-->383<!--/count-->
+In `.github/workflows/ci.yml`, `check` also runs the production dependency audit.
+The `smoke` job runs `smoke` and `quickstart:probe`; the macOS `visual` job runs
+`visual`, which builds Storybook before comparing captures. The twelve e2e
+matrix suites are `auth`, `poc`, `subs`, `marketing`, `coupon`, `public-authz`,
+`member-activity`, `member-shell`, `impersonation`, `two-factor`, `image-assets`,
+and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
+`e2e:storage`, `e2e:ksef`, and coverage scripts exist but are not run by this
+workflow. These gates run for pushes and pull requests targeting `main` and
+`staging`.
+
+The Vitest projects currently discover <!--count:test-files-->384<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -163,10 +193,16 @@ unset. An unknown supplied subdomain or header is rejected instead of falling
 back to the single-tenant target. Owners connect their own domains from
 **Ustawienia → Adresy**; see the [custom domains guide](docs/custom-domains.md)
 for the provider keys and the manual mode self-hosted installs run on.
-Membership is verified in every case; every
-tenant-scoped use-case takes `ctx.identity` and every repository call requires
-`tenantId`. Tenant lifecycle status and plan are migration-managed in this
-phase; no application write surface is exposed yet.
+Tenant resolution selects an active tenant without checking membership; public
+reads and checkout use that resolution too. Authenticated operations authorize
+through `core/server/authorize.ts` and the implemented default-deny capability
+matrix in `core/domain/authorization.ts`, with membership and entitlement
+checks where required. `Ctx` entry points carry identity; public checkout,
+terms-consent helpers, and Stripe webhook processing instead take explicit
+tenant inputs. The permission inventory covers exported `Ctx` functions, not
+every function in the use-case directory. Tenant-scoped repository operations
+require `tenantId`, with named platform exceptions in the tenant-scope checker.
+Tenant lifecycle status and plan are migration-managed in this phase; no application write surface is exposed yet.
 
 ## Community
 

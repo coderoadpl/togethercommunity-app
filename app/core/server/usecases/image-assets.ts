@@ -56,6 +56,17 @@ const deleteAvatarObject = async (
   return removed.ok ? ok(undefined) : removed;
 };
 
+export const deleteAvatarImage = async (
+  tenantId: string,
+  image: string | null,
+  deps: { secretResolver: TenantSecretResolver; storage: StorageProvider },
+): Promise<Result<void, AppError>> => {
+  if (image === null) return ok(undefined);
+  const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
+  if (!configuration.ok) return configuration;
+  return deleteAvatarObject(tenantId, image, configuration.value, deps.storage);
+};
+
 const parseStoredKey = (
   tenantId: string,
   key: string,
@@ -305,12 +316,8 @@ export const removeAvatar = async (
   if (!tenant.ok) return tenant;
   if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));
   const current = await deps.avatars.findState(tenant.value, ctx.identity.userId);
-  if (current?.image !== null && current?.image !== undefined) {
-    const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
-    if (!configuration.ok) return configuration;
-    const removed = await deleteAvatarObject(tenant.value, current.image, configuration.value, deps.storage);
-    if (!removed.ok) return removed;
-  }
+  const removed = await deleteAvatarImage(tenant.value, current?.image ?? null, deps);
+  if (!removed.ok) return removed;
   await deps.avatars.removeAvatar(tenant.value, ctx.identity.userId);
   return ok({ removed: true });
 };

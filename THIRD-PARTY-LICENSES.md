@@ -767,7 +767,7 @@ invoices can be checked locally.
 - [hermes-estree@0.25.1](https://github.com/facebook/hermes#readme) - MIT
 - [hermes-parser@0.25.1](https://github.com/facebook/hermes#readme) - MIT
 - [hoist-non-react-statics@3.3.2](https://github.com/mridgway/hoist-non-react-statics#readme) - BSD-3-Clause
-- [hono@4.12.34](https://hono.dev) - MIT
+- [hono@4.13.7](https://hono.dev) - MIT
 - [html-encoding-sniffer@6.0.0](https://github.com/jsdom/html-encoding-sniffer#readme) - MIT
 - [html-escaper@2.0.2](https://github.com/WebReflection/html-escaper) - MIT
 - [ignore@5.3.2](https://github.com/kaelzhang/node-ignore#readme) - MIT
@@ -883,7 +883,7 @@ invoices can be checked locally.
 - [neo-async@2.6.2](https://github.com/suguru03/neo-async) - MIT
 - [node-exports-info@1.6.2](https://github.com/inspect-js/node-exports-info#readme) - MIT
 - [node-releases@2.0.50](https://github.com/chicoxyzzy/node-releases#readme) - MIT
-- [nodemailer@9.0.3](https://nodemailer.com/) - MIT-0
+- [nodemailer@9.1.1](https://nodemailer.com/) - MIT-0
 - [object-assign@4.1.1](https://github.com/sindresorhus/object-assign#readme) - MIT
 - [object-inspect@1.13.4](https://github.com/inspect-js/object-inspect) - MIT
 - [object-keys@1.1.1](https://github.com/ljharb/object-keys#readme) - MIT

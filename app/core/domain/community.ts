@@ -212,9 +212,6 @@ const MODERATOR_DELETED_POST_PLACEHOLDER: Record<Language, string> = {
   en: 'This post was deleted by a moderator.',
 };
 
-export const isVisiblePostThread = (post: Post, replyCount: number): boolean =>
-  post.parentPostId !== null || post.deletedAt === null || replyCount > 0;
-
 export const renderPost = (post: Post, language: Language = DEFAULT_LANGUAGE): Post =>
   post.deletedAt === null
     ? post

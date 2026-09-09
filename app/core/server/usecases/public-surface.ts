@@ -1,6 +1,5 @@
 import {
   err,
-  isVisiblePostThread,
   listSpaceEventsInputSchema,
   listSpaceFeedInputSchema,
   MAX_PINNED_POSTS_PER_SPACE,
@@ -257,7 +256,7 @@ export const getPublicSpaceFeed = async (
       reactions: reactions.get(post.id) ?? [],
     })),
     items: listed.threads
-      .filter((thread) => !pinnedIds.has(thread.post.id) && isVisiblePostThread(thread.post, thread.replyCount))
+      .filter((thread) => !pinnedIds.has(thread.post.id))
       .map((thread) => ({
         ...toRenderedPublicPost(thread.post, NO_VIEWER),
         replyCount: thread.replyCount,
@@ -347,7 +346,6 @@ export const getPublicSpaceThread = async (
     return err(notFound('Thread not found'));
   }
   const replies = await deps.posts.listReplies(tenant.id, root.rootPostId);
-  if (!isVisiblePostThread(root, replies.filter((reply) => reply.deletedAt === null).length)) return err(notFound('Thread not found'));
   return ok({
     threads: [
       {

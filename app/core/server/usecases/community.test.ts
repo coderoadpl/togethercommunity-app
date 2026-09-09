@@ -1106,7 +1106,7 @@ describe('community use-cases', () => {
     expect(d.notifications.rows.map((notification) => notification.recipientUserId)).toEqual(['u3']);
   });
 
-  it.each([false, true])('hides legacy deleted roots with only deleted replies: %s', async (withReply) => {
+  it.each([false, true])('lists legacy deleted roots with only deleted replies: %s', async (withReply) => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const input = { contextKind: 'lesson', contextId: 'l1' } as const;
     const created = await createPost(ctx(), { ...input, body: 'Legacy content' }, d);
@@ -1121,7 +1121,10 @@ describe('community use-cases', () => {
     stored.deletedAt = NOW;
     delete stored.deletedBy;
     delete stored.deletedByUserId;
-    expect(await listDiscussion(ctx(), input, d)).toMatchObject({ ok: true, value: { threads: [] } });
+    const listed = await listDiscussion(ctx(), input, d);
+    expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: '[deleted-post]', replyCount: 0 }] } });
+    if (!listed.ok) throw new Error('Discussion failed');
+    expect(listed.value.threads[0]?.replies).toHaveLength(withReply ? 1 : 0);
   });
 
   it('denies author purge and lets staff remove a tombstone and its descendants', async () => {
@@ -1150,12 +1153,12 @@ describe('community use-cases', () => {
   });
 
   it.each([
-    { own: true, staffRole: null, replies: false, visible: false, deletedBy: 'author' },
-    { own: true, staffRole: 'admin', replies: false, visible: false, deletedBy: 'author' },
-    { own: true, staffRole: null, replies: true, visible: true, deletedBy: 'author' },
-    { own: false, staffRole: 'owner', replies: false, visible: false, deletedBy: 'moderator' },
-    { own: false, staffRole: 'admin', replies: true, visible: true, deletedBy: 'moderator' },
-  ] as const)('preserves deletion provenance and thread visibility: $deletedBy, replies=$replies, staff=$staffRole', async ({ own, staffRole, replies, visible, deletedBy }) => {
+    { own: true, staffRole: null, replies: false, deletedBy: 'author' },
+    { own: true, staffRole: 'admin', replies: false, deletedBy: 'author' },
+    { own: true, staffRole: null, replies: true, deletedBy: 'author' },
+    { own: false, staffRole: 'owner', replies: false, deletedBy: 'moderator' },
+    { own: false, staffRole: 'admin', replies: true, deletedBy: 'moderator' },
+  ] as const)('preserves deletion provenance and thread visibility: $deletedBy, replies=$replies, staff=$staffRole', async ({ own, staffRole, replies, deletedBy }) => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const input = { contextKind: 'lesson', contextId: 'l1' } as const;
     const root = await createPost(ctx(), { ...input, body: 'Private original' }, d);
@@ -1176,13 +1179,10 @@ describe('community use-cases', () => {
     expect(await d.posts.findById('t1', root.value.id)).toMatchObject({ deletedBy, deletedByUserId: actor.identity.userId });
     const listed = await listDiscussion(ctx(), input, d);
     if (!listed.ok) throw new Error('Discussion failed');
-    expect(listed.value.threads).toHaveLength(visible ? 1 : 0);
-    if (visible) {
-      expect(listed.value.threads[0]).toMatchObject({ deletedBy, replyCount: replies ? 1 : 0 });
-      if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedAt: null });
-    } else {
-      expect(await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
-    }
+    expect(listed.value.threads).toHaveLength(1);
+    expect(listed.value.threads[0]).toMatchObject({ deletedBy, replyCount: replies ? 1 : 0 });
+    if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedAt: null });
+    expect(await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: true });
     expect(await editPost(ctx(), { id: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
   });
 

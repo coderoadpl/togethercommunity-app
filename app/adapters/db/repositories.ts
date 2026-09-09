@@ -1111,11 +1111,6 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
   },
 });
 
-const visiblePostThread = sql`(${posts.deletedAt} is null or exists (
-  select 1 from posts reply
-  where reply.tenant_id = ${posts.tenantId} and reply.root_post_id = ${posts.id} and reply.parent_post_id is not null and reply.deleted_at is null
-))`;
-
 export const createPostRepository = (db: Db): PostRepository => ({
   createPost: async (tenantId, post, fanoutJob) => {
     const row = await db.transaction(async (tx) => {
@@ -1192,7 +1187,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, query.contextKind),
           eq(posts.contextId, query.contextId),
           sql`${posts.parentPostId} is null`,
-          visiblePostThread,
           ...(cursor === null
             ? []
             : [
@@ -1233,7 +1227,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, 'space'),
           inArray(posts.contextId, query.spaceIds),
           sql`${posts.parentPostId} is null`,
-          visiblePostThread,
           ...(cursor === null
             ? []
             : [sql`(${posts.createdAt}, ${posts.id}) < (${cursor.createdAt}, ${cursor.id})`]),
@@ -1333,7 +1326,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
             eq(posts.contextKind, query.contextKind),
             eq(posts.contextId, query.contextId),
             isNotNull(posts.pinnedAt),
-            visiblePostThread,
           ),
         )
         .orderBy(desc(posts.pinnedAt), desc(posts.id))
@@ -1349,7 +1341,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, query.contextKind),
           eq(posts.contextId, query.contextId),
           isNotNull(posts.pinnedAt),
-          visiblePostThread,
         ),
       );
     return rows[0]?.value ?? 0;

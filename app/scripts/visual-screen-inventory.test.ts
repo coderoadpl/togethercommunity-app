@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { pageScreens } from './storybook-page-screens.js';
 import { includesViewport, VIEWPORTS, type ScreenSpec } from './visual-screen-inventory.js';
 
 const screen = (auth: ScreenSpec['auth'], name = 'screen'): ScreenSpec => ({
@@ -10,6 +11,13 @@ const screen = (auth: ScreenSpec['auth'], name = 'screen'): ScreenSpec => ({
 });
 
 describe('capture viewport selection', () => {
+  it('registers each marketing directory page for desktop and mobile capture', () => {
+    for (const name of ['panel-marketing-contacts', 'panel-marketing-lists', 'panel-marketing-contact-import']) {
+      const spec = pageScreens.find((entry) => entry.name === name);
+      expect(spec).toBeDefined();
+      if (spec) expect(VIEWPORTS.filter((viewport) => includesViewport(spec, viewport)).map((viewport) => viewport.name)).toEqual(['desktop', 'mobile']);
+    }
+  });
   it.each([
     ['public', 'screen', ['desktop', 'mobile']],
     ['creator', 'screen', ['desktop', 'mobile']],

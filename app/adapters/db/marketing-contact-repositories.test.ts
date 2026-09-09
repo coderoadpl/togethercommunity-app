@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { appError, err } from '#core/domain/index.js';
 import { upsertMarketingContact, listMarketingContacts, createMarketingList, addMarketingListContacts, removeMarketingListContacts, previewMarketingList, archiveMarketingContact, updateMarketingList, syncMarketingMemberContacts } from '#core/server/index.js';
 
-import { createDirectoryFixture, directoryCtx, directoryValue, directoryWorkerCtx } from './marketing-contact-test-fixture.js';
+import { createDirectoryFixture, directoryCtx, directoryValue, directoryWorkerCtx, DIRECTORY_NOW } from './marketing-contact-test-fixture.js';
 
 let fixture: Awaited<ReturnType<typeof createDirectoryFixture>>;
 beforeAll(async () => { fixture = await createDirectoryFixture(); }, 60_000);
@@ -52,6 +52,21 @@ describe('contact and list repositories', () => {
     expect((await fixture.deps.lists.counts('directory-a', ever.id, 'newsletter', '2026-09-10T00:00:00.000Z'))).toMatchObject({ contactCount: 1, eligibleCount: 0 });
     const consent = directoryValue(await createMarketingList(directoryCtx(), { key: 'consented', name: 'Active consent', rule: { kind: 'consent_definition', definitionId: 'newsletter', state: 'active' } }, fixture.deps)).list;
     expect((await fixture.deps.lists.counts('directory-a', consent.id, 'newsletter', '2026-09-10T00:00:00.000Z')).contactCount).toBe(0);
+  });
+  it('projects each contact membership, consent and suppression independently', async () => {
+    const allowed = directoryValue(await upsertMarketingContact(directoryCtx(), { email: 'projection-allowed@example.test', tags: ['projection'] }, fixture.deps)).contact;
+    const blocked = directoryValue(await upsertMarketingContact(directoryCtx(), { email: 'projection-blocked@example.test', tags: ['projection'] }, fixture.deps)).contact;
+    const list = directoryValue(await createMarketingList(directoryCtx(), { key: 'projection-list', name: 'Projection list' }, fixture.deps)).list;
+    directoryValue(await addMarketingListContacts(directoryCtx(), { listId: list.id, contactIds: [allowed.id] }, fixture.deps));
+    await fixture.deps.consents.record('directory-a', { id: 'projection-consent', tenantId: 'directory-a', memberId: null, email: allowed.email, definitionId: 'newsletter', definitionVersion: 1, wordingSnapshot: 'Newsletter consent', documentRefSnapshot: { mode: 'url', url: 'https://courses.example.org/legal' }, status: 'granted', previousId: null, source: 'import', evidence: { collectedAt: DIRECTORY_NOW }, occurredAt: DIRECTORY_NOW });
+    await fixture.deps.suppressions.record('directory-a', { id: 'projection-suppression', tenantId: 'directory-a', email: blocked.email, emailHmac: fixture.deps.hmac.compute('directory-a', blocked.email), reason: 'manual', sourceRef: null, meta: null, createdAt: DIRECTORY_NOW, liftedAt: null, liftedBy: null });
+    const page = directoryValue(await listMarketingContacts(directoryCtx(), { tags: ['projection'], consentDefinitionId: 'newsletter' }, fixture.deps));
+    expect(page.contacts.find((contact) => contact.id === allowed.id)).toMatchObject({ listKeys: ['projection-list'], consentState: 'active', suppressionReason: null });
+    expect(page.contacts.find((contact) => contact.id === blocked.id)).toMatchObject({ listKeys: [], consentState: 'none', suppressionReason: 'manual' });
+    const filtered = directoryValue(await listMarketingContacts(directoryCtx(), { tags: ['projection'], suppressed: false, consentDefinitionId: 'newsletter', consentState: 'active', listId: list.id }, fixture.deps));
+    expect(filtered.contacts.map((contact) => contact.id)).toEqual([allowed.id]);
+    expect(directoryValue(await listMarketingContacts(directoryCtx(), { id: blocked.id, consentDefinitionId: 'newsletter' }, fixture.deps)).contacts).toMatchObject([{ id: blocked.id, suppressionReason: 'manual', consentState: 'none', listKeys: [] }]);
+    expect(directoryValue(await listMarketingContacts(directoryCtx('directory-b'), { id: blocked.id }, fixture.deps)).contacts).toEqual([]);
   });
   it('rolls back projections and lifecycle events together', async () => {
     const result = await fixture.deps.transaction.run('directory-a', async (repos) => {

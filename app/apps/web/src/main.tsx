@@ -58,6 +58,13 @@ import { CheckoutRoute } from './routes/checkout.js';
 import { HomeRoute } from './routes/home.js';
 import { LoginRoute } from './routes/login.js';
 import {
+  ContactsPanel,
+  ContactDetailPanel,
+  ContactImportWizard,
+  validateContactImportSearch,
+  ListsPanel,
+  ListCreatePanel,
+  ListDetailPanel,
   CampaignCreatePage,
   CampaignDetailPage,
   CampaignsPanel,
@@ -418,6 +425,12 @@ const panelRedirectsRoute = createRoute({
   path: 'settings/redirects',
   component: PanelRedirectsRoute,
 });
+const panelMarketingContactsRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts', component: ContactsPanel });
+const panelMarketingContactImportRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts/import', component: ContactImportWizard, validateSearch: validateContactImportSearch });
+const panelMarketingContactDetailRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts/$contactId', component: ContactDetailPanel });
+const panelMarketingListsRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/lists', component: ListsPanel });
+const panelMarketingListCreateRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/lists/new', component: ListCreatePanel });
+const panelMarketingListDetailRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/lists/$listId', component: ListDetailPanel });
 const panelMarketingCampaignsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'marketing/campaigns',
@@ -564,6 +577,12 @@ const router = createRouter({
       panelMarketingActivityDetailRoute,
       panelMarketingSendsRoute,
       panelMarketingSendDetailRoute,
+      panelMarketingContactsRoute,
+      panelMarketingContactImportRoute,
+      panelMarketingContactDetailRoute,
+      panelMarketingListsRoute,
+      panelMarketingListCreateRoute,
+      panelMarketingListDetailRoute,
       panelMarketingCampaignsRoute,
       panelMarketingCampaignCreateRoute,
       panelMarketingCampaignDetailRoute,

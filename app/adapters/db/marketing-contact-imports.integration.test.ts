@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { MARKETING_IMPORT_ATTESTATION_VERSION, marketingImportCountsSchema, type MarketingImportRow } from '#core/domain/index.js';
-import { appendMarketingContactImportRows, commitMarketingContactImport, createMarketingContactImport, processMarketingContactImport, getMarketingContactImportRows, retryMarketingContactImport, uploadMarketingContactImport, validateMarketingContactImport } from '#core/server/index.js';
+import { appendMarketingContactImportRows, commitMarketingContactImport, createMarketingContactImport, processMarketingContactImport, getMarketingContactImportRows, retryMarketingContactImport, uploadMarketingContactImport, previewMarketingContactImport, validateMarketingContactImport } from '#core/server/index.js';
 
 import { createDirectoryFixture, directoryCtx, directoryWorkerCtx, directoryValue, DIRECTORY_NOW } from './marketing-contact-test-fixture.js';
 import { members, user } from './schema.js';
@@ -21,6 +21,15 @@ const commit = async (importId: string, hash: string) => directoryValue(await co
 const processBatch = async (importId: string, maxRows = 200) => directoryValue(await processMarketingContactImport(directoryWorkerCtx(), { importId, workerId: crypto.randomUUID(), maxRows, deadlineAt: '2026-09-08T10:01:00.000Z' }, fixture.deps));
 
 describe('durable contact imports', () => {
+  it('restores original CSV headers including ignored columns after remapping', async () => {
+    const uploaded = directoryValue(await uploadMarketingContactImport(directoryCtx(), { csv: 'email,name,extra\nheaders@example.test,Example,Ignored', metadata: { datasetVersion: 'together-marketing-contacts/v1', kind: 'contacts', fileName: 'headers.csv', idempotencyKey: 'headers' } }, fixture.deps));
+    expect(uploaded.headers).toEqual(['email', 'name', 'extra']);
+    const remapped = directoryValue(await previewMarketingContactImport(directoryCtx(), { importId: uploaded.import.id, mapping: { email: 'email' } }, fixture.deps));
+    expect(remapped.import.mapping).toEqual({ email: 'email' });
+    const resumed = directoryValue(await validateMarketingContactImport(directoryCtx(), { importId: uploaded.import.id }, fixture.deps));
+    expect(resumed.headers).toEqual(['email', 'name', 'extra']);
+    expect(resumed.canCommitWithSkippedRows).toBe(true);
+  });
   it('stages without side effects, merges duplicates, resumes receipts and reuses consent', async () => {
     const rows = [{ email: ' Anna@Example.Test ', firstName: 'Anna', lastName: 'Example', tags: ['news'], lists: ['news'], consentAt: '2024-05-06T14:00:00+02:00' }, { email: 'anna@example.test', name: 'Anna Updated', tags: ['launch'], lists: ['launch'] }];
     const staged = await stage('first', rows);
@@ -64,6 +73,7 @@ describe('durable contact imports', () => {
   it('requires current validation, attestation and consistent historical evidence', async () => {
     const staged = await stage('conflicting-evidence', [{ email: 'conflict@example.test', consentSource: 'form-one' }, { email: 'conflict@example.test', consentSource: 'form-two' }]);
     expect(staged.preview.canCommit).toBe(false);
+    expect(staged.preview.canCommitWithSkippedRows).toBe(false);
     expect(await commitMarketingContactImport(directoryCtx(), { ...attest(staged.batch.id, staged.preview.validationHash), invalidRows: 'skip_invalid' }, { ...fixture.deps, actor: { kind: 'user', userId: 'owner' } })).toMatchObject({ ok: false, error: { code: 'validation' } });
     const valid = await stage('definition-change', [{ email: 'new@example.test' }]);
     expect(await commitMarketingContactImport(directoryCtx(), attest(valid.batch.id, 'stale'), { ...fixture.deps, actor: { kind: 'user', userId: 'owner' } })).toMatchObject({ ok: false, error: { code: 'conflict' } });
@@ -116,6 +126,7 @@ describe('durable contact imports', () => {
   });
   it('skips explicitly rejected rows while preserving the row-count equation', async () => {
     const staged = await stage('skip-invalid', [{ email: 'bad-address' }, { email: 'valid-skip@example.test' }], null);
+    expect(staged.preview.canCommitWithSkippedRows).toBe(true);
     directoryValue(await commitMarketingContactImport(directoryCtx(), { ...attest(staged.batch.id, staged.preview.validationHash), invalidRows: 'skip_invalid' }, { ...fixture.deps, actor: { kind: 'user', userId: 'owner' } }));
     const done = await processBatch(staged.batch.id);
     expect(done.import.status).toBe('completed_with_errors');

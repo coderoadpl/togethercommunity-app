@@ -86,3 +86,9 @@ export const PanelNotificationsRoute = () => {
     />
   );
 };
+
+export { ContactsPanel } from '../features/home/marketing/ContactsPanel.js';
+export { ContactDetailPanel } from '../features/home/marketing/ContactDetailPanel.js';
+export { ContactImportWizard, validateContactImportSearch } from '../features/home/marketing/ContactImportWizard.js';
+export { ListsPanel } from '../features/home/marketing/ListsPanel.js';
+export { ListCreatePanel, ListDetailPanel } from '../features/home/marketing/ListDetailPanel.js';

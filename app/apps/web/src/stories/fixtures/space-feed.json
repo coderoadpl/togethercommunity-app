@@ -1,5 +1,12 @@
 {
   "calls": {
+    "listSpaceEvents:[{\"limit\":5,\"scope\":\"past\",\"spaceId\":\"space-studio-spolecznosc\"}]": {
+      "ok": true,
+      "value": {
+        "events": [],
+        "nextCursor": null
+      }
+    },
     "listSpaceEvents:[{\"limit\":5,\"scope\":\"upcoming\",\"spaceId\":\"space-studio-spolecznosc\"}]": {
       "ok": true,
       "value": {
@@ -351,6 +358,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-spolecznosc-polecajki",
               "isOwn": false,
@@ -381,6 +389,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-17T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-spolecznosc-hello",
               "isOwn": false,
@@ -419,13 +428,6 @@
       "ok": true,
       "value": {
         "unread": 1
-      }
-    },
-    "listSpaceEvents:[{\"limit\":5,\"scope\":\"past\",\"spaceId\":\"space-studio-spolecznosc\"}]": {
-      "ok": true,
-      "value": {
-        "events": [],
-        "nextCursor": null
       }
     }
   },

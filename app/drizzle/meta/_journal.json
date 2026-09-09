@@ -792,6 +792,13 @@
       "when": 1788915486888,
       "tag": "0112_marketing_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1788915486889,
+      "tag": "0113_branding_light_accent",
+      "breakpoints": true
     }
   ]
 }

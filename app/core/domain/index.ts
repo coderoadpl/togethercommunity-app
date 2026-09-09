@@ -60,6 +60,7 @@ export * from './member-erasure-request.js';
 export * from './password.js';
 export * from './platform-data-reset.js';
 export * from './smoke-tenant.js';
+export * from './color.js';
 
 export * from './marketing-contact.js';
 

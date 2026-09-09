@@ -2554,13 +2554,35 @@ describe('post repository', () => {
 
     await repo.createPost(ACME, post);
     await repo.setPinned(ACME, { id: post.id, pinnedAt: NOW });
-    await repo.softDelete(ACME, { id: post.id, deletedAt: FUTURE });
+    await repo.softDelete(ACME, { id: post.id, deletedAt: FUTURE, deletedBy: 'author', deletedByUserId: post.authorUserId });
 
     const rows = await db
       .select({ pinnedAt: posts.pinnedAt })
       .from(posts)
       .where(and(eq(posts.tenantId, ACME), eq(posts.id, post.id)));
     expect(rows).toEqual([{ pinnedAt: null }]);
+    await expect(repo.findById(ACME, post.id)).resolves.toMatchObject({
+      body: post.body, deletedBy: 'author', deletedByUserId: post.authorUserId, deletedAt: FUTURE,
+    });
+    await repo.softDelete(ACME, { id: post.id, deletedAt: NOW, deletedBy: 'moderator', deletedByUserId: 'another-staff' });
+    await expect(repo.findById(ACME, post.id)).resolves.toMatchObject({ deletedBy: 'author', deletedByUserId: post.authorUserId, deletedAt: FUTURE });
+    await expect(repo.setPinned(ACME, { id: post.id, pinnedAt: NOW })).resolves.toBeNull();
+    const visible = { ...post, id: 'post-deletion-moderator', rootPostId: 'post-deletion-moderator', deletedAt: FUTURE, deletedBy: 'moderator' as const };
+    await repo.createPost(ACME, visible);
+    const replied = { ...post, id: 'post-deletion-replied', rootPostId: 'post-deletion-replied', deletedAt: FUTURE, deletedBy: 'author' as const };
+    await repo.createPost(ACME, replied);
+    await repo.createPost(ACME, { ...replied, id: 'post-deletion-reply', parentPostId: replied.id });
+    await repo.createPost(GLOBEX, { ...post, tenantId: GLOBEX, id: 'post-other-tenant-reply', parentPostId: post.id });
+    const query = { contextKind: post.contextKind, contextId: post.contextId, limit: 1 };
+    const first = await repo.listThreadsForContext(ACME, query);
+    expect(first.threads.map((thread) => thread.post.id)).toEqual([visible.id]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await repo.listThreadsForContext(ACME, { ...query, cursor: first.nextCursor ?? '' });
+    expect(second.threads.map((thread) => thread.post.id)).toEqual([replied.id]);
+    expect(second.threads[0]?.replyCount).toBe(1);
+    expect(second.nextCursor).toBeNull();
+    const home = await repo.listThreadsForSpaces(ACME, { spaceIds: [post.contextId], limit: 10 });
+    expect(home.threads.map((thread) => thread.post.id)).toEqual([replied.id, visible.id]);
     await expect(repo.listPinnedForContext(ACME, {
       contextKind: post.contextKind,
       contextId: post.contextId,

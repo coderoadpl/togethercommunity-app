@@ -1251,6 +1251,8 @@ export const posts = pgTable(
     createdAt: text('created_at').notNull(),
     editedAt: text('edited_at'),
     deletedAt: text('deleted_at'),
+    deletedBy: text('deleted_by', { enum: ['author', 'moderator'] }),
+    deletedByUserId: text('deleted_by_user_id'),
     pinnedAt: text('pinned_at'),
   },
   (table) => [

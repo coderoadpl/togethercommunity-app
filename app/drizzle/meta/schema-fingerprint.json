@@ -1,6 +1,6 @@
 {
-  "hash": "e762684a4738b51efccbd1a502b69b9368fe0b4819117a233c78682a8ef630d1",
-  "shortId": "e762684a4738",
+  "hash": "7425e3bdcee24c4793139de030a09ca9d41f26a94aa6c889a902e97d787bfd71",
+  "shortId": "7425e3bdcee2",
   "schema": {
     "constraints": [
       {
@@ -5269,6 +5269,22 @@
             "generated": "",
             "identity": "",
             "name": "deleted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_by_user_id",
             "notNull": false,
             "type": "text"
           },

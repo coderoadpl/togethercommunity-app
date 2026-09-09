@@ -84,6 +84,13 @@
         "reports": []
       }
     },
+    "listEmailSends:[{\"contactId\":\"contact-a3bf86238a1c\",\"kind\":\"marketing\"}]": {
+      "ok": true,
+      "value": {
+        "nextCursor": null,
+        "sends": []
+      }
+    },
     "listMarketingConsentDefinitions:[]": {
       "ok": true,
       "value": {

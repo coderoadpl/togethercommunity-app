@@ -208,7 +208,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->409<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->425<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -218,7 +218,7 @@ Per request: (1) exact custom-domain match in `tenant_domains`,
 (3) `X-Tenant` header (CLI), (4) the sole tenant when `APP_BASE_DOMAIN` is
 unset. An unknown supplied subdomain or header is rejected instead of falling
 back to the single-tenant target. Owners connect their own domains from
-**Ustawienia → Adresy**; see the [custom domains guide](docs/custom-domains.md)
+**Settings → Addresses**; see the [custom domains guide](docs/custom-domains.md)
 for the provider keys and the manual mode self-hosted installs run on.
 Tenant resolution selects an active tenant without checking membership; public
 reads and checkout use that resolution too. Authenticated operations authorize

@@ -317,6 +317,11 @@ const postSns = async (baseUrl: string, webhookToken: string, body: string): Pro
   }, 200);
 };
 
+const dispatchWorker = async (baseUrl: string): Promise<void> => {
+  const result = await run(tsxBin, ['apps/cli/src/main.ts', '--api-url', baseUrl, '--json', 'campaign', 'dispatch', '--secret', tickSecret]);
+  assert(result.code === 0, `Marketing CLI dispatch failed: ${result.stdout}${result.stderr}`);
+};
+
 const driveScenario = async (port: number, privateKey: string): Promise<number> => {
   const platformBaseUrl = `http://localhost:${port}`;
   const baseUrl = `http://${tenantSlug}.localhost:${port}`;
@@ -359,6 +364,7 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
     const settingsResponse = await request(baseUrl, '/api/marketing/ses-settings', jsonPost(staffHeaders(staffToken), {
       fromAddress: 'newsletter@marketing.test',
       fromName: 'Marketing Verify',
+      replyTo: 'reply@marketing.test',
       identity: 'marketing.test',
       configurationSet: 'marketing-e2e',
       snsTopicArn: topicArn,
@@ -445,6 +451,8 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
       const captured = capturedEmailSchema.parse((await db.query('select * from dev_emails where "to" = $1', [email])).rows[0]);
       assert(captured.headers['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', `${email}: RFC 8058 POST header missing`);
       assert(new RegExp(`^<http://${tenantSlug}\\.localhost:\\d+/u/[A-Za-z0-9_-]+>$`).test(captured.headers['List-Unsubscribe'] ?? ''), `${email}: unsubscribe header invalid`);
+      assert(captured.headers['Reply-To'] === 'reply@marketing.test', `${email}: Reply-To missing`);
+      assert(captured.text.includes('Unsubscribe: http://') && captured.text.includes(consentLabel), `${email}: plaintext footer missing`);
       assert(captured.headers['Precedence'] === 'bulk', `${email}: Precedence header missing`);
       assert(captured.headers['Auto-Submitted'] === 'auto-generated', `${email}: Auto-Submitted header missing`);
       assert(captured.headers['X-Auto-Response-Suppress'] === 'All', `${email}: auto-response header missing`);
@@ -504,6 +512,8 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
     ] }), 202)).data);
     assert(batch.results.find((item) => item.to === emails.confirmedB)?.status === 'queued', 'E2 eligible batch item must queue');
     assert(batch.results.find((item) => item.to === emails.suppressed)?.reason === 'suppressed', 'E2 suppressed batch reason mismatch');
+    assert(await queryCount(db, "select count(*) from marketing_outbox where tenant_id = $1 and status = 'pending'", [tenant.id]) === 3, 'E2 messages must remain durable and pending before dispatch');
+    await dispatchWorker(baseUrl);
     const listed = z.object({ sends: z.array(z.object({ id: z.string(), status: z.string() })) }).parse((await request(
       baseUrl, '/api/m2m/marketing/messages?campaignKey=e2-drip', { headers: apiHeaders(apiKey) }, 200,
     )).data);
@@ -550,6 +560,8 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
     await postSns(baseUrl, settings.webhookToken, signedSnsEnvelope(privateKey, topicArn, sesMessage('complaint', messageIdFor(complaintSendId))));
     await postSns(baseUrl, settings.webhookToken, signedSnsEnvelope(privateKey, topicArn, sesMessage('soft', messageIdFor(softSendId))));
     await postSns(baseUrl, settings.webhookToken, signedSnsEnvelope(privateKey, topicArn, sesMessage('hard', transactionalMessageId)));
+    assert(await queryCount(db, "select count(*) from marketing_sns_inbox where tenant_id = $1 and status = 'pending'", [tenant.id]) === 4, 'E3 SNS receipts must be committed before worker application');
+    await dispatchWorker(baseUrl);
     const updatedDelivery = sendRowsSchema.parse((await db.query(
       'select id, email, status, skip_reason, consent_row_id, ses_message_id, delivery_status from campaign_sends where id = any($1::text[])',
       [[hardSendId, softSendId, complaintSendId]],

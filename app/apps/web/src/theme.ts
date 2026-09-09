@@ -3793,11 +3793,6 @@ export const LessonBlockIcon = styled(SvgIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const LockedStateIcon = styled(SvgIcon)(({ theme }) => ({
-  fontSize: '3rem',
-  color: theme.palette.text.disabled,
-}));
-
 export const DiscussionThread = styled(Box)(({ theme }) => ({
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,

@@ -28,6 +28,7 @@ describe('email event domain', () => {
       'skipped',
       'failed',
       'retried',
+      'uncertain',
       'suppressed_written',
       'unsubscribed',
     ]);

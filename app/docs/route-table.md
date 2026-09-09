@@ -91,7 +91,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/m2m/marketing/consent-definitions` | self-authenticating | read | api m2m marketing consent-definitions |
 | `GET /api/m2m/marketing/templates` | self-authenticating | read | marketing templates |
 | `POST /api/internal/marketing/tick` | self-authenticating | mutating | marketing tick |
-| `GET /api/internal/marketing/tick` | self-authenticating | read | api internal marketing tick |
+| `GET /api/internal/marketing/tick` | self-authenticating | read | marketing worker |
 | `GET /api/m2m/marketing/contacts` | self-authenticating | read | m2m list marketing contacts |
 | `GET /api/m2m/marketing/contacts/export` | self-authenticating | read | m2m export marketing contacts |
 | `POST /api/m2m/marketing/contacts` | self-authenticating | mutating | m2m upsert marketing contact |
@@ -171,6 +171,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/marketing/campaigns/update` | authenticated | mutating | marketing campaign update |
 | `POST /api/marketing/campaigns/action` | authenticated | mutating | marketing campaign action |
 | `POST /api/marketing/campaigns/test` | authenticated | mutating | marketing campaign test |
+| `POST /api/marketing/campaigns/audience` | authenticated | mutating | marketing campaign audience |
 | `POST /api/marketing/audience-preview` | authenticated | mutating | marketing audience preview |
 | `GET /api/marketing/documents` | authenticated | read | marketing documents |
 | `POST /api/marketing/documents` | authenticated | mutating | marketing documents create |
@@ -179,6 +180,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/marketing/documents/publish` | authenticated | mutating | marketing document publish |
 | `GET /api/marketing/layouts` | authenticated | read | marketing layouts |
 | `POST /api/marketing/layouts` | authenticated | mutating | marketing layouts save |
+| `GET /api/marketing/sns-inbox` | authenticated | read | marketing sns inbox |
+| `POST /api/marketing/sns-inbox/retry` | authenticated | mutating | marketing sns retry |
 | `GET /api/marketing/ses-settings` | authenticated | read | marketing ses settings |
 | `GET /api/marketing/reputation` | authenticated | read | marketing reputation |
 | `POST /api/marketing/ses-settings` | authenticated | mutating | marketing ses settings update |

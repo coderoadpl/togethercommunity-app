@@ -14,6 +14,7 @@ import {
 import {
   accessItemSchema,
   currencySchema,
+  contactCampaignAudienceSchema,
   devGrantInputSchema,
   err,
   internal,
@@ -285,7 +286,7 @@ const redirectCreateOptionsSchema = z.object({
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 const schedulerRunsListOptionsSchema = z.object({
   secret: z.string().min(1),
-  kind: z.enum(['marketing_tick', 'outbox_dispatch', 'consent_evidence_purge']).optional(),
+  kind: z.enum(['marketing_tick', 'marketing_maintenance', 'outbox_dispatch', 'consent_evidence_purge']).optional(),
   status: z.enum(['running', 'completed', 'failed']).optional(),
   since: z.string().datetime().optional(),
   cursor: z.string().min(1).optional(),
@@ -295,8 +296,12 @@ const schedulerRunShowOptionsSchema = z.object({ secret: z.string().min(1) });
 const consentDefinitionCreateOptionsSchema = z.object({
   key: z.string().min(1), label: z.string().min(1), documentUrl: z.string().url(), singleOptIn: z.boolean().optional(),
 });
+const campaignAudienceJsonSchema = z.string().transform((value, ctx) => {
+  try { return JSON.parse(value); } catch { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Audience must be JSON' }); return z.NEVER; }
+}).pipe(contactCampaignAudienceSchema);
 const campaignCreateOptionsSchema = z.object({
-  name: z.string().min(1), subject: z.string().min(1), bodyHtml: z.string().min(1), consentDefinition: z.string().min(1),
+  audience: campaignAudienceJsonSchema.optional(),
+  name: z.string().min(1), subject: z.string().min(1), bodyHtml: z.string().min(1), bodyText: z.string().optional(), replyTo: z.string().email().optional(), consentDefinition: z.string().min(1),
 });
 const campaignScheduleOptionsSchema = z.object({ campaign: z.string().min(1), sendAt: z.string().datetime() });
 const suppressionAddOptionsSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).optional() });
@@ -2763,7 +2768,7 @@ const schedulerRuns = program.command('scheduler-runs').description('Global sche
 schedulerRuns
   .command('list')
   .requiredOption('--secret <secret>', 'scheduler operator secret')
-  .option('--kind <kind>', 'marketing_tick, outbox_dispatch, or consent_evidence_purge')
+  .option('--kind <kind>', 'marketing_tick, marketing_maintenance, outbox_dispatch, or consent_evidence_purge')
   .option('--status <status>', 'running, completed, or failed')
   .option('--since <iso>', 'only runs started at or after this ISO datetime')
   .option('--cursor <cursor>', 'keyset pagination cursor')
@@ -3371,16 +3376,38 @@ consentDefinition.command('create')
 const campaign = program.command('campaign').description('Marketing campaigns');
 
 campaign.command('create')
+  .option('--audience <json>', 'Version 2 contact list audience')
   .requiredOption('--name <name>')
   .requiredOption('--subject <subject>')
   .requiredOption('--body-html <html>')
+  .option('--body-text <text>', 'Plaintext template; defaults to HTML conversion')
+  .option('--reply-to <email>', 'Override the tenant Reply-To address')
   .requiredOption('--consent-definition <id>')
   .action(withInput(z.tuple([campaignCreateOptionsSchema]), async (ctx, [options]) => {
     emit(await ctx.api.createMarketingCampaign({
       name: options.name, subject: options.subject, bodyHtml: options.bodyHtml,
+      ...(options.bodyText === undefined ? {} : { bodyText: options.bodyText }),
+      ...(options.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+      ...(options.audience === undefined ? {} : { audience: options.audience }),
       consentDefinitionId: options.consentDefinition,
     }), ctx.json, (data) => `created campaign ${data.campaign.name} (${data.campaign.id})`);
   }));
+
+const campaignAudience = campaign.command('audience').description('Set and preview contact list audiences');
+campaignAudience.command('set').requiredOption('--campaign <id>').requiredOption('--audience <json>')
+  .action(withInput(z.tuple([z.object({ campaign: z.string().min(1), audience: campaignAudienceJsonSchema })]), async (ctx, [options]) => {
+    emit(await ctx.api.setMarketingCampaignAudience({ campaignId: options.campaign, audience: options.audience }), ctx.json, (data) => `updated audience for ${data.campaign.id}`);
+  }));
+campaignAudience.command('preview').requiredOption('--campaign <id>')
+  .action(withInput(z.tuple([z.object({ campaign: z.string().min(1) })]), async (ctx, [options]) => {
+    const saved = await ctx.api.getMarketingCampaign(options.campaign);
+    if (!saved.ok) { emit(saved, ctx.json, () => ''); return; }
+    const value = saved.value.campaign;
+    emit(await ctx.api.previewMarketingAudience({ consentDefinitionId: value.consentDefinitionId, productIds: value.audienceFilter?.productIds ?? [], ...(value.audience === null ? {} : { audience: value.audience }) }), ctx.json, (data) => `${data.count} estimated recipients${'sample' in data ? '\n' + data.sample.map((contact) => contact.email).join('\n') : ''}`);
+  }));
+campaign.command('draft <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+  emit(await ctx.api.actOnMarketingCampaign({ campaignId: id, action: 'draft' }), ctx.json, () => `returned ${id} to draft`);
+}));
 
 campaign.command('schedule')
   .requiredOption('--campaign <id>')
@@ -3390,9 +3417,27 @@ campaign.command('schedule')
       (data) => `scheduled campaign ${data.campaign.id} for ${data.campaign.sendAt ?? options.sendAt}`);
   }));
 
+campaign.command('sends').option('--contact <id>', 'Filter by contact').option('--campaign <id>', 'Filter by campaign')
+  .action(withInput(z.tuple([z.object({ contact: z.string().optional(), campaign: z.string().optional() })]), async (ctx, [options]) => {
+    emit(await ctx.api.listEmailSends({ kind: 'marketing', ...(options.contact === undefined ? {} : { contactId: options.contact }), ...(options.campaign === undefined ? {} : { campaignId: options.campaign }) }), ctx.json, (data) => data.sends.map((send) => `${send.id}\t${send.recipient}\t${send.status}\t${send.skipReason ?? ''}`).join('\n'));
+  }));
+
 campaign.command('status <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
   emit(await ctx.api.getMarketingCampaign(id), ctx.json,
     (data) => `${data.campaign.status}\t${data.campaign.sent}/${data.campaign.toSend} sent\t${data.campaign.failed} failed`);
+}));
+
+campaign.command('dispatch')
+  .requiredOption('--secret <secret>', 'Internal marketing worker secret')
+  .action(withInput(z.tuple([emailDispatchOptionsSchema]), async (ctx, [options]) => {
+    emit(await ctx.api.runMarketingWorker(options.secret), ctx.json, (data) => `${String(data.campaignsDispatched)} campaigns processed`);
+  }));
+const snsInboxCommand = program.command('sns-inbox').description('Durable SES feedback receipts');
+snsInboxCommand.command('list').action(withCtx(async (ctx) => {
+  emit(await ctx.api.listMarketingSnsInbox(), ctx.json, (data) => data.receipts.map((row) => `${row.id}\t${row.status}\t${row.lastError ?? ''}`).join('\n'));
+}));
+snsInboxCommand.command('retry <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+  emit(await ctx.api.retryMarketingSnsInbox(id), ctx.json, () => `queued SNS receipt ${id} for retry`);
 }));
 
 const suppression = program.command('suppression').description('Marketing suppressions');

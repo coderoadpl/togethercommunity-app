@@ -71,3 +71,7 @@ export * from './marketing-contact-import.js';
 export * from './marketing-import-csv.js';
 
 export * from './marketing-directory-event.js';
+
+export { marketingBodyTextSchema, marketingReplyToSchema } from './marketing-email.js';
+
+export * from './marketing-audience.js';

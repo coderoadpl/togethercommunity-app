@@ -1,3 +1,4 @@
+import { recordVerifiedMarketingSnsEnvelope } from '#core/server/index.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import type { Context, Hono } from 'hono';
@@ -37,7 +38,6 @@ import {
 } from '#core/domain/index.js';
 import {
   addManualSuppression,
-  applyVerifiedSesEvent,
   authenticateApiKey,
   authLinkBaseUrl,
   authorizeTenant,
@@ -50,7 +50,7 @@ import {
   resolveTenant,
   saveMarketingConsentPreferences,
   sendM2mTransactionalMessage,
-  sendMarketingMessages,
+  enqueueMarketingMessages,
   getM2mTransactionalMessage,
   createTenantOriginResolver,
   resolveTenantOrigin,
@@ -125,6 +125,10 @@ export const authenticateMarketingApiKey = async (
 const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps) => {
   const resolveOrigin = createTenantOriginResolver(deps);
   return {
+    htmlToText: marketing.htmlToText,
+    delivery: marketing.delivery,
+    marketingOutbox: marketing.marketingOutbox,
+    waiter: marketing.waiter,
     definitions: marketing.definitions,
     consents: marketing.marketingConsents,
     suppressions: marketing.suppressions,
@@ -147,67 +151,6 @@ const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps) => {
 
 const queryObject = (url: string): Record<string, string> => Object.fromEntries(new URL(url).searchParams.entries());
 
-const sesDeliveryEventSchema = z.discriminatedUnion('notificationType', [
-  z.object({
-    notificationType: z.literal('Bounce'),
-    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
-    bounce: z.object({
-      bounceType: z.string().min(1),
-      timestamp: z.string().datetime(),
-      bouncedRecipients: z.array(z.object({ status: z.string().nullable().optional() })).min(1),
-    }).passthrough(),
-  }).passthrough(),
-  z.object({
-    notificationType: z.literal('Complaint'),
-    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
-    complaint: z.object({ timestamp: z.string().datetime() }).passthrough(),
-  }).passthrough(),
-  z.object({
-    notificationType: z.literal('Delivery'),
-    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
-    delivery: z.object({ timestamp: z.string().datetime() }).passthrough(),
-  }).passthrough(),
-]);
-
-const sesConfigurationSetEventSchema = z.discriminatedUnion('eventType', [
-  z.object({
-    eventType: z.literal('Open'),
-    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
-    open: z.object({ timestamp: z.string().datetime() }).passthrough(),
-  }).passthrough(),
-  z.object({
-    eventType: z.literal('Click'),
-    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
-    click: z.object({
-      timestamp: z.string().datetime(),
-      link: z.string().min(1),
-    }).passthrough(),
-  }).passthrough(),
-  z.object({
-    eventType: z.literal('Bounce'),
-    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
-    bounce: z.object({
-      bounceType: z.string().min(1),
-      timestamp: z.string().datetime(),
-      bouncedRecipients: z.array(z.object({ status: z.string().nullable().optional() })).min(1),
-    }).passthrough(),
-  }).passthrough(),
-  z.object({
-    eventType: z.literal('Complaint'),
-    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
-    complaint: z.object({ timestamp: z.string().datetime() }).passthrough(),
-  }).passthrough(),
-  z.object({
-    eventType: z.literal('Delivery'),
-    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
-    delivery: z.object({ timestamp: z.string().datetime() }).passthrough(),
-  }).passthrough(),
-]);
-
-const sesEventDiscriminatorSchema = z.union([
-  z.object({ eventType: z.string().min(1) }).passthrough(),
-  z.object({ notificationType: z.string().min(1) }).passthrough(),
-]);
 
 const publicPageContext = async (deps: AppDeps, tenant: Tenant, request: Request) => {
   const brand: PublicBrand = { tenant, settings: await deps.tenants.findSettings(tenant.id) };
@@ -337,8 +280,9 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
         await marketingResult.value.campaigns.create(authenticated.value.tenant.id, {
           id: campaignId, tenantId: authenticated.value.tenant.id, name,
           subject: message.subject ?? 'Automation message', bodyHtml: message.bodyHtml ?? '<p></p>',
-          bodySource: message.bodyHtml ?? '<p></p>', layoutId: null,
-          consentDefinitionId: message.consentDefinitionId, audienceFilter: null, status: 'running',
+          bodySource: message.bodyHtml ?? '<p></p>', bodyText: message.bodyText ?? null, replyTo: message.replyTo ?? null, layoutId: null,
+          consentDefinitionId: message.consentDefinitionId, audienceVersion: 1, audience: null, audienceSnapshotId: null, snapshotMaxContactId: null, cursorContactId: null, candidateCount: 0, skipped: 0,
+  audienceFilter: null, status: 'running',
           sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null, toSend: 0, sent: 0,
           failed: 0, lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
           audienceNameSnapshot: name, consentLabelSnapshot: null, startedAt: now, finishedAt: null, createdAt: now,
@@ -346,7 +290,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
       }
       campaignIds.set(message.campaignKey, campaignId);
     }
-    const sent = await sendMarketingMessages(authenticated.value.ctx, parsed.data.messages.map((message) => {
+    const sent = await enqueueMarketingMessages(authenticated.value.ctx, parsed.data.messages.map((message) => {
       const template = message.templateId === undefined ? null : templates.get(message.templateId) ?? null;
       return {
         to: message.to,
@@ -356,6 +300,8 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
         consentDefinitionId: message.consentDefinitionId,
         subject: message.subject ?? template?.subject ?? '',
         bodyHtml: message.bodyHtml ?? template?.bodyHtml ?? '',
+        bodyText: message.bodyText === undefined ? template?.bodyText : message.bodyText,
+        replyTo: message.replyTo === undefined ? template?.replyTo : message.replyTo,
         layoutId: template?.layoutId ?? null,
         data: message.data,
         ...(idempotencyKey === undefined ? {} : { idempotencySource: idempotencyKey }),
@@ -635,105 +581,15 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       });
       return response(ok({ received: true }));
     }
-    if (verified.value.type === 'SubscriptionConfirmation') {
-      if (verified.value.subscribeUrl === null) return response(err(validation('SNS confirmation URL is missing')));
-      const confirmed = await marketing.value.sns.confirmSubscription({ subscribeUrl: verified.value.subscribeUrl, region: credentials.value.region });
-      if (!confirmed.ok) {
-        await recordDelivery({
-          tenantId: settings.tenantId, outcome: 'confirm_failed', messageType: verified.value.type,
-          topicArn: verified.value.topicArn, errorMessage: confirmed.error.message,
-        });
-        return response(ok({ received: true }));
-      }
-      await marketing.value.sesSettings.upsert(settings.tenantId, {
-        ...settings, snsSubscriptionConfirmedAt: deps.clock.nowIso(),
-      });
-      await recordDelivery({
-        tenantId: settings.tenantId, outcome: 'verified',
-        messageType: verified.value.type, topicArn: verified.value.topicArn,
-      });
-      return response(ok({ received: true }));
-    }
-    const message: unknown = (() => { try { return JSON.parse(verified.value.message); } catch { return null; } })();
-    const applyEvent = async (event: Parameters<typeof applyVerifiedSesEvent>[1]) => {
-      const applied = await applyVerifiedSesEvent({
-        identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),
-        capabilities: capabilitiesForPrincipal('webhook'),
-      }, event, {
-        sesSettings: marketing.value.sesSettings, sends: marketing.value.campaignSends,
-        events: marketing.value.events, outbox: deps.emailOutbox,
-        suppressions: marketing.value.suppressions,
-        hmac: marketing.value.hmac, ids: deps.ids, clock: deps.clock,
-      });
-      if (applied.ok && settings.webhookVerifiedAt === null) {
-        await marketing.value.sesSettings.upsert(settings.tenantId, { ...settings, webhookVerifiedAt: deps.clock.nowIso() });
-      }
-      await recordDelivery({
-        tenantId: settings.tenantId,
-        outcome: applied.ok ? 'recorded' : 'apply_failed',
-        messageType: verified.value.type,
-        topicArn: verified.value.topicArn,
-        ...(applied.ok ? {} : { errorMessage: applied.error.message }),
-      });
-      return response(ok({ received: true }));
-    };
-    const configurationSetEvent = sesConfigurationSetEventSchema.safeParse(message);
-    const delivery = sesDeliveryEventSchema.safeParse(message);
-    if (configurationSetEvent.success) {
-      const event = configurationSetEvent.data.eventType === 'Open'
-        ? {
-            kind: 'open' as const, topicArn: verified.value.topicArn,
-            messageId: configurationSetEvent.data.mail.messageId, occurredAt: configurationSetEvent.data.open.timestamp,
-            raw: message,
-          }
-        : configurationSetEvent.data.eventType === 'Click'
-          ? {
-            kind: 'click' as const, topicArn: verified.value.topicArn,
-            messageId: configurationSetEvent.data.mail.messageId, occurredAt: configurationSetEvent.data.click.timestamp,
-            linkUrl: configurationSetEvent.data.click.link, raw: message,
-          }
-          : configurationSetEvent.data.eventType === 'Bounce'
-            ? {
-                kind: 'bounce' as const, topicArn: verified.value.topicArn,
-                messageId: configurationSetEvent.data.mail.messageId,
-                occurredAt: configurationSetEvent.data.bounce.timestamp,
-                bounceType: configurationSetEvent.data.bounce.bounceType,
-                status: configurationSetEvent.data.bounce.bouncedRecipients[0]?.status ?? null,
-                raw: message,
-              }
-            : configurationSetEvent.data.eventType === 'Complaint'
-              ? {
-                  kind: 'complaint' as const, topicArn: verified.value.topicArn,
-                  messageId: configurationSetEvent.data.mail.messageId,
-                  occurredAt: configurationSetEvent.data.complaint.timestamp, raw: message,
-                }
-              : {
-                  kind: 'delivery' as const, topicArn: verified.value.topicArn,
-                  messageId: configurationSetEvent.data.mail.messageId,
-                  occurredAt: configurationSetEvent.data.delivery.timestamp, raw: message,
-                };
-      return applyEvent(event);
-    }
-    if (!delivery.success) {
-      if (!sesEventDiscriminatorSchema.safeParse(message).success) {
-        return response(err(validation('Malformed SES notification', delivery.error.flatten())));
-      }
-      await recordDelivery({
-        tenantId: settings.tenantId, outcome: 'recorded',
-        messageType: verified.value.type, topicArn: verified.value.topicArn,
-      });
-      return response(ok({ received: true }));
-    }
-    const event = delivery.data.notificationType === 'Bounce'
-      ? {
-          kind: 'bounce' as const, topicArn: verified.value.topicArn, messageId: delivery.data.mail.messageId,
-          occurredAt: delivery.data.bounce.timestamp, bounceType: delivery.data.bounce.bounceType,
-          status: delivery.data.bounce.bouncedRecipients[0]?.status ?? null, raw: message,
-        }
-      : delivery.data.notificationType === 'Complaint'
-        ? { kind: 'complaint' as const, topicArn: verified.value.topicArn, messageId: delivery.data.mail.messageId, occurredAt: delivery.data.complaint.timestamp, raw: message }
-        : { kind: 'delivery' as const, topicArn: verified.value.topicArn, messageId: delivery.data.mail.messageId, occurredAt: delivery.data.delivery.timestamp, raw: message };
-    return applyEvent(event);
+    const recorded = await recordVerifiedMarketingSnsEnvelope({
+      identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),
+      capabilities: capabilitiesForPrincipal('webhook'),
+    }, { envelope: verified.value, rawBody, bodySha256: createHash('sha256').update(rawBody).digest('hex') }, {
+      snsInbox: marketing.value.snsInbox, sesSettings: marketing.value.sesSettings, clock: deps.clock, ids: deps.ids,
+    });
+    if (!recorded.ok) return response(recorded);
+    await recordDelivery({ tenantId: settings.tenantId, outcome: 'recorded', messageType: verified.value.type, topicArn: verified.value.topicArn });
+    return response(ok({ received: true }));
   });
 
   app.post('/u/:token', async (c) => {

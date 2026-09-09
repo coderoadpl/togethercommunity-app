@@ -57,7 +57,7 @@ const settings = (overrides: Partial<TenantSesSettings> = {}): TenantSesSettings
   fromAddress: 'news@tenant.test',
   fromName: 'Tenant',
   identity: 'tenant.test',
-  identityVerifiedAt: null,
+  replyTo: null, identityVerifiedAt: null,
   identityCheckedAt: null,
   identityCheckError: null,
   configurationSet: null,
@@ -311,7 +311,7 @@ describe('SES onboarding wizard', () => {
 
   it('removes stale identity readiness and reports a verification regression', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       quotaRefreshedAt: NOW,
@@ -333,7 +333,7 @@ describe('SES onboarding wizard', () => {
 
   it('refreshes identity state and clears verification after a regression', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: '2026-07-20T10:00:00.000Z',
+      replyTo: null, identityVerifiedAt: '2026-07-20T10:00:00.000Z',
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
     })]);
@@ -344,7 +344,7 @@ describe('SES onboarding wizard', () => {
     expect(result).toMatchObject({
       ok: true,
       value: {
-        identityVerifiedAt: null,
+        replyTo: null, identityVerifiedAt: null,
         identityCheckedAt: NOW,
         identityCheckError: null,
       },
@@ -354,7 +354,7 @@ describe('SES onboarding wizard', () => {
   it('records a refresh error without clearing the last verified state', async () => {
     const verifiedAt = '2026-07-20T10:00:00.000Z';
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: verifiedAt,
+      replyTo: null, identityVerifiedAt: verifiedAt,
     })]);
     const controlPlane = new FakeSesOnboardingControlPlane();
     controlPlane.identityFailure = true;
@@ -364,7 +364,7 @@ describe('SES onboarding wizard', () => {
     expect(result).toMatchObject({
       ok: true,
       value: {
-        identityVerifiedAt: verifiedAt,
+        replyTo: null, identityVerifiedAt: verifiedAt,
         identityCheckedAt: NOW,
         identityCheckError: 'SES identity lookup failed',
       },
@@ -373,7 +373,7 @@ describe('SES onboarding wizard', () => {
 
   it('removes a configuration set that SES no longer reports', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'missing-configuration-set',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       webhookVerifiedAt: NOW,
@@ -458,7 +458,7 @@ describe('SES onboarding wizard', () => {
 
   it('resubscribes and drops the confirmation when provisioning finds a stale endpoint', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
@@ -535,7 +535,7 @@ describe('SES onboarding wizard', () => {
 
   it('migrates a stale endpoint on poll and reports the subscription as pending again', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
@@ -559,7 +559,7 @@ describe('SES onboarding wizard', () => {
 
   it('leaves a subscription that only differs by trailing slash alone', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: `${WEBHOOK_URL}/`,
@@ -576,7 +576,7 @@ describe('SES onboarding wizard', () => {
 
   it('clears the persisted confirmation when a poll no longer observes a confirmed subscription', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: WEBHOOK_URL,
@@ -598,7 +598,7 @@ describe('SES onboarding wizard', () => {
   it('keeps the confirmation when the poll cannot observe the subscription', async () => {
     const confirmedAt = '2026-07-20T10:00:00.000Z';
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: null,
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: WEBHOOK_URL,
@@ -619,7 +619,7 @@ describe('SES onboarding wizard', () => {
   it('keeps the poll and the stored readiness in sync and records the identity check time', async () => {
     const confirmedAt = '2026-07-20T10:00:00.000Z';
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: WEBHOOK_URL,
@@ -640,7 +640,7 @@ describe('SES onboarding wizard', () => {
 
   it('sends the simulator bounce and leaves webhook readiness to the SNS round-trip', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
     })]);
@@ -712,7 +712,7 @@ describe('SES onboarding wizard', () => {
 
     expect(saved).toMatchObject({
       ok: true,
-      value: { settings: { identityCheckedAt: NOW, identityVerifiedAt: NOW, identityCheckError: null } },
+      value: { settings: { identityCheckedAt: NOW, replyTo: null, identityVerifiedAt: NOW, identityCheckError: null } },
     });
   });
 
@@ -738,7 +738,7 @@ describe('SES onboarding wizard', () => {
         settings: {
           identity: 'tenant.test',
           identityCheckedAt: NOW,
-          identityVerifiedAt: null,
+          replyTo: null, identityVerifiedAt: null,
           identityCheckError: 'SES identity lookup failed',
         },
       },
@@ -763,7 +763,7 @@ describe('SES onboarding wizard', () => {
 
     expect(saved).toMatchObject({
       ok: true,
-      value: { settings: { identityCheckedAt: null, identityVerifiedAt: null } },
+      value: { settings: { identityCheckedAt: null, replyTo: null, identityVerifiedAt: null } },
     });
   });
 
@@ -788,7 +788,7 @@ describe('SES onboarding wizard', () => {
     expect(stored.ok).toBe(true);
     expect(await repository.findByTenant('tenant-1')).toMatchObject({
       identityCheckedAt: NOW,
-      identityVerifiedAt: NOW,
+      replyTo: null, identityVerifiedAt: NOW,
       identityCheckError: null,
     });
   });

@@ -1,3 +1,5 @@
+import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
+import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
 import { type z } from 'zod';
 
 import {
@@ -637,6 +639,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingCampaignAction.method, API_ROUTES.marketingCampaignAction.path, marketingCampaignOutputSchema, input, signal),
   testMarketingCampaign: (input: { campaignId: string }, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingCampaignTest.method, API_ROUTES.marketingCampaignTest.path, marketingCampaignTestOutputSchema, input, signal),
+  setMarketingCampaignAudience: (input: MarketingCampaignAudienceInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingCampaignAudience.method, API_ROUTES.marketingCampaignAudience.path, marketingCampaignOutputSchema, input, signal),
   previewMarketingAudience: (input: MarketingAudiencePreviewInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingAudiencePreview.method, API_ROUTES.marketingAudiencePreview.path, marketingAudiencePreviewOutputSchema, input, signal),
   listMarketingDocuments: (signal?: AbortSignal) =>
@@ -653,6 +657,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingLayouts.method, API_ROUTES.marketingLayouts.path, marketingLayoutsOutputSchema, undefined, signal),
   saveMarketingLayout: (input: MarketingLayoutSaveInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingLayoutsSave.method, API_ROUTES.marketingLayoutsSave.path, marketingLayoutOutputSchema, input, signal),
+  listMarketingSnsInbox: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSnsInbox.method, API_ROUTES.marketingSnsInbox.path, marketingSnsInboxOutputSchema, undefined, signal),
+  retryMarketingSnsInbox: (inboxId: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSnsRetry.method, API_ROUTES.marketingSnsRetry.path, marketingSnsRetryOutputSchema, { inboxId }, signal),
+  runMarketingWorker: (secret: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingWorker.method, API_ROUTES.marketingWorker.path, marketingWorkerOutputSchema, undefined, signal, { headers: { 'x-marketing-tick-secret': secret } }),
   getMarketingSesSettings: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettings.method, API_ROUTES.marketingSesSettings.path, marketingSesSettingsOutputSchema, undefined, signal),
   pollMarketingSesOnboarding: (signal?: AbortSignal) =>
@@ -679,6 +689,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.status !== undefined) params.set('status', input.status);
     if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
     if (input.transport !== undefined) params.set('transport', input.transport);
+    if (input.contactId !== undefined) params.set('contactId', input.contactId);
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.sourceApp !== undefined) params.set('sourceApp', input.sourceApp);
@@ -766,6 +777,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.status !== undefined) params.set('status', input.status);
     if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
     if (input.transport !== undefined) params.set('transport', input.transport);
+    if (input.contactId !== undefined) params.set('contactId', input.contactId);
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.sourceApp !== undefined) params.set('sourceApp', input.sourceApp);

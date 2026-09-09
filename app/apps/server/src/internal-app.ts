@@ -1,3 +1,7 @@
+import { marketingCampaignAudienceInputSchema } from '#core/contract/index.js';
+import { setMarketingCampaignAudience, returnMarketingCampaignToDraft } from '#core/server/index.js';
+import { marketingSnsRetryInputSchema, API_ROUTES } from '#core/contract/index.js';
+import { listMarketingSnsInbox, retryMarketingSnsInbox } from '#core/server/index.js';
 import { registerM2mMarketingContactRoutes, registerSessionMarketingContactRoutes, registerMarketingImportWorkerRoute } from './marketing-contact-routes.js';
 import { type Context, type Hono, type HonoRequest } from 'hono';
 import { z } from 'zod';
@@ -1185,6 +1189,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = marketingCampaignCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign payload', parsed.error.flatten())));
     const result = await createCampaign(ctxOf(c), parsed.data, {
+      contactAudienceDeps: deps.marketing.contactAudienceDeps,
       campaigns: deps.marketing.campaigns, audience: deps.marketing.audience,
       definitions: deps.marketing.definitions, layouts: deps.marketing.layouts,
       ids: deps.ids, clock: deps.clock, scheduler: deps.marketing.scheduler,
@@ -1198,6 +1203,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = marketingCampaignScheduleInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign schedule payload', parsed.error.flatten())));
     const result = await scheduleCampaign(ctxOf(c), parsed.data, {
+      contactAudienceDeps: deps.marketing.contactAudienceDeps,
       campaigns: deps.marketing.campaigns, audience: deps.marketing.audience,
       definitions: deps.marketing.definitions, ids: deps.ids, clock: deps.clock, scheduler: deps.marketing.scheduler,
     });
@@ -1220,6 +1226,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = marketingCampaignUpdateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign payload', parsed.error.flatten())));
     return respond(await updateMarketingCampaign(ctxOf(c), parsed.data, {
+      contactAudienceDeps: deps.marketing.contactAudienceDeps,
       campaigns: deps.marketing.campaigns, definitions: deps.marketing.definitions, layouts: deps.marketing.layouts,
     }));
   });
@@ -1230,10 +1237,13 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = marketingCampaignActionInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid campaign action payload', parsed.error.flatten())));
     const campaignDeps = {
+      contactAudienceDeps: deps.marketing.contactAudienceDeps,
       campaigns: deps.marketing.campaigns, audience: deps.marketing.audience, definitions: deps.marketing.definitions,
       ids: deps.ids, clock: deps.clock, scheduler: deps.marketing.scheduler,
     };
-    const result = parsed.data.action === 'cancel'
+    const result = parsed.data.action === 'draft'
+      ? await returnMarketingCampaignToDraft(ctxOf(c), parsed.data, campaignDeps)
+      : parsed.data.action === 'cancel'
       ? await cancelCampaign(ctxOf(c), parsed.data, campaignDeps)
       : await pauseCampaign(ctxOf(c), {
         campaignId: parsed.data.campaignId, resume: parsed.data.action === 'resume',
@@ -1248,6 +1258,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid campaign test payload', parsed.error.flatten())));
     const resolveOrigin = createTenantOriginResolver(deps);
     const result = await testSendCampaignToSelf(ctxOf(c), parsed.data, {
+      htmlToText: deps.marketing.htmlToText, delivery: deps.marketing.delivery, marketingOutbox: deps.marketing.marketingOutbox, snsInbox: deps.marketing.snsInbox, waiter: deps.marketing.waiter,
       definitions: deps.marketing.definitions, consents: deps.marketing.marketingConsents,
       campaigns: deps.marketing.campaigns, layouts: deps.marketing.layouts, sends: deps.marketing.campaignSends,
       events: deps.marketing.events,
@@ -1264,12 +1275,20 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(result.ok ? ok({ sent: true as const }) : result);
   });
 
+  app.post(API_PATHS.marketingCampaignAudience, async (c) => {
+    if (deps.marketing?.contactAudienceDeps === undefined) return respond(err(internal('Contact audiences are not configured')));
+    const parsed = marketingCampaignAudienceInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid campaign audience', parsed.error.flatten())));
+    return respond(await setMarketingCampaignAudience(ctxOf(c), parsed.data, { ...deps.marketing.contactAudienceDeps, campaigns: deps.marketing.campaigns }));
+  });
+
   app.post(API_PATHS.marketingAudiencePreview, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const body: unknown = await readJson(c.req.raw);
     const parsed = marketingAudiencePreviewInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid audience preview payload', parsed.error.flatten())));
     return respond(await previewMarketingAudience(ctxOf(c), parsed.data, {
+      contactAudienceDeps: deps.marketing.contactAudienceDeps,
       definitions: deps.marketing.definitions, audience: deps.marketing.audience,
     }));
   });
@@ -1329,6 +1348,17 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await saveEmailLayout(ctxOf(c), parsed.data, {
       layouts: deps.marketing.layouts, ids: deps.ids, clock: deps.clock,
     }));
+  });
+
+  app.get(API_ROUTES.marketingSnsInbox.path, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await listMarketingSnsInbox(ctxOf(c), deps.marketing));
+  });
+  app.post(API_ROUTES.marketingSnsRetry.path, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const parsed = marketingSnsRetryInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid SNS retry input')));
+    return respond(await retryMarketingSnsInbox(ctxOf(c), parsed.data, { snsInbox: deps.marketing.snsInbox, clock: deps.clock }));
   });
 
   app.get(API_PATHS.marketingSesSettings, async (c) => {
@@ -1454,6 +1484,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('deliveryStatus') === undefined ? {} : { deliveryStatus: c.req.query('deliveryStatus') }),
       ...(c.req.query('transport') === undefined ? {} : { transport: c.req.query('transport') }),
+      ...(c.req.query('contactId') === undefined ? {} : { contactId: c.req.query('contactId') }),
       ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
       ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
       ...(c.req.query('sourceApp') === undefined ? {} : { sourceApp: c.req.query('sourceApp') }),
@@ -1474,6 +1505,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('deliveryStatus') === undefined ? {} : { deliveryStatus: c.req.query('deliveryStatus') }),
       ...(c.req.query('transport') === undefined ? {} : { transport: c.req.query('transport') }),
+      ...(c.req.query('contactId') === undefined ? {} : { contactId: c.req.query('contactId') }),
       ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
       ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
       ...(c.req.query('sourceApp') === undefined ? {} : { sourceApp: c.req.query('sourceApp') }),

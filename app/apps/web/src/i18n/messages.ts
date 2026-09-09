@@ -42,6 +42,9 @@ export interface Messages {
     description: string;
     noOptions: string;
     free: string;
+    priceOneTime: (params: { price: string }) => string;
+    priceMonthly: (params: { price: string }) => string;
+    priceYearly: (params: { price: string }) => string;
     add: string;
     open: string;
     close: string;
@@ -1451,6 +1454,7 @@ export interface Messages {
     courseNotFound: string;
     lessonDuration: (params: { minutes: number }) => string;
     unlockAccess: string;
+    unlockAccessWithPrice: (params: { price: string }) => string;
     accessLocked: string;
     accessPartiallyUnlocked: string;
     completionComplete: string;
@@ -1487,6 +1491,7 @@ export interface Messages {
     openPdf: string;
     contentLocked: string;
     noAccessYet: string;
+    lockedInProduct: string;
     backToCourse: string;
     browseCourses: string;
     markCompleted: string;
@@ -2217,6 +2222,20 @@ export interface Messages {
     loading: string;
   };
   marketing: {
+    contactProgress: (input: { candidates: number; skipped: number; queued: number; unresolved: number }) => string;
+    contactAudience: string;
+    frozenAudience: string;
+    audienceEstimateHint: string;
+    includeLists: string;
+    excludeLists: string;
+    includeConsentedMembers: string;
+    excludeProductGrants: string;
+    excludeProductGrantsHint: string;
+    previewContacts: string;
+    switchToLists: string;
+    returnToDraft: string;
+    contactSends: string;
+    audienceBreakdown: (input: { candidates: number; excluded: number; suppressed: number; withdrawn: number; pending: number; noConsent: number }) => string;
     sendsTitle: string;
     sendsDescription: string;
     sendsLoading: string;
@@ -2271,7 +2290,7 @@ export interface Messages {
     eventError: string;
     eventTypes: Record<
       'queued' | 'claimed' | 'rendered' | 'accepted' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained'
-      | 'skipped' | 'failed' | 'retried' | 'suppressed_written' | 'unsubscribed',
+      | 'skipped' | 'failed' | 'retried' | 'uncertain' | 'suppressed_written' | 'unsubscribed',
       string
     >;
     activity: {
@@ -2307,7 +2326,7 @@ export interface Messages {
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
       milliseconds: (params: { value: number }) => string;
-      kinds: Record<'marketing_tick' | 'outbox_dispatch' | 'consent_evidence_purge', string>;
+      kinds: Record<'marketing_tick' | 'marketing_maintenance' | 'outbox_dispatch' | 'consent_evidence_purge', string>;
       triggers: Record<'cron' | 'dev' | 'manual', string>;
       statuses: Record<'running' | 'completed' | 'failed', string>;
     };
@@ -2447,6 +2466,10 @@ export interface Messages {
     regionLabel: string;
     writeOnlyHint: string;
     sender: string;
+    bodyTextLabel: string;
+    bodyTextHint: string;
+    replyToLabel: string;
+    replyToHint: string;
     fromAddressLabel: string;
     fromNameLabel: string;
     identityLabel: string;

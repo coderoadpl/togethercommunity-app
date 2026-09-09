@@ -30,7 +30,7 @@ import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLi
 import { CollapsibleEmbed, LessonMediaEmbed, LessonMediaError } from '../../components/ui/LessonMedia.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
-import { formatOfferPrice } from '../../lib/format.js';
+import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js';
 import {
   DataValue,
   Eyebrow,
@@ -44,7 +44,7 @@ import {
   LESSON_VIDEO_FRAME_SX,
 } from '../../theme.js';
 import { DiscussionSection } from './DiscussionSection.js';
-import { LinkIcon, LockedState } from './lesson-icons.js';
+import { LinkIcon } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -201,40 +201,64 @@ const LockedView = ({
   const { language } = useLanguage();
   const offer = useQuery({ ...actions.publicOffer, enabled: unlockProductId !== undefined });
   const product = offer.data?.products.find((candidate) => candidate.id === unlockProductId);
+  const price = product === undefined ? null : product.prices[0] ?? ({
+    kind: 'one_time',
+    interval: null,
+    amountCents: product.priceCents,
+    currency: product.currency,
+  } satisfies OfferPriceTerms);
+  const priceTerms = price === null
+    ? null
+    : formatOfferPriceTerms(price, language, {
+      free: t.common.free,
+      oneTime: t.common.priceOneTime,
+      monthly: t.common.priceMonthly,
+      yearly: t.common.priceYearly,
+    });
   return (
     <MemberSurface
       title={lessonName ?? t.lesson.contentLocked}
       eyebrow={t.lesson.eyebrow}
-      width="prose"
+      width="wide"
     >
       {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
-      <SectionCard
-        title={product?.title ?? t.lesson.contentLocked}
-        description={t.lesson.noAccessYet}
-        actions={
-          unlockProductId === undefined ? undefined : (
-            <Button
-              component={Link}
-              to={`/checkout/${encodeURIComponent(unlockProductId)}`}
-              variant="contained"
-              data-testid="unlock-lesson-cta"
-            >
-              {t.courseTree.unlockAccess}
-            </Button>
-          )
-        }
-        data-testid="locked-lesson-upsell"
-      >
-        <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'flex-start' }}>
-          <LockedState />
-          {product !== undefined && (
-            <Typography variant="h3" component="p" data-testid="locked-product-price">
-              <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
+      <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'center' }}>
+        <Paper
+          elevation={1}
+          sx={{ p: '1.5rem', width: '100%', maxWidth: '28rem' }}
+          data-testid="locked-lesson-upsell"
+        >
+          <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch', width: '100%', maxWidth: '28rem' }}>
+            <Typography variant="overline" component="p" color="text.secondary">
+              {t.lesson.lockedInProduct}
             </Typography>
-          )}
-          <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>
-        </Stack>
-      </SectionCard>
+            <Typography variant="h2" component="h2">
+              {product?.title ?? t.lesson.contentLocked}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t.lesson.noAccessYet}
+            </Typography>
+            {priceTerms !== null ? (
+              <Typography variant="h3" component="p" data-testid="locked-product-price">
+                <DataValue>{priceTerms}</DataValue>
+              </Typography>
+            ) : null}
+            {unlockProductId === undefined ? null : (
+              <Button
+                component={Link}
+                to={`/checkout/${encodeURIComponent(unlockProductId)}`}
+                variant="contained"
+                size="large"
+                fullWidth
+                data-testid="unlock-lesson-cta"
+              >
+                {priceTerms === null ? t.courseTree.unlockAccess : t.courseTree.unlockAccessWithPrice({ price: priceTerms })}
+              </Button>
+            )}
+          </Stack>
+        </Paper>
+        <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>
+      </Stack>
     </MemberSurface>
   );
 };

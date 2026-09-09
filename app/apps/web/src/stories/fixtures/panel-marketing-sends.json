@@ -74,8 +74,10 @@
             "transport": "platform"
           },
           {
+            "audienceSnapshotId": null,
             "campaignId": "campaign-studio-observability",
             "campaignName": "Course launch",
+            "contactId": null,
             "createdAt": "2026-06-27T12:00:00.000Z",
             "deliveryOccurredAt": "2026-06-27T12:00:00.000Z",
             "deliveryStatus": "delivered",
@@ -102,13 +104,19 @@
       "value": {
         "campaigns": [
           {
+            "audience": null,
             "audienceFilter": null,
             "audienceNameSnapshot": "All eligible members",
+            "audienceSnapshotId": null,
+            "audienceVersion": 1,
             "bodyHtml": "<p>Learning plan</p>",
             "bodySource": "<p>Learning plan</p>",
+            "bodyText": null,
+            "candidateCount": 0,
             "consentDefinitionId": "consent-definition-studio-news",
             "consentLabelSnapshot": "I would like to receive news by email",
             "createdAt": "2026-06-26T12:00:00.000Z",
+            "cursorContactId": null,
             "cursorMemberId": "member-studio-active",
             "engagement": {
               "totalClicks": 0,
@@ -125,14 +133,19 @@
             "lockedUntil": null,
             "name": "Course launch",
             "pausedReason": null,
+            "queued": 0,
+            "replyTo": null,
             "sendAt": "2026-06-27T12:00:00.000Z",
             "sent": 1,
+            "skipped": 0,
+            "snapshotMaxContactId": null,
             "snapshotMaxMemberId": "member-studio-active",
             "startedAt": "2026-06-27T12:00:00.000Z",
             "status": "finished",
             "subject": "Your learning plan for July",
             "tenantId": "tenant-studio",
-            "toSend": 1
+            "toSend": 1,
+            "unresolved": 0
           }
         ]
       }

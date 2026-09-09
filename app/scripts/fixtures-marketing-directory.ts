@@ -102,7 +102,18 @@ export const recordMarketingDirectoryFixtures = async (api: ApiClient, tick: () 
   const contact = unwrap(await api.listMarketingContacts({ search: 'anna@example.org', limit: 100 })).contacts[0];
   if (!contact) throw new Error('Missing recorded contact');
   alias(contact.id, `contact-${createHash('sha256').update(contact.email).digest('hex').slice(0, 12)}`);
-  await capture('panel-marketing-contact-detail', `/panel/marketing/contacts/${contact.id}`, async (client) => { await client.getMarketingContact({ contactId: contact.id }); await client.listMarketingContacts({ id: contact.id, archived: false, limit: 1 }); await lists(client); await consents(client); });
+  await capture('panel-marketing-contact-detail', `/panel/marketing/contacts/${contact.id}`, async (client) => { await client.getMarketingContact({ contactId: contact.id }); await client.listMarketingContacts({ id: contact.id, archived: false, limit: 1 }); await lists(client); await consents(client); await client.listEmailSends({ contactId: contact.id, kind: 'marketing' }); });
+  const audience = { version: 2 as const, includeLists: [dynamicList.id], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false };
+  const campaign = unwrap(await api.createMarketingCampaign({ name: 'Newsletter launch', subject: 'Updates for newsletter contacts', bodyHtml: '<p>Latest updates for our contacts.</p>', bodySource: 'Latest updates for our contacts.', consentDefinitionId: definition.id, audience })).campaign;
+  alias(campaign.id, 'campaign-list-audience');
+  await capture('panel-marketing-campaign-audience', `/panel/marketing/campaigns/${campaign.id}`, async (client) => {
+    await client.getMarketingCampaign(campaign.id);
+    await consents(client);
+    await lists(client);
+    await client.listProducts();
+    await client.listMarketingLayouts();
+    await client.previewMarketingAudience({ audience, consentDefinitionId: definition.id });
+  });
   for (const [method, routePath, input] of [
     ['getMarketingContact', '/panel/marketing/contacts/missing', { contactId: 'missing' }],
     ['getMarketingList', '/panel/marketing/lists/missing', { listId: 'missing' }],

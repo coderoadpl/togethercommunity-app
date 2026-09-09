@@ -87,6 +87,7 @@ export const exportEmailSends = async (
     ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
     ...(parsed.data.deliveryStatus === undefined ? {} : { deliveryStatus: parsed.data.deliveryStatus }),
     ...(parsed.data.transport === undefined ? {} : { transport: parsed.data.transport }),
+    ...(parsed.data.contactId === undefined ? {} : { contactId: parsed.data.contactId }),
     ...(parsed.data.campaignId === undefined ? {} : { campaignId: parsed.data.campaignId }),
     ...(parsed.data.runId === undefined ? {} : { runId: parsed.data.runId }),
     ...(parsed.data.sourceApp === undefined ? {} : { sourceApp: parsed.data.sourceApp }),

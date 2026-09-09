@@ -810,8 +810,22 @@
     {
       "idx": 115,
       "version": "7",
-      "when": 1788915486891,
-      "tag": "0115_english_default_language",
+      "when": 1788917804140,
+      "tag": "0115_marketing_delivery_durability",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1788928689743,
+      "tag": "0116_marketing_contact_campaigns",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1788928689744,
+      "tag": "0117_english_default_language",
       "breakpoints": true
     }
   ]

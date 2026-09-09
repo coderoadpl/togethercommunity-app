@@ -1,6 +1,6 @@
 {
-  "hash": "a0ebbd8bf67463e3d3219537398dac8be40b23d27524005ee8994e4dc5fc0d8f",
-  "shortId": "a0ebbd8bf674",
+  "hash": "1971d512f92f6e59d2735042bcb7b2e6fe0fd765b667cb89e5652d6146dac03f",
+  "shortId": "1971d512f92f",
   "schema": {
     "constraints": [
       {
@@ -99,6 +99,11 @@
         "table": "campaign_sends"
       },
       {
+        "definition": "FOREIGN KEY (campaign_send_id) REFERENCES campaign_sends(id) ON DELETE CASCADE",
+        "name": "marketing_outbox_campaign_send_id_campaign_sends_id_fk",
+        "table": "marketing_outbox"
+      },
+      {
         "definition": "FOREIGN KEY (campaign_send_id) REFERENCES campaign_sends(id) ON DELETE SET NULL",
         "name": "unsubscribe_tokens_campaign_send_id_campaign_sends_id_fk",
         "table": "unsubscribe_tokens"
@@ -177,6 +182,11 @@
         "definition": "FOREIGN KEY (event_id) REFERENCES space_events(id) ON DELETE CASCADE",
         "name": "space_event_rsvps_event_id_space_events_id_fk",
         "table": "space_event_rsvps"
+      },
+      {
+        "definition": "FOREIGN KEY (inbox_id) REFERENCES marketing_sns_inbox(id) ON DELETE CASCADE",
+        "name": "marketing_sns_inbox_events_inbox_id_marketing_sns_inbox_id_fk",
+        "table": "marketing_sns_inbox_events"
       },
       {
         "definition": "FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE RESTRICT",
@@ -535,6 +545,21 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_outbox_tenant_id_tenants_id_fk",
+        "table": "marketing_outbox"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_sns_inbox_events_tenant_id_tenants_id_fk",
+        "table": "marketing_sns_inbox_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_sns_inbox_tenant_id_tenants_id_fk",
+        "table": "marketing_sns_inbox"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "marketing_throttle_buckets_tenant_id_tenants_id_fk",
         "table": "marketing_throttle_buckets"
       },
@@ -749,9 +774,34 @@
         "table": "unsubscribe_tokens"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, audience_snapshot_id) REFERENCES marketing_campaign_audience_snapshots(tenant_id, id)",
+        "name": "campaign_sends_tenant_snapshot_fk",
+        "table": "campaign_sends"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, campaign_id) REFERENCES campaigns(tenant_id, id) ON DELETE CASCADE",
+        "name": "marketing_campaign_audience_snapshots_tenant_id_campaign_id_cam",
+        "table": "marketing_campaign_audience_snapshots"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, consent_definition_id) REFERENCES consent_definitions(tenant_id, id)",
+        "name": "marketing_campaign_audience_snapshots_tenant_id_consent_definit",
+        "table": "marketing_campaign_audience_snapshots"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, contact_id) REFERENCES marketing_contacts(tenant_id, id) ON DELETE CASCADE",
         "name": "marketing_membership_contact_fk",
         "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, contact_id) REFERENCES marketing_contacts(tenant_id, id)",
+        "name": "campaign_sends_tenant_contact_fk",
+        "table": "campaign_sends"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, contact_id) REFERENCES marketing_contacts(tenant_id, id)",
+        "name": "marketing_campaign_audience_contacts_tenant_id_contact_id_marke",
+        "table": "marketing_campaign_audience_contacts"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, contact_id) REFERENCES marketing_contacts(tenant_id, id)",
@@ -872,6 +922,11 @@
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "product_prices_tenant_product_fk",
         "table": "product_prices"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, snapshot_id) REFERENCES marketing_campaign_audience_snapshots(tenant_id, id) ON DELETE CASCADE",
+        "name": "marketing_campaign_audience_contacts_tenant_id_snapshot_id_mark",
+        "table": "marketing_campaign_audience_contacts"
       },
       {
         "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",
@@ -1050,6 +1105,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "marketing_campaign_audience_snapshots_pkey",
+        "table": "marketing_campaign_audience_snapshots"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "marketing_consents_pkey",
         "table": "marketing_consents"
       },
@@ -1077,6 +1137,21 @@
         "definition": "PRIMARY KEY (id)",
         "name": "marketing_lists_pkey",
         "table": "marketing_lists"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_outbox_pkey",
+        "table": "marketing_outbox"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_sns_inbox_events_pkey",
+        "table": "marketing_sns_inbox_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_sns_inbox_pkey",
+        "table": "marketing_sns_inbox"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1364,6 +1439,11 @@
         "table": "marketing_member_sync_jobs"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, snapshot_id, contact_id)",
+        "name": "marketing_campaign_audience_contacts_tenant_id_snapshot_id_cont",
+        "table": "marketing_campaign_audience_contacts"
+      },
+      {
         "definition": "UNIQUE (email)",
         "name": "user_email_unique",
         "table": "user"
@@ -1535,6 +1615,11 @@
       {
         "definition": "CREATE INDEX campaign_sends_consent_row_id_idx ON campaign_sends USING btree (consent_row_id)",
         "name": "campaign_sends_consent_row_id_idx",
+        "table": "campaign_sends"
+      },
+      {
+        "definition": "CREATE INDEX campaign_sends_contact_journal_idx ON campaign_sends USING btree (tenant_id, contact_id, created_at, id)",
+        "name": "campaign_sends_contact_journal_idx",
         "table": "campaign_sends"
       },
       {
@@ -1793,6 +1878,21 @@
         "table": "marketing_list_memberships"
       },
       {
+        "definition": "CREATE INDEX marketing_outbox_worker_idx ON marketing_outbox USING btree (tenant_id, status, next_attempt_at, locked_until)",
+        "name": "marketing_outbox_worker_idx",
+        "table": "marketing_outbox"
+      },
+      {
+        "definition": "CREATE INDEX marketing_sns_inbox_events_tenant_idx ON marketing_sns_inbox_events USING btree (tenant_id, inbox_id)",
+        "name": "marketing_sns_inbox_events_tenant_idx",
+        "table": "marketing_sns_inbox_events"
+      },
+      {
+        "definition": "CREATE INDEX marketing_sns_inbox_worker_idx ON marketing_sns_inbox USING btree (tenant_id, status, next_attempt_at, locked_until)",
+        "name": "marketing_sns_inbox_worker_idx",
+        "table": "marketing_sns_inbox"
+      },
+      {
         "definition": "CREATE INDEX member_blocks_tenant_blocked_idx ON member_blocks USING btree (tenant_id, blocked_user_id)",
         "name": "member_blocks_tenant_blocked_idx",
         "table": "member_blocks"
@@ -1988,6 +2088,11 @@
         "table": "auto_invoice_jobs"
       },
       {
+        "definition": "CREATE UNIQUE INDEX campaign_sends_contact_uidx ON campaign_sends USING btree (tenant_id, campaign_id, contact_id) WHERE ((contact_id IS NOT NULL) AND (source = 'broadcast'::text))",
+        "name": "campaign_sends_contact_uidx",
+        "table": "campaign_sends"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX campaign_sends_ses_message_id_uidx ON campaign_sends USING btree (ses_message_id) WHERE (ses_message_id IS NOT NULL)",
         "name": "campaign_sends_ses_message_id_uidx",
         "table": "campaign_sends"
@@ -2113,6 +2218,16 @@
         "table": "lesson_attachments"
       },
       {
+        "definition": "CREATE UNIQUE INDEX marketing_audience_contacts_email_uidx ON marketing_campaign_audience_contacts USING btree (tenant_id, snapshot_id, email)",
+        "name": "marketing_audience_contacts_email_uidx",
+        "table": "marketing_campaign_audience_contacts"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_audience_snapshots_revision_uidx ON marketing_campaign_audience_snapshots USING btree (tenant_id, campaign_id, revision)",
+        "name": "marketing_audience_snapshots_revision_uidx",
+        "table": "marketing_campaign_audience_snapshots"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX marketing_contact_imports_idempotency_uidx ON marketing_contact_imports USING btree (tenant_id, idempotency_key)",
         "name": "marketing_contact_imports_idempotency_uidx",
         "table": "marketing_contact_imports"
@@ -2146,6 +2261,16 @@
         "definition": "CREATE UNIQUE INDEX marketing_lists_tenant_key_uidx ON marketing_lists USING btree (tenant_id, key)",
         "name": "marketing_lists_tenant_key_uidx",
         "table": "marketing_lists"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_outbox_send_uidx ON marketing_outbox USING btree (tenant_id, campaign_send_id)",
+        "name": "marketing_outbox_send_uidx",
+        "table": "marketing_outbox"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_sns_inbox_receipt_uidx ON marketing_sns_inbox USING btree (tenant_id, topic_arn, sns_message_id)",
+        "name": "marketing_sns_inbox_receipt_uidx",
+        "table": "marketing_sns_inbox"
       },
       {
         "definition": "CREATE UNIQUE INDEX member_blocks_tenant_blocker_blocked_uidx ON member_blocks USING btree (tenant_id, blocker_user_id, blocked_user_id)",
@@ -2531,6 +2656,14 @@
             "name": "quota_refreshed_at",
             "notNull": false,
             "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reply_to",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,
@@ -4928,6 +5061,280 @@
             "type": "integer"
           },
           {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "claim_version",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "body_sha256",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ignore_reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_until",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "message_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_attempt_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "processed_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "raw_body",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "received_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sns_message_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "topic_arn",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "verified_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "marketing_sns_inbox"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "claim_version",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "campaign_send_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_until",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_attempt_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payload",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payload_purged_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ses_message_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "marketing_outbox"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
             "default": null,
             "generated": "",
             "identity": "",
@@ -5009,6 +5416,283 @@
           }
         ],
         "name": "notification_fanout_jobs"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "candidate_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "error_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "failed",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "sent",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "skipped",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "to_send",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "audience_version",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "audience",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "audience_filter",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "audience_name_snapshot",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "audience_snapshot_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "body_html",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "body_source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "body_text",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_definition_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_label_snapshot",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "cursor_contact_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "cursor_member_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "finished_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "layout_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_until",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "paused_reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reply_to",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "send_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "snapshot_max_contact_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "snapshot_max_member_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "started_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "campaigns"
       },
       {
         "columns": [
@@ -5134,211 +5818,6 @@
           }
         ],
         "name": "member_subscriptions"
-      },
-      {
-        "columns": [
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "error_count",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "failed",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "sent",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "to_send",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "audience_filter",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "audience_name_snapshot",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "body_html",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "body_source",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "consent_definition_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "consent_label_snapshot",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "cursor_member_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "finished_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "layout_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "locked_by",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "locked_until",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "paused_reason",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "send_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "snapshot_max_member_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "started_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "subject",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "campaigns"
       },
       {
         "columns": [
@@ -6746,6 +7225,59 @@
             "generated": "",
             "identity": "",
             "name": "actor",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "inbox_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_sns_inbox_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor",
             "notNull": true,
             "type": "text"
           },
@@ -7691,6 +8223,288 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "audience_json",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "campaign_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "candidate_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_definition_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "definition_version",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "eligible_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "list_revision_snapshots",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "max_contact_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "skipped_counts",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_campaign_audience_snapshots"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "audience_snapshot_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "campaign_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_row_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "contact_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "delivery_occurred_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "delivery_status",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "idempotency_source",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "rendered_body_purged_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "run_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sent_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ses_message_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "skip_reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "unsubscribe_token_id",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "campaign_sends"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "auth_tag",
             "notNull": true,
             "type": "text"
@@ -8074,163 +8888,6 @@
           }
         ],
         "name": "fiscal_artifacts"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "campaign_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "consent_row_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "delivery_occurred_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "delivery_status",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "email",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "idempotency_source",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "rendered_body_purged_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "run_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sent_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "ses_message_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "skip_reason",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "source",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "subject",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "unsubscribe_token_id",
-            "notNull": false,
-            "type": "text"
-          }
-        ],
-        "name": "campaign_sends"
       },
       {
         "columns": [
@@ -8677,6 +9334,107 @@
           }
         ],
         "name": "marketing_contact_import_rows"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_row_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "contact_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "display_name_snapshot",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "eligibility_at_snapshot",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "email_hmac",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "first_name_snapshot",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id_snapshot",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "skip_reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "snapshot_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_campaign_audience_contacts"
       },
       {
         "columns": [

@@ -1,3 +1,6 @@
+import { contactCampaignAudienceSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
+import { marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
+import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/index.js';
 import { MARKETING_CONTACT_ROUTES } from './marketing-contacts.js';
 import { z } from 'zod';
 
@@ -1567,7 +1570,10 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
   status: z.enum(['active', 'archived']),
 });
 export const marketingCampaignCreateInputSchema = z.object({
+  audience: contactCampaignAudienceSchema.optional(),
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
+  bodyText: marketingBodyTextSchema.nullable().optional(),
+  replyTo: marketingReplyToSchema.nullable().optional(),
   bodyHtml: z.string().min(1), bodySource: z.string().min(1).optional(),
   consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
@@ -1577,19 +1583,22 @@ export const marketingCampaignScheduleInputSchema = z.object({ campaignId: z.str
 export const marketingCampaignUpdateInputSchema = marketingCampaignCreateInputSchema.extend({ campaignId: z.string().min(1) });
 export const marketingCampaignActionInputSchema = z.object({
   campaignId: z.string().min(1),
-  action: z.enum(['pause', 'resume', 'cancel']),
+  action: z.enum(['pause', 'resume', 'cancel', 'draft']),
 });
 export const marketingAudiencePreviewInputSchema = z.object({
+  audience: contactCampaignAudienceSchema.optional(),
   consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
 });
-export const marketingAudiencePreviewOutputSchema = z.object({ count: z.number().int().nonnegative() });
+export const marketingAudiencePreviewOutputSchema = z.union([contactAudiencePreviewSchema, z.object({ count: z.number().int().nonnegative() })]);
+export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.string().min(1), audience: contactCampaignAudienceSchema });
+export type MarketingCampaignAudienceInput = z.input<typeof marketingCampaignAudienceInputSchema>;
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignDetailOutputSchema = z.object({
-  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema }),
+  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0) }),
 });
 export const marketingCampaignsOutputSchema = z.object({
-  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema })),
+  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0) })),
 });
 export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });
@@ -1611,6 +1620,10 @@ export const marketingLayoutOutputSchema = z.object({ layout: emailLayoutSchema 
 export const marketingLayoutSaveInputSchema = z.object({
   layoutId: z.string().min(1).optional(), name: z.string().trim().min(1), bodyHtml: z.string().min(1),
 });
+export const marketingSnsInboxOutputSchema = z.object({ receipts: z.array(marketingSnsReceiptSchema) });
+export const marketingSnsRetryInputSchema = z.object({ inboxId: z.string().min(1) });
+export const marketingSnsRetryOutputSchema = z.object({ retried: z.literal(true) });
+export const marketingWorkerOutputSchema = z.object({ campaignsDispatched: z.number(), retentionTenantsProcessed: z.number(), identityChecksPerformed: z.number(), reputationAlertsSent: z.number() });
 export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
@@ -1623,6 +1636,7 @@ export const marketingSesSettingsOutputSchema = z.object({
 });
 export const marketingReputationOutputSchema = emailReputationSchema;
 export const marketingSesSettingsUpdateInputSchema = z.object({
+  replyTo: marketingReplyToSchema.nullable().optional(),
   fromAddress: z.string().email(),
   fromName: z.string().trim().min(1),
   identity: z.string().trim().min(1),
@@ -1969,6 +1983,7 @@ export const API_ROUTES = {
   marketingCampaignUpdate: { method: 'POST', path: '/api/marketing/campaigns/update' },
   marketingCampaignAction: { method: 'POST', path: '/api/marketing/campaigns/action' },
   marketingCampaignTest: { method: 'POST', path: '/api/marketing/campaigns/test' },
+  marketingCampaignAudience: { method: 'POST', path: '/api/marketing/campaigns/audience' },
   marketingAudiencePreview: { method: 'POST', path: '/api/marketing/audience-preview' },
   marketingCampaign: { method: 'GET', path: '/api/marketing/campaigns/:id' },
   marketingDocuments: { method: 'GET', path: '/api/marketing/documents' },
@@ -1978,6 +1993,9 @@ export const API_ROUTES = {
   marketingDocumentPublish: { method: 'POST', path: '/api/marketing/documents/publish' },
   marketingLayouts: { method: 'GET', path: '/api/marketing/layouts' },
   marketingLayoutsSave: { method: 'POST', path: '/api/marketing/layouts' },
+  marketingSnsInbox: { method: 'GET', path: '/api/marketing/sns-inbox' },
+  marketingSnsRetry: { method: 'POST', path: '/api/marketing/sns-inbox/retry' },
+  marketingWorker: { method: 'GET', path: '/api/internal/marketing/tick' },
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
   marketingSesOnboarding: { method: 'POST', path: '/api/marketing/ses-onboarding/poll' },
@@ -2288,6 +2306,7 @@ export const API_PATHS = {
   marketingCampaignUpdate: API_ROUTES.marketingCampaignUpdate.path,
   marketingCampaignAction: API_ROUTES.marketingCampaignAction.path,
   marketingCampaignTest: API_ROUTES.marketingCampaignTest.path,
+  marketingCampaignAudience: API_ROUTES.marketingCampaignAudience.path,
   marketingAudiencePreview: API_ROUTES.marketingAudiencePreview.path,
   marketingCampaign: API_ROUTES.marketingCampaign.path,
   marketingDocuments: API_ROUTES.marketingDocuments.path,

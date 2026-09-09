@@ -62,7 +62,8 @@ const version = (tenantId: string): ConsentDefinitionVersion => ({
 
 const campaign = (tenantId: string): Campaign => ({
   id: `campaign-${tenantId}`, tenantId, name: 'Campaign', subject: 'Subject', bodyHtml: '<p>Body</p>',
-  bodySource: '<p>Body</p>', layoutId: null, consentDefinitionId: `definition-${tenantId}`,
+  bodyText: null, replyTo: null, bodySource: '<p>Body</p>', layoutId: null, consentDefinitionId: `definition-${tenantId}`,
+  audienceVersion: 1, audience: null, audienceSnapshotId: null, snapshotMaxContactId: null, cursorContactId: null, candidateCount: 0, skipped: 0,
   audienceFilter: null, status: 'running', sendAt: null, snapshotMaxMemberId: null,
   cursorMemberId: null, toSend: 0, sent: 0, failed: 0, lockedUntil: null, lockedBy: null,
   errorCount: 0, pausedReason: null, audienceNameSnapshot: null, consentLabelSnapshot: null,

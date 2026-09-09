@@ -14,3 +14,5 @@ export const createMarketingContactTestApp = (deps: Parameters<typeof registerSe
   registerMarketingImportWorkerRoute(app, deps);
   return { request: app.request, listen: () => serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 }) };
 };
+
+export const listenMarketingTestApp = (app: Pick<Hono<AppVars>, 'fetch'>) => serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });

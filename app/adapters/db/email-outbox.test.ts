@@ -7,7 +7,7 @@ import { dispatchEmailBatch } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from './email-outbox.js';
 import { createEmailEventRepository } from './email-events.js';
-import { createMemberEventRepository } from './member-events.js';
+import { appendEmailSentMemberEvents, createMemberEventRepository } from './member-events.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
 import { emailOutbox, memberEvents, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -88,6 +88,38 @@ describe('email outbox database adapter', () => {
         transport: 'platform',
       }),
     }));
+  });
+
+  it('finalizes a reclaimed send when its member event already has an earlier sent time', async () => {
+    const tenantId = 'tenant-outbox';
+    const memberId = 'member-reclaimed';
+    const sentAt = '2026-07-21T12:16:00.000Z';
+    await db.insert(members).values({
+      id: memberId, tenantId, userId: 'user-reclaimed',
+      email: 'reclaimed@example.test', createdAt: NOW,
+    });
+    await enqueue('reclaimed', NOW, tenantId);
+    const repository = createEmailOutboxRepository(db);
+    const claim = { limit: 10, now: NOW, attemptsCap: 5, runId: 'run-reclaimed' };
+    await repository.claimBatch(claim);
+    await appendEmailSentMemberEvents(db, {
+      tenantId, recipient: 'reclaimed@example.test', sendId: 'reclaimed',
+      mailKind: 'transactional', subject: 'Original subject', source: 'magic-link',
+      transport: 'platform', occurredAt: NOW,
+    });
+    const reclaimed = await repository.claimBatch({ ...claim, now: sentAt });
+    expect(reclaimed).toMatchObject({ ok: true, value: [expect.objectContaining({ id: 'reclaimed' })] });
+    expect(await repository.markSent({
+      id: 'reclaimed', sentAt, sesMessageId: 'ses-reclaimed',
+      transport: 'platform', runId: 'run-reclaimed',
+    })).toEqual(ok(undefined));
+    const [row] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, 'reclaimed'));
+    expect(row).toMatchObject({ status: 'sent' });
+    expect(new Date(row?.sentAt ?? '').toISOString()).toBe(sentAt);
+    expect(await createMemberEventRepository(db).listForMember(tenantId, memberId)).toEqual([
+      expect.objectContaining({ type: 'email-sent', occurredAt: NOW }),
+    ]);
+    expect(await repository.claimBatch({ ...claim, now: sentAt })).toEqual(ok([]));
   });
 
   it('atomically reserves only the remaining platform pool capacity', async () => {

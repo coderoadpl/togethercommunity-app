@@ -10,10 +10,41 @@ import type { MemberEventRepository } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { memberEvents, members } from './schema.js';
 
-export const appendMemberEvent = async (db: Db, event: MemberEvent): Promise<void> => {
+export const appendMemberEvent = async (
+  db: Db,
+  event: MemberEvent,
+): Promise<void> => {
   const parsed = memberEventSchema.parse(event);
-  await db.insert(memberEvents).values(parsed).onConflictDoNothing({ target: memberEvents.id });
+  const inserted = await db.insert(memberEvents).values(parsed).onConflictDoNothing({
+    target: memberEvents.id,
+  }).returning({ id: memberEvents.id });
+  if (inserted.length > 0) return;
+
+  const duplicates = await db.select({ id: memberEvents.id }).from(memberEvents).where(and(
+    eq(memberEvents.tenantId, parsed.tenantId),
+    eq(memberEvents.id, parsed.id),
+    eq(memberEvents.memberId, parsed.memberId),
+    eq(memberEvents.type, parsed.type),
+    ...(parsed.type === 'grant' || parsed.type === 'revoke' ? [
+      eq(memberEvents.occurredAt, parsed.occurredAt),
+      sql`${memberEvents.payload} = ${JSON.stringify(parsed.payload)}::jsonb`,
+    ] : []),
+  ));
+  if (duplicates.length === 0) throw new Error('Member event idempotency key collision');
 };
+
+// The persisted revision distinguishes transitions even when their timestamps and windows match.
+type GrantMemberEvent = Extract<MemberEvent, { type: 'grant' | 'revoke' }>;
+
+export const appendGrantMemberEvent = async (
+  db: Db,
+  event: Omit<Extract<GrantMemberEvent, { type: 'grant' }>, 'id'>
+    | Omit<Extract<GrantMemberEvent, { type: 'revoke' }>, 'id'>,
+  revision: number,
+): Promise<void> => appendMemberEvent(db, {
+  ...event,
+  id: `grant-transition:${JSON.stringify([event.tenantId, event.payload.grantId, revision])}`,
+});
 
 export const appendEmailSentMemberEvents = async (
   db: Db,

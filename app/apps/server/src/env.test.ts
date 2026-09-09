@@ -832,3 +832,23 @@ describe('visual clock policy', () => {
     }
   });
 });
+
+describe('import daily record limits', () => {
+  it('defaults to 10,000 member records and 20,000 other records', () => {
+    expect(envSchema.parse({})).toMatchObject({
+      IMPORT_DAILY_MEMBER_RECORD_LIMIT: 10_000,
+      IMPORT_DAILY_RECORD_LIMIT: 20_000,
+    });
+  });
+
+  it.each(['IMPORT_DAILY_MEMBER_RECORD_LIMIT', 'IMPORT_DAILY_RECORD_LIMIT'] as const)(
+    'accepts positive integer overrides for %s and rejects invalid values',
+    (key) => {
+      expect(envSchema.parse({ [key]: '1' })[key]).toBe(1);
+      expect(envSchema.parse({ [key]: '12345' })[key]).toBe(12_345);
+      for (const value of ['0', '-1', '1.5', '', 'invalid', 'Infinity']) {
+        expect(envSchema.safeParse({ [key]: value }).success).toBe(false);
+      }
+    },
+  );
+});

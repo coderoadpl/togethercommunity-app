@@ -23,7 +23,7 @@ const emailSchema = z.string().email();
 
 export const ForgotPasswordPage = () => {
   const t = useTranslations();
-  const { language } = useLanguage();
+  const { explicitLanguage } = useLanguage();
   useRedirectSignedInWithTenant();
   const [email, setEmail] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -40,7 +40,7 @@ export const ForgotPasswordPage = () => {
     requestPasswordReset.mutate({
       email: normalizedEmail,
       redirectTo: new URL('/reset-password', window.location.origin).toString(),
-      language,
+      ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
     });
   };
 

@@ -10,7 +10,7 @@ import type { Db } from './client.js';
 import { posts, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
-const migration = readFileSync('drizzle/0108_english_default_language.sql', 'utf8');
+const migration = readFileSync('drizzle/0114_english_default_language.sql', 'utf8');
 const now = '1998-08-14T10:00:00.000Z';
 let db: Db;
 let close: () => Promise<void>;

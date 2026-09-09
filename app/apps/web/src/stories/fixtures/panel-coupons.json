@@ -55,7 +55,7 @@
               "kind": "percent",
               "maxRedemptions": null,
               "maxRedemptionsPerMember": null,
-              "partnerLabel": "Academy Partner",
+              "partnerLabel": "Akademia Partner",
               "recurringDuration": "forever",
               "scope": {
                 "kind": "all"
@@ -334,6 +334,7 @@
             "logoDarkUrl": null,
             "logoUrl": null
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null

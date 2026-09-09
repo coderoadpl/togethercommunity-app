@@ -226,7 +226,7 @@ describe('RegisterPage', () => {
         termsAccepted: true,
       },
     ]);
-    expect(signupLanguages).toEqual(['en']);
+    expect(signupLanguages).toEqual([null]);
   });
 
   it('shows no consent checkbox on a tenant without configured documents', async () => {

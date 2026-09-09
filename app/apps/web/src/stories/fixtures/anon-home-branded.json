@@ -53,11 +53,12 @@
             "logoDarkUrl": null,
             "logoUrl": "/assets/akademia-wordmark.svg"
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null
           },
-          "name": "Self-learning Academy",
+          "name": "Akademia Samouka",
           "slug": "akademia",
           "socialLinks": [],
           "support": {

@@ -4,6 +4,7 @@ import {
   ok,
   type AppError,
   type LegalUrls,
+  type Language,
   type PriceInterval,
   type PriceKind,
   type Product,
@@ -35,6 +36,7 @@ export interface PublicOffer {
     socialLinks: TenantSocialLink[];
     legal: LegalUrls;
     support: TenantSupportPublic;
+    defaultLanguage: Language;
   };
   contentVersion: number;
   previewLessons: CourseLessonPreview[];
@@ -120,6 +122,7 @@ export const getPublicOffer = async (
           ? EMPTY_LEGAL_URLS
           : { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl },
       support: { url: settings?.supportUrl ?? null },
+      defaultLanguage: settings?.defaultLanguage ?? 'en',
     },
     contentVersion: tenant.contentVersion,
     previewLessons: lessons.filter((lesson) => publicCourseIds.has(lesson.courseId)),

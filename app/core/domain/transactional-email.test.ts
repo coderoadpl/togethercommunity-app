@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
+import { expectedTransactionalEmailPl } from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
   directMessage,
@@ -92,18 +93,7 @@ describe('member erasure request email', () => {
 
   it('renders localized dates and the panel link in the fallback locale', () => {
     const pl = memberErasureRequestEmail('pl', input);
-    const expected = transactionalEmailMessagesPl.memberErasureRequestEmail.render({
-      tenantName: input.tenantName,
-      memberEmail: input.memberEmail,
-      memberEmailHtml: input.memberEmail,
-      requestedAtText: plDate(input.requestedAt),
-      requestedAtHtml: plDate(input.requestedAt),
-      dueAtText: plDate(input.dueAt),
-      dueAtHtml: plDate(input.dueAt),
-      panelUrl: input.panelUrl,
-      panelUrlHtml: input.panelUrl,
-    });
-    expect(pl).toEqual(expected);
+    expect(pl).toEqual(expectedTransactionalEmailPl.memberErasureRequestEmail);
   });
 
   it('renders localized dates and the panel link in English', () => {
@@ -182,10 +172,7 @@ describe('support message email', () => {
 describe('email transport test message', () => {
   it('names the tested transport in PL and EN', () => {
     expect(emailTransportTest('pl', { transport: 'resend' }))
-      .toEqual(transactionalEmailMessagesPl.emailTransportTest.render({
-        transport: 'resend',
-        transportHtml: 'resend',
-      }));
+      .toEqual(expectedTransactionalEmailPl.emailTransportTest);
     expect(emailTransportTest('en', { transport: 'smtp' })).toMatchObject({
       subject: 'Together test e-mail (smtp)',
       text: expect.stringContaining('Your smtp transport is configured correctly.'),
@@ -201,14 +188,7 @@ describe('welcomeSignIn', () => {
   it('renders the fallback-locale template', () => {
     const actionUrl = 'https://acme.localhost/sign-in?token=abc';
     expect(welcomeSignIn('pl', { tenantName: 'Acme Courses', actionUrl }))
-      .toEqual(transactionalEmailMessagesPl.welcomeSignIn.render({
-        tenantName: 'Acme Courses',
-        tenantNameHtml: 'Acme Courses',
-        actionUrl,
-        actionLink: `<a href="${actionUrl}">${transactionalEmailMessagesPl.welcomeSignIn.actionLabel}</a>`,
-        header: '',
-        socialLinks: { html: '', text: '' },
-      }));
+      .toEqual(expectedTransactionalEmailPl.welcomeSignIn);
   });
 
   it('renders the English template', () => {
@@ -249,11 +229,7 @@ describe('welcomeSignIn', () => {
 describe('resetPassword', () => {
   it('renders the fallback-locale template', () => {
     const actionUrl = 'https://acme.localhost/reset?token=abc';
-    expect(resetPassword('pl', { actionUrl }))
-      .toEqual(transactionalEmailMessagesPl.resetPassword.render({
-        actionUrl,
-        actionLink: `<a href="${actionUrl}">${transactionalEmailMessagesPl.resetPassword.actionLabel}</a>`,
-      }));
+    expect(resetPassword('pl', { actionUrl })).toEqual(expectedTransactionalEmailPl.resetPassword);
   });
 
   it('renders the English template', () => {
@@ -276,14 +252,7 @@ describe('magicLink', () => {
   it('renders the fallback-locale template', () => {
     const url = 'https://acme.localhost/magic?token=abc';
     expect(magicLink('pl', { tenantName: 'Acme Courses', url }))
-      .toEqual(transactionalEmailMessagesPl.magicLink.render({
-        tenantName: 'Acme Courses',
-        tenantNameHtml: 'Acme Courses',
-        url,
-        actionLink: `<a href="${url}">${transactionalEmailMessagesPl.magicLink.actionLabel}</a>`,
-        header: '',
-        socialLinks: { html: '', text: '' },
-      }));
+      .toEqual(expectedTransactionalEmailPl.magicLink);
   });
 
   it('renders the English template', () => {
@@ -352,9 +321,7 @@ describe('notification opt-out footer', () => {
 
   it('renders lesson-question copy and thread management in both languages', () => {
     const pl = lessonQuestion('pl', replyInput);
-    expect(pl.subject).toContain(replyInput.lessonName);
-    expect(pl.text).toContain(replyInput.authorDisplay);
-    expect(pl.text).toContain(transactionalEmailMessagesPl.manageNotifications.label);
+    expect(pl).toEqual(expectedTransactionalEmailPl.lessonQuestion);
 
     const en = lessonQuestion('en', replyInput);
     expect(en.subject).toBe('New question under “Variables”');
@@ -592,7 +559,7 @@ describe('spaceEvent', () => {
   };
 
   it('names the space in the subject in both languages', () => {
-    expect(spaceEvent('pl', input).subject).toContain(input.spaceName);
+    expect(spaceEvent('pl', input)).toEqual(expectedTransactionalEmailPl.spaceEvent);
     expect(spaceEvent('en', input).subject).toBe('New event in “Announcements”');
   });
 });
@@ -606,7 +573,7 @@ describe('directMessage', () => {
   };
 
   it('names the sender in the subject in both languages', () => {
-    expect(directMessage('pl', input).subject).toContain(input.senderDisplay);
+    expect(directMessage('pl', input)).toEqual(expectedTransactionalEmailPl.directMessage);
     expect(directMessage('en', input).subject).toBe('New message from Alex');
   });
 });

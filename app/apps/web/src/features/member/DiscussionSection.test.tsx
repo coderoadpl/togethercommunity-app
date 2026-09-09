@@ -92,7 +92,7 @@ describe('DiscussionSection', () => {
   it('labels moderator tombstones and keeps their replies readable without write actions', async () => {
     server.use(okMe('owner'), okDiscussion([asThread(post({ id: 'deleted', deletedAt: '2026-07-15T09:00:00.000Z', deletedBy: 'moderator' }), [asThread(post({ id: 'reply', parentPostId: 'deleted', rootPostId: 'deleted' }))])]));
     renderWithProviders(<DiscussionSection lessonId="l1" />);
-    expect(await screen.findByTestId('deleted-post-deleted')).toHaveTextContent(pl.discussion.moderatorDeletedPost);
+    expect(await screen.findByTestId('deleted-post-deleted')).toHaveTextContent(en.discussion.moderatorDeletedPost);
     expect(screen.getByTestId('post-body-reply')).toBeInTheDocument();
     expect(screen.queryByTestId('delete-button-deleted')).not.toBeInTheDocument();
     expect(screen.queryByTestId('edit-button-deleted')).not.toBeInTheDocument();

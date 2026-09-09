@@ -1209,16 +1209,16 @@ describe('SettingsPanel branding', () => {
 
   it('shows the automatic light accent and rejects malformed overrides', async () => {
     const { updates } = renderPanel({ ...EMPTY_SETTINGS, accentColor: '#F5C842' });
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
     const input = await screen.findByTestId('branding-accent-light');
     expect(input).toHaveValue('');
     expect(input).not.toHaveAttribute('placeholder');
-    expect(screen.getByText(`${pl.branding.accentLightHint} ${deriveLightAccent('#F5C842')}`)).toBeInTheDocument();
-    expect(screen.getByText(pl.branding.lightPreview)).toBeInTheDocument();
-    expect(screen.getByText(pl.branding.darkPreview)).toBeInTheDocument();
+    expect(screen.getByText(`${en.branding.accentLightHint} ${deriveLightAccent('#F5C842')}`)).toBeInTheDocument();
+    expect(screen.getByText(en.branding.lightPreview)).toBeInTheDocument();
+    expect(screen.getByText(en.branding.darkPreview)).toBeInTheDocument();
     await userEvent.type(input, 'invalid');
     await userEvent.click(screen.getByTestId('branding-save'));
-    expect(await screen.findByText(pl.branding.accentInvalid)).toBeInTheDocument();
+    expect(await screen.findByText(en.branding.accentInvalid)).toBeInTheDocument();
     expect(updates).toHaveLength(0);
   }, BRANDING_TEST_TIMEOUT);
 

@@ -657,7 +657,7 @@ describe('getPublicSpaceThread', () => {
     const thread = await getPublicSpaceThread(tenant, { spaceId: open.id, postId: root.id }, deps);
     expect(thread).toMatchObject(deletedBy === 'author'
       ? { ok: false, error: { code: 'not_found' } }
-      : { ok: true, value: { threads: [{ deletedBy, body: 'Wpis usunięty przez moderatora.' }] } });
+      : { ok: true, value: { threads: [{ deletedBy, body: 'This post was deleted by a moderator.' }] } });
   });
 
   it('rejects a malformed thread query', async () => {

@@ -154,7 +154,7 @@ Report rows retain `post_reports.reporter_user_id` and the
 `dm_reports.reporter_user_id` / `dm_reports.reported_user_id` pair after
 erasure, matching the existing retention of `posts.author_user_id`. The
 pseudonymization transaction relabels every display column those rows carry to
-`deletedMemberDisplay()`. The `posts.deleted_by_user_id` column also retains
+`DELETED_MEMBER_DISPLAY`. The `posts.deleted_by_user_id` column also retains
 the moderator's or author's user id after erasure and is not relabelled by
 the pseudonymization transaction. A full redesign around non-identifying subject
 references remains backlog item B1.

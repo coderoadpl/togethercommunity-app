@@ -6805,7 +6805,7 @@ describe('tenant-host magic links on checkout', () => {
 
     expect(response.status).toBe(200);
     expect(captured.request?.baseUrl).toBe('http://globex.localhost:48730');
-    expect(captured.request?.language).toBe('pl');
+    expect(captured.request?.language).toBe('en');
   });
 });
 

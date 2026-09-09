@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Container, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
@@ -8,7 +8,7 @@ import { actions } from '../../api.js';
 import { BrandLoader } from '../../components/layout/BrandLoader.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { isTenantHost } from '../../lib/tenant.js';
 import { CardTitle } from '../../theme.js';
 
@@ -40,8 +40,14 @@ export const TenantGate = ({
   hostname?: string;
 }) => {
   const t = useTranslations();
+  const { setTenantDefaultLanguage } = useLanguage();
   const onTenantHost = isTenantHost(hostname);
   const offer = useQuery({ ...actions.publicOffer, enabled: onTenantHost });
+  const defaultLanguage = offer.data?.tenant.defaultLanguage;
+
+  useEffect(() => {
+    if (defaultLanguage !== undefined) setTenantDefaultLanguage(defaultLanguage);
+  }, [defaultLanguage, setTenantDefaultLanguage]);
 
   if (!onTenantHost) return <>{children}</>;
   if (offer.isPending) {

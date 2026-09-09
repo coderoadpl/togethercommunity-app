@@ -310,7 +310,7 @@ describe('member home feed', () => {
     const result = await getMemberHomeFeed(ctx(), {}, f.deps);
     if (!result.ok) throw new Error('Feed failed');
     expect(result.value.items.map((item) => item.id).sort()).toEqual(['author-thread', 'moderator-empty']);
-    expect(result.value.items.find((item) => item.id === 'moderator-empty')?.body).toBe('Wpis usunięty przez moderatora.');
+    expect(result.value.items.find((item) => item.id === 'moderator-empty')?.body).toBe('This post was deleted by a moderator.');
   });
 
   it('masks a deleted root and carries its reaction summary', async () => {

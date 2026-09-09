@@ -59,7 +59,7 @@
           "staffRole": null,
           "videoAutoplay": null
         },
-        "userId": "fixture-user-89848c4c7f4fb0ff"
+        "userId": "fixture-user-15a98ce40564caec"
       }
     },
     "memberNavigation:[]": {
@@ -378,6 +378,7 @@
             "logoDarkUrl": null,
             "logoUrl": null
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null

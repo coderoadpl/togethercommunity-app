@@ -98,6 +98,7 @@
             "logoDarkUrl": null,
             "logoUrl": null
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null
@@ -161,7 +162,7 @@
               ],
               "completionStatus": "not-completed",
               "id": "module-acme-1",
-              "name": "Part 1 - Introduction"
+              "name": "Part 1 - Introductory module"
             }
           ],
           "name": "Acme Course"

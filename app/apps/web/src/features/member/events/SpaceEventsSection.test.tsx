@@ -99,7 +99,7 @@ describe('SpaceEventsSection', () => {
     await renderSection(true);
 
     const add = await screen.findByTestId('space-events-add');
-    expect(add).toHaveTextContent(pl.events.addEvent);
+    expect(add).toHaveTextContent(en.events.addEvent);
     expect(add).toHaveAttribute('href', '/panel/spaces/s1/events/new');
     expect(await screen.findByTestId('space-events-empty')).toHaveTextContent(
       en.events.emptyUpcoming,

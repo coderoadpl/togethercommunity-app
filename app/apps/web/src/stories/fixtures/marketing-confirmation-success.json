@@ -22,7 +22,7 @@
       "logoDarkUrl": null,
       "logoUrl": "/assets/akademia-wordmark.svg",
       "memberVideoAutoplayOverride": false,
-      "name": "Self-learning Academy",
+      "name": "Akademia Samouka",
       "ogDescription": null,
       "ogImageUrl": null,
       "ogTitle": null,
@@ -36,13 +36,13 @@
     "tenant": {
       "contentVersion": 1,
       "id": "tenant-akademia",
-      "name": "Self-learning Academy",
+      "name": "Akademia Samouka",
       "plan": "self_hosted",
       "slug": "akademia",
       "status": "active"
     }
   },
-  "language": "en",
+  "language": "pl",
   "nonce": "storybook",
   "path": "/marketing/confirm/confirmation_akademia_visual_123456",
   "state": "success"

@@ -1055,6 +1055,7 @@
             "logoDarkUrl": null,
             "logoUrl": null
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null

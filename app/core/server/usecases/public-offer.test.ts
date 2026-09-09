@@ -139,6 +139,7 @@ describe('getPublicOffer', () => {
           socialLinks: [],
           legal: { termsUrl: null, privacyUrl: null },
           support: { url: null },
+          defaultLanguage: 'en',
         },
         contentVersion: 7,
         previewLessons: [],

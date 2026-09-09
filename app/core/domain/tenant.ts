@@ -371,7 +371,12 @@ export const DELETED_MEMBER_DISPLAY = '[deleted-member]';
  */
 export const MAX_MEMBER_BAN_REASON_LENGTH = 500;
 
-
+/**
+ * The member row is retained for order-history integrity required by the Polish
+ * Accounting Act. Only personal data is erased: e-mail and userId become markers
+ * derived from the opaque member id, so the row cannot be traced back or matched
+ * by a future sign-in or purchase.
+ */
 export const memberTombstone = (memberId: string): { email: string; userId: string } => ({
   email: `deleted-${memberId}@anonymized.invalid`,
   userId: `deleted:${memberId}`,

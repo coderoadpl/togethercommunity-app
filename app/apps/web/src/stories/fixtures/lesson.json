@@ -26,7 +26,7 @@
                   "authorAvatarUrl": null,
                   "authorDisplay": "Free Account",
                   "authorIsStaff": false,
-                  "body": "Deleted post",
+                  "body": "[deleted-post]",
                   "contextId": "lesson-js-variables-1",
                   "contextKind": "lesson",
                   "createdAt": "2026-06-12T12:00:00.000Z",
@@ -175,7 +175,7 @@
           "staffRole": null,
           "videoAutoplay": null
         },
-        "userId": "fixture-user-89848c4c7f4fb0ff"
+        "userId": "fixture-user-15a98ce40564caec"
       }
     },
     "memberNavigation:[]": {
@@ -415,6 +415,7 @@
             "logoDarkUrl": null,
             "logoUrl": null
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null

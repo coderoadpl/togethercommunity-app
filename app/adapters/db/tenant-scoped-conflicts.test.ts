@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { deletedMemberDisplay, memberTombstone, type MemberEvent } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, memberTombstone, type MemberEvent } from '#core/domain/index.js';
 
 import type { Db } from './client.js';
 import { createMemberEventRepository } from './member-events.js';
@@ -51,7 +51,7 @@ describe('tenant-scoped conflicts', () => {
     const tombstone = memberTombstone(id);
     const input = {
       memberId: id, deletedAt: NOW, tombstoneEmail: tombstone.email,
-      severedUserId: tombstone.userId, postAuthorDisplay: deletedMemberDisplay(),
+      severedUserId: tombstone.userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY,
     };
 
     expect(await repo.pseudonymize(ACME, input)).toMatchObject({ alreadyDeleted: false });

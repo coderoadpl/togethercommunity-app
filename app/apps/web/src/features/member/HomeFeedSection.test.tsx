@@ -117,9 +117,9 @@ describe('HomeFeedSection', () => {
 
     await userEvent.click(await screen.findByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
-    expect(await screen.findByText(pl.discussion.deleteConfirmTitle)).toBeInTheDocument();
-    expect(screen.getByText(pl.discussion.deleteConfirmBody)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
+    expect(await screen.findByText(en.discussion.deleteConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.discussion.deleteConfirmBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.common.cancel }));
     expect(deletedIds).toEqual([]);
     expect(screen.getByTestId('home-feed-post-p1')).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('post-menu-p1'));
@@ -139,10 +139,10 @@ describe('HomeFeedSection', () => {
     await renderSection();
 
     expect(await screen.findByTestId('home-feed-deleted-p1')).toHaveTextContent(
-      deletedBy === 'moderator' ? pl.discussion.moderatorDeletedPost : pl.discussion.deletedPost,
+      deletedBy === 'moderator' ? en.discussion.moderatorDeletedPost : en.discussion.deletedPost,
     );
     expect(screen.queryByTestId('home-feed-body-p1')).not.toBeInTheDocument();
-    expect(screen.getByTestId('home-feed-reply-count-p1')).toHaveTextContent(pl.discussion.replyCount({ count: 2 }));
+    expect(screen.getByTestId('home-feed-reply-count-p1')).toHaveTextContent(en.discussion.replyCount({ count: 2 }));
     await userEvent.click(screen.getByTestId('post-menu-p1'));
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(screen.getByTestId('copy-link-p1')).toBeInTheDocument();

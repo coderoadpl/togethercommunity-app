@@ -69,7 +69,7 @@
             "source": "welcome-sign-in",
             "sourceApp": null,
             "status": "sent",
-            "subject": "Your Studio Demo workspace account is ready",
+            "subject": "Hello, your Studio Demo account is ready",
             "tenantId": "tenant-studio",
             "transport": "platform"
           },
@@ -368,6 +368,7 @@
             "logoDarkUrl": null,
             "logoUrl": null
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null

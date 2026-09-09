@@ -12,7 +12,9 @@ import { memberEvents, members } from './schema.js';
 
 export const appendMemberEvent = async (db: Db, event: MemberEvent): Promise<void> => {
   const parsed = memberEventSchema.parse(event);
-  await db.insert(memberEvents).values(parsed).onConflictDoNothing({ target: memberEvents.id });
+  await db.insert(memberEvents).values(parsed).onConflictDoNothing({
+    target: [memberEvents.tenantId, memberEvents.id],
+  });
 };
 
 export const appendEmailSentMemberEvents = async (

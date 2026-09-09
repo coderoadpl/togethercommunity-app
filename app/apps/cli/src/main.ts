@@ -1,3 +1,4 @@
+import { registerMarketingCommands } from './marketing-commands.js';
 import { readFile, writeFile } from 'node:fs/promises';
 
 import { Command, CommanderError } from 'commander';
@@ -604,6 +605,8 @@ const cliCtx = (): Result<CliCtx, AppError> => {
     json: globals.value.json,
   });
 };
+
+registerMarketingCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(

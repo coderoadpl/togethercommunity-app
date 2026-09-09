@@ -527,7 +527,7 @@ export const createSuppressionRepository = (db: Db): SuppressionRepository => ({
             eq(suppressions.tenantId, tenantId),
             eq(suppressions.emailHmac, parsed.emailHmac),
             isNull(suppressions.liftedAt),
-            inArray(suppressions.reason, ['manual', 'unsubscribe_global']),
+            inArray(suppressions.reason, parsed.reason === 'complaint' ? ['manual', 'unsubscribe_global', 'hard_bounce'] : ['manual', 'unsubscribe_global']),
           )).returning({ id: suppressions.id })
         : [];
       if (inserted === undefined && upgraded === undefined) return false;

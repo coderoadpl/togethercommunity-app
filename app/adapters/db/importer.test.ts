@@ -22,6 +22,7 @@ import {
   account,
   courseModules,
   courses,
+  marketingMemberSyncJobs,
   memberEvents,
   memberCourseProgress,
   members,
@@ -349,6 +350,7 @@ describe('importer', () => {
     expect(memberRow?.email).toBe(EMAIL_1);
     const authUsers = await db.select().from(user).where(eq(user.email, EMAIL_1));
     expect(memberRow?.userId).toBe(authUsers[0]?.id);
+    expect(await db.select().from(marketingMemberSyncJobs).where(and(eq(marketingMemberSyncJobs.tenantId, TENANT_ID), eq(marketingMemberSyncJobs.memberId, memberRow?.id ?? '')))).toMatchObject([{ status: 'pending' }]);
 
     const credentialRows = await db
       .select()

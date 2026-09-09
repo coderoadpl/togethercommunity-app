@@ -32,6 +32,9 @@ reconciliation must therefore finish before the next billing cycle.
 `adapters/db/repositories.ts` performs one transaction that:
 
 - records the erasure in `erasedMemberImports`;
+- pseudonymizes linked marketing contacts, clears names/source metadata/tags,
+  unlinks memberships, purges matching staged import payloads and raw CSV, and
+  cancels affected unfinished batches while retaining HMAC suppression and receipts;
 - end-dates product grants and marks member subscriptions canceled locally;
 - replaces post author labels with `deletedMemberDisplay()`;
 - relabels the erased side of every `dm_reports` row — `reporter_display`,

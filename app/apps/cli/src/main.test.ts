@@ -1,3 +1,4 @@
+import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import { appError, err, ok, PASSWORD_MIN_LENGTH, type AppError, type Result } from '#core/domain/index.js';
@@ -107,7 +108,8 @@ vi.mock('./config.js', () => ({
   }),
 }));
 
-vi.mock('#core/client/index.js', () => ({
+vi.mock('#core/client/index.js', async (importOriginal) => ({
+  ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
     listCourses: h.listCourses,
     listModules: h.listModules,

@@ -74,7 +74,7 @@ export const PublicSpaceThreadPage = ({
   }
 
   const root = thread.data?.discussion.threads[0];
-  const headline = root === undefined ? null : threadHeadline(root.body);
+  const headline = root === undefined ? null : threadHeadline(root.bodyPlainText);
 
   return (
     <MemberSurface

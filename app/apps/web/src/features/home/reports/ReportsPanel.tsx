@@ -14,6 +14,7 @@ import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { PostContent } from '../../../components/ui/PostContent.js';
 import { PostBody } from '../../../theme.js';
 
 type PendingAction = { reportId: string; action: 'dismiss' | 'delete-post' };
@@ -208,7 +209,9 @@ const PostReportsSection = () => {
                 />
               ))}
             </Stack>
-            <Typography>{translateDeletedContent(post.body, t)}</Typography>
+            {post.deletedAt === null
+              ? <PostContent html={post.bodyHtml} format={post.bodyFormat} />
+              : <Typography>{translateDeletedContent(post.body, t)}</Typography>}
             <Typography variant="body2" color="text.secondary">
               {translateDeletedContent(post.authorDisplay, t)}{spaceName === null ? '' : ` · ${spaceName}`}
             </Typography>

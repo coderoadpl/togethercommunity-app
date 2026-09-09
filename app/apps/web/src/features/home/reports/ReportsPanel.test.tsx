@@ -41,7 +41,11 @@ describe('ReportsPanel', () => {
                 rootPostId: 'post-1',
                 authorDisplay: 'Author',
                 authorIsStaff: false,
-                body: 'Post body',
+                authorAvatarUrl: null,
+                body: '**Post** body',
+                bodyFormat: 'markdown',
+                bodyHtml: '<p><strong>Post</strong> body</p>',
+                bodyPlainText: 'Post body',
                 createdAt: '2026-07-29T00:00:00.000Z',
                 editedAt: null,
                 deletedAt: null,
@@ -55,11 +59,14 @@ describe('ReportsPanel', () => {
             openCount: 1,
           },
         })),
+      http.get('/api/dm-reports', () =>
+        HttpResponse.json({ ok: true, data: { reports: [], nextCursor: null, openCount: 0 } })),
     );
 
     renderWithProviders(<ReportsPanel />);
 
     expect(await screen.findByText(en.community.reportReasonOffTopic)).toBeInTheDocument();
+    expect(screen.getByText('Post')).toHaveProperty('tagName', 'STRONG');
     expect(screen.queryByText('off-topic')).not.toBeInTheDocument();
   });
 

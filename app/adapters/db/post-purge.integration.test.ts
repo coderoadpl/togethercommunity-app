@@ -30,7 +30,7 @@ afterAll(async () => { await close?.(); });
 const post = (id: string, overrides: Partial<Post> = {}): Post => ({
   id, tenantId: TENANT, contextKind: 'space', contextId: 'space', parentPostId: null,
   rootPostId: id, authorUserId: 'author', authorDisplay: 'Author', authorIsStaff: false,
-  body: 'Original content', createdAt: NOW, editedAt: null, deletedAt: null, pinnedAt: null,
+  body: 'Original content', bodyFormat: 'plain', createdAt: NOW, editedAt: null, deletedAt: null, pinnedAt: null,
   ...overrides,
 });
 const audit = (id: string): TenantAuditEventInput => ({

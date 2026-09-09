@@ -2,8 +2,6 @@ import {
   err,
   memberHomeFeedInputSchema,
   ok,
-  renderPost,
-  toPublicPost,
   validation,
   type AppError,
   type MemberHomeFeed,
@@ -11,6 +9,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { toRenderedPublicPost } from '../post-content.js';
 import type {
   AvatarSourceReader,
   Clock,
@@ -63,8 +62,8 @@ export const getMemberHomeFeed = async (
 
   return ok({
     items: listed.threads.map((thread) => ({
-      ...toPublicPost(
-        renderPost(thread.post),
+      ...toRenderedPublicPost(
+        thread.post,
         actor.value.userId,
         avatarUrls.get(thread.post.authorUserId) ?? null,
       ),

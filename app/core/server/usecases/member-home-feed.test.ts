@@ -79,6 +79,7 @@ const post = (
   authorDisplay: 'Autor',
   authorIsStaff: false,
   body: `Body ${id}`,
+  bodyFormat: 'plain',
   createdAt,
   editedAt: null,
   deletedAt: null,

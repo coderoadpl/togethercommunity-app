@@ -10,7 +10,7 @@ import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
+import { PostContent } from '../../components/ui/PostContent.js';
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
@@ -107,9 +107,7 @@ const FeedPost = ({
               />
             </Box>
           ) : (
-            <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`post-body-${item.id}`}>
-              <LinkifiedText text={item.body} />
-            </PostBody>
+            <PostContent html={item.bodyHtml} format={item.bodyFormat} sx={{ mt: '0.75rem' }} data-testid={`post-body-${item.id}`} />
           )}
         </Box>
 
@@ -380,7 +378,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           disabled={banned}
           surface
           onSubmit={(body, reset) =>
-            create.mutate({ contextKind: 'space', contextId: spaceId, body }, { onSuccess: () => reset() })
+            create.mutate({ contextKind: 'space', contextId: spaceId, body, bodyFormat: 'plain' }, { onSuccess: () => reset() })
           }
           testId="space-composer"
         />

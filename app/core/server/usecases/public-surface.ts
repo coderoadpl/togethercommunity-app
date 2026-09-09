@@ -7,9 +7,7 @@ import {
   ok,
   publicSpaceEventRefSchema,
   publicSpaceThreadInputSchema,
-  renderPost,
   toAnonymousSpaceEvent,
-  toPublicPost,
   validation,
   type AppError,
   type CourseLesson,
@@ -38,6 +36,7 @@ import type {
   SpaceRepository,
   TenantRepository,
 } from '../ports.js';
+import { toRenderedPublicPost } from '../post-content.js';
 import { buildCourseStructure, type AccessLookup } from './access.js';
 import { nestReplies } from './community.js';
 
@@ -252,14 +251,14 @@ export const getPublicSpaceFeed = async (
   return ok({
     spaceId: space.value.id,
     pinned: pinnedPosts.map((post, index) => ({
-      ...toPublicPost(renderPost(post), NO_VIEWER),
+      ...toRenderedPublicPost(post, NO_VIEWER),
       replyCount: pinnedReplies[index]?.length ?? 0,
       reactions: reactions.get(post.id) ?? [],
     })),
     items: listed.threads
       .filter((thread) => !pinnedIds.has(thread.post.id))
       .map((thread) => ({
-        ...toPublicPost(renderPost(thread.post), NO_VIEWER),
+        ...toRenderedPublicPost(thread.post, NO_VIEWER),
         replyCount: thread.replyCount,
         reactions: reactions.get(thread.post.id) ?? [],
       })),
@@ -350,7 +349,7 @@ export const getPublicSpaceThread = async (
   return ok({
     threads: [
       {
-        ...toPublicPost(renderPost(root), NO_VIEWER),
+        ...toRenderedPublicPost(root, NO_VIEWER),
         replyCount: replies.length,
         replies: nestReplies(root.id, replies, NO_VIEWER),
       },

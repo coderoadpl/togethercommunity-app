@@ -41,6 +41,9 @@ const item = (
   spaceId: 's1',
   spaceName: 'General',
   ...overrides,
+  bodyFormat: overrides.bodyFormat ?? 'plain',
+  bodyHtml: overrides.bodyHtml ?? overrides.body ?? `Content ${id}`,
+  bodyPlainText: overrides.bodyPlainText ?? overrides.body ?? `Content ${id}`,
 });
 
 const okFeed = (
@@ -161,7 +164,14 @@ describe('HomeFeedSection', () => {
       http.post('/api/posts/update', async ({ request }) => {
         const input = updatePostInputSchema.parse(await request.json());
         expect(input.id).toBe('p1');
-        post = { ...post, body: input.body, editedAt: '2026-08-12T11:00:00.000Z' };
+        expect(input.bodyFormat).toBeUndefined();
+        post = {
+          ...post,
+          body: input.body,
+          bodyHtml: input.body,
+          bodyPlainText: input.body,
+          editedAt: '2026-08-12T11:00:00.000Z',
+        };
         return HttpResponse.json({ ok: true, data: { post } });
       }),
     );
@@ -189,7 +199,7 @@ describe('HomeFeedSection', () => {
               reactions: [{ emoji: '👍', count: 2, viewerReacted: false }],
               authorAvatarUrl: 'https://cdn.test/ada.png',
             }),
-            item('p2', { spaceId: 's2', spaceName: 'Club', contextId: 's2', body: 'See https://courses.example.org/guide.' }),
+            item('p2', { spaceId: 's2', spaceName: 'Club', contextId: 's2', body: 'See https://courses.example.org/guide.', bodyHtml: `See <a href="https://courses.example.org/guide" target="_blank" rel="noopener noreferrer nofollow ugc">https://courses.example.org/guide</a>.` }),
           ],
           nextCursor: null,
         },
@@ -228,7 +238,7 @@ describe('HomeFeedSection', () => {
     });
     expect(bodyLink).toHaveAttribute('href', 'https://courses.example.org/guide');
     expect(bodyLink).toHaveAttribute('target', '_blank');
-    expect(bodyLink).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(bodyLink).toHaveAttribute('rel', 'noopener noreferrer nofollow ugc');
     expect(within(other).queryByTestId('user-avatar-image')).toBeNull();
     expect(within(other).getByTestId('user-avatar')).toHaveTextContent('AN');
     expect(within(other).getByTestId('home-feed-space-p2')).toHaveAttribute('href', '/community/s2');

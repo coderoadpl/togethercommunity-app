@@ -11,10 +11,8 @@ import {
   ok,
   pinPostInputSchema,
   reactToPostInputSchema,
-  renderPost,
   setSpaceArchivedInputSchema,
   spaceSchema,
-  toPublicPost,
   updateSpaceInputSchema,
   validation,
   type AppError,
@@ -30,6 +28,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { toRenderedPublicPost } from '../post-content.js';
 import type {
   AvatarSourceReader,
   Clock,
@@ -294,8 +293,8 @@ export const getSpaceFeed = async (
   return ok({
     spaceId: space.value.id,
     pinned: pinnedPosts.map((post, index) => ({
-      ...toPublicPost(
-        renderPost(post),
+      ...toRenderedPublicPost(
+        post,
         actor.value.userId,
         avatarUrls.get(post.authorUserId) ?? null,
       ),
@@ -305,8 +304,8 @@ export const getSpaceFeed = async (
     items: listed.threads
       .filter((thread) => !pinnedIds.has(thread.post.id))
       .map((thread) => ({
-        ...toPublicPost(
-          renderPost(thread.post),
+        ...toRenderedPublicPost(
+          thread.post,
           actor.value.userId,
           avatarUrls.get(thread.post.authorUserId) ?? null,
         ),

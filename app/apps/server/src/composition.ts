@@ -441,6 +441,8 @@ export interface AppDeps {
   importUsers: ImportUsersRepository;
   contentHash: ContentHash;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
+  importDailyMemberRecordLimit: number;
+  importDailyRecordLimit: number;
   rateLimitBuckets: PublicRateLimitRepository;
   publicRateLimitPolicies: PublicRateLimitPolicies;
   m2mTransactionalRateLimits: { perMinute: number; perDay: number };
@@ -1331,6 +1333,8 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     importUsers,
     contentHash,
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
+    importDailyMemberRecordLimit: env.IMPORT_DAILY_MEMBER_RECORD_LIMIT,
+    importDailyRecordLimit: env.IMPORT_DAILY_RECORD_LIMIT,
     rateLimitBuckets: publicRateLimitBuckets,
     publicRateLimitPolicies: selectPublicRateLimitPolicies(env),
     m2mTransactionalRateLimits: {

@@ -151,6 +151,8 @@ export const envSchema = z
     PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE: optionalCount,
+    IMPORT_DAILY_MEMBER_RECORD_LIMIT: z.coerce.number().int().positive().default(10_000),
+    IMPORT_DAILY_RECORD_LIMIT: z.coerce.number().int().positive().default(20_000),
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: z.coerce.number().int().positive().default(60),
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY: z.coerce.number().int().positive().default(5000),
     NOTIFY_EMAIL: z

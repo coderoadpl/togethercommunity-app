@@ -947,6 +947,11 @@ export const en: Messages = {
     storageProbeUnavailable: 'Check the endpoint URL and network access, then run the probe again.',
   },
   products: {
+    visibilityLabel: 'Visibility',
+    listed: 'Listed',
+    unlisted: 'Unlisted',
+    visibilityHelper: 'Unlisted products are available only through a direct checkout link and stay in buyers’ libraries.',
+
     newProduct: 'New product',
     detailsHeading: 'Product details',
     titleLabel: 'Title',

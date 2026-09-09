@@ -110,6 +110,7 @@ const product: Product = {
   coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],
   legacyId: null,

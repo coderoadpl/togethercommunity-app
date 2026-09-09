@@ -330,6 +330,7 @@ export const products = pgTable(
     priceCents: integer('price_cents').notNull(),
     currency: text('currency').notNull(),
     published: boolean('published').notNull().default(false),
+    visibility: text('visibility', { enum: ['listed', 'unlisted'] }).notNull().default('listed'),
     accessItems: jsonb('access_items').$type<AccessItem[]>().notNull().default([]),
     checkoutConsentDefinitionIds: jsonb('checkout_consent_definition_ids').$type<string[]>().notNull().default([]),
     legacyId: text('legacy_id'),
@@ -339,6 +340,7 @@ export const products = pgTable(
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
     index('products_tenantId_idx').on(table.tenantId),
+    check('products_visibility_check', sql`${table.visibility} in ('listed', 'unlisted')`),
     uniqueIndex('products_tenant_slug_uidx').on(table.tenantId, table.slug),
     uniqueIndex('products_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)

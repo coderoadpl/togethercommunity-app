@@ -29,6 +29,7 @@ const product = (
   coverUrl: `https://cdn.test/${id}.jpg`,
   priceCents: 1000,
   currency: 'PLN',
+  visibility: 'listed',
   published,
   accessItems: [],
   legacyId: null,
@@ -435,4 +436,23 @@ describe('getPublicOffer', () => {
       },
     });
   });
+});
+
+
+it('excludes unlisted products from discovery and resolves only the requested checkout product', async () => {
+  const hidden: Product = { ...product('hidden', tenant.id, true), visibility: 'unlisted' };
+  const dependencies = {
+    products: fakeProducts([hidden, product('listed', tenant.id, true), product('draft', tenant.id, false)]),
+    prices: noPrices, lessons: noLessons, courses: noCourses, tenants: fakeTenants(),
+  };
+  const listing = await getPublicOffer(tenant, dependencies);
+  expect(listing.ok && listing.value.products.map((entry) => entry.id)).toEqual(['listed']);
+  for (const ref of [hidden.id, hidden.slug]) {
+    const direct = await getPublicOffer(tenant, dependencies, ref);
+    expect(direct.ok && direct.value.products.map((entry) => entry.id)).toEqual(['hidden']);
+  }
+  for (const ref of ['draft', 'missing']) {
+    const direct = await getPublicOffer(tenant, dependencies, ref);
+    expect(direct.ok && direct.value.products).toEqual([]);
+  }
 });

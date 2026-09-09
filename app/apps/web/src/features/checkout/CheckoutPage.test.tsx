@@ -673,3 +673,22 @@ describe('CheckoutPage', () => {
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
   });
 });
+
+
+it('loads a direct unlisted checkout and enables a free purchase without a payment provider', async () => {
+  server.use(
+    http.get('/api/public/offer', ({ request }) => {
+      const direct = new URL(request.url).searchParams.get('productRef') === 'course-1';
+      return HttpResponse.json({ ok: true, data: {
+        ...offerBody, products: direct ? [{ ...offerBody.products[0], priceCents: 0 }] : [],
+      } });
+    }),
+    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+      stripeConfigured: false, simulatedPaymentsEnabled: false,
+    } })),
+  );
+  renderCheckout('course-1');
+  expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+  expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+  expect(screen.queryByText(en.checkout.paymentUnavailable)).not.toBeInTheDocument();
+});

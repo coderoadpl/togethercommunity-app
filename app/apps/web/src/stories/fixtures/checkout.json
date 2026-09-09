@@ -7,6 +7,55 @@
       },
       "ok": false
     },
+    "publicOffer:[\"product-studio-course-101\"]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-course-101",
+            "marketingConsents": [],
+            "priceCents": 19900,
+            "prices": [
+              {
+                "amountCents": 19900,
+                "currency": "PLN",
+                "id": "price-product-studio-course-101",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "course-together-101",
+            "title": "Together 101 Course",
+            "type": "course"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": null,
+            "accentLight": null,
+            "faviconUrl": null,
+            "logoDarkUrl": null,
+            "logoUrl": null
+          },
+          "defaultLanguage": "en",
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Studio Demo",
+          "slug": "studio",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    },
     "publicOffer:[]": {
       "ok": true,
       "value": {

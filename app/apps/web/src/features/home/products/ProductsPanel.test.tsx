@@ -34,6 +34,7 @@ const initialProducts: Product[] = [
     coverUrl: null,
     priceCents: 2500,
     currency: 'PLN',
+    visibility: 'listed',
     published: false,
     accessItems: [{ level: 'course', courseId: 'c1' }],
     legacyId: null,
@@ -83,6 +84,7 @@ const renderProductsPanel = async (
         coverUrl: input.coverUrl,
         priceCents: input.priceCents,
         currency: input.currency,
+        visibility: 'listed',
         published: false,
         accessItems: input.accessItems,
         legacyId: null,
@@ -98,6 +100,7 @@ const renderProductsPanel = async (
       if (existing === undefined) return HttpResponse.json({ ok: false }, { status: 404 });
       const product: Product = {
         ...existing,
+        visibility: input.visibility ?? existing.visibility,
         title: input.title ?? existing.title,
         description: input.description ?? existing.description,
         coverUrl: input.coverUrl === undefined ? existing.coverUrl : input.coverUrl,
@@ -243,7 +246,7 @@ describe('ProductsPanel', () => {
     await userEvent.click(publish);
     expect(await screen.findByText(en.products.publishConfirmIntro)).toBeInTheDocument();
     expect(screen.getByRole('group', { name: en.products.publishPublicUrl })).toHaveTextContent(
-      `${window.location.origin}/checkout/draft-course`,
+      `${window.location.origin}/checkout/draft-1`,
     );
     expect(screen.getByText(/25\.00/u)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: en.products.publishConfirm }));
@@ -487,7 +490,7 @@ describe('ProductsPanel', () => {
 
     expect(await screen.findByText(en.products.checkoutLinkCopyFailed)).toBeInTheDocument();
     expect(screen.getByRole('group', { name: en.products.publishPublicUrl })).toHaveTextContent(
-      `${window.location.origin}/checkout/draft-course`,
+      `${window.location.origin}/checkout/draft-1`,
     );
     expect(screen.queryByText(en.products.checkoutLinkCopied)).not.toBeInTheDocument();
   });
@@ -495,6 +498,10 @@ describe('ProductsPanel', () => {
   it('updates product details while keeping the slug read-only', async () => {
     const rendered = await renderProductsPanel([], '/panel/products/draft-1');
 
+    const visibility = await screen.findByRole('combobox', { name: en.products.visibilityLabel });
+    expect(visibility).toHaveAccessibleDescription(en.products.visibilityHelper);
+    await userEvent.click(visibility);
+    await userEvent.click(screen.getByRole('option', { name: en.products.unlisted }));
     const title = await screen.findByLabelText(en.products.titleLabel);
     await userEvent.clear(title);
     await userEvent.type(title, 'Updated course offer');
@@ -508,6 +515,7 @@ describe('ProductsPanel', () => {
 
     expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
     expect(rendered.updatedProduct()).toMatchObject({
+      visibility: 'unlisted',
       title: 'Updated course offer',
       slug: 'draft-course',
       coverUrl: 'https://cdn.test/new-cover.jpg',
@@ -562,4 +570,13 @@ describe('ProductsPanel', () => {
     await waitFor(() => expect(screen.getByTestId('price-row')).toHaveTextContent(en.products.inactive));
     expect(screen.queryByRole('button', { name: en.products.deactivate })).not.toBeInTheDocument();
   });
+});
+
+
+it('keeps unlisted products in Studio with a chip and copyable checkout link', async () => {
+  const base = initialProducts[0];
+  if (base === undefined) throw new Error('Missing fixture');
+  await renderProductsPanel([], '/panel/products', [{ ...base, published: true, visibility: 'unlisted' }]);
+  expect(await screen.findByText(en.products.unlisted)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: en.products.copyCheckoutLink })).toBeEnabled();
 });

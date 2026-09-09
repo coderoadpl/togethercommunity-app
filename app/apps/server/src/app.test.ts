@@ -122,6 +122,7 @@ const product = (input: {
   coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
+  visibility: 'listed',
   published: input.published,
   accessItems: [],
   legacyId: null,
@@ -7697,5 +7698,68 @@ describe('staff member self-service routes', () => {
     }
     expect(saveProgress).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lastViewedLessonId: 'lesson-1' }));
     expect(createMember).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('unlisted and free checkout', () => {
+  const hidden: Product = {
+    ...product({ id: 'hidden', tenantId: 't-acme', title: 'Private offer', published: true }),
+    visibility: 'unlisted', priceCents: 0,
+  };
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+
+  it('omits unlisted products from listings but serves direct checkout by id and slug with distinct ETags', async () => {
+    const app = buildApp(deps({ products: [hidden] }));
+    const listed = await app.request(API_PATHS.publicOffer, { headers });
+    expect(await listed.json()).toMatchObject({ ok: true, data: { products: [] } });
+    const direct = await app.request(`${API_PATHS.publicOffer}?productRef=hidden`, {
+      headers: { ...headers, 'if-none-match': listed.headers.get('etag') ?? '' },
+    });
+    expect(direct.status).toBe(200);
+    expect(await direct.json()).toMatchObject({ ok: true, data: { products: [{ id: 'hidden' }] } });
+    expect(direct.headers.get('etag')).not.toBe(listed.headers.get('etag'));
+    const invalid = await app.request(`${API_PATHS.publicOffer}?productRef=`, { headers });
+    expect(invalid.status).toBe(400);
+  });
+
+  it('fulfills a guest zero-price purchase with an order, grant and consent without Stripe or dev payments', async () => {
+    const base = deps({ products: [hidden] });
+    const createSession = vi.fn(base.payment.createCheckoutSession);
+    base.payment.createCheckoutSession = createSession;
+    const createOrder = vi.fn(base.orders.create);
+    base.orders.create = createOrder;
+    const recordConsent = vi.fn(base.consents.record);
+    base.consents.record = recordConsent;
+    base.tenants.findSettings = async () => ({
+      name: 'Acme', logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null,
+      faviconUrl: null, socialLinks: [], billingPortalUrl: null,
+      bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
+      ogTitle: null, ogDescription: null, ogImageUrl: null,
+      supportEmail: null, supportUrl: null, termsUrl: 'https://acme.example/terms',
+      privacyUrl: 'https://acme.example/privacy', defaultHomeSpaceId: null,
+    });
+    const createGrant = vi.fn(async () => true);
+    const enrollment = base.enrollmentTransaction.run;
+    base.enrollmentTransaction.run = (operation) => enrollment((transaction) => operation({
+      ...transaction, grants: { ...transaction.grants, createGrant },
+    }));
+    const app = buildApp(base);
+    const start = (termsAccepted: boolean) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST', headers,
+      body: JSON.stringify({ productId: hidden.id, email: 'guest@example.com', termsAccepted }),
+    });
+    expect((await start(false)).status).toBe(400);
+    expect(createGrant).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
+    const response = await start(true);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: {
+      free: true, url: 'http://acme.localhost:48730/checkout/hidden?status=success&purchase_kind=one_time',
+    } });
+    expect(createSession).not.toHaveBeenCalled();
+    expect(createGrant).toHaveBeenCalledOnce();
+    expect(createOrder).toHaveBeenCalledWith('t-acme', expect.objectContaining({ productId: hidden.id, amountCents: 0, status: 'paid' }));
+    expect(recordConsent).toHaveBeenCalledWith('t-acme', expect.objectContaining({ email: 'guest@example.com' }));
   });
 });

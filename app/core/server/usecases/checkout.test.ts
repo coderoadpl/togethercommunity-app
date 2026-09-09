@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   err,
@@ -31,6 +31,7 @@ const product: Product = {
   coverUrl: null,
   priceCents: 4900,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [],
   legacyId: null,
@@ -446,4 +447,51 @@ describe('createCheckoutSession', () => {
         'https://alpha.example.com/checkout/product-1?status=success&purchase_kind=subscription&session_id={CHECKOUT_SESSION_ID}',
     });
   });
+});
+
+
+it.each([false, true])('starts an unlisted zero-price checkout without Stripe (explicit price: %s)', async (explicitPrice) => {
+  const base = checkoutDeps();
+  const createSession = vi.fn(base.payment.createCheckoutSession);
+  const freeProduct: Product = { ...product, priceCents: explicitPrice ? 4900 : 0, visibility: 'unlisted' };
+  const price: ProductPrice = { ...recurringPrice, kind: 'one_time', interval: null, amountCents: 0 };
+  const result = await (await import('./checkout.js')).createCheckoutSession(
+    tenant, 'https://alpha.example.com',
+    { productId: product.id, email: 'guest@example.com', ...(explicitPrice ? { priceId: price.id } : {}) },
+    {
+      ...base,
+      products: { ...base.products, findById: async () => freeProduct },
+      prices: { ...base.prices, findById: async () => price },
+      tenantSecrets: { ...base.tenantSecrets, findByKey: async () => null },
+      payment: { ...base.payment, createCheckoutSession: createSession },
+    },
+  );
+  expect(result).toEqual({ ok: true, value: {
+    free: true, url: `https://alpha.example.com/checkout/${product.id}?status=success&purchase_kind=one_time`,
+  } });
+  expect(createSession).not.toHaveBeenCalled();
+});
+
+it('requires an email for a free checkout', async () => {
+  const base = checkoutDeps();
+  const result = await (await import('./checkout.js')).createCheckoutSession(
+    tenant, 'https://alpha.example.com', { productId: product.id },
+    { ...base, products: { ...base.products, findById: async () => ({ ...product, priceCents: 0 }) } },
+  );
+  expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+});
+
+
+it('allows direct paid checkout for an unlisted product', async () => {
+  const base = checkoutDeps();
+  const createSession = vi.fn(base.payment.createCheckoutSession);
+  const result = await (await import('./checkout.js')).createCheckoutSession(
+    tenant, 'https://alpha.example.com', { productId: product.id, email: 'guest@example.com' },
+    { ...base,
+      products: { ...base.products, findById: async () => ({ ...product, visibility: 'unlisted' }) },
+      payment: { ...base.payment, createCheckoutSession: createSession },
+    },
+  );
+  expect(result).toMatchObject({ ok: true, value: { free: false } });
+  expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ productId: product.id, priceCents: product.priceCents }));
 });

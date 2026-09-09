@@ -827,6 +827,13 @@
       "when": 1788928689744,
       "tag": "0117_english_default_language",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1788928689745,
+      "tag": "0118_product_visibility",
+      "breakpoints": true
     }
   ]
 }

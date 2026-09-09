@@ -858,6 +858,10 @@ export interface Messages {
     storageProbeUnavailable: string;
   };
   products: {
+    visibilityLabel: string;
+    visibilityHelper: string;
+    listed: string;
+    unlisted: string;
     newProduct: string;
     detailsHeading: string;
     titleLabel: string;

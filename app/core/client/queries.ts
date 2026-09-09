@@ -604,10 +604,10 @@ export const tenantsQuery = (api: ApiClient) =>
     call: ({ signal }) => api.listTenants(signal),
   });
 
-export const publicOfferQuery = (api: ApiClient) =>
+export const publicOfferQuery = (api: ApiClient, productRef?: string) =>
   defineQuery({
-    queryKey: publicOfferScopes.all(),
-    call: ({ signal }) => api.publicOffer(signal),
+    queryKey: productRef === undefined ? publicOfferScopes.all() : [...publicOfferScopes.all(), productRef],
+    call: ({ signal }) => api.publicOffer(signal, productRef),
   });
 
 export const publicOfferInvalidates = () => ({ queryKey: publicOfferScopes.all() });

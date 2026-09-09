@@ -87,7 +87,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
   const { language } = useLanguage();
   const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
   const statusPage = checkoutStatus === 'success' || checkoutStatus === 'cancelled';
-  const offer = useQuery({ ...actions.publicOffer, enabled: !statusPage });
+  const offer = useQuery({ ...actions.checkoutOffer(productRef), enabled: !statusPage });
   const paymentConfig = useQuery({ ...actions.publicPaymentConfig, enabled: !statusPage });
   const [email, setEmail] = useState('');
   const [invoiceVisible, setInvoiceVisible] = useState(false);
@@ -629,7 +629,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
               </FinePrint>
             </Stack>
           ) : null}
-          {!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
+          {payableCents > 0 && !paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
             <Alert severity="error">{t.checkout.paymentUnavailable}</Alert>
           ) : null}
           {checkoutSession.isError ? (

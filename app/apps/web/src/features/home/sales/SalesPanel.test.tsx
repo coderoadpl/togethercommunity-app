@@ -54,6 +54,7 @@ describe('SalesPanel', () => {
               coverUrl: null,
               priceCents: 4900,
               currency: 'PLN',
+              visibility: 'listed',
               published: true,
               accessItems: [],
               legacyId: null,

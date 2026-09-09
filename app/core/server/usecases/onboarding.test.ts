@@ -47,6 +47,7 @@ const product = (id: string, published: boolean): Product => ({
   coverUrl: null,
   priceCents: 9900,
   currency: 'PLN',
+  visibility: 'listed',
   published,
   accessItems: [],
   legacyId: null,

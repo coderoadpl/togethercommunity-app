@@ -93,6 +93,7 @@ const draft = (id: string, tenantId: string, published = false): Product => ({
   coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
+  visibility: 'listed',
   published,
   accessItems: [],
   legacyId: null,
@@ -242,9 +243,9 @@ describe('products use-cases', () => {
     ] as const) {
       expect(await createProduct(
         { identity: identity('t-acme', 'owner') },
-        { type, slug, title: slug, description: '<p>Rich description</p>', coverUrl: 'https://cdn.test/cover.jpg', priceCents: 0 },
+        { type, slug, visibility: 'unlisted', title: slug, description: '<p>Rich description</p>', coverUrl: 'https://cdn.test/cover.jpg', priceCents: 0 },
         createDeps,
-      )).toMatchObject({ ok: true, value: { type, slug } });
+      )).toMatchObject({ ok: true, value: { type, slug, visibility: 'unlisted' } });
     }
 
     expect(store.map(({ type, slug }) => ({ type, slug }))).toEqual([
@@ -398,11 +399,11 @@ describe('products use-cases', () => {
 
     const result = await updateProduct(
       { identity: identity('t-acme', 'owner') },
-      { id: 'p1', title: 'Updated published product' },
+      { id: 'p1', title: 'Updated published product', visibility: 'unlisted' },
       deps(repo, ['version-1']),
     );
 
-    expect(result).toMatchObject({ ok: true, value: { title: 'Updated published product' } });
+    expect(result).toMatchObject({ ok: true, value: { title: 'Updated published product', visibility: 'unlisted', published: true } });
     expect(versions.get('t-acme')).toBe(2);
   });
 });

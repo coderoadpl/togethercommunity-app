@@ -107,6 +107,7 @@ const product = (id: string, lessonIds: string[], courseId: string): Product => 
   coverUrl: null,
   priceCents: 5000,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [{ level: 'lessons', courseId, lessonIds }],
   legacyId: null,
@@ -559,7 +560,7 @@ describe('getPublicCourseStructure', () => {
   it('returns no product for draft or unrelated products', async () => {
     const result = await getPublicCourseStructure(tenant, open.id, structureDeps({
       courses: [open], modules: [], lessons: [],
-      products: [{ ...product('draft', [], open.id), published: false }, product('other', [], 'other')],
+      products: [{ ...product('draft', [], open.id), published: false }, product('other', [], 'other'), { ...product('hidden', [], open.id), visibility: 'unlisted' }],
     }));
     expect(result).toMatchObject({ ok: true, value: { offer: { product: null, salesUrl: null, supportUrl: null } } });
   });

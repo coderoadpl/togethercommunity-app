@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   newProductSchema,
+  updateProductInputSchema,
   priceMajorSchema,
   productSchema,
   productSlugFromTitle,
@@ -122,10 +123,30 @@ describe('newProductSchema', () => {
       coverUrl: null,
       priceCents: 0,
       currency: 'PLN',
+      visibility: 'listed',
       published: false,
       accessItems: [],
       legacyId: null,
       createdAt: '2026-07-01T00:00:00.000Z',
     }).success).toBe(true);
+  });
+});
+
+
+describe('product visibility', () => {
+  it('defaults legacy reads and new products to listed', () => {
+    expect(productSchema.shape.visibility.parse(undefined)).toBe('listed');
+    expect(newProductSchema.parse({ title: 'Free course', priceCents: 0 }).visibility).toBe('listed');
+    expect(updateProductInputSchema.parse({ id: 'p1' }).visibility).toBeUndefined();
+  });
+
+  it.each(['listed', 'unlisted'])('accepts %s on create and update', (visibility) => {
+    expect(newProductSchema.parse({ title: 'Course', priceCents: 0, visibility }).visibility).toBe(visibility);
+    expect(updateProductInputSchema.parse({ id: 'p1', visibility }).visibility).toBe(visibility);
+  });
+
+  it('rejects unknown visibility values', () => {
+    expect(newProductSchema.safeParse({ title: 'Course', priceCents: 0, visibility: 'private' }).success).toBe(false);
+    expect(updateProductInputSchema.safeParse({ id: 'p1', visibility: 'private' }).success).toBe(false);
   });
 });

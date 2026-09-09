@@ -123,7 +123,7 @@ const ProductRow = ({
   const deliveryError = !hasDelivery
     && !deliveryPending
     && (spacesError || (product.type === 'digital_download' && downloads.isError));
-  const checkoutUrl = `${window.location.origin}/checkout/${encodeURIComponent(product.slug)}`;
+  const checkoutUrl = `${window.location.origin}/checkout/${encodeURIComponent(product.id)}`;
   const publishBlockers = product.published
     ? []
     : [
@@ -165,6 +165,9 @@ const ProductRow = ({
             label={productTypeLabel(product.type, t)}
             data-testid={`product-type-${product.id}`}
           />
+          {product.visibility === 'unlisted' ? (
+            <Chip size="small" variant="outlined" label={t.products.unlisted} />
+          ) : null}
           {issue ? (
             <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
           ) : null}

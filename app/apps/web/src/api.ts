@@ -330,6 +330,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   removeAvatar: removeAvatarMutation(apiClient),
   memberBillingOrders: memberBillingOrdersQuery(apiClient),
   publicOffer: publicOfferQuery(apiClient),
+  checkoutOffer: (productRef: string) => publicOfferQuery(apiClient, productRef),
   publicOfferInvalidates,
   publicNavigation: publicNavigationQuery(apiClient),
   publicCourseStructure: (courseId: string) => publicCourseStructureQuery(apiClient, courseId),

@@ -363,6 +363,10 @@ const publicLegalUrlsSchema = z.object({
   privacyUrl: z.string().nullable().default(null),
 });
 
+export const publicOfferQuerySchema = z.object({
+  productRef: z.string().min(1).max(100).optional(),
+});
+
 export const publicOfferOutputSchema = z.object({
   tenant: z.object({
     slug: z.string(),

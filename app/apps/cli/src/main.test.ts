@@ -14,6 +14,8 @@ interface Hoisted {
   config: CliConfig;
   loadError: Error | null;
   saved: CliConfig[];
+  createProduct: ReturnType<typeof vi.fn>;
+  updateProduct: ReturnType<typeof vi.fn>;
   listCourses: ReturnType<typeof vi.fn>;
   listModules: ReturnType<typeof vi.fn>;
   listLessons: ReturnType<typeof vi.fn>;
@@ -50,6 +52,8 @@ const h = vi.hoisted(
     },
     loadError: null,
     saved: [],
+    createProduct: vi.fn(),
+    updateProduct: vi.fn(),
     listCourses: vi.fn(),
     listModules: vi.fn(),
     listLessons: vi.fn(),
@@ -117,6 +121,8 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    createProduct: h.createProduct,
+    updateProduct: h.updateProduct,
     listCourses: h.listCourses,
     listModules: h.listModules,
     listLessons: h.listLessons,
@@ -174,6 +180,8 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.createProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
+  h.updateProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.listCourses.mockReset();
   h.listModules.mockReset();
   h.listLessons.mockReset();
@@ -914,4 +922,17 @@ describe('tenant accent settings', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('dark accent: #F5C842'));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('light accent: #786000'));
   });
+});
+
+
+it('passes visibility through product create and update', async () => {
+  await run('--json', 'product', 'create', '--title', 'Course', '--price-cents', '0', '--visibility', 'unlisted');
+  expect(h.createProduct).toHaveBeenCalledWith(expect.objectContaining({ priceCents: 0, visibility: 'unlisted' }));
+  await run('--json', 'product', 'update', 'product-1', '--visibility', 'listed');
+  expect(h.updateProduct).toHaveBeenCalledWith({ id: 'product-1', visibility: 'listed' });
+});
+
+it('rejects invalid visibility before invoking the product client', async () => {
+  await run('--json', 'product', 'update', 'product-1', '--visibility', 'private');
+  expect(h.updateProduct).not.toHaveBeenCalled();
 });

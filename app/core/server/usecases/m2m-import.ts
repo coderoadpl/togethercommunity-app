@@ -546,6 +546,7 @@ const prepareProduct = async (
       coverUrl: record.coverUrl,
       priceCents: record.priceCents,
       currency: record.currency,
+      visibility: 'listed',
       published: false,
       accessItems: accessItems.value,
       checkoutConsentDefinitionIds: [],

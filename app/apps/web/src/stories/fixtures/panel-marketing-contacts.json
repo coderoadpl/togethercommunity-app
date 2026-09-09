@@ -1,0 +1,517 @@
+{
+  "calls": {
+    "getTenantSettings:[]": {
+      "ok": true,
+      "value": {
+        "settings": {
+          "accentColor": null,
+          "accentLight": null,
+          "autoIssueInvoices": false,
+          "autoIssueInvoiceScope": "b2b_only",
+          "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
+          "bunnyStreamCdnHostname": null,
+          "bunnyStreamLibraryId": null,
+          "defaultHomeSpaceId": "space-studio-community",
+          "defaultLanguage": "en",
+          "directMessagesEnabled": true,
+          "faviconUrl": null,
+          "invoiceExemptionBasis": null,
+          "invoiceExemptionBasisKind": null,
+          "invoiceSellerAddress": null,
+          "invoiceSellerName": null,
+          "invoiceVatMode": "rate",
+          "invoiceVatRatePercent": null,
+          "invoicingProvider": null,
+          "logoDarkUrl": null,
+          "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
+          "name": "Studio Demo",
+          "ogDescription": null,
+          "ogImageUrl": null,
+          "ogTitle": null,
+          "privacyUrl": null,
+          "socialLinks": [],
+          "supportConfigured": false,
+          "supportEmail": null,
+          "supportUrl": null,
+          "termsUrl": null,
+          "videoAutoplayDefault": false
+        }
+      }
+    },
+    "listDmReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "nextCursor": null,
+        "openCount": 0,
+        "reports": []
+      }
+    },
+    "listMarketingConsentDefinitions:[]": {
+      "ok": true,
+      "value": {
+        "definitions": [
+          {
+            "channel": "email",
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "documentRef": {
+              "mode": "url",
+              "url": "https://courses.example.org/privacy"
+            },
+            "doubleOptIn": false,
+            "id": "definition-directory-news",
+            "key": "directory-news",
+            "kind": "optional_marketing",
+            "status": "active",
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "channel": "email",
+            "createdAt": "2026-06-06T12:00:00.000Z",
+            "documentRef": {
+              "mode": "url",
+              "url": "https://studio.example.test/privacy"
+            },
+            "doubleOptIn": true,
+            "id": "consent-definition-studio-news",
+            "key": "news",
+            "kind": "optional_marketing",
+            "status": "active",
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-06-06T12:00:00.000Z"
+          }
+        ]
+      }
+    },
+    "listMarketingContacts:[{\"archived\":false,\"consentDefinitionId\":\"definition-directory-news\",\"limit\":50}]": {
+      "ok": true,
+      "value": {
+        "contacts": [
+          {
+            "archivedAt": null,
+            "consentState": "none",
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "displayName": "Blocked Contact",
+            "email": "blocked@example.org",
+            "firstName": null,
+            "id": "contact-8d030bfa4ead",
+            "lastName": null,
+            "listKeys": [
+              "newsletter"
+            ],
+            "memberId": null,
+            "source": "import",
+            "suppressionReason": "unsubscribe_global",
+            "tags": [
+              "launch"
+            ],
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "consentState": "active",
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "displayName": "Anna Example",
+            "email": "anna@example.org",
+            "firstName": null,
+            "id": "contact-a3bf86238a1c",
+            "lastName": null,
+            "listKeys": [
+              "newsletter"
+            ],
+            "memberId": null,
+            "source": "import",
+            "suppressionReason": null,
+            "tags": [
+              "launch",
+              "news"
+            ],
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "consentState": "none",
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "displayName": "Studio Owner",
+            "email": "creator@together.dev",
+            "firstName": null,
+            "id": "contact-f9e5468247b5",
+            "lastName": null,
+            "listKeys": [],
+            "memberId": "fixture-member-9b6fd3a284cc9b9c",
+            "source": "member",
+            "suppressionReason": null,
+            "tags": [],
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "listMarketingContacts:[{\"archived\":false,\"limit\":50}]": {
+      "ok": true,
+      "value": {
+        "contacts": [
+          {
+            "archivedAt": null,
+            "consentState": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "displayName": "Blocked Contact",
+            "email": "blocked@example.org",
+            "firstName": null,
+            "id": "contact-8d030bfa4ead",
+            "lastName": null,
+            "listKeys": [
+              "newsletter"
+            ],
+            "memberId": null,
+            "source": "import",
+            "suppressionReason": "unsubscribe_global",
+            "tags": [
+              "launch"
+            ],
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "consentState": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "displayName": "Anna Example",
+            "email": "anna@example.org",
+            "firstName": null,
+            "id": "contact-a3bf86238a1c",
+            "lastName": null,
+            "listKeys": [
+              "newsletter"
+            ],
+            "memberId": null,
+            "source": "import",
+            "suppressionReason": null,
+            "tags": [
+              "launch",
+              "news"
+            ],
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "consentState": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "displayName": "Studio Owner",
+            "email": "creator@together.dev",
+            "firstName": null,
+            "id": "contact-f9e5468247b5",
+            "lastName": null,
+            "listKeys": [],
+            "memberId": "fixture-member-9b6fd3a284cc9b9c",
+            "source": "member",
+            "suppressionReason": null,
+            "tags": [],
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "listMarketingLists:[{\"limit\":100}]": {
+      "ok": true,
+      "value": {
+        "lists": [
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "id": "list-launch",
+            "key": "launch",
+            "kind": "dynamic",
+            "name": "Launch contacts",
+            "revision": 1,
+            "rule": {
+              "kind": "tag",
+              "match": "any",
+              "tags": [
+                "launch"
+              ]
+            },
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "id": "list-newsletter",
+            "key": "newsletter",
+            "kind": "static",
+            "name": "Newsletter",
+            "revision": 1,
+            "rule": null,
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "items": [
+          {
+            "openReportsForPost": 1,
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Free Account",
+              "authorIsStaff": false,
+              "body": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "contextId": "space-studio-community",
+              "contextKind": "space",
+              "createdAt": "2026-06-25T12:00:00.000Z",
+              "deletedAt": null,
+              "deletedBy": null,
+              "editedAt": null,
+              "id": "post-community-resources",
+              "isOwn": false,
+              "parentPostId": null,
+              "pinnedAt": null,
+              "rootPostId": "post-community-resources",
+              "tenantId": "tenant-studio"
+            },
+            "report": {
+              "createdAt": "2026-06-26T12:00:00.000Z",
+              "id": "report-studio-resources",
+              "note": "This post looks like an advertisement for an external service.",
+              "postId": "post-community-resources",
+              "reason": "off-topic",
+              "reporterDisplay": "Active Student",
+              "reporterUserId": "user-student-active",
+              "resolvedAt": null,
+              "resolvedByUserId": null,
+              "signals": null,
+              "source": "member",
+              "status": "open",
+              "tenantId": "tenant-studio"
+            },
+            "spaceName": "Community"
+          }
+        ],
+        "nextCursor": null,
+        "openCount": 1
+      }
+    },
+    "me:[]": {
+      "ok": true,
+      "value": {
+        "avatarUrl": null,
+        "email": "creator@together.dev",
+        "emailVerified": true,
+        "impersonation": null,
+        "name": "Studio Creator",
+        "tenant": {
+          "banned": false,
+          "displayName": null,
+          "dmOptOut": false,
+          "id": "tenant-studio",
+          "language": null,
+          "memberId": "fixture-member-9b6fd3a284cc9b9c",
+          "name": "Studio Demo",
+          "slug": "studio",
+          "staffRole": "owner",
+          "videoAutoplay": null
+        },
+        "userId": "fixture-user-f9e5468247b51d08"
+      }
+    },
+    "publicOffer:[]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-course-101",
+            "marketingConsents": [],
+            "priceCents": 19900,
+            "prices": [
+              {
+                "amountCents": 19900,
+                "currency": "PLN",
+                "id": "price-product-studio-course-101",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "course-together-101",
+            "title": "Together 101 Course",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Full access to every module in JavaScript from Scratch.",
+            "id": "product-js-full",
+            "marketingConsents": [],
+            "priceCents": 39900,
+            "prices": [
+              {
+                "amountCents": 39900,
+                "currency": "PLN",
+                "id": "price-product-js-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-full",
+            "title": "JavaScript Course - full access",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Full access to React in Practice.",
+            "id": "product-react-full",
+            "marketingConsents": [],
+            "priceCents": 49900,
+            "prices": [
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-product-react-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "react-full",
+            "title": "React in Practice - full access",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Access to the DOM module of the JavaScript course.",
+            "id": "product-js-dom-module",
+            "marketingConsents": [],
+            "priceCents": 9900,
+            "prices": [
+              {
+                "amountCents": 9900,
+                "currency": "PLN",
+                "id": "price-product-js-dom-module",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-dom-module",
+            "title": "DOM Module Pack",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
+            "id": "product-free-preview",
+            "marketingConsents": [],
+            "priceCents": 0,
+            "prices": [
+              {
+                "amountCents": 0,
+                "currency": "PLN",
+                "id": "price-product-free-preview",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "free-preview",
+            "title": "Free preview",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
+            "id": "product-club",
+            "marketingConsents": [],
+            "priceCents": 4900,
+            "prices": [
+              {
+                "amountCents": 4900,
+                "currency": "PLN",
+                "id": "price-club-monthly",
+                "interval": "month",
+                "kind": "recurring"
+              },
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-club-yearly",
+                "interval": "year",
+                "kind": "recurring"
+              }
+            ],
+            "slug": "club",
+            "title": "Studio Club - subscription",
+            "type": "membership"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Exercises and checklists for independent practice after purchase.",
+            "id": "product-download-workbook",
+            "marketingConsents": [],
+            "priceCents": 7900,
+            "prices": [
+              {
+                "amountCents": 7900,
+                "currency": "PLN",
+                "id": "price-product-download-workbook",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "download-workbook",
+            "title": "Creator Workbook",
+            "type": "digital_download"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": null,
+            "accentLight": null,
+            "faviconUrl": null,
+            "logoDarkUrl": null,
+            "logoUrl": null
+          },
+          "defaultLanguage": "en",
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Studio Demo",
+          "slug": "studio",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    },
+    "unreadNotificationCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    }
+  },
+  "principal": "creator@together.dev",
+  "route": "/panel/marketing/contacts",
+  "scenario": "panel-marketing-contacts",
+  "tenant": "studio"
+}

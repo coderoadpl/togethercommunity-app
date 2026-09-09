@@ -329,6 +329,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-js-demo-video",
                       "name": "Video demo (Bunny Stream)"
                     }
@@ -345,6 +346,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-variables-1",
                       "durationMinutes": 12,
+                      "isPreview": false,
                       "lessonId": "lesson-js-variables-1",
                       "name": "Declaring variables"
                     },
@@ -353,6 +355,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-variables-2",
                       "durationMinutes": 15,
+                      "isPreview": false,
                       "lessonId": "lesson-js-variables-2",
                       "name": "Primitive and complex types",
                       "unlockProductId": "product-club"
@@ -370,6 +373,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-functions-1",
                       "durationMinutes": 18,
+                      "isPreview": false,
                       "lessonId": "lesson-js-functions-1",
                       "name": "Functions and arguments",
                       "unlockProductId": "product-club"
@@ -379,6 +383,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-functions-2",
                       "durationMinutes": 22,
+                      "isPreview": false,
                       "lessonId": "lesson-js-functions-2",
                       "name": "Closures and scope",
                       "unlockProductId": "product-club"
@@ -404,6 +409,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-1",
                       "name": "Selecting DOM elements"
                     },
@@ -412,6 +418,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-2",
                       "name": "Events and interaction",
                       "unlockProductId": "product-club"
@@ -437,6 +444,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-project-1",
                       "durationMinutes": 35,
+                      "isPreview": false,
                       "lessonId": "lesson-js-project-1",
                       "name": "Project: a to-do list"
                     }

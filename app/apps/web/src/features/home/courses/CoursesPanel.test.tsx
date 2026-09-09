@@ -160,7 +160,7 @@ describe('CoursesPanel courses tab', () => {
     expect(name).toHaveFocus();
   });
 
-  it('updates course title, description and image from the details card', async () => {
+  it('updates course title, description, image and sales URL from the details card', async () => {
     let courses = [course()];
     let updatedInput: ReturnType<typeof updateCourseInputSchema.parse> | null = null;
     server.use(
@@ -194,6 +194,7 @@ describe('CoursesPanel courses tab', () => {
     await userEvent.type(title, 'Updated Launch Kit');
     await userEvent.clear(screen.getByLabelText(en.common.description));
     await userEvent.type(screen.getByLabelText(en.common.description), 'Updated description');
+    await userEvent.type(screen.getByLabelText(en.courses.salesUrl), 'https://courses.example.org/offer');
     await userEvent.type(screen.getByLabelText(en.courses.imageUrl), 'https://cdn.test/course.jpg');
     await userEvent.click(screen.getByRole('button', { name: en.courses.saveDetails }));
 
@@ -202,6 +203,7 @@ describe('CoursesPanel courses tab', () => {
       id: 'course-1',
       name: 'Updated Launch Kit',
       description: 'Updated description',
+      salesUrl: 'https://courses.example.org/offer',
       imageUrl: 'https://cdn.test/course.jpg',
     });
   });

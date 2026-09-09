@@ -1,0 +1,582 @@
+{
+  "calls": {
+    "getMarketingContactImport:[{\"importId\":\"import-contacts\"}]": {
+      "ok": true,
+      "value": {
+        "import": {
+          "attempts": 1,
+          "attestationLocale": "en",
+          "attestationNote": "Synthetic newsletter export; permission evidence is retained in the demo archive.",
+          "attestationText": "I confirm that I am authorized to import these contacts and that each contact for whom consent is being recorded gave valid permission for email marketing covered by the selected consent definition. I have included known unsubscribes, complaints, and permanent bounces in the suppression import. This import must not restore withdrawn consent or remove a suppression.",
+          "attestationVersion": "marketing-import-attestation/v1",
+          "attestedAt": "2026-07-01T12:00:00.000Z",
+          "attestedBy": {
+            "kind": "user",
+            "userId": "fixture-user-f9e5468247b51d08"
+          },
+          "consentDefinitionId": "definition-directory-news",
+          "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "createdAt": "2026-07-01T12:00:00.000Z",
+          "datasetVersion": "together-marketing-contacts/v1",
+          "defaults": {},
+          "definitionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "definitionVersion": 1,
+          "delimiter": ",",
+          "fileName": "contacts.csv",
+          "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "finishedAt": "2026-07-01T12:00:00.000Z",
+          "id": "import-contacts",
+          "idempotencyKey": "fixture-contacts",
+          "invalidRows": "skip_invalid",
+          "kind": "contacts",
+          "lastError": null,
+          "lockedBy": null,
+          "lockedUntil": null,
+          "mapping": {
+            "consentAt": "consentAt",
+            "email": "email",
+            "lists": "lists",
+            "name": "name",
+            "tags": "tags"
+          },
+          "nextAttemptAt": "2026-07-01T12:00:00.000Z",
+          "requestHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resultCounts": {
+            "consentBlockedBySuppression": 1,
+            "consentBlockedByWithdrawal": 0,
+            "consentsPreserved": 0,
+            "consentsRecorded": 1,
+            "created": 2,
+            "duplicateRows": 1,
+            "linkedMembers": 0,
+            "listsCreated": 0,
+            "membershipsAdded": 2,
+            "rejectedRows": 1,
+            "suppressionsCreated": 0,
+            "suppressionsExisting": 0,
+            "unchanged": 0,
+            "updated": 0
+          },
+          "rowCount": 4,
+          "stagedDataPurgedAt": null,
+          "startedAt": "2026-07-01T12:00:00.000Z",
+          "status": "completed_with_errors",
+          "tenantId": "tenant-studio",
+          "validationHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    "getMarketingContactImportRows:[{\"importId\":\"import-contacts\",\"limit\":200,\"offset\":0}]": {
+      "ok": true,
+      "value": {
+        "nextOffset": null,
+        "rows": [
+          {
+            "consentRowId": "consent-a3bf86238a1c",
+            "contactId": "contact-a3bf86238a1c",
+            "counts": {
+              "consentBlockedBySuppression": 0,
+              "consentBlockedByWithdrawal": 0,
+              "consentsPreserved": 0,
+              "consentsRecorded": 1,
+              "created": 1,
+              "duplicateRows": 0,
+              "linkedMembers": 0,
+              "listsCreated": 0,
+              "membershipsAdded": 1,
+              "rejectedRows": 0,
+              "suppressionsCreated": 0,
+              "suppressionsExisting": 0,
+              "unchanged": 0,
+              "updated": 0
+            },
+            "duplicateOf": null,
+            "errors": [],
+            "importId": "import-contacts",
+            "normalizedEmailHmac": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "normalizedPayload": {
+              "consentAt": "2026-06-01T10:00:00.000Z",
+              "email": "anna@example.org",
+              "lists": [
+                "newsletter"
+              ],
+              "name": "Anna Example",
+              "tags": [
+                "launch",
+                "news"
+              ]
+            },
+            "outcome": "created",
+            "processedAt": "2026-07-01T12:00:00.000Z",
+            "rowHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rowNumber": 1,
+            "stagedPayload": {
+              "consentAt": "2026-06-01T10:00:00Z",
+              "email": "anna@example.org",
+              "lists": [
+                "newsletter"
+              ],
+              "name": "Anna Example",
+              "tags": [
+                "launch"
+              ]
+            },
+            "status": "processed",
+            "suppressionId": null,
+            "tenantId": "tenant-studio",
+            "warnings": []
+          },
+          {
+            "consentRowId": null,
+            "contactId": "contact-8d030bfa4ead",
+            "counts": {
+              "consentBlockedBySuppression": 1,
+              "consentBlockedByWithdrawal": 0,
+              "consentsPreserved": 0,
+              "consentsRecorded": 0,
+              "created": 1,
+              "duplicateRows": 0,
+              "linkedMembers": 0,
+              "listsCreated": 0,
+              "membershipsAdded": 1,
+              "rejectedRows": 0,
+              "suppressionsCreated": 0,
+              "suppressionsExisting": 0,
+              "unchanged": 0,
+              "updated": 0
+            },
+            "duplicateOf": null,
+            "errors": [],
+            "importId": "import-contacts",
+            "normalizedEmailHmac": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "normalizedPayload": {
+              "consentAt": "2026-06-01T10:00:00.000Z",
+              "email": "blocked@example.org",
+              "lists": [
+                "newsletter"
+              ],
+              "name": "Blocked Contact",
+              "tags": [
+                "launch"
+              ]
+            },
+            "outcome": "created",
+            "processedAt": "2026-07-01T12:00:00.000Z",
+            "rowHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rowNumber": 2,
+            "stagedPayload": {
+              "consentAt": "2026-06-01T10:00:00Z",
+              "email": "blocked@example.org",
+              "lists": [
+                "newsletter"
+              ],
+              "name": "Blocked Contact",
+              "tags": [
+                "launch"
+              ]
+            },
+            "status": "processed",
+            "suppressionId": null,
+            "tenantId": "tenant-studio",
+            "warnings": []
+          },
+          {
+            "consentRowId": null,
+            "contactId": null,
+            "counts": {
+              "consentBlockedBySuppression": 0,
+              "consentBlockedByWithdrawal": 0,
+              "consentsPreserved": 0,
+              "consentsRecorded": 0,
+              "created": 0,
+              "duplicateRows": 1,
+              "linkedMembers": 0,
+              "listsCreated": 0,
+              "membershipsAdded": 0,
+              "rejectedRows": 0,
+              "suppressionsCreated": 0,
+              "suppressionsExisting": 0,
+              "unchanged": 0,
+              "updated": 0
+            },
+            "duplicateOf": 1,
+            "errors": [],
+            "importId": "import-contacts",
+            "normalizedEmailHmac": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "normalizedPayload": {
+              "consentAt": "2026-06-01T10:00:00.000Z",
+              "email": "anna@example.org",
+              "lists": [
+                "newsletter"
+              ],
+              "name": "Anna Example",
+              "tags": [
+                "news"
+              ]
+            },
+            "outcome": "duplicate",
+            "processedAt": "2026-07-01T12:00:00.000Z",
+            "rowHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rowNumber": 3,
+            "stagedPayload": {
+              "consentAt": "2026-06-01T10:00:00Z",
+              "email": "ANNA@example.org",
+              "lists": [
+                "newsletter"
+              ],
+              "name": "Anna Example",
+              "tags": [
+                "news"
+              ]
+            },
+            "status": "processed",
+            "suppressionId": null,
+            "tenantId": "tenant-studio",
+            "warnings": []
+          },
+          {
+            "consentRowId": null,
+            "contactId": null,
+            "counts": {
+              "consentBlockedBySuppression": 0,
+              "consentBlockedByWithdrawal": 0,
+              "consentsPreserved": 0,
+              "consentsRecorded": 0,
+              "created": 0,
+              "duplicateRows": 0,
+              "linkedMembers": 0,
+              "listsCreated": 0,
+              "membershipsAdded": 0,
+              "rejectedRows": 1,
+              "suppressionsCreated": 0,
+              "suppressionsExisting": 0,
+              "unchanged": 0,
+              "updated": 0
+            },
+            "duplicateOf": null,
+            "errors": [
+              "Invalid row: email: Invalid email"
+            ],
+            "importId": "import-contacts",
+            "normalizedEmailHmac": null,
+            "normalizedPayload": null,
+            "outcome": "rejected",
+            "processedAt": "2026-07-01T12:00:00.000Z",
+            "rowHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rowNumber": 4,
+            "stagedPayload": {
+              "email": "invalid",
+              "name": "Invalid Address"
+            },
+            "status": "processed",
+            "suppressionId": null,
+            "tenantId": "tenant-studio",
+            "warnings": []
+          }
+        ]
+      }
+    },
+    "getTenantSettings:[]": {
+      "ok": true,
+      "value": {
+        "settings": {
+          "accentColor": null,
+          "accentLight": null,
+          "autoIssueInvoices": false,
+          "autoIssueInvoiceScope": "b2b_only",
+          "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
+          "bunnyStreamCdnHostname": null,
+          "bunnyStreamLibraryId": null,
+          "defaultHomeSpaceId": "space-studio-community",
+          "defaultLanguage": "en",
+          "directMessagesEnabled": true,
+          "faviconUrl": null,
+          "invoiceExemptionBasis": null,
+          "invoiceExemptionBasisKind": null,
+          "invoiceSellerAddress": null,
+          "invoiceSellerName": null,
+          "invoiceVatMode": "rate",
+          "invoiceVatRatePercent": null,
+          "invoicingProvider": null,
+          "logoDarkUrl": null,
+          "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
+          "name": "Studio Demo",
+          "ogDescription": null,
+          "ogImageUrl": null,
+          "ogTitle": null,
+          "privacyUrl": null,
+          "socialLinks": [],
+          "supportConfigured": false,
+          "supportEmail": null,
+          "supportUrl": null,
+          "termsUrl": null,
+          "videoAutoplayDefault": false
+        }
+      }
+    },
+    "listDmReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "nextCursor": null,
+        "openCount": 0,
+        "reports": []
+      }
+    },
+    "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "items": [
+          {
+            "openReportsForPost": 1,
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Free Account",
+              "authorIsStaff": false,
+              "body": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "contextId": "space-studio-community",
+              "contextKind": "space",
+              "createdAt": "2026-06-25T12:00:00.000Z",
+              "deletedAt": null,
+              "deletedBy": null,
+              "editedAt": null,
+              "id": "post-community-resources",
+              "isOwn": false,
+              "parentPostId": null,
+              "pinnedAt": null,
+              "rootPostId": "post-community-resources",
+              "tenantId": "tenant-studio"
+            },
+            "report": {
+              "createdAt": "2026-06-26T12:00:00.000Z",
+              "id": "report-studio-resources",
+              "note": "This post looks like an advertisement for an external service.",
+              "postId": "post-community-resources",
+              "reason": "off-topic",
+              "reporterDisplay": "Active Student",
+              "reporterUserId": "user-student-active",
+              "resolvedAt": null,
+              "resolvedByUserId": null,
+              "signals": null,
+              "source": "member",
+              "status": "open",
+              "tenantId": "tenant-studio"
+            },
+            "spaceName": "Community"
+          }
+        ],
+        "nextCursor": null,
+        "openCount": 1
+      }
+    },
+    "me:[]": {
+      "ok": true,
+      "value": {
+        "avatarUrl": null,
+        "email": "creator@together.dev",
+        "emailVerified": true,
+        "impersonation": null,
+        "name": "Studio Creator",
+        "tenant": {
+          "banned": false,
+          "displayName": null,
+          "dmOptOut": false,
+          "id": "tenant-studio",
+          "language": null,
+          "memberId": "fixture-member-9b6fd3a284cc9b9c",
+          "name": "Studio Demo",
+          "slug": "studio",
+          "staffRole": "owner",
+          "videoAutoplay": null
+        },
+        "userId": "fixture-user-f9e5468247b51d08"
+      }
+    },
+    "publicOffer:[]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-course-101",
+            "marketingConsents": [],
+            "priceCents": 19900,
+            "prices": [
+              {
+                "amountCents": 19900,
+                "currency": "PLN",
+                "id": "price-product-studio-course-101",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "course-together-101",
+            "title": "Together 101 Course",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Full access to every module in JavaScript from Scratch.",
+            "id": "product-js-full",
+            "marketingConsents": [],
+            "priceCents": 39900,
+            "prices": [
+              {
+                "amountCents": 39900,
+                "currency": "PLN",
+                "id": "price-product-js-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-full",
+            "title": "JavaScript Course - full access",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Full access to React in Practice.",
+            "id": "product-react-full",
+            "marketingConsents": [],
+            "priceCents": 49900,
+            "prices": [
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-product-react-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "react-full",
+            "title": "React in Practice - full access",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Access to the DOM module of the JavaScript course.",
+            "id": "product-js-dom-module",
+            "marketingConsents": [],
+            "priceCents": 9900,
+            "prices": [
+              {
+                "amountCents": 9900,
+                "currency": "PLN",
+                "id": "price-product-js-dom-module",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-dom-module",
+            "title": "DOM Module Pack",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
+            "id": "product-free-preview",
+            "marketingConsents": [],
+            "priceCents": 0,
+            "prices": [
+              {
+                "amountCents": 0,
+                "currency": "PLN",
+                "id": "price-product-free-preview",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "free-preview",
+            "title": "Free preview",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
+            "id": "product-club",
+            "marketingConsents": [],
+            "priceCents": 4900,
+            "prices": [
+              {
+                "amountCents": 4900,
+                "currency": "PLN",
+                "id": "price-club-monthly",
+                "interval": "month",
+                "kind": "recurring"
+              },
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-club-yearly",
+                "interval": "year",
+                "kind": "recurring"
+              }
+            ],
+            "slug": "club",
+            "title": "Studio Club - subscription",
+            "type": "membership"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Exercises and checklists for independent practice after purchase.",
+            "id": "product-download-workbook",
+            "marketingConsents": [],
+            "priceCents": 7900,
+            "prices": [
+              {
+                "amountCents": 7900,
+                "currency": "PLN",
+                "id": "price-product-download-workbook",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "download-workbook",
+            "title": "Creator Workbook",
+            "type": "digital_download"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": null,
+            "accentLight": null,
+            "faviconUrl": null,
+            "logoDarkUrl": null,
+            "logoUrl": null
+          },
+          "defaultLanguage": "en",
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Studio Demo",
+          "slug": "studio",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    },
+    "unreadNotificationCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    }
+  },
+  "principal": "creator@together.dev",
+  "route": "/panel/marketing/contacts/import?importId=import-contacts",
+  "scenario": "panel-marketing-contact-result",
+  "tenant": "studio"
+}

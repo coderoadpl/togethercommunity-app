@@ -390,6 +390,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-js-demo-video",
                       "name": "Video demo (Bunny Stream)"
                     }
@@ -406,6 +407,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-variables-1",
                       "durationMinutes": 12,
+                      "isPreview": false,
                       "lessonId": "lesson-js-variables-1",
                       "name": "Declaring variables"
                     },
@@ -414,6 +416,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-variables-2",
                       "durationMinutes": 15,
+                      "isPreview": false,
                       "lessonId": "lesson-js-variables-2",
                       "name": "Primitive and complex types"
                     }
@@ -430,6 +433,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-functions-1",
                       "durationMinutes": 18,
+                      "isPreview": false,
                       "lessonId": "lesson-js-functions-1",
                       "name": "Functions and arguments"
                     },
@@ -438,6 +442,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-functions-2",
                       "durationMinutes": 22,
+                      "isPreview": false,
                       "lessonId": "lesson-js-functions-2",
                       "name": "Closures and scope"
                     }
@@ -462,6 +467,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-1",
                       "name": "Selecting DOM elements"
                     },
@@ -470,6 +476,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-2",
                       "name": "Events and interaction"
                     }
@@ -494,6 +501,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-project-1",
                       "durationMinutes": 35,
+                      "isPreview": false,
                       "lessonId": "lesson-js-project-1",
                       "name": "Project: a to-do list"
                     }
@@ -531,6 +539,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-jsx-1",
                       "durationMinutes": 11,
+                      "isPreview": false,
                       "lessonId": "lesson-react-jsx-1",
                       "name": "What is JSX?"
                     },
@@ -539,6 +548,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-jsx-2",
                       "durationMinutes": 16,
+                      "isPreview": false,
                       "lessonId": "lesson-react-jsx-2",
                       "name": "Components and props"
                     }
@@ -555,6 +565,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-state-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-react-state-1",
                       "name": "Component state with useState"
                     },
@@ -563,6 +574,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-state-2",
                       "durationMinutes": 17,
+                      "isPreview": false,
                       "lessonId": "lesson-react-state-2",
                       "name": "Data flow and lifting state up"
                     }
@@ -587,6 +599,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-hooks-1",
                       "durationMinutes": 21,
+                      "isPreview": false,
                       "lessonId": "lesson-react-hooks-1",
                       "name": "Side effects with useEffect"
                     },
@@ -595,6 +608,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-hooks-2",
                       "durationMinutes": 25,
+                      "isPreview": false,
                       "lessonId": "lesson-react-hooks-2",
                       "name": "Creating custom hooks"
                     }

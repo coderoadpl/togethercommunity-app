@@ -536,6 +536,19 @@ export const SCREENS: readonly ScreenSpec[] = [
     mask: (page) => [page.locator('[data-testid^="storage-cors-origin-"]'), page.getByTestId('storage-cors-json')],
   },
   {
+    name: 'panel-storage-wizard-connection',
+    auth: 'creator',
+    path: '/panel/integrations#storage',
+    fixtureName: 'panel-storage-wizard',
+    ready: (page) => page.getByTestId('storage-connection-step').waitFor(visible),
+    settled: async (page) => {
+      await page.getByTestId('storage-wizard').evaluate((element) =>
+        element.scrollIntoView({ block: 'start' }),
+      );
+    },
+    mask: (page) => [page.locator('[data-testid^="storage-cors-origin-"]')],
+  },
+  {
     name: 'panel-lesson-attachments',
     auth: 'creator',
     path: '/panel/lessons/lesson-js-variables-1',
@@ -587,6 +600,24 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/sales/order-studio-active-js',
     ready: (page) => page.getByText('PARTNER20').waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-contacts',
+    auth: 'creator',
+    path: '/panel/marketing/contacts',
+    ready: (page) => page.getByRole('table', { name: en.directory.contactsTitle, exact: true }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-lists',
+    auth: 'creator',
+    path: '/panel/marketing/lists',
+    ready: (page) => page.getByRole('table', { name: en.directory.listsTitle, exact: true }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-contact-import',
+    auth: 'creator',
+    path: '/panel/marketing/contacts/import',
+    ready: (page) => page.locator('input[type="file"]').waitFor(visible),
   },
   {
     name: 'panel-marketing-campaigns',

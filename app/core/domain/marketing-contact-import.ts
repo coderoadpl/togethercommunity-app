@@ -69,6 +69,7 @@ export const marketingImportCommitSchema = z.object({
   invalidRows: z.enum(['reject_batch', 'skip_invalid']).default('reject_batch'),
 }).strict();
 export const marketingImportValidationSchema = z.object({
+  headers: z.array(z.string()), canCommitWithSkippedRows: z.boolean(),
   import: marketingContactImportSchema, validationHash: z.string(), preview: z.array(marketingImportRowReceiptSchema).max(20),
   counts: z.object({ validRows: z.number(), rejectedRows: z.number(), duplicateRows: z.number(), listsToCreate: z.array(z.string()) }),
   errors: z.array(z.object({ rowNumber: z.number(), message: z.string() })), warnings: z.array(z.object({ rowNumber: z.number(), message: z.string() })), canCommit: z.boolean(),

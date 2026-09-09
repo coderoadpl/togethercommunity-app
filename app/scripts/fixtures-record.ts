@@ -17,6 +17,7 @@ import { bootServer, ephemeralPort, killServer, rootDir } from './server-harness
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, migrateAndSeed, dropDatabase } from './smoke-database.js';
 
 import { abortVisualMutation, visualSeedTime as seedTime } from './visual-request-policy.js';
+import { recordMarketingDirectoryFixtures, normalizeMarketingDirectoryFixture } from './fixtures-marketing-directory.js';
 const passkeyRecorders = new Map<string, () => Promise<unknown>>();
 const sessions = new Map<string, ApiClient>();
 const staffMemberIds = new Map<string, string>();
@@ -201,7 +202,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   const goldenTenantHost = `${scenario.tenant}.localhost:63871`;
   const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? staffMemberIds.get(value) ?? value.replaceAll(baseUrl, 'http://localhost:48730').replaceAll(recordedTenantHost, goldenTenantHost) : value));
   fixtureSchema.parse(snapshot);
-  save(scenario.name, snapshot);
+  save(scenario.name, scenario.page === 'marketing-directory' ? normalizeMarketingDirectoryFixture(snapshot) : snapshot);
   console.log(`${scenario.name}: ${Object.keys(calls).length} calls`);
 };
 
@@ -211,8 +212,12 @@ try {
   await migrateAndSeed(smokeDatabaseUrl, { SEED_BASE_TIME: seedTime });
   const port = await ephemeralPort();
   const baseUrl = `http://localhost:${port}`;
-  server = await bootServer({ port, healthUrl: `${baseUrl}/api/health`, env: { DATABASE_URL: smokeDatabaseUrl, TOGETHER_VISUAL_CLOCK: seedTime, APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost', PAYMENT_PROVIDER: 'fake', EMAIL_PROVIDER: 'dev', SIMULATED_PAYMENTS: 'true', AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true' } });
-  for (const scenario of plan) await record(await login(baseUrl, scenario.principal, scenario.tenant), scenario, baseUrl);
+  server = await bootServer({ port, healthUrl: `${baseUrl}/api/health`, env: { DATABASE_URL: smokeDatabaseUrl, TOGETHER_VISUAL_CLOCK: seedTime, APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost', PAYMENT_PROVIDER: 'fake', EMAIL_PROVIDER: 'dev', SIMULATED_PAYMENTS: 'true', AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true', CRON_SECRET: 'directory-fixture-worker-secret' } });
+  for (const scenario of (process.env['FIXTURE_GROUP'] === 'marketing-directory' ? [] : plan)) await record(await login(baseUrl, scenario.principal, scenario.tenant), scenario, baseUrl);
+  await recordMarketingDirectoryFixtures(await login(baseUrl, 'creator@together.dev', 'studio'), async () => {
+    const response = await fetch(`${baseUrl}/api/internal/marketing/imports/tick`, { headers: { Authorization: 'Bearer directory-fixture-worker-secret' } });
+    if (!response.ok) throw new Error(`Directory fixture worker failed: ${await response.text()}`);
+  }, async (name, route, extra, expectedErrors) => record(await login(baseUrl, 'creator@together.dev', 'studio'), { name, route, extra, ...(expectedErrors ? { expectedErrors } : {}), page: 'marketing-directory', principal: 'creator@together.dev', tenant: 'studio', courseId: '', lessonId: '', spaceId: '' }, baseUrl));
   const pool = new pg.Pool({ connectionString: smokeDatabaseUrl });
   try {
     const db = drizzle(pool);

@@ -193,3 +193,16 @@ describe('bunny playback parameters', () => {
     expect(withVideoAutoplay('not-a-url', false)).toBe('not-a-url');
   });
 });
+
+
+describe('course sales URLs', () => {
+  it.each(['http://courses.example.org/offer', 'javascript:alert(1)', '/offer', 'not a URL'])('rejects %s', (salesUrl) => {
+    expect(updateCourseInputSchema.safeParse({ id: 'course-1', salesUrl }).success).toBe(false);
+    expect(newCourseSchema.safeParse({ name: 'Course', salesUrl }).success).toBe(false);
+  });
+  it('accepts HTTPS, omission and explicit clearing', () => {
+    for (const salesUrl of ['https://courses.example.org/offer', null, undefined]) {
+      expect(updateCourseInputSchema.safeParse({ id: 'course-1', salesUrl }).success).toBe(true);
+    }
+  });
+});

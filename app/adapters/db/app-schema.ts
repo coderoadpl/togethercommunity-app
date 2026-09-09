@@ -1118,6 +1118,7 @@ export const courses = pgTable(
     name: text('name').notNull(),
     description: text('description').notNull(),
     imageUrl: text('image_url'),
+    salesUrl: text('sales_url'),
     moduleOrder: jsonb('module_order').$type<string[]>().notNull().default([]),
     publiclyVisible: boolean('publicly_visible').notNull().default(false),
     legacyId: text('legacy_id'),

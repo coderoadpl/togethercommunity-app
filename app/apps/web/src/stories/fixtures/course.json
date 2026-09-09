@@ -287,6 +287,7 @@
             "moduleOrder": [],
             "name": "JavaScript from Scratch",
             "publiclyVisible": true,
+            "salesUrl": null,
             "tenantId": "tenant-studio"
           },
           {
@@ -298,6 +299,7 @@
             "moduleOrder": [],
             "name": "React in Practice",
             "publiclyVisible": false,
+            "salesUrl": null,
             "tenantId": "tenant-studio"
           }
         ]
@@ -324,6 +326,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-js-demo-video",
                       "name": "Video demo (Bunny Stream)"
                     }
@@ -340,6 +343,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-variables-1",
                       "durationMinutes": 12,
+                      "isPreview": false,
                       "lessonId": "lesson-js-variables-1",
                       "name": "Declaring variables"
                     },
@@ -348,6 +352,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-variables-2",
                       "durationMinutes": 15,
+                      "isPreview": false,
                       "lessonId": "lesson-js-variables-2",
                       "name": "Primitive and complex types"
                     }
@@ -364,6 +369,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-functions-1",
                       "durationMinutes": 18,
+                      "isPreview": false,
                       "lessonId": "lesson-js-functions-1",
                       "name": "Functions and arguments"
                     },
@@ -372,6 +378,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-functions-2",
                       "durationMinutes": 22,
+                      "isPreview": false,
                       "lessonId": "lesson-js-functions-2",
                       "name": "Closures and scope"
                     }
@@ -396,6 +403,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-1",
                       "name": "Selecting DOM elements"
                     },
@@ -404,6 +412,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-2",
                       "name": "Events and interaction"
                     }
@@ -428,6 +437,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-project-1",
                       "durationMinutes": 35,
+                      "isPreview": false,
                       "lessonId": "lesson-js-project-1",
                       "name": "Project: a to-do list"
                     }

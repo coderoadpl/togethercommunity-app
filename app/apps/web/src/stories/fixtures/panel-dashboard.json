@@ -159,6 +159,7 @@
             "moduleOrder": [],
             "name": "JavaScript from Scratch",
             "publiclyVisible": true,
+            "salesUrl": null,
             "tenantId": "tenant-studio"
           },
           {
@@ -170,6 +171,7 @@
             "moduleOrder": [],
             "name": "React in Practice",
             "publiclyVisible": false,
+            "salesUrl": null,
             "tenantId": "tenant-studio"
           }
         ]

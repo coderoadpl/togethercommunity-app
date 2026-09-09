@@ -2314,7 +2314,7 @@ describe('course/module/lesson repositories', () => {
     const modules = createCourseModuleRepository(db);
     const lessons = createCourseLessonRepository(db);
 
-    const course: Course = { id: 'course-acme', tenantId: ACME, name: 'C', description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false, legacyId: null, createdAt: NOW };
+    const course: Course = { id: 'course-acme', tenantId: ACME, name: 'C', description: '', imageUrl: null, salesUrl: 'https://courses.example.org/offer', moduleOrder: [], publiclyVisible: false, legacyId: null, createdAt: NOW };
     const module: CourseModule = {
       id: 'module-acme', tenantId: ACME, courseIds: ['course-acme'], title: 'M', prefix: null, name: 'M',
       chapters: [{ id: 'chapter-acme', name: 'Chapter', contents: [{ id: 'content-acme', name: 'L', lessonId: 'lesson-acme' }] }],
@@ -2325,6 +2325,10 @@ describe('course/module/lesson repositories', () => {
     await modules.create(ACME, module);
     await lessons.create(ACME, lesson);
 
+    expect(await courses.findById(ACME, course.id)).toMatchObject({ salesUrl: 'https://courses.example.org/offer' });
+    expect(await courses.findById(GLOBEX, course.id)).toBeNull();
+    expect(await courses.update(ACME, { ...course, salesUrl: null })).toMatchObject({ salesUrl: null });
+    expect(await courses.findById(ACME, course.id)).toMatchObject({ salesUrl: null });
     expect((await courses.list(ACME)).map((c) => c.id)).toEqual(['course-acme']);
     expect(await courses.list(GLOBEX)).toEqual([]);
     expect(await modules.findById(ACME, 'module-acme')).toMatchObject({ courseIds: ['course-acme'] });

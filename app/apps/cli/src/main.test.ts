@@ -21,6 +21,7 @@ interface Hoisted {
     (input: { id: string; isPreview?: boolean }) => Promise<Result<{ lesson: unknown }, AppError>>
   >>;
   health: ReturnType<typeof vi.fn>;
+  updateCourse: ReturnType<typeof vi.fn>;
   configureStorage: ReturnType<typeof vi.fn>;
   changePassword: ReturnType<typeof vi.fn>;
   requestPasswordReset: ReturnType<typeof vi.fn>;
@@ -56,6 +57,7 @@ const h = vi.hoisted(
       (input: { id: string; isPreview?: boolean }) => Promise<Result<{ lesson: unknown }, AppError>>
     >(),
     health: vi.fn(),
+    updateCourse: vi.fn(),
     configureStorage: vi.fn(),
     changePassword: vi.fn(),
     requestPasswordReset: vi.fn(),
@@ -122,6 +124,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     getTenantSettings: h.getTenantSettings,
     updateTenantSettings: h.updateTenantSettings,
     health: h.health,
+    updateCourse: h.updateCourse,
     configureStorage: h.configureStorage,
     configureStripe: h.configureStripe,
     getTenantRouting: h.getTenantRouting,
@@ -178,6 +181,7 @@ beforeEach(() => {
   h.loadError = null;
   h.saved = [];
   h.health.mockReset();
+  h.updateCourse.mockReset();
   h.health.mockResolvedValue(ok({
     status: 'ok',
     database: 'up',
@@ -688,6 +692,31 @@ describe('domain show', () => {
       'CNAME\tcourses.example.org\trouting.example.org\tpending',
       'TXT\t_vercel.courses.example.org\tchallenge\tverified',
     ].join('\n'));
+  });
+});
+
+describe('course sales URL commands', () => {
+  it('includes the sales URL in course show', async () => {
+    const course = { id: 'course-1', name: 'Course', description: 'Learn the basics', salesUrl: 'https://courses.example.org/offer' };
+    h.listCourses.mockResolvedValue(ok({ courses: [course] }));
+    await run('--json', 'course', 'show', 'course-1');
+    expect(soleJson()).toEqual({ ok: true, data: { course } });
+  });
+
+  it.each([
+    ['https://courses.example.org/offer', 'https://courses.example.org/offer'],
+    ['', null],
+  ])('updates or clears the sales URL using %s', async (input, salesUrl) => {
+    h.updateCourse.mockResolvedValue(ok({ course: { id: 'course-1', name: 'Course', salesUrl } }));
+    await run('--json', 'course', 'update', 'course-1', '--sales-url', input ?? '');
+    expect(h.updateCourse).toHaveBeenCalledExactlyOnceWith({ id: 'course-1', salesUrl });
+    expect(soleJson()).toMatchObject({ ok: true, data: { course: { salesUrl } } });
+  });
+
+  it('rejects a non-HTTPS sales URL before calling the API', async () => {
+    await run('--json', 'course', 'update', 'course-1', '--sales-url', 'http://courses.example.org/offer');
+    expect(h.updateCourse).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });
 

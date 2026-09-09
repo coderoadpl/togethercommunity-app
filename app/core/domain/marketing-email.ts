@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { marketingConsentConfirmationPl } from './marketing-email.pl.js';
+import { marketingConsentConfirmationPl, marketingFooterCopyPl } from './marketing-email.pl.js';
 import { contactCampaignAudienceSchema, marketingAudienceSkipReasonSchema } from './marketing-audience.js';
 import { normalizeEmail } from './email.js';
 import { validation, type AppError } from './errors.js';
@@ -12,6 +12,21 @@ export const isoDateTimeSchema = z.string().datetime();
 export const transactionalSesConfigurationSetName = (
   marketingConfigurationSet: string,
 ): string => `${marketingConfigurationSet.slice(0, 50)}-transactional`;
+
+export interface MarketingFooterCopy {
+  unsubscribe: string;
+  basisPrefix: string;
+  basisSuffix: string;
+}
+
+const marketingFooterCopyEn: MarketingFooterCopy = {
+  unsubscribe: 'Unsubscribe',
+  basisPrefix: 'You receive this message based on your consent: “',
+  basisSuffix: '”.',
+};
+
+export const marketingFooterCopy = (language: string | null | undefined): MarketingFooterCopy =>
+  languageOrDefault(language ?? '') === 'pl' ? marketingFooterCopyPl : marketingFooterCopyEn;
 
 export const consentDocumentRefSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('url'), url: z.string().url() }),

@@ -16,6 +16,7 @@ const cancelledCampaign = {
   bodyText: null, replyTo: null, bodySource: '# Cancelled',
   layoutId: null,
   consentDefinitionId: 'consent-1',
+  audienceVersion: 1, audience: null, audienceSnapshotId: null, snapshotMaxContactId: null, cursorContactId: null, candidateCount: 0, skipped: 0,
   audienceFilter: null,
   status: 'cancelled',
   sendAt: null,

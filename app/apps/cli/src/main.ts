@@ -14,6 +14,7 @@ import {
 import {
   accessItemSchema,
   currencySchema,
+  contactCampaignAudienceSchema,
   devGrantInputSchema,
   err,
   internal,
@@ -295,7 +296,11 @@ const schedulerRunShowOptionsSchema = z.object({ secret: z.string().min(1) });
 const consentDefinitionCreateOptionsSchema = z.object({
   key: z.string().min(1), label: z.string().min(1), documentUrl: z.string().url(), singleOptIn: z.boolean().optional(),
 });
+const campaignAudienceJsonSchema = z.string().transform((value, ctx) => {
+  try { return JSON.parse(value); } catch { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Audience must be JSON' }); return z.NEVER; }
+}).pipe(contactCampaignAudienceSchema);
 const campaignCreateOptionsSchema = z.object({
+  audience: campaignAudienceJsonSchema.optional(),
   name: z.string().min(1), subject: z.string().min(1), bodyHtml: z.string().min(1), bodyText: z.string().optional(), replyTo: z.string().email().optional(), consentDefinition: z.string().min(1),
 });
 const campaignScheduleOptionsSchema = z.object({ campaign: z.string().min(1), sendAt: z.string().datetime() });
@@ -3371,6 +3376,7 @@ consentDefinition.command('create')
 const campaign = program.command('campaign').description('Marketing campaigns');
 
 campaign.command('create')
+  .option('--audience <json>', 'Version 2 contact list audience')
   .requiredOption('--name <name>')
   .requiredOption('--subject <subject>')
   .requiredOption('--body-html <html>')
@@ -3382,9 +3388,26 @@ campaign.command('create')
       name: options.name, subject: options.subject, bodyHtml: options.bodyHtml,
       ...(options.bodyText === undefined ? {} : { bodyText: options.bodyText }),
       ...(options.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+      ...(options.audience === undefined ? {} : { audience: options.audience }),
       consentDefinitionId: options.consentDefinition,
     }), ctx.json, (data) => `created campaign ${data.campaign.name} (${data.campaign.id})`);
   }));
+
+const campaignAudience = campaign.command('audience').description('Set and preview contact list audiences');
+campaignAudience.command('set').requiredOption('--campaign <id>').requiredOption('--audience <json>')
+  .action(withInput(z.tuple([z.object({ campaign: z.string().min(1), audience: campaignAudienceJsonSchema })]), async (ctx, [options]) => {
+    emit(await ctx.api.setMarketingCampaignAudience({ campaignId: options.campaign, audience: options.audience }), ctx.json, (data) => `updated audience for ${data.campaign.id}`);
+  }));
+campaignAudience.command('preview').requiredOption('--campaign <id>')
+  .action(withInput(z.tuple([z.object({ campaign: z.string().min(1) })]), async (ctx, [options]) => {
+    const saved = await ctx.api.getMarketingCampaign(options.campaign);
+    if (!saved.ok) { emit(saved, ctx.json, () => ''); return; }
+    const value = saved.value.campaign;
+    emit(await ctx.api.previewMarketingAudience({ consentDefinitionId: value.consentDefinitionId, productIds: value.audienceFilter?.productIds ?? [], ...(value.audience === null ? {} : { audience: value.audience }) }), ctx.json, (data) => `${data.count} estimated recipients${'sample' in data ? '\n' + data.sample.map((contact) => contact.email).join('\n') : ''}`);
+  }));
+campaign.command('draft <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+  emit(await ctx.api.actOnMarketingCampaign({ campaignId: id, action: 'draft' }), ctx.json, () => `returned ${id} to draft`);
+}));
 
 campaign.command('schedule')
   .requiredOption('--campaign <id>')
@@ -3392,6 +3415,11 @@ campaign.command('schedule')
   .action(withInput(z.tuple([campaignScheduleOptionsSchema]), async (ctx, [options]) => {
     emit(await ctx.api.scheduleMarketingCampaign({ campaignId: options.campaign, sendAt: options.sendAt }), ctx.json,
       (data) => `scheduled campaign ${data.campaign.id} for ${data.campaign.sendAt ?? options.sendAt}`);
+  }));
+
+campaign.command('sends').option('--contact <id>', 'Filter by contact').option('--campaign <id>', 'Filter by campaign')
+  .action(withInput(z.tuple([z.object({ contact: z.string().optional(), campaign: z.string().optional() })]), async (ctx, [options]) => {
+    emit(await ctx.api.listEmailSends({ kind: 'marketing', ...(options.contact === undefined ? {} : { contactId: options.contact }), ...(options.campaign === undefined ? {} : { campaignId: options.campaign }) }), ctx.json, (data) => data.sends.map((send) => `${send.id}\t${send.recipient}\t${send.status}\t${send.skipReason ?? ''}`).join('\n'));
   }));
 
 campaign.command('status <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {

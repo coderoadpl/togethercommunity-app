@@ -128,3 +128,20 @@ of the configured interval; a busy tick can start the next tick immediately. At 
 provider throttling or prolonged storage/network latency can extend completion. Configure SES daily
 quota above the whole campaign plus expected transactional volume; sandbox limits cannot deliver
 3,000 recipients in an hour.
+
+### Contact campaign snapshots
+
+List campaigns freeze selected contact membership and personalization when
+scheduled. Each candidate receives a send projection, including skipped contacts
+without consent. A durable payload, unsubscribe token and contact cursor commit
+with each eligible send. The legacy member cursor remains available for version 1
+campaigns. Version 2 dispatch additionally checks contact archival, erasure and
+address consistency; later consent or suppression changes can remove eligibility
+but cannot add a recipient to a frozen snapshot.
+
+Campaign counters distinguish eligible-at-snapshot, candidates, skipped, sent,
+failed, queued and unresolved provider acceptance. Queued and unresolved counts
+come from indexed send/outbox aggregates. Contact send history uses the same
+journal and events as member campaigns. The synthetic end-to-end regression is
+`scripts/marketing-contacts.e2e.test.ts`; it runs the real HTTP app, typed client,
+CLI and PostgreSQL repositories with fake SES/clock boundaries and signed feedback.

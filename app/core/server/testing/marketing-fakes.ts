@@ -501,9 +501,9 @@ export class InMemoryTenantDocumentRepository implements TenantDocumentRepositor
 }
 
 export class InMemoryCampaignRepository implements CampaignRepository {
-  async addDeliveryCounts(tenantId: string, campaignId: string, counts: { sent: number; failed: number }): Promise<void> {
+  async addDeliveryCounts(tenantId: string, campaignId: string, counts: { sent: number; failed: number; skipped?: number }): Promise<void> {
     const row = this.rows.find((item) => item.tenantId === tenantId && item.id === campaignId);
-    if (row !== undefined) { row.sent += counts.sent; row.failed += counts.failed; row.errorCount = counts.sent > 0 ? 0 : row.errorCount + counts.failed; }
+    if (row !== undefined) { row.skipped += counts.skipped ?? 0; row.sent += counts.sent; row.failed += counts.failed; row.errorCount = counts.sent > 0 ? 0 : row.errorCount + counts.failed; }
   }
   private readonly rows: Campaign[];
 
@@ -555,12 +555,14 @@ export class InMemoryCampaignRepository implements CampaignRepository {
   async advanceCursor(
     tenantId: string,
     campaignId: string,
-    input: { cursorMemberId: string; sentDelta: number; failedDelta: number; lease?: { workerId: string; now: string } },
+    input: { cursorMemberId?: string; cursorContactId?: string; skippedDelta?: number; sentDelta: number; failedDelta: number; lease?: { workerId: string; now: string } },
   ): Promise<Campaign | null> {
     const campaign = this.rows.find((row) => sameTenant(tenantId, row) && row.id === campaignId);
     if (campaign === undefined) return null;
     if (input.lease !== undefined && (campaign.lockedBy !== input.lease.workerId || campaign.status !== 'running' || campaign.lockedUntil === null || campaign.lockedUntil <= input.lease.now)) return null;
-    campaign.cursorMemberId = input.cursorMemberId;
+    if (input.cursorMemberId !== undefined) campaign.cursorMemberId = input.cursorMemberId;
+    if (input.cursorContactId !== undefined) campaign.cursorContactId = input.cursorContactId;
+    campaign.skipped += input.skippedDelta ?? 0;
     campaign.sent += input.sentDelta;
     campaign.failed += input.failedDelta;
     return structuredClone(campaign);
@@ -599,6 +601,10 @@ export class InMemoryEmailLayoutRepository implements EmailLayoutRepository {
 }
 
 export class InMemoryCampaignSendRepository implements CampaignSendRepository {
+  async progressStats(tenantId: string, campaignIds: string[]): Promise<Map<string, { queued: number; unresolved: number }>> {
+    return new Map(campaignIds.map((id) => [id, { queued: this.rows.filter((row) => row.tenantId === tenantId && row.campaignId === id && ['pending', 'sending'].includes(row.status)).length, unresolved: 0 }]));
+  }
+
   private readonly rows: CampaignSend[] = [];
   afterClaim: ((send: CampaignSend) => Promise<void>) | null = null;
   renderedBodiesAgedOut = 0;

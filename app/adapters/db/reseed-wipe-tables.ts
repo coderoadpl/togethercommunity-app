@@ -1,6 +1,8 @@
 import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core';
 
 import {
+  marketingCampaignAudienceContacts,
+  marketingCampaignAudienceSnapshots,
   marketingOutbox,
   marketingSnsInboxEvents,
   marketingSnsInbox,
@@ -104,7 +106,6 @@ export const DEMO_TENANT_WIPE_TABLES: readonly DemoTenantWipeTable[] = [
   marketingListMemberships,
   marketingDirectoryEvents,
   marketingMemberSyncJobs,
-  marketingContacts,
   marketingLists,
   marketingContactImports,
   autoInvoiceJobs,
@@ -170,6 +171,9 @@ export const DEMO_TENANT_WIPE_TABLES: readonly DemoTenantWipeTable[] = [
   threadSubscriptions,
   unsubscribeTokens,
   campaignSends,
+  marketingCampaignAudienceContacts,
+  marketingCampaignAudienceSnapshots,
+  marketingContacts,
   couponRedemptions,
   courses,
   invoices,

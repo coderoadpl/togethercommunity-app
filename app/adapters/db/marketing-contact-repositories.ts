@@ -22,7 +22,7 @@ const append = async (db: Db, deps: DirectoryRepositoryDeps, tenantId: string, s
   await createMarketingDirectoryEventRepository(db).append(tenantId, { id: deps.ids.nextId(), tenantId, subjectKind, subjectId, type, actor: 'directory', importId: null, payload: {}, occurredAt: deps.clock.nowIso(), createdAt: deps.clock.nowIso() });
 };
 // Drizzle removes column qualifiers in single-table projections; nested references must remain correlated.
-const contactReference = (column: 'id' | 'email' | 'email_hmac') => sql`${contacts}.${sql.identifier(column)}`;
+const contactReference = (column: 'id' | 'email' | 'email_hmac' | 'member_id') => sql`${contacts}.${sql.identifier(column)}`;
 const consentStateSql = (tenantId: string, definitionId: string): SQL<string> => sql<string>`coalesce((
   SELECT CASE WHEN mc.status = 'withdrawn' THEN 'withdrawn' WHEN mc.status = 'confirmed' OR NOT cd.double_opt_in THEN 'active' ELSE 'pending_confirmation' END
   FROM marketing_consents mc JOIN consent_definitions cd ON cd.tenant_id = mc.tenant_id AND cd.id = mc.definition_id
@@ -30,12 +30,12 @@ const consentStateSql = (tenantId: string, definitionId: string): SQL<string> =>
   ORDER BY mc.occurred_at DESC, mc.id DESC LIMIT 1
 ), 'none')`;
 const suppressionSql = (tenantId: string): SQL<string | null> => sql<string | null>`(SELECT s.reason FROM suppressions s WHERE s.tenant_id = ${tenantId} AND s.email_hmac = ${contactReference('email_hmac')} AND s.lifted_at IS NULL LIMIT 1)`;
-const ruleSql = (tenantId: string, rule: MarketingListRule, asOf: string): SQL => {
+export const marketingListRuleSql = (tenantId: string, rule: MarketingListRule, asOf: string): SQL => {
   if (rule.kind === 'tag') return rule.match === 'all'
     ? sql`${contacts.tags} @> ${JSON.stringify(rule.tags)}::jsonb`
     : sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${contacts.tags}) tag WHERE tag IN (${sql.join(rule.tags.map((tag) => sql`${tag}`), sql`, `)}))`;
   if (rule.kind === 'consent_definition') return sql`${consentStateSql(tenantId, rule.definitionId)} = 'active'`;
-  return sql`EXISTS (SELECT 1 FROM product_grants pg WHERE pg.tenant_id = ${tenantId} AND pg.member_id = ${contacts.memberId}
+  return sql`EXISTS (SELECT 1 FROM product_grants pg WHERE pg.tenant_id = ${tenantId} AND pg.member_id = ${contactReference('member_id')}
     AND pg.product_id IN (${sql.join(rule.productIds.map((id) => sql`${id}`), sql`, `)})
     ${rule.state === 'active' ? sql`AND pg.starts_at::timestamptz <= ${asOf}::timestamptz AND (pg.expires_at IS NULL OR pg.expires_at::timestamptz > ${asOf}::timestamptz)` : sql``})`;
 };
@@ -53,7 +53,7 @@ const contactFilters = async (db: Db, tenantId: string, query: MarketingContactL
   if (query.listId !== undefined) {
     const [list] = await db.select().from(lists).where(and(eq(lists.tenantId, tenantId), eq(lists.id, query.listId), isNull(lists.archivedAt)));
     if (list === undefined) filters.push(sql`false`);
-    else if (list.rule !== null) filters.push(ruleSql(tenantId, marketingListSchema.parse(list).rule ?? list.rule, asOf));
+    else if (list.rule !== null) filters.push(marketingListRuleSql(tenantId, marketingListSchema.parse(list).rule ?? list.rule, asOf));
     else filters.push(sql`EXISTS (SELECT 1 FROM marketing_list_memberships mm WHERE mm.tenant_id = ${tenantId} AND mm.list_id = ${list.id} AND mm.contact_id = ${contactReference('id')} AND mm.removed_at IS NULL)`);
   }
   return filters;

@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { EmailHmac } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { marketingContacts, marketingContactImports, marketingContactImportRows, marketingListMemberships } from './schema.js';
+import { marketingCampaignAudienceContacts, marketingContacts, marketingContactImports, marketingContactImportRows, marketingListMemberships } from './schema.js';
 import { createMarketingDirectoryEventRepository, lockMarketingAddress } from './marketing-contact-repositories.js';
 
 export const eraseMarketingMemberContact = async (db: Db, tenantId: string, input: { memberId: string; email: string; tombstoneEmail: string; deletedAt: string }, hmac: EmailHmac): Promise<void> => {
@@ -15,6 +15,7 @@ export const eraseMarketingMemberContact = async (db: Db, tenantId: string, inpu
   const contacts = await db.update(marketingContacts).set({ email: input.tombstoneEmail, displayName: null, firstName: null, lastName: null, source: 'erasure', tags: [], memberId: null, archivedAt: input.deletedAt, updatedAt: input.deletedAt })
     .where(and(eq(marketingContacts.tenantId, tenantId), or(eq(marketingContacts.memberId, input.memberId), eq(marketingContacts.emailHmac, addressHmac)))).returning();
   for (const contact of contacts) {
+    await db.update(marketingCampaignAudienceContacts).set({ email: input.tombstoneEmail, memberIdSnapshot: null, displayNameSnapshot: null, firstNameSnapshot: null }).where(and(eq(marketingCampaignAudienceContacts.tenantId, tenantId), eq(marketingCampaignAudienceContacts.contactId, contact.id)));
     const removed = await db.update(marketingListMemberships).set({ removedAt: input.deletedAt }).where(and(eq(marketingListMemberships.tenantId, tenantId), eq(marketingListMemberships.contactId, contact.id), isNull(marketingListMemberships.removedAt))).returning();
     for (const membership of removed) await createMarketingDirectoryEventRepository(db).append(tenantId, { id: crypto.randomUUID(), tenantId, subjectKind: 'membership', subjectId: `${membership.listId}:${contact.id}`, type: 'membership_removed', actor: 'member_erasure', importId: null, payload: {}, occurredAt: input.deletedAt, createdAt: input.deletedAt });
     await createMarketingDirectoryEventRepository(db).append(tenantId, { id: crypto.randomUUID(), tenantId, subjectKind: 'contact', subjectId: contact.id, type: 'contact_erased', actor: 'member_erasure', importId: null, payload: {}, occurredAt: input.deletedAt, createdAt: input.deletedAt });

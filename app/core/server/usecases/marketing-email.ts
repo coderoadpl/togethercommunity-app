@@ -1,3 +1,8 @@
+import type { ContactCampaignAudience } from '#core/domain/marketing-audience.js';
+import type { MarketingContactAudienceDeps, MarketingContactAudienceRepository } from '../marketing-audience-ports.js';
+import { scheduleMarketingContactCampaign } from './marketing-contact-campaigns.js';
+import { prepareMarketingContactAudience } from './marketing-contact-audience.js';
+import type { MarketingContactRepository } from '../marketing-contact-ports.js';
 import { dispatchMarketingOutbox, marketingSendBudget } from './marketing-dispatch.js';
 import type { SesEventApplication, VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
 import type { MarketingDeliveryRepos, MarketingDeliveryTransaction, MarketingSnsInboxRepository, MarketingOutboxRepository, MarketingWaiter, HtmlToText } from '../marketing-delivery-ports.js';
@@ -601,6 +606,7 @@ export const unsubscribeAllMarketing = async (
 };
 
 interface CampaignDeps {
+  contactAudienceDeps?: MarketingContactAudienceDeps | undefined;
   campaigns: CampaignRepository;
   audience: MarketingAudienceRepository;
   definitions: ConsentDefinitionRepository;
@@ -620,6 +626,7 @@ export const createCampaign = async (
     bodyText?: string | null | undefined;
     replyTo?: string | null | undefined;
     consentDefinitionId: string;
+    audience?: ContactCampaignAudience | undefined;
     productIds?: string[];
     layoutId?: string | null;
   },
@@ -636,11 +643,17 @@ export const createCampaign = async (
       return err(validation('E-mail layout was not found'));
     }
   }
+  if (input.audience !== undefined) {
+    if (deps.contactAudienceDeps === undefined) return err(validation('Contact audiences are not configured'));
+    const prepared = await prepareMarketingContactAudience(tenantId.value, input.audience, deps.contactAudienceDeps);
+    if (!prepared.ok) return prepared;
+  }
   const now = deps.clock.nowIso();
   const campaign: Campaign = {
     id: deps.ids.nextId(), tenantId: tenantId.value, name: input.name, subject: input.subject,
     bodyText: input.bodyText ?? null, replyTo: input.replyTo ?? null,
     bodyHtml: input.bodyHtml, bodySource: input.bodySource ?? input.bodyHtml, layoutId: input.layoutId ?? null, consentDefinitionId: input.consentDefinitionId,
+    audienceVersion: input.audience === undefined ? 1 : 2, audience: input.audience ?? null, audienceSnapshotId: null, snapshotMaxContactId: null, cursorContactId: null, candidateCount: 0, skipped: 0,
     audienceFilter: input.productIds === undefined || input.productIds.length === 0 ? null : { productIds: input.productIds }, status: 'draft', sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null,
     toSend: 0, sent: 0, failed: 0, lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
     audienceNameSnapshot: null, consentLabelSnapshot: null, startedAt: null, finishedAt: null, createdAt: now,
@@ -680,25 +693,28 @@ export const getCampaignWithEngagement = async (
   ctx: Ctx,
   input: { campaignId: string },
   deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
-): Promise<Result<Campaign & { engagement: CampaignEngagementStats }, AppError>> => {
+): Promise<Result<Campaign & { engagement: CampaignEngagementStats; queued: number; unresolved: number }, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const campaign = await getCampaign(ctx, input, deps);
   if (!campaign.ok) return campaign;
   const stats = await deps.sends.engagementStats(campaign.value.tenantId, [campaign.value.id]);
-  return ok({ ...campaign.value, engagement: stats.get(campaign.value.id) ?? emptyEngagementStats() });
+  const progress = await deps.sends.progressStats(campaign.value.tenantId, [campaign.value.id]);
+  return ok({ ...campaign.value, ...(progress.get(campaign.value.id) ?? { queued: 0, unresolved: 0 }), engagement: stats.get(campaign.value.id) ?? emptyEngagementStats() });
 };
 
 export const listCampaignsWithEngagement = async (
   ctx: Ctx,
   deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
-): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats }>, AppError>> => {
+): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats; queued: number; unresolved: number }>, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const campaigns = await deps.campaigns.list(tenantId.value);
   const stats = await deps.sends.engagementStats(tenantId.value, campaigns.map((campaign) => campaign.id));
+  const progress = await deps.sends.progressStats(tenantId.value, campaigns.map((campaign) => campaign.id));
   return ok(campaigns.map((campaign) => ({
     ...campaign,
+    ...(progress.get(campaign.id) ?? { queued: 0, unresolved: 0 }),
     engagement: stats.get(campaign.id) ?? emptyEngagementStats(),
   })));
 };
@@ -747,6 +763,13 @@ export const scheduleCampaign = async (
   }
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
+  if (campaign.audienceVersion === 2) {
+    if (deps.contactAudienceDeps === undefined) return err(validation('Contact audiences are not configured'));
+    const scheduled = await scheduleMarketingContactCampaign(ctx, input, { ...deps.contactAudienceDeps, campaigns: deps.campaigns });
+    if (!scheduled.ok) return scheduled;
+    const queued = await deps.scheduler.scheduleCampaignTick(tenantId.value, campaign.id, input.sendAt);
+    return queued.ok ? scheduled : queued;
+  }
   const definition = await deps.definitions.findById(tenantId.value, campaign.consentDefinitionId);
   if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
     return err(validation('Campaign requires an active marketing consent definition'));
@@ -796,6 +819,7 @@ export const cancelCampaign = async (
 };
 
 export interface SendDeps extends EligibilityDeps {
+  contacts?: MarketingContactRepository | undefined;
   htmlToText: HtmlToText;
   delivery: MarketingDeliveryTransaction;
   marketingOutbox: MarketingOutboxRepository;
@@ -837,6 +861,9 @@ const lifecycleEvent = (
 });
 
 export interface MarketingMessageInput {
+  contactId?: string;
+  audienceSnapshotId?: string;
+  snapshotSkipReason?: MarketingIneligibilityReason | null;
   to: string;
   memberId: string | null;
   campaignId: string | null;
@@ -904,10 +931,12 @@ const enqueueMarketingMessagesExecution = async (
   for (const input of inputs) {
     const initial = await eligibilityFor(tenantId.value, input, deps);
     if (initial === null) return err(notFound('Consent definition was not found'));
+    if (input.snapshotSkipReason) initial.eligibility = { eligible: false, reason: input.snapshotSkipReason };
     if (!initial.eligibility.eligible) {
       const skippedId = deps.ids.nextId();
       const skipped: CampaignSend = {
         id: skippedId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
+        contactId: input.contactId ?? null, audienceSnapshotId: input.audienceSnapshotId ?? null,
         memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
         consentRowId: initial.latest?.id ?? null,
         unsubscribeTokenId: null, status: 'skipped', skipReason: initial.eligibility.reason,
@@ -915,7 +944,7 @@ const enqueueMarketingMessagesExecution = async (
         idempotencySource: input.idempotencySource ?? null, renderedBodyPurgedAt: null,
         createdAt: deps.clock.nowIso(), sentAt: null,
       };
-      await deps.sends.claimRecipient(tenantId.value, skipped, [
+      const claimed = await deps.sends.claimRecipient(tenantId.value, skipped, [
         lifecycleEvent(
           deps,
           tenantId.value,
@@ -925,12 +954,14 @@ const enqueueMarketingMessagesExecution = async (
           { reason: initial.eligibility.reason },
         ),
       ]);
+      if (!claimed) { results.push({ to: skipped.email, sendId: null, status: 'deduplicated' }); continue; }
       results.push({ to: normalizeEmail(input.to), sendId: skippedId, status: 'skipped', reason: initial.eligibility.reason });
       continue;
     }
     const sendId = deps.ids.nextId();
     const send: CampaignSend = {
       id: sendId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
+      contactId: input.contactId ?? null, audienceSnapshotId: input.audienceSnapshotId ?? null,
       memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
       consentRowId: initial.eligibility.consentRow.id,
       unsubscribeTokenId: null, status: 'pending', skipReason: null, sesMessageId: null,
@@ -1088,6 +1119,7 @@ export const sendMarketingMessages = async (
 };
 
 interface TickDeps extends SendDeps {
+  contactAudience?: MarketingContactAudienceRepository | undefined;
   snsInbox: MarketingSnsInboxRepository;
   campaigns: CampaignRepository;
   audience: MarketingAudienceRepository;
@@ -1162,7 +1194,9 @@ const campaignTickExecution = async (
   const budget = marketingSendBudget({ ratePerSecond: settings.quotaRatePerSec * (transactionalPending ? 0.5 : 1), sendSeconds: input.tickSeconds,
     dailyRemaining: settings.quotaDaily - settings.quotaSentLast24Hours, batchCap: deps.batchCap ?? 1000 });
   metrics.budgetComputed = budget;
-  const maxMemberId = campaign.snapshotMaxMemberId;
+  const contactMode = campaign.audienceVersion === 2;
+  if (contactMode && (deps.contactAudience === undefined || campaign.audienceSnapshotId === null)) return err(validation('Contact audience snapshot is missing'));
+  const maxMemberId = contactMode ? campaign.snapshotMaxContactId : campaign.snapshotMaxMemberId;
   if (maxMemberId === null && campaign.toSend === 0) {
     await deps.campaigns.update(tenantId.value, { ...campaign, status: 'finished', finishedAt: now });
     return ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
@@ -1173,32 +1207,40 @@ const campaignTickExecution = async (
       ? ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 })
       : scheduled;
   }
-  const members = await deps.audience.fetchEligibleBatch(tenantId.value, {
-    definitionId: campaign.consentDefinitionId, productIds: campaign.audienceFilter?.productIds ?? [],
-    afterMemberId: campaign.cursorMemberId, maxMemberId, limit: budget,
-  });
+  const members = contactMode && deps.contactAudience !== undefined && campaign.audienceSnapshotId !== null
+    ? (await deps.contactAudience.fetchSnapshotPage(tenantId.value, { snapshotId: campaign.audienceSnapshotId, afterContactId: campaign.cursorContactId, maxContactId: maxMemberId, limit: budget })).map((row) => ({
+      cursor: row.contactId, memberId: row.memberIdSnapshot, email: row.email, displayName: row.displayNameSnapshot,
+      firstName: row.firstNameSnapshot, contactId: row.contactId, audienceSnapshotId: row.snapshotId, snapshotSkipReason: row.skipReason,
+    }))
+    : (await deps.audience.fetchEligibleBatch(tenantId.value, {
+      definitionId: campaign.consentDefinitionId, productIds: campaign.audienceFilter?.productIds ?? [],
+      afterMemberId: campaign.cursorMemberId, maxMemberId, limit: budget,
+    })).map((row) => ({ ...row, cursor: row.memberId, firstName: null, contactId: undefined, audienceSnapshotId: undefined, snapshotSkipReason: null }));
   metrics.batchSize = members.length;
   metrics.budgetUsed = members.length;
-  let lastCursor = campaign.cursorMemberId;
+  let lastCursor = contactMode ? campaign.cursorContactId : campaign.cursorMemberId;
   const unsubscribeBaseUrl = await deps.unsubscribeBaseUrl(tenantId.value);
   const deadlineAt = new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString();
   for (const member of members) {
     if (Date.parse(deps.clock.nowIso()) + 100 >= Date.parse(deadlineAt)) break;
     const outcome = await deps.delivery.run(tenantId.value, async (repos) => {
       const result = await enqueueMarketingMessagesExecution(ctx, [{
+        ...(member.contactId === undefined ? {} : { contactId: member.contactId }),
+        ...(member.audienceSnapshotId === undefined ? {} : { audienceSnapshotId: member.audienceSnapshotId }),
+        snapshotSkipReason: member.snapshotSkipReason,
         to: member.email, memberId: member.memberId, campaignId: campaign.id, source: 'broadcast',
         consentDefinitionId: campaign.consentDefinitionId, subject: campaign.subject,
         bodyHtml: campaign.bodyHtml, bodyText: campaign.bodyText, replyTo: campaign.replyTo, layoutId: campaign.layoutId,
-        data: { member: { email: member.email, name: member.displayName } },
+        data: { member: { email: member.email, name: member.displayName, firstName: member.firstName }, contact: { email: member.email, name: member.displayName, firstName: member.firstName } },
       }], { ...deps, ...repos, unsubscribeBaseUrl: async () => unsubscribeBaseUrl });
       if (!result.ok) return result;
-      const advanced = await repos.campaigns.advanceCursor(tenantId.value, campaign.id, { cursorMemberId: member.memberId, sentDelta: 0, failedDelta: 0, lease: { workerId: input.workerId, now: deps.clock.nowIso() } });
+      const advanced = await repos.campaigns.advanceCursor(tenantId.value, campaign.id, { ...(contactMode ? { cursorContactId: member.cursor } : { cursorMemberId: member.cursor }), skippedDelta: result.value.filter((item) => item.status === 'skipped').length, sentDelta: 0, failedDelta: result.value.filter((item) => item.status === 'failed').length, lease: { workerId: input.workerId, now: deps.clock.nowIso() } });
       if (advanced === null) return err(appError('conflict', 'Campaign enumeration lease was replaced or the campaign stopped'));
       return result;
     });
     if (!outcome.ok) return outcome;
     metrics.skipped += outcome.value.filter((item) => item.status === 'skipped').length;
-    lastCursor = member.memberId;
+    lastCursor = member.cursor;
   }
   const dispatched = await dispatchMarketingOutbox(ctx, { workerId: input.workerId, deadlineAt, maxSends: budget, ...(input.errorThreshold === undefined ? {} : { errorThreshold: input.errorThreshold }) }, {
     ...deps,
@@ -1208,7 +1250,7 @@ const campaignTickExecution = async (
   metrics.failed = dispatched.value.failed;
   metrics.skipped += dispatched.value.skipped;
   const current = await deps.campaigns.findById(tenantId.value, campaign.id);
-  const reachedEnd = (members.length < budget && lastCursor === members.at(-1)?.memberId) || members.length === 0 || lastCursor === maxMemberId;
+  const reachedEnd = (members.length < budget && lastCursor === members.at(-1)?.cursor) || members.length === 0 || lastCursor === maxMemberId;
   if (current?.status === 'running') {
     if (reachedEnd && !await deps.sends.hasPendingByCampaign(tenantId.value, campaign.id)) {
       await deps.campaigns.update(tenantId.value, { ...current, status: 'finished', finishedAt: deps.clock.nowIso(), lockedBy: null, lockedUntil: null });

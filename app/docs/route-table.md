@@ -171,6 +171,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/marketing/campaigns/update` | authenticated | mutating | marketing campaign update |
 | `POST /api/marketing/campaigns/action` | authenticated | mutating | marketing campaign action |
 | `POST /api/marketing/campaigns/test` | authenticated | mutating | marketing campaign test |
+| `POST /api/marketing/campaigns/audience` | authenticated | mutating | marketing campaign audience |
 | `POST /api/marketing/audience-preview` | authenticated | mutating | marketing audience preview |
 | `GET /api/marketing/documents` | authenticated | read | marketing documents |
 | `POST /api/marketing/documents` | authenticated | mutating | marketing documents create |

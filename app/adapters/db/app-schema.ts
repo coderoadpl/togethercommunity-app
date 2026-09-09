@@ -4,6 +4,7 @@ import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer,
 
 import type {
   MarketingListRule,
+  MarketingAudienceSnapshot,
   MarketingImportCounts,
   MarketingImportRow,
   ImportActor,
@@ -156,7 +157,10 @@ export const consentDefinitions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
-  (table) => [uniqueIndex('consent_definitions_tenant_key_uidx').on(table.tenantId, table.key)],
+  (table) => [
+    uniqueIndex('consent_definitions_tenant_id_uidx').on(table.tenantId, table.id),
+    uniqueIndex('consent_definitions_tenant_key_uidx').on(table.tenantId, table.key),
+  ],
 );
 
 export const consentDefinitionVersions = pgTable(
@@ -1932,6 +1936,13 @@ export const campaigns = pgTable(
     replyTo: text('reply_to'),
     layoutId: text('layout_id').references(() => emailLayouts.id, { onDelete: 'set null' }),
     consentDefinitionId: text('consent_definition_id').notNull().references(() => consentDefinitions.id, { onDelete: 'restrict' }),
+    audienceVersion: integer('audience_version').notNull().default(1),
+    audience: jsonb('audience').$type<Campaign['audience']>(),
+    audienceSnapshotId: text('audience_snapshot_id'),
+    snapshotMaxContactId: text('snapshot_max_contact_id'),
+    cursorContactId: text('cursor_contact_id'),
+    candidateCount: integer('candidate_count').notNull().default(0),
+    skipped: integer('skipped').notNull().default(0),
     audienceFilter: jsonb('audience_filter').$type<Campaign['audienceFilter']>(),
     status: text('status', { enum: ['draft', 'scheduled', 'running', 'paused', 'cancelled', 'finished'] }).notNull(),
     sendAt: timestamp('send_at', { withTimezone: true, mode: 'string' }),
@@ -1951,6 +1962,7 @@ export const campaigns = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [
+    uniqueIndex('campaigns_tenant_id_uidx').on(table.tenantId, table.id),
     index('campaigns_tenant_status_send_at_idx').on(table.tenantId, table.status, table.sendAt),
     index('campaigns_lease_idx').on(table.status, table.lockedUntil),
   ],
@@ -1965,12 +1977,14 @@ export const campaignSends = pgTable(
     campaignId: text('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
     source: text('source', { enum: ['broadcast', 'api'] }).notNull(),
     memberId: text('member_id'),
+    contactId: text('contact_id'),
+    audienceSnapshotId: text('audience_snapshot_id'),
     email: text('email').notNull(),
     subject: text('subject').notNull(),
     consentRowId: text('consent_row_id').references(() => marketingConsents.id, { onDelete: 'set null' }),
     unsubscribeTokenId: text('unsubscribe_token_id'),
     status: text('status', { enum: ['pending', 'sending', 'sent', 'failed', 'skipped'] }).notNull(),
-    skipReason: text('skip_reason', { enum: ['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation'] }),
+    skipReason: text('skip_reason', { enum: ['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation', 'contact_archived', 'contact_address_changed'] }),
     sesMessageId: text('ses_message_id'),
     deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
     deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
@@ -1980,6 +1994,10 @@ export const campaignSends = pgTable(
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
   },
   (table) => [
+    foreignKey({ name: 'campaign_sends_tenant_contact_fk', columns: [table.tenantId, table.contactId], foreignColumns: [marketingContacts.tenantId, marketingContacts.id] }),
+    foreignKey({ name: 'campaign_sends_tenant_snapshot_fk', columns: [table.tenantId, table.audienceSnapshotId], foreignColumns: [marketingCampaignAudienceSnapshots.tenantId, marketingCampaignAudienceSnapshots.id] }),
+    index('campaign_sends_contact_journal_idx').on(table.tenantId, table.contactId, table.createdAt, table.id),
+    uniqueIndex('campaign_sends_contact_uidx').on(table.tenantId, table.campaignId, table.contactId).where(sql`${table.contactId} is not null and ${table.source} = 'broadcast'`),
     foreignKey({
       name: 'campaign_sends_tenant_member_fk',
       columns: [table.tenantId, table.memberId],
@@ -2370,3 +2388,30 @@ export const marketingSnsInboxEvents = pgTable('marketing_sns_inbox_events', {
   type: text('type').notNull(), actor: text('actor'),
   occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [index('marketing_sns_inbox_events_tenant_idx').on(table.tenantId, table.inboxId)]);
+
+export const marketingCampaignAudienceSnapshots = pgTable('marketing_campaign_audience_snapshots', {
+  id: text('id').primaryKey(), tenantId: text('tenant_id').notNull(), campaignId: text('campaign_id').notNull(), revision: integer('revision').notNull(),
+  audienceJson: jsonb('audience_json').$type<MarketingAudienceSnapshot['audienceJson']>().notNull(),
+  listRevisionSnapshots: jsonb('list_revision_snapshots').$type<MarketingAudienceSnapshot['listRevisionSnapshots']>().notNull(),
+  consentDefinitionId: text('consent_definition_id').notNull(), definitionVersion: integer('definition_version').notNull(),
+  candidateCount: integer('candidate_count').notNull(), eligibleCount: integer('eligible_count').notNull(),
+  skippedCounts: jsonb('skipped_counts').$type<MarketingAudienceSnapshot['skippedCounts']>().notNull(),
+  maxContactId: text('max_contact_id'), createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+  uniqueIndex('marketing_audience_snapshots_tenant_id_uidx').on(table.tenantId, table.id),
+  uniqueIndex('marketing_audience_snapshots_revision_uidx').on(table.tenantId, table.campaignId, table.revision),
+  foreignKey({ columns: [table.tenantId, table.campaignId], foreignColumns: [campaigns.tenantId, campaigns.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.tenantId, table.consentDefinitionId], foreignColumns: [consentDefinitions.tenantId, consentDefinitions.id] }),
+]);
+export const marketingCampaignAudienceContacts = pgTable('marketing_campaign_audience_contacts', {
+  tenantId: text('tenant_id').notNull(), snapshotId: text('snapshot_id').notNull(), contactId: text('contact_id').notNull(),
+  email: text('email').notNull(), emailHmac: text('email_hmac').notNull(), memberIdSnapshot: text('member_id_snapshot'),
+  displayNameSnapshot: text('display_name_snapshot'), firstNameSnapshot: text('first_name_snapshot'), consentRowId: text('consent_row_id'),
+  eligibilityAtSnapshot: boolean('eligibility_at_snapshot').notNull(), skipReason: text('skip_reason'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.tenantId, table.snapshotId, table.contactId] }),
+  uniqueIndex('marketing_audience_contacts_email_uidx').on(table.tenantId, table.snapshotId, table.email),
+  foreignKey({ columns: [table.tenantId, table.snapshotId], foreignColumns: [marketingCampaignAudienceSnapshots.tenantId, marketingCampaignAudienceSnapshots.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.tenantId, table.contactId], foreignColumns: [marketingContacts.tenantId, marketingContacts.id] }),
+]);

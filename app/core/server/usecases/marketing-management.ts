@@ -1,3 +1,6 @@
+import type { ContactAudiencePreview, ContactCampaignAudience } from '#core/domain/marketing-audience.js';
+import type { MarketingContactAudienceDeps } from '../marketing-audience-ports.js';
+import { prepareMarketingContactAudience, previewMarketingContactAudience } from './marketing-contact-audience.js';
 import {
   campaignCanEditContent,
   emailLayoutSchema,
@@ -216,11 +219,15 @@ export const saveEmailLayout = async (
 
 export const previewMarketingAudience = async (
   ctx: Ctx,
-  input: { consentDefinitionId: string; productIds: string[] },
-  deps: { definitions: ConsentDefinitionRepository; audience: MarketingAudienceRepository },
-): Promise<Result<{ count: number }, AppError>> => {
+  input: { consentDefinitionId: string; productIds: string[]; audience?: ContactCampaignAudience | undefined },
+  deps: { definitions: ConsentDefinitionRepository; audience: MarketingAudienceRepository; contactAudienceDeps?: MarketingContactAudienceDeps | undefined },
+): Promise<Result<{ count: number } | ContactAudiencePreview, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
+  if (input.audience !== undefined) {
+    if (deps.contactAudienceDeps === undefined) return err(validation('Contact audiences are not configured'));
+    return previewMarketingContactAudience(ctx, { audience: input.audience, consentDefinitionId: input.consentDefinitionId }, deps.contactAudienceDeps);
+  }
   const definition = await deps.definitions.findById(tenantId.value, input.consentDefinitionId);
   if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
     return err(validation('An active marketing consent definition is required'));
@@ -242,16 +249,17 @@ export const updateMarketingCampaign = async (
     bodyText?: string | null | undefined;
     replyTo?: string | null | undefined;
     consentDefinitionId: string;
+    audience?: ContactCampaignAudience | undefined;
     productIds: string[];
     layoutId: string | null;
   },
-  deps: { campaigns: CampaignRepository; definitions: ConsentDefinitionRepository; layouts: EmailLayoutRepository },
+  deps: { campaigns: CampaignRepository; definitions: ConsentDefinitionRepository; layouts: EmailLayoutRepository; contactAudienceDeps?: MarketingContactAudienceDeps | undefined },
 ): Promise<Result<{ campaign: Campaign }, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
   if (!tenantId.ok) return tenantId;
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
-  if (!campaignCanEditContent(campaign.status)) return err(validation('Campaign content is locked in this state'));
+  if ((campaign.audienceVersion === 2 && campaign.status !== 'draft') || !campaignCanEditContent(campaign.status)) return err(validation('Campaign content is locked in this state'));
   const definition = await deps.definitions.findById(tenantId.value, input.consentDefinitionId);
   if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
     return err(validation('An active marketing consent definition is required'));
@@ -259,8 +267,14 @@ export const updateMarketingCampaign = async (
   if (input.layoutId !== null && await deps.layouts.findById(tenantId.value, input.layoutId) === null) {
     return err(validation('E-mail layout was not found'));
   }
+  if (input.audience !== undefined) {
+    if (campaign.status !== 'draft' || deps.contactAudienceDeps === undefined) return err(validation('Contact audiences can only change on a draft'));
+    const prepared = await prepareMarketingContactAudience(tenantId.value, input.audience, deps.contactAudienceDeps);
+    if (!prepared.ok) return prepared;
+  }
   const updated = await deps.campaigns.update(tenantId.value, {
     ...campaign,
+    ...(input.audience === undefined ? {} : { audience: input.audience, audienceVersion: 2 as const }),
     name: input.name,
     subject: input.subject,
     bodyHtml: input.bodyHtml,

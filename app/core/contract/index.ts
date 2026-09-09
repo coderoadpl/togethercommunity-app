@@ -13,3 +13,5 @@ export {
 export * from './authorization.js';
 
 export * from './marketing-contacts.js';
+
+export { marketingCampaignAudienceInputSchema, type MarketingCampaignAudienceInput } from './routes.js';

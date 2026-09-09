@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 366. Exported `Ctx` use-case rows: 282.
+Closed capability count: 115. Route rows: 367. Exported `Ctx` use-case rows: 286.
 
 ## Human-readable diff
 
@@ -194,6 +194,7 @@ no changes
 | `POST /api/marketing/campaigns/update` | marketing:campaign:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/campaigns/action` | marketing:campaign:send | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/campaigns/test` | marketing:campaign:send | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/campaigns/audience` | marketing:campaign:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/audience-preview` | marketing:campaign:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/documents` | marketing:document:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/documents` | marketing:document:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -516,6 +517,10 @@ no changes
 | `m2m-import.ts#validateM2mImport` | import:validate | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
 | `m2m-transactional-email.ts#sendM2mTransactionalMessage` | transactional:message:send | transactional-api-key | transactional-api-key | yes | core/server/usecases/m2m-transactional-email.ts authorization call |
 | `m2m-transactional-email.ts#getM2mTransactionalMessage` | transactional:message:read | transactional-api-key | transactional-api-key | yes | core/server/usecases/m2m-transactional-email.ts authorization call |
+| `marketing-contact-audience.ts#previewMarketingContactAudience` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-contact-audience.ts authorization call |
+| `marketing-contact-campaigns.ts#setMarketingCampaignAudience` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-contact-campaigns.ts authorization call |
+| `marketing-contact-campaigns.ts#scheduleMarketingContactCampaign` | marketing:campaign:send | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-contact-campaigns.ts authorization call |
+| `marketing-contact-campaigns.ts#returnMarketingCampaignToDraft` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-contact-campaigns.ts authorization call |
 | `marketing-contact-imports.ts#createMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#appendMarketingContactImportRows` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#validateMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
@@ -690,12 +695,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:8` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:171` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1059` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1061` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1546` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1546` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:173` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1061` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1063` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1564` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1564` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -703,7 +708,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:110` | `const key = headers.get(API_KEY_HEADER);` |
 | api-key | `apps/server/src/marketing-routes.ts:112` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:118` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:584` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| api-key | `apps/server/src/marketing-routes.ts:585` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

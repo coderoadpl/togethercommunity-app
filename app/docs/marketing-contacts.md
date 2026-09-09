@@ -132,3 +132,63 @@ capabilities. Enrollment, transactional and content/users import scopes do not.
 Import operations additionally authorize contact/list/consent/suppression writes as
 applicable; previews require the corresponding reads. List previews require both
 list and contact read. See [permission table](permission-table.md).
+
+## Campaign list audiences
+
+New Studio campaigns explicitly select a version 2 audience. Included lists are
+unioned and deduplicated by contact; excluded lists and excluded product grants
+win. An empty selection includes nobody. The optional member source includes
+linked members with active campaign consent. Every selected contact still needs
+that campaign's consent definition and must pass suppression checks. Product
+exclusions use any current grant projection, including expired, free, manual and
+imported grants; they are not a paid-purchase filter.
+
+```json
+{
+  "version": 2,
+  "includeLists": ["list-id"],
+  "excludeLists": [],
+  "excludeProductIds": [],
+  "includeMembersWithConsent": false
+}
+```
+
+`POST /api/marketing/audience-preview` accepts `consentDefinitionId` and this
+`audience`. It returns the eligible `count`, candidate/excluded counts, a skipped
+breakdown, and at most 20 eligible contacts in stable ID order. Preview requires
+both campaign and contact read permissions. Counts remain estimates until
+scheduling. Member/product selections first reconcile directory jobs within a
+bounded budget; unfinished synchronization returns a conflict with a retry hint.
+
+Scheduling persists immutable snapshot membership, addresses, names, consent
+references, list revisions and counts in one transaction. Later list/tag changes
+or new contacts cannot expand that snapshot. Initially ineligible candidates stay
+skipped even after consent changes. Each candidate gets a contact-keyed send record;
+eligible records receive durable payloads and unsubscribe tokens. A send and its
+contact cursor advance commit together. Replayed enumeration does not duplicate
+sends. Dispatch rechecks consent, suppression, contact archival and address identity.
+Member erasure pseudonymizes snapshot personalization as well as the directory.
+
+Scheduled version 2 campaigns must return to draft before content or audience
+changes. Rescheduling creates a fresh snapshot and retains the prior snapshot.
+Campaign details expose candidates, eligible-at-snapshot (`toSend`), sent, failed,
+skipped, currently queued and unresolved acceptance counts. Completion waits for
+all snapshot candidates to be enumerated and for pending sends to resolve.
+
+Existing requests without `audience` still create version 1 member campaigns.
+Their inclusive product filter and member cursor retain their meaning. An old
+client's content update cannot clear a version 2 audience. Studio offers an
+explicit switch from a legacy draft to list selection.
+
+```bash
+pnpm --silent run cli campaign audience set --campaign campaign-id \
+  --audience '{"version":2,"includeLists":["list-id"],"excludeLists":[],"excludeProductIds":[],"includeMembersWithConsent":false}'
+pnpm --silent run cli campaign audience preview --campaign campaign-id
+pnpm --silent run cli campaign draft campaign-id
+pnpm --silent run cli campaign sends --contact contact-id
+```
+
+`campaign create --audience <json>` selects the same contract. The dedicated
+setter uses `POST /api/marketing/campaigns/audience` and only accepts drafts.
+The existing send journal accepts `contactId` on list and CSV-export queries;
+Studio contact detail links each send to its delivery/event timeline.

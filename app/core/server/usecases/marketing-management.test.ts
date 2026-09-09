@@ -64,7 +64,8 @@ const version: ConsentDefinitionVersion = {
 };
 const campaign = (status: Campaign['status']): Campaign => ({
   id: 'campaign-1', tenantId: 'tenant-1', name: 'Weekly', subject: 'Hello', bodyHtml: '<p>News</p>',
-  bodyText: null, replyTo: null, bodySource: '<p>News</p>', layoutId: null, consentDefinitionId: definition.id, audienceFilter: null,
+  bodyText: null, replyTo: null, bodySource: '<p>News</p>', layoutId: null, consentDefinitionId: definition.id, audienceVersion: 1, audience: null, audienceSnapshotId: null, snapshotMaxContactId: null, cursorContactId: null, candidateCount: 0, skipped: 0,
+  audienceFilter: null,
   status, sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null, toSend: 0, sent: 0, failed: 0,
   lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null, audienceNameSnapshot: null,
   consentLabelSnapshot: null, startedAt: null, finishedAt: null, createdAt: NOW,

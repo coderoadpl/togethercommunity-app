@@ -1,3 +1,4 @@
+import type { MarketingContactRepository } from '../marketing-contact-ports.js';
 import {
   appError, deriveConsentState, deriveMarketingEligibility, emailEventSchema, err, ok, tenantSesBroadcastsReady,
   type AppError, type CampaignSend, type Result,
@@ -10,6 +11,7 @@ import type { MarketingDeliveryRepos, MarketingDeliveryTransaction, MarketingWai
 import type { Clock, ConsentDefinitionRepository, EmailHmac, IdGenerator, MarketingConsentRepository, MarketingSesCredentialResolver, MarketingThrottleRepository, SesMarketingSender } from '../ports.js';
 
 export interface MarketingDispatchDeps extends MarketingDeliveryRepos {
+  contacts?: MarketingContactRepository | undefined;
   delivery: MarketingDeliveryTransaction;
   definitions: ConsentDefinitionRepository;
   consents: MarketingConsentRepository;
@@ -45,8 +47,8 @@ const finish = (tenantId: string, row: MarketingOutbox, send: CampaignSend, deps
     id: deps.ids.nextId(), tenantId, mailKind: 'marketing', refId: send.id, type, occurredAt: now, createdAt: now,
     meta: status === 'sent' ? { sesMessageId: outcome.messageId, ...(send.runId === null ? {} : { runId: send.runId }) } : status === 'skipped' ? { reason: outcome.reason ?? outcome.error ?? 'cancelled' } : { error: outcome.error, status },
   })]);
-  if (send.campaignId !== null && (status === 'sent' || status === 'failed')) {
-    await repos.campaigns.addDeliveryCounts(tenantId, send.campaignId, { sent: status === 'sent' ? 1 : 0, failed: status === 'failed' ? 1 : 0 });
+  if (send.campaignId !== null && (status === 'sent' || status === 'failed' || status === 'skipped')) {
+    await repos.campaigns.addDeliveryCounts(tenantId, send.campaignId, { sent: status === 'sent' ? 1 : 0, failed: status === 'failed' ? 1 : 0, skipped: status === 'skipped' ? 1 : 0 });
     const campaign = await repos.campaigns.findById(tenantId, send.campaignId);
     if (campaign !== null && campaign.errorCount >= (outcome.errorThreshold ?? 3)) await repos.campaigns.update(tenantId, { ...campaign, status: 'paused', pausedReason: outcome.error ?? 'Consecutive SES failures' });
   }
@@ -90,6 +92,16 @@ export const dispatchMarketingOutbox = async (
       const deferred = await finish(tenantId.value, row, send, deps, { status: 'retry', error: 'Tenant SES is not ready' });
       if (!deferred.ok) return deferred;
       break;
+    }
+    if (send.contactId != null) {
+      const contact = await deps.contacts?.findById(tenantId.value, send.contactId);
+      const reason = contact == null || contact.archivedAt !== null ? 'contact_archived' : contact.email !== payload.to || contact.emailHmac !== deps.hmac.compute(tenantId.value, payload.to) ? 'contact_address_changed' : null;
+      if (reason !== null) {
+        const completed = await finish(tenantId.value, row, send, deps, { status: 'skipped', reason });
+        if (!completed.ok) return completed;
+        totals.skipped += 1;
+        continue;
+      }
     }
     const definition = await deps.definitions.findById(tenantId.value, payload.consentDefinitionId);
     const consent = definition === null || definition.status !== 'active'

@@ -270,23 +270,15 @@ const runCourseJourney = async (page: Page, studioBaseUrl: string): Promise<void
   await page.goto(`${studioBaseUrl}/my/courses/${publicCourseId}`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('anon-course-program').waitFor({ state: 'visible', timeout: 15000 });
 
-  const preview = page.getByTestId(`lesson-button-${previewLessonId}`);
-  await preview.waitFor({ state: 'visible' });
-  assert(await preview.isEnabled(), 'preview lesson was disabled in the public course program');
-  await expectHref(
-    page,
-    `lesson-button-${previewLessonId}`,
-    `/my/courses/${publicCourseId}/lessons/${previewLessonId}`,
-  );
+  await page.getByTestId('guest-course-offer').waitFor({ state: 'visible' });
+  await expectHref(page, 'public-course-unlock-cta', '/checkout/product-free-preview');
 
-  const locked = page.getByTestId(`lesson-button-${lockedLessonId}`);
-  await locked.waitFor({ state: 'visible' });
-  assert(await locked.isDisabled(), 'non-preview lesson was enabled in the public course program');
-  const unlockHref = await page.getByTestId('public-course-unlock-cta-program').getAttribute('href');
-  assert(
-    unlockHref?.startsWith('/checkout/') === true,
-    `public course program CTA did not link to checkout: ${String(unlockHref)}`,
-  );
+  const viewport = page.viewportSize();
+  assert(viewport !== null, 'public course journey requires a viewport');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByTestId('guest-course-sticky-offer').waitFor({ state: 'visible' });
+  await expectHref(page, 'public-course-unlock-cta-mobile', '/checkout/product-free-preview');
+  await page.setViewportSize(viewport);
 
   const structure = await requestOk(
     studioBaseUrl,
@@ -306,9 +298,40 @@ const runCourseJourney = async (page: Page, studioBaseUrl: string): Promise<void
     'non-preview lesson was not locked in the public course API',
   );
 
-  await page.goto(
-    `${studioBaseUrl}/my/courses/${publicCourseId}/lessons/${previewLessonId}`,
-    { waitUntil: 'domcontentloaded' },
+  for (const module of structure.structure.modules) {
+    const toggle = page.getByTestId(`module-toggle-${module.id}`);
+    await toggle.waitFor({ state: 'visible' });
+    assert(
+      await toggle.getAttribute('aria-expanded') === 'false',
+      `guest module ${module.id} was not initially collapsed`,
+    );
+  }
+  const preview = page.getByTestId(`lesson-button-${previewLessonId}`);
+  const locked = page.getByTestId(`lesson-button-${lockedLessonId}`);
+  assert(!await preview.isVisible(), 'preview lesson was visible before expanding its module');
+  assert(!await locked.isVisible(), 'locked lesson was visible before expanding its module');
+
+  for (const module of structure.structure.modules) {
+    const containsTarget = module.chapters.some((chapter) => chapter.lessons.some(
+      ({ lessonId }) => lessonId === previewLessonId || lessonId === lockedLessonId,
+    ));
+    if (containsTarget) await page.getByTestId(`module-toggle-${module.id}`).click();
+  }
+  await preview.waitFor({ state: 'visible' });
+  assert(await preview.isEnabled(), 'preview lesson was disabled in the public course program');
+  await expectHref(
+    page,
+    `lesson-button-${previewLessonId}`,
+    `/my/courses/${publicCourseId}/lessons/${previewLessonId}`,
+  );
+  await locked.waitFor({ state: 'visible' });
+  assert(await locked.isDisabled(), 'non-preview lesson was enabled in the public course program');
+  assert(await locked.getAttribute('href') === null, 'non-preview lesson exposed a navigation link');
+
+  await preview.click();
+  await page.waitForURL(
+    (url) => url.pathname === `/my/courses/${publicCourseId}/lessons/${previewLessonId}`,
+    { timeout: 15000 },
   );
   await page.getByTestId('lesson-html').waitFor({ state: 'visible', timeout: 15000 });
 

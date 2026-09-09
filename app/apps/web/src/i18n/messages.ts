@@ -169,6 +169,7 @@ export interface Messages {
     methodMagicLinkTitle: string;
     methodMagicLinkBody: string;
     methodPasswordTitle: string;
+    passwordNotNeeded: string;
     methodPasswordBody: string;
     methodPasskeyTitle: string;
     methodPasskeyBody: string;
@@ -556,6 +557,7 @@ export interface Messages {
     sending: string;
     loadOlder: string;
     ownPrefix: string;
+    messageAuthor: string;
     startFromAuthor: string;
     starting: string;
     unreadAria: (params: { count: number }) => string;
@@ -1430,6 +1432,7 @@ export interface Messages {
     grantExpiredLabel: (params: { date: string }) => string;
     grantUpcomingLabel: (params: { date: string }) => string;
     grantUpcomingNote: (params: { date: string }) => string;
+    renewalUnavailable: string;
     renewAccess: string;
     subscriptionActiveLabel: string;
     subscriptionPastDueLabel: string;

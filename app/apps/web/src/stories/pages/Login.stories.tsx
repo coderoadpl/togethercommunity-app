@@ -1,4 +1,4 @@
-import { userEvent, within } from 'storybook/test';
+import { expect, userEvent, within } from 'storybook/test';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import fixture from '../fixtures/login.json';
 import { withPage } from '../page-decorators.js';
@@ -21,5 +21,39 @@ export const MethodCards: Story = {
 export const MethodCardsMobile: Story = {
   ...MethodCards,
   parameters: { viewport: { defaultViewport: 'mobile' } },
+  globals: { viewport: { value: 'mobile' } },
+};
+
+export const Passwordless: Story = {
+  parameters: {
+    fixture: {
+      ...fixture,
+      calls: {
+        ...fixture.calls,
+        'resolveSignInMethods:[{"email":"creator@together.dev"}]': {
+          ok: true,
+          value: { methods: ['magic-link'] },
+        },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(await canvas.findByTestId('login-email'), 'creator@together.dev');
+    await userEvent.click(canvas.getByTestId('login-continue'));
+    await canvas.findByTestId('send-magic-link');
+    await expect(canvas.queryByTestId('use-password')).not.toBeInTheDocument();
+    await expect(canvas.getByTestId('signin-passkey')).toBeInTheDocument();
+  },
+};
+
+export const PasswordlessPolish: Story = {
+  ...Passwordless,
+  parameters: { ...Passwordless.parameters, locale: 'pl' },
+};
+
+export const PasswordlessMobile: Story = {
+  ...Passwordless,
+  parameters: { ...Passwordless.parameters, viewport: { defaultViewport: 'mobile' } },
   globals: { viewport: { value: 'mobile' } },
 };

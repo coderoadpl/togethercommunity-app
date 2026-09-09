@@ -10,7 +10,7 @@ import { anonymousMe, memberMe, server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { ForgotPasswordPage } from './ForgotPasswordPage.js';
 
-const renderForgotPasswordPage = async () => {
+const renderForgotPasswordPage = async (initialEntry = '/forgot-password') => {
   const rootRoute = createRootRoute({ component: Outlet });
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -24,7 +24,7 @@ const renderForgotPasswordPage = async () => {
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute, forgotPasswordRoute]),
-    history: createMemoryHistory({ initialEntries: ['/forgot-password'] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return renderWithProviders(
@@ -78,6 +78,22 @@ describe('ForgotPasswordPage', () => {
       });
     },
   );
+
+  it('prefills a deep-linked email and submits the edited address', async () => {
+    let body: unknown;
+    server.use(anonymousMe(), http.post('*', async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ status: true });
+    }));
+    await renderForgotPasswordPage('/forgot-password?email=member%2Breset%40example.com');
+    const email = screen.getByTestId('forgot-password-email');
+    expect(email).toHaveValue('member+reset@example.com');
+    await userEvent.clear(email);
+    await userEvent.type(email, 'edited@example.com');
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+    await screen.findByTestId('forgot-password-success');
+    expect(body).toMatchObject({ email: 'edited@example.com' });
+  });
 
   it('validates the email before requesting a reset', async () => {
     server.use(anonymousMe());

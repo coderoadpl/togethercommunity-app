@@ -40,6 +40,7 @@ type GrantedProductRow = {
   description: string;
   priceCents: number;
   currency: string;
+  purchasable: boolean;
   grantStatus: GrantWindowStatus;
   grantStartsAt: string;
   grantExpiresAt: string | null;
@@ -176,17 +177,23 @@ const ProductRow = ({
         </Box>
       ) : null}
       {product.grantStatus === 'expired' ? (
-        <Box>
-          <Button
-            variant="contained"
-            size="small"
-            component={Link}
-            to={`/checkout/${encodeURIComponent(product.id)}`}
-            data-testid={`renew-${product.id}`}
-          >
-            {t.student.renewAccess}
-          </Button>
-        </Box>
+        product.purchasable ? (
+          <Box>
+            <Button
+              variant="contained"
+              size="small"
+              component={Link}
+              to={`/checkout/${encodeURIComponent(product.id)}`}
+              data-testid={`renew-${product.id}`}
+            >
+              {t.student.renewAccess}
+            </Button>
+          </Box>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            {t.student.renewalUnavailable}
+          </Typography>
+        )
       ) : null}
     </Paper>
   );

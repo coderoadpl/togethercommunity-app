@@ -233,6 +233,7 @@ const renderShell = async (path: string, lessonComponent: FunctionComponent = pa
   const routeTree = rootRoute.addChildren([
     createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: page('Studio') }),
     shellRoute.addChildren([
+      createRoute({ getParentRoute: () => shellRoute, path: '/messages', component: page(en.messages.title) }),
       createRoute({ getParentRoute: () => shellRoute, path: '/start', component: page('Start') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page(en.search.title) }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my', component: page('Biblioteka') }),
@@ -490,7 +491,7 @@ describe('MemberShell', () => {
     expect(within(sidebar).getByText(en.shell.spacesSection)).toBeInTheDocument();
   });
 
-  it('moves products, messages and the account out of the sidebar into the avatar menu', async () => {
+  it('keeps messages in the sidebar and avatar menu', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
     const user = userEvent.setup();
@@ -499,7 +500,7 @@ describe('MemberShell', () => {
 
     const sidebar = await screen.findByTestId('member-sidebar');
     expect(within(sidebar).queryByTestId('sidebar-products')).toBeNull();
-    expect(within(sidebar).queryByTestId('sidebar-messages')).toBeNull();
+    expect(await within(sidebar).findByTestId('sidebar-messages')).toHaveAttribute('href', '/messages');
     expect(within(sidebar).queryByTestId('sidebar-account')).toBeNull();
     expect(within(sidebar).queryByTestId('notification-nav')).toBeNull();
 
@@ -536,6 +537,22 @@ describe('MemberShell', () => {
     expect(await screen.findByTestId('member-account-products')).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.queryByTestId('member-account-messages')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('sidebar-messages')).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])('shows the messages unread badge (desktop: %s)', async (desktop) => {
+    stubViewport(desktop);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications(),
+      http.get('/api/messages/unread-count', () => HttpResponse.json({ ok: true, data: { unread: 3 } })),
+    );
+    await renderShell('/messages');
+    if (!desktop) await userEvent.click(await screen.findByTestId('member-tab-menu'));
+    const navigation = within(await screen.findByTestId('member-sidebar'));
+    const messages = await navigation.findByTestId('sidebar-messages');
+    expect(messages).toHaveAttribute('href', '/messages');
+    expect(messages).toHaveAttribute('aria-current', 'page');
+    expect(await navigation.findByTestId('sidebar-messages-unread')).toHaveTextContent('3');
+    expect(messages).toHaveTextContent(en.messages.unreadAria({ count: 3 }));
   });
 
   it('marks a space row with an unread dot and a labelled row', async () => {
@@ -934,12 +951,10 @@ describe('MemberShell', () => {
     expect(space.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect([
       within(actions).getByTestId('member-account-products'),
-      within(actions).getByTestId('member-account-messages'),
       within(actions).getByTestId('member-account-link'),
       within(actions).getByTestId('member-sign-out'),
     ].map((item) => item.textContent)).toEqual([
       en.student.myProducts,
-      en.messages.navLabel,
       en.account.menuAccount,
       en.tenant.signOut,
     ]);
@@ -947,7 +962,7 @@ describe('MemberShell', () => {
       'href',
       '/my/products',
     );
-    expect(within(actions).getByTestId('member-account-messages')).toHaveAttribute(
+    expect(within(sheet).getByTestId('sidebar-messages')).toHaveAttribute(
       'href',
       '/messages',
     );

@@ -73,7 +73,7 @@ export const MemberMenuSheet = ({
         <Box sx={{ px: '0.6rem', pb: '0.75rem' }}>
           <Divider sx={{ mb: '0.5rem' }} />
           <List component="div" disablePadding data-testid="member-menu-account-actions">
-            <MemberAccountActionList actions={account.actions} onSelect={onClose} surface="sheet" />
+            <MemberAccountActionList actions={account.actions.filter((action) => action.key !== 'messages')} onSelect={onClose} surface="sheet" />
           </List>
         </Box>
       </ShellSheet>

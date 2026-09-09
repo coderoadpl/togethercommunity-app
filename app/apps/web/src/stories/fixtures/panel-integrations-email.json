@@ -98,6 +98,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-spolecznosc-polecajki",
               "isOwn": false,

@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   NO_DM_BLOCKS,
@@ -10,6 +10,7 @@ import {
   normalizeEmail,
   ok,
   validation,
+  tenantSettingsSchema,
 } from '#core/domain/index.js';
 import type {
   CourseLesson,
@@ -19,6 +20,7 @@ import type {
   DmMessage,
   DmReport,
   Member,
+  MemberEvent,
   MemberBlock,
   MemberSubscription,
   Notification,
@@ -78,12 +80,13 @@ import {
   createPublicRateLimitRepository,
   createTenantDirectory,
   createTenantRepository,
+  createTermsConsentRepository,
   createTenantSecretRepository,
   createTenantSecretScan,
   createUserDisplayReader,
 } from './repositories.js';
 import { tenantDomainEvents } from './schema.js';
-import { createMemberEventRepository } from './member-events.js';
+import { appendGrantMemberEvent, createMemberEventRepository } from './member-events.js';
 import { createImportAuditEventRepository } from './import-audit-events.js';
 import {
   createCouponRedemptionRepository,
@@ -92,12 +95,15 @@ import {
 } from './coupon-repositories.js';
 import { createInvoiceRepository } from './invoice-repositories.js';
 import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
+import { recordFulfilledCheckoutConsents } from '#core/server/usecases/fulfilled-checkout-consents.js';
+import { createConsentDefinitionRepository, createMarketingConsentRepository, createConsentConfirmationTokenRepository } from './marketing-repositories.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
 import { createMemberErasureRequestRepository } from './member-erasure-requests.js';
 import {
   account,
   autoInvoiceJobs,
   consents,
+  consentConfirmationTokens,
   couponRedemptions,
   couponCheckoutSessions,
   dmReports,
@@ -435,6 +441,66 @@ describe('member repository', () => {
 });
 
 describe('member event repository', () => {
+  describe('grant event delivery', () => {
+    const deliveredEvent: Extract<MemberEvent, { type: 'grant' }> = {
+      id: `grant-transition:${JSON.stringify([ACME, 'shared-grant', 0])}`,
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      type: 'grant',
+      payload: {
+        grantId: 'shared-grant',
+        productId: 'prod-acme',
+        source: 'manual',
+        startsAt: PAST,
+        expiresAt: FUTURE,
+      },
+      occurredAt: NOW,
+    };
+
+    afterEach(async () => {
+      await db.delete(memberEvents).where(and(
+        inArray(memberEvents.tenantId, [ACME, GLOBEX]),
+        sql`${memberEvents.payload}->>'grantId' = 'shared-grant'`,
+      ));
+    });
+
+    it('deduplicates concurrent deliveries with the same tenant, key, and content', async () => {
+      const repo = createMemberEventRepository(db);
+      await Promise.all([
+        appendGrantMemberEvent(db, deliveredEvent, 0),
+        appendGrantMemberEvent(db, deliveredEvent, 0),
+      ]);
+      const events = await repo.listForMember(ACME, 'mem-acme');
+      expect(events.filter((event) => event.id === deliveredEvent.id)).toEqual([deliveredEvent]);
+    });
+
+    it('persists the same event key independently in two tenants', async () => {
+      const repo = createMemberEventRepository(db);
+      const otherEvent = {
+        ...deliveredEvent, tenantId: GLOBEX, memberId: 'mem-globex',
+        id: `grant-transition:${JSON.stringify([GLOBEX, 'shared-grant', 0])}`,
+      };
+      await appendGrantMemberEvent(db, deliveredEvent, 0);
+      await appendGrantMemberEvent(db, otherEvent, 0);
+      expect(await repo.listForMember(ACME, 'mem-acme')).toContainEqual(deliveredEvent);
+      expect(await repo.listForMember(GLOBEX, 'mem-globex')).toContainEqual(otherEvent);
+    });
+
+    it.each([
+      { occurredAt: FUTURE },
+      { memberId: 'different-member' },
+      { type: 'revoke' as const, payload: { grantId: 'shared-grant', productId: 'prod-acme', expiresAt: NOW } },
+      { payload: { ...deliveredEvent.payload, expiresAt: null } },
+    ])('rejects conflicting content under an existing event key: %j', async (change) => {
+      const repo = createMemberEventRepository(db);
+      await appendGrantMemberEvent(db, deliveredEvent, 0);
+      await expect(appendGrantMemberEvent(db, { ...deliveredEvent, ...change }, 0)).rejects.toThrow(
+        'Member event idempotency key collision',
+      );
+      expect(await repo.listForMember(ACME, 'mem-acme')).toContainEqual(deliveredEvent);
+    });
+  });
+
   it('merges commerce, access, subscription, and learning events newest-first', async () => {
     await createCourseRepository(db).create(ACME, {
       id: 'course-member-events',
@@ -673,6 +739,62 @@ describe('product grant repository', () => {
 
     const named = await repo.listForMemberWithProductNames(ACME, 'mem-acme', NOW);
     expect(named[0]).toMatchObject({ productName: 'Acme Course', active: true });
+  });
+
+  it('preserves repeated grant and revoke transitions even at the same timestamp', async () => {
+    const repo = createProductGrantRepository(db);
+    const events = createMemberEventRepository(db);
+    const before = await events.listForMember(ACME, 'mem-acme');
+    const window = { startsAt: PAST, expiresAt: FUTURE, occurredAt: NOW };
+    await repo.setGrantWindow(ACME, 'grant-acme', window);
+    await repo.revokeGrant(ACME, 'grant-acme', NOW);
+    await repo.revokeGrant(ACME, 'grant-acme', NOW);
+    await repo.setGrantWindow(ACME, 'grant-acme', window);
+    await Promise.all([
+      repo.setGrantWindow(ACME, 'grant-acme', window),
+      repo.setGrantWindow(ACME, 'grant-acme', window),
+    ]);
+    await repo.revokeGrant(ACME, 'grant-acme', NOW);
+    await repo.setGrantWindow(ACME, 'grant-acme', window);
+    const previousIds = new Set(before.map((event) => event.id));
+    const transitions = (await events.listForMember(ACME, 'mem-acme'))
+      .filter((event) => !previousIds.has(event.id));
+    expect(transitions.map((event) => event.type)).toEqual(['grant', 'revoke', 'grant', 'revoke']);
+    expect(new Set(transitions.map((event) => event.id)).size).toBe(4);
+    expect(transitions[0]?.payload).toEqual(transitions[2]?.payload);
+    expect(transitions[1]?.payload).toEqual(transitions[3]?.payload);
+    expect(await repo.findById(ACME, 'grant-acme')).toMatchObject({ startsAt: PAST, expiresAt: FUTURE });
+    expect(await repo.setGrantWindow(GLOBEX, 'grant-acme', window)).toBeNull();
+    expect(await repo.revokeGrant(GLOBEX, 'grant-acme', NOW)).toBeNull();
+  });
+
+  it('rolls back the grant projection when its next revision collides with different history', async () => {
+    const repository = createProductGrantRepository(db);
+    const [current] = await db.select().from(productGrants).where(and(
+      eq(productGrants.tenantId, ACME), eq(productGrants.id, 'grant-acme'),
+    ));
+    if (current === undefined) throw new Error('Missing grant fixture');
+    const revision = current.eventRevision + 1;
+    await appendGrantMemberEvent(db, {
+      tenantId: ACME, memberId: current.memberId, type: 'grant', occurredAt: NOW,
+      payload: {
+        grantId: current.id, productId: current.productId, source: current.source,
+        startsAt: current.startsAt, expiresAt: current.expiresAt,
+      },
+    }, revision);
+    try {
+      await expect(repository.revokeGrant(ACME, current.id, NOW)).rejects.toThrow(
+        'Member event idempotency key collision',
+      );
+      expect(await db.select().from(productGrants).where(and(
+        eq(productGrants.tenantId, ACME), eq(productGrants.id, current.id),
+      ))).toEqual([current]);
+    } finally {
+      await db.delete(memberEvents).where(and(
+        eq(memberEvents.tenantId, ACME),
+        eq(memberEvents.id, `grant-transition:${JSON.stringify([ACME, current.id, revision])}`),
+      ));
+    }
   });
 
   it('revokes a grant by setting its expiry', async () => {
@@ -1616,6 +1738,151 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.claim(ACME, { ...updated, id: 'evt-sub-2' }, lease)).toBe('claimed');
   });
 
+  it.each(['before-consent', 'confirmation-email'] as const)(
+    'rolls back finalization and consent together after failure at %s, then commits once on retry',
+    async (failurePoint) => {
+      const eventId = `evt-consent-${failurePoint}`;
+      const email = `consent-${failurePoint}@example.test`;
+      const definitions = createConsentDefinitionRepository(db);
+      const definitionId = `definition-${failurePoint}`;
+      const documentRef = { mode: 'url' as const, url: 'https://acme.example/privacy' };
+      await definitions.create(ACME, {
+        id: definitionId, tenantId: ACME, key: failurePoint, kind: 'optional_marketing',
+        channel: 'email', doubleOptIn: true, documentRef, status: 'active', createdAt: NOW, updatedAt: NOW,
+      }, {
+        id: `${definitionId}-v1`, tenantId: ACME, definitionId, version: 1,
+        label: 'News', documentVersionRef: documentRef, createdAt: NOW, createdBy: null,
+      });
+      const paymentEvents = createProcessedPaymentEventRepository(db);
+      const lease = { workerId: eventId, now: NOW, leaseExpiresAt: FUTURE };
+      const event: ProcessedPaymentEvent = {
+        id: eventId, tenantId: ACME, type: 'checkout.session.completed', objectId: eventId, processedAt: NOW,
+      };
+      const paidOrder = order({
+        id: `order-${eventId}`, tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme',
+        providerObjectIds: { checkoutSession: eventId },
+      });
+      const tenant = await createTenantRepository(db).findById(ACME);
+      if (tenant === null) throw new Error('Missing test tenant');
+      const settings = tenantSettingsSchema.parse({
+        name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null,
+        termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy',
+      });
+      const transaction = createPaymentTransactionPort(db);
+      let sequence = 0;
+      const deliver = async (fail: boolean) => {
+        const claimed = await paymentEvents.claim(ACME, event, lease);
+        if (claimed === 'processed') return ok({ processed: false });
+        expect(claimed).toBe('claimed');
+        const result = await transaction.run(async (repositories) => {
+          await repositories.orders.create(ACME, paidOrder);
+          await repositories.processedPaymentEvents.finalize(ACME, eventId, lease.workerId, NOW);
+          if (fail && failurePoint === 'before-consent') throw new Error('Consent processing interrupted');
+          const consent = await recordFulfilledCheckoutConsents(tenant, {
+            id: eventId, type: event.type, objectId: eventId,
+            checkoutSession: {
+              email, subscriptionId: null, paymentIntentId: null,
+              metadata: {
+                tenantId: ACME, productId: paidOrder.productId, priceId: null,
+                memberEmail: null, language: 'en', checkoutConsentCaptureId: eventId,
+              },
+            },
+          }, paidOrder, {
+            consentTokens: { nextToken: () => `token-${eventId}-${++sequence}` },
+            tenants: { ...createTenantRepository(db), findSettings: async () => settings },
+            ids: { nextId: () => `${eventId}-${++sequence}` }, clock: { nowIso: () => NOW },
+            marketing: { definitions },
+            checkoutConsentCaptures: {
+              create: async () => undefined,
+              findById: async () => ({
+                termsAccepted: true, selectedDefinitionIds: [definitionId], attachedDefinitionIds: [definitionId],
+                collectedAt: NOW, confirmationBaseUrl: 'https://acme.example/marketing/confirm',
+              }),
+            },
+          }, {
+            ...repositories,
+            emailOutbox: {
+              ...repositories.emailOutbox,
+              enqueue: async (message) => {
+                const queued = await repositories.emailOutbox.enqueue(message);
+                return fail ? err(validation('Confirmation email rejected')) : queued;
+              },
+            },
+          });
+          return consent.ok ? ok({ processed: true }) : consent;
+        });
+        if (!result.ok) await paymentEvents.release(ACME, eventId, lease.workerId);
+        return result;
+      };
+      expect(await deliver(true)).toMatchObject({ ok: false });
+      const terms = createTermsConsentRepository(db);
+      const marketing = createMarketingConsentRepository(db);
+      expect(await terms.listByEmail(ACME, email)).toHaveLength(0);
+      expect(await marketing.listByEmail(ACME, email)).toHaveLength(0);
+      expect(await db.select().from(orders).where(and(eq(orders.tenantId, ACME), eq(orders.id, paidOrder.id)))).toHaveLength(0);
+      expect(await deliver(false)).toEqual(ok({ processed: true }));
+      expect(await deliver(false)).toEqual(ok({ processed: false }));
+      expect(await terms.listByEmail(ACME, email)).toHaveLength(1);
+      const rows = await marketing.listByEmail(ACME, email);
+      expect(rows).toHaveLength(1);
+      const confirmationRows = await db.select().from(consentConfirmationTokens).where(and(
+        eq(consentConfirmationTokens.tenantId, ACME),
+        eq(consentConfirmationTokens.marketingConsentRowId, rows[0]?.id ?? ''),
+      ));
+      expect(confirmationRows).toHaveLength(1);
+      expect(await createConsentConfirmationTokenRepository(db).findByToken(ACME, confirmationRows[0]?.token ?? '')).not.toBeNull();
+      expect(await db.select().from(emailOutbox).where(and(eq(emailOutbox.tenantId, ACME), eq(emailOutbox.to, email)))).toHaveLength(1);
+    },
+  );
+
+  it('commits fulfillment with a pending consent job, isolates tenants, and serializes consent replay', async () => {
+    const transaction = createPaymentTransactionPort(db);
+    const paidOrder = order({ id: 'order-pending-consent', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme' });
+    const eventId = 'event-pending-consent';
+    const events = createProcessedPaymentEventRepository(db);
+    const lease = { workerId: eventId, now: NOW, leaseExpiresAt: FUTURE };
+    const event = { id: eventId, tenantId: ACME, type: 'checkout.session.completed', objectId: eventId, processedAt: NOW };
+    expect(await events.claim(ACME, event, lease)).toBe('claimed');
+    const consent = {
+      id: 'terms-pending', tenantId: ACME, userId: null, email: 'pending@example.test',
+      source: 'checkout' as const, termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy', acceptedAt: NOW,
+    };
+    expect(await transaction.run(async (repositories) => {
+      await repositories.orders.create(ACME, paidOrder);
+      await repositories.processedPaymentEvents.finalize(ACME, eventId, lease.workerId, NOW);
+      const result = await repositories.consentTransaction.run(async (nested) => {
+        await nested.consents.record(ACME, consent);
+        return err(validation('Marketing definition is unavailable'));
+      });
+      expect(result.ok).toBe(false);
+      await repositories.checkoutConsentJobs.enqueue(ACME, {
+        tenantId: ACME, checkoutSessionId: eventId, webhookEventId: eventId,
+        captureId: 'capture-pending', email: consent.email, orderId: paidOrder.id, productId: paidOrder.productId,
+        reason: 'Marketing definition is unavailable', createdAt: NOW, completedAt: null,
+      });
+      return ok(undefined);
+    })).toEqual(ok(undefined));
+    expect(await events.claim(ACME, event, lease)).toBe('processed');
+    expect(await createTermsConsentRepository(db).listByEmail(ACME, consent.email)).toHaveLength(0);
+    expect(await createOrderRepository(db).listForMember(ACME, 'mem-acme')).toEqual(expect.arrayContaining([expect.objectContaining({ id: paidOrder.id })]));
+    await transaction.run(async (repositories) => {
+      expect(await repositories.checkoutConsentJobs.lockPending(GLOBEX, eventId)).toBeNull();
+      await repositories.checkoutConsentJobs.complete(GLOBEX, eventId, NOW);
+      expect(await repositories.checkoutConsentJobs.lockPending(ACME, eventId)).not.toBeNull();
+      return ok(undefined);
+    });
+    const replay = () => transaction.run(async (repositories) => {
+      const job = await repositories.checkoutConsentJobs.lockPending(ACME, eventId);
+      if (job === null) return ok(false);
+      await repositories.consents.record(ACME, consent);
+      await repositories.checkoutConsentJobs.complete(ACME, eventId, NOW);
+      return ok(true);
+    });
+    const results = await Promise.all([replay(), replay()]);
+    expect(results).toEqual(expect.arrayContaining([ok(true), ok(false)]));
+    expect(await createTermsConsentRepository(db).listByEmail(ACME, consent.email)).toHaveLength(1);
+  });
+
   it('rolls back payment repository writes when the branch fails', async () => {
     const transaction = createPaymentTransactionPort(db);
     const rolledBackOrder = order({
@@ -2292,13 +2559,35 @@ describe('post repository', () => {
 
     await repo.createPost(ACME, post);
     await repo.setPinned(ACME, { id: post.id, pinnedAt: NOW });
-    await repo.softDelete(ACME, { id: post.id, deletedAt: FUTURE });
+    await repo.softDelete(ACME, { id: post.id, deletedAt: FUTURE, deletedBy: 'author', deletedByUserId: post.authorUserId });
 
     const rows = await db
       .select({ pinnedAt: posts.pinnedAt })
       .from(posts)
       .where(and(eq(posts.tenantId, ACME), eq(posts.id, post.id)));
     expect(rows).toEqual([{ pinnedAt: null }]);
+    await expect(repo.findById(ACME, post.id)).resolves.toMatchObject({
+      body: post.body, deletedBy: 'author', deletedByUserId: post.authorUserId, deletedAt: FUTURE,
+    });
+    await repo.softDelete(ACME, { id: post.id, deletedAt: NOW, deletedBy: 'moderator', deletedByUserId: 'another-staff' });
+    await expect(repo.findById(ACME, post.id)).resolves.toMatchObject({ deletedBy: 'author', deletedByUserId: post.authorUserId, deletedAt: FUTURE });
+    await expect(repo.setPinned(ACME, { id: post.id, pinnedAt: NOW })).resolves.toBeNull();
+    const visible = { ...post, id: 'post-deletion-moderator', rootPostId: 'post-deletion-moderator', deletedAt: FUTURE, deletedBy: 'moderator' as const };
+    await repo.createPost(ACME, visible);
+    const replied = { ...post, id: 'post-deletion-replied', rootPostId: 'post-deletion-replied', deletedAt: FUTURE, deletedBy: 'author' as const };
+    await repo.createPost(ACME, replied);
+    await repo.createPost(ACME, { ...replied, id: 'post-deletion-reply', parentPostId: replied.id });
+    await repo.createPost(GLOBEX, { ...post, tenantId: GLOBEX, id: 'post-other-tenant-reply', parentPostId: post.id });
+    const query = { contextKind: post.contextKind, contextId: post.contextId, limit: 1 };
+    const first = await repo.listThreadsForContext(ACME, query);
+    expect(first.threads.map((thread) => thread.post.id)).toEqual([visible.id]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await repo.listThreadsForContext(ACME, { ...query, cursor: first.nextCursor ?? '' });
+    expect(second.threads.map((thread) => thread.post.id)).toEqual([replied.id]);
+    expect(second.threads[0]?.replyCount).toBe(1);
+    expect(second.nextCursor).toBeNull();
+    const home = await repo.listThreadsForSpaces(ACME, { spaceIds: [post.contextId], limit: 10 });
+    expect(home.threads.map((thread) => thread.post.id)).toEqual([replied.id, visible.id]);
     await expect(repo.listPinnedForContext(ACME, {
       contextKind: post.contextKind,
       contextId: post.contextId,

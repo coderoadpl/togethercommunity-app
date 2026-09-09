@@ -263,7 +263,7 @@ export const members = pgTable(
 export const memberEvents = pgTable(
   'member_events',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     sequence: bigserial('sequence', { mode: 'number' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     memberId: text('member_id').notNull(),
@@ -272,6 +272,7 @@ export const memberEvents = pgTable(
     occurredAt: text('occurred_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     foreignKey({
       name: 'member_events_tenant_member_fk',
       columns: [table.tenantId, table.memberId],
@@ -285,7 +286,7 @@ export const memberEvents = pgTable(
 export const erasedMemberImports = pgTable(
   'erased_member_imports',
   {
-    memberId: text('member_id').primaryKey(),
+    memberId: text('member_id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -294,6 +295,7 @@ export const erasedMemberImports = pgTable(
     erasedAt: text('erased_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.memberId] }),
     index('erased_member_imports_tenant_email_hmac_idx').on(table.tenantId, table.emailHmac),
     uniqueIndex('erased_member_imports_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
@@ -663,6 +665,23 @@ export const ksefSubmissionJobs = pgTable(
   ],
 );
 
+export const checkoutConsentJobs = pgTable(
+  'checkout_consent_jobs',
+  {
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    checkoutSessionId: text('checkout_session_id').notNull(),
+    webhookEventId: text('webhook_event_id').notNull(),
+    captureId: text('capture_id').notNull(),
+    email: text('email').notNull(),
+    orderId: text('order_id').notNull().references(() => orders.id, { onDelete: 'restrict' }),
+    productId: text('product_id').notNull(),
+    reason: text('reason').notNull(),
+    createdAt: text('created_at').notNull(),
+    completedAt: text('completed_at'),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.checkoutSessionId] })],
+);
+
 export const autoInvoiceJobs = pgTable(
   'auto_invoice_jobs',
   {
@@ -880,6 +899,7 @@ export const productGrants = pgTable(
       .default(sql`to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`),
     expiresAt: text('expires_at'),
     legacyId: text('legacy_id'),
+    eventRevision: integer('event_revision').notNull().default(0),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
@@ -988,7 +1008,7 @@ export const tenantSecrets = pgTable(
 export const processedPaymentEvents = pgTable(
   'processed_events',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -1001,6 +1021,7 @@ export const processedPaymentEvents = pgTable(
     workerId: text('worker_id'),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     index('processed_events_tenantId_idx').on(table.tenantId),
     uniqueIndex('processed_events_fulfillment_uidx')
       .on(table.tenantId, table.objectId, table.type)
@@ -1231,6 +1252,8 @@ export const posts = pgTable(
     createdAt: text('created_at').notNull(),
     editedAt: text('edited_at'),
     deletedAt: text('deleted_at'),
+    deletedBy: text('deleted_by', { enum: ['author', 'moderator'] }),
+    deletedByUserId: text('deleted_by_user_id'),
     pinnedAt: text('pinned_at'),
   },
   (table) => [

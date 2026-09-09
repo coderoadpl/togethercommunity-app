@@ -72,7 +72,7 @@ const PostText = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
     </PostBody>
   ) : (
     <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`public-deleted-post-${post.id}`}>
-      {t.discussion.deletedPost}
+      {post.deletedBy === 'moderator' ? t.discussion.moderatorDeletedPost : t.discussion.deletedPost}
     </DeletedPostText>
   );
 };

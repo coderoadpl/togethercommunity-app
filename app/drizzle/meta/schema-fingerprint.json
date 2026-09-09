@@ -1,6 +1,6 @@
 {
-  "hash": "df1fd115c1d86cf02e5e868f1c0693f0bed1f0ab97d42722f7946e07e0421050",
-  "shortId": "df1fd115c1d8",
+  "hash": "f85a6d49f2c8683f0645254bebb16d7cf42dc0f39f1f2589dffbd19e224d7bd8",
+  "shortId": "f85a6d49f2c8",
   "schema": {
     "constraints": [
       {
@@ -185,6 +185,11 @@
       },
       {
         "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT",
+        "name": "checkout_consent_jobs_order_id_fkey",
+        "table": "checkout_consent_jobs"
+      },
+      {
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT",
         "name": "coupon_redemption_events_order_id_orders_id_fk",
         "table": "coupon_redemption_events"
       },
@@ -307,6 +312,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "checkout_consent_captures_tenant_id_tenants_id_fk",
         "table": "checkout_consent_captures"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "checkout_consent_jobs_tenant_id_fkey",
+        "table": "checkout_consent_jobs"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -965,11 +975,6 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
-        "name": "member_events_pkey",
-        "table": "member_events"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
         "name": "member_subscriptions_pkey",
         "table": "member_subscriptions"
       },
@@ -1012,11 +1017,6 @@
         "definition": "PRIMARY KEY (id)",
         "name": "posts_pkey",
         "table": "posts"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
-        "name": "processed_events_pkey",
-        "table": "processed_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1144,11 +1144,6 @@
         "table": "fiscal_artifacts"
       },
       {
-        "definition": "PRIMARY KEY (member_id)",
-        "name": "erased_member_imports_pkey",
-        "table": "erased_member_imports"
-      },
-      {
         "definition": "PRIMARY KEY (scope, key)",
         "name": "rate_limit_buckets_scope_key_pk",
         "table": "rate_limit_buckets"
@@ -1184,6 +1179,11 @@
         "table": "tenant_transactional_email_pools"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, checkout_session_id)",
+        "name": "checkout_consent_jobs_pkey",
+        "table": "checkout_consent_jobs"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, id)",
         "name": "course_lessons_tenant_id_id_pk",
         "table": "course_lessons"
@@ -1205,8 +1205,18 @@
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
+        "name": "member_events_tenant_id_id_pk",
+        "table": "member_events"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, id)",
         "name": "members_tenant_id_id_pk",
         "table": "members"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, id)",
+        "name": "processed_events_tenant_id_id_pk",
+        "table": "processed_events"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
@@ -1217,6 +1227,11 @@
         "definition": "PRIMARY KEY (tenant_id, id)",
         "name": "products_tenant_id_id_pk",
         "table": "products"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, member_id)",
+        "name": "erased_member_imports_tenant_id_member_id_pk",
+        "table": "erased_member_imports"
       },
       {
         "definition": "UNIQUE (email)",
@@ -5014,6 +5029,91 @@
             "default": "0",
             "generated": "",
             "identity": "",
+            "name": "event_revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'::text)",
+            "generated": "",
+            "identity": "",
+            "name": "starts_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legacy_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "product_grants"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
             "name": "failed_verification_count",
             "notNull": false,
             "type": "integer"
@@ -5177,6 +5277,22 @@
             "generated": "",
             "identity": "",
             "name": "deleted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_by_user_id",
             "notNull": false,
             "type": "text"
           },
@@ -5904,83 +6020,6 @@
           }
         ],
         "name": "session"
-      },
-      {
-        "columns": [
-          {
-            "default": "to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'::text)",
-            "generated": "",
-            "identity": "",
-            "name": "starts_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "expires_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "legacy_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "source",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "product_grants"
       },
       {
         "columns": [
@@ -7433,6 +7472,91 @@
           }
         ],
         "name": "checkout_consent_captures"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "capture_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_session_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "completed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "webhook_event_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "checkout_consent_jobs"
       },
       {
         "columns": [

@@ -86,7 +86,7 @@ import {
   createUserDisplayReader,
 } from './repositories.js';
 import { tenantDomainEvents } from './schema.js';
-import { appendGrantMemberEvent, appendMemberEvent, createMemberEventRepository } from './member-events.js';
+import { appendGrantMemberEvent, createMemberEventRepository } from './member-events.js';
 import { createImportAuditEventRepository } from './import-audit-events.js';
 import {
   createCouponRedemptionRepository,

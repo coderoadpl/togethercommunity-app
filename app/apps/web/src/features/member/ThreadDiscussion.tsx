@@ -28,6 +28,7 @@ import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
+import { TombstonePostMenu } from './TombstonePostMenu.js';
 import { DeletePostDialog } from './DeletePostDialog.js';
 import { usePostMutations } from './usePostMutations.js';
 import { useImpersonation } from './viewer.js';
@@ -261,6 +262,9 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
         </PostBody>
       )}
 
+      {deleted && a.viewer?.canModerate ? (
+        <TombstonePostMenu postId={post.id} writeDisabled={a.writeDisabled} />
+      ) : null}
       {(canReply || canEdit || canDelete || (!own && !deleted)) && (
         <Stack
           direction="row"

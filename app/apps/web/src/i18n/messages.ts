@@ -1560,6 +1560,9 @@ export interface Messages {
     deleteConfirm: string;
     deleting: string;
     deletedPost: string;
+    purge: string;
+    purgeConfirmTitle: string;
+    purgeConfirmBody: string;
     moderatorDeletedPost: string;
     edited: string;
     authorChip: string;

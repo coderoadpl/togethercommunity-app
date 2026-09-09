@@ -2073,6 +2073,14 @@ const discussion = program.command('discussion').description('Lesson discussions
 const post = program.command('post').description('Community posts');
 
 post
+  .command('purge')
+  .description('Permanently delete a deleted post and its replies (staff only)')
+  .requiredOption('--id <postId>')
+  .action(withInput(z.tuple([z.object({ id: z.string().min(1) })]), async (ctx, [input]) => {
+    emit(await ctx.api.purgePost(input), ctx.json, (data) => `purged post ${data.id}`);
+  }));
+
+post
   .command('report')
   .description('Report a post')
   .requiredOption('--post <postId>')

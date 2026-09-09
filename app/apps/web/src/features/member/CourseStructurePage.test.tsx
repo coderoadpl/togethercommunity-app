@@ -264,20 +264,23 @@ describe('CourseStructurePage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps progress plus the small-screen program leading and discussion trailing', async () => {
+  it('orders compact course sections before the curriculum', async () => {
     stubViewport(true);
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    const leading = await screen.findByTestId('member-rail-leading');
-    const trailing = screen.getByTestId('member-rail-trailing');
-    const inlineProgram = within(leading).getByTestId('course-tree-inline');
+    const progressCard = await screen.findByTestId('course-progress-card');
+    const aboutCard = screen.getByTestId('course-about-card');
+    const discussionSearch = screen.getByTestId('course-discussion-search');
+    const inlineProgram = screen.getByTestId('course-tree-inline');
+    const compactOrder = [progressCard, aboutCard, discussionSearch, inlineProgram]
+      .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
 
-    expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
+    expect(compactOrder).toEqual([...compactOrder].sort((left, right) => left - right));
     expect(inlineProgram).toHaveStyle({ marginTop: '1.5rem' });
     expect(screen.getAllByTestId('course-progress-card')).toHaveLength(1);
-    expect(within(trailing).getByTestId('course-discussion-search')).toBeInTheDocument();
     expect(within(inlineProgram).getByTestId('course-tree')).toBeInTheDocument();
+    expect(within(inlineProgram).getByRole('heading', { level: 2, name: pl.courseOverview.curriculum })).toBeInTheDocument();
     expect(screen.getAllByTestId('course-tree')).toHaveLength(1);
     expect(within(inlineProgram).getByTestId('lesson-search')).toBeInTheDocument();
     expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
@@ -352,6 +355,18 @@ describe('CourseStructurePage', () => {
     await screen.findByTestId('course-progress-card');
     expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-tree')).not.toBeInTheDocument();
+  });
+
+  it('keeps desktop progress and discussion search in the rail', async () => {
+    stubViewport(false);
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const leading = await screen.findByTestId('member-rail-leading');
+    const trailing = screen.getByTestId('member-rail-trailing');
+
+    expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
+    expect(within(trailing).getByTestId('course-discussion-search')).toBeInTheDocument();
   });
 
   it('renders the course title as the single page heading', async () => {

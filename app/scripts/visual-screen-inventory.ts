@@ -26,6 +26,7 @@ export interface ScreenSpec {
   waitForNetworkIdle?: boolean;
   minBytes?: number;
   fullPage?: boolean;
+  isolateCapture?: boolean;
   mask?: (page: Page) => Locator[];
 }
 
@@ -643,6 +644,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'panel-course',
     auth: 'creator',
+    isolateCapture: true,
     path: '/panel/courses/course-js',
     ready: (page) => page.getByTestId('module-card').first().waitFor(visible),
   },

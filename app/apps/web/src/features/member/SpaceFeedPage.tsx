@@ -371,7 +371,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
         <PostComposer
           label={t.community.composerLabel}
           placeholder={t.community.composerPlaceholder}
-          collapsedPrompt={t.community.composerPrompt}
+          compact
           submitLabel={t.community.post}
           pendingLabel={t.community.posting}
           busy={create.isPending}

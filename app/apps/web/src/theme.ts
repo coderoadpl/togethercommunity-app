@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, Typography } from '@mui/material';
+import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, TextField, Typography } from '@mui/material';
 import type { ListItemButtonProps } from '@mui/material/ListItemButton';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
@@ -2886,6 +2886,7 @@ export const LessonLinkButton = styled(Button)<AsElement & { href?: string; targ
 });
 
 export const LedgerBreadcrumbs = styled(Breadcrumbs)({
+  '& .MuiBreadcrumbs-li > a': { display: 'block', lineHeight: '44px', minHeight: 44, minWidth: 44 },
   '& .MuiBreadcrumbs-li:first-of-type': {
     minWidth: 0,
     '& > *': {
@@ -2915,7 +2916,7 @@ export const ShellBreadcrumbs = styled(Breadcrumbs)(({ theme }) => ({
   },
   '& .MuiBreadcrumbs-li:not(:first-of-type):not(:last-of-type) > *': { maxWidth: '10rem' },
   '& .MuiBreadcrumbs-li:last-of-type': { color: theme.palette.text.primary },
-  '& a': { color: 'inherit' },
+  '& .MuiBreadcrumbs-li > a': { color: 'inherit', display: 'block', lineHeight: '44px', minHeight: 44, minWidth: 44 },
 }));
 
 export const LedgerTitle = styled(Typography, {
@@ -3785,8 +3786,11 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   padding: '0.75rem',
   backgroundColor: theme.palette.background.paper,
   borderTop: theme.headerRule ?? `1px solid ${theme.palette.divider}`,
-  '& .MuiButton-root': { minHeight: 48 },
-  [theme.breakpoints.up('md')]: { bottom: 0 },
+  '& .MuiButton-root': { width: '100%', minHeight: 48, minWidth: 44 },
+  [theme.breakpoints.up('md')]: {
+    bottom: 0,
+    '& .MuiButton-root': { width: 'auto' },
+  },
 }));
 
 export const LessonBlockIcon = styled(SvgIcon)(({ theme }) => ({
@@ -3805,20 +3809,9 @@ export const DiscussionThread = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
 }));
 
-export const ComposerPrompt = styled(Button)(({ theme }) => ({
-  justifyContent: 'flex-start',
-  textAlign: 'left',
-  textTransform: 'none',
-  fontWeight: 400,
-  padding: '0.65rem 0.9rem',
-  color: theme.palette.text.secondary,
-  borderColor: theme.palette.divider,
-  backgroundColor: theme.palette.background.default,
-  '&:hover': {
-    borderColor: theme.palette.text.disabled,
-    backgroundColor: theme.palette.background.default,
-  },
-}));
+export const ComposerInput = styled(TextField)({
+  '& .MuiInputBase-root': { minHeight: 44 },
+});
 
 export const SocialFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   display: 'flex',

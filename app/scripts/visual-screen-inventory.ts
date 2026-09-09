@@ -419,7 +419,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
     ready: async (page) => {
       await page.getByTestId('member-breadcrumbs').waitFor(visible);
-      await page.getByTestId('discussion-composer-open').waitFor(visible);
+      await page.getByTestId('discussion-composer-input').waitFor(visible);
       await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor(visible);
     },
   },

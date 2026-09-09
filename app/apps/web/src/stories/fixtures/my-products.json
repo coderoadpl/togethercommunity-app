@@ -156,6 +156,7 @@
             "grantStatus": "active",
             "id": "product-js-full",
             "priceCents": 39900,
+            "purchasable": true,
             "subscription": null,
             "title": "JavaScript Course - full access",
             "type": "course"
@@ -181,6 +182,7 @@
             "grantStatus": "active",
             "id": "product-download-workbook",
             "priceCents": 7900,
+            "purchasable": true,
             "subscription": null,
             "title": "Creator Workbook",
             "type": "digital_download"
@@ -204,6 +206,7 @@
             "grantStatus": "active",
             "id": "product-club",
             "priceCents": 4900,
+            "purchasable": true,
             "subscription": {
               "cancelAtPeriodEnd": false,
               "currentPeriodEnd": "2026-07-11T12:00:00.000Z",

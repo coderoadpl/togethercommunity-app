@@ -462,6 +462,7 @@ export const myProductsOutputSchema = z.object({
       accessItems: z.array(accessItemSchema),
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
+      purchasable: z.boolean(),
       grantStatus: grantWindowStatusSchema,
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),

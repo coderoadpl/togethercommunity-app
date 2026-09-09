@@ -1922,6 +1922,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             accessItems: product.accessItems,
             priceCents: product.priceCents,
             currency: product.currency,
+            purchasable: product.purchasable,
             grantStatus: product.grantStatus,
             grantStartsAt: product.grantStartsAt,
             grantExpiresAt: product.grantExpiresAt,

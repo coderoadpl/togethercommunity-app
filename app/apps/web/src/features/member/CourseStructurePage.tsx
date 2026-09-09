@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { Box, Link as MuiLink, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
+import { Box, Button, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -147,23 +147,35 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
 
   if (structure.isError) {
     const notFound = isNotFound(structure.error);
+    if (notFound) {
+      return (
+        <MemberSurface
+          title={t.courseTree.courseNotFound}
+          eyebrow={t.student.courseEyebrow}
+          width="wide"
+          state={{
+            kind: 'not-found',
+            title: t.courseTree.courseNotInLibrary,
+            action: (
+              <Button component={Link} to="/my" variant="contained">
+                {t.courseTree.backToMyCourses}
+              </Button>
+            ),
+          }}
+        />
+      );
+    }
+
     return (
       <MemberSurface
-        title={notFound ? t.courseTree.courseNotFound : t.student.myCourses}
+        title={t.student.myCourses}
         eyebrow={t.student.courseEyebrow}
-        width={notFound ? 'prose' : 'wide'}
-        state={notFound
-          ? {
-              kind: 'not-found',
-              title: t.courseTree.courseNotFound,
-              body: t.courseTree.courseNotInLibrary,
-              action: <MuiLink component={Link} to="/my">{t.courseTree.backToMyCourses}</MuiLink>,
-            }
-          : {
-              kind: 'error',
-              message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
-              retry: { label: t.common.retry, onRetry: () => void structure.refetch() },
-            }}
+        width="wide"
+        state={{
+          kind: 'error',
+          message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
+          retry: { label: t.common.retry, onRetry: () => void structure.refetch() },
+        }}
       />
     );
   }

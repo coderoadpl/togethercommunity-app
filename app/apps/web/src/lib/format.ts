@@ -15,6 +15,34 @@ export const formatOfferPrice = (
   freeLabel: string,
 ): string => (priceCents === 0 ? freeLabel : formatPrice(priceCents, currency, language));
 
+export type OfferPriceTerms = {
+  kind: 'one_time' | 'recurring';
+  interval: 'month' | 'year' | null;
+  amountCents: number;
+  currency: string;
+};
+
+type PriceTermFormatter = (params: { price: string }) => string;
+
+export type OfferPriceTermLabels = {
+  free: string;
+  oneTime: PriceTermFormatter;
+  monthly: PriceTermFormatter;
+  yearly: PriceTermFormatter;
+};
+
+export const formatOfferPriceTerms = (
+  price: OfferPriceTerms,
+  language: string,
+  labels: OfferPriceTermLabels,
+): string => {
+  const formatted = formatOfferPrice(price.amountCents, price.currency, language, labels.free);
+  if (price.amountCents === 0) return formatted;
+  if (price.kind === 'recurring' && price.interval === 'month') return labels.monthly({ price: formatted });
+  if (price.kind === 'recurring' && price.interval === 'year') return labels.yearly({ price: formatted });
+  return labels.oneTime({ price: formatted });
+};
+
 export const formatDate = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium' }).format(new Date(value));
 

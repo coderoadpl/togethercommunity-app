@@ -535,6 +535,19 @@ export const SCREENS: readonly ScreenSpec[] = [
     mask: (page) => [page.locator('[data-testid^="storage-cors-origin-"]'), page.getByTestId('storage-cors-json')],
   },
   {
+    name: 'panel-storage-wizard-connection',
+    auth: 'creator',
+    path: '/panel/integrations#storage',
+    fixtureName: 'panel-storage-wizard',
+    ready: (page) => page.getByTestId('storage-connection-step').waitFor(visible),
+    settled: async (page) => {
+      await page.getByTestId('storage-wizard').evaluate((element) =>
+        element.scrollIntoView({ block: 'start' }),
+      );
+    },
+    mask: (page) => [page.locator('[data-testid^="storage-cors-origin-"]')],
+  },
+  {
     name: 'panel-lesson-attachments',
     auth: 'creator',
     path: '/panel/lessons/lesson-js-zmienne-1',

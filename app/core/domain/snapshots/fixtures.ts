@@ -93,7 +93,7 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
       name: 'Welcome lesson',
       contents: [
         { type: 'video', storageKey: 'videos/welcome', streamVideoId: 'stream-1' },
-        { type: 'pdf', pdfUrl: '/assets/sample-lekcja.pdf', name: 'Cheatsheet' },
+        { type: 'pdf', pdfUrl: '/assets/sample-lesson.pdf', name: 'Cheatsheet' },
         { type: 'html', html: '<p>Hello</p>' },
       ],
       legacyId: null,
@@ -111,7 +111,7 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
         { type: 'embed', embedUrl: 'https://vimeo.com/groups/motion/videos/76979871' },
         { type: 'embed', embedUrl: 'https://vimeo.com/76979871?h=abc123' },
         { type: 'embed', embedUrl: 'https://www.youtube.com/embed/videoseries?list=PLabc' },
-        { type: 'pdf', pdfUrl: '/assets/sample-lekcja.pdf', name: 'Cheatsheet' },
+        { type: 'pdf', pdfUrl: '/assets/sample-lesson.pdf', name: 'Cheatsheet' },
         { type: 'html', html: '<p>Hello</p>' },
       ],
       durationMinutes: 12,
@@ -150,7 +150,7 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
       name: 'Materials lesson',
       isPreview: false,
       contents: [
-        { type: 'pdf', pdfUrl: '/assets/sample-lekcja.pdf', name: 'Cheatsheet' },
+        { type: 'pdf', pdfUrl: '/assets/sample-lesson.pdf', name: 'Cheatsheet' },
         { type: 'link', url: 'https://docs.example.test/guide', description: 'Guide' },
         { type: 'link', url: 'mailto:teacher@example.test', description: 'Ask the teacher' },
       ],

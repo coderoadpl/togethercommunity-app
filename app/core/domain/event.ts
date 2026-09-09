@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { eventDiscussionLeadInPl } from './event.pl.js';
 import { VIDEO_EMBED_URL_MESSAGE, inspectVideoEmbedUrl } from './course.js';
 import { DEFAULT_LANGUAGE, type Language } from './language.js';
 
@@ -156,7 +157,7 @@ export const eventIcsSchema = z.object({
 export type EventIcs = z.output<typeof eventIcsSchema>;
 
 const EVENT_DISCUSSION_LEAD_IN: Record<Language, (title: string) => string> = {
-  pl: (title) => `Wątek wydarzenia: ${title}`,
+  pl: eventDiscussionLeadInPl,
   en: (title) => `Event thread: ${title}`,
 };
 

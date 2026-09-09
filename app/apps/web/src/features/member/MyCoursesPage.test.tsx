@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Course, MemberNavigation } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { MyCoursesPage } from './MyCoursesPage.js';
@@ -73,7 +73,7 @@ describe('MyCoursesPage', () => {
 
     await renderPage(<MyCoursesPage />);
 
-    expect(await screen.findByRole('heading', { name: pl.student.myCourses })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.student.myCourses })).toBeInTheDocument();
     const card = await screen.findByTestId('course-card-course-1');
     expect(card).toHaveAttribute('href', '/my/courses/course-1');
     expect(screen.getByText('Start from zero.')).toBeInTheDocument();
@@ -97,10 +97,10 @@ describe('MyCoursesPage', () => {
 
     await renderPage(<MyCoursesPage />);
 
-    expect(await screen.findByRole('heading', { name: pl.student.noCourses })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.student.noCourses })).toBeInTheDocument();
     const empty = screen.getByTestId('my-courses-empty-state');
     expect(within(empty).getByTestId('empty-library-icon')).toBeInTheDocument();
-    expect(empty).toHaveTextContent(pl.student.coursesWillAppear);
+    expect(empty).toHaveTextContent(en.student.coursesWillAppear);
   });
 
   it('renders a cover image when set and a tinted initials placeholder otherwise', async () => {

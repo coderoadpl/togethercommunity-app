@@ -7,29 +7,29 @@ describe('PanelPage', () => {
   it('renders the quiet h1 header with description, action and children', () => {
     render(
       <PanelPage
-        title="Produkty"
-        description="Oferta twojej przestrzeni"
-        action={<button type="button">Nowy produkt</button>}
+        title="Products"
+        description="Your workspace offer"
+        action={<button type="button">New product</button>}
         data-testid="page"
       >
-        <p>Lista produktów</p>
+        <p>Product list</p>
       </PanelPage>,
     );
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Produkty' })).toBeInTheDocument();
-    expect(screen.getByText('Oferta twojej przestrzeni')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Nowy produkt' })).toBeInTheDocument();
-    expect(screen.getByText('Lista produktów')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Products' })).toBeInTheDocument();
+    expect(screen.getByText('Your workspace offer')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New product' })).toBeInTheDocument();
+    expect(screen.getByText('Product list')).toBeInTheDocument();
   });
 
   it('renders the back link on detail pages', () => {
     render(
-      <PanelPage title="Kurs JS" backTo={<a href="/panel/courses">← wszystkie kursy</a>}>
-        <p>Szczegóły</p>
+      <PanelPage title="JS Course" backTo={<a href="/panel/courses">All courses</a>}>
+        <p>Details</p>
       </PanelPage>,
     );
 
-    expect(screen.getByRole('link', { name: '← wszystkie kursy' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'All courses' })).toHaveAttribute(
       'href',
       '/panel/courses',
     );
@@ -37,13 +37,13 @@ describe('PanelPage', () => {
 
   it('renders a StatusView instead of children for non-ready states', () => {
     render(
-      <PanelPage title="Uczestnicy" state={{ kind: 'error', message: 'Nie udało się wczytać', retry: { label: 'Ponów', onRetry: () => undefined } }}>
-        <p>Nie powinno się pojawić</p>
+      <PanelPage title="Members" state={{ kind: 'error', message: 'Could not load', retry: { label: 'Retry', onRetry: () => undefined } }}>
+        <p>Should not appear</p>
       </PanelPage>,
     );
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Nie udało się wczytać');
-    expect(screen.queryByText('Nie powinno się pojawić')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: 'Uczestnicy' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load');
+    expect(screen.queryByText('Should not appear')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Members' })).toBeInTheDocument();
   });
 });

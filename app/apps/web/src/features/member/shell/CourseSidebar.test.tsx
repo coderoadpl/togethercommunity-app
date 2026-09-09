@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CourseStructureWithAccess, MemberNavigation } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { CourseSidebar } from './CourseSidebar.js';
@@ -160,12 +160,12 @@ describe('CourseSidebar', () => {
     const header = await screen.findByTestId('course-sidebar-header');
     const back = screen.getByTestId('course-sidebar-back');
     expect(back).toHaveAttribute('href', memberHomePath());
-    expect(back).toHaveTextContent(pl.shell.backTo({ name: 'Acme' }));
+    expect(back).toHaveTextContent(en.shell.backTo({ name: 'Acme' }));
 
     expect(header).toHaveTextContent('JavaScript Foundations');
     expect(within(header).queryByTestId('completion-mark')).not.toBeInTheDocument();
     expect(screen.getByTestId('course-sidebar-totals')).toHaveTextContent(
-      `33% · ${pl.shell.lessonsOf({ done: 1, total: 3 })}`,
+      `33% · ${en.shell.lessonsOf({ done: 1, total: 3 })}`,
     );
   });
 
@@ -192,7 +192,7 @@ describe('CourseSidebar', () => {
 
     const header = await screen.findByTestId('course-sidebar-header');
     const mark = within(header).getByTestId('completion-mark');
-    expect(mark).toHaveAccessibleName(pl.courseOverview.courseCompleted);
+    expect(mark).toHaveAccessibleName(en.courseOverview.courseCompleted);
     const title = within(header).getByText('JavaScript Foundations');
     expect(title.compareDocumentPosition(mark)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
@@ -205,7 +205,7 @@ describe('CourseSidebar', () => {
     const overview = await screen.findByTestId('course-sidebar-overview');
     expect(overview).toHaveAttribute('href', '/my/courses/course-1');
     expect(overview).toHaveAttribute('aria-current', 'page');
-    expect(overview).toHaveTextContent(pl.shell.courseOverviewEntry);
+    expect(overview).toHaveTextContent(en.shell.courseOverviewEntry);
   });
 
   it('highlights the open lesson in the program instead of the overview', async () => {
@@ -402,8 +402,8 @@ describe('CourseSidebar', () => {
     const { container } = await renderSidebar('l2');
 
     expect(await screen.findByTestId('course-tree')).toBeInTheDocument();
-    expect(screen.queryByText(pl.notifications.bell)).toBeNull();
-    expect(screen.queryByText(pl.account.menuAccount)).toBeNull();
+    expect(screen.queryByText(en.notifications.bell)).toBeNull();
+    expect(screen.queryByText(en.account.menuAccount)).toBeNull();
     expect(screen.queryByTestId('course-sidebar-account')).toBeNull();
     expect(screen.queryByTestId('member-identity')).toBeNull();
     expect(container.querySelectorAll('a[href="/account"]')).toHaveLength(0);
@@ -414,7 +414,7 @@ describe('CourseSidebar', () => {
     server.use(
       okStructure(),
       okProgress(),
-      okNavigation([spaceEntry('s1', 'Kurs JS', ['course-1'])]),
+      okNavigation([spaceEntry('s1', 'JS Course', ['course-1'])]),
       noNotifications(),
     );
 
@@ -422,7 +422,7 @@ describe('CourseSidebar', () => {
 
     const spaceRow = await screen.findByTestId('course-sidebar-space-s1');
     expect(spaceRow).toHaveAttribute('href', '/community/s1');
-    expect(spaceRow).toHaveTextContent(pl.shell.courseSpaceEntry);
+    expect(spaceRow).toHaveTextContent(en.shell.courseSpaceEntry);
     expect(screen.getByTestId('course-sidebar-overview').nextElementSibling).toBe(spaceRow);
   });
 
@@ -431,7 +431,7 @@ describe('CourseSidebar', () => {
       okStructure(),
       okProgress(),
       okNavigation([
-        spaceEntry('s1', 'Kurs JS', ['course-1']),
+        spaceEntry('s1', 'JS Course', ['course-1']),
         spaceEntry('s2', 'Zadania JS', ['course-1']),
       ]),
       noNotifications(),
@@ -439,7 +439,7 @@ describe('CourseSidebar', () => {
 
     await renderSidebar(null);
 
-    expect(await screen.findByTestId('course-sidebar-space-s1')).toHaveTextContent('Kurs JS');
+    expect(await screen.findByTestId('course-sidebar-space-s1')).toHaveTextContent('JS Course');
     expect(screen.getByTestId('course-sidebar-space-s2')).toHaveTextContent('Zadania JS');
   });
 
@@ -447,7 +447,7 @@ describe('CourseSidebar', () => {
     server.use(
       okStructure(),
       okProgress(),
-      okNavigation([spaceEntry('s1', 'Kurs JS', ['course-1', 'course-2'])]),
+      okNavigation([spaceEntry('s1', 'JS Course', ['course-1', 'course-2'])]),
       noNotifications(),
     );
 
@@ -463,7 +463,7 @@ describe('CourseSidebar', () => {
     server.use(
       okStructure(),
       okProgress(),
-      okNavigation([spaceEntry('s1', 'Inny kurs', ['course-9'])]),
+      okNavigation([spaceEntry('s1', 'Another course', ['course-9'])]),
       noNotifications(),
     );
 
@@ -471,7 +471,7 @@ describe('CourseSidebar', () => {
 
     expect(await screen.findByTestId('course-sidebar-overview')).toBeInTheDocument();
     expect(screen.queryByTestId('course-sidebar-space-s1')).not.toBeInTheDocument();
-    expect(screen.queryByText(pl.shell.courseSpaceEntry)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.shell.courseSpaceEntry)).not.toBeInTheDocument();
   });
 
   it('offers a retry when the course structure fails to load', async () => {
@@ -489,7 +489,7 @@ describe('CourseSidebar', () => {
 
     await renderSidebar(null);
 
-    expect(await screen.findByRole('button', { name: pl.common.retry })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: en.common.retry })).toBeInTheDocument();
     expect(screen.queryByTestId('course-tree')).not.toBeInTheDocument();
   });
 });

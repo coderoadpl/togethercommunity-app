@@ -4,7 +4,7 @@ import { createMemoryHistory, createRootRoute, createRoute, createRouter, Router
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ConsentForm } from './ConsentsPanel.js';
@@ -28,14 +28,14 @@ describe('ConsentForm', () => {
     await router.load();
     renderWithProviders(<RouterProvider router={router} />);
 
-    const key = await screen.findByLabelText(pl.marketing.keyLabel);
+    const key = await screen.findByLabelText(en.marketing.keyLabel);
     await userEvent.type(key, 'Product_News');
-    await userEvent.type(screen.getByLabelText(pl.marketing.wordingLabel), 'Product news');
-    await userEvent.type(screen.getByLabelText(pl.marketing.documentUrlLabel), 'https://example.test/news');
-    await userEvent.click(screen.getByRole('button', { name: pl.marketing.createConsentAction }));
+    await userEvent.type(screen.getByLabelText(en.marketing.wordingLabel), 'Product news');
+    await userEvent.type(screen.getByLabelText(en.marketing.documentUrlLabel), 'https://example.test/news');
+    await userEvent.click(screen.getByRole('button', { name: en.marketing.createConsentAction }));
 
     expect(key).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByText(pl.marketing.keyFormatHint)).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toHaveTextContent(/błąd walidacji/i);
+    expect(screen.getByText(en.marketing.keyFormatHint)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toHaveTextContent(/validation error/i);
   }, 20_000);
 });

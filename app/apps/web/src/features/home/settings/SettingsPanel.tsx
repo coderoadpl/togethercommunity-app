@@ -801,6 +801,10 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const derivedLight = accentValid ? deriveLightAccent(accentValue.trim()) : '';
   const lightPreview = accentLightValid ? accentLightValue.trim() : derivedLight;
   const lightSwatch = lightPreview === '' ? null : deriveBrandPalette(lightPreview);
+  const schemePreviews = [
+    { label: t.branding.darkPreview, scheme: 'dark' as const, palette: swatch },
+    { label: t.branding.lightPreview, scheme: 'light' as const, palette: lightSwatch },
+  ];
 
   const updateSettings = useMutation({
     ...actions.updateTenantSettings,
@@ -961,10 +965,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             </Typography>
           </FormControl>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap sx={{ gap: 1 }}>
-            {[
-              { label: t.branding.darkPreview, scheme: 'dark' as const, palette: swatch },
-              { label: t.branding.lightPreview, scheme: 'light' as const, palette: lightSwatch },
-            ].map(({ label, scheme, palette }) => palette === null ? null : (
+            {schemePreviews.map(({ label, scheme, palette }) => palette === null ? null : (
               <BrandSchemePreview key={label} scheme={scheme} accent={palette.dark}>
                 <Typography>{label}</Typography>
                 <BrandPreviewControl accent={palette.main} ink={palette.contrastText}>

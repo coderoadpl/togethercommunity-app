@@ -132,7 +132,9 @@ References: [SES mailbox simulator](https://docs.aws.amazon.com/ses/latest/dg/se
 
 New SES accounts start in a Region-specific sandbox: recipients must be
 verified and the account can send at most 200 messages per 24 hours. Verify the
-domain first; AWS says this can make review and activation faster.
+domain and DKIM in that same Region first; AWS says this can make review and
+activation faster. Before submitting, complete Together's identity and DKIM,
+configuration-set, SNS webhook test, and sender-footer checklist items.
 
 1. Open the [Amazon SES console](https://console.aws.amazon.com/ses/) in the
    Region saved in Together.
@@ -142,11 +144,13 @@ domain first; AWS says this can make review and activation faster.
 4. Choose **Marketing** if this tenant will send campaigns. Choose
    **Transactional** only if it will never send marketing through this account.
 5. Enter the public website URL, operational contact addresses, preferred
-   language, and acknowledge the AWS anti-abuse terms.
+   language, and confirm that recipients requested the messages and that you
+   handle bounces and complaints before acknowledging the AWS anti-abuse terms.
 6. Paste the appropriate answers below into the use-case description. Replace
    every value in square brackets and make the stated volume realistic.
 7. Submit the request. Monitor the contact addresses and answer any follow-up
-   from AWS. Return to Together and poll again after approval.
+   from AWS; the initial response usually arrives within 24 hours. Return to
+   Together and poll again after approval.
 
 Current AWS flow and sandbox limits:
 [Request production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).

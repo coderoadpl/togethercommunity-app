@@ -29,11 +29,11 @@ const whitespaceCases = jsWhitespace.flatMap((character) => [
 
 const platformCases = [
   '/uploads/doc.pdf',
-  '/uploads/Ćwiczenie-1.pdf',
-  '/uploads/Zadanie 1.pdf',
+  '/uploads/Résumé-1.pdf',
+  '/uploads/Assignment 1.pdf',
   'https://files.test/doc.pdf',
   'https://files.test:8443/doc.pdf',
-  'https://files.test/Ćwiczenie 1.pdf',
+  'https://files.test/Résumé 1.pdf',
   'HTTPS://Files.Test/doc.pdf',
   'mailto:teacher@example.test',
   'MAILTO:teacher@example.test',
@@ -55,7 +55,7 @@ const platformCases = [
 
 const unprovableAbsoluteUrls = [
   'https://user:secret@files.test/doc.pdf',
-  'https://ćwiczenia.test/doc.pdf',
+  'https://exämple.test/doc.pdf',
   'https://[::1]/doc.pdf',
   'https://files\t.test/doc.pdf',
 ];

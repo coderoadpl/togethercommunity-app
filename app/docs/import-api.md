@@ -142,13 +142,13 @@ Progress is explicitly enabled in the initial rollout. There can be only one pro
 Together holds no knowledge of the URL shapes of the platform a tenant came from. Your transform decides which paths existed there and what each one now means; the import stores one row per path and the tenant host answers it.
 
 ```jsonl
-{"kind":"redirect","importKey":"redirect-course-abc123","fromPath":"/kurs/javascript","target":{"kind":"course","importKey":"course-abc123"},"permanent":true}
-{"kind":"redirect","importKey":"redirect-lesson-l1","fromPath":"/kurs/javascript/wstep","target":{"kind":"lesson","importKey":"lesson-l1","courseKey":"course-abc123"},"permanent":false}
-{"kind":"redirect","importKey":"redirect-module-m1","fromPath":"/kurs/javascript/modul-1","target":{"kind":"module-as-course","importKey":"module-m1"},"permanent":false}
+{"kind":"redirect","importKey":"redirect-course-abc123","fromPath":"/course/javascript","target":{"kind":"course","importKey":"course-abc123"},"permanent":true}
+{"kind":"redirect","importKey":"redirect-lesson-l1","fromPath":"/course/javascript/wstep","target":{"kind":"lesson","importKey":"lesson-l1","courseKey":"course-abc123"},"permanent":false}
+{"kind":"redirect","importKey":"redirect-module-m1","fromPath":"/course/javascript/modul-1","target":{"kind":"module-as-course","importKey":"module-m1"},"permanent":false}
 {"kind":"redirect","importKey":"redirect-catalog","fromPath":"/kursy","target":{"kind":"path","path":"/my"},"permanent":false}
 ```
 
-`fromPath` is the path the previous platform served, starting with `/` and carrying no query string or fragment. A path whose first character after the leading slash is another slash or a backslash is rejected with `validation`, because a browser reads those as another origin. It is normalised before it is stored and before every lookup: case is ignored, repeated slashes collapse, and a trailing slash is dropped, so `/Kurs/JavaScript/` and `/kurs/javascript` are the same entry. One path answers once per tenant; a second redirect for the same path under another `importKey` fails with `conflict`, in a write and in a validation call alike.
+`fromPath` is the path the previous platform served, starting with `/` and carrying no query string or fragment. A path whose first character after the leading slash is another slash or a backslash is rejected with `validation`, because a browser reads those as another origin. It is normalised before it is stored and before every lookup: case is ignored, repeated slashes collapse, and a trailing slash is dropped, so `/Course/JavaScript/` and `/course/javascript` are the same entry. One path answers once per tenant; a second redirect for the same path under another `importKey` fails with `conflict`, in a write and in a validation call alike.
 
 Paths that end in a document extension are answered — `/kurs/lekcja-1.html` and `/artykul.php` redirect like any other row. Paths under `/assets/` and paths ending in a static file extension (`.js`, `.css`, `.png`, `.svg`, `.ico`, `.txt`, `.xml`, fonts and the rest) are served by the web build instead, so a redirect stored for one never answers.
 

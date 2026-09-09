@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import { updatePostInputSchema, type MemberHomeFeedItem } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { HomeFeedSection } from './HomeFeedSection.js';
@@ -30,7 +30,7 @@ const item = (
   authorDisplay: 'Ada Nowak',
   authorIsStaff: false,
   authorAvatarUrl: null,
-  body: `Treść ${id}`,
+  body: `Content ${id}`,
   createdAt: '2026-08-12T10:00:00.000Z',
   editedAt: null,
   deletedAt: null,
@@ -39,7 +39,7 @@ const item = (
   replyCount: 0,
   reactions: [],
   spaceId: 's1',
-  spaceName: 'Ogólna',
+  spaceName: 'General',
   ...overrides,
 });
 
@@ -117,9 +117,9 @@ describe('HomeFeedSection', () => {
 
     await userEvent.click(await screen.findByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
-    expect(await screen.findByText(pl.discussion.deleteConfirmTitle)).toBeInTheDocument();
-    expect(screen.getByText(pl.discussion.deleteConfirmBody)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
+    expect(await screen.findByText(en.discussion.deleteConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.discussion.deleteConfirmBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.common.cancel }));
     expect(deletedIds).toEqual([]);
     expect(screen.getByTestId('home-feed-post-p1')).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('post-menu-p1'));
@@ -139,10 +139,10 @@ describe('HomeFeedSection', () => {
     await renderSection();
 
     expect(await screen.findByTestId('home-feed-deleted-p1')).toHaveTextContent(
-      deletedBy === 'moderator' ? pl.discussion.moderatorDeletedPost : pl.discussion.deletedPost,
+      deletedBy === 'moderator' ? en.discussion.moderatorDeletedPost : en.discussion.deletedPost,
     );
     expect(screen.queryByTestId('home-feed-body-p1')).not.toBeInTheDocument();
-    expect(screen.getByTestId('home-feed-reply-count-p1')).toHaveTextContent(pl.discussion.replyCount({ count: 2 }));
+    expect(screen.getByTestId('home-feed-reply-count-p1')).toHaveTextContent(en.discussion.replyCount({ count: 2 }));
     await userEvent.click(screen.getByTestId('post-menu-p1'));
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(screen.getByTestId('copy-link-p1')).toBeInTheDocument();
@@ -187,7 +187,7 @@ describe('HomeFeedSection', () => {
               reactions: [{ emoji: '👍', count: 2, viewerReacted: false }],
               authorAvatarUrl: 'https://cdn.test/ada.png',
             }),
-            item('p2', { spaceId: 's2', spaceName: 'Klub', contextId: 's2', body: 'See https://courses.example.org/guide.' }),
+            item('p2', { spaceId: 's2', spaceName: 'Club', contextId: 's2', body: 'See https://courses.example.org/guide.' }),
           ],
           nextCursor: null,
         },
@@ -199,16 +199,16 @@ describe('HomeFeedSection', () => {
     const card = await screen.findByTestId('home-feed-post-p1');
     expect(card).toHaveTextContent('Ada Nowak');
     expect(within(card).getByTestId('home-feed-author-chip-p1')).toHaveTextContent(
-      pl.discussion.authorChip,
+      en.discussion.authorChip,
     );
     expect(within(card).getByTestId('home-feed-space-p1')).toHaveAttribute('href', '/community/s1');
-    expect(within(card).getByTestId('home-feed-space-p1')).toHaveTextContent('Ogólna');
-    expect(within(card).getByTestId('home-feed-body-p1')).toHaveTextContent('Treść p1');
+    expect(within(card).getByTestId('home-feed-space-p1')).toHaveTextContent('General');
+    expect(within(card).getByTestId('home-feed-body-p1')).toHaveTextContent('Content p1');
     expect(within(card).getByTestId('home-feed-reaction-p1-👍')).toHaveTextContent('👍 2');
     expect(within(card).queryByTestId('reaction-picker-p1')).toBeNull();
     expect(within(card).getByTestId('post-menu-p1')).toBeInTheDocument();
     expect(within(card).getByTestId('home-feed-reply-count-p1')).toHaveTextContent(
-      pl.discussion.replyCount({ count: 3 }),
+      en.discussion.replyCount({ count: 3 }),
     );
     expect(within(card).getByTestId('home-feed-open-p1')).toHaveAttribute(
       'href',
@@ -265,7 +265,7 @@ describe('HomeFeedSection', () => {
     await renderSection();
 
     const loadMore = await screen.findByTestId('start-feed-load-more');
-    expect(loadMore).toHaveTextContent(pl.discussion.loadMore);
+    expect(loadMore).toHaveTextContent(en.discussion.loadMore);
 
     await userEvent.click(loadMore);
 
@@ -281,7 +281,7 @@ describe('HomeFeedSection', () => {
 
     await renderSection();
 
-    expect(await screen.findByTestId('start-feed-empty')).toHaveTextContent(pl.start.feedEmpty);
+    expect(await screen.findByTestId('start-feed-empty')).toHaveTextContent(en.start.feedEmpty);
   });
 
   it('offers a retry when the feed fails', async () => {
@@ -296,6 +296,6 @@ describe('HomeFeedSection', () => {
 
     await renderSection();
 
-    expect(await screen.findByRole('button', { name: pl.common.retry })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: en.common.retry })).toBeInTheDocument();
   });
 });

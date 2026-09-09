@@ -25,37 +25,37 @@ describe('MemberPage', () => {
   it('renders the ledger header with title, eyebrow and children', () => {
     render(
       <MemberPage
-        title="Moje kursy"
-        eyebrow="biblioteka kursów"
-        breadcrumbLabel="Okruszki"
+        title="My courses"
+        eyebrow="course library"
+        breadcrumbLabel="Breadcrumbs"
         data-testid="page"
       >
-        <p>Siatka kursów</p>
+        <p>Course grid</p>
       </MemberPage>,
     );
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Moje kursy' })).toBeInTheDocument();
-    expect(screen.getByText('biblioteka kursów')).toBeInTheDocument();
-    expect(screen.getByText('Siatka kursów')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'My courses' })).toBeInTheDocument();
+    expect(screen.getByText('course library')).toBeInTheDocument();
+    expect(screen.getByText('Course grid')).toBeInTheDocument();
   });
 
   it('renders no eyebrow slot when the screen does not pass one', () => {
-    render(<MemberPage title="Konto" breadcrumbLabel="Okruszki" data-testid="page" />);
+    render(<MemberPage title="Account" breadcrumbLabel="Breadcrumbs" data-testid="page" />);
 
     const header = screen.getByRole('banner');
-    expect(within(header).getByRole('heading', { level: 1, name: 'Konto' })).toBeInTheDocument();
+    expect(within(header).getByRole('heading', { level: 1, name: 'Account' })).toBeInTheDocument();
     expect(within(header).queryAllByRole('paragraph')).toEqual([]);
   });
 
   it('gives every member screen the wide shell unless it asks for the reading column', () => {
     const wide = render(
-      <MemberPage title="Start" breadcrumbLabel="Okruszki" data-testid="page" />,
+      <MemberPage title="Start" breadcrumbLabel="Breadcrumbs" data-testid="page" />,
     );
     expect(screen.getByTestId('page')).toHaveStyle({ maxWidth: PAGE_WIDTH.wide });
     wide.unmount();
 
     render(
-      <MemberPage title="Lekcja" breadcrumbLabel="Okruszki" width="prose" data-testid="page" />,
+      <MemberPage title="Lesson" breadcrumbLabel="Breadcrumbs" width="prose" data-testid="page" />,
     );
     expect(screen.getByTestId('page')).toHaveStyle({ maxWidth: PAGE_WIDTH.prose });
   });
@@ -63,18 +63,18 @@ describe('MemberPage', () => {
   it('renders breadcrumbs with links and a current-page item', () => {
     render(
       <MemberPage
-        title="Deklarowanie zmiennych"
-        eyebrow="lekcja"
-        breadcrumbLabel="Okruszki"
+        title="Declaring variables"
+        eyebrow="lesson"
+        breadcrumbLabel="Breadcrumbs"
         breadcrumbs={[
-          { label: 'Kurs JS', link: <a href="/my/courses/course-js">Kurs JS</a> },
-          { label: 'Deklarowanie zmiennych' },
+          { label: 'JS Course', link: <a href="/my/courses/course-js">JS Course</a> },
+          { label: 'Declaring variables' },
         ]}
       />,
     );
 
-    expect(screen.getByLabelText('Okruszki')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Kurs JS' })).toHaveAttribute(
+    expect(screen.getByLabelText('Breadcrumbs')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'JS Course' })).toHaveAttribute(
       'href',
       '/my/courses/course-js',
     );
@@ -84,90 +84,90 @@ describe('MemberPage', () => {
     stubCompactViewport();
     render(
       <MemberPage
-        title="Nasłuchiwanie kliknięć"
-        eyebrow="lekcja"
-        breadcrumbLabel="Okruszki"
+        title="Listening for clicks"
+        eyebrow="lesson"
+        breadcrumbLabel="Breadcrumbs"
         breadcrumbs={[
-          { label: 'Kurs JS', link: <a href="/my/courses/course-js">Kurs JS</a> },
+          { label: 'JS Course', link: <a href="/my/courses/course-js">JS Course</a> },
           { label: '02 - DOM' },
-          { label: 'Zdarzenia' },
-          { label: 'Nasłuchiwanie kliknięć' },
+          { label: 'Events' },
+          { label: 'Listening for clicks' },
         ]}
       />,
     );
 
-    const crumbs = screen.getByLabelText('Okruszki');
-    expect(within(crumbs).getByRole('link', { name: 'Kurs JS' })).toBeInTheDocument();
+    const crumbs = screen.getByLabelText('Breadcrumbs');
+    expect(within(crumbs).getByRole('link', { name: 'JS Course' })).toBeInTheDocument();
     expect(within(crumbs).getByText('02 - DOM')).toBeInTheDocument();
-    expect(within(crumbs).getByText('Zdarzenia')).toBeInTheDocument();
-    expect(within(crumbs).queryByText('Nasłuchiwanie kliknięć')).not.toBeInTheDocument();
+    expect(within(crumbs).getByText('Events')).toBeInTheDocument();
+    expect(within(crumbs).queryByText('Listening for clicks')).not.toBeInTheDocument();
   });
 
   it('keeps only the root crumb of a two-item trail on compact viewports', () => {
     stubCompactViewport();
     render(
       <MemberPage
-        title="Kurs JS"
-        eyebrow="kurs"
-        breadcrumbLabel="Okruszki"
+        title="JS Course"
+        eyebrow="course"
+        breadcrumbLabel="Breadcrumbs"
         breadcrumbs={[
-          { label: 'Moje kursy', link: <a href="/my/courses">Moje kursy</a> },
-          { label: 'Kurs JS' },
+          { label: 'My courses', link: <a href="/my/courses">My courses</a> },
+          { label: 'JS Course' },
         ]}
       />,
     );
 
-    const crumbs = screen.getByLabelText('Okruszki');
-    expect(within(crumbs).getByRole('link', { name: 'Moje kursy' })).toBeInTheDocument();
-    expect(within(crumbs).queryByText('Kurs JS')).not.toBeInTheDocument();
+    const crumbs = screen.getByLabelText('Breadcrumbs');
+    expect(within(crumbs).getByRole('link', { name: 'My courses' })).toBeInTheDocument();
+    expect(within(crumbs).queryByText('JS Course')).not.toBeInTheDocument();
   });
 
   it('renders the rail alongside the content', () => {
     render(
-      <MemberPage title="Kurs" eyebrow="program kursu" breadcrumbLabel="Okruszki" rail={<aside>Postęp</aside>}>
-        <p>Opis kursu</p>
+      <MemberPage title="Course" eyebrow="course syllabus" breadcrumbLabel="Breadcrumbs" rail={<aside>Progress</aside>}>
+        <p>Course description</p>
       </MemberPage>,
     );
 
-    expect(screen.getByText('Postęp')).toBeInTheDocument();
-    expect(screen.getByText('Opis kursu')).toBeInTheDocument();
+    expect(screen.getByText('Progress')).toBeInTheDocument();
+    expect(screen.getByText('Course description')).toBeInTheDocument();
   });
 
   it('splits leading and trailing rail content around the main column on mobile', () => {
     render(
       <MemberPage
-        title="Kurs"
-        eyebrow="program kursu"
-        breadcrumbLabel="Okruszki"
+        title="Course"
+        eyebrow="course syllabus"
+        breadcrumbLabel="Breadcrumbs"
         mobileRail="split"
-        railLeading={<div>Postęp</div>}
-        rail={<div>Program</div>}
+        railLeading={<div>Progress</div>}
+        rail={<div>Syllabus</div>}
       >
-        <p>Opis kursu</p>
+        <p>Course description</p>
       </MemberPage>,
     );
 
-    expect(screen.getByTestId('member-rail-leading')).toHaveTextContent('Postęp');
-    expect(screen.getByRole('main')).toHaveTextContent('Opis kursu');
-    expect(screen.getByTestId('member-rail-trailing')).toHaveTextContent('Program');
-    expect(screen.getAllByText('Postęp')).toHaveLength(1);
-    expect(screen.getAllByText('Program')).toHaveLength(1);
+    expect(screen.getByTestId('member-rail-leading')).toHaveTextContent('Progress');
+    expect(screen.getByRole('main')).toHaveTextContent('Course description');
+    expect(screen.getByTestId('member-rail-trailing')).toHaveTextContent('Syllabus');
+    expect(screen.getAllByText('Progress')).toHaveLength(1);
+    expect(screen.getAllByText('Syllabus')).toHaveLength(1);
   });
 
   it('renders a StatusView inside the skeleton instead of children for non-ready states', () => {
     render(
       <MemberPage
-        title="Moje kursy"
-        eyebrow="biblioteka"
-        breadcrumbLabel="Okruszki"
-        state={{ kind: 'loading', label: 'Wczytywanie kursów…' }}
+        title="My courses"
+        eyebrow="library"
+        breadcrumbLabel="Breadcrumbs"
+        state={{ kind: 'loading', label: 'Loading courses...' }}
       >
-        <p>Nie powinno się pojawić</p>
+        <p>Should not appear</p>
       </MemberPage>,
     );
 
-    expect(screen.getByText('Wczytywanie kursów…')).toBeInTheDocument();
-    expect(screen.queryByText('Nie powinno się pojawić')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: 'Moje kursy' })).toBeInTheDocument();
+    expect(screen.getByText('Loading courses...')).toBeInTheDocument();
+    expect(screen.queryByText('Should not appear')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'My courses' })).toBeInTheDocument();
   });
 });

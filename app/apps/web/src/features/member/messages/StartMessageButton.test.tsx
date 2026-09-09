@@ -10,7 +10,7 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { StartMessageButton } from './StartMessageButton.js';
@@ -107,7 +107,7 @@ describe('StartMessageButton', () => {
 
     await userEvent.click(await screen.findByTestId('start-message-post-1'));
 
-    expect(await screen.findByText(pl.messages.recipientUnavailable)).toBeInTheDocument();
+    expect(await screen.findByText(en.messages.recipientUnavailable)).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/community/s1');
   });
 

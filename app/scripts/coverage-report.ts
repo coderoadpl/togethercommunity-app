@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { LAYERS, readLayerCoverage, round1, type Layer, type LayerCoverage } from './coverage-layers.js';
 
 const summaryPath = fileURLToPath(new URL('../coverage/coverage-summary.json', import.meta.url));
-const reportPath = fileURLToPath(new URL('../../tasks/coverage-report.md', import.meta.url));
+const reportPath = fileURLToPath(new URL('../docs/audits/coverage-report.md', import.meta.url));
 const baselinePath = fileURLToPath(new URL('../coverage-baseline.json', import.meta.url));
 
 const START = '<!-- COVERAGE:START -->';

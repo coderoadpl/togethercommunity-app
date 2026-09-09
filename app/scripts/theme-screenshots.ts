@@ -20,7 +20,7 @@ const languageStorageKey = 'together-language';
 const colorSchemeStorageKey = 'together-color-scheme';
 const capturedColorSchemes = ['light', 'dark'] as const;
 type CapturedColorScheme = (typeof capturedColorSchemes)[number];
-const checkoutProductId = 'product-studio-kurs-101';
+const checkoutProductId = 'product-studio-course-101';
 const minPngBytes = 20 * 1024;
 
 const devDatabaseUrl =
@@ -212,7 +212,7 @@ const captureCheckout = async (
   const page = await context.newPage();
 
   await page.goto(`${studioBaseUrl}/checkout/${checkoutProductId}`, { waitUntil: 'load' });
-  await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByText('Together 101 Course').first().waitFor({ state: 'visible', timeout: 20000 });
   await page
     .locator('button[type="submit"]', { hasText: /Pay|Simulate/ })
     .waitFor({ state: 'visible', timeout: 20000 });
@@ -281,8 +281,8 @@ const captureDarkCreatorStates = async (
 
   await page.getByTestId('section-spaces').click();
   await page.waitForURL('**/panel/spaces', { timeout: 20000 });
-  await page.getByTestId('space-archive-space-studio-spolecznosc').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('space-archive-space-studio-spolecznosc').click();
+  await page.getByTestId('space-archive-space-studio-community').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('space-archive-space-studio-community').click();
   await page.getByRole('dialog').waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, 'dark-dialog.png');
 
@@ -297,18 +297,18 @@ const captureDarkMemberStates = async (
   const context = await newModeContext(browser, viewport, 'dark');
   const page = await context.newPage();
 
-  await signInMember(page, studioBaseUrl, 'kursant.aktywny@together.dev');
+  await signInMember(page, studioBaseUrl, 'student.active@together.dev');
   await page.getByTestId('course-card-course-js').waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, 'dark-member-course-grid.png');
 
-  await page.goto(`${studioBaseUrl}/my/courses/course-js/lessons/lesson-js-zmienne-1`, { waitUntil: 'load' });
+  await page.goto(`${studioBaseUrl}/my/courses/course-js/lessons/lesson-js-variables-1`, { waitUntil: 'load' });
   await page.getByTestId('lesson-block-0').waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, 'dark-lesson-page.png');
 
   await page.setViewportSize({ width: viewport.width, height: 1400 });
   const discussion = page.getByTestId('discussion-section');
   await discussion.waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('discussion-thread-post-js-zmienne-q').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('discussion-thread-post-js-variables-q').waitFor({ state: 'visible', timeout: 20000 });
   const bounds = await discussion.boundingBox();
   if (bounds !== null) {
     await page.evaluate((top) => window.scrollTo(0, Math.max(0, top - 24)), bounds.y);
@@ -326,7 +326,7 @@ const captureDarkWarningChip = async (
   const context = await newModeContext(browser, viewport, 'dark');
   const page = await context.newPage();
 
-  await signInMember(page, studioBaseUrl, 'kursant.wygasly@together.dev');
+  await signInMember(page, studioBaseUrl, 'student.expired@together.dev');
   await page.goto(`${studioBaseUrl}/my/products`, { waitUntil: 'load' });
   const warningChip = page.getByTestId('grant-status-product-js-full');
   await warningChip.waitFor({ state: 'visible', timeout: 20000 });

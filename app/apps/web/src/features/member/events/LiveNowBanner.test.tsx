@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicSpaceEvent } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { LiveNowBanner } from './LiveNowBanner.js';
@@ -76,7 +76,7 @@ describe('LiveNowBanner', () => {
     await renderBanner(null);
 
     expect(await screen.findByTestId('live-now-e-live')).toHaveTextContent('Live Q&A');
-    expect(screen.getByTestId('live-now-badge-e-live')).toHaveTextContent(pl.events.liveNow);
+    expect(screen.getByTestId('live-now-badge-e-live')).toHaveTextContent(en.events.liveNow);
     expect(screen.getByTestId('live-now-join-e-live')).toHaveAttribute(
       'href',
       '/community/s1/events/e-live',

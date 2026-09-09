@@ -38,8 +38,8 @@ describe('campaign Markdown rendering', () => {
   it('interpolates sample variables only after Markdown has rendered', () => {
     const html = renderCampaignPreview('Hello **{{member.name}}** from {{tenant.name}}.');
 
-    expect(html).toContain('<strong>Anna Kowalska</strong>');
-    expect(html).toContain('Studio Razem');
+    expect(html).toContain('<strong>Anna Example</strong>');
+    expect(html).toContain('Studio Demo');
     expect(html).not.toContain('{{');
   });
 
@@ -72,7 +72,7 @@ describe('campaign Markdown rendering', () => {
     const source = '<table style="color:red"><tr><td>{{member.name}}</td></tr></table><script>alert(1)</script>';
 
     expect(prepareCampaignHtml(source, 'html')).toBe('<table><tbody><tr><td>{{member.name}}</td></tr></tbody></table>');
-    expect(renderCampaignPreview(source, 'html')).toContain('<td>Anna Kowalska</td>');
+    expect(renderCampaignPreview(source, 'html')).toContain('<td>Anna Example</td>');
     expect(renderCampaignPreview(source, 'html')).not.toContain('<script');
   });
 });

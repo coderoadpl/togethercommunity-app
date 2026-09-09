@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '../../i18n/index.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { CopyField } from './CopyField.js';
 
@@ -20,7 +20,7 @@ const acceptingClipboard = () => {
 
 const renderField = (ui: ReactElement) => render(<LanguageProvider>{ui}</LanguageProvider>);
 
-const clickCopy = () => fireEvent.click(screen.getByRole('button', { name: pl.copyField.copy }));
+const clickCopy = () => fireEvent.click(screen.getByRole('button', { name: en.copyField.copy }));
 
 afterEach(() => {
   window.getSelection()?.removeAllRanges();
@@ -37,7 +37,7 @@ describe('CopyField', () => {
     clickCopy();
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('cname.example.test'));
-    await waitFor(() => expect(screen.getByTestId('dns-value-copied')).toHaveTextContent(pl.copyField.copied));
+    await waitFor(() => expect(screen.getByTestId('dns-value-copied')).toHaveTextContent(en.copyField.copied));
   });
 
   it('clears the copied state once the feedback window passes', async () => {
@@ -47,7 +47,7 @@ describe('CopyField', () => {
 
     clickCopy();
     await act(() => Promise.resolve());
-    expect(screen.getByTestId('dns-value-copied')).toHaveTextContent(pl.copyField.copied);
+    expect(screen.getByTestId('dns-value-copied')).toHaveTextContent(en.copyField.copied);
 
     await act(() => vi.advanceTimersByTimeAsync(2_000));
 
@@ -90,7 +90,7 @@ describe('CopyField', () => {
 
     const group = screen.getByRole('group', { name: 'Value' });
     expect(group).toHaveAccessibleDescription('Copy this value');
-    const button = screen.getByRole('button', { name: pl.copyField.copy });
+    const button = screen.getByRole('button', { name: en.copyField.copy });
     expect(stylesAt(button, 390)).toMatchObject({ 'min-width': '44px', 'min-height': '44px' });
 
     await user.click(screen.getByTestId('field'));

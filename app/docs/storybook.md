@@ -14,8 +14,7 @@ four non-ready `PageState` branches in
 fixtures, and page compositions backed by recorded seed fixtures. `PageState` also contains `ready`, which renders no
 status view; loading, error, empty, and not-found are structurally unreachable
 through the populated seeded-route loop. Page goldens capture only Shadcn,
-the one maintained base theme (see
-[ADR-0010](decisions/0010-shadcn-base-theme.md)); the Storybook toolbar still
+the one maintained base theme; the Storybook toolbar still
 carries all seven so the other six remain reachable as unmaintained BYO-theme
 examples.
 

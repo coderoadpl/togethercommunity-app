@@ -61,8 +61,8 @@ document is not an input and cannot create Together scope.
 - **Tool evidence:** focused auth, server, and login-page tests cover delivery
   rebasing, bounded pending contexts, provider outcomes, and both account
   surfaces. `pnpm run check` and `pnpm run smoke` remain the merge gates.
-- **Manual evidence:** the route and permission inventories, ADR 0012, and the
-  self-host guide were reconciled with the registration, login, resend,
+- **Manual evidence:** the route and permission inventories and the
+  [self-host and tenant bootstrap guide](../self-host.md) were reconciled with the registration, login, resend,
   tenant-creation, creator-settings, and member-account journeys.
 - **Finding status:** no open product-completeness finding remains in this
   scope. Verification remains soft by design and blocks only tenant creation.

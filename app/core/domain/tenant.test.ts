@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   absoluteBrandingAssetUrl,
-  deletedMemberDisplay,
+  DELETED_MEMBER_DISPLAY,
   isReservedTenantSlug,
   resolveInvoiceVat,
   resolveTenantLogo,
@@ -211,13 +211,13 @@ describe('resolveInvoiceVat', () => {
       ...base,
       invoiceVatMode: 'exempt',
       invoiceExemptionBasisKind: 'other_statute',
-      invoiceExemptionBasis: '§ 1 rozporządzenia',
+      invoiceExemptionBasis: 'Section 1 of the regulation',
     })).toEqual({
       ok: true,
       treatment: {
         kind: 'exempt',
         basisKind: 'other_statute',
-        basis: '§ 1 rozporządzenia',
+        basis: 'Section 1 of the regulation',
       },
     });
   });
@@ -340,9 +340,8 @@ describe('tenantSettingsSchema', () => {
   });
 });
 
-describe('deletedMemberDisplay', () => {
-  it('names an erased account in both languages', () => {
-    expect(deletedMemberDisplay()).toBe('Konto usunięte');
-    expect(deletedMemberDisplay('en')).toBe('Deleted account');
+describe('DELETED_MEMBER_DISPLAY', () => {
+  it('uses a language-neutral marker for an erased account', () => {
+    expect(DELETED_MEMBER_DISPLAY).toBe('[deleted-member]');
   });
 });

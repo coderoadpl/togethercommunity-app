@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { PlatformDataReset } from './PlatformDataReset.js';
@@ -21,11 +21,11 @@ describe('PlatformDataReset', () => {
     const confirm = screen.getByTestId('platform-reset-confirm');
 
     expect(confirm).toBeDisabled();
-    await user.type(screen.getByLabelText(pl.platformReset.confirmLabel), 'production');
+    await user.type(screen.getByLabelText(en.platformReset.confirmLabel), 'production');
     expect(confirm).toBeDisabled();
 
-    await user.clear(screen.getByLabelText(pl.platformReset.confirmLabel));
-    await user.type(screen.getByLabelText(pl.platformReset.confirmLabel), 'staging');
+    await user.clear(screen.getByLabelText(en.platformReset.confirmLabel));
+    await user.type(screen.getByLabelText(en.platformReset.confirmLabel), 'staging');
     expect(confirm).toBeEnabled();
   });
 
@@ -40,10 +40,10 @@ describe('PlatformDataReset', () => {
     }));
 
     const user = await openDialog();
-    await user.type(screen.getByLabelText(pl.platformReset.confirmLabel), 'staging');
+    await user.type(screen.getByLabelText(en.platformReset.confirmLabel), 'staging');
     await user.click(screen.getByTestId('platform-reset-confirm'));
 
-    expect(await screen.findByText(pl.platformReset.success({ environment: 'staging' })))
+    expect(await screen.findByText(en.platformReset.success({ environment: 'staging' })))
       .toBeInTheDocument();
     expect(requests).toEqual([{ confirmation: 'staging' }]);
   });
@@ -55,11 +55,11 @@ describe('PlatformDataReset', () => {
     )));
 
     const user = await openDialog();
-    await user.type(screen.getByLabelText(pl.platformReset.confirmLabel), 'staging');
+    await user.type(screen.getByLabelText(en.platformReset.confirmLabel), 'staging');
     await user.click(screen.getByTestId('platform-reset-confirm'));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-    expect(screen.queryByText(pl.platformReset.success({ environment: 'staging' })))
+    expect(screen.queryByText(en.platformReset.success({ environment: 'staging' })))
       .not.toBeInTheDocument();
   });
 });

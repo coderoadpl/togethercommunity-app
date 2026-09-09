@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { computeTenantSetupReadiness, type TenantSetupFacts } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { TenantSetupChecklist } from './TenantSetupChecklist.js';
@@ -72,12 +72,12 @@ describe('TenantSetupChecklist', () => {
 
     expect(await screen.findByTestId('tenant-setup-checklist')).toBeInTheDocument();
     expect(
-      screen.getByText(pl.tenantSetup.progress({ configured: 0, total: 9 })),
+      screen.getByText(en.tenantSetup.progress({ configured: 0, total: 9 })),
     ).toBeInTheDocument();
-    expect(screen.getByText(pl.tenantSetup.requiredHeading)).toBeInTheDocument();
-    expect(screen.getByText(pl.tenantSetup.optionalHeading)).toBeInTheDocument();
-    expect(screen.getByText(pl.tenantSetup.items.storage.impact)).toBeInTheDocument();
-    expect(screen.getAllByText(pl.tenantSetup.itemMissing)).toHaveLength(9);
+    expect(screen.getByText(en.tenantSetup.requiredHeading)).toBeInTheDocument();
+    expect(screen.getByText(en.tenantSetup.optionalHeading)).toBeInTheDocument();
+    expect(screen.getByText(en.tenantSetup.items.storage.impact)).toBeInTheDocument();
+    expect(screen.getAllByText(en.tenantSetup.itemMissing)).toHaveLength(9);
 
     expect(
       screen.getByTestId('tenant-setup-item-stripe').querySelector('a'),
@@ -95,9 +95,9 @@ describe('TenantSetupChecklist', () => {
 
     expect(await screen.findByTestId('tenant-setup-checklist')).toBeInTheDocument();
     expect(
-      screen.getByText(pl.tenantSetup.progress({ configured: 2, total: 9 })),
+      screen.getByText(en.tenantSetup.progress({ configured: 2, total: 9 })),
     ).toBeInTheDocument();
-    expect(screen.getAllByText(pl.tenantSetup.itemConfigured)).toHaveLength(2);
+    expect(screen.getAllByText(en.tenantSetup.itemConfigured)).toHaveLength(2);
     expect(screen.queryByTestId('tenant-setup-complete')).not.toBeInTheDocument();
     expect(screen.queryByTestId('tenant-setup-toggle')).not.toBeInTheDocument();
   });
@@ -106,7 +106,7 @@ describe('TenantSetupChecklist', () => {
     await renderChecklist(REQUIRED_CONFIGURED);
 
     expect(await screen.findByTestId('tenant-setup-complete')).toBeInTheDocument();
-    expect(screen.getByText(pl.tenantSetup.allConfigured)).toBeInTheDocument();
+    expect(screen.getByText(en.tenantSetup.allConfigured)).toBeInTheDocument();
     expect(screen.queryByTestId('tenant-setup-item-stripe')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('tenant-setup-toggle'));
@@ -131,6 +131,6 @@ describe('TenantSetupChecklist', () => {
 
     renderWithProviders(<TenantSetupChecklist />);
 
-    await waitFor(() => expect(screen.getByText(pl.common.retry)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(en.common.retry)).toBeInTheDocument());
   });
 });

@@ -339,7 +339,7 @@ describe('KSeF durable submission state machine', () => {
     })));
     h.setStatuses([{
       code: 430,
-      description: 'Błąd weryfikacji pliku faktury',
+      description: 'Invoice file verification error',
       details: ['schema'],
       extensions: {},
       ksefNumber: null,

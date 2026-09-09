@@ -4690,7 +4690,7 @@ describe('tenant redirects', () => {
     {
       id: 'redirect-course',
       tenantId: acme.id,
-      fromPath: '/kurs/javascript',
+      fromPath: '/course/javascript',
       targetKind: 'course',
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
@@ -4702,7 +4702,7 @@ describe('tenant redirects', () => {
     {
       id: 'redirect-lesson',
       tenantId: acme.id,
-      fromPath: '/kurs/javascript/let',
+      fromPath: '/course/javascript/let',
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
@@ -4714,7 +4714,7 @@ describe('tenant redirects', () => {
     {
       id: 'redirect-document',
       tenantId: acme.id,
-      fromPath: '/kurs/lekcja-1.html',
+      fromPath: '/course/lesson-1.html',
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
@@ -4742,7 +4742,7 @@ describe('tenant redirects', () => {
       domains: [tenantDomainFixture({
         id: 'domain-acme',
         tenantId: acme.id,
-        domain: 'kurs.acme.example',
+        domain: 'course.acme.example',
         kind: 'custom',
         verified: true,
       })],
@@ -4763,23 +4763,23 @@ describe('tenant redirects', () => {
     redirectApp().request(path, { headers: { host } });
 
   it('redirects a permanent entry for good', async () => {
-    const response = await redirectGet('/kurs/javascript');
+    const response = await redirectGet('/course/javascript');
 
     expect(response.status).toBe(301);
     expect(response.headers.get('location')).toBe(coursePagePath);
   });
 
   it('redirects a non-permanent entry temporarily', async () => {
-    const response = await redirectGet('/kurs/javascript/let');
+    const response = await redirectGet('/course/javascript/let');
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(lessonPagePath);
   });
 
   it.each([
-    ['a trailing slash', '/kurs/javascript/'],
-    ['upper case', '/Kurs/JavaScript'],
-    ['a repeated slash', '/kurs//javascript'],
+    ['a trailing slash', '/course/javascript/'],
+    ['upper case', '/Course/JavaScript'],
+    ['a repeated slash', '/course//javascript'],
   ])('normalises %s before the lookup', async (_case, path) => {
     const response = await redirectGet(path);
 
@@ -4787,7 +4787,7 @@ describe('tenant redirects', () => {
     expect(response.headers.get('location')).toBe(coursePagePath);
   });
 
-  it.each(['/kurs/lekcja-1.html', '/kurs/lekcja-1.HTML'])(
+  it.each(['/course/lesson-1.html', '/course/lesson-1.HTML'])(
     'redirects the document-extension source path %s',
     async (path) => {
       const response = await redirectGet(path);
@@ -4808,15 +4808,15 @@ describe('tenant redirects', () => {
   );
 
   it('redirects on a verified custom domain and keeps the query string', async () => {
-    const response = await redirectGet('/kurs/javascript/let?utm_source=newsletter', 'kurs.acme.example');
+    const response = await redirectGet('/course/javascript/let?utm_source=newsletter', 'course.acme.example');
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(`${lessonPagePath}?utm_source=newsletter`);
   });
 
   it.each([
-    ['an unconfigured path', '/kurs/python', acme],
-    ['a path configured for another workspace', '/kurs/javascript', globex],
+    ['an unconfigured path', '/course/python', acme],
+    ['a path configured for another workspace', '/course/javascript', globex],
   ])('leaves %s to the web app', async (_case, path, owner) => {
     const response = await redirectApp(owner).request(path, {
       headers: { host: 'acme.localhost:48730' },
@@ -4827,7 +4827,7 @@ describe('tenant redirects', () => {
   });
 
   it('leaves the platform host alone', async () => {
-    const response = await redirectGet('/kurs/javascript', 'start.localhost');
+    const response = await redirectGet('/course/javascript', 'start.localhost');
 
     expect(response.status).toBe(404);
     expect(response.headers.get('location')).toBeNull();
@@ -5853,7 +5853,7 @@ describe('public auth-resolve route', () => {
   it('answers a passwordless member and an unknown address identically', async () => {
     const app = buildApp(deps({ passwordAccounts: ['creator@together.dev'] }));
 
-    const passwordless = await resolve(app, 'kursant@together.dev');
+    const passwordless = await resolve(app, 'student@together.dev');
     const unknown = await resolve(app, 'nobody@example.com');
 
     expect(await passwordless.json()).toEqual({ ok: true, data: { methods: ['magic-link'] } });
@@ -5930,7 +5930,7 @@ describe('public auth-resolve route', () => {
         origin: 'http://acme.localhost:48730',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ email: 'kursant@together.dev' }),
+      body: JSON.stringify({ email: 'student@together.dev' }),
     });
     const foreign = await app.request(API_PATHS.authResolve, {
       method: 'POST',
@@ -5939,7 +5939,7 @@ describe('public auth-resolve route', () => {
         origin: 'https://creator.example',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ email: 'kursant@together.dev' }),
+      body: JSON.stringify({ email: 'student@together.dev' }),
     });
 
     expect(allowed.headers.get('access-control-allow-origin')).toBe('http://acme.localhost:48730');
@@ -6831,7 +6831,7 @@ describe('tenant-host magic links on checkout', () => {
 
     expect(response.status).toBe(200);
     expect(captured.request?.baseUrl).toBe('http://globex.localhost:48730');
-    expect(captured.request?.language).toBe('pl');
+    expect(captured.request?.language).toBe('en');
   });
 });
 
@@ -6881,7 +6881,7 @@ describe('tenant-host magic links on login', () => {
     expect(captured.context?.context).toMatchObject({ language: 'pl' });
   });
 
-  it('falls back to Polish and the base host on the bare domain', async () => {
+  it('falls back to English and the base host on the bare domain', async () => {
     const { app, captured } = capturingApp();
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
@@ -6891,7 +6891,7 @@ describe('tenant-host magic links on login', () => {
     });
 
     expect(captured.context?.context).toMatchObject({
-      language: 'pl',
+      language: 'en',
       baseUrl: 'http://localhost:48730',
     });
     expect(captured.context?.context.tenantName).toBeUndefined();
@@ -6969,7 +6969,7 @@ describe('tenant-host email verification', () => {
 
       expect(captured.verificationContext).toEqual({
         email: 'tenant-header@together.dev',
-        context: { language: 'pl', baseUrl: 'http://globex.localhost:48730' },
+        context: { language: 'en', baseUrl: 'http://globex.localhost:48730' },
       });
     },
   );

@@ -7,18 +7,18 @@ describe('manual domain provisioner', () => {
     const subject = createManualDomainProvisioner();
 
     expect(subject.provider).toBe('manual');
-    expect(await subject.add('kurs.acme.example')).toEqual({
+    expect(await subject.add('course.acme.example')).toEqual({
       ok: true,
       value: { verification: [], records: [], verified: false },
     });
-    expect(await subject.status('kurs.acme.example')).toEqual({
+    expect(await subject.status('course.acme.example')).toEqual({
       ok: true,
       value: { verified: false, misconfigured: false, verification: [], records: [] },
     });
-    expect(await subject.verify('kurs.acme.example')).toEqual({
+    expect(await subject.verify('course.acme.example')).toEqual({
       ok: true,
       value: { verified: false, misconfigured: false, verification: [], records: [] },
     });
-    expect(await subject.remove('kurs.acme.example')).toEqual({ ok: true, value: undefined });
+    expect(await subject.remove('course.acme.example')).toEqual({ ok: true, value: undefined });
   });
 });

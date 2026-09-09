@@ -56,7 +56,7 @@ const mutation = (
   resource: {
     id: 'redirect-course',
     tenantId,
-    fromPath: '/kurs/javascript',
+    fromPath: '/course/javascript',
     targetKind: 'course',
     targetId: 'course-js',
     targetPath: '/my/courses/course-js',
@@ -84,7 +84,7 @@ describe('tenant redirect repository', () => {
     const repository = createTenantRedirectRepository(db);
 
     expect(await repository.commit(TENANT_ID, mutation())).toBe('saved');
-    expect(await repository.findByFromPath(TENANT_ID, '/kurs/javascript')).toMatchObject({
+    expect(await repository.findByFromPath(TENANT_ID, '/course/javascript')).toMatchObject({
       id: 'redirect-course',
       targetPath: '/my/courses/course-js',
       permanent: true,
@@ -108,7 +108,7 @@ describe('tenant redirect repository', () => {
   it('creates a manual redirect, refuses a taken path, and deletes it', async () => {
     const repository = createTenantRedirectRepository(db);
     const manual = {
-      ...mutation({ id: 'redirect-manual', fromPath: '/oferta' }).resource,
+      ...mutation({ id: 'redirect-manual', fromPath: '/offer' }).resource,
       origin: 'manual' as const,
       createdBy: 'user-owner',
     };
@@ -137,7 +137,7 @@ describe('tenant redirect repository', () => {
     expect(firstPage.total).toBe(4);
 
     const secondPage = await repository.listPage(TENANT_ID, { limit: 2, offset: 2 });
-    expect(secondPage.redirects.map((entry) => entry.fromPath)).toEqual(['/b-three', '/kurs/javascript']);
+    expect(secondPage.redirects.map((entry) => entry.fromPath)).toEqual(['/b-three', '/course/javascript']);
 
     expect(await repository.listPage(TENANT_ID, { limit: 50, offset: 0, search: 'needle' }))
       .toMatchObject({ total: 1, redirects: [{ fromPath: '/b-three' }] });

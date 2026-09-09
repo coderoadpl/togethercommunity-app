@@ -17,24 +17,24 @@ type Story = StoryObj<typeof meta>;
 const showcase: ReactNode = (
   <Stack useFlexGap spacing="0.75rem">
     <Typography variant="body1">
-      Sprzedaż w tym miesiącu: <DataValue>4 210,00 zł</DataValue>
+      Sales this month: <DataValue>$4,210.00</DataValue>
     </Typography>
     <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
-      <Chip label="Opublikowany" color="success" variant="outlined" />
-      <Chip label="Szkic" variant="outlined" />
-      <Chip label="Wygasł" color="warning" variant="outlined" />
+      <Chip label="Published" color="success" variant="outlined" />
+      <Chip label="Draft" variant="outlined" />
+      <Chip label="Expired" color="warning" variant="outlined" />
     </Stack>
     <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
-      <Button variant="contained">Akcja główna</Button>
-      <Button variant="outlined">Akcja drugorzędna</Button>
-      <Button variant="text">Akcja tekstowa</Button>
+      <Button variant="contained">Primary action</Button>
+      <Button variant="outlined">Secondary action</Button>
+      <Button variant="text">Text action</Button>
     </Stack>
   </Stack>
 );
 
 const baseArgs = {
-  title: 'Panel twórcy',
-  description: 'Ten sam komponent renderowany w każdym z siedmiu motywów.',
+  title: 'Creator panel',
+  description: 'The same component rendered in each of the seven themes.',
   children: showcase,
 };
 

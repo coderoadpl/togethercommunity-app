@@ -19,28 +19,28 @@ type Story = StoryObj<typeof meta>;
 
 export const Open: Story = {
   args: {
-    title: 'Usunąć lekcję?',
+    title: 'Delete lesson?',
     body: (
       <Typography variant="body1">
-        Lekcja „Zmienne i typy” zostanie trwale usunięta wraz z całą dyskusją. Tej operacji nie
-        można cofnąć.
+        The "Variables and types" lesson will be permanently deleted along with the full discussion.
+        This cannot be undone.
       </Typography>
     ),
-    confirmLabel: 'Usuń lekcję',
-    cancelLabel: 'Anuluj',
+    confirmLabel: 'Delete lesson',
+    cancelLabel: 'Cancel',
   },
 };
 
 export const Pending: Story = {
   args: {
-    title: 'Usunąć lekcję?',
+    title: 'Delete lesson?',
     body: (
       <Typography variant="body1">
-        Trwa usuwanie — poczekaj chwilę.
+        Deleting — please wait a moment.
       </Typography>
     ),
-    confirmLabel: 'Usuwanie…',
-    cancelLabel: 'Anuluj',
+    confirmLabel: 'Deleting…',
+    cancelLabel: 'Cancel',
     pending: true,
   },
 };

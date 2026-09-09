@@ -44,8 +44,8 @@ const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
 
-const studioSpaceId = 'space-studio-spolecznosc';
-const freeMemberPostId = 'post-spolecznosc-polecajki';
+const studioSpaceId = 'space-studio-community';
+const freeMemberPostId = 'post-community-resources';
 const eventTitle = 'E2E Live Clinic';
 const eventDescription = 'Deterministic member activity event';
 const eventLocation = 'E2E Studio';
@@ -617,7 +617,7 @@ try {
   }
 
   await signInCreator(creatorPage, studioBaseUrl);
-  await signInMember(memberAPage, studioBaseUrl, 'kursant.aktywny@together.dev');
+  await signInMember(memberAPage, studioBaseUrl, 'student.active@together.dev');
   await signInMember(memberBPage, studioBaseUrl, 'free@together.dev');
   await requestOk(
     memberAPage,

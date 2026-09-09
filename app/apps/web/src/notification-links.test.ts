@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Notification } from '#core/domain/index.js';
 
-import { pl } from './i18n/pl.js';
+import { en } from './i18n/en.js';
 import { notificationTarget, notificationTitle } from './notification-links.js';
 
 const notification = (input: {
@@ -28,7 +28,7 @@ const notification = (input: {
     lessonName: input.lessonName ?? 'Hamaki w kamperze',
     authorDisplay: 'Ola',
     authorAvatarUrl: null,
-    snippet: 'Już odpowiadam',
+    snippet: 'Replying now',
   },
   sourceKey: null,
   readAt: null,
@@ -123,22 +123,22 @@ describe('notificationTitle', () => {
   it('names the space for a space post', () => {
     expect(
       notificationTitle(
-        pl,
+        en,
         notification({
           kind: 'space-post',
           contextKind: 'space',
           contextId: 's1',
           courseId: null,
-          lessonName: 'Ogólna',
+          lessonName: 'General',
         }),
       ),
-    ).toBe(pl.notifications.spacePost({ author: 'Ola', space: 'Ogólna' }));
+    ).toBe(en.notifications.spacePost({ author: 'Ola', space: 'General' }));
   });
 
   it('names the sender for a direct message', () => {
     expect(
       notificationTitle(
-        pl,
+        en,
         notification({
           kind: 'dm-message',
           contextKind: 'dm',
@@ -147,29 +147,29 @@ describe('notificationTitle', () => {
           lessonName: 'Ola',
         }),
       ),
-    ).toBe(pl.notifications.dmMessage({ author: 'Ola' }));
+    ).toBe(en.notifications.dmMessage({ author: 'Ola' }));
   });
 
   it('names the space for a new event', () => {
     expect(
       notificationTitle(
-        pl,
+        en,
         notification({
           kind: 'space-event',
           contextKind: 'space',
           contextId: 's1',
           courseId: null,
           eventId: 'e1',
-          lessonName: 'Ogólna',
+          lessonName: 'General',
         }),
       ),
-    ).toBe(pl.notifications.spaceEvent({ space: 'Ogólna' }));
+    ).toBe(en.notifications.spaceEvent({ space: 'General' }));
   });
 
   it('names the lesson for a question and for a reply', () => {
     expect(
       notificationTitle(
-        pl,
+        en,
         notification({
           kind: 'lesson-question',
           contextKind: 'lesson',
@@ -177,10 +177,10 @@ describe('notificationTitle', () => {
           courseId: 'c1',
         }),
       ),
-    ).toBe(pl.notifications.lessonQuestion({ author: 'Ola', lesson: 'Hamaki w kamperze' }));
+    ).toBe(en.notifications.lessonQuestion({ author: 'Ola', lesson: 'Hamaki w kamperze' }));
     expect(
       notificationTitle(
-        pl,
+        en,
         notification({
           kind: 'thread-reply',
           contextKind: 'lesson',
@@ -188,6 +188,6 @@ describe('notificationTitle', () => {
           courseId: 'c1',
         }),
       ),
-    ).toBe(pl.notifications.threadReply({ author: 'Ola', lesson: 'Hamaki w kamperze' }));
+    ).toBe(en.notifications.threadReply({ author: 'Ola', lesson: 'Hamaki w kamperze' }));
   });
 });

@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { StorageWizard, storageCorsJson } from './StorageWizard.js';
 
@@ -43,7 +43,7 @@ describe('StorageWizard CORS settings', () => {
     await openConnectionStep();
 
     expect(screen.queryByTestId('storage-cors-json')).not.toBeInTheDocument();
-    const toggle = screen.getByRole('button', { name: pl.integrations.storageCorsJsonToggle });
+    const toggle = screen.getByRole('button', { name: en.integrations.storageCorsJsonToggle });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).not.toHaveAttribute('aria-controls');
 

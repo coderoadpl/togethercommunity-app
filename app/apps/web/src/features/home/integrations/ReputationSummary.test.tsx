@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { EmailReputation } from '#core/domain/index.js';
 
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { ReputationSummary } from './ReputationSummary.js';
 
@@ -19,9 +20,9 @@ describe('reputation summary', () => {
     renderWithProviders(<ReputationSummary reputation={report} />);
 
     expect(screen.getByText('10%')).toBeInTheDocument();
-    expect(screen.getAllByText('Za mało danych')).toHaveLength(2);
-    expect(screen.getByText('Krytyczny').closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
-    const insufficientChip = screen.getAllByText('Za mało danych').find((element) => element.closest('.MuiChip-root') !== null);
+    expect(screen.getAllByText(en.marketing.reputationTooLittleData)).toHaveLength(2);
+    expect(screen.getByText(en.marketing.reputationStatus.critical).closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
+    const insufficientChip = screen.getAllByText(en.marketing.reputationTooLittleData).find((element) => element.closest('.MuiChip-root') !== null);
     expect(insufficientChip?.closest('.MuiChip-root')).toHaveClass('MuiChip-colorDefault');
   });
 });

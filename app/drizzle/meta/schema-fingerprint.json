@@ -1,6 +1,6 @@
 {
-  "hash": "c73154a997cda6f10735768f93309925a664f37493639e434cf0db9735005d0e",
-  "shortId": "c73154a997cd",
+  "hash": "1971d512f92f6e59d2735042bcb7b2e6fe0fd765b667cb89e5652d6146dac03f",
+  "shortId": "1971d512f92f",
   "schema": {
     "constraints": [
       {
@@ -3378,7 +3378,7 @@
             "type": "text"
           },
           {
-            "default": "'pl'::text",
+            "default": "'en'::text",
             "generated": "",
             "identity": "",
             "name": "default_language",

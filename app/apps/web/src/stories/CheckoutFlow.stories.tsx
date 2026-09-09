@@ -28,39 +28,39 @@ type Story = StoryObj<typeof meta>;
 
 const marketingConsents = [{
   definitionId: 'newsletter',
-  label: 'Chcę otrzymywać e-mailem wskazówki i informacje o nowych kursach.',
+  label: 'I want to receive email tips and updates about new courses.',
   documentUrl: '/legal/newsletter/v/3',
 }];
 
 export const PriceSelection: Story = {
   name: 'Price selection',
   args: {
-    eyebrow: 'Kasa · Studio Anny',
+    eyebrow: "Checkout · Anna's Studio",
     width: 'wide',
     children: (
       <Stack useFlexGap spacing="1rem">
-        <CardTitle variant="h1">Kurs Together 101</CardTitle>
+        <CardTitle variant="h1">Together Course 101</CardTitle>
         <Typography variant="body1">
-          Kompletny kurs wprowadzający do programowania od podstaw — dożywotni dostęp do wszystkich
-          lekcji i materiałów.
+          A complete introduction to programming from scratch — lifetime access to every lesson
+          and resource.
         </Typography>
         <FormControl>
-          <FormLabel id="checkout-price">Wybierz plan</FormLabel>
+          <FormLabel id="checkout-price">Choose a plan</FormLabel>
           <RadioGroup aria-labelledby="checkout-price" defaultValue="one-time">
             <Paper variant="outlined" sx={{ px: '0.75rem', my: '0.3rem' }}>
-              <FormControlLabel value="one-time" control={<Radio />} label="Jednorazowo — 299,00 zł" />
+              <FormControlLabel value="one-time" control={<Radio />} label="One-time — $299.00" />
             </Paper>
             <Paper variant="outlined" sx={{ px: '0.75rem', my: '0.3rem' }}>
-              <FormControlLabel value="yearly" control={<Radio />} label="Rocznie — 199,00 zł / rok" />
+              <FormControlLabel value="yearly" control={<Radio />} label="Yearly — $199.00 / year" />
             </Paper>
           </RadioGroup>
         </FormControl>
         <FormControl fullWidth>
-          <FormLabel htmlFor="checkout-email">Adres e-mail</FormLabel>
+          <FormLabel htmlFor="checkout-email">Email address</FormLabel>
           <OutlinedInput id="checkout-email" type="email" autoComplete="email" />
         </FormControl>
         <FormControl component="fieldset">
-          <FormLabel component="legend">Zgody marketingowe</FormLabel>
+          <FormLabel component="legend">Marketing consents</FormLabel>
           {marketingConsents.map((consent) => (
             <FormControlLabel
               key={consent.definitionId}
@@ -69,7 +69,7 @@ export const PriceSelection: Story = {
                 <Typography variant="body2">
                   {consent.label}{' '}
                   <Link href={consent.documentUrl} target="_blank" rel="noreferrer">
-                    Przeczytaj regulamin
+                    Read the terms
                   </Link>
                 </Typography>
               )}
@@ -77,7 +77,7 @@ export const PriceSelection: Story = {
           ))}
         </FormControl>
         <Button type="submit" variant="contained" color="secondary">
-          Kup i zapłać
+          Buy and pay
         </Button>
       </Stack>
     ),
@@ -87,19 +87,19 @@ export const PriceSelection: Story = {
 export const Success: Story = {
   name: 'Success',
   args: {
-    eyebrow: 'Płatność potwierdzona',
+    eyebrow: 'Payment confirmed',
     children: (
       <Stack useFlexGap spacing="1rem">
-        <CardTitle variant="h1">Dostęp przyznany</CardTitle>
-        <Typography variant="body1">Kurs Together 101</Typography>
+        <CardTitle variant="h1">Access granted</CardTitle>
+        <Typography variant="body1">Together Course 101</Typography>
         <Typography variant="h2" component="p">
-          <DataValue>299,00 zł</DataValue>
+          <DataValue>$299.00</DataValue>
         </Typography>
         <Button variant="contained" fullWidth>
-          Przejdź do kursu
+          Go to course
         </Button>
         <FinePrint variant="caption" component="p">
-          Na produkcji wysłalibyśmy magiczny link na Twój adres e-mail.
+          In production we would email a magic link to your address.
         </FinePrint>
       </Stack>
     ),

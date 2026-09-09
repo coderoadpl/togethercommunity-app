@@ -54,7 +54,7 @@ const PoweredByTogether = ({ separated = false }: { separated?: boolean }) => {
       <span>{t.auth.poweredBy}</span>
       <AuthPoweredByLogo
         src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
-        alt="Together"
+        alt={t.common.appName}
         data-testid="auth-together-logo"
       />
     </AuthPoweredBy>

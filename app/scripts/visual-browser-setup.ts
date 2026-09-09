@@ -25,7 +25,7 @@ export const applyChrome = async (context: BrowserContext): Promise<void> => {
       });
       Object.defineProperty(window, 'EventSource', { configurable: true, value: undefined });
       try {
-        window.localStorage.setItem(langKey, 'pl');
+        window.localStorage.setItem(langKey, 'en');
       } catch {
         // storage disabled — the choice simply won't persist
       }

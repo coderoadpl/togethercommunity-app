@@ -704,7 +704,7 @@ const deps = (
     { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
     { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
     { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
-    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Captain Dawn', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
   ];
   const members: Member[] = allMembers.map((member) =>
     bannedUserIds.includes(member.userId) ? { ...member, bannedAt: NOW } : member,
@@ -778,8 +778,8 @@ describe('community use-cases', () => {
     expect(resolveAuthorDisplay({ name: '', email: 'audit-r3-member+jhkglk@example.com' })).toBe(
       'Audit R3 Member',
     );
-    expect(resolveAuthorDisplay({ email: 'jan.kowalski@example.com' })).toBe('Jan Kowalski');
-    expect(resolveAuthorDisplay({ name: '   ', email: '' })).toBe('Uczestnik');
+    expect(resolveAuthorDisplay({ email: 'john.smith@example.com' })).toBe('John Smith');
+    expect(resolveAuthorDisplay({ name: '   ', email: '' })).toBe('Participant');
     expect(resolveAuthorDisplay({}, 'en')).toBe('Participant');
   });
 
@@ -799,11 +799,11 @@ describe('community use-cases', () => {
   it('prefers the member displayName override over the account name', async () => {
     const d = deps([allAccess], [grant('m4', 'all')]);
     const created = await createPost(
-      ctx({ userId: 'u4', memberId: 'm4', name: 'Jan Testowy', email: 'u4@example.com' }),
+      ctx({ userId: 'u4', memberId: 'm4', name: 'John Tester', email: 'u4@example.com' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'hello' },
       d,
     );
-    expect(created).toMatchObject({ ok: true, value: { authorDisplay: 'Kapitan Świt' } });
+    expect(created).toMatchObject({ ok: true, value: { authorDisplay: 'Captain Dawn' } });
   });
 
   it('rate-limits the eleventh member post in ten minutes while exempting staff', async () => {
@@ -1090,7 +1090,7 @@ describe('community use-cases', () => {
     await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'Reply' }, d);
     await deletePost(ctx(), { id: root.value.id }, d);
     const listed = await listDiscussion(ctx(), { contextKind: 'lesson', contextId: 'l1' }, d);
-    expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: 'Wpis usunięty' }] } });
+    expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: '[deleted-post]' }] } });
   });
 
   it.each([
@@ -1529,10 +1529,8 @@ describe('renderPost', () => {
     pinnedAt: null,
   });
 
-  it('replaces the body with the placeholder in both languages', () => {
-    expect(renderPost(softDeleted()).body).toBe('Wpis usunięty');
-    expect(renderPost(softDeleted(), 'en').body).toBe('Deleted post');
-    expect(renderPost({ ...softDeleted(), deletedBy: 'moderator' }).body).toBe('Wpis usunięty przez moderatora.');
-    expect(renderPost({ ...softDeleted(), deletedBy: 'moderator' }, 'en').body).toBe('This post was deleted by a moderator.');
+  it('replaces a deleted body with a language-neutral marker', () => {
+    expect(renderPost(softDeleted()).body).toBe('[deleted-post]');
+    expect(renderPost({ ...softDeleted(), deletedBy: 'moderator' }).body).toBe('This post was deleted by a moderator.');
   });
 });

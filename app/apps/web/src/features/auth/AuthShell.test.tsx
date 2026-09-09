@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AppChromeProvider } from '../../components/ui/app-chrome.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { applyBranding } from '../../theme-branding.js';
@@ -43,7 +43,7 @@ const stubOffer = (
         data: {
           tenant: {
             slug: 'akademia',
-            name: 'Akademia Demo',
+            name: 'Demo Academy',
             branding: { logoUrl: null, accentColor: null, accentLight: null, faviconUrl: null },
             socialLinks: [],
             legal: overrides.legal ?? { termsUrl: null, privacyUrl: null },
@@ -98,7 +98,7 @@ const renderShell = async (hostname: string, accentColor: string | null = null) 
           }
         >
           <AuthShell hostname={hostname}>
-            <h1>Zaloguj się</h1>
+            <h1>Sign in</h1>
           </AuthShell>
         </ThemeProvider>
       </>
@@ -128,7 +128,7 @@ describe('AuthShell', () => {
     await renderShell(TENANT_HOST);
 
     expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
-    const controls = screen.getByRole('group', { name: pl.auth.preferences });
+    const controls = screen.getByRole('group', { name: en.auth.preferences });
     expect(controls).toContainElement(screen.getByTestId('language-switcher'));
     expect(controls).toContainElement(screen.getByTestId('color-scheme-cycle'));
   });
@@ -155,8 +155,8 @@ describe('AuthShell', () => {
     await renderShell(TENANT_HOST);
 
     const logo = screen.getByTestId('auth-together-logo');
-    expect(screen.getByTestId('auth-powered-by')).toHaveTextContent(pl.auth.poweredBy);
-    expect(logo).toHaveAttribute('alt', 'Together');
+    expect(screen.getByTestId('auth-powered-by')).toHaveTextContent(en.auth.poweredBy);
+    expect(logo).toHaveAttribute('alt', en.common.appName);
     expect(logo).toHaveAttribute('src', '/brand/together-horizontal-light.svg');
 
     await userEvent.click(screen.getByTestId('color-scheme-cycle'));
@@ -192,10 +192,10 @@ describe('AuthShell', () => {
 
     await renderShell(TENANT_HOST);
 
-    const strip = await screen.findByRole('navigation', { name: pl.auth.publicNavLabel });
+    const strip = await screen.findByRole('navigation', { name: en.auth.publicNavLabel });
     expect([...strip.querySelectorAll('a')].map((link) => link.textContent)).toEqual([
-      pl.auth.publicNavCourses,
-      pl.auth.publicNavCommunity,
+      en.auth.publicNavCourses,
+      en.auth.publicNavCommunity,
     ]);
     expect(screen.getByTestId('auth-public-nav-courses')).toHaveAttribute('href', '/');
     expect(screen.getByTestId('auth-public-nav-community')).toHaveAttribute(
@@ -278,10 +278,10 @@ describe('AuthShell', () => {
       'auth-powered-by',
     ]);
     expect(screen.getByTestId('auth-footer-access')).toHaveTextContent(
-      `${pl.auth.noAccessPrompt} ${pl.auth.noAccessLink({ tenant: 'Akademia Demo' })}`,
+      `${en.auth.noAccessPrompt} ${en.auth.noAccessLink({ tenant: 'Demo Academy' })}`,
     );
     expect(screen.getByTestId('auth-footer-help')).toHaveTextContent(
-      `${pl.auth.cannotSignInPrompt} ${pl.auth.cannotSignInLink}`,
+      `${en.auth.cannotSignInPrompt} ${en.auth.cannotSignInLink}`,
     );
     expect([...screen.getByTestId('auth-footer-links').querySelectorAll('a')].map(
       (link) => link.dataset['testid'],

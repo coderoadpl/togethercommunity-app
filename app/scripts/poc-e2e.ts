@@ -219,45 +219,45 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     spaceOutputSchema,
   ).space;
   const alfaCourse = expectOk(
-    await cli(['--tenant', 'alfa', 'course', 'create', '--name', 'Kurs Alfa'], alfaHome),
-    'kurs alfa course create',
+    await cli(['--tenant', 'alfa', 'course', 'create', '--name', 'Alpha Course'], alfaHome),
+    'alpha course create',
     courseOutputSchema,
   ).course;
-  const kursAlfa = expectOk(
+  const alphaCourse = expectOk(
     await cli(
       [
-        '--tenant', 'alfa', 'product', 'create', '--title', 'Kurs Alfa', '--price-cents', '19900',
+        '--tenant', 'alfa', 'product', 'create', '--title', 'Alpha Course', '--price-cents', '19900',
         '--currency', 'PLN', '--access-items', JSON.stringify([{ level: 'course', courseId: alfaCourse.id }]),
       ],
       alfaHome,
     ),
-    'kurs alfa create',
+    'alpha product create',
     productsCreateOutputSchema,
   ).product;
-  assert(kursAlfa.title === 'Kurs Alfa' && kursAlfa.priceCents === 19900 && !kursAlfa.published, 'Kurs Alfa create mismatch');
+  assert(alphaCourse.title === 'Alpha Course' && alphaCourse.priceCents === 19900 && !alphaCourse.published, 'Alpha Course create mismatch');
   expectOk(
     await cli(
-      ['--tenant', 'alfa', 'price', 'add', '--product', kursAlfa.id, '--kind', 'one_time', '--price-cents', '19900'],
+      ['--tenant', 'alfa', 'price', 'add', '--product', alphaCourse.id, '--kind', 'one_time', '--price-cents', '19900'],
       alfaHome,
     ),
-    'kurs alfa price add',
+    'alpha price add',
     productPriceCreateOutputSchema,
   );
   const publishedAlfa = expectOk(
-    await cli(['--tenant', 'alfa', 'product', 'publish', kursAlfa.id], alfaHome),
-    'kurs alfa publish',
+    await cli(['--tenant', 'alfa', 'product', 'publish', alphaCourse.id], alfaHome),
+    'alpha publish',
     productsPublishOutputSchema,
   );
-  assert(publishedAlfa.product.id === kursAlfa.id && publishedAlfa.product.published, 'Kurs Alfa should be published');
-  const szkic = expectOk(
+  assert(publishedAlfa.product.id === alphaCourse.id && publishedAlfa.product.published, 'Alpha Course should be published');
+  const draft = expectOk(
     await cli(
-      ['--tenant', 'alfa', 'product', 'create', '--title', 'Szkic', '--price-cents', '9900', '--currency', 'PLN'],
+      ['--tenant', 'alfa', 'product', 'create', '--title', 'Draft', '--price-cents', '9900', '--currency', 'PLN'],
       alfaHome,
     ),
-    'szkic create',
+    'draft create',
     productsCreateOutputSchema,
   ).product;
-  assert(szkic.title === 'Szkic' && !szkic.published, 'Szkic should remain draft');
+  assert(draft.title === 'Draft' && !draft.published, 'Draft should remain unpublished');
   steps += 1;
 
   const betaRegister = expectOk(
@@ -307,35 +307,35 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   assert(betaTenant.tenant.slug === 'beta' && betaTenant.tenant.name === 'Beta School', 'beta tenant mismatch');
   const betaCourse = expectOk(
-    await cli(['--tenant', 'beta', 'course', 'create', '--name', 'Kurs Beta'], betaHome),
-    'kurs beta course create',
+    await cli(['--tenant', 'beta', 'course', 'create', '--name', 'Beta Course'], betaHome),
+    'beta course create',
     courseOutputSchema,
   ).course;
-  const kursBeta = expectOk(
+  const betaProduct = expectOk(
     await cli(
       [
-        '--tenant', 'beta', 'product', 'create', '--title', 'Kurs Beta', '--price-cents', '4900',
+        '--tenant', 'beta', 'product', 'create', '--title', 'Beta Course', '--price-cents', '4900',
         '--currency', 'PLN', '--access-items', JSON.stringify([{ level: 'course', courseId: betaCourse.id }]),
       ],
       betaHome,
     ),
-    'kurs beta create',
+    'beta product create',
     productsCreateOutputSchema,
   ).product;
   expectOk(
     await cli(
-      ['--tenant', 'beta', 'price', 'add', '--product', kursBeta.id, '--kind', 'one_time', '--price-cents', '4900'],
+      ['--tenant', 'beta', 'price', 'add', '--product', betaProduct.id, '--kind', 'one_time', '--price-cents', '4900'],
       betaHome,
     ),
-    'kurs beta price add',
+    'beta price add',
     productPriceCreateOutputSchema,
   );
   const publishedBeta = expectOk(
-    await cli(['--tenant', 'beta', 'product', 'publish', kursBeta.id], betaHome),
-    'kurs beta publish',
+    await cli(['--tenant', 'beta', 'product', 'publish', betaProduct.id], betaHome),
+    'beta publish',
     productsPublishOutputSchema,
   );
-  assert(publishedBeta.product.id === kursBeta.id && publishedBeta.product.published, 'Kurs Beta should be published');
+  assert(publishedBeta.product.id === betaProduct.id && publishedBeta.product.published, 'Beta Course should be published');
   steps += 1;
 
   expectError(
@@ -350,7 +350,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     productsListOutputSchema,
   );
   assert(alfaProducts.products.length === 2, `alfa should have exactly two products, got ${alfaProducts.products.length}`);
-  expectTitles(titles(alfaProducts.products), ['Kurs Alfa', 'Szkic'], 'alfa product titles');
+  expectTitles(titles(alfaProducts.products), ['Alpha Course', 'Draft'], 'alfa product titles');
   steps += 1;
 
   const alfaOffer = expectOk(
@@ -359,14 +359,14 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     publicOfferOutputSchema,
   );
   assert(alfaOffer.tenant.slug === 'alfa', 'alfa offer tenant mismatch');
-  expectTitles(titles(alfaOffer.products), ['Kurs Alfa'], 'alfa public offer titles');
+  expectTitles(titles(alfaOffer.products), ['Alpha Course'], 'alfa public offer titles');
   const betaOffer = expectOk(
     await cli(['--tenant', 'beta', 'public', 'offer'], anonHome),
     'beta public offer',
     publicOfferOutputSchema,
   );
   assert(betaOffer.tenant.slug === 'beta', 'beta offer tenant mismatch');
-  expectTitles(titles(betaOffer.products), ['Kurs Beta'], 'beta public offer titles');
+  expectTitles(titles(betaOffer.products), ['Beta Course'], 'beta public offer titles');
   const firstRawOffer = await fetch(`${url}${API_PATHS.publicOffer}`, {
     headers: { [TENANT_HEADER]: 'alfa', origin: 'https://example.com' },
   });
@@ -385,27 +385,27 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   steps += 1;
 
   const firstPurchase = expectOk(
-    await cli(['--tenant', 'alfa', 'simulate-purchase', '--email', 'kursant@together.dev', '--product', kursAlfa.id], buyerHome),
+    await cli(['--tenant', 'alfa', 'simulate-purchase', '--email', 'learner@together.dev', '--product', alphaCourse.id], buyerHome),
     'simulate purchase',
     simulatePurchaseOutputSchema,
   );
-  assert(firstPurchase.productId === kursAlfa.id && !firstPurchase.alreadyOwned, 'first purchase should grant Kurs Alfa');
+  assert(firstPurchase.productId === alphaCourse.id && !firstPurchase.alreadyOwned, 'first purchase should grant Alpha Course');
   const repeatPurchase = expectOk(
-    await cli(['--tenant', 'alfa', 'simulate-purchase', '--email', 'kursant@together.dev', '--product', kursAlfa.id], buyerHome),
+    await cli(['--tenant', 'alfa', 'simulate-purchase', '--email', 'learner@together.dev', '--product', alphaCourse.id], buyerHome),
     'simulate purchase repeat',
     simulatePurchaseOutputSchema,
   );
   assert(repeatPurchase.memberId === firstPurchase.memberId, 'repeat purchase should resolve the same member');
-  assert(repeatPurchase.productId === kursAlfa.id && repeatPurchase.alreadyOwned, 'repeat purchase should be idempotent');
+  assert(repeatPurchase.productId === alphaCourse.id && repeatPurchase.alreadyOwned, 'repeat purchase should be idempotent');
   steps += 1;
 
   expectOk(
-    await cli(['--tenant', 'alfa', 'login-magic', '--email', 'kursant@together.dev'], buyerHome),
+    await cli(['--tenant', 'alfa', 'login-magic', '--email', 'learner@together.dev'], buyerHome),
     'member login magic',
     authSchema,
   );
   const whoami = expectOk(await cli(['--tenant', 'alfa', 'whoami'], buyerHome), 'member whoami', meOutputSchema);
-  assert(whoami.email === 'kursant@together.dev', 'whoami email mismatch');
+  assert(whoami.email === 'learner@together.dev', 'whoami email mismatch');
   assert(whoami.tenant?.slug === 'alfa', 'whoami should resolve alfa tenant');
   assert(whoami.tenant.memberId !== null, 'whoami should include memberId');
   assert(whoami.tenant.staffRole === null, 'member should not have a staff role');
@@ -447,14 +447,14 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   }
   expectOk(
     await cli(
-      ['--tenant', 'alfa', 'support', 'send', '--subject', 'Pomoc', '--body', 'Treść zgłoszenia'],
+      ['--tenant', 'alfa', 'support', 'send', '--subject', 'Help', '--body', 'Support request body'],
       buyerHome,
     ),
     'member support request',
     supportMessageOutputSchema,
   );
   expectError(
-    await cli(['--tenant', 'alfa', 'support', 'send', '--subject', 'Pomoc', '--body', 'Treść'], anonHome),
+    await cli(['--tenant', 'alfa', 'support', 'send', '--subject', 'Help', '--body', 'Message'], anonHome),
     'unscoped support request',
     EXIT_CODE_BY_ERROR_CODE.unauthorized,
     'unauthorized',
@@ -489,7 +489,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     myProductsOutputSchema,
   );
   assert(myProducts.products.length === 1, `member should have one product, got ${myProducts.products.length}`);
-  assert(myProducts.products[0]?.id === kursAlfa.id && myProducts.products[0].title === 'Kurs Alfa', 'member grant mismatch');
+  assert(myProducts.products[0]?.id === alphaCourse.id && myProducts.products[0].title === 'Alpha Course', 'member grant mismatch');
   const myDataExport = expectOk(
     await cli(['--tenant', 'alfa', 'my', 'data-export'], buyerHome),
     'member data export',
@@ -497,7 +497,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   const exportedMemberData = memberDataExportSchema.parse(JSON.parse(myDataExport.content));
   assert(
-    exportedMemberData.profile.email === 'kursant@together.dev',
+    exportedMemberData.profile.email === 'learner@together.dev',
     'member data export email mismatch',
   );
   expectError(
@@ -513,7 +513,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     'alfa member export csv',
     membersExportOutputSchema,
   );
-  assert(alfaCsvExport.content.includes('kursant@together.dev'), 'alfa csv export should include kursant');
+  assert(alfaCsvExport.content.includes('learner@together.dev'), 'alfa csv export should include learner');
   assert(alfaCsvExport.content.includes('alfa@together.dev'), 'alfa csv export should include its owner');
   const alfaJsonExport = expectOk(
     await cli(['--tenant', 'alfa', 'member', 'export', '--format', 'json'], alfaHome),
@@ -523,18 +523,18 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const alfaExportedMembers = exportedMembersSchema.parse(readJson(alfaJsonExport.content, 'alfa json export content'));
   assert(alfaExportedMembers.length === 2, `alfa json export should have the owner and learner, got ${alfaExportedMembers.length}`);
   const alfaExportedOwner = alfaExportedMembers.find((member) => member.email === 'alfa@together.dev');
-  const alfaExportedLearner = alfaExportedMembers.find((member) => member.email === 'kursant@together.dev');
+  const alfaExportedLearner = alfaExportedMembers.find((member) => member.email === 'learner@together.dev');
   assert(alfaExportedOwner?.productIds.length === 0, 'alfa owner membership should not create product grants');
   assert(
-    JSON.stringify(alfaExportedLearner?.productIds) === JSON.stringify([kursAlfa.id]),
-    'alfa json export should contain exactly one Kurs Alfa grant',
+    JSON.stringify(alfaExportedLearner?.productIds) === JSON.stringify([alphaCourse.id]),
+    'alfa json export should contain exactly one Alpha Course grant',
   );
   const betaCsvExport = expectOk(
     await cli(['--tenant', 'beta', 'member', 'export', '--format', 'csv'], betaHome),
     'beta member export csv',
     membersExportOutputSchema,
   );
-  assert(!betaCsvExport.content.includes('kursant@together.dev'), 'beta export should not include alfa member');
+  assert(!betaCsvExport.content.includes('learner@together.dev'), 'beta export should not include alfa member');
   expectError(
     await cli(['--tenant', 'alfa', 'member', 'export', '--format', 'csv'], buyerHome),
     'member export forbidden',

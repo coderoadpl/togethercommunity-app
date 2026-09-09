@@ -17,7 +17,7 @@ import {
   type PublicSpaceEvent,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { EventPage } from './EventPage.js';
@@ -35,7 +35,7 @@ const okMe = () =>
         userId: 'u1',
         email: 'user@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Member',
         tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
       },
     }),
@@ -50,8 +50,8 @@ const space = (): MemberSpace => ({
   id: 's1',
   tenantId: 't1',
   slug: 's1',
-  name: 'Ogólna',
-  description: 'Rozmowy o kamperze.',
+  name: 'General',
+  description: 'Camper discussions.',
   visibility: 'members',
   productIds: [],
   publicReadOnly: false,
@@ -75,7 +75,7 @@ const rootPost = (): DiscussionPost => ({
   authorDisplay: 'Ola Autorka',
   authorIsStaff: true,
   authorAvatarUrl: null,
-  body: 'Wątek wydarzenia: Live Q&A',
+  body: 'Event thread: Live Q&A',
   createdAt: '2026-08-17T09:00:00.000Z',
   editedAt: null,
   deletedAt: null,
@@ -97,7 +97,7 @@ const event = (overrides: Partial<PublicSpaceEvent> = {}): PublicSpaceEvent => (
   tenantId: 't1',
   spaceId: 's1',
   title: 'Live Q&A',
-  description: 'Pytania i odpowiedzi na żywo.',
+  description: 'Live questions and answers.',
   startsAt: FUTURE_START,
   endsAt: FUTURE_END,
   location: 'Online',
@@ -149,7 +149,7 @@ describe('EventPage', () => {
     await renderEvent();
 
     expect(await screen.findByTestId('event-page')).toHaveTextContent(
-      'Pytania i odpowiedzi na żywo.',
+      'Live questions and answers.',
     );
     expect(screen.getByTestId('event-location')).toHaveTextContent('Online');
     expect(screen.getByTestId('event-link')).toHaveAttribute(
@@ -157,10 +157,10 @@ describe('EventPage', () => {
       'https://meet.example.com/live',
     );
     expect(screen.getByTestId('event-going-count')).toHaveTextContent(
-      pl.events.goingCount({ count: 2 }),
+      en.events.goingCount({ count: 2 }),
     );
     expect(await screen.findByTestId('event-discussion')).toHaveTextContent(
-      'Wątek wydarzenia: Live Q&A',
+      'Event thread: Live Q&A',
     );
   });
 
@@ -187,7 +187,7 @@ describe('EventPage', () => {
     await userEvent.click(await screen.findByTestId('event-rsvp-going'));
 
     expect(screen.getByTestId('event-going-count')).toHaveTextContent(
-      pl.events.goingCount({ count: 3 }),
+      en.events.goingCount({ count: 3 }),
     );
     await waitFor(() =>
       expect(screen.getByTestId('event-rsvp-going')).toHaveAttribute('aria-pressed', 'true'),
@@ -217,7 +217,7 @@ describe('EventPage', () => {
     await renderEvent();
     await userEvent.click(await screen.findByTestId('event-ics'));
 
-    await waitFor(() => expect(screen.queryByText(pl.events.calendarError)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(en.events.calendarError)).not.toBeInTheDocument());
 
     URL.createObjectURL = createObjectUrl;
     URL.revokeObjectURL = revokeObjectUrl;
@@ -239,7 +239,7 @@ describe('EventPage', () => {
 
     await renderEvent();
 
-    expect(await screen.findByTestId('event-ended')).toHaveTextContent(pl.events.ended);
+    expect(await screen.findByTestId('event-ended')).toHaveTextContent(en.events.ended);
     expect(screen.queryByTestId('event-rsvp')).not.toBeInTheDocument();
   });
 
@@ -255,7 +255,7 @@ describe('EventPage', () => {
     await renderEvent();
 
     expect(await screen.findByTestId('event-live-embed')).toHaveAttribute('src', BUNNY_EMBED);
-    expect(screen.getByTestId('event-live')).toHaveTextContent(pl.events.liveBadge);
+    expect(screen.getByTestId('event-live')).toHaveTextContent(en.events.liveBadge);
     expect(screen.queryByTestId('event-replay')).not.toBeInTheDocument();
   });
 
@@ -278,7 +278,7 @@ describe('EventPage', () => {
     await renderEvent();
 
     expect(await screen.findByTestId('event-replay-embed')).toHaveAttribute('src', REPLAY_EMBED);
-    expect(screen.getByTestId('event-replay')).toHaveTextContent(pl.events.replay);
+    expect(screen.getByTestId('event-replay')).toHaveTextContent(en.events.replay);
     expect(screen.queryByTestId('event-live')).not.toBeInTheDocument();
     expect(screen.queryByTestId('event-rsvp')).not.toBeInTheDocument();
   });
@@ -298,7 +298,7 @@ describe('EventPage', () => {
 
     await renderEvent();
 
-    expect(await screen.findByText(pl.events.notFoundBody)).toBeInTheDocument();
-    expect(screen.getAllByText(pl.events.notFoundTitle).length).toBeGreaterThan(0);
+    expect(await screen.findByText(en.events.notFoundBody)).toBeInTheDocument();
+    expect(screen.getAllByText(en.events.notFoundTitle).length).toBeGreaterThan(0);
   });
 });

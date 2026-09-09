@@ -182,7 +182,7 @@ const captureCreatorPanel = async (context: BrowserContext, studioBaseUrl: strin
   await shoot(page, '02a-creator-dashboard.png');
 
   await page.getByTestId('section-products').click();
-  await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByText('Together 101 Course').first().waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '02-creator-panel-products.png');
 
   await page.getByTestId('section-members').click();
@@ -202,7 +202,7 @@ const captureBuyerJourney = async (
   const page = await context.newPage();
 
   await page.goto(`${studioBaseUrl}/checkout/${productId}`, { waitUntil: 'load' });
-  await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByText('Together 101 Course').first().waitFor({ state: 'visible', timeout: 20000 });
   const simulateButton = page.locator('button[type="submit"]', { hasText: /Pay|Simulate/ });
   await simulateButton.waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '04-checkout.png');
@@ -223,7 +223,7 @@ const captureBuyerJourney = async (
   await page.waitForURL('**/my', { timeout: 20000 });
   await page.goto(`${studioBaseUrl}/my/products`, { waitUntil: 'load' });
   await page.getByRole('heading', { name: 'My products' }).waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByText('Together 101 Course').first().waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '06-member-my-products.png');
 
   await page.goto(`${studioBaseUrl}/my/course/${productId}`, { waitUntil: 'load' });

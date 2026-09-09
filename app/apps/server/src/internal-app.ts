@@ -134,6 +134,7 @@ import {
 import {
   devGrantInputSchema,
   apiKeyHasCapability,
+  DEFAULT_LANGUAGE,
   emailBrandingFrom,
   err,
   forbidden,
@@ -818,6 +819,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       );
       if (!consent.ok) return respond(consent);
 
+      const language = parsed.data.language
+        ?? (await deps.tenants.findSettings(tenant.value.tenant.id))?.defaultLanguage
+        ?? DEFAULT_LANGUAGE;
       let result: Result<SimulatePurchaseResult, AppError>;
       if (parsed.data.couponCode === undefined) {
         result = await simulatePurchase(
@@ -906,7 +910,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
                 productId: selection.value.product.id,
                 priceId: price?.id ?? null,
                 memberEmail: parsed.data.email,
-                language: parsed.data.language,
+                language,
                 couponCheckoutSessionId: couponSessionId,
                 checkoutConsentCaptureId: captureId,
               },
@@ -997,7 +1001,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         email: parsed.data.email,
         tenantId: tenant.value.tenant.id,
         tenantName: tenant.value.tenant.name,
-        language: parsed.data.language,
+        language,
         baseUrl,
       });
       const magicLink = deps.devEndpoints.exposeMagicLinks ? issuedMagicLink : null;

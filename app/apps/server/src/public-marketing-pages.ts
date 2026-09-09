@@ -1,124 +1,12 @@
 import { DEFAULT_LANGUAGE, deriveLightAccent, languageSchema, resolveTenantLogo, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
 
-interface PublicMarketingMessages {
-  language: string;
-  polish: string;
-  english: string;
-  socialProfiles: string;
-  preferencesTitle: string;
-  preferencesEyebrow: string;
-  preferencesFor: (input: { email: string }) => string;
-  scopeAll: string;
-  scopeNamed: (input: { scope: string }) => string;
-  scopeIntro: (input: { scope: string }) => string;
-  unsubscribeScope: string;
-  unsubscribeEverything: (input: { tenant: string }) => string;
-  unsubscribeWarning: string;
-  consentsTitle: string;
-  consentsIntro: string;
-  pendingConfirmation: string;
-  noOptionalConsents: string;
-  savePreferences: string;
-  globallyUnsubscribed: (input: { tenant: string }) => string;
-  preferencesSavedTitle: string;
-  preferencesSavedBody: string;
-  preferencesPendingBody: string;
-  unsubscribedTitle: string;
-  unsubscribedScopeBody: (input: { scope: string }) => string;
-  unsubscribedAllBody: (input: { tenant: string }) => string;
-  resubscribeHint: string;
-  backToPreferences: string;
-  legalEyebrow: string;
-  immutableVersion: (input: { version: number; date: string }) => string;
-  confirmationEyebrow: string;
-  confirmationPromptTitle: string;
-  confirmationPromptBody: (input: { tenant: string }) => string;
-  confirmationSubmit: string;
-  confirmationSuccessTitle: string;
-  confirmationSuccessBody: (input: { tenant: string }) => string;
-  confirmationExpiredTitle: string;
-  confirmationExpiredBody: string;
-}
+import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
+import type { PublicMarketingMessages } from './public-marketing-pages-messages.js';
+import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 
 const messages: Record<Language, PublicMarketingMessages> = {
-  pl: {
-    language: 'Język',
-    polish: 'Polski',
-    english: 'English',
-    socialProfiles: 'Profile społecznościowe',
-    preferencesTitle: 'Preferencje e-mail',
-    preferencesEyebrow: 'Twoja prywatność i zgody',
-    preferencesFor: ({ email }) => `Ustawienia dla adresu ${email}`,
-    scopeAll: 'wszystkie wiadomości marketingowe',
-    scopeNamed: ({ scope }) => `zgoda „${scope}”`,
-    scopeIntro: ({ scope }) => `Ten link dotyczy: ${scope}.`,
-    unsubscribeScope: 'Wypisz mnie z tych wiadomości',
-    unsubscribeEverything: ({ tenant }) => `Wypisz mnie ze wszystkiego od ${tenant}`,
-    unsubscribeWarning: 'Zmiana zadziała od razu. Poniżej możesz też wybrać, które zgody zostawić.',
-    consentsTitle: 'Opcjonalne zgody',
-    consentsIntro: 'Zaznacz wiadomości, które nadal chcesz otrzymywać. Żadne pole nie jest obowiązkowe.',
-    pendingConfirmation: 'Czeka na potwierdzenie — sprawdź skrzynkę e-mail.',
-    noOptionalConsents: 'Ten twórca nie oferuje innych opcjonalnych zgód.',
-    savePreferences: 'Zapisz preferencje',
-    globallyUnsubscribed: ({ tenant }) => `Adres jest wypisany ze wszystkich wiadomości marketingowych od ${tenant}.`,
-    preferencesSavedTitle: 'Preferencje zapisane',
-    preferencesSavedBody: 'Twoje ustawienia zostały zaktualizowane.',
-    preferencesPendingBody: 'Dla nowo zaznaczonych zgód wyślemy e-mail z linkiem potwierdzającym.',
-    unsubscribedTitle: 'Wypisanie potwierdzone',
-    unsubscribedScopeBody: ({ scope }) => `Wypisaliśmy Cię: ${scope}.`,
-    unsubscribedAllBody: ({ tenant }) => `Nie będziesz już otrzymywać żadnych wiadomości marketingowych od ${tenant}.`,
-    resubscribeHint: 'Jeśli zmienisz zdanie, wróć tutaj i zaznacz zgody ponownie.',
-    backToPreferences: 'Wróć do preferencji',
-    legalEyebrow: 'Dokument prawny',
-    immutableVersion: ({ version, date }) => `Wersja ${version}, opublikowana ${date}. Treść tej wersji nie ulega zmianie.`,
-    confirmationEyebrow: 'Potwierdzenie zgody',
-    confirmationPromptTitle: 'Potwierdź zgodę',
-    confirmationPromptBody: ({ tenant }) => `Potwierdź, że chcesz otrzymywać wiadomości od ${tenant}.`,
-    confirmationSubmit: 'Potwierdzam zgodę',
-    confirmationSuccessTitle: 'Zgoda potwierdzona',
-    confirmationSuccessBody: ({ tenant }) => `Zgoda na wiadomości od ${tenant} jest teraz aktywna.`,
-    confirmationExpiredTitle: 'Link nie jest już aktywny',
-    confirmationExpiredBody: 'Link potwierdzający wygasł albo jest nieprawidłowy. Zapisz się ponownie, a wyślemy nowy link.',
-  },
-  en: {
-    language: 'Language',
-    polish: 'Polski',
-    english: 'English',
-    socialProfiles: 'Social profiles',
-    preferencesTitle: 'Email preferences',
-    preferencesEyebrow: 'Your privacy and consents',
-    preferencesFor: ({ email }) => `Settings for ${email}`,
-    scopeAll: 'all marketing messages',
-    scopeNamed: ({ scope }) => `“${scope}” consent`,
-    scopeIntro: ({ scope }) => `This link applies to: ${scope}.`,
-    unsubscribeScope: 'Unsubscribe me from this scope',
-    unsubscribeEverything: ({ tenant }) => `Unsubscribe me from everything from ${tenant}`,
-    unsubscribeWarning: 'The change takes effect immediately. You can also fine-tune your consents below.',
-    consentsTitle: 'Optional consents',
-    consentsIntro: 'Select the messages you still want to receive. None of these choices is required.',
-    pendingConfirmation: 'Waiting for confirmation from the email we sent.',
-    noOptionalConsents: 'This creator has no other active optional consents.',
-    savePreferences: 'Save preferences',
-    globallyUnsubscribed: ({ tenant }) => `This address is unsubscribed from all marketing messages from ${tenant}.`,
-    preferencesSavedTitle: 'Preferences saved',
-    preferencesSavedBody: 'Your settings have been updated.',
-    preferencesPendingBody: 'We will send a confirmation link for each newly selected consent.',
-    unsubscribedTitle: 'Unsubscribe confirmed',
-    unsubscribedScopeBody: ({ scope }) => `You will no longer receive messages covered by: ${scope}.`,
-    unsubscribedAllBody: ({ tenant }) => `You will no longer receive any marketing messages from ${tenant}.`,
-    resubscribeHint: 'If you change your mind, you can quietly return and select optional consents again.',
-    backToPreferences: 'Back to preferences',
-    legalEyebrow: 'Legal document',
-    immutableVersion: ({ version, date }) => `This is immutable version ${version}, published on ${date}.`,
-    confirmationEyebrow: 'Consent confirmation',
-    confirmationPromptTitle: 'Confirm your subscription',
-    confirmationPromptBody: ({ tenant }) => `Confirm that you want to receive messages from ${tenant}.`,
-    confirmationSubmit: 'Confirm subscription',
-    confirmationSuccessTitle: 'Email address confirmed',
-    confirmationSuccessBody: ({ tenant }) => `Your consent to messages from ${tenant} is now active.`,
-    confirmationExpiredTitle: 'This link is no longer active',
-    confirmationExpiredBody: 'The confirmation link has expired or is invalid. Ask the creator to subscribe you to the selected communication again.',
-  },
+  pl: publicMarketingMessagesPl,
+  en: publicMarketingMessagesEn,
 };
 
 export interface PublicBrand {
@@ -242,13 +130,16 @@ export const renderHostedMarkdown = (source: string): string => {
   return blocks.join('\n');
 };
 
-export const languageFromRequest = (request: Request): Language => {
+export const languageFromRequest = (request: Request, defaultLanguage: Language = DEFAULT_LANGUAGE): Language => {
   const queryLanguage = languageSchema.safeParse(new URL(request.url).searchParams.get('lang'));
   if (queryLanguage.success) return queryLanguage.data;
   const cookieLanguage = request.headers.get('cookie')?.match(/(?:^|;\s*)together-language=(pl|en)(?:;|$)/)?.[1];
   const parsedCookie = languageSchema.safeParse(cookieLanguage);
   if (parsedCookie.success) return parsedCookie.data;
-  return request.headers.get('accept-language')?.toLowerCase().startsWith('en') === true ? 'en' : DEFAULT_LANGUAGE;
+  const browserLanguage = languageSchema.safeParse(
+    request.headers.get('accept-language')?.split(',')[0]?.trim().toLowerCase().split(';')[0]?.split('-')[0],
+  );
+  return browserLanguage.success ? browserLanguage.data : defaultLanguage;
 };
 
 const publicStyles = `

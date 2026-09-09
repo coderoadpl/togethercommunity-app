@@ -131,7 +131,7 @@ const MethodCard = ({
 
 export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
-  const { language } = useLanguage();
+  const { explicitLanguage } = useLanguage();
   const me = useRedirectSignedInWithTenant();
   const magicLinkExpired = invalidTokenFromLocation();
   const [email, setEmail] = useState(rememberedLoginIdentifier);
@@ -282,14 +282,22 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const sendMagicLink = () => {
     setRequestedMagicEmail('');
     setMagicLinkResent(false);
-    requestMagicLink.mutate({ email, callbackURL: `${window.location.origin}/my`, language });
+    requestMagicLink.mutate({
+      email,
+      callbackURL: `${window.location.origin}/my`,
+      ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
+    });
   };
 
   const resendMagicLink = () => {
     setMagicLinkResent(false);
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
     requestMagicLink.mutate(
-      { email: requestedMagicEmail, callbackURL: `${window.location.origin}/my`, language },
+      {
+        email: requestedMagicEmail,
+        callbackURL: `${window.location.origin}/my`,
+        ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
+      },
       { onSuccess: () => setMagicLinkResent(true) },
     );
   };

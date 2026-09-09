@@ -6,14 +6,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { CourseStructureWithAccess, PublicPost } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
 
 const structure: CourseStructureWithAccess = {
   courseId: 'course-1',
-  name: 'Kamper od podstaw',
+  name: 'Camper Basics',
   accessStatus: 'fully-accessible',
   completionStatus: 'not-completed',
   modules: [
@@ -25,21 +25,21 @@ const structure: CourseStructureWithAccess = {
       chapters: [
         {
           id: 'ch1',
-          name: 'Rozdział',
+          name: 'Chapter',
           accessStatus: 'fully-accessible',
           completionStatus: 'not-completed',
           lessons: [
             {
               contentId: 'ct1',
               lessonId: 'l1',
-              name: 'Wybór silnika',
+              name: 'Choosing an Engine',
               accessStatus: 'fully-accessible',
               completionStatus: 'not-completed',
             },
             {
               contentId: 'ct2',
               lessonId: 'l2',
-              name: 'Zabudowa wnętrza',
+              name: 'Interior Build-Out',
               accessStatus: 'fully-accessible',
               completionStatus: 'not-completed',
             },
@@ -58,7 +58,7 @@ const post = (id: string, lessonId: string, body: string): PublicPost => ({
   parentPostId: null,
   rootPostId: id,
   isOwn: false,
-  authorDisplay: 'Ola Autorka',
+  authorDisplay: 'Alex Author',
   authorIsStaff: false,
   authorAvatarUrl: null,
   body,
@@ -89,9 +89,9 @@ describe('CourseDiscussionSearch', () => {
           ok: true,
           data: {
             hits: [
-              { post: post('h1', 'l1', 'Jaki silnik wybrać?'), lessonId: 'l1', snippet: 'Jaki silnik wybrać?' },
-              { post: post('h2', 'l2', 'Silnik a zabudowa'), lessonId: 'l2', snippet: 'Silnik a zabudowa' },
-              { post: post('h3', 'l1', 'Silnik diesla czy benzyna'), lessonId: 'l1', snippet: 'Silnik diesla czy benzyna' },
+              { post: post('h1', 'l1', 'Which engine should I choose?'), lessonId: 'l1', snippet: 'Which engine should I choose?' },
+              { post: post('h2', 'l2', 'Engine and build-out'), lessonId: 'l2', snippet: 'Engine and build-out' },
+              { post: post('h3', 'l1', 'Diesel or gasoline engine'), lessonId: 'l1', snippet: 'Diesel or gasoline engine' },
             ],
           },
         });
@@ -101,15 +101,15 @@ describe('CourseDiscussionSearch', () => {
     const user = userEvent.setup();
     renderSearch();
 
-    expect(await screen.findByText(pl.discussion.searchCourseHeading)).toBeInTheDocument();
+    expect(await screen.findByText(en.discussion.searchCourseHeading)).toBeInTheDocument();
     expect(screen.getByTestId('course-search-hint')).toHaveTextContent(
-      pl.discussion.searchHint,
+      en.discussion.searchHint,
     );
 
-    await user.type(screen.getByTestId('course-discussion-search-input'), 'silnik');
+    await user.type(screen.getByTestId('course-discussion-search-input'), 'engine');
 
     const groupA = await screen.findByTestId('search-group-l1');
-    expect(within(groupA).getByRole('heading', { name: 'Wybór silnika' })).toBeInTheDocument();
+    expect(within(groupA).getByRole('heading', { name: 'Choosing an Engine' })).toBeInTheDocument();
     expect(within(groupA).getByTestId('course-search-hit-h1')).toHaveAttribute(
       'href',
       '/my/courses/course-1/lessons/l1',
@@ -117,16 +117,16 @@ describe('CourseDiscussionSearch', () => {
     expect(within(groupA).getByTestId('course-search-hit-h3')).toBeInTheDocument();
 
     const groupB = screen.getByTestId('search-group-l2');
-    expect(within(groupB).getByRole('heading', { name: 'Zabudowa wnętrza' })).toBeInTheDocument();
+    expect(within(groupB).getByRole('heading', { name: 'Interior Build-Out' })).toBeInTheDocument();
     expect(within(groupB).getByTestId('course-search-hit-h2')).toHaveAttribute(
       'href',
       '/my/courses/course-1/lessons/l2',
     );
 
-    expect(within(groupA).getAllByText('silnik')[0]?.tagName).toBe('MARK');
+    expect(within(groupA).getAllByText('engine')[0]?.tagName).toBe('MARK');
 
     const url = new URL(requestedUrls[requestedUrls.length - 1] ?? '');
-    expect(url.searchParams.get('query')).toBe('silnik');
+    expect(url.searchParams.get('query')).toBe('engine');
     expect(url.searchParams.getAll('lessonId')).toEqual(['l1', 'l2']);
   });
 
@@ -138,10 +138,10 @@ describe('CourseDiscussionSearch', () => {
     const user = userEvent.setup();
     renderSearch();
 
-    await user.type(await screen.findByTestId('course-discussion-search-input'), 'niema');
+    await user.type(await screen.findByTestId('course-discussion-search-input'), 'missing');
 
     expect(await screen.findByTestId('course-search-empty')).toHaveTextContent(
-      pl.discussion.searchCourseEmpty,
+      en.discussion.searchCourseEmpty,
     );
   });
 });

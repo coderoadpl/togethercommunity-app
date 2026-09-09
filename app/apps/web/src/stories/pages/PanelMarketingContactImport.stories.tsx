@@ -13,9 +13,9 @@ import suppression from '../fixtures/panel-marketing-suppression-import.json';
 import suppressionPreview from '../fixtures/panel-marketing-suppression-preview.json';
 import suppressionResult from '../fixtures/panel-marketing-suppression-result.json';
 import { withPage } from '../page-decorators.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 
-const meta = { title: 'Pages/PanelMarketingContactImport', id: 'panel-marketing-contact-import', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
+const meta = { title: 'Pages/PanelMarketingContactImport', id: 'panel-marketing-contact-import', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const ShadcnDesktop: Story = { parameters: { __id: 'panel-marketing-contact-import--shadcn--desktop', viewport: { defaultViewport: 'desktop' } }, globals: { viewport: { value: 'desktop' } } };
@@ -25,8 +25,8 @@ export const MappingWithWarnings: Story = { parameters: { fixture: preview } };
 export const Attestation: Story = { parameters: { fixture: preview }, play: async ({ canvasElement }) => {
   const canvas = within(canvasElement);
   await canvas.findAllByText(/Invalid email/);
-  await userEvent.click(canvas.getByRole('checkbox', { name: pl.directory.skipInvalid }));
-  await userEvent.click(canvas.getByRole('button', { name: pl.directory.next }));
+  await userEvent.click(canvas.getByRole('checkbox', { name: en.directory.skipInvalid }));
+  await userEvent.click(canvas.getByRole('button', { name: en.directory.next }));
 } };
 export const Queued: Story = { parameters: { fixture: queued } };
 export const CompletedWithErrors: Story = { parameters: { fixture: result } };
@@ -34,7 +34,7 @@ export const SuppressionUpload: Story = { parameters: { fixture: suppression } }
 export const SuppressionPreview: Story = { parameters: { fixture: suppressionPreview } };
 export const SuppressionResult: Story = { parameters: { fixture: suppressionResult } };
 export const AmbiguousDelimiter: Story = { play: async ({ canvasElement }) => {
-  await userEvent.upload(await within(canvasElement).findByLabelText(pl.directory.file), new File(['address;label,extra\nanna@example.org;Anna,Example'], 'ambiguous.csv', { type: 'text/csv' }));
+  await userEvent.upload(await within(canvasElement).findByLabelText(en.directory.file), new File(['address;label,extra\nanna@example.org;Anna,Example'], 'ambiguous.csv', { type: 'text/csv' }));
 } };
 
 export const Error: Story = { parameters: { fixture: error } };

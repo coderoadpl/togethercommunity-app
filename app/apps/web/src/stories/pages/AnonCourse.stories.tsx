@@ -34,7 +34,7 @@ const guestFixture = (variant: 'product' | 'sales' | 'login') => ({
 });
 const fixture = guestFixture('product');
 
-const meta = { title: 'Pages/AnonCourse', id: 'anon-course', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
+const meta = { title: 'Pages/AnonCourse', id: 'anon-course', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const ShadcnDesktop: Story = { parameters: { __id: 'anon-course--shadcn--desktop', viewport: { defaultViewport: 'desktop' } }, globals: { viewport: { value: 'desktop' } } };

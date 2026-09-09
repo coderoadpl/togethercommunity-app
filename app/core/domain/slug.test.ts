@@ -3,21 +3,20 @@ import { describe, expect, it } from 'vitest';
 import { slugify } from './slug.js';
 
 describe('slugify', () => {
-  it('maps Polish diacritics to their base letters', () => {
-    expect(slugify('Społeczność Acme')).toBe('spolecznosc-acme');
-    expect(slugify('Zażółć gęślą jaźń')).toBe('zazolc-gesla-jazn');
-    expect(slugify('Łódź')).toBe('lodz');
+  it('maps Latin diacritics to their base letters', () => {
+    expect(slugify('\u0105\u0107\u0119\u0142\u0144\u00f3\u015b\u017a\u017c')).toBe('acelnoszz');
+    expect(slugify('\u0141\u00d3\u0106')).toBe('loc');
   });
 
   it('collapses punctuation and whitespace into single hyphens', () => {
-    expect(slugify('Kurs: HTML & CSS!')).toBe('kurs-html-css');
-    expect(slugify('  Kurs Together   101 ')).toBe('kurs-together-101');
+    expect(slugify('Course: HTML & CSS!')).toBe('course-html-css');
+    expect(slugify('  Course Together   101 ')).toBe('course-together-101');
   });
 
   it('transliterates German and Nordic letters that NFKD keeps intact', () => {
     expect(slugify('Straße für Anfänger')).toBe('strasse-fur-anfanger');
     expect(slugify('Smørrebrød og øl')).toBe('smorrebrod-og-ol');
-    expect(slugify('Þórunn Ægir Œuvre')).toBe('thorunn-aegir-oeuvre');
+    expect(slugify('Þ\u00f3runn Ægir Œuvre')).toBe('thorunn-aegir-oeuvre');
     expect(slugify('Đakovo')).toBe('dakovo');
   });
 

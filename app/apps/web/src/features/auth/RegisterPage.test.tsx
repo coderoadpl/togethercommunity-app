@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, memberMe, server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -79,7 +79,7 @@ describe('RegisterPage', () => {
 
     await renderRegisterPage();
 
-    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', 'Together');
+    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', en.common.appName);
     expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
   });
 
@@ -102,8 +102,8 @@ describe('RegisterPage', () => {
 
     await renderRegisterPage(hostname);
 
-    expect(screen.getByRole('heading', { level: 1, name: pl.auth.createAccount })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: pl.auth.createAccount })).toBeEnabled();
+    expect(screen.getByRole('heading', { level: 1, name: en.auth.createAccount })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.auth.createAccount })).toBeEnabled();
     expect(offerCalls).toBe(0);
   });
 
@@ -119,13 +119,13 @@ describe('RegisterPage', () => {
     );
 
     await renderRegisterPage();
-    await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
-    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'new@together.dev');
-    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'short');
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), 'short');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
     expect(
-      await screen.findByText(pl.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH })),
+      await screen.findByText(en.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH })),
     ).toBeInTheDocument();
     expect(requested).toBe(false);
   });
@@ -138,10 +138,10 @@ describe('RegisterPage', () => {
     );
 
     await renderRegisterPage();
-    await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
-    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'new@together.dev');
-    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), VALID_PASSWORD);
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
@@ -154,8 +154,8 @@ describe('RegisterPage', () => {
         HttpResponse.json({
           ok: true,
           data: tenantOffer({
-            termsUrl: 'https://akademia.test/regulamin',
-            privacyUrl: 'https://akademia.test/prywatnosc',
+            termsUrl: 'https://akademia.test/terms',
+            privacyUrl: 'https://akademia.test/privacy',
           }),
         }),
       ),
@@ -164,10 +164,10 @@ describe('RegisterPage', () => {
 
     await renderRegisterPage('localhost');
     await userEvent.click(await screen.findByRole('checkbox'));
-    await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
-    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'new@together.dev');
-    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), VALID_PASSWORD);
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
   });
@@ -182,8 +182,8 @@ describe('RegisterPage', () => {
         HttpResponse.json({
           ok: true,
           data: tenantOffer({
-            termsUrl: 'https://akademia.test/regulamin',
-            privacyUrl: 'https://akademia.test/prywatnosc',
+            termsUrl: 'https://akademia.test/terms',
+            privacyUrl: 'https://akademia.test/privacy',
           }),
         }),
       ),
@@ -201,22 +201,22 @@ describe('RegisterPage', () => {
     const consentLabel = checkbox.closest('label');
     if (consentLabel === null) throw new Error('expected the checkbox to sit inside a label');
     const consentField = within(consentLabel);
-    expect(consentField.getByRole('link', { name: pl.consent.terms })).toHaveAttribute(
+    expect(consentField.getByRole('link', { name: en.consent.terms })).toHaveAttribute(
       'href',
-      'https://akademia.test/regulamin',
+      'https://akademia.test/terms',
     );
-    expect(consentField.getByRole('link', { name: pl.consent.privacy })).toHaveAttribute(
+    expect(consentField.getByRole('link', { name: en.consent.privacy })).toHaveAttribute(
       'href',
-      'https://akademia.test/prywatnosc',
+      'https://akademia.test/privacy',
     );
 
-    await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Member');
-    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'member@together.dev');
-    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Member');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'member@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
     await userEvent.click(checkbox);
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
-    expect(await screen.findByText(pl.auth.registeredTitle)).toBeInTheDocument();
+    expect(await screen.findByText(en.auth.registeredTitle)).toBeInTheDocument();
     expect(signupBodies).toEqual([
       {
         name: 'New Member',
@@ -226,7 +226,7 @@ describe('RegisterPage', () => {
         termsAccepted: true,
       },
     ]);
-    expect(signupLanguages).toEqual(['pl']);
+    expect(signupLanguages).toEqual([null]);
   });
 
   it('shows no consent checkbox on a tenant without configured documents', async () => {
@@ -239,7 +239,7 @@ describe('RegisterPage', () => {
 
     await renderRegisterPage();
 
-    expect(await screen.findByLabelText(pl.auth.nameLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.nameLabel)).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 });

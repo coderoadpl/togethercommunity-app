@@ -71,20 +71,16 @@ export const printSeedSummary = (summary: SeedSummary): void => {
   for (const member of summary.members) {
     console.log(`  member   ${member.email}  ->  ${member.tenantId}`);
   }
-  console.log('  community  discussions under course-js lessons; unread notification for kursant.aktywny@together.dev');
-  console.log('  spaces   Społeczność (members) + Klub JavaScriptu (product-js-full) + Klub Reacta (product-react-full, locked for kursant.aktywny) on studio, with posts/reactions/follows');
-  console.log('  public   course-js is publicly visible; Społeczność is publicly readable and is the studio home space');
-  console.log('  sales    product-club subscription (monthly+yearly), active simulated subscription for kursant.abonent@together.dev, demo orders on studio');
+  console.log('  community  discussions under course-js lessons; unread notification for student.active@together.dev');
+  console.log('  spaces   Community (members) + JavaScript Club (product-js-full) + React Club (product-react-full) on studio, with posts/reactions/follows');
+  console.log('  public   course-js is publicly visible; Community is publicly readable and is the studio home space');
+  console.log('  sales    product-club subscription (monthly+yearly), active simulated subscription for student.subscriber@together.dev, demo orders on studio');
   console.log('  tenants  http://studio.localhost:48730  http://acme.localhost:48730  http://akademia.localhost:48730');
 };
 
 export const applySeed = async (db: Db): Promise<SeedSummary> => {
   const PASSWORD = DEMO_SEED_PASSWORD;
 
-  /**
-   * SEED_BASE_TIME (ISO timestamp) pins all relative seed dates, so the visual
-   * regression harness gets identical rendered dates on every run.
-   */
   const parseBaseTime = (): number => {
     const raw = process.env['SEED_BASE_TIME'];
     if (raw === undefined) return Date.now();
@@ -142,8 +138,6 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     streamLibraryId,
   });
 
-  // Publicly embeddable Bunny Stream demo (the player bunny.net embeds on its own
-  // marketing blog); renders for anyone via iframe.mediadelivery.net/embed/<lib>/<video>.
   const BUNNY_DEMO_LIBRARY_ID = '197133';
   const BUNNY_DEMO_VIDEO_ID = 'dc48a09e-d9bb-420a-83d7-72dc2304c034';
 
@@ -162,117 +156,117 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'lesson-js-demo-video',
       durationMinutes: 4,
-      name: 'Demo wideo (Bunny Stream)',
+      name: 'Video demo (Bunny Stream)',
       contents: [
         video(BUNNY_DEMO_LIBRARY_ID, BUNNY_DEMO_VIDEO_ID),
         html(
-          '<h3>Odtwarzacz wideo Bunny Stream</h3><p>Ta lekcja pokazuje prawdziwy strumień wideo z Bunny Stream osadzony w odtwarzaczu platformy. Materiały wideo w Together serwujemy przez Bunny Stream — szybki, globalny hosting wideo z adaptacyjną jakością (HLS).</p><p>Aby dodać własne nagranie, wgraj je do swojej biblioteki Bunny Stream i wklej identyfikatory biblioteki oraz wideo w edytorze lekcji.</p>',
+          '<h3>Bunny Stream video player</h3><p>This lesson shows a real Bunny Stream video embedded in the platform player. Together delivers video through Bunny Stream, a global video host with adaptive streaming quality (HLS).</p><p>To add your own recording, upload it to your Bunny Stream library and paste the library and video IDs into the lesson editor.</p>',
         ),
       ],
     },
     {
-      id: 'lesson-js-zmienne-1',
+      id: 'lesson-js-variables-1',
       durationMinutes: 12,
-      name: 'Deklarowanie zmiennych',
+      name: 'Declaring variables',
       contents: [
         embed('W6NZfCO5SIk'),
         html(
-          '<h3>Zmienne w JavaScript</h3><p>W JavaScript zmienne deklarujemy słowami kluczowymi <code>let</code>, <code>const</code> oraz historycznym <code>var</code>. W nowoczesnym kodzie sięgamy niemal wyłącznie po dwa pierwsze.</p><ul><li><strong>const</strong> — wartość, której nie zamierzamy nadpisywać.</li><li><strong>let</strong> — zmienna, której wartość będzie się zmieniać w czasie.</li></ul><p>Dobrą praktyką jest domyślne używanie <code>const</code> i sięganie po <code>let</code> dopiero wtedy, gdy naprawdę musimy przypisać nową wartość.</p>',
+          '<h3>Variables in JavaScript</h3><p>JavaScript declares variables with <code>let</code>, <code>const</code>, and the older <code>var</code> keyword. Modern code mostly uses the first two.</p><ul><li><strong>const</strong> - a binding you do not intend to reassign.</li><li><strong>let</strong> - a variable whose value will change over time.</li></ul><p>Use <code>const</code> by default and switch to <code>let</code> when you need to assign a new value.</p>',
         ),
         link(
-          'https://developer.mozilla.org/pl/docs/Web/JavaScript/Guide/Grammar_and_types',
-          'MDN — gramatyka i typy w JavaScript',
+          'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Grammar_and_types',
+          'MDN - JavaScript grammar and types',
         ),
       ],
     },
     {
-      id: 'lesson-js-zmienne-2',
+      id: 'lesson-js-variables-2',
       durationMinutes: 15,
-      name: 'Typy proste i złożone',
+      name: 'Primitive and complex types',
       contents: [
         html(
-          '<h3>Typy danych</h3><p>JavaScript rozróżnia typy proste (<code>string</code>, <code>number</code>, <code>boolean</code>, <code>null</code>, <code>undefined</code>, <code>symbol</code>, <code>bigint</code>) oraz typy złożone, czyli obiekty i tablice.</p><p>Typy proste przekazywane są przez wartość, a obiekty przez referencję. To fundamentalna różnica, którą warto zrozumieć na początku nauki.</p>',
+          '<h3>Data types</h3><p>JavaScript distinguishes primitive types (<code>string</code>, <code>number</code>, <code>boolean</code>, <code>null</code>, <code>undefined</code>, <code>symbol</code>, and <code>bigint</code>) from objects, including arrays.</p><p>Primitive values are copied directly. With objects, the copied value is a reference to the same object, so changing that object is visible through either reference.</p>',
         ),
         embed('hdI2bqOjy3c'),
       ],
     },
     {
-      id: 'lesson-js-funkcje-1',
+      id: 'lesson-js-functions-1',
       durationMinutes: 18,
-      name: 'Funkcje i argumenty',
+      name: 'Functions and arguments',
       contents: [
         embed('N8ap4k_1QEQ'),
         html(
-          '<h3>Funkcje</h3><p>Funkcja to fragment kodu, który możemy wielokrotnie wywoływać. W JavaScript funkcje są <strong>wartościami pierwszej klasy</strong> — możemy je przypisywać do zmiennych i przekazywać jako argumenty.</p><ul><li>Deklaracja funkcji: <code>function suma(a, b) { return a + b; }</code></li><li>Funkcja strzałkowa: <code>const suma = (a, b) =&gt; a + b;</code></li></ul>',
+          '<h3>Functions</h3><p>A function is a piece of code you can call repeatedly. JavaScript functions are <strong>first-class values</strong>: you can assign them to variables and pass them as arguments.</p><ul><li>Function declaration: <code>function sum(a, b) { return a + b; }</code></li><li>Arrow function: <code>const sum = (a, b) =&gt; a + b;</code></li></ul>',
         ),
       ],
     },
     {
-      id: 'lesson-js-funkcje-2',
+      id: 'lesson-js-functions-2',
       durationMinutes: 22,
-      name: 'Domknięcia i zakres',
+      name: 'Closures and scope',
       contents: [
         html(
-          '<h3>Domknięcia (closures)</h3><p>Domknięcie powstaje, gdy funkcja zapamiętuje zmienne z zakresu, w którym została utworzona. To jeden z najważniejszych mechanizmów języka.</p><p>Domknięcia wykorzystujemy między innymi do tworzenia liczników, funkcji pomocniczych oraz w programowaniu funkcyjnym.</p>',
+          '<h3>Closures</h3><p>A closure lets a function retain access to variables from the scope where it was created. This is one of the core mechanisms of the language.</p><p>Closures are useful for counters, helper functions, and functional programming.</p>',
         ),
-        link('https://github.com/getify/You-Dont-Know-JS', 'You Dont Know JS — darmowa seria książek o JavaScript'),
+        link('https://github.com/getify/You-Dont-Know-JS', 'You Don’t Know JS - a free JavaScript book series'),
       ],
     },
     {
       id: 'lesson-js-dom-1',
       durationMinutes: 14,
-      name: 'Wybieranie elementów DOM',
+      name: 'Selecting DOM elements',
       contents: [
         embed('0ik6X4DJKCc'),
         html(
-          '<h3>Drzewo DOM</h3><p>DOM (Document Object Model) to reprezentacja strony w postaci drzewa węzłów. Elementy wybieramy metodami <code>querySelector</code> oraz <code>querySelectorAll</code>.</p><ul><li><code>document.querySelector(&quot;.klasa&quot;)</code> — pierwszy pasujący element.</li><li><code>document.querySelectorAll(&quot;li&quot;)</code> — lista wszystkich elementów.</li></ul>',
+          '<h3>The DOM tree</h3><p>The DOM (Document Object Model) represents a page as a tree of nodes. Select elements with <code>querySelector</code> and <code>querySelectorAll</code>.</p><ul><li><code>document.querySelector(&quot;.example&quot;)</code> - the first matching element.</li><li><code>document.querySelectorAll(&quot;li&quot;)</code> - a list of all matching elements.</li></ul>',
         ),
-        pdf(SAMPLE_PDF, 'Ściąga: metody DOM (PDF)'),
+        pdf(SAMPLE_PDF, 'DOM methods cheat sheet (PDF)'),
       ],
     },
     {
       id: 'lesson-js-dom-2',
       durationMinutes: 19,
-      name: 'Zdarzenia i interakcja',
+      name: 'Events and interaction',
       contents: [
         html(
-          '<h3>Obsługa zdarzeń</h3><p>Interaktywność strony budujemy, nasłuchując zdarzeń metodą <code>addEventListener</code>. Do najczęstszych zdarzeń należą <code>click</code>, <code>input</code> oraz <code>submit</code>.</p><p>Pamiętaj o tym, by przy formularzach wywołać <code>event.preventDefault()</code>, jeśli chcesz przejąć kontrolę nad domyślnym zachowaniem przeglądarki.</p>',
+          '<h3>Handling events</h3><p>Make a page interactive by listening for events with <code>addEventListener</code>. Common events include <code>click</code>, <code>input</code>, and <code>submit</code>.</p><p>When handling a form, call <code>event.preventDefault()</code> if you need to take control of the default browser behavior.</p>',
         ),
         embed('jS4aFq5-91M'),
-        link('https://developer.mozilla.org/pl/docs/Web/API/EventTarget/addEventListener', 'MDN — addEventListener'),
+        link('https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener', 'MDN — addEventListener'),
       ],
     },
     {
-      id: 'lesson-js-projekt-1',
+      id: 'lesson-js-project-1',
       durationMinutes: 35,
-      name: 'Projekt: lista zadań',
+      name: 'Project: a to-do list',
       contents: [
         embed('8dWL3wF_OMw'),
         html(
-          '<h3>Projekt końcowy</h3><p>W tej lekcji łączymy zdobytą wiedzę i budujemy prostą aplikację listy zadań (to-do). Wykorzystamy manipulację DOM, obsługę zdarzeń oraz zapisywanie stanu w <code>localStorage</code>.</p><ul><li>Dodawanie i usuwanie zadań.</li><li>Oznaczanie zadań jako ukończone.</li><li>Trwałość danych po odświeżeniu strony.</li></ul>',
+          '<h3>Final project</h3><p>Put your new skills together by building a simple to-do app. You will use DOM manipulation, event handling, and <code>localStorage</code> to save state.</p><ul><li>Add and remove tasks.</li><li>Mark tasks as complete.</li><li>Keep your data after refreshing the page.</li></ul>',
         ),
-        link('https://github.com/acme-courses/todo-vanilla', 'Repozytorium startowe projektu na GitHub'),
+        link('https://github.com/acme-courses/todo-vanilla', 'Project starter repository on GitHub'),
       ],
     },
     {
       id: 'lesson-react-jsx-1',
       durationMinutes: 11,
-      name: 'Czym jest JSX',
+      name: 'What is JSX?',
       contents: [
         embed('SqcY0GlETPk'),
         html(
-          '<h3>Składnia JSX</h3><p>JSX pozwala pisać strukturę interfejsu w składni przypominającej HTML bezpośrednio w kodzie JavaScript. Pod spodem JSX kompiluje się do wywołań <code>React.createElement</code>.</p><p>Każdy komponent zwraca dokładnie jedno drzewo elementów — jeśli potrzebujesz zwrócić kilka elementów obok siebie, użyj fragmentu <code>&lt;&gt;...&lt;/&gt;</code>.</p>',
+          '<h3>JSX syntax</h3><p>JSX lets you describe an interface with HTML-like syntax directly in JavaScript. A JSX compiler turns this markup into JavaScript calls that create React elements. The classic transform uses <code>React.createElement</code>.</p><p>Each component returns one element tree. To group sibling elements without an extra wrapper, use a fragment: <code>&lt;&gt;...&lt;/&gt;</code>.</p>',
         ),
-        link('https://react.dev/learn/writing-markup-with-jsx', 'Dokumentacja React — pisanie znaczników w JSX'),
+        link('https://react.dev/learn/writing-markup-with-jsx', 'React documentation - writing markup with JSX'),
       ],
     },
     {
       id: 'lesson-react-jsx-2',
       durationMinutes: 16,
-      name: 'Komponenty i propsy',
+      name: 'Components and props',
       contents: [
         html(
-          '<h3>Komponenty</h3><p>Komponent to funkcja zwracająca JSX. Dane przekazujemy do komponentu przez <strong>propsy</strong> — argumenty tylko do odczytu.</p><ul><li>Nazwy komponentów piszemy wielką literą.</li><li>Propsy są niemutowalne — komponent nigdy nie powinien ich modyfikować.</li></ul>',
+          '<h3>Components</h3><p>A component is a function that returns JSX. Pass data into components through <strong>props</strong>, which are read-only inputs.</p><ul><li>Start component names with a capital letter.</li><li>Props are immutable: a component should never modify them.</li></ul>',
         ),
         embed('Rh3tobg7hEo'),
       ],
@@ -280,22 +274,22 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'lesson-react-state-1',
       durationMinutes: 14,
-      name: 'Stan komponentu z useState',
+      name: 'Component state with useState',
       contents: [
         embed('O6P86uwfdR0'),
         html(
-          '<h3>Hook useState</h3><p>Stan to dane, które zmieniają się w czasie życia komponentu. Zarządzamy nim hookiem <code>useState</code>, który zwraca parę: aktualną wartość oraz funkcję ustawiającą.</p><p>Aktualizacja stanu powoduje ponowne wyrenderowanie komponentu z nowymi danymi.</p>',
+          '<h3>The useState hook</h3><p>State is data that changes during the lifetime of a component. The <code>useState</code> hook returns a pair: the current value and a setter function.</p><p>Updating state triggers another render of the component with the new data.</p>',
         ),
-        link('https://react.dev/reference/react/useState', 'Dokumentacja React — useState'),
+        link('https://react.dev/reference/react/useState', 'React documentation - useState'),
       ],
     },
     {
       id: 'lesson-react-state-2',
       durationMinutes: 17,
-      name: 'Przepływ danych i podnoszenie stanu',
+      name: 'Data flow and lifting state up',
       contents: [
         html(
-          '<h3>Podnoszenie stanu (lifting state up)</h3><p>Gdy kilka komponentów potrzebuje tych samych danych, przenosimy stan do ich wspólnego rodzica i przekazujemy go w dół przez propsy. To podstawowy wzorzec przepływu danych w React.</p>',
+          '<h3>Lifting state up</h3><p>When several components need the same data, move that state into their closest shared parent and pass it down through props. This is a basic pattern for data flow in React.</p>',
         ),
         embed('bMknfKXIFA8'),
       ],
@@ -303,25 +297,25 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'lesson-react-hooks-1',
       durationMinutes: 21,
-      name: 'Efekty uboczne z useEffect',
+      name: 'Side effects with useEffect',
       contents: [
         embed('0ZJgIjIuY7U'),
         html(
-          '<h3>Hook useEffect</h3><p>Efekty uboczne — pobieranie danych, subskrypcje, ręczna manipulacja DOM — obsługujemy hookiem <code>useEffect</code>. Tablica zależności decyduje, kiedy efekt zostanie ponownie uruchomiony.</p><ul><li>Pusta tablica <code>[]</code> — efekt uruchamia się raz, po zamontowaniu.</li><li>Funkcja czyszcząca zwracana z efektu sprząta po sobie przy odmontowaniu.</li></ul>',
+          '<h3>The useEffect hook</h3><p>Use <code>useEffect</code> to synchronize with external systems, such as network requests, subscriptions, or manual DOM updates. The dependency array controls when the effect runs again.</p><ul><li>An empty array <code>[]</code> runs the effect after mounting; development Strict Mode also checks setup and cleanup with an extra cycle.</li><li>Return a cleanup function to release resources before the effect runs again or the component unmounts.</li></ul>',
         ),
-        link('https://react.dev/reference/react/useEffect', 'Dokumentacja React — useEffect'),
+        link('https://react.dev/reference/react/useEffect', 'React documentation - useEffect'),
       ],
     },
     {
       id: 'lesson-react-hooks-2',
       durationMinutes: 25,
-      name: 'Tworzenie własnych hooków',
+      name: 'Creating custom hooks',
       contents: [
         html(
-          '<h3>Custom hooks</h3><p>Powtarzalną logikę stanową wydzielamy do własnych hooków — zwykłych funkcji, których nazwa zaczyna się od <code>use</code>. Dzięki temu logika jest współdzielona między komponentami bez duplikacji kodu.</p>',
+          '<h3>Custom hooks</h3><p>Extract reusable stateful logic into custom hooks: functions whose names start with <code>use</code>. This lets components share logic without duplicating code.</p>',
         ),
         embed('6ThXsUwLWvc'),
-        link('https://github.com/streamich/react-use', 'react-use — biblioteka gotowych hooków (GitHub)'),
+        link('https://github.com/streamich/react-use', 'react-use - a library of ready-made hooks (GitHub)'),
       ],
     },
   ];
@@ -330,22 +324,22 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'lesson-akademia-1-1',
       durationMinutes: 9,
-      name: 'Jak uczyć się programowania',
+      name: 'How to learn programming',
       contents: [
         embed('zOjov-2OZ0E'),
         html(
-          '<h3>Nauka od zera</h3><p>Samodzielna nauka programowania to maraton, nie sprint. Kluczem jest regularność oraz praca nad małymi, ukończonymi projektami.</p><ul><li>Ucz się codziennie, choćby przez pół godziny.</li><li>Pisz kod samodzielnie — czytanie nie wystarczy.</li><li>Nie bój się błędów; to one najwięcej uczą.</li></ul>',
+          '<h3>Learning from scratch</h3><p>Learning to code on your own is a marathon, not a sprint. Build a regular habit and work on small projects you can finish.</p><ul><li>Study every day, even if you only have half an hour.</li><li>Write code yourself; reading alone is not enough.</li><li>Treat mistakes as opportunities to learn.</li></ul>',
         ),
-        link('https://roadmap.sh', 'roadmap.sh — ścieżki nauki dla programistów'),
+        link('https://roadmap.sh', 'roadmap.sh - learning paths for developers'),
       ],
     },
     {
       id: 'lesson-akademia-1-2',
       durationMinutes: 13,
-      name: 'Narzędzia i środowisko pracy',
+      name: 'Tools and development environment',
       contents: [
         html(
-          '<h3>Środowisko pracy</h3><p>Zanim zaczniesz pisać kod, warto skonfigurować wygodne środowisko: edytor (np. VS Code), terminal oraz system kontroli wersji <code>git</code>.</p><p>Dobre narzędzia nie napiszą kodu za Ciebie, ale znacząco przyspieszą pracę i naukę.</p>',
+          '<h3>Your development environment</h3><p>Before you start coding, set up a comfortable workspace: an editor such as VS Code, a terminal, and the <code>git</code> version control system.</p><p>Good tools help you work and learn more efficiently, but you still need to practice using them.</p>',
         ),
         embed('pQN-pnXPaVg'),
       ],
@@ -353,24 +347,24 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'lesson-akademia-2-1',
       durationMinutes: 24,
-      name: 'Ćwiczenia praktyczne',
+      name: 'Hands-on exercises',
       contents: [
         embed('rfscVS0vtbw'),
         html(
-          '<h3>Praktyka czyni mistrza</h3><p>Rozwiązywanie zadań algorytmicznych oraz budowanie własnych projektów to najlepszy sposób na utrwalenie wiedzy. Zacznij od prostych ćwiczeń i stopniowo zwiększaj poziom trudności.</p>',
+          '<h3>Practice builds confidence</h3><p>Solving algorithm exercises and building your own projects help you retain what you learn. Start with simple exercises and gradually increase the difficulty.</p>',
         ),
-        pdf(SAMPLE_PDF, 'Zestaw ćwiczeń (PDF)'),
+        pdf(SAMPLE_PDF, 'Practice exercises (PDF)'),
       ],
     },
     {
       id: 'lesson-akademia-2-2',
       durationMinutes: 10,
-      name: 'Budowanie portfolio',
+      name: 'Building a portfolio',
       contents: [
         html(
-          '<h3>Portfolio</h3><p>Ukończone projekty warto publikować na GitHub i prezentować w portfolio. To one, a nie certyfikaty, najlepiej świadczą o Twoich umiejętnościach przed pracodawcą.</p>',
+          '<h3>Portfolio</h3><p>Publish completed projects on GitHub and showcase them in your portfolio. Working projects give employers concrete examples of your skills and how you solve problems.</p>',
         ),
-        link('https://github.com', 'GitHub — miejsce na Twoje projekty'),
+        link('https://github.com', 'GitHub - a home for your projects'),
       ],
     },
   ];
@@ -391,30 +385,30 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   const studioModules: ModuleDef[] = [
     {
-      id: 'module-js-podstawy',
+      id: 'module-js-basics',
       courseId: 'course-js',
-      prefix: 'Część 1',
-      title: 'Podstawy',
+      prefix: 'Part 1',
+      title: 'Basics',
       chapters: [
         {
           id: 'chapter-js-demo',
-          name: 'Wprowadzenie',
-          contents: [content('lesson-js-demo-video', 'Demo wideo (Bunny Stream)')],
+          name: 'Introduction',
+          contents: [content('lesson-js-demo-video', 'Video demo (Bunny Stream)')],
         },
         {
-          id: 'chapter-js-zmienne',
-          name: 'Zmienne i typy',
+          id: 'chapter-js-variables',
+          name: 'Variables and types',
           contents: [
-            content('lesson-js-zmienne-1', 'Deklarowanie zmiennych'),
-            content('lesson-js-zmienne-2', 'Typy proste i złożone'),
+            content('lesson-js-variables-1', 'Declaring variables'),
+            content('lesson-js-variables-2', 'Primitive and complex types'),
           ],
         },
         {
-          id: 'chapter-js-funkcje',
-          name: 'Funkcje',
+          id: 'chapter-js-functions',
+          name: 'Functions',
           contents: [
-            content('lesson-js-funkcje-1', 'Funkcje i argumenty'),
-            content('lesson-js-funkcje-2', 'Domknięcia i zakres'),
+            content('lesson-js-functions-1', 'Functions and arguments'),
+            content('lesson-js-functions-2', 'Closures and scope'),
           ],
         },
       ],
@@ -422,68 +416,68 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'module-js-dom',
       courseId: 'course-js',
-      prefix: 'Część 2',
+      prefix: 'Part 2',
       title: 'DOM',
       chapters: [
         {
           id: 'chapter-js-dom',
-          name: 'Manipulacja DOM',
+          name: 'DOM manipulation',
           contents: [
-            content('lesson-js-dom-1', 'Wybieranie elementów DOM'),
-            content('lesson-js-dom-2', 'Zdarzenia i interakcja'),
+            content('lesson-js-dom-1', 'Selecting DOM elements'),
+            content('lesson-js-dom-2', 'Events and interaction'),
           ],
         },
       ],
     },
     {
-      id: 'module-js-projekty',
+      id: 'module-js-projects',
       courseId: 'course-js',
-      prefix: 'Część 3',
-      title: 'Projekty',
+      prefix: 'Part 3',
+      title: 'Projects',
       chapters: [
         {
-          id: 'chapter-js-projekty',
-          name: 'Projekt końcowy',
-          contents: [content('lesson-js-projekt-1', 'Projekt: lista zadań')],
+          id: 'chapter-js-projects',
+          name: 'Final project',
+          contents: [content('lesson-js-project-1', 'Project: a to-do list')],
         },
       ],
     },
     {
-      id: 'module-react-fundamenty',
+      id: 'module-react-fundamentals',
       courseId: 'course-react',
-      prefix: 'Część 1',
-      title: 'Fundamenty',
+      prefix: 'Part 1',
+      title: 'Fundamentals',
       chapters: [
         {
           id: 'chapter-react-jsx',
-          name: 'JSX i komponenty',
+          name: 'JSX and components',
           contents: [
-            content('lesson-react-jsx-1', 'Czym jest JSX'),
-            content('lesson-react-jsx-2', 'Komponenty i propsy'),
+            content('lesson-react-jsx-1', 'What is JSX?'),
+            content('lesson-react-jsx-2', 'Components and props'),
           ],
         },
         {
           id: 'chapter-react-state',
-          name: 'Stan i propsy',
+          name: 'State and props',
           contents: [
-            content('lesson-react-state-1', 'Stan komponentu z useState'),
-            content('lesson-react-state-2', 'Przepływ danych i podnoszenie stanu'),
+            content('lesson-react-state-1', 'Component state with useState'),
+            content('lesson-react-state-2', 'Data flow and lifting state up'),
           ],
         },
       ],
     },
     {
-      id: 'module-react-zaawansowane',
+      id: 'module-react-advanced',
       courseId: 'course-react',
-      prefix: 'Część 2',
-      title: 'Zaawansowane wzorce',
+      prefix: 'Part 2',
+      title: 'Advanced patterns',
       chapters: [
         {
           id: 'chapter-react-hooks',
           name: 'Custom hooks',
           contents: [
-            content('lesson-react-hooks-1', 'Efekty uboczne z useEffect'),
-            content('lesson-react-hooks-2', 'Tworzenie własnych hooków'),
+            content('lesson-react-hooks-1', 'Side effects with useEffect'),
+            content('lesson-react-hooks-2', 'Creating custom hooks'),
           ],
         },
       ],
@@ -494,15 +488,15 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'module-akademia-1',
       courseId: 'course-akademia',
-      prefix: 'Część 1',
-      title: 'Nauka od zera',
+      prefix: 'Part 1',
+      title: 'Learning from scratch',
       chapters: [
         {
           id: 'chapter-akademia-1',
-          name: 'Pierwsze kroki',
+          name: 'Getting started',
           contents: [
-            content('lesson-akademia-1-1', 'Jak uczyć się programowania'),
-            content('lesson-akademia-1-2', 'Narzędzia i środowisko pracy'),
+            content('lesson-akademia-1-1', 'How to learn programming'),
+            content('lesson-akademia-1-2', 'Tools and development environment'),
           ],
         },
       ],
@@ -510,15 +504,15 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'module-akademia-2',
       courseId: 'course-akademia',
-      prefix: 'Część 2',
-      title: 'Praktyka',
+      prefix: 'Part 2',
+      title: 'Practice',
       chapters: [
         {
           id: 'chapter-akademia-2',
-          name: 'Ćwiczenia',
+          name: 'Exercises',
           contents: [
-            content('lesson-akademia-2-1', 'Ćwiczenia praktyczne'),
-            content('lesson-akademia-2-2', 'Budowanie portfolio'),
+            content('lesson-akademia-2-1', 'Hands-on exercises'),
+            content('lesson-akademia-2-2', 'Building a portfolio'),
           ],
         },
       ],
@@ -538,23 +532,23 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     {
       id: 'course-js',
       tenantId: 'tenant-studio',
-      name: 'Kurs JavaScript od podstaw',
-      description: 'Kompletny kurs JavaScript: od zmiennych, przez funkcje i DOM, po pierwszy projekt.',
+      name: 'JavaScript from Scratch',
+      description: 'A complete JavaScript course, from variables, functions, and the DOM to your first project.',
       imageUrl: 'https://picsum.photos/seed/together-course-js/960/540',
       publiclyVisible: true,
     },
     {
       id: 'course-react',
       tenantId: 'tenant-studio',
-      name: 'React w praktyce',
-      description: 'Budowanie interfejsów w React — komponenty, stan, hooki i zaawansowane wzorce.',
+      name: 'React in Practice',
+      description: 'Build interfaces in React with components, state, hooks, and advanced patterns.',
       imageUrl: 'https://picsum.photos/seed/together-course-react/960/540',
     },
     {
       id: 'course-akademia',
       tenantId: 'tenant-akademia',
-      name: 'Samodzielna nauka programowania',
-      description: 'Przewodnik po samodzielnej nauce programowania: metody, narzędzia i praktyka.',
+      name: 'Learning to Code on Your Own',
+      description: 'A guide to learning programming independently: methods, tools, and practice.',
       imageUrl: 'https://picsum.photos/seed/together-course-akademia/960/540',
     },
   ];
@@ -574,8 +568,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       id: 'product-js-full',
       tenantId: 'tenant-studio',
       type: 'course',
-      title: 'Kurs JavaScript - pełny dostęp',
-      description: 'Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.',
+      title: 'JavaScript Course - full access',
+      description: 'Full access to every module in JavaScript from Scratch.',
       priceCents: 39900,
       accessItems: [{ level: 'course', courseId: 'course-js' }],
     },
@@ -583,8 +577,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       id: 'product-react-full',
       tenantId: 'tenant-studio',
       type: 'course',
-      title: 'React w praktyce - pełny dostęp',
-      description: 'Pełny dostęp do kursu React w praktyce.',
+      title: 'React in Practice - full access',
+      description: 'Full access to React in Practice.',
       priceCents: 49900,
       accessItems: [{ level: 'course', courseId: 'course-react' }],
     },
@@ -592,8 +586,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       id: 'product-js-dom-module',
       tenantId: 'tenant-studio',
       type: 'course',
-      title: 'Pakiet: moduł DOM',
-      description: 'Dostęp wyłącznie do modułu DOM z kursu JavaScript.',
+      title: 'DOM Module Pack',
+      description: 'Access to the DOM module of the JavaScript course.',
       priceCents: 9900,
       accessItems: [{ level: 'modules', courseId: 'course-js', moduleIds: ['module-js-dom'] }],
     },
@@ -602,13 +596,13 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       tenantId: 'tenant-studio',
       type: 'course',
       title: 'Free preview',
-      description: 'Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.',
+      description: 'Free sample lessons from every module in both courses, plus the video demo.',
       priceCents: 0,
       accessItems: [
         {
           level: 'lessons',
           courseId: 'course-js',
-          lessonIds: ['lesson-js-demo-video', 'lesson-js-zmienne-1', 'lesson-js-dom-1', 'lesson-js-projekt-1'],
+          lessonIds: ['lesson-js-demo-video', 'lesson-js-variables-1', 'lesson-js-dom-1', 'lesson-js-project-1'],
         },
         {
           level: 'lessons',
@@ -618,11 +612,11 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       ],
     },
     {
-      id: 'product-akademia-roczny',
+      id: 'product-akademia-annual',
       tenantId: 'tenant-akademia',
       type: 'course',
-      title: 'Akademia - dostęp roczny',
-      description: 'Roczny dostęp do kursu Samodzielna nauka programowania.',
+      title: 'Akademia - annual access',
+      description: 'One year of access to Learning to Code on Your Own.',
       priceCents: 29900,
       accessItems: [{ level: 'course', courseId: 'course-akademia' }],
     },
@@ -630,8 +624,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       id: 'product-club',
       tenantId: 'tenant-studio',
       type: 'membership',
-      title: 'Klub Studio — subskrypcja',
-      description: 'Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.',
+      title: 'Studio Club - subscription',
+      description: 'Club membership includes access to the JavaScript and React courses while your subscription is active.',
       priceCents: 4900,
       accessItems: [
         { level: 'course', courseId: 'course-js' },
@@ -642,8 +636,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       id: 'product-download-workbook',
       tenantId: 'tenant-studio',
       type: 'digital_download',
-      title: 'Workbook twórcy',
-      description: 'Ćwiczenia i checklisty do samodzielnej pracy po zakupie.',
+      title: 'Creator Workbook',
+      description: 'Exercises and checklists for independent practice after purchase.',
       priceCents: 7900,
       accessItems: [],
     },
@@ -717,59 +711,59 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   const demoMemberDefs: DemoMemberDef[] = [
     {
-      id: 'member-studio-aktywny',
-      userId: 'user-kursant-aktywny',
+      id: 'member-studio-active',
+      userId: 'user-student-active',
       tenantId: 'tenant-studio',
-      email: 'kursant.aktywny@together.dev',
-      displayName: 'Kursant Aktywny',
+      email: 'student.active@together.dev',
+      displayName: 'Active Student',
       grant: {
-        id: 'grant-studio-aktywny',
+        id: 'grant-studio-active',
         productId: 'product-js-full',
         startsAt: relativeIso(-30),
         expiresAt: null,
       },
       progress: {
         courseId: 'course-js',
-        completedLessonIds: ['lesson-js-zmienne-1', 'lesson-js-zmienne-2'],
-        lastViewedLessonId: 'lesson-js-funkcje-1',
-        lastViewedModuleId: 'module-js-podstawy',
-        lastViewedChapterId: 'chapter-js-funkcje',
+        completedLessonIds: ['lesson-js-variables-1', 'lesson-js-variables-2'],
+        lastViewedLessonId: 'lesson-js-functions-1',
+        lastViewedModuleId: 'module-js-basics',
+        lastViewedChapterId: 'chapter-js-functions',
       },
     },
     {
-      id: 'member-studio-wygasly',
-      userId: 'user-kursant-wygasly',
+      id: 'member-studio-expired',
+      userId: 'user-student-expired',
       tenantId: 'tenant-studio',
-      email: 'kursant.wygasly@together.dev',
-      displayName: 'Kursant Wygasły',
+      email: 'student.expired@together.dev',
+      displayName: 'Expired Student',
       grant: {
-        id: 'grant-studio-wygasly',
+        id: 'grant-studio-expired',
         productId: 'product-js-full',
         startsAt: relativeIso(-30),
         expiresAt: relativeIso(-7),
       },
     },
     {
-      id: 'member-studio-przyszly',
-      userId: 'user-kursant-przyszly',
+      id: 'member-studio-future',
+      userId: 'user-student-future',
       tenantId: 'tenant-studio',
-      email: 'kursant.przyszly@together.dev',
-      displayName: 'Kursant Przyszły',
+      email: 'student.future@together.dev',
+      displayName: 'Future Student',
       grant: {
-        id: 'grant-studio-przyszly',
+        id: 'grant-studio-future',
         productId: 'product-js-full',
         startsAt: relativeIso(7),
         expiresAt: relativeIso(372),
       },
     },
     {
-      id: 'member-studio-modul',
-      userId: 'user-kursant-modul',
+      id: 'member-studio-module',
+      userId: 'user-student-module',
       tenantId: 'tenant-studio',
-      email: 'kursant.modul@together.dev',
-      displayName: 'Kursant Modułowy',
+      email: 'student.module@together.dev',
+      displayName: 'Module Student',
       grant: {
-        id: 'grant-studio-modul',
+        id: 'grant-studio-module',
         productId: 'product-js-dom-module',
         startsAt: relativeIso(-14),
         expiresAt: null,
@@ -780,7 +774,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       userId: 'user-free',
       tenantId: 'tenant-studio',
       email: 'free@together.dev',
-      displayName: 'Konto Free',
+      displayName: 'Free Account',
       grant: {
         id: 'grant-studio-free',
         productId: 'product-free-preview',
@@ -789,27 +783,27 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       },
     },
     {
-      id: 'member-studio-abonent',
-      userId: 'user-kursant-abonent',
+      id: 'member-studio-subscriber',
+      userId: 'user-student-subscriber',
       tenantId: 'tenant-studio',
-      email: 'kursant.abonent@together.dev',
-      displayName: 'Kursant Abonent',
+      email: 'student.subscriber@together.dev',
+      displayName: 'Subscriber Student',
       grant: {
-        id: 'grant-studio-abonent',
+        id: 'grant-studio-subscriber',
         productId: 'product-club',
         startsAt: relativeIso(-40),
         expiresAt: relativeIso(23),
       },
     },
     {
-      id: 'member-akademia-kursant',
-      userId: 'user-kursant-akademia',
+      id: 'member-akademia-student',
+      userId: 'user-student-akademia',
       tenantId: 'tenant-akademia',
-      email: 'kursant.akademia@together.dev',
-      displayName: 'Kursant Akademii',
+      email: 'student.akademia@together.dev',
+      displayName: 'Akademia Student',
       grant: {
-        id: 'grant-akademia-kursant',
-        productId: 'product-akademia-roczny',
+        id: 'grant-akademia-student',
+        productId: 'product-akademia-annual',
         startsAt: relativeIso(-5),
         expiresAt: relativeIso(330),
       },
@@ -831,17 +825,15 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   await db
     .insert(tenants)
-    .values(creators.map((creator) => ({ ...creator.tenant, createdAt: nextIso() })))
-    .onConflictDoNothing();
+    .values(creators.map((creator) => ({ ...creator.tenant, defaultLanguage: 'en' as const, createdAt: nextIso() })))
+    .onConflictDoUpdate({ target: tenants.id, set: { defaultLanguage: 'en' } });
 
   await db
     .update(tenants)
-    .set({ billingPortalUrl: STUDIO_BILLING_PORTAL_URL, defaultHomeSpaceId: 'space-studio-spolecznosc' })
+    .set({ billingPortalUrl: STUDIO_BILLING_PORTAL_URL, defaultHomeSpaceId: 'space-studio-community' })
     .where(eq(tenants.id, 'tenant-studio'));
 
-  // Only akademia is branded; studio and acme stay on the stock look so the
-  // unbranded visual goldens keep proving the no-branding identity property.
-  // Its logo is a wide 8:1 wordmark: the shape that overflows narrow headers.
+
   await db
     .update(tenants)
     .set({
@@ -854,8 +846,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   await db
     .insert(tenantDocuments)
     .values({
-      id: 'document-akademia-privacy', tenantId: 'tenant-akademia', slug: 'polityka-prywatnosci',
-      title: 'Polityka prywatności', status: 'published', createdAt: relativeIso(-90), updatedAt: relativeIso(-30),
+      id: 'document-akademia-privacy', tenantId: 'tenant-akademia', slug: 'privacy-policy',
+      title: 'Privacy policy', status: 'published', createdAt: relativeIso(-90), updatedAt: relativeIso(-30),
     })
     .onConflictDoNothing();
 
@@ -863,7 +855,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(tenantDocumentVersions)
     .values({
       id: 'document-akademia-privacy-v1', tenantId: 'tenant-akademia', documentId: 'document-akademia-privacy', version: 1,
-      content: '# Jak dbamy o Twoje dane\n\nSzanujemy Twoją prywatność i używamy danych wyłącznie do obsługi wybranych przez Ciebie usług.\n\n## Kontakt\n\nW sprawach dotyczących danych napisz na [privacy@akademia.test](mailto:privacy@akademia.test).\n\n- możesz wycofać zgodę w dowolnym momencie\n- każda zmiana jest zapisywana w historii zgód',
+      content: '# How we handle your data\n\nWe respect your privacy and use your data only to provide the services you choose.\n\n## Contact\n\nFor questions about your data, email [privacy@akademia.test](mailto:privacy@akademia.test).\n\n- You can withdraw consent at any time.\n- Every change is recorded in your consent history.',
       publishedAt: relativeIso(-30), createdAt: relativeIso(-30), createdBy: null,
     })
     .onConflictDoNothing();
@@ -871,7 +863,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   await db
     .insert(consentDefinitions)
     .values({
-      id: 'consent-definition-akademia-news', tenantId: 'tenant-akademia', key: 'aktualnosci',
+      id: 'consent-definition-akademia-news', tenantId: 'tenant-akademia', key: 'news',
       kind: 'optional_marketing', channel: 'email', doubleOptIn: true,
       documentRef: { mode: 'hosted', documentId: 'document-akademia-privacy' }, status: 'active',
       createdAt: relativeIso(-25), updatedAt: relativeIso(-25),
@@ -882,7 +874,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(consentDefinitionVersions)
     .values({
       id: 'consent-definition-akademia-news-v1', tenantId: 'tenant-akademia', definitionId: 'consent-definition-akademia-news', version: 1,
-      label: 'Chcę otrzymywać aktualności i praktyczne materiały e-mailem',
+      label: 'I would like to receive news and practical resources by email',
       documentVersionRef: { mode: 'hosted', documentVersionId: 'document-akademia-privacy-v1' },
       createdAt: relativeIso(-25), createdBy: null,
     })
@@ -891,7 +883,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   await db
     .insert(consentDefinitions)
     .values({
-      id: 'consent-definition-studio-news', tenantId: 'tenant-studio', key: 'aktualnosci',
+      id: 'consent-definition-studio-news', tenantId: 'tenant-studio', key: 'news',
       kind: 'optional_marketing', channel: 'email', doubleOptIn: true,
       documentRef: { mode: 'url', url: 'https://studio.example.test/privacy' }, status: 'active',
       createdAt: relativeIso(-25), updatedAt: relativeIso(-25),
@@ -903,7 +895,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .values({
       id: 'consent-definition-studio-news-v1', tenantId: 'tenant-studio',
       definitionId: 'consent-definition-studio-news', version: 1,
-      label: 'Chcę otrzymywać aktualności e-mailem',
+      label: 'I would like to receive news by email',
       documentVersionRef: { mode: 'url', url: 'https://studio.example.test/privacy' },
       createdAt: relativeIso(-25), createdBy: null,
     })
@@ -914,16 +906,16 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .values([
       {
         id: 'marketing-consent-akademia-granted', tenantId: 'tenant-akademia', memberId: null,
-        email: 'kursant.akademia@together.dev', definitionId: 'consent-definition-akademia-news', definitionVersion: 1,
-        wordingSnapshot: 'Chcę otrzymywać aktualności i praktyczne materiały e-mailem',
+        email: 'student.akademia@together.dev', definitionId: 'consent-definition-akademia-news', definitionVersion: 1,
+        wordingSnapshot: 'I would like to receive news and practical resources by email',
         documentRefSnapshot: { mode: 'hosted', documentVersionId: 'document-akademia-privacy-v1' },
         status: 'granted', previousId: null, source: 'checkout',
         evidence: { collectedAt: relativeIso(-20), proofRef: 'seeded-checkout' }, occurredAt: relativeIso(-20),
       },
       {
         id: 'marketing-consent-akademia-confirmed', tenantId: 'tenant-akademia', memberId: null,
-        email: 'kursant.akademia@together.dev', definitionId: 'consent-definition-akademia-news', definitionVersion: 1,
-        wordingSnapshot: 'Chcę otrzymywać aktualności i praktyczne materiały e-mailem',
+        email: 'student.akademia@together.dev', definitionId: 'consent-definition-akademia-news', definitionVersion: 1,
+        wordingSnapshot: 'I would like to receive news and practical resources by email',
         documentRefSnapshot: { mode: 'hosted', documentVersionId: 'document-akademia-privacy-v1' },
         status: 'confirmed', previousId: 'marketing-consent-akademia-granted', source: 'checkout',
         evidence: { collectedAt: relativeIso(-19) }, occurredAt: relativeIso(-19),
@@ -935,7 +927,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(unsubscribeTokens)
     .values({
       id: 'unsubscribe-akademia-visual', tenantId: 'tenant-akademia',
-      token: 'unsubscribe_akademia_visual_123456', email: 'kursant.akademia@together.dev',
+      token: 'unsubscribe_akademia_visual_123456', email: 'student.akademia@together.dev',
       memberId: null, campaignSendId: null, scope: 'consent:consent-definition-akademia-news',
       createdAt: relativeIso(-10), usedAt: null,
     })
@@ -979,9 +971,9 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(tenantRedirects)
     .values([
       {
-        id: 'redirect-studio-kurs-js',
+        id: 'redirect-studio-course-js',
         tenantId: 'tenant-studio',
-        fromPath: '/kurs/javascript',
+        fromPath: '/course/javascript',
         targetKind: 'course' as const,
         targetId: 'course-js',
         targetPath: '/my/courses/course-js',
@@ -991,9 +983,9 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         createdAt: relativeIso(-30),
       },
       {
-        id: 'redirect-studio-oferta',
+        id: 'redirect-studio-offer',
         tenantId: 'tenant-studio',
-        fromPath: '/oferta',
+        fromPath: '/offer',
         targetKind: 'path' as const,
         targetId: null,
         targetPath: '/my',
@@ -1098,11 +1090,11 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(products)
     .values([
       {
-        id: 'product-studio-kurs-101',
+        id: 'product-studio-course-101',
         tenantId: 'tenant-studio',
         type: 'course',
-        slug: 'kurs-together-101',
-        title: 'Kurs Together 101',
+        slug: 'course-together-101',
+        title: 'Together 101 Course',
         description: '',
         priceCents: 19900,
         currency: 'PLN',
@@ -1111,11 +1103,11 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         createdAt: nextIso(),
       },
       {
-        id: 'product-studio-warsztat',
+        id: 'product-studio-workshop',
         tenantId: 'tenant-studio',
         type: 'course',
-        slug: 'warsztat-scenariuszowy',
-        title: 'Warsztat scenariuszowy',
+        slug: 'workshop-scenario',
+        title: 'Scenario Workshop',
         description: '',
         priceCents: 49900,
         currency: 'PLN',
@@ -1186,18 +1178,18 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   }
 
   grantSpecs.push({
-    id: 'grant-studio-aktywny-workbook',
+    id: 'grant-studio-active-workbook',
     tenantId: 'tenant-studio',
-    memberId: 'member-studio-aktywny',
+    memberId: 'member-studio-active',
     productId: 'product-download-workbook',
     startsAt: relativeIso(-12),
     expiresAt: null,
   });
 
   grantSpecs.push({
-    id: 'grant-studio-aktywny-club',
+    id: 'grant-studio-active-club',
     tenantId: 'tenant-studio',
-    memberId: 'member-studio-aktywny',
+    memberId: 'member-studio-active',
     productId: 'product-club',
     startsAt: relativeIso(-20),
     expiresAt: relativeIso(40),
@@ -1209,10 +1201,10 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       id: 'download-asset-workbook',
       tenantId: 'tenant-studio',
       productId: 'product-download-workbook',
-      fileName: 'workbook-tworcy.pdf',
+      fileName: 'workbook-creator.pdf',
       contentType: 'application/pdf',
       sizeBytes: 2_416_640,
-      storageKey: 'product-downloads/product-download-workbook/download-asset-workbook/workbook-tworcy.pdf',
+      storageKey: 'product-downloads/product-download-workbook/download-asset-workbook/workbook-creator.pdf',
       status: 'ready',
       createdAt: relativeIso(-12),
     })
@@ -1236,7 +1228,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .update(members)
     .set({
       bannedAt: seededBanAt,
-      bannedReason: 'Powtarzające się reklamy w społeczności',
+      bannedReason: 'Repeated advertising in the community',
       bannedByUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
     })
     .where(and(eq(members.tenantId, 'tenant-studio'), eq(members.id, 'member-studio-free')));
@@ -1248,7 +1240,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       memberId: 'member-studio-free',
       type: 'banned',
       payload: {
-        reason: 'Powtarzające się reklamy w społeczności',
+        reason: 'Repeated advertising in the community',
         actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
       },
       occurredAt: seededBanAt,
@@ -1259,9 +1251,9 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(marketingConsents)
     .values({
       id: 'marketing-consent-studio-confirmed', tenantId: 'tenant-studio',
-      memberId: 'member-studio-aktywny', email: 'kursant.aktywny@together.dev',
+      memberId: 'member-studio-active', email: 'student.active@together.dev',
       definitionId: 'consent-definition-studio-news', definitionVersion: 1,
-      wordingSnapshot: 'Chcę otrzymywać aktualności e-mailem',
+      wordingSnapshot: 'I would like to receive news by email',
       documentRefSnapshot: { mode: 'url', url: 'https://studio.example.test/privacy' },
       status: 'confirmed', previousId: null, source: 'checkout',
       evidence: { collectedAt: relativeIso(-20), proofRef: 'seeded-checkout' },
@@ -1272,13 +1264,13 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   await db
     .insert(campaigns)
     .values({
-      id: 'campaign-studio-observability', tenantId: 'tenant-studio', name: 'Premiera kursu',
-      subject: 'Twój plan nauki na lipiec', bodyHtml: '<p>Plan nauki</p>', bodySource: '<p>Plan nauki</p>',
+      id: 'campaign-studio-observability', tenantId: 'tenant-studio', name: 'Course launch',
+      subject: 'Your learning plan for July', bodyHtml: '<p>Learning plan</p>', bodySource: '<p>Learning plan</p>',
       layoutId: null, consentDefinitionId: 'consent-definition-studio-news', audienceFilter: null,
-      status: 'finished', sendAt: relativeIso(-4), snapshotMaxMemberId: 'member-studio-aktywny',
-      cursorMemberId: 'member-studio-aktywny', toSend: 1, sent: 1, failed: 0,
+      status: 'finished', sendAt: relativeIso(-4), snapshotMaxMemberId: 'member-studio-active',
+      cursorMemberId: 'member-studio-active', toSend: 1, sent: 1, failed: 0,
       lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
-      audienceNameSnapshot: 'Wszyscy uprawnieni', consentLabelSnapshot: 'Chcę otrzymywać aktualności e-mailem',
+      audienceNameSnapshot: 'All eligible members', consentLabelSnapshot: 'I would like to receive news by email',
       startedAt: relativeIso(-4), finishedAt: relativeIso(-4), createdAt: relativeIso(-5),
     })
     .onConflictDoNothing();
@@ -1328,8 +1320,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .values({
       id: 'send-studio-marketing', tenantId: 'tenant-studio', campaignId: 'campaign-studio-observability',
       runId: 'scheduler-run-studio-marketing',
-      source: 'broadcast', memberId: 'member-studio-aktywny', email: 'kursant.aktywny@together.dev',
-      subject: 'Twój plan nauki na lipiec', consentRowId: 'marketing-consent-studio-confirmed',
+      source: 'broadcast', memberId: 'member-studio-active', email: 'student.active@together.dev',
+      subject: 'Your learning plan for July', consentRowId: 'marketing-consent-studio-confirmed',
       unsubscribeTokenId: null, status: 'sent', skipReason: null, sesMessageId: 'ses-studio-marketing',
       deliveryStatus: 'delivered', deliveryOccurredAt: relativeIso(-4), idempotencySource: null,
       renderedBodyPurgedAt: null, createdAt: relativeIso(-4), sentAt: relativeIso(-4),
@@ -1340,9 +1332,9 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(emailOutbox)
     .values({
       id: 'send-studio-transactional', tenantId: 'tenant-studio', kind: 'welcome-sign-in',
-      to: 'kursant.aktywny@together.dev',
+      to: 'student.active@together.dev',
       payload: {
-        kind: 'welcome-sign-in', language: 'pl', tenantName: 'Studio Demo',
+        kind: 'welcome-sign-in', language: 'en', tenantName: 'Studio Demo',
         actionUrl: 'https://studio.example.test/sign-in',
       },
       status: 'sent', attempts: 1, nextAttemptAt: relativeIso(-3), lastError: null,
@@ -1400,8 +1392,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .onConflictDoNothing();
 
   const oneTimePriceDefs: PriceDef[] = [
-    { id: 'price-product-studio-kurs-101', tenantId: 'tenant-studio', productId: 'product-studio-kurs-101', kind: 'one_time', interval: null, amountCents: 19900 },
-    { id: 'price-product-studio-warsztat', tenantId: 'tenant-studio', productId: 'product-studio-warsztat', kind: 'one_time', interval: null, amountCents: 49900 },
+    { id: 'price-product-studio-course-101', tenantId: 'tenant-studio', productId: 'product-studio-course-101', kind: 'one_time', interval: null, amountCents: 19900 },
+    { id: 'price-product-studio-workshop', tenantId: 'tenant-studio', productId: 'product-studio-workshop', kind: 'one_time', interval: null, amountCents: 49900 },
     ...demoProducts
       .filter((product) => product.id !== 'product-club')
       .map((product) => ({
@@ -1435,13 +1427,13 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(memberSubscriptions)
     .values([
       {
-        id: 'subscription-studio-abonent',
+        id: 'subscription-studio-subscriber',
         tenantId: 'tenant-studio',
-        memberId: 'member-studio-abonent',
+        memberId: 'member-studio-subscriber',
         productId: 'product-club',
         priceId: 'price-club-monthly',
         provider: 'simulated' as const,
-        providerSubscriptionId: 'sim_sub_seed_abonent',
+        providerSubscriptionId: 'sim_sub_seed_subscriber',
         status: 'active' as const,
         currentPeriodEnd: relativeIso(20),
         cancelAtPeriodEnd: false,
@@ -1449,13 +1441,13 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         updatedAt: relativeIso(-10),
       },
       {
-        id: 'subscription-studio-aktywny-club',
+        id: 'subscription-studio-active-club',
         tenantId: 'tenant-studio',
-        memberId: 'member-studio-aktywny',
+        memberId: 'member-studio-active',
         productId: 'product-club',
         priceId: 'price-club-monthly',
         provider: 'stripe' as const,
-        providerSubscriptionId: 'sub_seed_aktywny_club',
+        providerSubscriptionId: 'sub_seed_active_club',
         status: 'active' as const,
         currentPeriodEnd: relativeIso(10),
         cancelAtPeriodEnd: false,
@@ -1480,75 +1472,75 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   const orderDefs: OrderDef[] = [
     {
-      id: 'order-studio-aktywny-js',
-      memberId: 'member-studio-aktywny',
+      id: 'order-studio-active-js',
+      memberId: 'member-studio-active',
       productId: 'product-js-full',
       priceId: 'price-product-js-full',
       kind: 'one_time',
       status: 'paid',
       provider: 'simulated',
       amountCents: 39900,
-      providerObjectIds: { checkoutSession: 'sim_cs_seed_aktywny' },
+      providerObjectIds: { checkoutSession: 'sim_cs_seed_active' },
       createdAt: relativeIso(-30),
     },
     {
-      id: 'order-studio-aktywny-club',
-      memberId: 'member-studio-aktywny',
+      id: 'order-studio-active-club',
+      memberId: 'member-studio-active',
       productId: 'product-club',
       priceId: 'price-club-monthly',
       kind: 'recurring',
       status: 'paid',
       provider: 'stripe',
       amountCents: 4900,
-      providerObjectIds: { checkoutSession: 'cs_seed_aktywny_club', subscription: 'sub_seed_aktywny_club' },
+      providerObjectIds: { checkoutSession: 'cs_seed_active_club', subscription: 'sub_seed_active_club' },
       createdAt: relativeIso(-20),
     },
     {
-      id: 'order-studio-modul-dom',
-      memberId: 'member-studio-modul',
+      id: 'order-studio-module-dom',
+      memberId: 'member-studio-module',
       productId: 'product-js-dom-module',
       priceId: 'price-product-js-dom-module',
       kind: 'one_time',
       status: 'paid',
       provider: 'simulated',
       amountCents: 9900,
-      providerObjectIds: { checkoutSession: 'sim_cs_seed_modul' },
+      providerObjectIds: { checkoutSession: 'sim_cs_seed_module' },
       createdAt: relativeIso(-14),
     },
     {
-      id: 'order-studio-abonent-start',
-      memberId: 'member-studio-abonent',
+      id: 'order-studio-subscriber-start',
+      memberId: 'member-studio-subscriber',
       productId: 'product-club',
       priceId: 'price-club-monthly',
       kind: 'recurring',
       status: 'paid',
       provider: 'simulated',
       amountCents: 4900,
-      providerObjectIds: { checkoutSession: 'sim_cs_seed_abonent', subscription: 'sim_sub_seed_abonent' },
+      providerObjectIds: { checkoutSession: 'sim_cs_seed_subscriber', subscription: 'sim_sub_seed_subscriber' },
       createdAt: relativeIso(-40),
     },
     {
-      id: 'order-studio-abonent-cycle-1',
-      memberId: 'member-studio-abonent',
+      id: 'order-studio-subscriber-cycle-1',
+      memberId: 'member-studio-subscriber',
       productId: 'product-club',
       priceId: 'price-club-monthly',
       kind: 'recurring',
       status: 'paid',
       provider: 'simulated',
       amountCents: 4900,
-      providerObjectIds: { invoice: 'sim_in_seed_abonent_1', subscription: 'sim_sub_seed_abonent' },
+      providerObjectIds: { invoice: 'sim_in_seed_subscriber_1', subscription: 'sim_sub_seed_subscriber' },
       createdAt: relativeIso(-10),
     },
     {
-      id: 'order-studio-abonent-retry',
-      memberId: 'member-studio-abonent',
+      id: 'order-studio-subscriber-retry',
+      memberId: 'member-studio-subscriber',
       productId: 'product-club',
       priceId: 'price-club-monthly',
       kind: 'recurring',
       status: 'failed',
       provider: 'simulated',
       amountCents: 4900,
-      providerObjectIds: { invoice: 'sim_in_seed_abonent_fail', subscription: 'sim_sub_seed_abonent' },
+      providerObjectIds: { invoice: 'sim_in_seed_subscriber_fail', subscription: 'sim_sub_seed_subscriber' },
       createdAt: relativeIso(-11),
     },
   ];
@@ -1614,7 +1606,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       discountCents: 7980,
       amountCents: 31920,
     })
-    .where(eq(orders.id, 'order-studio-aktywny-js'));
+    .where(eq(orders.id, 'order-studio-active-js'));
 
   await db
     .insert(couponRedemptions)
@@ -1622,9 +1614,9 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       id: 'coupon-redemption-studio-partner20',
       tenantId: 'tenant-studio',
       couponId: 'coupon-studio-partner20',
-      orderId: 'order-studio-aktywny-js',
-      memberId: 'member-studio-aktywny',
-      email: 'kursant.aktywny@together.dev',
+      orderId: 'order-studio-active-js',
+      memberId: 'member-studio-active',
+      email: 'student.active@together.dev',
       discountCents: 7980,
       createdAt: relativeIso(-30),
     })
@@ -1637,7 +1629,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       tenantId: 'tenant-studio',
       redemptionId: 'coupon-redemption-studio-partner20',
       couponId: 'coupon-studio-partner20',
-      orderId: 'order-studio-aktywny-js',
+      orderId: 'order-studio-active-js',
       type: 'redeemed',
       occurredAt: relativeIso(-30),
     })
@@ -1649,8 +1641,8 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       id: 'coupon-session-studio-partner20',
       tenantId: 'tenant-studio',
       couponId: 'coupon-studio-partner20',
-      providerSessionId: 'sim_cs_seed_aktywny',
-      memberEmail: 'kursant.aktywny@together.dev',
+      providerSessionId: 'sim_cs_seed_active',
+      memberEmail: 'student.active@together.dev',
       productId: 'product-js-full',
       priceId: 'price-product-js-full',
       originalCents: 39900,
@@ -1677,8 +1669,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
           updatedAt: nextIso(),
         })),
       )
-      // Converge on the canonical demo progress: browsing the demo member (for
-      // example the visual harness) moves last-viewed, and a reseed must undo it.
+
       .onConflictDoUpdate({
         target: [
           memberCourseProgress.tenantId,
@@ -1699,34 +1690,34 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(memberEvents)
     .values([
       {
-        id: 'member-event-studio-aktywny-email',
+        id: 'member-event-studio-active-email',
         tenantId: 'tenant-studio',
-        memberId: 'member-studio-aktywny',
+        memberId: 'member-studio-active',
         type: 'email-sent',
         payload: {
           sendId: 'send-studio-marketing',
           mailKind: 'marketing',
-          subject: 'Nowości w kursie JavaScript',
+          subject: 'JavaScript course updates',
           source: 'broadcast',
           transport: 'tenant-ses',
         },
         occurredAt: relativeIso(-4),
       },
       {
-        id: 'member-event-studio-aktywny-lesson',
+        id: 'member-event-studio-active-lesson',
         tenantId: 'tenant-studio',
-        memberId: 'member-studio-aktywny',
+        memberId: 'member-studio-active',
         type: 'lesson-completion',
-        payload: { courseId: 'course-js', lessonId: 'lesson-js-zmienne-2' },
+        payload: { courseId: 'course-js', lessonId: 'lesson-js-variables-2' },
         occurredAt: relativeIso(-5),
       },
       {
-        id: 'member-event-studio-aktywny-subscription',
+        id: 'member-event-studio-active-subscription',
         tenantId: 'tenant-studio',
-        memberId: 'member-studio-aktywny',
+        memberId: 'member-studio-active',
         type: 'subscription-change',
         payload: {
-          subscriptionId: 'subscription-studio-aktywny-club',
+          subscriptionId: 'subscription-studio-active-club',
           productId: 'product-club',
           status: 'active',
           currentPeriodEnd: relativeIso(10),
@@ -1736,12 +1727,12 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         occurredAt: relativeIso(-2),
       },
       {
-        id: 'member-event-studio-aktywny-club-purchase',
+        id: 'member-event-studio-active-club-purchase',
         tenantId: 'tenant-studio',
-        memberId: 'member-studio-aktywny',
+        memberId: 'member-studio-active',
         type: 'purchase',
         payload: {
-          orderId: 'order-studio-aktywny-club',
+          orderId: 'order-studio-active-club',
           productId: 'product-club',
           kind: 'recurring',
           status: 'paid',
@@ -1752,12 +1743,12 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         occurredAt: relativeIso(-20),
       },
       {
-        id: 'member-event-studio-aktywny-club-grant',
+        id: 'member-event-studio-active-club-grant',
         tenantId: 'tenant-studio',
-        memberId: 'member-studio-aktywny',
+        memberId: 'member-studio-active',
         type: 'grant',
         payload: {
-          grantId: 'grant-studio-aktywny-club',
+          grantId: 'grant-studio-active-club',
           productId: 'product-club',
           source: 'stripe',
           startsAt: relativeIso(-20),
@@ -1788,69 +1779,69 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     deletedAt: string | null;
   }
 
-  const aktywnyUserId = memberUserId('member-studio-aktywny');
+  const activeUserId = memberUserId('member-studio-active');
   const freeUserId = memberUserId('member-studio-free');
-  const wygaslyUserId = memberUserId('member-studio-wygasly');
-  const modulUserId = memberUserId('member-studio-modul');
+  const expiredUserId = memberUserId('member-studio-expired');
+  const moduleUserId = memberUserId('member-studio-module');
 
   const discussionPosts: SeedPostDef[] = [
     {
-      id: 'post-js-zmienne-tip',
-      contextId: 'lesson-js-zmienne-1',
+      id: 'post-js-variables-tip',
+      contextId: 'lesson-js-variables-1',
       parentPostId: null,
-      rootPostId: 'post-js-zmienne-tip',
-      authorUserId: wygaslyUserId,
-      authorDisplay: 'Kursant Wygasły',
+      rootPostId: 'post-js-variables-tip',
+      authorUserId: expiredUserId,
+      authorDisplay: 'Expired Student',
       authorIsStaff: false,
-      body: 'Mała podpowiedź dla innych: przykłady z tej lekcji najwygodniej testować w konsoli przeglądarki (F12 → Console). Od razu widać, jak const blokuje ponowne przypisanie wartości.\nMateriały: https://courses.example.org/guide?topic=const&level=1.',
+      body: 'A quick tip: try the examples from this lesson in the browser console (F12 → Console). You can immediately see how const prevents reassignment.\nResources: https://courses.example.org/guide?topic=const&level=1.',
       createdAt: relativeIso(-20),
       deletedAt: null,
     },
     {
-      id: 'post-js-zmienne-tip-r1',
-      contextId: 'lesson-js-zmienne-1',
-      parentPostId: 'post-js-zmienne-tip',
-      rootPostId: 'post-js-zmienne-tip',
+      id: 'post-js-variables-tip-r1',
+      contextId: 'lesson-js-variables-1',
+      parentPostId: 'post-js-variables-tip',
+      rootPostId: 'post-js-variables-tip',
       authorUserId: freeUserId,
-      authorDisplay: 'Konto Free',
+      authorDisplay: 'Free Account',
       authorIsStaff: false,
-      body: 'Dzięki, przydało się!',
+      body: 'Thanks, that helped!',
       createdAt: relativeIso(-19),
       deletedAt: relativeIso(-18),
     },
     {
-      id: 'post-js-zmienne-q',
-      contextId: 'lesson-js-zmienne-1',
+      id: 'post-js-variables-q',
+      contextId: 'lesson-js-variables-1',
       parentPostId: null,
-      rootPostId: 'post-js-zmienne-q',
-      authorUserId: aktywnyUserId,
-      authorDisplay: 'Kursant Aktywny',
+      rootPostId: 'post-js-variables-q',
+      authorUserId: activeUserId,
+      authorDisplay: 'Active Student',
       authorIsStaff: false,
-      body: 'Czy jest jeszcze sens używać var? W starszych poradnikach na YouTube wszędzie widzę var, a w tej lekcji tylko let i const. Powinienem przepisywać stare przykłady, czy po prostu je pomijać?',
+      body: 'Is there still a reason to use var? Older YouTube tutorials use it everywhere, but this lesson only uses let and const. Should I rewrite the older examples or skip them?',
       createdAt: relativeIso(-3),
       deletedAt: null,
     },
     {
-      id: 'post-js-zmienne-q-r1',
-      contextId: 'lesson-js-zmienne-1',
-      parentPostId: 'post-js-zmienne-q',
-      rootPostId: 'post-js-zmienne-q',
+      id: 'post-js-variables-q-r1',
+      contextId: 'lesson-js-variables-1',
+      parentPostId: 'post-js-variables-q',
+      rootPostId: 'post-js-variables-q',
       authorUserId: freeUserId,
-      authorDisplay: 'Konto Free',
+      authorDisplay: 'Free Account',
       authorIsStaff: false,
-      body: 'Mam dokładnie to samo — zaczynałem od kursu sprzed kilku lat i wszystko było na var. Odkąd przepisuję przykłady na const i let, dużo łatwiej mi zauważyć, gdzie wartość naprawdę się zmienia.',
+      body: 'I had the same question. I started with a course from a few years ago that used var throughout. Rewriting the examples with const and let makes it much easier to spot where a value actually changes.',
       createdAt: relativeIso(-2),
       deletedAt: null,
     },
     {
-      id: 'post-js-zmienne-q-r2',
-      contextId: 'lesson-js-zmienne-1',
-      parentPostId: 'post-js-zmienne-q-r1',
-      rootPostId: 'post-js-zmienne-q',
+      id: 'post-js-variables-q-r2',
+      contextId: 'lesson-js-variables-1',
+      parentPostId: 'post-js-variables-q-r1',
+      rootPostId: 'post-js-variables-q',
       authorUserId: studioCreatorUserId,
       authorDisplay: 'Studio Creator',
       authorIsStaff: true,
-      body: 'Dobre pytanie! W nowym kodzie var zostawiamy historii: domyślnie używaj const, a let tylko tam, gdzie wartość faktycznie się zmienia. Przepisywanie starych przykładów to świetne ćwiczenie — szczerze polecam.',
+      body: 'Good question! In new code, use const by default and let where you need to reassign a value. Rewriting older examples is a useful exercise, and understanding var will help you read existing code.',
       createdAt: relativeIso(-1),
       deletedAt: null,
     },
@@ -1859,10 +1850,10 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       contextId: 'lesson-js-dom-1',
       parentPostId: null,
       rootPostId: 'post-js-dom-q',
-      authorUserId: modulUserId,
-      authorDisplay: 'Kursant Modułowy',
+      authorUserId: moduleUserId,
+      authorDisplay: 'Module Student',
       authorIsStaff: false,
-      body: 'Utknąłem na querySelectorAll: zwraca NodeList, a nie tablicę, więc map w ogóle nie działał. Uratowało mnie Array.from(lista). Czy jest powód, dla którego przeglądarka nie zwraca zwykłej tablicy?',
+      body: 'I got stuck on querySelectorAll: it returns a NodeList, so map did not work. Array.from(list) solved it. Is there a reason the browser does not return a regular array?',
       createdAt: relativeIso(-10),
       deletedAt: null,
     },
@@ -1874,7 +1865,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       authorUserId: studioCreatorUserId,
       authorDisplay: 'Studio Creator',
       authorIsStaff: true,
-      body: 'Świetna obserwacja! NodeList to starszy interfejs DOM — powstał, zanim tablice miały dzisiejsze metody. Array.from albo spread [...lista] to dokładnie idiom, którego używamy w dalszej części tej lekcji.',
+      body: 'Good observation! NodeList is a long-standing DOM interface with its own API. Array.from or the spread syntax [...list] gives you an array with methods such as map. We use that approach later in the lesson.',
       createdAt: relativeIso(-9),
       deletedAt: null,
     },
@@ -1912,12 +1903,12 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     });
 
   const subscriptionDefs: Array<{ userId: string; rootPostId: string; createdAt: string }> = [
-    { userId: wygaslyUserId, rootPostId: 'post-js-zmienne-tip', createdAt: relativeIso(-20) },
-    { userId: freeUserId, rootPostId: 'post-js-zmienne-tip', createdAt: relativeIso(-19) },
-    { userId: aktywnyUserId, rootPostId: 'post-js-zmienne-q', createdAt: relativeIso(-3) },
-    { userId: freeUserId, rootPostId: 'post-js-zmienne-q', createdAt: relativeIso(-2) },
-    { userId: studioCreatorUserId, rootPostId: 'post-js-zmienne-q', createdAt: relativeIso(-1) },
-    { userId: modulUserId, rootPostId: 'post-js-dom-q', createdAt: relativeIso(-10) },
+    { userId: expiredUserId, rootPostId: 'post-js-variables-tip', createdAt: relativeIso(-20) },
+    { userId: freeUserId, rootPostId: 'post-js-variables-tip', createdAt: relativeIso(-19) },
+    { userId: activeUserId, rootPostId: 'post-js-variables-q', createdAt: relativeIso(-3) },
+    { userId: freeUserId, rootPostId: 'post-js-variables-q', createdAt: relativeIso(-2) },
+    { userId: studioCreatorUserId, rootPostId: 'post-js-variables-q', createdAt: relativeIso(-1) },
+    { userId: moduleUserId, rootPostId: 'post-js-dom-q', createdAt: relativeIso(-10) },
     { userId: studioCreatorUserId, rootPostId: 'post-js-dom-q', createdAt: relativeIso(-9) },
   ];
 
@@ -1943,15 +1934,15 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   const notificationDefs = [
     {
-      id: 'notif-aktywny-zmienne-r1',
-      postId: 'post-js-zmienne-q-r1',
-      authorDisplay: 'Konto Free',
+      id: 'notif-active-variables-r1',
+      postId: 'post-js-variables-q-r1',
+      authorDisplay: 'Free Account',
       createdAt: relativeIso(-2),
       readAt: relativeIso(-1.5),
     },
     {
-      id: 'notif-aktywny-zmienne-r2',
-      postId: 'post-js-zmienne-q-r2',
+      id: 'notif-active-variables-r2',
+      postId: 'post-js-variables-q-r2',
       authorDisplay: 'Studio Creator',
       createdAt: relativeIso(-1),
       readAt: null,
@@ -1964,15 +1955,15 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       notificationDefs.map((notification) => ({
         id: notification.id,
         tenantId: 'tenant-studio',
-        recipientUserId: aktywnyUserId,
+        recipientUserId: activeUserId,
         kind: 'thread-reply' as const,
         payload: {
-          rootPostId: 'post-js-zmienne-q',
+          rootPostId: 'post-js-variables-q',
           postId: notification.postId,
           contextKind: 'lesson',
-          contextId: 'lesson-js-zmienne-1',
+          contextId: 'lesson-js-variables-1',
           courseId: 'course-js',
-          lessonName: 'Deklarowanie zmiennych',
+          lessonName: 'Declaring variables',
           authorDisplay: notification.authorDisplay,
           snippet: snippetOf(postBody(notification.postId)),
         },
@@ -2002,32 +1993,32 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   const spaceDefs: SeedSpaceDef[] = [
     {
-      id: 'space-studio-spolecznosc',
-      slug: 'spolecznosc',
-      name: 'Społeczność',
+      id: 'space-studio-community',
+      slug: 'community',
+      name: 'Community',
       description:
-        'Otwarta przestrzeń dla wszystkich uczestników — przedstaw się i pogadaj z innymi.',
+        'An open space for all members. Introduce yourself and connect with other learners.',
       visibility: 'members',
       productIds: [],
       publicReadOnly: true,
       position: 0,
     },
     {
-      id: 'space-studio-klub-js',
-      slug: 'klub-js',
-      name: 'Klub JavaScriptu',
+      id: 'space-studio-club-js',
+      slug: 'club-js',
+      name: 'JavaScript Club',
       description:
-        'Przestrzeń dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.',
+        'A space for full JavaScript course members to share projects, review code, and take on challenges.',
       visibility: 'product',
       productIds: ['product-js-full'],
       position: 1,
     },
     {
-      id: 'space-studio-klub-react',
-      slug: 'klub-react',
-      name: 'Klub Reacta',
+      id: 'space-studio-club-react',
+      slug: 'club-react',
+      name: 'React Club',
       description:
-        'Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.',
+        'A space for React in Practice members to share projects, ask questions, and review code.',
       visibility: 'product',
       productIds: ['product-react-full'],
       position: 2,
@@ -2064,62 +2055,62 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   const spacePosts: SeedPostDef[] = [
     {
-      id: 'post-spolecznosc-hello',
-      contextId: 'space-studio-spolecznosc',
+      id: 'post-community-hello',
+      contextId: 'space-studio-community',
       parentPostId: null,
-      rootPostId: 'post-spolecznosc-hello',
+      rootPostId: 'post-community-hello',
       authorUserId: studioCreatorUserId,
       authorDisplay: 'Studio Creator',
       authorIsStaff: true,
-      body: 'Witajcie w Społeczności! To otwarta przestrzeń dla wszystkich uczestników — przedstawcie się w komentarzach i napiszcie, czego się teraz uczycie.',
+      body: 'Welcome to the Community! This space is open to all members. Introduce yourself in the replies and tell us what you are learning.',
       createdAt: relativeIso(-14),
       deletedAt: null,
     },
     {
-      id: 'post-spolecznosc-hello-r1',
-      contextId: 'space-studio-spolecznosc',
-      parentPostId: 'post-spolecznosc-hello',
-      rootPostId: 'post-spolecznosc-hello',
-      authorUserId: aktywnyUserId,
-      authorDisplay: 'Kursant Aktywny',
+      id: 'post-community-hello-r1',
+      contextId: 'space-studio-community',
+      parentPostId: 'post-community-hello',
+      rootPostId: 'post-community-hello',
+      authorUserId: activeUserId,
+      authorDisplay: 'Active Student',
       authorIsStaff: false,
-      body: 'Cześć! Przerabiam właśnie moduł o DOM i powoli składam pierwszy własny projekt — licznik nawyków.',
+      body: 'Hi! I am working through the DOM module and putting together my first project: a habit tracker.',
       createdAt: relativeIso(-13),
       deletedAt: null,
     },
     {
-      id: 'post-spolecznosc-polecajki',
-      contextId: 'space-studio-spolecznosc',
+      id: 'post-community-resources',
+      contextId: 'space-studio-community',
       parentPostId: null,
-      rootPostId: 'post-spolecznosc-polecajki',
+      rootPostId: 'post-community-resources',
       authorUserId: freeUserId,
-      authorDisplay: 'Konto Free',
+      authorDisplay: 'Free Account',
       authorIsStaff: false,
-      body: 'Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?',
+      body: 'A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?',
       createdAt: relativeIso(-6),
       deletedAt: null,
     },
     {
-      id: 'post-klub-wyzwanie',
-      contextId: 'space-studio-klub-js',
+      id: 'post-club-challenge',
+      contextId: 'space-studio-club-js',
       parentPostId: null,
-      rootPostId: 'post-klub-wyzwanie',
+      rootPostId: 'post-club-challenge',
       authorUserId: studioCreatorUserId,
       authorDisplay: 'Studio Creator',
       authorIsStaff: true,
-      body: 'Wyzwanie tygodnia: napiszcie funkcję, która spłaszcza dowolnie zagnieżdżoną tablicę bez użycia Array.prototype.flat. Rozwiązania wrzucajcie w odpowiedziach!',
+      body: 'This week’s challenge: write a function that flattens an arbitrarily nested array without using Array.prototype.flat. Share your solutions in the replies!',
       createdAt: relativeIso(-4),
       deletedAt: null,
     },
     {
-      id: 'post-klub-wyzwanie-r1',
-      contextId: 'space-studio-klub-js',
-      parentPostId: 'post-klub-wyzwanie',
-      rootPostId: 'post-klub-wyzwanie',
-      authorUserId: aktywnyUserId,
-      authorDisplay: 'Kursant Aktywny',
+      id: 'post-club-challenge-r1',
+      contextId: 'space-studio-club-js',
+      parentPostId: 'post-club-challenge',
+      rootPostId: 'post-club-challenge',
+      authorUserId: activeUserId,
+      authorDisplay: 'Active Student',
       authorIsStaff: false,
-      body: 'Moja wersja z rekurencją i reduce: reduce((acc, el) => acc.concat(Array.isArray(el) ? splaszcz(el) : el), []). Działa też dla pustych tablic.',
+      body: 'Here is my version using recursion and reduce: reduce((acc, el) => acc.concat(Array.isArray(el) ? flatten(el) : el), []). It also works with empty arrays.',
       createdAt: relativeIso(-3),
       deletedAt: null,
     },
@@ -2159,14 +2150,14 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   await db
     .insert(postReports)
     .values({
-      id: 'report-studio-polecajki',
+      id: 'report-studio-resources',
       tenantId: 'tenant-studio',
-      postId: 'post-spolecznosc-polecajki',
-      reporterUserId: aktywnyUserId,
-      reporterDisplay: 'Kursant Aktywny',
+      postId: 'post-community-resources',
+      reporterUserId: activeUserId,
+      reporterDisplay: 'Active Student',
       source: 'member',
       reason: 'off-topic',
-      note: 'Ten wpis wygląda jak reklama zewnętrznego serwisu.',
+      note: 'This post looks like an advertisement for an external service.',
       signals: null,
       status: 'open',
       createdAt: relativeIso(-5),
@@ -2178,23 +2169,23 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
   await db
     .insert(postReportEvents)
     .values({
-      id: 'report-event-studio-polecajki-opened',
+      id: 'report-event-studio-resources-opened',
       tenantId: 'tenant-studio',
-      reportId: 'report-studio-polecajki',
-      postId: 'post-spolecznosc-polecajki',
+      reportId: 'report-studio-resources',
+      postId: 'post-community-resources',
       type: 'opened',
       occurredAt: relativeIso(-5),
     })
     .onConflictDoNothing();
 
   const reactionDefs: Array<{ postId: string; userId: string; emoji: string; createdAt: string }> = [
-    { postId: 'post-spolecznosc-hello', userId: aktywnyUserId, emoji: '👍', createdAt: relativeIso(-13) },
-    { postId: 'post-spolecznosc-hello', userId: freeUserId, emoji: '👍', createdAt: relativeIso(-12) },
-    { postId: 'post-spolecznosc-hello', userId: modulUserId, emoji: '🎉', createdAt: relativeIso(-12) },
-    { postId: 'post-spolecznosc-polecajki', userId: aktywnyUserId, emoji: '💡', createdAt: relativeIso(-5) },
-    { postId: 'post-spolecznosc-polecajki', userId: studioCreatorUserId, emoji: '❤️', createdAt: relativeIso(-5) },
-    { postId: 'post-klub-wyzwanie', userId: aktywnyUserId, emoji: '🎉', createdAt: relativeIso(-4) },
-    { postId: 'post-klub-wyzwanie-r1', userId: studioCreatorUserId, emoji: '👍', createdAt: relativeIso(-3) },
+    { postId: 'post-community-hello', userId: activeUserId, emoji: '👍', createdAt: relativeIso(-13) },
+    { postId: 'post-community-hello', userId: freeUserId, emoji: '👍', createdAt: relativeIso(-12) },
+    { postId: 'post-community-hello', userId: moduleUserId, emoji: '🎉', createdAt: relativeIso(-12) },
+    { postId: 'post-community-resources', userId: activeUserId, emoji: '💡', createdAt: relativeIso(-5) },
+    { postId: 'post-community-resources', userId: studioCreatorUserId, emoji: '❤️', createdAt: relativeIso(-5) },
+    { postId: 'post-club-challenge', userId: activeUserId, emoji: '🎉', createdAt: relativeIso(-4) },
+    { postId: 'post-club-challenge-r1', userId: studioCreatorUserId, emoji: '👍', createdAt: relativeIso(-3) },
   ];
 
   await db
@@ -2211,11 +2202,11 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .onConflictDoNothing();
 
   const spaceSubscriptionDefs: Array<{ userId: string; spaceId: string; createdAt: string }> = [
-    { userId: aktywnyUserId, spaceId: 'space-studio-spolecznosc', createdAt: relativeIso(-14) },
-    { userId: freeUserId, spaceId: 'space-studio-spolecznosc', createdAt: relativeIso(-10) },
-    { userId: studioCreatorUserId, spaceId: 'space-studio-spolecznosc', createdAt: relativeIso(-14) },
-    { userId: aktywnyUserId, spaceId: 'space-studio-klub-js', createdAt: relativeIso(-4) },
-    { userId: studioCreatorUserId, spaceId: 'space-studio-klub-js', createdAt: relativeIso(-4) },
+    { userId: activeUserId, spaceId: 'space-studio-community', createdAt: relativeIso(-14) },
+    { userId: freeUserId, spaceId: 'space-studio-community', createdAt: relativeIso(-10) },
+    { userId: studioCreatorUserId, spaceId: 'space-studio-community', createdAt: relativeIso(-14) },
+    { userId: activeUserId, spaceId: 'space-studio-club-js', createdAt: relativeIso(-4) },
+    { userId: studioCreatorUserId, spaceId: 'space-studio-club-js', createdAt: relativeIso(-4) },
   ];
 
   await db
@@ -2234,11 +2225,11 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(threadSubscriptions)
     .values(
       [
-        { userId: studioCreatorUserId, rootPostId: 'post-spolecznosc-hello', createdAt: relativeIso(-14) },
-        { userId: aktywnyUserId, rootPostId: 'post-spolecznosc-hello', createdAt: relativeIso(-13) },
-        { userId: freeUserId, rootPostId: 'post-spolecznosc-polecajki', createdAt: relativeIso(-6) },
-        { userId: studioCreatorUserId, rootPostId: 'post-klub-wyzwanie', createdAt: relativeIso(-4) },
-        { userId: aktywnyUserId, rootPostId: 'post-klub-wyzwanie', createdAt: relativeIso(-3) },
+        { userId: studioCreatorUserId, rootPostId: 'post-community-hello', createdAt: relativeIso(-14) },
+        { userId: activeUserId, rootPostId: 'post-community-hello', createdAt: relativeIso(-13) },
+        { userId: freeUserId, rootPostId: 'post-community-resources', createdAt: relativeIso(-6) },
+        { userId: studioCreatorUserId, rootPostId: 'post-club-challenge', createdAt: relativeIso(-4) },
+        { userId: activeUserId, rootPostId: 'post-club-challenge', createdAt: relativeIso(-3) },
       ].map((subscription) => ({
         tenantId: 'tenant-studio',
         userId: subscription.userId,

@@ -72,10 +72,10 @@ describe('ColorSchemeSwitcher', () => {
     renderSwitcher();
 
     expect(screen.getByTestId('scheme-probe')).toHaveTextContent('light');
-    expect(screen.getByRole('button', { name: 'Jasny' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Ciemny' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Auto' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Ciemny' }));
+    expect(screen.getByRole('button', { name: "Light" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Dark" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Auto" })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: "Dark" }));
 
     expect(screen.getByTestId('scheme-probe')).toHaveTextContent('dark');
     expect(colorSchemePreference.load()).toBe('dark');
@@ -85,7 +85,7 @@ describe('ColorSchemeSwitcher', () => {
     const media = matchMediaController();
     renderSwitcher();
 
-    expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: "Auto" })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('scheme-probe')).toHaveTextContent('light');
     act(() => media.setDark(true));
     expect(screen.getByTestId('scheme-probe')).toHaveTextContent('dark');
@@ -96,7 +96,7 @@ describe('ColorSchemeSwitcher', () => {
     colorSchemePreference.save('light');
     renderSwitcher();
 
-    expect(screen.getByRole('button', { name: 'Jasny' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: "Light" })).toHaveAttribute('aria-pressed', 'true');
     act(() => media.setDark(true));
     expect(screen.getByTestId('scheme-probe')).toHaveTextContent('light');
   });
@@ -110,18 +110,18 @@ describe('ColorSchemeCycleButton', () => {
     renderCycleButton();
 
     const button = () => screen.getByTestId('color-scheme-cycle');
-    expect(button()).toHaveAttribute('aria-label', 'Motyw: Jasny. Przełącz na: Ciemny');
+    expect(button()).toHaveAttribute('aria-label', 'Theme: Light. Switch to: Dark');
     expect(button()).not.toHaveAttribute('aria-pressed');
 
     await user.click(button());
 
     expect(screen.getByTestId('scheme-probe')).toHaveTextContent('dark');
-    expect(button()).toHaveAttribute('aria-label', 'Motyw: Ciemny. Przełącz na: Auto');
+    expect(button()).toHaveAttribute('aria-label', 'Theme: Dark. Switch to: Auto');
 
     await user.click(button());
 
     expect(colorSchemePreference.load()).toBe('auto');
-    expect(button()).toHaveAttribute('aria-label', 'Motyw: Auto. Przełącz na: Jasny');
+    expect(button()).toHaveAttribute('aria-label', 'Theme: Auto. Switch to: Light');
 
     await user.click(button());
 
@@ -136,6 +136,6 @@ describe('ColorSchemeCycleButton', () => {
 
     await user.hover(screen.getByTestId('color-scheme-cycle'));
 
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Motyw: Ciemny');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Theme: Dark');
   });
 });

@@ -22,18 +22,18 @@ type Story = StoryObj<typeof meta>;
 
 export const WithAction: Story = {
   args: {
-    title: 'Produkty',
-    description: 'Zarządzaj ofertą i linkami do kasy dla swoich kursów.',
+    title: 'Products',
+    description: 'Manage your course offers and checkout links.',
     action: (
-      <Button variant="contained">+ Dodaj</Button>
+      <Button variant="contained">+ Add</Button>
     ),
     children: (
       <Stack useFlexGap spacing="1.5rem">
-        <SectionCard title="Kurs Together 101" description="Opublikowany · 12 sprzedaży">
-          <Box>Pakiet startowy z dostępem do wszystkich lekcji modułu pierwszego.</Box>
+        <SectionCard title="Together Course 101" description="Published · 12 sales">
+          <Box>Starter package with access to every lesson in the first module.</Box>
         </SectionCard>
-        <SectionCard title="Pakiet zaawansowany" description="Szkic · 0 sprzedaży">
-          <Box>Dodatkowe materiały i sesje mentoringowe dla zaawansowanych.</Box>
+        <SectionCard title="Advanced package" description="Draft · 0 sales">
+          <Box>Extra resources and mentoring sessions for advanced learners.</Box>
         </SectionCard>
       </Stack>
     ),
@@ -42,14 +42,14 @@ export const WithAction: Story = {
 
 export const WithBackLink: Story = {
   args: {
-    title: 'Nowy produkt',
-    backTo: <a href="#">← Wróć do produktów</a>,
+    title: 'New product',
+    backTo: <a href="#">← Back to products</a>,
     children: (
       <SectionCard
-        title="Podstawowe informacje"
-        actions={<Button variant="contained">Zapisz</Button>}
+        title="Basic information"
+        actions={<Button variant="contained">Save</Button>}
       >
-        <Box>Formularz tworzenia produktu.</Box>
+        <Box>Product creation form.</Box>
       </SectionCard>
     ),
   },
@@ -57,12 +57,12 @@ export const WithBackLink: Story = {
 
 export const EmptyState: Story = {
   args: {
-    title: 'Sprzedaż',
-    description: 'Historia transakcji Twojej szkoły.',
+    title: 'Sales',
+    description: "Your school's transaction history.",
     state: {
       kind: 'empty',
-      title: 'Brak sprzedaży',
-      body: 'Gdy ktoś kupi Twój kurs, transakcja pojawi się tutaj.',
+      title: 'No sales yet',
+      body: 'When someone buys your course, the transaction appears here.',
     },
   },
 };

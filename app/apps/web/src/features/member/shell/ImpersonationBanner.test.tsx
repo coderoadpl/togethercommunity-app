@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
 import { actions } from '../../../api.js';
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ImpersonationBanner } from './ImpersonationBanner.js';
@@ -21,7 +21,7 @@ const me = (impersonation: unknown) =>
         userId: 'u1',
         email: 'jan@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Member',
         tenant: {
           id: 't1',
           slug: 'acme',
@@ -39,8 +39,8 @@ const me = (impersonation: unknown) =>
 const activeImpersonation = {
   id: 'imp-1',
   subjectMemberId: 'm1',
-  subjectName: 'Jan Uczestnik',
-  actorName: 'Ala Twórczyni',
+  subjectName: 'John Member',
+  actorName: 'Alice Creator',
   expiresAt: '2026-09-03T11:00:00.000Z',
 };
 
@@ -65,7 +65,7 @@ describe('ImpersonationBanner', () => {
 
     const banner = await screen.findByTestId('impersonation-banner');
     expect(banner).toHaveAttribute('role', 'region');
-    expect(banner).toHaveAttribute('aria-label', pl.shell.impersonationRegionLabel);
+    expect(banner).toHaveAttribute('aria-label', en.shell.impersonationRegionLabel);
     await waitFor(() => {
       expect(banner).toHaveFocus();
     });
@@ -80,7 +80,7 @@ describe('ImpersonationBanner', () => {
     await queryClient.invalidateQueries(actions.meInvalidates());
 
     const expired = await screen.findByTestId('impersonation-expired');
-    expect(expired.textContent).toContain(pl.shell.impersonationExpired);
+    expect(expired.textContent).toContain(en.shell.impersonationExpired);
   });
 
   it('refetches the session exactly at expiry without waiting for polling', async () => {
@@ -112,9 +112,9 @@ describe('ImpersonationBanner', () => {
 
     const banner = await screen.findByTestId('impersonation-banner');
     expect(banner.textContent).toContain(
-      pl.shell.impersonationBanner({ name: 'Jan Uczestnik' }),
+      en.shell.impersonationBanner({ name: 'John Member' }),
     );
-    expect(banner.textContent).toContain(pl.shell.impersonationReadOnlyHint);
+    expect(banner.textContent).toContain(en.shell.impersonationReadOnlyHint);
   });
 
   it('ends the view and returns to the panel', async () => {

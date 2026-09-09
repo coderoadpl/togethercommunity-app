@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Box, Stack, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
+import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { useDebouncedValue } from '../../components/ui/SearchField.js';
@@ -52,7 +53,7 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
             <Stack useFlexGap sx={{ rowGap: '0.5rem' }}>
               {search.data.hits.map((hit) => (
                 <DiscussionThread key={hit.post.id} sx={{ p: '0.6rem 0.9rem' }} data-testid={`search-hit-${hit.post.id}`}>
-                  <PostAuthorName component="span">{hit.post.authorDisplay}</PostAuthorName>
+                  <PostAuthorName component="span">{translateDeletedContent(hit.post.authorDisplay, t)}</PostAuthorName>
                   <DiscussionHitSnippet variant="body2" component="p">
                     <Highlighted text={hit.snippet} query={debounced} />
                   </DiscussionHitSnippet>

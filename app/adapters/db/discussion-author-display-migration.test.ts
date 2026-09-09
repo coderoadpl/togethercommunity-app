@@ -1,3 +1,5 @@
+import { communityPl } from '#core/domain/community.pl.js';
+
 import { describe, expect, it } from 'vitest';
 
 import { repairDiscussionAuthorDisplay } from './discussion-author-display-migration.js';
@@ -16,6 +18,6 @@ describe('0018 discussion author repair', () => {
   });
 
   it('repairs a blank display without a joined auth e-mail to the Polish fallback', () => {
-    expect(repairDiscussionAuthorDisplay('   ', null)).toBe('Uczestnik');
+    expect(repairDiscussionAuthorDisplay('   ', null)).toBe(communityPl.participant);
   });
 });

@@ -41,7 +41,7 @@ const PageRoot = () => <><LanguageSwitcher /><Outlet /></>;
 
 const PanelDashboard = () => { const { tenant, email } = usePanelContext(); return <><DashboardPanel aside={<StudioChecklistPanel scope={`${tenant.id}:${email}`} />} /><StudioChecklistDock scope={`${tenant.id}:${email}`} /></>; };
 
-const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('pl'), colorScheme: z.enum(['light', 'dark', 'auto']).default('auto'), preloadFonts: z.boolean().optional() });
+const pageParameters = z.object({ fixture: fixtureSchema, locale: z.enum(['pl', 'en']).default('en'), colorScheme: z.enum(['light', 'dark', 'auto']).default('auto'), preloadFonts: z.boolean().optional() });
 const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> }) => {
   const [state] = useState(() => {
     const fixture = selectFixture(parameters.fixture);

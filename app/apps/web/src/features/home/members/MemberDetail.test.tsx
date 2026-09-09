@@ -18,7 +18,7 @@ import type {
   Product,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { MemberDetail } from './MemberDetail.js';
@@ -259,24 +259,24 @@ describe('MemberDetail', () => {
     setup();
     renderMemberDetail();
 
-    expect(await screen.findByText(`${pl.members.accountName}: ${member.displayName ?? '—'}`))
+    expect(await screen.findByText(`${en.members.accountName}: ${member.displayName ?? '—'}`))
       .toBeInTheDocument();
-    expect(screen.getByText(`${pl.members.accountEmail}: ${member.email}`)).toBeInTheDocument();
+    expect(screen.getByText(`${en.members.accountEmail}: ${member.email}`)).toBeInTheDocument();
     expect(await screen.findByTestId('member-purchase-row')).toHaveTextContent('Full Course');
-    expect(screen.getByTestId('member-purchase-row')).toHaveTextContent('49,00 zł');
+    expect(screen.getByTestId('member-purchase-row')).toHaveTextContent(/PLN\s49\.00/u);
     expect(within(screen.getByTestId('member-purchase-row')).getByRole('link'))
       .toHaveAttribute('href', '/panel/sales/order-1');
     expect(await screen.findByTestId('member-subscription-row')).toHaveTextContent('Stripe');
     expect(screen.getByTestId('member-subscription-row')).toHaveTextContent(
-      pl.members.subscriptionStatuses.active,
+      en.members.subscriptionStatuses.active,
     );
     expect(await screen.findByTestId('member-timeline-row')).toHaveTextContent(
-      pl.members.timelineEventLabels.purchase,
+      en.members.timelineEventLabels.purchase,
     );
     expect(screen.getByTestId('member-timeline-row')).toHaveTextContent('Full Course');
     const learningRow = await screen.findByTestId('learning-summary-row');
     expect(learningRow).toHaveTextContent('JavaScript Foundations');
-    expect(learningRow).toHaveTextContent(pl.members.lessonsProgress({ completed: 1, total: 4 }));
+    expect(learningRow).toHaveTextContent(en.members.lessonsProgress({ completed: 1, total: 4 }));
     expect(learningRow).toHaveTextContent('25%');
     expect(learningRow).toHaveTextContent('Variables');
     expect(learningRow.querySelector('time'))
@@ -288,8 +288,8 @@ describe('MemberDetail', () => {
     setup();
     renderMemberDetail();
 
-    expect(await screen.findByText(pl.members.grantProduct)).toBeInTheDocument();
-    expect(await screen.findAllByRole('button', { name: pl.members.renew })).toHaveLength(2);
+    expect(await screen.findByText(en.members.grantProduct)).toBeInTheDocument();
+    expect(await screen.findAllByRole('button', { name: en.members.renew })).toHaveLength(2);
     expect(screen.queryByTestId('member-tombstone-notice')).not.toBeInTheDocument();
   });
 
@@ -298,13 +298,13 @@ describe('MemberDetail', () => {
     renderMemberDetail({ ...member, deletedAt: '1998-07-20T10:00:00.000Z' });
 
     expect(await screen.findByTestId('member-tombstone-notice')).toHaveTextContent(
-      pl.members.tombstoneNotice,
+      en.members.tombstoneNotice,
     );
-    expect(screen.queryByText(pl.members.grantProduct)).not.toBeInTheDocument();
-    expect(screen.queryByText(pl.members.renew)).not.toBeInTheDocument();
-    expect(screen.queryByText(pl.members.moderationHeading)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.members.grantProduct)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.members.renew)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.members.moderationHeading)).not.toBeInTheDocument();
     expect(await screen.findAllByTestId('grant-row')).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: pl.members.revoke })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: en.members.revoke })).toHaveLength(2);
   });
 
   it('renders active vs expired grants', async () => {
@@ -313,8 +313,9 @@ describe('MemberDetail', () => {
 
     expect(await screen.findAllByText('Full Course')).toHaveLength(3);
     expect(screen.getAllByTestId('grant-row')).toHaveLength(2);
-    expect(screen.getByText(pl.members.active)).toBeInTheDocument();
-    expect(screen.getByText(pl.members.expired)).toBeInTheDocument();
+    const [activeGrant, expiredGrant] = screen.getAllByTestId('grant-row');
+    expect(activeGrant).toHaveTextContent(en.members.active);
+    expect(expiredGrant).toHaveTextContent(en.members.expired);
     expect(screen.getByText(/1999/)).toBeInTheDocument();
   });
 
@@ -341,10 +342,10 @@ describe('MemberDetail', () => {
 
     const rows = await screen.findAllByTestId('grant-row');
     expect(rows.map((row) => within(row).getAllByRole('cell')[2]?.textContent)).toEqual([
-      pl.members.sourceManual,
-      pl.members.sourceSimulated,
-      pl.members.sourceStripe,
-      pl.members.sourceImport,
+      en.members.sourceManual,
+      en.members.sourceSimulated,
+      'Stripe',
+      en.members.sourceImport,
     ]);
   });
 
@@ -352,9 +353,9 @@ describe('MemberDetail', () => {
     const { grantBodies } = setup();
     renderMemberDetail();
 
-    await userEvent.click(await screen.findByRole('combobox', { name: pl.members.productLabel }));
+    await userEvent.click(await screen.findByRole('combobox', { name: en.members.productLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'New Workshop' }));
-    await userEvent.click(screen.getByRole('button', { name: pl.members.grant }));
+    await userEvent.click(screen.getByRole('button', { name: en.members.grant }));
 
     await waitFor(() => expect(grantBodies).toHaveLength(1));
     expect(grantBodies[0]).toEqual({ memberId: 'member-1', productId: 'p3', expiresAt: null });
@@ -364,11 +365,11 @@ describe('MemberDetail', () => {
     const { revoked } = setup();
     renderMemberDetail();
 
-    const [firstRevoke] = await screen.findAllByRole('button', { name: pl.members.revoke });
+    const [firstRevoke] = await screen.findAllByRole('button', { name: en.members.revoke });
     if (firstRevoke) await userEvent.click(firstRevoke);
 
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: pl.members.revoke }));
+    await userEvent.click(within(dialog).getByRole('button', { name: en.members.revoke }));
 
     await waitFor(() => expect(revoked).toEqual(['grant-active']));
   });
@@ -377,13 +378,13 @@ describe('MemberDetail', () => {
     const { banBodies } = setup();
     renderMemberDetail();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.members.ban }));
-    const dialog = await screen.findByRole('dialog', { name: pl.members.ban });
+    await userEvent.click(await screen.findByRole('button', { name: en.members.ban }));
+    const dialog = await screen.findByRole('dialog', { name: en.members.ban });
     await userEvent.type(
-      within(dialog).getByRole('textbox', { name: pl.members.banReasonLabel }),
+      within(dialog).getByRole('textbox', { name: en.members.banReasonLabel }),
       'Repeated abuse',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: pl.members.ban }));
+    await userEvent.click(within(dialog).getByRole('button', { name: en.members.ban }));
 
     await waitFor(() => expect(banBodies).toEqual([
       { memberId: 'member-1', banned: true, reason: 'Repeated abuse' },
@@ -394,7 +395,7 @@ describe('MemberDetail', () => {
     setup();
     renderMemberDetail();
 
-    await userEvent.click(await screen.findByRole('tab', { name: pl.members.emailsTab }));
+    await userEvent.click(await screen.findByRole('tab', { name: en.members.emailsTab }));
 
     const rows = await screen.findAllByTestId('member-email-send');
     expect(rows).toHaveLength(2);
@@ -403,7 +404,7 @@ describe('MemberDetail', () => {
     if (marketingRow === undefined || transactionalRow === undefined) return;
     expect(within(marketingRow).getByText('July news')).toBeInTheDocument();
     expect(within(transactionalRow).getByText('Welcome')).toBeInTheDocument();
-    expect(within(marketingRow).getByRole('link', { name: pl.marketing.sendDetails }))
+    expect(within(marketingRow).getByRole('link', { name: en.marketing.sendDetails }))
       .toHaveAttribute('href', '/panel/marketing/sends/marketing/marketing-send');
   });
 });

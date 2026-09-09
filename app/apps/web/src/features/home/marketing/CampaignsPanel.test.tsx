@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { CampaignActions, CampaignsPanel } from './CampaignsPanel.js';
@@ -69,14 +70,14 @@ describe('campaign reputation warning', () => {
 
     renderWithProviders(<RouterProvider router={router} />);
 
-    expect(await screen.findByText(/Reputacja wysyłki jest krytyczna/)).toBeInTheDocument();
+    expect(await screen.findByText(en.marketing.campaignReputationCriticalBanner)).toBeInTheDocument();
   });
 
   it('shows terminal copy without test-send controls for a cancelled campaign', () => {
     renderWithProviders(<CampaignActions campaign={cancelledCampaign} />);
 
-    expect(screen.getByText(/kampania została anulowana/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Wyślij test/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Przelicz odbiorców/i })).not.toBeInTheDocument();
+    expect(screen.getByText(en.marketing.cancelledCampaignHint)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.marketing.testSend })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.marketing.audiencePreview })).not.toBeInTheDocument();
   });
 });

@@ -8,8 +8,8 @@ evaluated only against the current `main` branch. If a report concerns a
 deployed instance, include the commit SHA from its health attestation and the
 deployment surface so the maintainer can reproduce it. The package version
 names the application release, while the commit SHA identifies the exact build;
-neither creates a public support promise, as recorded in the
-[release-versioning decision](app/docs/decisions/0009-release-versioning-and-version-surfaces.md).
+neither creates a public support promise, as described in the
+[version surfaces reference](app/docs/version-surfaces.md).
 
 ## Reporting a vulnerability
 

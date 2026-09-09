@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 
@@ -71,7 +72,7 @@ const visible = { state: 'visible', timeout: READY_TIMEOUT_MS } as const;
 const memberViewports: ViewportName[] = ['desktop', 'mobile'];
 const desktopOnly: ViewportName[] = ['desktop'];
 const PASSWORD_OWNER_EMAIL = 'creator@together.dev';
-const PASSWORDLESS_MEMBER_EMAIL = 'kursant.aktywny@together.dev';
+const PASSWORDLESS_MEMBER_EMAIL = 'student.active@together.dev';
 const AUTH_RESOLVE_PATTERN = `**${API_PATHS.authResolve}`;
 
 const SCREENS: ScreenSpec[] = [
@@ -126,7 +127,6 @@ const SCREENS: ScreenSpec[] = [
     path: '/checkout/product-club',
     viewports: memberViewports,
     ready: async (page) => {
-      await page.getByText('Klub Studio — subskrypcja').first().waitFor(visible);
       await page.locator('#checkout-price-choice').waitFor(visible);
     },
   },
@@ -147,13 +147,13 @@ const SCREENS: ScreenSpec[] = [
     viewports: memberViewports,
     ready: async (page) => {
       await page.getByTestId('course-tree').first().waitFor(visible);
-      await page.getByText('Przejdź do pierwszej lekcji').waitFor(visible);
+      await page.getByTestId('continue-cta').waitFor(visible);
     },
   },
   {
     name: 'lesson',
     auth: 'member',
-    path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
+    path: '/my/courses/course-js/lessons/lesson-js-variables-1',
     viewports: memberViewports,
     ready: async (page) => {
       await page.getByTestId('member-breadcrumbs').waitFor(visible);
@@ -194,7 +194,7 @@ const SCREENS: ScreenSpec[] = [
   {
     name: 'panel-product-editor',
     auth: 'creator',
-    path: '/panel/products/product-studio-kurs-101',
+    path: '/panel/products/product-studio-course-101',
     viewports: desktopOnly,
     ready: (page) => page.getByTestId('prices-section').waitFor(visible),
   },
@@ -215,7 +215,7 @@ const SCREENS: ScreenSpec[] = [
   {
     name: 'panel-member-detail',
     auth: 'creator',
-    path: '/panel/members/member-studio-aktywny',
+    path: '/panel/members/member-studio-active',
     viewports: desktopOnly,
     ready: (page) => page.getByTestId('grant-row').first().waitFor(visible),
   },
@@ -398,7 +398,7 @@ const applyChrome = async (context: BrowserContext): Promise<void> => {
   await context.addInitScript(
     (langKey) => {
       try {
-        window.localStorage.setItem(langKey, 'pl');
+        window.localStorage.setItem(langKey, 'en');
       } catch {
         // storage disabled — the choice simply won't persist
       }
@@ -418,7 +418,7 @@ const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> =
 const signInMagicLink = (email: string) => async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await requestMagicLink(page, email);
-  const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
+  const magicLink = page.getByRole('link', { name: en.auth.openMagicLink });
   await magicLink.waitFor(visible);
   const href = await magicLink.getAttribute('href');
   assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');

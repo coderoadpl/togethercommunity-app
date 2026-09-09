@@ -558,16 +558,16 @@ invoices can be checked locally.
 - [@unrs/resolver-binding-win32-x64-msvc@1.12.2](https://github.com/unrs/unrs-resolver) - MIT
 - [@vitejs/plugin-react@4.7.0](https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#readme) - MIT
 - [@vitest/coverage-v8@4.1.11](https://vitest.dev/guide/coverage) - MIT
-- [@vitest/expect@3.2.4](https://github.com/vitest-dev/vitest/tree/main/packages/expect#readme) - MIT
+- [@vitest/expect@3.2.4](https://vitest.dev/api/expect) - MIT
 - [@vitest/expect@4.1.11](https://vitest.dev/api/expect) - MIT
 - [@vitest/mocker@4.1.11](https://github.com/vitest-dev/vitest/tree/main/packages/mocker) - MIT
-- [@vitest/pretty-format@3.2.4](https://github.com/vitest-dev/vitest/tree/main/packages/utils#readme) - MIT
+- [@vitest/pretty-format@3.2.4](https://github.com/vitest-dev/vitest/tree/main/packages/pretty-format) - MIT
 - [@vitest/pretty-format@4.1.11](https://github.com/vitest-dev/vitest/tree/main/packages/pretty-format) - MIT
 - [@vitest/runner@4.1.11](https://vitest.dev/api/advanced/runner) - MIT
 - [@vitest/snapshot@4.1.11](https://vitest.dev/guide/snapshot) - MIT
-- [@vitest/spy@3.2.4](https://github.com/vitest-dev/vitest/tree/main/packages/spy#readme) - MIT
+- [@vitest/spy@3.2.4](https://vitest.dev/api/mock) - MIT
 - [@vitest/spy@4.1.11](https://vitest.dev/api/mock) - MIT
-- [@vitest/utils@3.2.4](https://github.com/vitest-dev/vitest/tree/main/packages/utils#readme) - MIT
+- [@vitest/utils@3.2.4](https://github.com/vitest-dev/vitest/tree/main/packages/utils) - MIT
 - [@vitest/utils@4.1.11](https://github.com/vitest-dev/vitest/tree/main/packages/utils) - MIT
 - [@webcontainer/env@1.1.1](https://github.com/stackblitz/webcontainer-core) - MIT
 - [acorn-jsx-walk@2.0.0](https://github.com/sderosiaux/acorn-jsx-walk#readme) - MIT
@@ -691,6 +691,7 @@ invoices can be checked locally.
 - [eslint-import-resolver-typescript@4.4.5](https://github.com/import-js/eslint-import-resolver-typescript#readme) - ISC
 - [eslint-module-utils@2.12.1](https://github.com/import-js/eslint-plugin-import#readme) - MIT
 - [eslint-plugin-boundaries@5.4.0](https://github.com/javierbrea/eslint-plugin-boundaries#readme) - MIT
+- [eslint-plugin-i18next@6.1.5](https://github.com/edvardchen/eslint-plugin-i18next#readme) - ISC
 - [eslint-plugin-react-compiler@19.1.0-rc.2](https://github.com/facebook/react#readme) - MIT
 - [eslint-plugin-react-hooks@7.1.1](https://react.dev/) - MIT
 - [eslint-plugin-react@7.37.5](https://github.com/jsx-eslint/eslint-plugin-react) - MIT
@@ -943,6 +944,7 @@ invoices can be checked locally.
 - [regexp.prototype.flags@1.5.4](https://github.com/es-shims/RegExp.prototype.flags#readme) - MIT
 - [require-directory@2.1.1](https://github.com/troygoode/node-require-directory/) - MIT
 - [require-from-string@2.0.2](https://github.com/floatdrop/require-from-string#readme) - MIT
+- [requireindex@1.1.0](https://github.com/stephenhandley/requireindex#readme) - MIT
 - [resolve-from@4.0.0](https://github.com/sindresorhus/resolve-from#readme) - MIT
 - [resolve-pkg-maps@1.0.0](https://github.com/privatenumber/resolve-pkg-maps#readme) - MIT
 - [resolve@1.22.12](https://github.com/browserify/resolve#readme) - MIT

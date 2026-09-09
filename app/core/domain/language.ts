@@ -6,7 +6,7 @@ export type Language = z.output<typeof languageSchema>;
 
 export const LANGUAGES = languageSchema.options;
 
-export const DEFAULT_LANGUAGE: Language = 'pl';
+export const DEFAULT_LANGUAGE: Language = 'en';
 
 export const languageOrDefault = (language: string): Language => {
   const parsed = languageSchema.safeParse(language);

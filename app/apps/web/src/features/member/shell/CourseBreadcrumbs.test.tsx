@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { CourseBreadcrumbs } from './CourseBreadcrumbs.js';
@@ -104,7 +104,7 @@ describe('CourseBreadcrumbs', () => {
     await renderCrumbs('l4');
 
     const crumbs = await screen.findByTestId('member-breadcrumbs');
-    expect(crumbs).toHaveAccessibleName(pl.common.breadcrumbs);
+    expect(crumbs).toHaveAccessibleName(en.common.breadcrumbs);
     expect(within(crumbs).getByRole('link', { name: 'JavaScript Foundations' })).toHaveAttribute(
       'href',
       '/my/courses/course-1',

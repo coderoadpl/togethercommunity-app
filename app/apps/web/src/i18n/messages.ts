@@ -16,6 +16,7 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  deletedContent: { member: string; post: string };
   common: {
     appName: string;
     language: string;
@@ -810,6 +811,7 @@ export interface Messages {
     bunnyLibraryIdLabel: string;
     bunnyLibraryIdHelper: string;
     bunnyCdnHostnameLabel: string;
+    bunnyCdnHostnamePlaceholder: string;
     bunnyCdnHostnameHelper: string;
     bunnySaveFirst: string;
     s3Heading: string;

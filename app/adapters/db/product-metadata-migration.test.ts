@@ -12,13 +12,13 @@ const row = (
 ): ProductSlugBackfillRow => ({ id, tenantId, title, createdAt });
 
 describe('product metadata migration', () => {
-  it('uses the application transliteration for Polish titles', () => {
+  it('uses the application transliteration for accented English titles', () => {
     expect(backfillProductSlugs([
-      row('p1', 'Wstęp do programowania'),
-      row('p2', 'Żółw & Łódź', 'tenant-2'),
+      row('p1', 'Résumé writing'),
+      row('p2', 'Café & Crème', 'tenant-2'),
     ])).toEqual([
-      { id: 'p1', slug: 'wstep-do-programowania' },
-      { id: 'p2', slug: 'zolw-lodz' },
+      { id: 'p1', slug: 'resume-writing' },
+      { id: 'p2', slug: 'cafe-creme' },
     ]);
   });
 

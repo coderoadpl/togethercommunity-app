@@ -20,7 +20,7 @@ import {
 
 import { ToastProvider } from '../../../components/ui/Toast.js';
 import { FONT_MONO } from '../../../theme.js';
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -65,7 +65,7 @@ interface StubSpace {
 }
 
 const staffSpace = ({ id, name, publicReadOnly, archivedAt }: StubSpace) => ({
-  tenantId: 'tenant-akademia',
+  tenantId: 'tenant-academy',
   id,
   slug: id,
   name,
@@ -87,7 +87,7 @@ interface StubCourse {
 
 const staffCourse = ({ id, name, publiclyVisible }: StubCourse) => ({
   id,
-  tenantId: 'tenant-akademia',
+  tenantId: 'tenant-academy',
   name,
   description: '',
   imageUrl: null,
@@ -98,7 +98,7 @@ const staffCourse = ({ id, name, publiclyVisible }: StubCourse) => ({
 });
 
 const EMPTY_SETTINGS: StoredSettings = {
-  name: 'Akademia',
+  name: 'Academy',
   socialLinks: [],
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
@@ -113,9 +113,9 @@ const EMPTY_SETTINGS: StoredSettings = {
 };
 
 const PANEL_TENANT = {
-  id: 'tenant-akademia',
-  slug: 'akademia',
-  name: 'Akademia',
+  id: 'tenant-academy',
+  slug: 'academy',
+  name: 'Academy',
   staffRole: 'owner' as const,
   memberId: null,
 };
@@ -136,15 +136,15 @@ const customDomainEntry = (input: {
 });
 
 const initialRouting = () => ({
-  tenantHost: 'akademia.together.example',
+  tenantHost: 'academy.together.example',
   storageCorsOrigins: [
-    'https://akademia.together.example',
-    'https://kurs.acme.example',
+    'https://academy.together.example',
+    'https://courses.acme.example',
   ],
-  canonicalOrigin: 'https://kurs.acme.example',
+  canonicalOrigin: 'https://courses.acme.example',
   customDomains: [
-    customDomainEntry({ domain: 'kurs.acme.example', status: 'active' }),
-    customDomainEntry({ domain: 'nowa.acme.example', status: 'pending-dns' }),
+    customDomainEntry({ domain: 'courses.acme.example', status: 'active' }),
+    customDomainEntry({ domain: 'new.acme.example', status: 'pending-dns' }),
   ],
   customDomainTarget: 'cname.vercel-dns.com',
   apexDomainsSupported: false,
@@ -177,7 +177,7 @@ const installSettingsBackend = (
       courseUpdates.push(body);
       return HttpResponse.json({
         ok: true,
-        data: { course: staffCourse(courseList[0] ?? { id: 'c1', name: 'Kurs', publiclyVisible: true }) },
+        data: { course: staffCourse(courseList[0] ?? { id: 'c1', name: 'Course', publiclyVisible: true }) },
       });
     }),
     http.get('/api/tenant/routing', () => HttpResponse.json({
@@ -307,11 +307,11 @@ describe('SettingsPanel information architecture', () => {
 
     const tabs = await screen.findAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent)).toEqual([
-      pl.settingsNavigation.company,
-      pl.settingsNavigation.legal,
-      pl.settingsNavigation.brand,
-      pl.settingsNavigation.security,
-      pl.settingsNavigation.diagnostics,
+      en.settingsNavigation.company,
+      en.settingsNavigation.legal,
+      en.settingsNavigation.brand,
+      en.settingsNavigation.security,
+      en.settingsNavigation.diagnostics,
     ]);
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'settings-panel-company');
     expect(document.querySelector('#support')).not.toBeNull();
@@ -325,14 +325,14 @@ describe('SettingsPanel information architecture', () => {
       expect(redirectQueries.map((query) => query.get('limit'))).toEqual(['0']);
     });
     const summary = await screen.findByTestId('tenant-redirects-summary');
-    expect(summary).toHaveTextContent(pl.tenantDomains.redirectsCount({ count: 686 }));
-    expect(within(summary).getByRole('link', { name: `${pl.tenantDomains.redirectsManage} →` }))
+    expect(summary).toHaveTextContent(en.tenantDomains.redirectsCount({ count: 686 }));
+    expect(within(summary).getByRole('link', { name: `${en.tenantDomains.redirectsManage} →` }))
       .toHaveAttribute('href', '/panel/settings/redirects');
   });
 
   it('keeps verified ownership beside pending routing and collapses active records', async () => {
     renderPanel();
-    await screen.findByTestId('tenant-domain-check-nowa.acme.example');
+    await screen.findByTestId('tenant-domain-check-new.acme.example');
     const host = 'courses.example.org';
     const records = [
       { type: 'CNAME', name: host, value: 'routing.example.org', purpose: 'routing', status: 'pending' },
@@ -349,10 +349,10 @@ describe('SettingsPanel information architecture', () => {
       http.get('/api/tenant/routing', () => HttpResponse.json({ ok: true, data: { routing } })),
       http.post('/api/tenant/domains/check', () => HttpResponse.json({ ok: true, data: { routing } })),
     );
-    await userEvent.click(screen.getByTestId('tenant-domain-check-nowa.acme.example'));
+    await userEvent.click(screen.getByTestId('tenant-domain-check-new.acme.example'));
     const ownership = await screen.findByTestId(`dns-record-TXT-_vercel.${host}`);
-    expect(ownership).toHaveTextContent(pl.tenantDomains.recordVerified);
-    expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(pl.tenantDomains.recordPending);
+    expect(ownership).toHaveTextContent(en.tenantDomains.recordVerified);
+    expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(en.tenantDomains.recordPending);
     expect(await within(ownership).findByTestId(`dns-record-name-TXT-_vercel.${host}`)).toHaveTextContent(`_vercel.${host}`);
     expect(await within(ownership).findByTestId(`dns-record-value-TXT-_vercel.${host}`)).toHaveTextContent('challenge');
     routing.customDomains[0] = {
@@ -360,25 +360,25 @@ describe('SettingsPanel information architecture', () => {
       records: records.map((record) => ({ ...record, status: 'verified' })), storageCorsStatus: 'unknown' as const,
     };
     await userEvent.click(screen.getByTestId(`tenant-domain-check-${host}`));
-    const summary = await screen.findByText(pl.tenantDomains.recordsSummary({ count: 2 }));
+    const summary = await screen.findByText(en.tenantDomains.recordsSummary({ count: 2 }));
     expect(summary.closest('details')).not.toHaveAttribute('open');
     await userEvent.click(summary);
     expect(summary.closest('details')).toHaveAttribute('open');
-    expect(screen.getByTestId(`dns-record-TXT-_vercel.${host}`)).toHaveTextContent(pl.tenantDomains.recordVerified);
-    expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(pl.tenantDomains.recordVerified);
+    expect(screen.getByTestId(`dns-record-TXT-_vercel.${host}`)).toHaveTextContent(en.tenantDomains.recordVerified);
+    expect(screen.getByTestId(`dns-record-CNAME-${host}`)).toHaveTextContent(en.tenantDomains.recordVerified);
   });
 
   it('shows the workspace address with verified and pending custom domains', async () => {
     renderPanel();
 
     const address = await screen.findByTestId('tenant-workspace-address');
-    expect(address).toHaveTextContent('akademia.together.example');
+    expect(address).toHaveTextContent('academy.together.example');
     expect(address).toHaveStyle({ fontFamily: FONT_MONO });
-    expect(await screen.findByTestId('tenant-domain-status-kurs.acme.example'))
-      .toHaveTextContent(pl.tenantDomains.statusActive);
-    const pending = await screen.findByTestId('tenant-domain-nowa.acme.example');
-    expect(pending).toHaveTextContent(pl.tenantDomains.statusPendingDns);
-    expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example'))
+    expect(await screen.findByTestId('tenant-domain-status-courses.acme.example'))
+      .toHaveTextContent(en.tenantDomains.statusActive);
+    const pending = await screen.findByTestId('tenant-domain-new.acme.example');
+    expect(pending).toHaveTextContent(en.tenantDomains.statusPendingDns);
+    expect(screen.getByTestId('dns-record-value-CNAME-new.acme.example'))
       .toHaveTextContent('cname.vercel-dns.com');
   });
 
@@ -389,29 +389,29 @@ describe('SettingsPanel information architecture', () => {
 
     await userEvent.click(await screen.findByTestId('tenant-workspace-address-copy'));
 
-    expect(writeText).toHaveBeenCalledWith('akademia.together.example');
+    expect(writeText).toHaveBeenCalledWith('academy.together.example');
   });
 
   it('renders active domain checks as quiet links and pending checks as buttons', async () => {
     const { domainCalls } = renderPanel();
 
-    const active = await screen.findByTestId('tenant-domain-check-kurs.acme.example');
+    const active = await screen.findByTestId('tenant-domain-check-courses.acme.example');
     expect(active).toHaveClass('MuiLink-root', 'MuiTypography-caption');
     expect(active).not.toHaveClass('MuiButton-root');
-    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiButton-root');
+    expect(screen.getByTestId('tenant-domain-check-new.acme.example')).toHaveClass('MuiButton-root');
     await userEvent.click(active);
 
-    await waitFor(() => { expect(domainCalls).toEqual(['check:kurs.acme.example']); });
+    await waitFor(() => { expect(domainCalls).toEqual(['check:courses.acme.example']); });
   });
 
   it('shows the storage CORS hint until the verified origin passes its probe', async () => {
     const { queryClient } = renderPanel();
 
-    const hint = await screen.findByTestId('tenant-domain-cors-hint-kurs.acme.example');
-    expect(hint).toHaveTextContent(pl.tenantDomains.storageCorsHint);
-    expect(within(hint).getByRole('link', { name: pl.tenantDomains.storageCorsLink }))
+    const hint = await screen.findByTestId('tenant-domain-cors-hint-courses.acme.example');
+    expect(hint).toHaveTextContent(en.tenantDomains.storageCorsHint);
+    expect(within(hint).getByRole('link', { name: en.tenantDomains.storageCorsLink }))
       .toHaveAttribute('href', '/panel/integrations#storage');
-    expect(screen.queryByTestId('tenant-domain-cors-hint-nowa.acme.example')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tenant-domain-cors-hint-new.acme.example')).not.toBeInTheDocument();
 
     server.use(http.get('/api/tenant/routing', () => HttpResponse.json({
       ok: true,
@@ -419,7 +419,7 @@ describe('SettingsPanel information architecture', () => {
         routing: {
           ...initialRouting(),
           customDomains: initialRouting().customDomains.map((entry) =>
-            entry.domain === 'kurs.acme.example'
+            entry.domain === 'courses.acme.example'
               ? { ...entry, storageCorsStatus: 'ok' }
               : entry),
         },
@@ -428,22 +428,22 @@ describe('SettingsPanel information architecture', () => {
     await queryClient.invalidateQueries();
 
     await waitFor(() => {
-      expect(screen.queryByTestId('tenant-domain-cors-hint-kurs.acme.example')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('tenant-domain-cors-hint-courses.acme.example')).not.toBeInTheDocument();
     });
   });
 
   it('warns about signing in again until a custom domain is verified', async () => {
     renderPanel();
 
-    await screen.findByTestId('tenant-domain-kurs.acme.example');
+    await screen.findByTestId('tenant-domain-courses.acme.example');
     expect(screen.queryByTestId('tenant-domain-warning')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.acme.example'));
+    await userEvent.click(screen.getByTestId('tenant-domain-remove-courses.acme.example'));
     await userEvent.click(await screen.findByTestId('tenant-domain-remove-confirm'));
 
     expect(await screen.findByTestId('tenant-domain-warning'))
-      .toHaveTextContent(pl.tenantDomains.firstDomainWarning);
-    expect(screen.getByTestId('tenant-domain-nowa.acme.example')).toBeInTheDocument();
+      .toHaveTextContent(en.tenantDomains.firstDomainWarning);
+    expect(screen.getByTestId('tenant-domain-new.acme.example')).toBeInTheDocument();
   });
 
   it('reports a refused domain with one message that names no other workspace', async () => {
@@ -455,18 +455,18 @@ describe('SettingsPanel information architecture', () => {
       { status: 409 },
     )));
 
-    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.acme.example');
+    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'taken.acme.example');
     await userEvent.click(screen.getByTestId('tenant-domain-add'));
 
     expect(await findToast('error'))
-      .toHaveTextContent(pl.tenantDomains.conflict);
+      .toHaveTextContent(en.tenantDomains.conflict);
   });
 
   it('advises using a subdomain unless apex routing is configured', async () => {
     renderPanel();
 
     expect(await screen.findByTestId('tenant-domain-hint'))
-      .toHaveTextContent(pl.tenantDomains.addHint);
+      .toHaveTextContent(en.tenantDomains.addHint);
   });
 
   it('does not advise using a subdomain when apex routing is configured', async () => {
@@ -498,7 +498,7 @@ describe('SettingsPanel information architecture', () => {
       { status: 502 },
     )));
 
-    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'zajete.acme.example');
+    await userEvent.type(screen.getByTestId('tenant-domain-input'), 'taken.acme.example');
     await userEvent.click(screen.getByTestId('tenant-domain-add'));
 
     expect(await findToast('error'))
@@ -508,26 +508,26 @@ describe('SettingsPanel information architecture', () => {
   it('shows the derived canonical address and its explanation', async () => {
     renderPanel();
     const address = await screen.findByTestId('tenant-canonical-address');
-    expect(address).toHaveTextContent(pl.tenantDomains.canonicalAddress);
-    expect(address).toHaveTextContent('https://kurs.acme.example');
-    expect(address).toHaveTextContent(pl.tenantDomains.canonicalExplanation);
+    expect(address).toHaveTextContent(en.tenantDomains.canonicalAddress);
+    expect(address).toHaveTextContent('https://courses.acme.example');
+    expect(address).toHaveTextContent(en.tenantDomains.canonicalExplanation);
   });
 
   it('shows the recorded error after a check the provider failed', async () => {
     renderPanel();
 
-    await screen.findByTestId('tenant-domain-check-nowa.acme.example');
+    await screen.findByTestId('tenant-domain-check-new.acme.example');
     let checked = false;
     server.use(
       http.get('/api/tenant/routing', () => HttpResponse.json({
         ok: true,
         data: {
           routing: {
-            tenantHost: 'akademia.together.example',
-            storageCorsOrigins: ['https://akademia.together.example'],
-            canonicalOrigin: 'https://akademia.together.example',
+            tenantHost: 'academy.together.example',
+            storageCorsOrigins: ['https://academy.together.example'],
+            canonicalOrigin: 'https://academy.together.example',
             customDomains: [{
-              domain: 'nowa.acme.example',
+              domain: 'new.acme.example',
               verified: false,
               status: checked ? 'error' : 'pending-dns',
               records: [],
@@ -550,42 +550,42 @@ describe('SettingsPanel information architecture', () => {
       }),
     );
 
-    await userEvent.click(screen.getByTestId('tenant-domain-check-nowa.acme.example'));
+    await userEvent.click(screen.getByTestId('tenant-domain-check-new.acme.example'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('tenant-domain-status-nowa.acme.example'))
-        .toHaveTextContent(pl.tenantDomains.statusError);
+      expect(screen.getByTestId('tenant-domain-status-new.acme.example'))
+        .toHaveTextContent(en.tenantDomains.statusError);
     });
-    expect(screen.getByTestId('tenant-domain-nowa.acme.example'))
+    expect(screen.getByTestId('tenant-domain-new.acme.example'))
       .toHaveTextContent('Vercel is unreachable');
-    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiButton-root');
+    expect(screen.getByTestId('tenant-domain-check-new.acme.example')).toHaveClass('MuiButton-root');
   });
 
   it('adds a domain and lists it as waiting for DNS', async () => {
     const { domainCalls } = renderPanel();
 
-    await userEvent.type(await screen.findByTestId('tenant-domain-input'), 'sklep.acme.example');
+    await userEvent.type(await screen.findByTestId('tenant-domain-input'), 'shop.acme.example');
     await userEvent.click(screen.getByTestId('tenant-domain-add'));
 
-    const added = await screen.findByTestId('tenant-domain-sklep.acme.example');
-    expect(added).toHaveTextContent(pl.tenantDomains.statusPendingDns);
-    expect(screen.getByTestId('dns-record-value-CNAME-sklep.acme.example'))
+    const added = await screen.findByTestId('tenant-domain-shop.acme.example');
+    expect(added).toHaveTextContent(en.tenantDomains.statusPendingDns);
+    expect(screen.getByTestId('dns-record-value-CNAME-shop.acme.example'))
       .toHaveTextContent('cname.vercel-dns.com');
-    expect(domainCalls).toEqual(['add:sklep.acme.example']);
-    expect(await findToast('success')).toHaveTextContent(pl.common.saved);
+    expect(domainCalls).toEqual(['add:shop.acme.example']);
+    expect(await findToast('success')).toHaveTextContent(en.common.saved);
   });
 
   it('checks a pending domain and shows it as active', async () => {
     const { domainCalls } = renderPanel();
 
-    await userEvent.click(await screen.findByTestId('tenant-domain-check-nowa.acme.example'));
+    await userEvent.click(await screen.findByTestId('tenant-domain-check-new.acme.example'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('tenant-domain-status-nowa.acme.example'))
-        .toHaveTextContent(pl.tenantDomains.statusActive);
+      expect(screen.getByTestId('tenant-domain-status-new.acme.example'))
+        .toHaveTextContent(en.tenantDomains.statusActive);
     });
-    expect(domainCalls).toEqual(['check:nowa.acme.example']);
-    expect(screen.getByTestId('tenant-domain-check-nowa.acme.example')).toHaveClass('MuiLink-root');
+    expect(domainCalls).toEqual(['check:new.acme.example']);
+    expect(screen.getByTestId('tenant-domain-check-new.acme.example')).toHaveClass('MuiLink-root');
     expect(queryToast('success')).not.toBeInTheDocument();
   });
 
@@ -594,16 +594,16 @@ describe('SettingsPanel information architecture', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderPanel();
 
-    const record = await screen.findByTestId('dns-record-CNAME-nowa.acme.example');
-    expect(within(record).getByTestId('dns-record-name-CNAME-nowa.acme.example'))
-      .toHaveTextContent('nowa.acme.example');
+    const record = await screen.findByTestId('dns-record-CNAME-new.acme.example');
+    expect(within(record).getByTestId('dns-record-name-CNAME-new.acme.example'))
+      .toHaveTextContent('new.acme.example');
 
-    await userEvent.click(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copy'));
+    await userEvent.click(screen.getByTestId('dns-record-value-CNAME-new.acme.example-copy'));
 
     expect(writeText).toHaveBeenCalledWith('cname.vercel-dns.com');
     await waitFor(() => {
-      expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copied'))
-        .toHaveTextContent(pl.copyField.copied);
+      expect(screen.getByTestId('dns-record-value-CNAME-new.acme.example-copied'))
+        .toHaveTextContent(en.copyField.copied);
     });
   });
 
@@ -614,32 +614,32 @@ describe('SettingsPanel information architecture', () => {
     renderPanel();
 
     await userEvent.click(
-      await screen.findByTestId('dns-record-value-CNAME-nowa.acme.example-copy'),
+      await screen.findByTestId('dns-record-value-CNAME-new.acme.example-copy'),
     );
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());
-    expect(screen.getByTestId('dns-record-value-CNAME-nowa.acme.example-copied'))
+    expect(screen.getByTestId('dns-record-value-CNAME-new.acme.example-copied'))
       .toHaveTextContent('');
   });
 
   it('removes a domain only after the owner confirms', async () => {
-    const redirectTo = 'https://akademia.together.example/panel/settings';
+    const redirectTo = 'https://academy.together.example/panel/settings';
     const { domainCalls } = renderPanel(EMPTY_SETTINGS, true, [], [], redirectTo);
 
-    await userEvent.click(await screen.findByTestId('tenant-domain-remove-kurs.acme.example'));
-    expect(await screen.findByText(pl.tenantDomains.removeConfirmTitle)).toBeInTheDocument();
+    await userEvent.click(await screen.findByTestId('tenant-domain-remove-courses.acme.example'));
+    expect(await screen.findByText(en.tenantDomains.removeConfirmTitle)).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('confirm-dialog-cancel'));
     expect(domainCalls).toEqual([]);
 
-    await userEvent.click(screen.getByTestId('tenant-domain-remove-kurs.acme.example'));
+    await userEvent.click(screen.getByTestId('tenant-domain-remove-courses.acme.example'));
     await userEvent.click(await screen.findByTestId('tenant-domain-remove-confirm'));
 
     await waitFor(() => {
-      expect(screen.queryByTestId('tenant-domain-kurs.acme.example')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('tenant-domain-courses.acme.example')).not.toBeInTheDocument();
     });
-    expect(domainCalls).toEqual(['remove:kurs.acme.example']);
+    expect(domainCalls).toEqual(['remove:courses.acme.example']);
     const redirect = await screen.findByTestId('tenant-domain-redirect');
-    expect(redirect).toHaveTextContent(pl.tenantDomains.removedRedirect);
+    expect(redirect).toHaveTextContent(en.tenantDomains.removedRedirect);
     expect(within(redirect).getByRole('link', { name: redirectTo }))
       .toHaveAttribute('href', redirectTo);
     expect(queryToast('success')).not.toBeInTheDocument();
@@ -660,7 +660,7 @@ describe('SettingsPanel information architecture', () => {
 
     renderPanel();
 
-    expect(await screen.findByRole('tab', { name: pl.settingsNavigation.company })).toHaveAttribute(
+    expect(await screen.findByRole('tab', { name: en.settingsNavigation.company })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -672,7 +672,7 @@ describe('SettingsPanel information architecture', () => {
 
     renderPanel();
 
-    expect(await screen.findByRole('tab', { name: pl.settingsNavigation.security })).toHaveAttribute(
+    expect(await screen.findByRole('tab', { name: en.settingsNavigation.security })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -682,11 +682,11 @@ describe('SettingsPanel information architecture', () => {
 
   it('follows a router-driven hash change while the panel stays mounted', async () => {
     const { router } = renderPanel();
-    await screen.findByRole('tab', { name: pl.settingsNavigation.company });
+    await screen.findByRole('tab', { name: en.settingsNavigation.company });
 
     await router.navigate({ to: '/panel/settings', hash: 'branding' });
 
-    expect(await screen.findByRole('tab', { name: pl.settingsNavigation.brand })).toHaveAttribute(
+    expect(await screen.findByRole('tab', { name: en.settingsNavigation.brand })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -695,7 +695,7 @@ describe('SettingsPanel information architecture', () => {
   it('records the active tab in the router hash', async () => {
     const { router } = renderPanel();
 
-    await openSettingsSection(pl.settingsNavigation.legal);
+    await openSettingsSection(en.settingsNavigation.legal);
 
     expect(router.state.location.hash).toBe('legal');
   });
@@ -704,9 +704,9 @@ describe('SettingsPanel information architecture', () => {
 describe('SettingsPanel build information', () => {
   it('shows matching browser and server versions from the health action', async () => {
     renderPanel();
-    await openSettingsSection(pl.settingsNavigation.diagnostics);
+    await openSettingsSection(en.settingsNavigation.diagnostics);
 
-    expect(await screen.findByText(`${pl.buildInfo.serverVersion}: ${BUILD_VERSION}`))
+    expect(await screen.findByText(`${en.buildInfo.serverVersion}: ${BUILD_VERSION}`))
       .toBeInTheDocument();
     expect(screen.queryByTestId('build-mismatch-warning')).not.toBeInTheDocument();
   });
@@ -735,10 +735,10 @@ describe('SettingsPanel build information', () => {
       ),
     );
     renderPanel();
-    await openSettingsSection(pl.settingsNavigation.diagnostics);
+    await openSettingsSection(en.settingsNavigation.diagnostics);
 
     expect(await screen.findByTestId('build-mismatch-warning')).toHaveTextContent(
-      pl.buildInfo.mismatch,
+      en.buildInfo.mismatch,
     );
   });
 });
@@ -746,10 +746,10 @@ describe('SettingsPanel build information', () => {
 describe('SettingsPanel security', () => {
   it('mounts passkey and two-factor management on the creator surface', async () => {
     renderPanel();
-    await openSettingsSection(pl.settingsNavigation.security);
+    await openSettingsSection(en.settingsNavigation.security);
 
-    expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(pl.security.noPasskeys);
-    expect(screen.getByLabelText(pl.security.passkeyPasswordLabel)).toBeInTheDocument();
+    expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(en.security.noPasskeys);
+    expect(screen.getByLabelText(en.security.passkeyPasswordLabel)).toBeInTheDocument();
     expect(screen.getByTestId('regenerate-backup-codes')).toBeInTheDocument();
     expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
   });
@@ -761,12 +761,12 @@ describe('SettingsPanel security', () => {
       return HttpResponse.json({ status: true });
     }));
     renderPanel(EMPTY_SETTINGS, false);
-    await openSettingsSection(pl.settingsNavigation.security);
+    await openSettingsSection(en.settingsNavigation.security);
 
-    expect(await screen.findByText(pl.emailVerification.pending({ email: 'creator3@together.dev' })))
+    expect(await screen.findByText(en.emailVerification.pending({ email: 'creator3@together.dev' })))
       .toBeInTheDocument();
     await userEvent.click(screen.getByTestId('resend-verification-email'));
-    expect(await findToast('success')).toHaveTextContent(pl.emailVerification.sent);
+    expect(await findToast('success')).toHaveTextContent(en.emailVerification.sent);
     expect(body).toEqual({
       email: 'creator3@together.dev',
       callbackURL: 'http://localhost:3000/login?verification=verified',
@@ -782,7 +782,7 @@ describe('SettingsPanel security', () => {
       }),
     );
     renderPanel();
-    await openSettingsSection(pl.settingsNavigation.security);
+    await openSettingsSection(en.settingsNavigation.security);
 
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
     await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
@@ -791,14 +791,14 @@ describe('SettingsPanel security', () => {
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await findToast('success')).toHaveTextContent(
-      pl.changePassword.success,
+      en.changePassword.success,
     );
     expect(body).toEqual({
       currentPassword: 'current-password',
       newPassword: VALID_PASSWORD,
       revokeOtherSessions: true,
     });
-    expect(screen.getByText(pl.security.setOrResetPasswordHeading)).toBeInTheDocument();
+    expect(screen.getByText(en.security.setOrResetPasswordHeading)).toBeInTheDocument();
     expect(screen.getByTestId('security-reset-password')).toBeInTheDocument();
   });
 
@@ -811,12 +811,12 @@ describe('SettingsPanel security', () => {
       }),
     );
     renderPanel();
-    await openSettingsSection(pl.settingsNavigation.security);
+    await openSettingsSection(en.settingsNavigation.security);
 
     await userEvent.click(await screen.findByTestId('passkey-set-password'));
 
     expect(await findToast('success')).toHaveTextContent(
-      pl.security.resetSent,
+      en.security.resetSent,
     );
     expect(body).toEqual({
       email: 'creator3@together.dev',
@@ -828,29 +828,29 @@ describe('SettingsPanel security', () => {
 describe('SettingsPanel legal documents', () => {
   it('saves terms and privacy urls through the settings endpoint', async () => {
     const { updates } = renderPanel();
-    await openSettingsSection(pl.settingsNavigation.legal);
+    await openSettingsSection(en.settingsNavigation.legal);
 
-    await userEvent.type(await screen.findByTestId('legal-terms-url'), 'https://akademia.test/regulamin');
-    await userEvent.type(screen.getByTestId('legal-privacy-url'), 'https://akademia.test/prywatnosc');
+    await userEvent.type(await screen.findByTestId('legal-terms-url'), 'https://academy.test/terms');
+    await userEvent.type(screen.getByTestId('legal-privacy-url'), 'https://academy.test/privacy');
     await userEvent.click(screen.getByTestId('legal-save'));
 
-    expect(await findToast('success')).toHaveTextContent(pl.legal.saved);
+    expect(await findToast('success')).toHaveTextContent(en.legal.saved);
     expect(updates).toContainEqual({
-      termsUrl: 'https://akademia.test/regulamin',
-      privacyUrl: 'https://akademia.test/prywatnosc',
+      termsUrl: 'https://academy.test/terms',
+      privacyUrl: 'https://academy.test/privacy',
     });
   });
 
   it('clears the documents by saving empty fields', async () => {
     const { updates } = renderPanel({
       ...EMPTY_SETTINGS,
-      termsUrl: 'https://akademia.test/regulamin',
+      termsUrl: 'https://academy.test/terms',
     });
-    await openSettingsSection(pl.settingsNavigation.legal);
+    await openSettingsSection(en.settingsNavigation.legal);
 
     const termsInput = await screen.findByTestId('legal-terms-url');
     await waitFor(() => {
-      expect(termsInput).toHaveValue('https://akademia.test/regulamin');
+      expect(termsInput).toHaveValue('https://academy.test/terms');
     });
     await userEvent.clear(termsInput);
     await userEvent.click(screen.getByTestId('legal-save'));
@@ -862,38 +862,38 @@ describe('SettingsPanel legal documents', () => {
 
 describe('SettingsPanel public access', () => {
   const spaces: StubSpace[] = [
-    { id: 's1', name: 'Ogólna', publicReadOnly: true, archivedAt: null },
-    { id: 's2', name: 'Zamknięta', publicReadOnly: false, archivedAt: null },
-    { id: 's3', name: 'Archiwalna', publicReadOnly: true, archivedAt: '2026-07-20T09:00:00.000Z' },
+    { id: 's1', name: 'General', publicReadOnly: true, archivedAt: null },
+    { id: 's2', name: 'Closed', publicReadOnly: false, archivedAt: null },
+    { id: 's3', name: 'Archived', publicReadOnly: true, archivedAt: '2026-07-20T09:00:00.000Z' },
   ];
 
   it('offers only active publicly readable spaces as the visitors home space', async () => {
     renderPanel(EMPTY_SETTINGS, true, spaces);
 
-    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    const picker = await screen.findByRole('combobox', { name: en.publicAccess.homeSpaceLabel });
     await waitFor(() => expect(picker).toBeEnabled());
     await userEvent.click(picker);
 
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      pl.publicAccess.homeSpaceUnset,
-      'Ogólna',
+      en.publicAccess.homeSpaceUnset,
+      'General',
     ]);
   });
 
   it('only saves the picked home space once the section is submitted', async () => {
     const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultHomeSpaceId: 's1' }, true, spaces);
 
-    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
-    await waitFor(() => expect(picker).toHaveTextContent('Ogólna'));
+    const picker = await screen.findByRole('combobox', { name: en.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toHaveTextContent('General'));
     await userEvent.click(picker);
-    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceUnset }));
+    await userEvent.click(screen.getByRole('option', { name: en.publicAccess.homeSpaceUnset }));
 
     expect(updates).toHaveLength(0);
 
     await userEvent.click(screen.getByTestId('public-access-save'));
 
     await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: null }));
-    expect(await findToast('success')).toHaveTextContent(pl.publicAccess.saved);
+    expect(await findToast('success')).toHaveTextContent(en.publicAccess.saved);
   });
 
   it('keeps a dormant home space when the section is saved for other reasons', async () => {
@@ -901,13 +901,13 @@ describe('SettingsPanel public access', () => {
       { ...EMPTY_SETTINGS, defaultHomeSpaceId: 's3' },
       true,
       spaces,
-      [{ id: 'c1', name: 'Kamper od zera', publiclyVisible: false }],
+      [{ id: 'c1', name: 'Camper from Scratch', publiclyVisible: false }],
     );
 
-    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
-    await waitFor(() => expect(picker).toHaveTextContent(pl.publicAccess.homeSpaceUnset));
+    const picker = await screen.findByRole('combobox', { name: en.publicAccess.homeSpaceLabel });
+    await waitFor(() => expect(picker).toHaveTextContent(en.publicAccess.homeSpaceUnset));
 
-    await userEvent.click(await screen.findByRole('switch', { name: 'Kamper od zera' }));
+    await userEvent.click(await screen.findByRole('switch', { name: 'Camper from Scratch' }));
     await userEvent.click(screen.getByTestId('public-access-save'));
 
     await waitFor(() => expect(courseUpdates).toEqual([{ id: 'c1', publiclyVisible: true }]));
@@ -916,13 +916,13 @@ describe('SettingsPanel public access', () => {
 
   it('manages course public visibility next to the home space picker', async () => {
     const { courseUpdates } = renderPanel(EMPTY_SETTINGS, true, spaces, [
-      { id: 'c1', name: 'Kamper od zera', publiclyVisible: false },
-      { id: 'c2', name: 'Trasy', publiclyVisible: true },
+      { id: 'c1', name: 'Camper from Scratch', publiclyVisible: false },
+      { id: 'c2', name: 'Routes', publiclyVisible: true },
     ]);
 
-    const toggle = await screen.findByRole('switch', { name: 'Kamper od zera' });
+    const toggle = await screen.findByRole('switch', { name: 'Camper from Scratch' });
     await waitFor(() => expect(toggle).toBeEnabled());
-    expect(screen.getByRole('switch', { name: 'Trasy' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Routes' })).toBeChecked();
 
     await userEvent.click(toggle);
     await userEvent.click(screen.getByTestId('public-access-save'));
@@ -934,10 +934,10 @@ describe('SettingsPanel public access', () => {
   it('still saves the home space when the course list fails to load', async () => {
     const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultHomeSpaceId: 's1' }, true, spaces, 'unavailable');
 
-    const picker = await screen.findByRole('combobox', { name: pl.publicAccess.homeSpaceLabel });
+    const picker = await screen.findByRole('combobox', { name: en.publicAccess.homeSpaceLabel });
     await waitFor(() => expect(picker).toBeEnabled());
     await userEvent.click(picker);
-    await userEvent.click(screen.getByRole('option', { name: pl.publicAccess.homeSpaceUnset }));
+    await userEvent.click(screen.getByRole('option', { name: en.publicAccess.homeSpaceUnset }));
     await userEvent.click(screen.getByTestId('public-access-save'));
 
     await waitFor(() => expect(updates).toContainEqual({ defaultHomeSpaceId: null }));
@@ -945,7 +945,7 @@ describe('SettingsPanel public access', () => {
 });
 
 describe('SettingsPanel direct messages', () => {
-  const findToggle = () => screen.findByRole('switch', { name: pl.directMessages.toggleLabel });
+  const findToggle = () => screen.findByRole('switch', { name: en.directMessages.toggleLabel });
 
   it('shows the switch on for tenants that never touched it', async () => {
     renderPanel(EMPTY_SETTINGS);
@@ -980,8 +980,8 @@ describe('SettingsPanel video playback', () => {
   it('updates the tenant default and member override policy', async () => {
     const { updates } = renderPanel(EMPTY_SETTINGS);
 
-    const defaultToggle = await screen.findByRole('switch', { name: pl.videoPlayback.defaultLabel });
-    const overrideToggle = screen.getByRole('switch', { name: pl.videoPlayback.overrideLabel });
+    const defaultToggle = await screen.findByRole('switch', { name: en.videoPlayback.defaultLabel });
+    const overrideToggle = screen.getByRole('switch', { name: en.videoPlayback.overrideLabel });
     await waitFor(() => expect(defaultToggle).toBeEnabled());
     expect(defaultToggle).not.toBeChecked();
     expect(overrideToggle).not.toBeChecked();
@@ -997,25 +997,25 @@ describe('SettingsPanel e-mail language', () => {
   it('labels the picker and saves the chosen platform default', async () => {
     const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'pl' });
 
-    const picker = await screen.findByRole('combobox', { name: pl.emailLanguageSettings.label });
+    const picker = await screen.findByRole('combobox', { name: en.emailLanguageSettings.label });
     await waitFor(() => expect(picker).toBeEnabled());
     await userEvent.click(picker);
     await userEvent.click(
-      screen.getByRole('option', { name: pl.emailLanguageSettings.options.en }),
+      screen.getByRole('option', { name: en.emailLanguageSettings.options.en }),
     );
-    await userEvent.click(screen.getByRole('button', { name: pl.emailLanguageSettings.save }));
+    await userEvent.click(screen.getByRole('button', { name: en.emailLanguageSettings.save }));
 
     await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'en' }));
   });
 
-  it('saves the stored default back instead of the Polish fallback', async () => {
-    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'en' });
+  it('saves the stored default back instead of the English fallback', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'pl' });
 
-    const picker = await screen.findByRole('combobox', { name: pl.emailLanguageSettings.label });
-    await waitFor(() => expect(picker).toHaveTextContent(pl.emailLanguageSettings.options.en));
-    await userEvent.click(screen.getByRole('button', { name: pl.emailLanguageSettings.save }));
+    const picker = await screen.findByRole('combobox', { name: en.emailLanguageSettings.label });
+    await waitFor(() => expect(picker).toHaveTextContent(en.emailLanguageSettings.options.pl));
+    await userEvent.click(screen.getByRole('button', { name: en.emailLanguageSettings.save }));
 
-    await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'en' }));
+    await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'pl' }));
   });
 });
 
@@ -1023,7 +1023,7 @@ describe('SettingsPanel direct KSeF', () => {
   it('points the KSeF credentials at the invoicing integration instead of duplicating them', async () => {
     renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
 
-    expect(await screen.findByText(pl.billing.ksefConfiguredInIntegrations)).toBeInTheDocument();
+    expect(await screen.findByText(en.billing.ksefConfiguredInIntegrations)).toBeInTheDocument();
     expect(screen.getByTestId('ksef-integrations-link')).toHaveAttribute(
       'href',
       '/panel/integrations#invoicing',
@@ -1035,10 +1035,10 @@ describe('SettingsPanel direct KSeF', () => {
   it('leaves the invoice provider unset until the owner picks one', async () => {
     renderPanel(EMPTY_SETTINGS);
 
-    const picker = await screen.findByRole('combobox', { name: pl.billing.invoicingProvider });
-    expect(picker).toHaveTextContent(pl.billing.providerUnset);
-    expect(picker).not.toHaveTextContent(pl.billing.providerIfirma);
-    expect(screen.queryByText(pl.billing.ksefConfiguredInIntegrations)).not.toBeInTheDocument();
+    const picker = await screen.findByRole('combobox', { name: en.billing.invoicingProvider });
+    expect(picker).toHaveTextContent(en.billing.providerUnset);
+    expect(picker).not.toHaveTextContent('iFirma');
+    expect(screen.queryByText(en.billing.ksefConfiguredInIntegrations)).not.toBeInTheDocument();
   });
 });
 
@@ -1055,7 +1055,7 @@ describe('SettingsPanel VAT exemption', () => {
     const basis = await screen.findByTestId('invoice-exemption-basis');
     expect(basis).toHaveValue('art. 113 ust. 1 ustawy o podatku od towarów i usług');
     expect(basis).toHaveAttribute('readonly');
-    await userEvent.click(screen.getByRole('button', { name: pl.billing.saveSeller }));
+    await userEvent.click(screen.getByRole('button', { name: en.billing.saveSeller }));
     expect(updates).toContainEqual(expect.objectContaining({
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
@@ -1073,8 +1073,8 @@ describe('SettingsPanel VAT exemption', () => {
       invoiceExemptionBasis: null,
     });
 
-    expect(await screen.findByText(pl.billing.exemptionBasisRequired)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: pl.billing.saveSeller })).toBeDisabled();
+    expect(await screen.findByText(en.billing.exemptionBasisRequired)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.billing.saveSeller })).toBeDisabled();
   });
 });
 
@@ -1084,9 +1084,9 @@ describe('SettingsPanel branding', () => {
   it('saves logo, accent color and favicon through the settings endpoint', async () => {
     const user = userEvent.setup();
     const { updates } = renderPanel();
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
-    expect(await screen.findAllByRole('button', { name: pl.imageAssets.upload })).toHaveLength(4);
+    expect(await screen.findAllByRole('button', { name: en.imageAssets.upload })).toHaveLength(4);
     await user.click(await screen.findByTestId('branding-logo-url'));
     await user.paste('https://cdn.example.com/logo.svg');
     await userEvent.type(screen.getByTestId('branding-accent-color'), '#0E7490');
@@ -1095,9 +1095,9 @@ describe('SettingsPanel branding', () => {
     await user.paste('https://cdn.example.com/favicon.svg');
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await findToast('success')).toHaveTextContent(pl.branding.saved);
+    expect(await findToast('success')).toHaveTextContent(en.branding.saved);
     expect(updates).toContainEqual({
-      name: 'Akademia',
+      name: 'Academy',
       socialLinks: [],
       logoUrl: 'https://cdn.example.com/logo.svg',
       logoDarkUrl: null,
@@ -1113,25 +1113,25 @@ describe('SettingsPanel branding', () => {
   it('saves and reloads social metadata through the settings endpoint', async () => {
     const user = userEvent.setup();
     const { updates } = renderPanel();
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
-    await userEvent.type(await screen.findByTestId('branding-og-title'), 'Akademia Acme');
-    await userEvent.type(screen.getByTestId('branding-og-description'), 'Praktyczna nauka');
+    await userEvent.type(await screen.findByTestId('branding-og-title'), 'Acme Academy');
+    await userEvent.type(screen.getByTestId('branding-og-description'), 'Practical learning');
     await user.click(screen.getByTestId('branding-og-image-url'));
     await user.paste('https://cdn.example.com/social.png');
     await userEvent.click(screen.getByTestId('branding-save'));
 
     expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual({
-      name: 'Akademia',
+      name: 'Academy',
       socialLinks: [],
       logoUrl: null,
       logoDarkUrl: null,
       accentColor: null,
       accentLight: null,
       faviconUrl: null,
-      ogTitle: 'Akademia Acme',
-      ogDescription: 'Praktyczna nauka',
+      ogTitle: 'Acme Academy',
+      ogDescription: 'Practical learning',
       ogImageUrl: 'https://cdn.example.com/social.png',
     });
   }, BRANDING_TEST_TIMEOUT);
@@ -1140,40 +1140,40 @@ describe('SettingsPanel branding', () => {
     renderPanel({
       ...EMPTY_SETTINGS,
       ogTitle: 'x'.repeat(TENANT_OG_TITLE_MAX_LENGTH),
-      ogDescription: 'opis',
+      ogDescription: 'description',
     });
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
     expect(await screen.findByTestId('branding-og-description-count')).toHaveTextContent(
-      pl.branding.charCount({ used: 4, limit: TENANT_OG_DESCRIPTION_MAX_LENGTH }),
+      en.branding.charCount({ used: 11, limit: TENANT_OG_DESCRIPTION_MAX_LENGTH }),
     );
     const titleCount = screen.getByTestId('branding-og-title-count');
     expect(titleCount).toHaveTextContent(
-      pl.branding.charCount({ used: TENANT_OG_TITLE_MAX_LENGTH, limit: TENANT_OG_TITLE_MAX_LENGTH }),
+      en.branding.charCount({ used: TENANT_OG_TITLE_MAX_LENGTH, limit: TENANT_OG_TITLE_MAX_LENGTH }),
     );
-    expect(titleCount).toHaveTextContent(pl.branding.charLimitReached);
+    expect(titleCount).toHaveTextContent(en.branding.charLimitReached);
   }, BRANDING_TEST_TIMEOUT);
 
   it('renames the tenant and round-trips social profiles without a slug field', async () => {
     const user = userEvent.setup();
     const { queryClient, updates } = renderPanel();
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
 
     const name = await screen.findByTestId('branding-name');
     await user.clear(name);
-    await user.paste('Akademia Praktyków');
+    await user.paste('Practitioner Academy');
     await user.click(screen.getByTestId('branding-social-add'));
     await user.click(screen.getByTestId('branding-social-label-0'));
     await user.paste('YouTube');
     await user.click(screen.getByTestId('branding-social-url-0'));
-    await user.paste('https://youtube.com/@akademia');
+    await user.paste('https://youtube.com/@academy');
     await user.click(screen.getByTestId('branding-save'));
 
     expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual(expect.objectContaining({
-      name: 'Akademia Praktyków',
-      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@akademia' }],
+      name: 'Practitioner Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@academy' }],
     }));
     expect(updates.some((update) => typeof update === 'object' && update !== null && 'slug' in update))
       .toBe(false);
@@ -1183,7 +1183,7 @@ describe('SettingsPanel branding', () => {
 
   it('marks a non-http profile URL before sending settings', async () => {
     const { updates } = renderPanel();
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
     await screen.findByTestId('branding-name');
     await userEvent.click(screen.getByTestId('branding-social-add'));
@@ -1191,14 +1191,14 @@ describe('SettingsPanel branding', () => {
     await userEvent.type(screen.getByTestId('branding-social-url-0'), 'ftp://social.example.com/acme');
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByText(pl.branding.socialLinkUrlInvalid)).toBeInTheDocument();
+    expect(await screen.findByText(en.branding.socialLinkUrlInvalid)).toBeInTheDocument();
     expect(screen.getByTestId('branding-social-url-0')).toHaveAttribute('aria-invalid', 'true');
     expect(updates).toHaveLength(0);
   }, BRANDING_TEST_TIMEOUT);
 
   it('previews the accent in the swatch as you type', async () => {
     renderPanel();
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
     await userEvent.type(await screen.findByTestId('branding-accent-color'), '#0E7490');
 
@@ -1209,27 +1209,27 @@ describe('SettingsPanel branding', () => {
 
   it('shows the automatic light accent and rejects malformed overrides', async () => {
     const { updates } = renderPanel({ ...EMPTY_SETTINGS, accentColor: '#F5C842' });
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
     const input = await screen.findByTestId('branding-accent-light');
     expect(input).toHaveValue('');
     expect(input).not.toHaveAttribute('placeholder');
-    expect(screen.getByText(`${pl.branding.accentLightHint} ${deriveLightAccent('#F5C842')}`)).toBeInTheDocument();
-    expect(screen.getByText(pl.branding.lightPreview)).toBeInTheDocument();
-    expect(screen.getByText(pl.branding.darkPreview)).toBeInTheDocument();
+    expect(screen.getByText(`${en.branding.accentLightHint} ${deriveLightAccent('#F5C842')}`)).toBeInTheDocument();
+    expect(screen.getByText(en.branding.lightPreview)).toBeInTheDocument();
+    expect(screen.getByText(en.branding.darkPreview)).toBeInTheDocument();
     await userEvent.type(input, 'invalid');
     await userEvent.click(screen.getByTestId('branding-save'));
-    expect(await screen.findByText(pl.branding.accentInvalid)).toBeInTheDocument();
+    expect(await screen.findByText(en.branding.accentInvalid)).toBeInTheDocument();
     expect(updates).toHaveLength(0);
   }, BRANDING_TEST_TIMEOUT);
 
   it('rejects a malformed accent color without calling the API', async () => {
     const { updates } = renderPanel();
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
-    await userEvent.type(await screen.findByTestId('branding-accent-color'), 'niebieski');
+    await userEvent.type(await screen.findByTestId('branding-accent-color'), 'blue');
     await userEvent.click(screen.getByTestId('branding-save'));
 
-    expect(await screen.findByText(pl.branding.accentInvalid)).toBeInTheDocument();
+    expect(await screen.findByText(en.branding.accentInvalid)).toBeInTheDocument();
     expect(queryToast('success')).not.toBeInTheDocument();
     expect(updates).toHaveLength(0);
   }, BRANDING_TEST_TIMEOUT);
@@ -1241,7 +1241,7 @@ describe('SettingsPanel branding', () => {
       accentColor: '#0E7490',
       accentLight: '#786000',
     });
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
     const logoInput = await screen.findByTestId('branding-logo-url');
     await waitFor(() => {
@@ -1254,7 +1254,7 @@ describe('SettingsPanel branding', () => {
 
     expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual({
-      name: 'Akademia',
+      name: 'Academy',
       socialLinks: [],
       logoUrl: null,
       logoDarkUrl: null,
@@ -1270,7 +1270,7 @@ describe('SettingsPanel branding', () => {
   it('saves the dark logo variant beside the light one', async () => {
     const user = userEvent.setup();
     const { updates } = renderPanel();
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
     await user.click(await screen.findByTestId('branding-logo-url'));
     await user.paste('https://cdn.example.com/light.svg');
@@ -1291,7 +1291,7 @@ describe('SettingsPanel branding', () => {
       logoUrl: 'https://cdn.example.com/light.svg',
       logoDarkUrl: 'https://cdn.example.com/dark.svg',
     });
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
     expect(await screen.findByTestId('branding-logo-url-preview-surface'))
       .toHaveAttribute('data-background', 'light');
@@ -1305,7 +1305,7 @@ describe('SettingsPanel branding', () => {
       logoUrl: 'https://cdn.example.com/light.svg',
       logoDarkUrl: 'https://cdn.example.com/dark.svg',
     });
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
     await userEvent.click(await screen.findByTestId('branding-logo-dark-url-remove'));
     await userEvent.click(screen.getByTestId('branding-save'));
@@ -1323,7 +1323,7 @@ describe('SettingsPanel branding', () => {
       http.post('/api/image-assets/branding/upload', () => HttpResponse.json({
         ok: true,
         data: {
-          key: 'image-assets/tenant-akademia/share-image/6f1c0f2e-2b8a-4c3d-8e5f-9a0b1c2d3e4f.png',
+          key: 'image-assets/tenant-academy/share-image/6f1c0f2e-2b8a-4c3d-8e5f-9a0b1c2d3e4f.png',
           servePath,
           upload: {
             url: 'https://storage.example.com/put',
@@ -1337,7 +1337,7 @@ describe('SettingsPanel branding', () => {
         HttpResponse.json({ ok: true, data: { url: servePath } })),
     );
     const { updates } = renderPanel();
-    await openSettingsSection(pl.settingsNavigation.brand);
+    await openSettingsSection(en.settingsNavigation.brand);
 
     const shareImageInput = await screen.findByTestId('branding-og-image-url');
     await userEvent.upload(

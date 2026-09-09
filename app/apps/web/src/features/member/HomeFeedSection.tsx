@@ -6,6 +6,7 @@ import { Link } from '@tanstack/react-router';
 import { communityPostPath, communitySpacePath } from '#core/contract/index.js';
 import type { MemberHomeFeedItem } from '#core/domain/index.js';
 
+import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -55,8 +56,8 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
               flexWrap: 'wrap',
             }}
           >
-            <UserAvatar name={item.authorDisplay} imageUrl={item.authorAvatarUrl} size="sm" />
-            <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
+            <UserAvatar name={translateDeletedContent(item.authorDisplay, t)} imageUrl={item.authorAvatarUrl} size="sm" />
+            <PostAuthorName component="span">{translateDeletedContent(item.authorDisplay, t)}</PostAuthorName>
             {item.authorIsStaff && (
               <AuthorChip data-testid={`home-feed-author-chip-${item.id}`}>
                 {t.discussion.authorChip}

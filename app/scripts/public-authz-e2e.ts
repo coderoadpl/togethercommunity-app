@@ -34,14 +34,14 @@ const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
 
-const studioSpaceId = 'space-studio-spolecznosc';
-const privateSpaceId = 'space-studio-klub-js';
-const publicThreadId = 'post-spolecznosc-hello';
-const privateThreadId = 'post-klub-wyzwanie';
+const studioSpaceId = 'space-studio-community';
+const privateSpaceId = 'space-studio-club-js';
+const publicThreadId = 'post-community-hello';
+const privateThreadId = 'post-club-challenge';
 const publicCourseId = 'course-js';
 const hiddenCourseId = 'course-react';
-const previewLessonId = 'lesson-js-funkcje-2';
-const lockedLessonId = 'lesson-js-funkcje-1';
+const previewLessonId = 'lesson-js-functions-2';
+const lockedLessonId = 'lesson-js-functions-1';
 
 class E2eFailure extends Error {}
 
@@ -183,7 +183,7 @@ const runHomeJourney = async (page: Page, studioBaseUrl: string): Promise<void> 
   await page.getByTestId(`anon-sidebar-space-${studioSpaceId}`).waitFor({ state: 'visible' });
   await page.getByTestId(`course-card-${publicCourseId}`).waitFor({ state: 'visible' });
   await page.getByTestId(`locked-space-card-${privateSpaceId}`).waitFor({ state: 'visible' });
-  await page.getByTestId('locked-space-card-space-studio-klub-react').waitFor({ state: 'visible' });
+  await page.getByTestId('locked-space-card-space-studio-club-react').waitFor({ state: 'visible' });
   await page.getByTestId(`public-feed-post-${publicThreadId}`).waitFor({ state: 'visible' });
   assert(
     await page.getByTestId(`course-card-${hiddenCourseId}`).count() === 0,
@@ -227,9 +227,9 @@ const runHomeJourney = async (page: Page, studioBaseUrl: string): Promise<void> 
   assert(exposedKeys.length === 0, `Studio public feed exposed identity keys: ${exposedKeys.join(', ')}`);
   for (const privateValue of [
     'creator@together.dev',
-    'kursant.aktywny@together.dev',
+    'student.active@together.dev',
     'free@together.dev',
-    'user-kursant-aktywny',
+    'user-student-active',
     'user-free',
   ]) {
     assert(!feedRaw.includes(privateValue), `Studio public feed exposed ${privateValue}`);
@@ -247,7 +247,7 @@ const runReadOnlyCommunityJourney = async (page: Page, studioBaseUrl: string): P
     waitUntil: 'domcontentloaded',
   });
   await page.getByTestId('public-thread').waitFor({ state: 'visible', timeout: 15000 });
-  await page.getByTestId('public-reply-post-spolecznosc-hello-r1').waitFor({ state: 'visible' });
+  await page.getByTestId('public-reply-post-community-hello-r1').waitFor({ state: 'visible' });
   await page.getByTestId('anon-join-cta').waitFor({ state: 'visible' });
   await expectNoDiscussionControls(page, 'public thread');
 
@@ -429,7 +429,7 @@ try {
   );
   const context = await browser.newContext();
   await context.addInitScript(() => {
-    window.localStorage.setItem('together-language', 'pl');
+    window.localStorage.setItem('together-language', 'en');
   });
   const page = await context.newPage();
   page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));

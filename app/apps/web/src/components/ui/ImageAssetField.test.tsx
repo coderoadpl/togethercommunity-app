@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { ImageAssetField } from './ImageAssetField.js';
 
 const viewProps = {
@@ -17,7 +17,7 @@ describe('ImageAssetField', () => {
     render(
       <ImageAssetField
         id="cover"
-        label="Okładka"
+        label="Cover"
         value=""
         onChange={onChange}
         {...viewProps}
@@ -26,7 +26,7 @@ describe('ImageAssetField', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('Okładka'), {
+    fireEvent.change(screen.getByLabelText(en.courses.versionField.imageUrl), {
       target: { value: 'https://cdn.test/cover.jpg' },
     });
 
@@ -37,7 +37,7 @@ describe('ImageAssetField', () => {
     render(
       <ImageAssetField
         id="cover"
-        label="Okładka"
+        label="Cover"
         value="/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.jpg"
         onChange={() => undefined}
         {...viewProps}
@@ -54,7 +54,7 @@ describe('ImageAssetField', () => {
     render(
       <ImageAssetField
         id="cover"
-        label="Okładka"
+        label="Cover"
         value=""
         onChange={() => undefined}
         {...viewProps}
@@ -73,7 +73,7 @@ describe('ImageAssetField', () => {
     render(
       <ImageAssetField
         id="cover"
-        label="Okładka"
+        label="Cover"
         value=""
         onChange={() => undefined}
         {...viewProps}
@@ -87,13 +87,13 @@ describe('ImageAssetField', () => {
       new File(['gif'], 'cover.gif', { type: 'image/gif' }),
       { applyAccept: false },
     );
-    expect(await screen.findByText(pl.imageAssets.invalidType)).toBeInTheDocument();
+    expect(await screen.findByText(en.imageAssets.invalidType)).toBeInTheDocument();
 
     await userEvent.upload(
       screen.getByTestId('cover-file-input'),
       new File([new Uint8Array(viewProps.maxBytes + 1)], 'cover.png', { type: 'image/png' }),
     );
-    expect(await screen.findByText(pl.imageAssets.tooLarge)).toBeInTheDocument();
+    expect(await screen.findByText(en.imageAssets.tooLarge)).toBeInTheDocument();
   });
 
   it('explains missing storage and links to integrations', async () => {
@@ -110,8 +110,8 @@ describe('ImageAssetField', () => {
       />,
     );
 
-    expect(screen.getByText(pl.imageAssets.storageMissing)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.imageAssets.storageLink })).toHaveAttribute(
+    expect(screen.getByText(en.imageAssets.storageMissing)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.imageAssets.storageLink })).toHaveAttribute(
       'href',
       '/panel/integrations#storage',
     );

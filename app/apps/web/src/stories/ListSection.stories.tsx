@@ -33,26 +33,26 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const rows = [
-  { email: 'anna.kowalska@example.com', course: 'JavaScript od zera', status: 'Aktywny', joined: '2026-06-02' },
-  { email: 'piotr.nowak@example.com', course: 'TypeScript w praktyce', status: 'Aktywny', joined: '2026-06-11' },
-  { email: 'maria.wisniewska@example.com', course: 'React dla twórców', status: 'Wygasł', joined: '2026-05-20' },
+  { email: 'alex.chen@example.com', course: 'JavaScript Basics', status: 'Active', joined: '2026-06-02' },
+  { email: 'taylor.reed@example.com', course: 'Practical TypeScript', status: 'Active', joined: '2026-06-11' },
+  { email: 'morgan.price@example.com', course: 'React for Creators', status: 'Expired', joined: '2026-05-20' },
 ];
 
 const toolbar = {
-  search: <OutlinedInput fullWidth size="small" placeholder="Szukaj kursanta…" aria-label="Szukaj kursanta" />,
+  search: <OutlinedInput fullWidth size="small" placeholder="Search learner…" aria-label="Search learner" />,
   filters: (
-    <Stack direction="row" useFlexGap spacing="0.4rem" role="group" aria-label="Filtr statusu">
-      <Chip size="small" label="Wszyscy" variant="filled" color="primary" />
-      <Chip size="small" label="Aktywni" variant="outlined" />
-      <Chip size="small" label="Wygaśli" variant="outlined" />
+    <Stack direction="row" useFlexGap spacing="0.4rem" role="group" aria-label="Status filter">
+      <Chip size="small" label="All" variant="filled" color="primary" />
+      <Chip size="small" label="Active" variant="outlined" />
+      <Chip size="small" label="Expired" variant="outlined" />
     </Stack>
   ),
-  actions: <Button variant="contained">+ Zaproś</Button>,
+  actions: <Button variant="contained">+ Invite</Button>,
 };
 
 export const WithData: Story = {
   args: {
-    title: 'Kursanci',
+    title: 'Learners',
     toolbar,
     isEmpty: false,
     empty: null,
@@ -62,9 +62,9 @@ export const WithData: Story = {
           <TableHead>
             <TableRow>
               <TableCell>E-mail</TableCell>
-              <TableCell>Kurs</TableCell>
+              <TableCell>Course</TableCell>
               <TableCell>Status</TableCell>
-              <TableCell>Dołączył</TableCell>
+              <TableCell>Joined</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -76,7 +76,7 @@ export const WithData: Story = {
                   <Chip
                     size="small"
                     label={row.status}
-                    color={row.status === 'Aktywny' ? 'success' : 'default'}
+                    color={row.status === 'Active' ? 'success' : 'default'}
                     variant="outlined"
                   />
                 </TableCell>
@@ -92,13 +92,13 @@ export const WithData: Story = {
 
 export const NoMatches: Story = {
   args: {
-    title: 'Kursanci',
+    title: 'Learners',
     toolbar,
     isEmpty: false,
     empty: null,
     noMatches: (
       <Typography variant="body1" color="text.secondary">
-        Brak kursantów pasujących do wyszukiwania.
+        No learners match the search.
       </Typography>
     ),
     children: null,
@@ -107,14 +107,14 @@ export const NoMatches: Story = {
 
 export const CollectionEmpty: Story = {
   args: {
-    title: 'Kursanci',
+    title: 'Learners',
     isEmpty: true,
     empty: (
       <StatusView
         state={{
           kind: 'empty',
-          title: 'Nie masz jeszcze kursantów',
-          body: 'Udostępnij link do kasy, aby sprzedać pierwszy dostęp.',
+          title: 'You have no learners yet',
+          body: 'Share a checkout link to sell the first access.',
         }}
       />
     ),

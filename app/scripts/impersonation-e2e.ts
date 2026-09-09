@@ -22,10 +22,10 @@ e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
 const visible = { state: 'visible', timeout: 15000 } as const;
 
-const subjectMemberId = 'member-studio-aktywny';
-const studioSpaceId = 'space-studio-spolecznosc';
+const subjectMemberId = 'member-studio-active';
+const studioSpaceId = 'space-studio-community';
 const DM_SENDER = 'Nadawca Prywatny';
-const DM_SNIPPET = 'sekret z prywatnej wiadomosci';
+const DM_SNIPPET = 'secret from a private message';
 
 class E2eFailure extends Error {}
 

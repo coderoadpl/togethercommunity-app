@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 import { contrastRatio, deriveLightAccent } from '#core/domain/index.js';
 
 import {
@@ -91,13 +92,14 @@ describe('public marketing pages', () => {
   });
 
   it('adds a locale-aware immutable version notice only to versioned legal pages', () => {
+    const publishedAt = '2026-07-22T10:00:00.000Z';
+    const publishedDate = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long' }).format(new Date(publishedAt));
     const html = renderLegalDocumentPage({
       nonce: 'test-nonce',
-      brand, language: 'pl', path: '/legal/privacy/v/2', title: 'Prywatność', content: 'Treść',
-      immutableVersion: { version: 2, publishedAt: '2026-07-22T10:00:00.000Z' },
+      brand, language: 'pl', path: '/legal/privacy/v/2', title: 'Privacy', content: 'Body',
+      immutableVersion: { version: 2, publishedAt },
     });
-    expect(html).toContain('Wersja 2, opublikowana');
-    expect(html).toContain('22 lipca 2026');
+    expect(html).toContain(publicMarketingMessagesPl.immutableVersion({ version: 2, date: publishedDate }));
   });
 
   it('selects PL or EN from the explicit query, cookie, and accepted language', () => {
@@ -105,4 +107,19 @@ describe('public marketing pages', () => {
     expect(languageFromRequest(new Request('https://tenant.test/u/token', { headers: { cookie: 'together-language=en' } }))).toBe('en');
     expect(languageFromRequest(new Request('https://tenant.test/u/token', { headers: { 'accept-language': 'pl-PL' } }))).toBe('pl');
   });
+});
+
+it('uses the tenant default only when the visitor has no supported preference', () => {
+  expect(languageFromRequest(new Request('https://tenant.test/u/token'), 'pl')).toBe('pl');
+  expect(languageFromRequest(new Request('https://tenant.test/u/token'))).toBe('en');
+  expect(languageFromRequest(new Request('https://tenant.test/u/token?lang=en'), 'pl')).toBe('en');
+  expect(languageFromRequest(new Request('https://tenant.test/u/token', {
+    headers: { 'accept-language': 'de-DE' },
+  }), 'pl')).toBe('pl');
+});
+
+it('recognizes a browser preference with a quality parameter', () => {
+  expect(languageFromRequest(new Request('https://tenant.test/u/token', {
+    headers: { 'accept-language': 'en;q=0.9' },
+  }), 'pl')).toBe('en');
 });

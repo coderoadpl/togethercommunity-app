@@ -9,7 +9,7 @@
       "bunnyStreamCdnHostname": null,
       "bunnyStreamLibraryId": null,
       "defaultHomeSpaceId": null,
-      "defaultLanguage": "pl",
+      "defaultLanguage": "en",
       "directMessagesEnabled": true,
       "faviconUrl": "/assets/akademia-logo.svg",
       "invoiceExemptionBasis": null,
@@ -42,7 +42,7 @@
       "status": "active"
     }
   },
-  "language": "pl",
+  "language": "en",
   "nonce": "storybook",
   "path": "/marketing/confirm/expired_confirmation_visual_123456",
   "state": "expired"

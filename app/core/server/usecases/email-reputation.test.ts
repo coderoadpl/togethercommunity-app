@@ -331,7 +331,7 @@ describe('tenant staff recipients', () => {
         tenants: tenants('support@tenant.test'),
         tenantAccess: tenantAccess([{ email: 'owner@tenant.test' }]),
       }),
-    ).resolves.toEqual([{ email: 'support@tenant.test', language: 'pl' }]);
+    ).resolves.toEqual([{ email: 'support@tenant.test', language: 'en' }]);
   });
 
   it('deduplicates owner and admin fallback addresses', async () => {
@@ -345,8 +345,8 @@ describe('tenant staff recipients', () => {
         ]),
       }),
     ).resolves.toEqual([
-      { email: 'owner@tenant.test', language: 'pl' },
-      { email: 'admin@tenant.test', language: 'pl' },
+      { email: 'owner@tenant.test', language: 'en' },
+      { email: 'admin@tenant.test', language: 'en' },
     ]);
   });
 

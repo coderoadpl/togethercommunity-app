@@ -4,8 +4,9 @@ import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } fr
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
+import { formatPrice } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
@@ -27,6 +28,11 @@ const offerBody = {
     },
   ],
 };
+
+const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
+
+const textPattern = (value: string) =>
+  new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 
 const renderCheckout = (productRef: string) => {
   const root = createRootRoute({ component: () => <CheckoutPage productRef={productRef} /> });
@@ -84,18 +90,18 @@ describe('CheckoutPage', () => {
       width: '100%',
     });
     expect(stylesAt(cover, 1440)['max-height']).toBeUndefined();
-    expect(screen.getByText('49,00 zł')).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.checkoutEyebrow)).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.simulatedPaymentNote)).toBeInTheDocument();
+    expect(screen.getByText(textPattern(pln(4900)))).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.checkoutEyebrow)).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.simulatedPaymentNote)).toBeInTheDocument();
 
-    await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
-    await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) }));
 
-    const link = await screen.findByRole('link', { name: pl.checkout.openCourse });
+    const link = await screen.findByRole('link', { name: en.checkout.openCourse });
     expect(link).toHaveAttribute('href', 'https://acme.test/magic');
-    expect(screen.getByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
-    expect(screen.queryByText(pl.checkout.alreadyOwnedTitle)).not.toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.productionNote)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.checkout.accessGrantedTitle })).toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.alreadyOwnedTitle)).not.toBeInTheDocument();
+    expect(screen.getByText(en.checkout.productionNote)).toBeInTheDocument();
   });
 
   it('leaves out the cover block entirely for a product without a cover', async () => {
@@ -108,7 +114,7 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByText(pl.checkout.checkoutEyebrow)).toBeInTheDocument();
+    expect(await screen.findByText(en.checkout.checkoutEyebrow)).toBeInTheDocument();
     expect(screen.queryByTestId('checkout-product-cover-fallback')).not.toBeInTheDocument();
     expect(screen.queryByTestId('checkout-product-cover')).not.toBeInTheDocument();
   });
@@ -138,7 +144,7 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    const submit = await screen.findByRole('button', { name: /^Zapłać/ });
+    const submit = await screen.findByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) });
     const socialLink = await screen.findByRole('link', { name: 'YouTube' });
     expect(submit.compareDocumentPosition(socialLink))
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -167,9 +173,9 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('button', { name: /^Odbierz bezpłatnie/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Zapłać/ })).not.toBeInTheDocument();
-    expect(screen.getByText(pl.common.free)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: textPattern(en.checkout.freeIdle({ price: pln(0) })) })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) })).not.toBeInTheDocument();
+    expect(screen.getByText(en.common.free)).toBeInTheDocument();
   });
 
   it('resolves the checkout product from its slug and purchases by product id', async () => {
@@ -199,14 +205,14 @@ describe('CheckoutPage', () => {
     renderCheckout('intro-course');
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
-    await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) }));
 
-    expect(await screen.findByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.checkout.accessGrantedTitle })).toBeInTheDocument();
     expect(requests).toEqual([{
       email: 'buyer@together.dev',
       productId: 'course-1',
-      language: 'pl',
+      language: 'en',
     }]);
   });
 
@@ -252,15 +258,17 @@ describe('CheckoutPage', () => {
     );
     renderCheckout('course-1');
 
-    expect(await screen.findByLabelText(pl.checkout.couponLabel)).toHaveValue('partner20');
+    expect(await screen.findByLabelText(en.checkout.couponLabel)).toHaveValue('partner20');
     expect(screen.getByTestId('checkout-coupon-input')).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-apply')).toBeInTheDocument();
-    await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
-    expect(await screen.findByText('Do zapłaty: 39,20 zł')).toBeInTheDocument();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
+    expect(await screen.findByText(textPattern(en.checkout.couponFinal({ price: pln(3920) })))).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-breakdown')).toBeInTheDocument();
-    expect(screen.getByTestId('checkout-coupon-final')).toHaveTextContent('39,20');
-    expect(screen.getByText('Najniższa cena z ostatnich 30 dni: 45,00 zł')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
+    expect(screen.getByTestId('checkout-coupon-final')).toHaveTextContent(
+      textPattern(en.checkout.couponFinal({ price: pln(3920) })),
+    );
+    expect(screen.getByText(textPattern(en.checkout.omnibusLowest({ price: pln(4500) })))).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(3920) })) }));
     expect(purchases).toMatchObject([{ couponCode: 'partner20' }]);
   });
 
@@ -311,8 +319,8 @@ describe('CheckoutPage', () => {
     );
     renderCheckout('course-1');
 
-    await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
-    expect(await screen.findByText(pl.checkout.couponForever)).toBeInTheDocument();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
+    expect(await screen.findByText(en.checkout.couponForever)).toBeInTheDocument();
   });
 
   it('shows a uniform inline reason for a rejected code', async () => {
@@ -337,9 +345,9 @@ describe('CheckoutPage', () => {
     renderCheckout('course-1');
 
     await userEvent.click(await screen.findByTestId('checkout-coupon-reveal'));
-    await userEvent.type(screen.getByLabelText(pl.checkout.couponLabel), 'OLD20');
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'OLD20');
     await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
-    expect(await screen.findByText(pl.checkout.couponUnavailable)).toBeInTheDocument();
+    expect(await screen.findByText(en.checkout.couponUnavailable)).toBeInTheDocument();
     expect(screen.getByTestId('checkout-coupon-error')).toBeInTheDocument();
   });
 
@@ -354,8 +362,8 @@ describe('CheckoutPage', () => {
             tenant: {
               ...offerBody.tenant,
               legal: {
-                termsUrl: 'https://acme.test/regulamin',
-                privacyUrl: 'https://acme.test/prywatnosc',
+                termsUrl: 'https://acme.test/terms',
+                privacyUrl: 'https://acme.test/privacy',
               },
             },
           },
@@ -384,24 +392,24 @@ describe('CheckoutPage', () => {
 
     const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).toBeRequired();
-    expect(screen.getByRole('link', { name: pl.consent.terms })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.consent.terms })).toHaveAttribute(
       'href',
-      'https://acme.test/regulamin',
+      'https://acme.test/terms',
     );
-    expect(screen.getByRole('link', { name: pl.consent.privacy })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.consent.privacy })).toHaveAttribute(
       'href',
-      'https://acme.test/prywatnosc',
+      'https://acme.test/privacy',
     );
 
-    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
     await userEvent.click(checkbox);
-    await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
+    await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) }));
 
-    expect(await screen.findByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.checkout.accessGrantedTitle })).toBeInTheDocument();
     expect(requests).toEqual([{
       email: 'buyer@together.dev',
       productId: 'course-1',
-      language: 'pl',
+      language: 'en',
       termsAccepted: true,
     }]);
   });
@@ -432,7 +440,7 @@ describe('CheckoutPage', () => {
               ...offerBody.products[0],
               marketingConsents: [{
                 definitionId: 'consent-news',
-                label: 'Chcę otrzymywać wiadomości o nowych kursach.',
+                label: 'I want to receive updates about new courses.',
                 doubleOptIn: true,
                 documentUrl: 'https://acme.test/marketing',
               }],
@@ -462,22 +470,22 @@ describe('CheckoutPage', () => {
     renderCheckout('course-1');
 
     const checkbox = await screen.findByRole('checkbox', {
-      name: /Chcę otrzymywać wiadomości o nowych kursach/,
+      name: /I want to receive updates about new courses/,
     });
     expect(checkbox).not.toBeChecked();
     expect(checkbox).not.toBeRequired();
-    expect(screen.getByRole('link', { name: pl.checkout.marketingConsentDocument }))
+    expect(screen.getByRole('link', { name: en.checkout.marketingConsentDocument }))
       .toHaveAttribute('href', 'https://acme.test/marketing');
 
-    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
     await userEvent.click(checkbox);
-    await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
+    await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) }));
 
-    expect(await screen.findByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.checkout.accessGrantedTitle })).toBeInTheDocument();
     expect(requests).toEqual([{
       email: 'buyer@together.dev',
       productId: 'course-1',
-      language: 'pl',
+      language: 'en',
       marketingConsentDefinitionIds: ['consent-news'],
     }]);
   });
@@ -509,11 +517,11 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
-    await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) }));
 
-    expect(await screen.findByRole('heading', { name: pl.checkout.alreadyOwnedTitle })).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.alreadyOwnedNote)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.checkout.alreadyOwnedTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.alreadyOwnedNote)).toBeInTheDocument();
   });
 
   it('shows the Stripe primary action when the tenant is configured', async () => {
@@ -526,10 +534,10 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('button', { name: /^Zapłać/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) })).toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Symuluj płatność/ })).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.simulatedPaymentNote)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: textPattern(en.checkout.submitIdle({ price: pln(4900) })) })).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.simulatedPaymentNote)).toBeInTheDocument();
   });
 
   it('renders a picker for multiple prices and sends the recurring choice', async () => {
@@ -571,18 +579,18 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('radio', { name: /Kup teraz.*399,00/ })).toBeChecked();
-    await userEvent.click(screen.getByRole('radio', { name: /Subskrybuj.*39,00/ }));
-    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
-    await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
+    expect(await screen.findByRole('radio', { name: textPattern(en.checkout.buyPrice({ price: pln(39900) })) })).toBeChecked();
+    await userEvent.click(screen.getByRole('radio', { name: textPattern(en.checkout.subscribeMonthlyPrice({ price: pln(3900) })) }));
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(3900) })) }));
 
     expect(requests).toEqual([{
       email: 'buyer@together.dev',
       productId: 'course-1',
       priceId: 'price-monthly',
-      language: 'pl',
+      language: 'en',
     }]);
-    expect(await screen.findByRole('heading', { name: pl.checkout.subscriptionSuccessTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.checkout.subscriptionSuccessTitle })).toBeInTheDocument();
   });
 
   it('keeps a single active price as the existing non-picker checkout', async () => {
@@ -608,18 +616,18 @@ describe('CheckoutPage', () => {
 
     renderCheckout('course-1');
 
-    expect(await screen.findByText('49,00 zł')).toBeInTheDocument();
+    expect(await screen.findByText(textPattern(pln(4900)))).toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Zapłać/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(4900) })) })).toBeInTheDocument();
   });
 
   it('renders webhook-driven success guidance without fulfilling from the page', async () => {
     window.history.replaceState(null, '', '/checkout/course-1?status=success&session_id=cs_1');
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('heading', { name: pl.checkout.successTitle })).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.successBody)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.checkout.goToLogin })).toHaveAttribute('href', '/login');
+    expect(await screen.findByRole('heading', { name: en.checkout.successTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.successBody)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.checkout.goToLogin })).toHaveAttribute('href', '/login');
   });
 
   it('renders subscription-specific webhook success guidance', async () => {
@@ -630,9 +638,9 @@ describe('CheckoutPage', () => {
     );
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('heading', { name: pl.checkout.subscriptionSuccessTitle })).toBeInTheDocument();
-    expect(screen.getByText(pl.checkout.subscriptionSuccessBody)).toBeInTheDocument();
-    expect(screen.queryByText(pl.checkout.successBody)).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.checkout.subscriptionSuccessTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.subscriptionSuccessBody)).toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.successBody)).not.toBeInTheDocument();
   });
 
   it('renders an unavailable offer as a not-found state with an escape action', async () => {
@@ -645,9 +653,9 @@ describe('CheckoutPage', () => {
 
     renderCheckout('missing-product');
 
-    const heading = await screen.findByRole('heading', { name: pl.checkout.unavailableTitle });
+    const heading = await screen.findByRole('heading', { name: en.checkout.unavailableTitle });
     expect(heading.closest('[data-state]')).toHaveAttribute('data-state', 'not-found');
-    expect(screen.getByRole('link', { name: pl.checkout.goToLogin })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: en.checkout.goToLogin })).toHaveAttribute('href', '/login');
   });
 
   it('renders cancellation guidance and returns to retry', async () => {
@@ -660,8 +668,8 @@ describe('CheckoutPage', () => {
     );
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('heading', { name: pl.checkout.cancelledTitle })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.checkout.retry }));
+    expect(await screen.findByRole('heading', { name: en.checkout.cancelledTitle })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.checkout.retry }));
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
   });
 });

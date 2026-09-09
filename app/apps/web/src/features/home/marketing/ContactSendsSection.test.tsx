@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ContactSendsSection } from './ContactSendsSection.js';
 import { renderDirectory } from './directory-test-helpers.js';
 import { server } from '../../../test/server.js';
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 
 const ContactHistory = () => <ContactSendsSection contactId="contact-id" />;
 describe('contact send history', () => {
@@ -22,6 +22,6 @@ describe('contact send history', () => {
   it('shows empty history without suggesting that a contact has received a campaign', async () => {
     server.use(http.get('/api/marketing/sends', () => HttpResponse.json({ ok: true, data: { sends: [], nextCursor: null } })));
     await renderDirectory(ContactHistory, '/panel/marketing/contacts/contact-id');
-    expect(await screen.findByText(pl.directory.noHistory)).toBeInTheDocument();
+    expect(await screen.findByText(en.directory.noHistory)).toBeInTheDocument();
   });
 });

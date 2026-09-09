@@ -140,7 +140,7 @@ describe('sendSupportMessage', () => {
   });
 
   it('sends the creator notice in the tenant default language', async () => {
-    const polish = harness('support@alpha.test');
+    const polish = harness('support@alpha.test', 'pl');
     await sendSupportMessage({ identity }, { subject: 'Help', body: 'Body' }, polish.deps);
     expect(polish.queued[0]?.payload).toMatchObject({ kind: 'support-message', language: 'pl' });
 

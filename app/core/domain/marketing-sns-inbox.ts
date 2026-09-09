@@ -61,4 +61,3 @@ export const parseMarketingSesEvents = (raw: unknown, topicArn: string): Verifie
   }
   return [];
 };
-

@@ -1,3 +1,5 @@
+import { communityPl } from '#core/domain/community.pl.js';
+
 import {
   createPostInputSchema,
   DEFAULT_LANGUAGE,
@@ -108,7 +110,7 @@ interface DisplayNameIdentity {
 }
 
 const PARTICIPANT_DISPLAY: Record<Language, string> = {
-  pl: 'Uczestnik',
+  pl: communityPl.participant,
   en: 'Participant',
 };
 

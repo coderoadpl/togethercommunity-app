@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CoursePage } from './CoursePage.js';
@@ -47,7 +47,7 @@ describe('member pages', () => {
       http.get('/api/tenant/settings', () => HttpResponse.json({
         ok: true,
         data: { settings: {
-          name: 'Akademia', socialLinks: [], billingPortalUrl: null, bunnyStreamLibraryId: null,
+          name: 'Academy', socialLinks: [], billingPortalUrl: null, bunnyStreamLibraryId: null,
         } },
       })),
       http.get('/api/me', () =>
@@ -60,7 +60,7 @@ describe('member pages', () => {
 
     await renderPage(MyProductsPage, '/my');
 
-    expect(await screen.findByRole('heading', { name: pl.student.myProducts })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.student.myProducts })).toBeInTheDocument();
     expect(await screen.findByRole('link', { name: /Intro Course/ })).toHaveAttribute(
       'href',
       '/my/course/course-1',
@@ -110,7 +110,7 @@ describe('member pages', () => {
         ok: true,
         data: {
           settings: {
-            name: 'Akademia',
+            name: 'Academy',
             socialLinks: [],
             billingPortalUrl: 'https://billing.stripe.com/p/login/example',
             bunnyStreamLibraryId: null,
@@ -122,16 +122,22 @@ describe('member pages', () => {
     await renderPage(MyProductsPage, '/my/products');
 
     expect(await screen.findByTestId('subscription-status-active')).toHaveTextContent(
-      pl.student.subscriptionActiveLabel,
+      en.student.subscriptionActiveLabel,
     );
     expect(screen.getByTestId('subscription-status-past-due')).toHaveTextContent(
-      pl.student.subscriptionPastDueLabel,
+      en.student.subscriptionPastDueLabel,
     );
-    expect(screen.getByTestId('subscription-status-canceled')).toHaveTextContent('Anulowana — dostęp do');
+    expect(screen.getByTestId('subscription-status-canceled')).toHaveTextContent(
+      en.student.subscriptionCanceledLabel({ date: '' }),
+    );
     expect(screen.queryByTestId('grant-status-active')).not.toBeInTheDocument();
-    expect(screen.getByTestId('subscription-date-active')).toHaveTextContent('Odnowienie:');
-    expect(screen.getByTestId('subscription-date-canceled')).toHaveTextContent('Dostęp do:');
-    expect(screen.getAllByRole('link', { name: pl.student.manageSubscription })).toHaveLength(3);
+    expect(screen.getByTestId('subscription-date-active')).toHaveTextContent(
+      en.student.subscriptionRenewalDate({ date: '' }),
+    );
+    expect(screen.getByTestId('subscription-date-canceled')).toHaveTextContent(
+      en.student.subscriptionAccessUntil({ date: '' }),
+    );
+    expect(screen.getAllByRole('link', { name: en.student.manageSubscription })).toHaveLength(3);
   });
 
   it('renders purchased digital-download buttons alongside the course link', async () => {
@@ -165,7 +171,7 @@ describe('member pages', () => {
 
     await renderPage(MyProductsPage, '/my/products');
 
-    expect(await screen.findByRole('link', { name: pl.student.downloadFile({ name: 'workbook.pdf' }) }))
+    expect(await screen.findByRole('link', { name: en.student.downloadFile({ name: 'workbook.pdf' }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-1');
     expect(screen.getByRole('link', { name: 'Creator workbook' }))
       .toHaveAttribute('href', '/my/course/download-1');
@@ -182,7 +188,7 @@ describe('member pages', () => {
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: pl.student.productWithoutCoursesTitle })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.student.productWithoutCoursesTitle })).toBeInTheDocument();
   });
 
   it('links a purchased product to the courses the member can browse', async () => {
@@ -230,7 +236,7 @@ describe('member pages', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Intro Course');
     expect(within(screen.getByRole('banner')).queryAllByRole('link')).toHaveLength(0);
     expect(
-      screen.queryByRole('heading', { name: pl.student.productWithoutCoursesTitle }),
+      screen.queryByRole('heading', { name: en.student.productWithoutCoursesTitle }),
     ).not.toBeInTheDocument();
   });
 
@@ -266,9 +272,9 @@ describe('member pages', () => {
 
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
-    expect(await screen.findByText(pl.errors.messageIntegrationUnavailable)).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: pl.student.productWithoutCoursesTitle })).not.toBeInTheDocument();
-    await userEvent.click(within(screen.getByRole('main')).getByRole('button', { name: pl.student.retryCourses }));
-    expect(await screen.findByRole('heading', { name: pl.student.productWithoutCoursesTitle })).toBeInTheDocument();
+    expect(await screen.findByText(en.errors.messageIntegrationUnavailable)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.student.productWithoutCoursesTitle })).not.toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('main')).getByRole('button', { name: en.student.retryCourses }));
+    expect(await screen.findByRole('heading', { name: en.student.productWithoutCoursesTitle })).toBeInTheDocument();
   });
 });

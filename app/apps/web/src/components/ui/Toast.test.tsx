@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '../../i18n/index.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { ToastProvider, useToast } from './Toast.js';
 
 const ToastHarness = () => {
@@ -81,7 +81,7 @@ describe('ToastProvider', () => {
     renderHarness();
 
     await userEvent.click(screen.getByRole('button', { name: 'Info' }));
-    await userEvent.click(screen.getByRole('button', { name: `${pl.common.close}: Info message` }));
+    await userEvent.click(screen.getByRole('button', { name: `${en.common.close}: Info message` }));
 
     expect(screen.queryByTestId(/^toast-info-/)).not.toBeInTheDocument();
   });

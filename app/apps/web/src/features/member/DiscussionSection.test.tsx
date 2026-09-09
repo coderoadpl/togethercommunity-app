@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createPostInputSchema, type DiscussionPost, type PublicPost } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DiscussionSection } from './DiscussionSection.js';
@@ -17,10 +17,10 @@ const post = (input: Partial<PublicPost> & { id: string }): PublicPost => ({
   parentPostId: null,
   rootPostId: input.id,
   isOwn: false,
-  authorDisplay: 'Ola Autorka',
+  authorDisplay: 'Olivia Author',
   authorIsStaff: false,
   authorAvatarUrl: null,
-  body: 'Treść wpisu',
+  body: 'Post body',
   createdAt: '2026-07-15T08:00:00.000Z',
   editedAt: null,
   deletedAt: null,
@@ -42,7 +42,7 @@ const okMe = (staffRole: 'owner' | null = null) =>
         userId: 'u1',
         email: 'user@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Participant',
         tenant: {
           id: 't1',
           slug: 'acme',
@@ -63,13 +63,13 @@ const impersonatedMe = () =>
         userId: 'u1',
         email: 'user@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Participant',
         tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
         impersonation: {
           id: 'imp-1',
           subjectMemberId: 'm1',
-          subjectName: 'Jan Uczestnik',
-          actorName: 'Ola Operatorka',
+          subjectName: 'John Participant',
+          actorName: 'Olivia Operator',
           expiresAt: '2026-07-20T10:00:00.000Z',
         },
       },
@@ -92,7 +92,7 @@ describe('DiscussionSection', () => {
   it('labels moderator tombstones and keeps their replies readable without write actions', async () => {
     server.use(okMe('owner'), okDiscussion([asThread(post({ id: 'deleted', deletedAt: '2026-07-15T09:00:00.000Z', deletedBy: 'moderator' }), [asThread(post({ id: 'reply', parentPostId: 'deleted', rootPostId: 'deleted' }))])]));
     renderWithProviders(<DiscussionSection lessonId="l1" />);
-    expect(await screen.findByTestId('deleted-post-deleted')).toHaveTextContent(pl.discussion.moderatorDeletedPost);
+    expect(await screen.findByTestId('deleted-post-deleted')).toHaveTextContent(en.discussion.moderatorDeletedPost);
     expect(screen.getByTestId('post-body-reply')).toBeInTheDocument();
     expect(screen.queryByTestId('delete-button-deleted')).not.toBeInTheDocument();
     expect(screen.queryByTestId('edit-button-deleted')).not.toBeInTheDocument();
@@ -144,11 +144,11 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     const error = await screen.findByTestId('discussion-error');
-    expect(error).toHaveTextContent(pl.discussion.errorTitle);
-    expect(error).toHaveTextContent(pl.discussion.errorBody);
-    await userEvent.setup().click(within(error).getByRole('button', { name: pl.discussion.retry }));
+    expect(error).toHaveTextContent(en.discussion.errorTitle);
+    expect(error).toHaveTextContent(en.discussion.errorBody);
+    await userEvent.setup().click(within(error).getByRole('button', { name: en.discussion.retry }));
 
-    expect(await screen.findByTestId('discussion-empty')).toHaveTextContent(pl.discussion.empty);
+    expect(await screen.findByTestId('discussion-empty')).toHaveTextContent(en.discussion.empty);
     expect(reads).toBe(2);
   });
 
@@ -166,7 +166,7 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     expect(await screen.findByTestId('discussion-locked-note')).toHaveTextContent(
-      pl.discussion.lockedNote,
+      en.discussion.lockedNote,
     );
     expect(screen.queryByTestId(/^discussion-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-search-input')).not.toBeInTheDocument();
@@ -177,9 +177,9 @@ describe('DiscussionSection', () => {
 
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    expect(await screen.findByTestId('discussion-composer-input')).toHaveAttribute('placeholder', pl.discussion.composerPlaceholder);
+    expect(await screen.findByTestId('discussion-composer-input')).toHaveAttribute('placeholder', en.discussion.composerPlaceholder);
     expect(screen.getByTestId('discussion-composer-submit')).toBeDisabled();
-    expect(screen.getByTestId('discussion-empty')).toHaveTextContent(pl.discussion.empty);
+    expect(screen.getByTestId('discussion-empty')).toHaveTextContent(en.discussion.empty);
   });
 
   it('keeps the lesson input and send button visible before focus and after blur', async () => {
@@ -205,7 +205,7 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     expect(await screen.findByTestId('discussion-empty')).toHaveTextContent(
-      pl.discussion.emptyReadOnly,
+      en.discussion.emptyReadOnly,
     );
     expect(screen.queryByTestId('discussion-composer-input')).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-composer')).not.toBeInTheDocument();
@@ -217,7 +217,7 @@ describe('DiscussionSection', () => {
   it('disables the post write actions while viewing as a member', async () => {
     server.use(
       impersonatedMe(),
-      okDiscussion([asThread(post({ id: 'r1', isOwn: true, body: 'Mój wpis' }))]),
+      okDiscussion([asThread(post({ id: 'r1', isOwn: true, body: 'My post' }))]),
     );
 
     renderWithProviders(<DiscussionSection lessonId="l1" />);
@@ -229,10 +229,10 @@ describe('DiscussionSection', () => {
 
   it('renders three nesting levels with indentation, author chip and deleted placeholder', async () => {
     const level3 = asThread(
-      post({ id: 'c2', parentPostId: 'c1', rootPostId: 'r1', body: 'Trzeci poziom' }),
+      post({ id: 'c2', parentPostId: 'c1', rootPostId: 'r1', body: 'Third level' }),
     );
     const level2 = asThread(
-      post({ id: 'c1', parentPostId: 'r1', rootPostId: 'r1', body: 'Drugi poziom' }),
+      post({ id: 'c1', parentPostId: 'r1', rootPostId: 'r1', body: 'Second level' }),
       [level3],
     );
     const deleted = asThread(
@@ -240,17 +240,17 @@ describe('DiscussionSection', () => {
         id: 'c3',
         parentPostId: 'r1',
         rootPostId: 'r1',
-        body: 'Wpis usunięty',
+        body: 'Deleted post body',
         deletedAt: '2026-07-15T09:00:00.000Z',
       }),
     );
     const root = asThread(
       post({
         id: 'r1',
-        body: 'Pierwszy poziom',
+        body: 'First level',
         authorIsStaff: true,
-        authorDisplay: 'Marta Twórczyni',
-        authorAvatarUrl: 'https://cdn.test/marta.png',
+        authorDisplay: 'Martha Creator',
+        authorAvatarUrl: 'https://cdn.test/martha.png',
       }),
       [level2, deleted],
     );
@@ -258,16 +258,16 @@ describe('DiscussionSection', () => {
 
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    expect(await screen.findByTestId('post-body-r1')).toHaveTextContent('Pierwszy poziom');
-    expect(screen.getByTestId('author-chip-r1')).toHaveTextContent(pl.discussion.authorChip);
+    expect(await screen.findByTestId('post-body-r1')).toHaveTextContent('First level');
+    expect(screen.getByTestId('author-chip-r1')).toHaveTextContent(en.discussion.authorChip);
     expect(screen.queryByTestId('author-chip-c1')).not.toBeInTheDocument();
 
     const level2Container = within(screen.getByTestId('replies-of-r1'));
-    expect(level2Container.getByTestId('post-body-c1')).toHaveTextContent('Drugi poziom');
+    expect(level2Container.getByTestId('post-body-c1')).toHaveTextContent('Second level');
     const level3Container = within(screen.getByTestId('replies-of-c1'));
-    expect(level3Container.getByTestId('post-body-c2')).toHaveTextContent('Trzeci poziom');
+    expect(level3Container.getByTestId('post-body-c2')).toHaveTextContent('Third level');
 
-    expect(screen.getByTestId('deleted-post-c3')).toHaveTextContent(pl.discussion.deletedPost);
+    expect(screen.getByTestId('deleted-post-c3')).toHaveTextContent(en.discussion.deletedPost);
 
     expect(screen.getByTestId('reply-button-r1')).toBeInTheDocument();
     expect(screen.getByTestId('reply-button-c1')).toBeInTheDocument();
@@ -276,13 +276,13 @@ describe('DiscussionSection', () => {
     expect(screen.getByTestId('start-message-r1')).not.toHaveStyle({ padding: '0px' });
 
     expect(screen.getByTestId('reply-count-r1')).toHaveTextContent(
-      pl.discussion.replyCount({ count: 2 }),
+      en.discussion.replyCount({ count: 2 }),
     );
 
     const rootPost = within(screen.getByTestId('discussion-post-r1'));
     expect(rootPost.getAllByTestId('user-avatar-image')[0]).toHaveAttribute(
       'src',
-      'https://cdn.test/marta.png',
+      'https://cdn.test/martha.png',
     );
     expect(level2Container.queryByTestId('user-avatar-image')).toBeNull();
     expect(level2Container.getAllByTestId('user-avatar')[0]).toHaveTextContent('OA');
@@ -292,13 +292,13 @@ describe('DiscussionSection', () => {
     const bodies: unknown[] = [];
     const chain = (id: string, parentPostId: string, body: string, replies: DiscussionPost[] = []) =>
       asThread(post({ id, parentPostId, rootPostId: 'r1', body }), replies);
-    const c7 = chain('c7', 'c6', 'Poziom siódmy');
-    const c6 = chain('c6', 'c5', 'Poziom szósty', [c7]);
-    const c5 = chain('c5', 'c4', 'Poziom piąty', [c6]);
-    const c4 = chain('c4', 'c3', 'Poziom czwarty', [c5]);
-    const c3 = chain('c3', 'c2', 'Poziom trzeci', [c4]);
-    const c2 = chain('c2', 'r1', 'Poziom drugi', [c3]);
-    const root = asThread(post({ id: 'r1', body: 'Poziom pierwszy' }), [c2]);
+    const c7 = chain('c7', 'c6', 'Seventh level');
+    const c6 = chain('c6', 'c5', 'Sixth level', [c7]);
+    const c5 = chain('c5', 'c4', 'Fifth level', [c6]);
+    const c4 = chain('c4', 'c3', 'Fourth level', [c5]);
+    const c3 = chain('c3', 'c2', 'Third level', [c4]);
+    const c2 = chain('c2', 'r1', 'Second level', [c3]);
+    const root = asThread(post({ id: 'r1', body: 'First level' }), [c2]);
     server.use(
       okMe(),
       okDiscussion([root]),
@@ -317,33 +317,33 @@ describe('DiscussionSection', () => {
     const user = userEvent.setup();
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    expect(await screen.findByTestId('post-body-c5')).toHaveTextContent('Poziom piąty');
+    expect(await screen.findByTestId('post-body-c5')).toHaveTextContent('Fifth level');
     expect(screen.queryByTestId('post-body-c6')).not.toBeInTheDocument();
     const continueLink = screen.getByTestId('continue-thread-c5');
-    expect(continueLink).toHaveTextContent(pl.discussion.continueThread);
+    expect(continueLink).toHaveTextContent(en.discussion.continueThread);
 
     await user.click(continueLink);
 
     expect(screen.getByTestId('back-to-discussion')).toHaveTextContent(
-      pl.discussion.backToDiscussion,
+      en.discussion.backToDiscussion,
     );
     expect(screen.getByTestId('discussion-subthread-c5')).toBeInTheDocument();
-    expect(screen.getByTestId('post-body-c6')).toHaveTextContent('Poziom szósty');
-    expect(screen.getByTestId('post-body-c7')).toHaveTextContent('Poziom siódmy');
+    expect(screen.getByTestId('post-body-c6')).toHaveTextContent('Sixth level');
+    expect(screen.getByTestId('post-body-c7')).toHaveTextContent('Seventh level');
     expect(screen.queryByTestId('post-body-r1')).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId('reply-button-c7'));
-    await user.type(screen.getByTestId('reply-composer-c7-input'), 'Głębsza odpowiedź');
+    await user.type(screen.getByTestId('reply-composer-c7-input'), 'Deeper reply');
     await user.click(screen.getByTestId('reply-composer-c7-submit'));
 
     await waitFor(() =>
       expect(bodies).toEqual([
-        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Głębsza odpowiedź' },
+        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Deeper reply' },
       ]),
     );
 
     await user.click(screen.getByTestId('back-to-discussion'));
-    expect(await screen.findByTestId('post-body-r1')).toHaveTextContent('Poziom pierwszy');
+    expect(await screen.findByTestId('post-body-r1')).toHaveTextContent('First level');
     expect(screen.queryByTestId('post-body-c6')).not.toBeInTheDocument();
   });
 
@@ -355,9 +355,9 @@ describe('DiscussionSection', () => {
     });
     let replied = false;
     let discussionReads = 0;
-    const root = asThread(post({ id: 'r1', body: 'Pytanie o silnik' }));
+    const root = asThread(post({ id: 'r1', body: 'Question about the engine' }));
     const reply = asThread(
-      post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: 'Moja odpowiedź', isOwn: true, authorDisplay: 'Jan Uczestnik' }),
+      post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: 'My reply', isOwn: true, authorDisplay: 'John Participant' }),
     );
     server.use(
       okMe(),
@@ -387,17 +387,17 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     await user.click(await screen.findByTestId('reply-button-r1'));
-    await user.type(screen.getByTestId('reply-composer-r1-input'), 'Moja odpowiedź');
+    await user.type(screen.getByTestId('reply-composer-r1-input'), 'My reply');
     const readsBefore = discussionReads;
     await user.click(screen.getByTestId('reply-composer-r1-submit'));
 
-    expect(await screen.findByTestId('pending-post')).toHaveTextContent('Moja odpowiedź');
+    expect(await screen.findByTestId('pending-post')).toHaveTextContent('My reply');
     releasePost?.(undefined);
 
-    expect(await screen.findByTestId('post-body-n1')).toHaveTextContent('Moja odpowiedź');
+    expect(await screen.findByTestId('post-body-n1')).toHaveTextContent('My reply');
     expect(screen.queryByTestId('pending-post')).not.toBeInTheDocument();
     expect(bodies).toEqual([
-      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'Moja odpowiedź' },
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'My reply' },
     ]);
     expect(discussionReads).toBeGreaterThan(readsBefore);
   });
@@ -405,8 +405,8 @@ describe('DiscussionSection', () => {
   it('toggles thread follow and mute with a clear state', async () => {
     const muteCalls: unknown[] = [];
     const subscribeCalls: unknown[] = [];
-    const followed = asThread(post({ id: 'r1', body: 'Obserwowany wątek' }));
-    const fresh = asThread(post({ id: 'r2', rootPostId: 'r2', body: 'Nowy wątek' }));
+    const followed = asThread(post({ id: 'r1', body: 'Followed thread' }));
+    const fresh = asThread(post({ id: 'r2', rootPostId: 'r2', body: 'New thread' }));
     server.use(
       okMe(),
       okDiscussion([followed, fresh], { r1: 'subscribed' }),
@@ -424,26 +424,26 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     const followedToggle = await screen.findByTestId('follow-toggle-r1');
-    expect(followedToggle).toHaveTextContent(pl.discussion.following);
+    expect(followedToggle).toHaveTextContent(en.discussion.following);
     expect(followedToggle).toHaveAttribute('aria-pressed', 'true');
 
     const freshToggle = screen.getByTestId('follow-toggle-r2');
-    expect(freshToggle).toHaveTextContent(pl.discussion.follow);
+    expect(freshToggle).toHaveTextContent(en.discussion.follow);
     expect(freshToggle).toHaveAttribute('aria-pressed', 'false');
 
     await user.click(followedToggle);
     await waitFor(() => expect(muteCalls).toEqual([{ rootPostId: 'r1' }]));
-    expect(screen.getByTestId('follow-toggle-r1')).toHaveTextContent(pl.discussion.mutedState);
+    expect(screen.getByTestId('follow-toggle-r1')).toHaveTextContent(en.discussion.mutedState);
 
     await user.click(freshToggle);
     await waitFor(() => expect(subscribeCalls).toEqual([{ rootPostId: 'r2' }]));
-    expect(screen.getByTestId('follow-toggle-r2')).toHaveTextContent(pl.discussion.following);
+    expect(screen.getByTestId('follow-toggle-r2')).toHaveTextContent(en.discussion.following);
   });
 
   it('lets staff delete any post after a confirmation dialog', async () => {
     const deletedIds: string[] = [];
     let removed = false;
-    const root = asThread(post({ id: 'r1', body: 'Do moderacji', isOwn: false }));
+    const root = asThread(post({ id: 'r1', body: 'Needs moderation', isOwn: false }));
     server.use(
       okMe('owner'),
       http.get('/api/discussion', () =>
@@ -476,19 +476,19 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     await user.click(await screen.findByTestId('delete-button-r1'));
-    expect(await screen.findByText(pl.discussion.deleteConfirmTitle)).toBeInTheDocument();
+    expect(await screen.findByText(en.discussion.deleteConfirmTitle)).toBeInTheDocument();
 
     await user.click(screen.getByTestId('confirm-delete-post'));
 
     await waitFor(() => expect(deletedIds).toEqual(['r1']));
     expect(await screen.findByTestId('deleted-post-r1')).toHaveTextContent(
-      pl.discussion.deletedPost,
+      en.discussion.deletedPost,
     );
   });
 
   it('searches within this lesson and highlights matches', async () => {
     const requestedUrls: string[] = [];
-    const root = asThread(post({ id: 'r1', body: 'Wątek bazowy' }));
+    const root = asThread(post({ id: 'r1', body: 'Base thread' }));
     server.use(
       okMe(),
       okDiscussion([root]),
@@ -498,7 +498,7 @@ describe('DiscussionSection', () => {
           ok: true,
           data: {
             hits: [
-              { post: post({ id: 'h1', body: 'Pali silnik do dechy' }), lessonId: 'l1', snippet: 'Pali silnik do dechy' },
+              { post: post({ id: 'h1', body: 'The engine runs full throttle' }), lessonId: 'l1', snippet: 'The engine runs full throttle' },
             ],
           },
         });
@@ -509,16 +509,16 @@ describe('DiscussionSection', () => {
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     expect(await screen.findByTestId('discussion-search-hint')).toHaveTextContent(
-      pl.discussion.searchHint,
+      en.discussion.searchHint,
     );
-    await user.type(await screen.findByTestId('discussion-search-input'), 'silnik');
+    await user.type(await screen.findByTestId('discussion-search-input'), 'engine');
 
     const hit = await screen.findByTestId('search-hit-h1');
-    expect(hit).toHaveTextContent('Pali silnik do dechy');
-    expect(within(hit).getByText('silnik').tagName).toBe('MARK');
+    expect(hit).toHaveTextContent('The engine runs full throttle');
+    expect(within(hit).getByText('engine').tagName).toBe('MARK');
 
     const url = new URL(requestedUrls[requestedUrls.length - 1] ?? '');
-    expect(url.searchParams.get('query')).toBe('silnik');
+    expect(url.searchParams.get('query')).toBe('engine');
     expect(url.searchParams.getAll('lessonId')).toEqual(['l1']);
   });
 });

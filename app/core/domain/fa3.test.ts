@@ -9,14 +9,14 @@ const input = {
   seller: {
     nip: '5555555555',
     name: 'Together sp. z o.o.',
-    addressLine: 'Prosta 1, 00-001 Warszawa',
+    addressLine: '1 Simple St, 00-001 Warsaw',
   },
   buyer: {
     nip: '1111111111',
     name: 'Buyer sp. z o.o.',
-    addressLine: 'Testowa 2, 00-002 Warszawa',
+    addressLine: '2 Test St, 00-002 Warsaw',
   },
-  productName: 'Kurs & konsultacje',
+  productName: 'Course & consulting',
   grossAmountCents: 7900,
   discountCents: 2000,
   vat: { kind: 'rate' as const, percent: 23 as const },
@@ -30,10 +30,10 @@ const EXEMPT_FA3_FIXTURE =
   '<SystemInfo>Together</SystemInfo></Naglowek>' +
   '<Podmiot1><DaneIdentyfikacyjne><NIP>5555555555</NIP><Nazwa>Together sp. z o.o.</Nazwa>' +
   '</DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju>' +
-  '<AdresL1>Prosta 1, 00-001 Warszawa</AdresL1></Adres></Podmiot1>' +
+  '<AdresL1>1 Simple St, 00-001 Warsaw</AdresL1></Adres></Podmiot1>' +
   '<Podmiot2><DaneIdentyfikacyjne><NIP>1111111111</NIP><Nazwa>Buyer sp. z o.o.</Nazwa>' +
   '</DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju>' +
-  '<AdresL1>Testowa 2, 00-002 Warszawa</AdresL1></Adres><JST>2</JST><GV>2</GV></Podmiot2>' +
+  '<AdresL1>2 Test St, 00-002 Warsaw</AdresL1></Adres><JST>2</JST><GV>2</GV></Podmiot2>' +
   '<Fa><KodWaluty>PLN</KodWaluty><P_1>2026-07-27</P_1><P_2>FV/2026/000001</P_2>' +
   '<P_13_7>123.45</P_13_7><P_15>123.45</P_15><Adnotacje><P_16>2</P_16><P_17>2</P_17>' +
   '<P_18>2</P_18><P_18A>2</P_18A><Zwolnienie><P_19>1</P_19>' +
@@ -41,7 +41,7 @@ const EXEMPT_FA3_FIXTURE =
   '<NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu><P_23>2</P_23>' +
   '<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy></Adnotacje><RodzajFaktury>VAT</RodzajFaktury>' +
   '<FaWiersz><NrWierszaFa>1</NrWierszaFa>' +
-  '<P_7>Kurs &amp; konsultacje (rabat kuponowy: 20.00 PLN)</P_7>' +
+  '<P_7>Course &amp; consulting (rabat kuponowy: 20.00 PLN)</P_7>' +
   '<P_8A>szt.</P_8A><P_8B>1</P_8B><P_9A>123.45</P_9A><P_11>123.45</P_11>' +
   '<P_12>zw</P_12></FaWiersz></Fa></Faktura>\n';
 
@@ -57,7 +57,7 @@ describe('FA(3) renderer', () => {
     expect(first.indexOf('<P_13_1>')).toBeLessThan(first.indexOf('<P_14_1>'));
     expect(first.indexOf('<P_14_1>')).toBeLessThan(first.indexOf('<P_15>'));
     expect(first).toContain('<P_15>79.00</P_15>');
-    expect(first).toContain('<P_7>Kurs &amp; konsultacje (rabat kuponowy: 20.00 PLN)</P_7>');
+    expect(first).toContain('<P_7>Course &amp; consulting (rabat kuponowy: 20.00 PLN)</P_7>');
   });
 
   it.each([
@@ -95,10 +95,10 @@ describe('FA(3) renderer', () => {
   it('uses P_19C for another legal basis and escapes its text', () => {
     const xml = renderFa3Invoice({
       ...input,
-      vat: { kind: 'exempt', basisKind: 'other', basis: '§ 1 & < " rozporządzenia' },
+      vat: { kind: 'exempt', basisKind: 'other', basis: 'Section 1 & < " of the regulation' },
     });
 
-    expect(xml).toContain('<P_19C>§ 1 &amp; &lt; &quot; rozporządzenia</P_19C>');
+    expect(xml).toContain('<P_19C>Section 1 &amp; &lt; &quot; of the regulation</P_19C>');
   });
 
   it('caps a normalized exemption basis at 256 characters', () => {
@@ -137,15 +137,15 @@ describe('FA(3) renderer', () => {
       ...input,
       buyer: {
         nip: null,
-        name: 'Jan Kowalski',
-        addressLine: 'Testowa 3, 00-003 Warszawa',
+        name: 'John Smith',
+        addressLine: '3 Test St, 00-003 Warsaw',
       },
       discountCents: 0,
     });
 
     expect(xml).toContain('<BrakID>1</BrakID>');
-    expect(xml).toContain('<Nazwa>Jan Kowalski</Nazwa>');
-    expect(xml).toContain('<AdresL1>Testowa 3, 00-003 Warszawa</AdresL1>');
+    expect(xml).toContain('<Nazwa>John Smith</Nazwa>');
+    expect(xml).toContain('<AdresL1>3 Test St, 00-003 Warsaw</AdresL1>');
     expect(xml).not.toContain('<NIP>1111111111</NIP>');
     expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
   });

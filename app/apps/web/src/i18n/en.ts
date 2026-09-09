@@ -3,6 +3,7 @@ import { format, type Messages } from './messages.js';
 const plural = (count: number, one: string, other: string): string => (count === 1 ? one : other);
 
 export const en: Messages = {
+  deletedContent: { member: 'Deleted account', post: 'Deleted post' },
   common: {
     appName: 'Together',
     language: 'Language',
@@ -890,6 +891,7 @@ export const en: Messages = {
     bunnyLibraryIdLabel: 'Library id',
     bunnyLibraryIdHelper: 'Find it in the Bunny dashboard → Stream → your library → API.',
     bunnyCdnHostnameLabel: 'Stream CDN hostname',
+    bunnyCdnHostnamePlaceholder: 'vz-xxxxxxx-xxx.b-cdn.net',
     bunnyCdnHostnameHelper:
       'Found in your Bunny Stream library → Delivery. Needed for native app playback.',
     bunnySaveFirst: 'Save the API key and library id first to test the connection.',

@@ -8,8 +8,10 @@ architecture spec is normative).
 This is a public repository. Everything that lands in it or on GitHub is written in
 **English**: code, identifiers, comments, commit messages, pull request titles and
 bodies, review comments, issue text, workflow output (bot comments, deployment
-descriptions), docs. Polish belongs only to product copy (i18n bundles) and to
-private, owner-facing notes outside this repository. Commits and pull requests carry
+descriptions), docs. English is the product default. Polish is allowed only in
+`apps/web/src/i18n/pl.ts`, `*.pl.ts` translation dictionaries, official KSeF/FA(3)
+XSD schemas, immutable SQL migrations, `CLA.md`, and legally required Polish
+invoicing/VAT wording. Tests, fixtures, stories, scripts, and seed content use English. Commits and pull requests carry
 no tool or session attribution (no generated-by footers, no session links); the
 provenance trail lives in the private notes.
 
@@ -17,7 +19,7 @@ provenance trail lives in the private notes.
 
 - `pnpm run check` = `typecheck` + `typecheck:islands` + `lint` + `lock-lint` +
   `license-lint` + `migration-lint` + `tenant-scope-check` + `tenant-neutral-lint` +
-  `depcruise` + `knip` + `doc-lint` + `test` —
+  `depcruise` + `knip` + `doc-lint` + `language-lint` + `test` —
   the **static** gate.
 - `pnpm run smoke` = the **runtime** gate: it verifies the installed dependency
   tree matches `pnpm-lock.yaml`, drops+recreates an isolated
@@ -55,7 +57,8 @@ Visual verification has zero retries.
 
 ## Storybook and visual verification
 
-Story titles, names and descriptions must be ASCII English; Polish belongs only in rendered product content from fixtures or i18n.
+Story titles, names, descriptions, and fixtures must be English. Localized Polish
+product copy comes from translation dictionaries.
 
 ## Alerting (owner decision 2026-09-06 — HARD RULE)
 

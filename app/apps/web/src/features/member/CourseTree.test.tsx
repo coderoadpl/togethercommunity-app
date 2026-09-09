@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CourseTree } from './CourseTree.js';
@@ -189,13 +189,13 @@ describe('CourseTree', () => {
     const partial = screen.getByTestId('lesson-button-l3');
     expect(partial.tagName).toBe('A');
     expect(within(partial).getByTestId('lock-open')).toBeInTheDocument();
-    expect(within(partial).getByText(pl.courseTree.accessPartiallyUnlocked)).toBeInTheDocument();
+    expect(within(partial).getByText(en.courseTree.accessPartiallyUnlocked)).toBeInTheDocument();
 
     const locked = screen.getByTestId('lesson-button-l4');
     expect(locked.tagName).not.toBe('A');
     expect(locked).toHaveClass('Mui-disabled');
     expect(within(locked).getByTestId('lock-closed')).toBeInTheDocument();
-    expect(within(locked).getByText(pl.courseTree.accessLocked)).toBeInTheDocument();
+    expect(within(locked).getByText(en.courseTree.accessLocked)).toBeInTheDocument();
   });
 
   it('shows a completion checkmark per lesson and a done/total count per chapter and module', async () => {
@@ -203,7 +203,7 @@ describe('CourseTree', () => {
 
     const completedLesson = await screen.findByTestId('lesson-button-l1');
     expect(within(completedLesson).getByTestId('completion-mark')).toHaveAccessibleName(
-      pl.courseTree.completionComplete,
+      en.courseTree.completionComplete,
     );
 
     const module = screen.getByTestId('module-toggle-m1');
@@ -274,14 +274,14 @@ describe('CourseTree', () => {
     await renderTree();
 
     await screen.findByText('Intro to Variables');
-    expect(screen.getByTestId('lesson-search-hint')).toHaveTextContent(pl.courseTree.filterHint);
-    expect(screen.queryByText(pl.search.stemHint)).not.toBeInTheDocument();
+    expect(screen.getByTestId('lesson-search-hint')).toHaveTextContent(en.courseTree.filterHint);
+    expect(screen.queryByText(en.search.stemHint)).not.toBeInTheDocument();
 
     await user.type(screen.getByTestId('lesson-search'), 'nieistniejaca');
 
     const empty = await screen.findByTestId('tree-no-results');
-    expect(empty).toHaveTextContent(pl.courseTree.noMatches);
-    expect(empty).toHaveTextContent(pl.search.stemHint);
+    expect(empty).toHaveTextContent(en.courseTree.noMatches);
+    expect(empty).toHaveTextContent(en.search.stemHint);
   });
 
   it('keeps module and chapter counts on the full structure while filtering', async () => {
@@ -438,7 +438,7 @@ describe('CourseTree', () => {
     expect(screen.getByTestId('chapter-toggle-c1')).toHaveAttribute('title', 'Getting started');
     expect(screen.getByTestId('lesson-button-l4').parentElement).toHaveAttribute(
       'title',
-      pl.courseTree.lockedLessonTooltip({ name: 'Closures Deep Dive' }),
+      en.courseTree.lockedLessonTooltip({ name: 'Closures Deep Dive' }),
     );
   });
 

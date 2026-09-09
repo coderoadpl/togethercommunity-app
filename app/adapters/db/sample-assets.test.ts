@@ -15,7 +15,7 @@ describe('SAMPLE_LESSON_PDF_URL', () => {
     const parsed = lessonBlockSchema.safeParse({
       type: 'pdf',
       pdfUrl: SAMPLE_LESSON_PDF_URL,
-      name: 'Ściąga',
+      name: 'Cheat sheet',
     });
     expect(parsed.success).toBe(true);
   });

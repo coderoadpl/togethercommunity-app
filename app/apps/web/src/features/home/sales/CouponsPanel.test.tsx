@@ -10,7 +10,7 @@ import {
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { CouponCreatePage, CouponDetailPage, CouponsPanel } from './CouponsPanel.js';
@@ -104,8 +104,8 @@ describe('coupon sales surfaces', () => {
     renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByTestId('coupon-row')).toHaveTextContent('PARTNER20');
-    expect(screen.getByTestId('coupon-row')).toHaveTextContent('80,00');
-    await userEvent.click(screen.getByRole('button', { name: pl.coupons.nextPage }));
+    expect(screen.getByTestId('coupon-row')).toHaveTextContent('80.00');
+    await userEvent.click(screen.getByRole('button', { name: en.coupons.nextPage }));
     await waitFor(() =>
       expect(queries.some((query) => query.includes('cursorId=coupon-1'))).toBe(true),
     );
@@ -145,10 +145,10 @@ describe('coupon sales surfaces', () => {
     await router.load();
     renderWithProviders(<RouterProvider router={router} />);
 
-    await userEvent.type(await screen.findByLabelText(pl.coupons.code), 'partner20');
-    await userEvent.type(screen.getByLabelText(pl.coupons.valuePercent), '20');
-    await userEvent.type(screen.getByLabelText(pl.coupons.partner), 'Partner A');
-    await userEvent.click(screen.getByRole('button', { name: pl.coupons.create }));
+    await userEvent.type(await screen.findByLabelText(en.coupons.code), 'partner20');
+    await userEvent.type(screen.getByLabelText(en.coupons.valuePercent), '20');
+    await userEvent.type(screen.getByLabelText('Partner'), 'Partner A');
+    await userEvent.click(screen.getByRole('button', { name: en.coupons.create }));
 
     await screen.findByText('detail');
     expect(payloads).toMatchObject([{
@@ -194,10 +194,10 @@ describe('coupon sales surfaces', () => {
     renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByText('50%')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.coupons.archive }));
+    await userEvent.click(screen.getByRole('button', { name: en.coupons.archive }));
     expect(archived).toBe(false);
-    expect(await screen.findByText(pl.coupons.archiveConfirmTitle)).toBeInTheDocument();
-    expect(screen.getByText(pl.coupons.archiveConfirmBody({ code: coupon.code }))).toBeInTheDocument();
+    expect(await screen.findByText(en.coupons.archiveConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.coupons.archiveConfirmBody({ code: coupon.code }))).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('coupon-archive-confirm'));
     await waitFor(() => expect(archived).toBe(true));
   });

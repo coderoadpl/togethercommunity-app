@@ -174,7 +174,7 @@ describe('exportMyData', () => {
     const result = await exportMyData(context('member'), deps());
     expect(result).toMatchObject({
       ok: true,
-      value: { filename: 'moje-dane-acme-2026-07-29.json' },
+      value: { filename: 'my-data-acme-2026-07-29.json' },
     });
     if (!result.ok) return;
     expect(JSON.parse(result.value.content)).toMatchObject({
@@ -186,6 +186,19 @@ describe('exportMyData', () => {
         invoiceNumber: invoice.invoiceNumber,
         providerInvoiceId: invoice.providerInvoiceId,
       }],
+    });
+  });
+
+  it.each([
+    { language: 'pl', prefix: 'moje-dane' },
+    { language: 'en', prefix: 'my-data' },
+    { language: undefined, prefix: 'my-data' },
+    { language: null, prefix: 'my-data' },
+  ] as const)('names the export for member language $language', async ({ language, prefix }) => {
+    const result = await exportMyData(context('member'), deps({ ...member, language }));
+    expect(result).toMatchObject({
+      ok: true,
+      value: { filename: `${prefix}-acme-2026-07-29.json` },
     });
   });
 

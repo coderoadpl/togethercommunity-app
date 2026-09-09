@@ -8,7 +8,7 @@ const renderLogo = (surface: LogoSurface) => {
     <LogoImage
       surface={surface}
       src="/assets/wordmark.svg"
-      alt="Akademia Samouka"
+      alt="Self-learning Academy"
       data-testid="logo"
     />,
   );
@@ -17,7 +17,7 @@ const renderLogo = (surface: LogoSurface) => {
 
 describe('LogoImage', () => {
   it('names the mark with the tenant name', () => {
-    expect(renderLogo('sidebar')).toHaveAttribute('alt', 'Akademia Samouka');
+    expect(renderLogo('sidebar')).toHaveAttribute('alt', 'Self-learning Academy');
   });
 
   it('stays inside its container instead of overflowing a wide wordmark', () => {
@@ -46,7 +46,7 @@ describe('LogoImage', () => {
       <LogoImage
         surface="card"
         src="/assets/wordmark.svg"
-        alt="Akademia Samouka"
+        alt="Self-learning Academy"
         data-testid="spaced-logo"
         sx={{ mb: '0.45rem' }}
       />,

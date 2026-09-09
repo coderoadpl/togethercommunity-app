@@ -22,7 +22,7 @@ import {
   type SpaceFeedItem,
 } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -43,7 +43,7 @@ const okMe = (staffRole: 'owner' | 'admin' | null = null) =>
         userId: 'u1',
         email: 'user@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Participant',
         tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole, memberId: 'm1', banned: false },
       },
     }),
@@ -57,13 +57,13 @@ const impersonatedMe = () =>
         userId: 'u1',
         email: 'user@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Participant',
         tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
         impersonation: {
           id: 'imp-1',
           subjectMemberId: 'm1',
-          subjectName: 'Jan Uczestnik',
-          actorName: 'Ola Operatorka',
+          subjectName: 'John Participant',
+          actorName: 'Olivia Operator',
           expiresAt: '2026-07-20T10:00:00.000Z',
         },
       },
@@ -80,7 +80,7 @@ const anonMe = () =>
 
 const publicNavigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
   defaultHomeSpaceId: 's1',
-  spaces: [{ id: 's1', slug: 's1', name: 'Ogólna', description: 'Rozmowy o kamperze.', position: 0 }],
+  spaces: [{ id: 's1', slug: 's1', name: 'General', description: 'Camper conversations.', position: 0 }],
   courses: [],
   lockedSpaces: [
     { id: 'gated', slug: 'premium', name: 'Premium', description: null, productIds: ['p1'] },
@@ -114,8 +114,8 @@ const noNotifications = () =>
 const space = (input: Partial<MemberSpace> & { id: string }): MemberSpace => ({
   tenantId: 't1',
   slug: input.id,
-  name: 'Strefa Społeczność',
-  description: 'Rozmowy o kamperze.',
+  name: 'Community Space',
+  description: 'Camper conversations.',
   visibility: 'members',
   productIds: [],
   publicReadOnly: false,
@@ -133,10 +133,10 @@ const feedItem = (input: Partial<SpaceFeedItem> & { id: string }): SpaceFeedItem
   parentPostId: null,
   rootPostId: input.id,
   isOwn: false,
-  authorDisplay: 'Ola Autorka',
+  authorDisplay: 'Olivia Author',
   authorIsStaff: false,
   authorAvatarUrl: null,
-  body: 'Pierwszy wpis w strefie',
+  body: 'First post in the space',
   createdAt: '2026-07-20T08:00:00.000Z',
   editedAt: null,
   deletedAt: null,
@@ -170,7 +170,7 @@ const okFeed = (spaceId: string, items: SpaceFeedItem[], isFollowing = false) =>
 const forbiddenFeed = () =>
   http.get('/api/spaces/:spaceId/feed', () =>
     HttpResponse.json(
-      { ok: false, error: { code: 'forbidden', message: 'Brak dostępu' } },
+      { ok: false, error: { code: 'forbidden', message: 'No access' } },
       { status: 403 },
     ),
   );
@@ -271,13 +271,13 @@ describe('community pages', () => {
     server.use(
       okMe(),
       noNotifications(),
-      okSpaces([space({ id: 's1', name: 'Ogólna', isFollowing: true })]),
+      okSpaces([space({ id: 's1', name: 'General', isFollowing: true })]),
     );
 
     await renderPage(SpacesListPage, '/community');
 
-    expect(await screen.findByTestId('space-card-s1')).toHaveTextContent('Ogólna');
-    expect(screen.getByTestId('space-following-s1')).toHaveTextContent(pl.community.followingChip);
+    expect(await screen.findByTestId('space-card-s1')).toHaveTextContent('General');
+    expect(screen.getByTestId('space-following-s1')).toHaveTextContent(en.community.followingChip);
     expect(screen.queryByTestId('space-card-gated')).not.toBeInTheDocument();
   });
 
@@ -286,18 +286,18 @@ describe('community pages', () => {
       okMe(),
       noNotifications(),
       okSpaces([
-        space({ id: 'public', name: 'Publiczna', publicReadOnly: true }),
-        space({ id: 'members', name: 'Klub' }),
+        space({ id: 'public', name: 'Public', publicReadOnly: true }),
+        space({ id: 'members', name: 'Club' }),
         space({
           id: 'buyers',
-          name: 'Kupujący',
+          name: 'Buyers',
           visibility: 'product',
           productIds: ['p1'],
-          products: [{ id: 'p1', title: 'Program Pro' }],
+          products: [{ id: 'p1', title: 'Pro Program' }],
         }),
         space({
           id: 'buyers-fallback',
-          name: 'Kupujący bez produktu',
+          name: 'Buyers without product',
           visibility: 'product',
           productIds: ['p2'],
         }),
@@ -307,19 +307,19 @@ describe('community pages', () => {
     await renderPage(SpacesListPage, '/community');
 
     const publicChip = await screen.findByTestId('space-visibility-public');
-    expect(publicChip).toHaveTextContent(pl.community.publicReadOnly);
+    expect(publicChip).toHaveTextContent(en.community.publicReadOnly);
     expect(publicChip.querySelector('svg')).toHaveClass('MuiChip-icon');
 
     const membersChip = screen.getByTestId('space-visibility-members');
-    expect(membersChip).toHaveTextContent(pl.community.membersOnly);
+    expect(membersChip).toHaveTextContent(en.community.membersOnly);
     expect(membersChip.querySelector('svg')).toHaveClass('MuiChip-icon');
 
     const buyersChip = screen.getByTestId('space-visibility-buyers');
-    expect(buyersChip).toHaveTextContent(pl.community.productGatedFor({ product: 'Program Pro' }));
+    expect(buyersChip).toHaveTextContent(en.community.productGatedFor({ product: 'Pro Program' }));
     expect(buyersChip.querySelector('svg')).toHaveClass('MuiChip-icon');
 
     const fallbackChip = screen.getByTestId('space-visibility-buyers-fallback');
-    expect(fallbackChip).toHaveTextContent(pl.community.productGated);
+    expect(fallbackChip).toHaveTextContent(en.community.productGated);
     expect(fallbackChip.querySelector('svg')).toHaveClass('MuiChip-icon');
   });
 
@@ -327,32 +327,32 @@ describe('community pages', () => {
     server.use(
       okMe(),
       noNotifications(),
-      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okSpaces([space({ id: 's1', name: 'General' })]),
       okFeed('s1', [
         feedItem({
           id: 'p1',
-          body: 'Cześć wszystkim',
+          body: 'Hello everyone',
           replyCount: 3,
           reactions: [{ emoji: '👍', count: 2, viewerReacted: false }],
-          authorAvatarUrl: 'https://cdn.test/ola.png',
+          authorAvatarUrl: 'https://cdn.test/olivia.png',
         }),
-        feedItem({ id: 'p2', body: 'Drugi wpis' }),
+        feedItem({ id: 'p2', body: 'Second post' }),
       ]),
       okSeen(),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    expect(await screen.findByRole('heading', { name: 'Ogólna' })).toBeInTheDocument();
-    expect(screen.getByTestId('post-body-p1')).toHaveTextContent('Cześć wszystkim');
-    expect(screen.getByTestId('reply-count-p1')).toHaveTextContent(pl.discussion.replyCount({ count: 3 }));
+    expect(await screen.findByRole('heading', { name: 'General' })).toBeInTheDocument();
+    expect(screen.getByTestId('post-body-p1')).toHaveTextContent('Hello everyone');
+    expect(screen.getByTestId('reply-count-p1')).toHaveTextContent(en.discussion.replyCount({ count: 3 }));
     expect(screen.getByTestId('reaction-p1-👍')).toHaveTextContent('2');
     expect(screen.queryByTestId('reaction-p1-🎉')).not.toBeInTheDocument();
     expect(screen.getByTestId('open-thread-p1')).toHaveAttribute('href', '/community/s1/posts/p1');
     expect(screen.getByTestId('feed-post-p2')).toBeInTheDocument();
     expect(within(screen.getByTestId('feed-post-p1')).getByTestId('user-avatar-image')).toHaveAttribute(
       'src',
-      'https://cdn.test/ola.png',
+      'https://cdn.test/olivia.png',
     );
     const plainPost = within(screen.getByTestId('feed-post-p2'));
     expect(plainPost.queryByTestId('user-avatar-image')).toBeNull();
@@ -363,7 +363,7 @@ describe('community pages', () => {
     server.use(
       okMe(),
       noNotifications(),
-      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okSpaces([space({ id: 's1', name: 'General' })]),
       okFeed('s1', [feedItem({ id: 'p1', body: markupLikeBody })]),
       okSeen(),
     );
@@ -384,7 +384,7 @@ describe('community pages', () => {
     server.use(
       okMe(),
       noNotifications(),
-      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okSpaces([space({ id: 's1', name: 'General' })]),
       okDiscussion([
         {
           ...feedItem({ id: 'p1', body: markupLikeBody }),
@@ -425,11 +425,11 @@ describe('community pages', () => {
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
     await user.click(await screen.findByTestId('space-composer-input'));
-    await user.type(await screen.findByTestId('space-composer-input'), 'Mój nowy wpis');
+    await user.type(await screen.findByTestId('space-composer-input'), 'My new post');
     await user.click(screen.getByTestId('space-composer-submit'));
 
     await waitFor(() =>
-      expect(bodies).toEqual([{ contextKind: 'space', contextId: 's1', body: 'Mój nowy wpis' }]),
+      expect(bodies).toEqual([{ contextKind: 'space', contextId: 's1', body: 'My new post' }]),
     );
   });
 
@@ -468,16 +468,16 @@ describe('community pages', () => {
     server.use(
       okMe(),
       noNotifications(),
-      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
-      okDiscussion([{ ...feedItem({ id: 'p1', body: 'Obserwowany wątek' }), replies: [] }]),
+      okSpaces([space({ id: 's1', name: 'General' })]),
+      okDiscussion([{ ...feedItem({ id: 'p1', body: 'Followed thread' }), replies: [] }]),
     );
 
     await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
 
     const crumbs = await screen.findByTestId('member-breadcrumbs');
-    expect(within(crumbs).getByRole('link', { name: 'Ogólna' })).toHaveAttribute('href', '/community/s1');
-    expect(within(crumbs).getByRole('link', { name: pl.community.heading })).toBeVisible();
-    expect(within(crumbs).queryByText(pl.community.threadTitle)).toBeNull();
+    expect(within(crumbs).getByRole('link', { name: 'General' })).toHaveAttribute('href', '/community/s1');
+    expect(within(crumbs).getByRole('link', { name: en.community.heading })).toBeVisible();
+    expect(within(crumbs).queryByText(en.community.threadTitle)).toBeNull();
   });
 
   it('adds an unused reaction through the picker popover', async () => {
@@ -527,7 +527,7 @@ describe('community pages', () => {
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
     const prompt = await screen.findByTestId('space-composer-input');
-    expect(prompt).toHaveAttribute('placeholder', pl.community.composerPlaceholder);
+    expect(prompt).toHaveAttribute('placeholder', en.community.composerPlaceholder);
     expect(screen.getByTestId('space-composer-submit')).toBeDisabled();
 
     await user.click(prompt);
@@ -569,9 +569,9 @@ describe('community pages', () => {
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
     await userEvent.click(await screen.findByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
-    expect(await screen.findByText(pl.discussion.deleteConfirmTitle)).toBeInTheDocument();
-    expect(screen.getByText(pl.discussion.deleteConfirmBody)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
+    expect(await screen.findByText(en.discussion.deleteConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.discussion.deleteConfirmBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.common.cancel }));
     expect(deletedIds).toEqual([]);
     await userEvent.click(screen.getByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
@@ -586,9 +586,9 @@ describe('community pages', () => {
       okFeed('s1', [feedItem({ id: 'p1', isOwn: true, replyCount: 2, deletedAt: '2026-07-20T09:00:00.000Z', deletedBy })]));
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
     expect(await screen.findByTestId('deleted-post-p1')).toHaveTextContent(
-      deletedBy === 'moderator' ? pl.discussion.moderatorDeletedPost : pl.discussion.deletedPost,
+      deletedBy === 'moderator' ? en.discussion.moderatorDeletedPost : en.discussion.deletedPost,
     );
-    expect(screen.queryByRole('button', { name: pl.community.pin })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.community.pin })).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('post-menu-p1'));
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(screen.getByTestId('copy-link-p1')).toBeInTheDocument();
@@ -630,7 +630,7 @@ describe('community pages', () => {
     await user.click(await screen.findByTestId('post-menu-p1'));
     await user.click(await screen.findByTestId('copy-link-p1'));
 
-    expect(await screen.findByText(pl.community.copyLinkDone)).toBeInTheDocument();
+    expect(await screen.findByText(en.community.copyLinkDone)).toBeInTheDocument();
     expect(await navigator.clipboard.readText()).toBe(
       `${window.location.origin}/community/s1/posts/p1`,
     );
@@ -652,19 +652,19 @@ describe('community pages', () => {
     expect(screen.getByTestId('start-message-p1')).toBeInTheDocument();
     await user.click(screen.getByTestId('report-post-p1'));
 
-    expect(await screen.findByRole('dialog')).toHaveTextContent(pl.community.reportTitle);
+    expect(await screen.findByRole('dialog')).toHaveTextContent(en.community.reportTitle);
   });
 
   it('mutes a followed thread from the space thread surface', async () => {
     const muteCalls: unknown[] = [];
     const root: DiscussionPost = {
-      ...feedItem({ id: 'p1', body: 'Obserwowany wątek' }),
+      ...feedItem({ id: 'p1', body: 'Followed thread' }),
       replies: [],
     };
     server.use(
       okMe(),
       noNotifications(),
-      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okSpaces([space({ id: 's1', name: 'General' })]),
       okDiscussion([root], { p1: 'subscribed' }),
       http.post('/api/discussion/mute', async ({ request }) => {
         muteCalls.push(await request.json());
@@ -676,11 +676,11 @@ describe('community pages', () => {
     await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
 
     const toggle = await screen.findByTestId('follow-toggle-p1');
-    expect(toggle).toHaveTextContent(pl.discussion.following);
+    expect(toggle).toHaveTextContent(en.discussion.following);
     await user.click(toggle);
 
     await waitFor(() => expect(muteCalls).toEqual([{ rootPostId: 'p1' }]));
-    expect(screen.getByTestId('follow-toggle-p1')).toHaveTextContent(pl.discussion.mutedState);
+    expect(screen.getByTestId('follow-toggle-p1')).toHaveTextContent(en.discussion.mutedState);
   });
 
   it('marks the space seen once it opens and again after posting', async () => {
@@ -706,7 +706,7 @@ describe('community pages', () => {
     await waitFor(() => expect(seenCalls).toEqual(['s1']));
 
     await user.click(await screen.findByTestId('space-composer-input'));
-    await user.type(await screen.findByTestId('space-composer-input'), 'Mój nowy wpis');
+    await user.type(await screen.findByTestId('space-composer-input'), 'My new post');
     await user.click(screen.getByTestId('space-composer-submit'));
 
     await waitFor(() => expect(seenCalls).toEqual(['s1', 's1']));
@@ -743,13 +743,13 @@ describe('community pages', () => {
       impersonatedMe(),
       noNotifications(),
       okSpaces([space({ id: 's1' })]),
-      okFeed('s1', [feedItem({ id: 'p1', body: 'Cześć' })]),
+      okFeed('s1', [feedItem({ id: 'p1', body: 'Hi' })]),
       okSeen(seenCalls),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    expect(await screen.findByText('Cześć')).toBeInTheDocument();
+    expect(await screen.findByText('Hi')).toBeInTheDocument();
     expect(seenCalls).toEqual([]);
     expect(screen.queryByTestId('space-composer-input')).not.toBeInTheDocument();
   });
@@ -766,25 +766,25 @@ describe('community pages', () => {
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
     expect(await screen.findByTestId('feed-empty-state')).toHaveTextContent(
-      pl.community.emptyFeedReadOnly,
+      en.community.emptyFeedReadOnly,
     );
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
-    expect(screen.queryByText(pl.community.emptyFeed)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.community.emptyFeed)).not.toBeInTheDocument();
   });
 
   it('hides a gated space the member cannot access behind a not-found state', async () => {
     server.use(
       okMe(),
       noNotifications(),
-      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okSpaces([space({ id: 's1', name: 'General' })]),
       forbiddenFeed(),
       okMemberNavigation([]),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
 
-    expect((await screen.findAllByText(pl.community.spaceNotFoundTitle)).length).toBeGreaterThan(0);
-    expect(screen.getByText(pl.community.spaceNotFoundBody)).toBeInTheDocument();
+    expect((await screen.findAllByText(en.community.spaceNotFoundTitle)).length).toBeGreaterThan(0);
+    expect(screen.getByText(en.community.spaceNotFoundBody)).toBeInTheDocument();
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('feed-post-p1')).not.toBeInTheDocument();
   });
@@ -793,10 +793,10 @@ describe('community pages', () => {
     server.use(
       okMe(),
       noNotifications(),
-      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okSpaces([space({ id: 's1', name: 'General' })]),
       forbiddenFeed(),
       okMemberNavigation([
-        { id: 'gated', slug: 'premium', name: 'Premium', description: 'Tylko dla kursantów.', productIds: ['p1'] },
+        { id: 'gated', slug: 'premium', name: 'Premium', description: 'Only for students.', productIds: ['p1'] },
       ]),
     );
 
@@ -805,7 +805,7 @@ describe('community pages', () => {
     expect(await screen.findByTestId('locked-space-view')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Premium' })).toBeInTheDocument();
     expect(screen.getByTestId('locked-space-cta-gated')).toHaveAttribute('href', '/checkout/p1');
-    expect(screen.queryByText(pl.community.spaceNotFoundTitle)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.community.spaceNotFoundTitle)).not.toBeInTheDocument();
     expect(screen.queryByTestId('member-breadcrumbs')).not.toBeInTheDocument();
   });
 
@@ -813,12 +813,12 @@ describe('community pages', () => {
     server.use(
       anonMe(),
       okPublicNavigation(),
-      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Publiczny wpis https://courses.example.org/guide.', replyCount: 2 })]),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post https://courses.example.org/guide.', replyCount: 2 })]),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Publiczny wpis');
+    expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Public post');
     const body = screen.getByTestId('public-post-body-p1');
     expect(body).toHaveStyle({ marginTop: '0.75rem' });
     expect(within(body).getByRole('link')).toHaveAttribute('href', 'https://courses.example.org/guide');
@@ -828,10 +828,10 @@ describe('community pages', () => {
       'href',
       '/community/s1/posts/p1',
     );
-    expect(screen.getByTestId('anon-read-only')).toHaveTextContent(pl.anon.readOnlyBanner);
+    expect(screen.getByTestId('anon-read-only')).toHaveTextContent(en.anon.readOnlyBanner);
     const cta = screen.getByTestId('anon-join-cta');
     expect(cta).toHaveAttribute('href', '/#offer');
-    expect(cta).toHaveTextContent(pl.anon.joinOfferCta);
+    expect(cta).toHaveTextContent(en.anon.joinOfferCta);
     expect(cta).toHaveStyle({ width: '100%', minHeight: '44px' });
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
@@ -856,7 +856,7 @@ describe('community pages', () => {
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
     expect(await screen.findByTestId('anon-space-description')).toHaveTextContent(
-      'Rozmowy o kamperze.',
+      'Camper conversations.',
     );
   });
 
@@ -866,7 +866,7 @@ describe('community pages', () => {
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
     expect(await screen.findByTestId('public-feed-empty-state')).toHaveTextContent(
-      pl.anon.emptyFeed,
+      en.anon.emptyFeed,
     );
   });
 
@@ -885,8 +885,8 @@ describe('community pages', () => {
       okPublicNavigation(),
       okPublicThread([
         {
-          ...feedItem({ id: 'p1', body: 'Wątek publiczny' }),
-          replies: [{ ...feedItem({ id: 'r1', body: 'Odpowiedź' }), replies: [], replyCount: 0 }],
+          ...feedItem({ id: 'p1', body: 'Public thread' }),
+          replies: [{ ...feedItem({ id: 'r1', body: 'Reply' }), replies: [], replyCount: 0 }],
           replyCount: 1,
         },
       ]),
@@ -897,8 +897,8 @@ describe('community pages', () => {
       '/community/s1/posts/p1',
     );
 
-    expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Wątek publiczny');
-    expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Odpowiedź');
+    expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Public thread');
+    expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Reply');
     expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/#offer');
     expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
   });
@@ -909,13 +909,13 @@ describe('community pages', () => {
       countedAnonMe(counter),
       okOffer(),
       okPublicNavigation(),
-      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Publiczny wpis' })]),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post' })]),
     );
 
     await renderShellPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Publiczny wpis');
-    expect(screen.getByTestId('anon-read-only')).toHaveTextContent(pl.anon.readOnlyBanner);
+    expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Public post');
+    expect(screen.getByTestId('anon-read-only')).toHaveTextContent(en.anon.readOnlyBanner);
 
     const settledCalls = counter.calls;
     await new Promise((resolve) => {

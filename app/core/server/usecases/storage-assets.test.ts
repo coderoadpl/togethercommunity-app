@@ -11,7 +11,7 @@ describe('storageFileName', () => {
   );
 
   it('sanitizes a usable name and keeps the object key inside its own prefix', () => {
-    expect(storageFileName('Zadanie 1.pdf', 'attachment')).toBe('Zadanie-1.pdf');
+    expect(storageFileName('Assignment 1.pdf', 'attachment')).toBe('Assignment-1.pdf');
 
     const key = `lesson-attachments/l1/a1/${storageFileName('..', 'attachment')}`;
     expect(new URL(key, 'https://cdn.test/').pathname).toBe('/lesson-attachments/l1/a1/attachment');

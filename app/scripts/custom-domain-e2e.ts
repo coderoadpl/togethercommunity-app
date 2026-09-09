@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import pg from 'pg';
 import { chromium, type Browser, type BrowserContext } from 'playwright-core';
@@ -25,7 +26,7 @@ const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
-const CUSTOM_HOST = 'kurs.acme.localhost';
+const CUSTOM_HOST = 'course.acme.localhost';
 const TENANT_HOST = 'acme.localhost';
 const CREATOR_PASSWORD = 'demo-password-15';
 
@@ -162,7 +163,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 
     await page.getByTestId('section-settings').click();
-    await page.getByRole('tab', { name: 'Bezpieczeństwo' }).click();
+    await page.getByRole('tab', { name: en.settingsNavigation.security }).click();
     await page.waitForURL(/#security$/);
     await page.getByTestId('passkey-name').fill('Custom Domain Passkey');
     await page.getByTestId('passkey-proof-password').fill(CREATOR_PASSWORD);
@@ -194,7 +195,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
   }
 };
 
-const SELF_SERVE_HOST = 'sklep.acme.example';
+const SELF_SERVE_HOST = 'shop.acme.example';
 
 const readDomainRow = async (
   databaseUrl: string,
@@ -273,11 +274,11 @@ const runSelfServeAdd = async (input: {
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
 
-    await page.getByTestId('tenant-domain-input').fill('sklep.acme.localhost');
+    await page.getByTestId('tenant-domain-input').fill('shop.acme.localhost');
     await page.getByTestId('tenant-domain-add').click();
     await page.locator('[data-testid^="toast-error-"]').first().waitFor({ state: 'visible', timeout: 20000 });
     assert(
-      await readDomainRow(input.databaseUrl, 'sklep.acme.localhost') === null,
+      await readDomainRow(input.databaseUrl, 'shop.acme.localhost') === null,
       'the platform base domain was accepted as a custom domain',
     );
     console.log('custom-domain-e2e: self-serve add refused a platform subdomain OK');
@@ -287,7 +288,7 @@ const runSelfServeAdd = async (input: {
     const row = page.getByTestId(`tenant-domain-${SELF_SERVE_HOST}`);
     await row.waitFor({ state: 'visible', timeout: 20000 });
     assert(
-      (await row.textContent())?.includes('Czeka na DNS') === true,
+      (await row.textContent())?.includes('Waiting for DNS') === true,
       'a self-serve domain did not land in the pending state',
     );
 
@@ -305,7 +306,7 @@ const runSelfServeAdd = async (input: {
       timeout: 20000,
     });
     assert(
-      (await page.getByTestId(`tenant-domain-status-${SELF_SERVE_HOST}`).textContent()) === 'Działa',
+      (await page.getByTestId(`tenant-domain-status-${SELF_SERVE_HOST}`).textContent()) === en.tenantDomains.statusActive,
       'the Studio did not show the operator-verified domain as active',
     );
 

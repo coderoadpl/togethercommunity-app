@@ -2,6 +2,8 @@ import type { MarketingOutboxPayload } from '#core/domain/marketing-outbox.js';
 import { sql } from 'drizzle-orm';
 import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
+import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
+
 import type {
   MarketingListRule,
   MarketingAudienceSnapshot,
@@ -43,7 +45,7 @@ export const tenants = pgTable(
     name: text('name').notNull(),
     status: text('status', { enum: ['active', 'suspended'] }).notNull().default('active'),
     plan: text('plan', { enum: ['self_hosted', 'hosted', 'hosted_pro'] }).notNull().default('self_hosted'),
-    defaultLanguage: text('default_language', { enum: ['pl', 'en'] }).notNull().default('pl'),
+    defaultLanguage: text('default_language', { enum: ['pl', 'en'] }).notNull().default(DEFAULT_LANGUAGE),
     createdAt: text('created_at').notNull(),
     contentVersion: integer('content_version').notNull().default(1),
     billingPortalUrl: text('billing_portal_url'),

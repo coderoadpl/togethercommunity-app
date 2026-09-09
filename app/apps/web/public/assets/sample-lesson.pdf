@@ -9,15 +9,15 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
 endobj
 4 0 obj
-<< /Length 154 >>
+<< /Length 146 >>
 stream
 BT
 /F1 24 Tf
 72 760 Td
-(Together - przykladowa lekcja PDF) Tj
+(Together - sample lesson PDF) Tj
 0 -36 Td
 /F1 12 Tf
-(Ten dokument jest hostowany same-origin, wiec osadza sie w ramce.) Tj
+(This document is hosted on the same origin for inline viewing.) Tj
 ET
 endstream
 endobj
@@ -31,9 +31,9 @@ xref
 0000000058 00000 n 
 0000000115 00000 n 
 0000000241 00000 n 
-0000000446 00000 n 
+0000000438 00000 n 
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-516
+508
 %%EOF

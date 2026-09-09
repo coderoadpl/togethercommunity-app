@@ -21,7 +21,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Loading: Story = {
   args: {
-    state: { kind: 'loading', label: 'Wczytywanie kursantów…' },
+    state: { kind: 'loading', label: 'Loading learners…' },
   },
 };
 
@@ -29,8 +29,8 @@ export const ErrorWithRetry: Story = {
   args: {
     state: {
       kind: 'error',
-      message: 'Nie udało się wczytać danych. Sprawdź połączenie i spróbuj ponownie.',
-      retry: { label: 'Spróbuj ponownie', onRetry: () => undefined },
+      message: 'Could not load the data. Check your connection and try again.',
+      retry: { label: 'Try again', onRetry: () => undefined },
     },
   },
 };
@@ -39,9 +39,9 @@ export const Empty: Story = {
   args: {
     state: {
       kind: 'empty',
-      title: 'Nie masz jeszcze kursów',
-      body: 'Utwórz pierwszy kurs, aby zacząć uczyć.',
-      action: <Button variant="contained">Utwórz kurs</Button>,
+      title: 'You have no courses yet',
+      body: 'Create your first course to start teaching.',
+      action: <Button variant="contained">Create course</Button>,
     },
   },
 };
@@ -50,9 +50,9 @@ export const NotFound: Story = {
   args: {
     state: {
       kind: 'not-found',
-      title: 'Nie znaleziono kursu',
-      body: 'Ten kurs mógł zostać usunięty lub nie masz do niego dostępu.',
-      action: <Button variant="outlined">Wróć do moich kursów</Button>,
+      title: 'Course not found',
+      body: 'This course may have been removed or you may not have access.',
+      action: <Button variant="outlined">Back to my courses</Button>,
     },
   },
 };

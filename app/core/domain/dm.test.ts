@@ -32,7 +32,7 @@ const conversation = (overrides: Partial<DmConversation> = {}): DmConversation =
     createdAt: NOW,
     lastMessageId: 'msg-1',
     lastMessageAt: LATER,
-    lastMessageSnippet: 'Cześć',
+    lastMessageSnippet: 'Hello',
     lastMessageSenderUserId: 'u2',
     ...overrides,
   });
@@ -43,7 +43,7 @@ const message = (overrides: Partial<DmMessage> = {}): DmMessage =>
     tenantId: 't1',
     conversationId: 'c1',
     senderUserId: 'u2',
-    body: 'Cześć',
+    body: 'Hello',
     createdAt: LATER,
     ...overrides,
   });
@@ -104,7 +104,7 @@ describe('direct message projections', () => {
     expect(toPublicDmMessage(message(), 'u1')).toEqual({
       id: 'msg-1',
       conversationId: 'c1',
-      body: 'Cześć',
+      body: 'Hello',
       createdAt: LATER,
       isOwn: false,
     });

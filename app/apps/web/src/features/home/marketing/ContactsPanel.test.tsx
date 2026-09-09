@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { marketingDirectoryContracts } from '#core/client/index.js';
 import { actions } from '../../../api.js';
 import { directoryTestFixtures } from './directory-test-data.js';
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { fixtureValue, installDirectoryFixture, renderDirectory } from './directory-test-helpers.js';
 import { server } from '../../../test/server.js';
 import { ContactsPanel } from './ContactsPanel.js';
@@ -25,17 +25,17 @@ describe('marketing contacts', () => {
     }));
     await renderDirectory(ContactsPanel, '/panel/marketing/contacts');
     for (const cursor of ['2', '3', '4']) {
-      await userEvent.click(await screen.findByRole('button', { name: pl.directory.next }));
+      await userEvent.click(await screen.findByRole('button', { name: en.directory.next }));
       await waitFor(() => expect(cursors.at(-1)).toBe(cursor));
     }
-    await userEvent.click(screen.getByRole('button', { name: pl.directory.back }));
+    await userEvent.click(screen.getByRole('button', { name: en.directory.back }));
     await waitFor(() => expect(cursors.at(-1)).toBe('3'));
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Anna' } });
     await waitFor(() => expect(cursors.at(-1)).toBeNull());
-    expect(screen.queryByRole('button', { name: pl.directory.back })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.directory.next }));
+    expect(screen.queryByRole('button', { name: en.directory.back })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.directory.next }));
     await waitFor(() => expect(cursors.at(-1)).toBe('2'));
-    await userEvent.click(screen.getByRole('button', { name: pl.directory.back }));
+    await userEvent.click(screen.getByRole('button', { name: en.directory.back }));
     await waitFor(() => expect(cursors.at(-1)).toBeNull());
   });
   it('filters independently by definition and suppression, and resets the cursor on search', async () => {
@@ -44,15 +44,15 @@ describe('marketing contacts', () => {
     server.use(http.get('/api/marketing/contacts', ({ request }) => { requests.push(new URL(request.url)); return HttpResponse.json({ ok: true, data: { ...page, nextCursor: 'next-page' } }); }));
     await renderDirectory(ContactsPanel, '/panel/marketing/contacts');
     const row = await screen.findByRole('row', { name: /Blocked Contact/ });
-    expect(within(row).getByText(`${pl.directory.suppressed}: ${pl.directory.unsubscribe}`)).toBeInTheDocument();
-    expect(within(row).getByText(pl.directory.noAccount)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.directory.next }));
+    expect(within(row).getByText(`${en.directory.suppressed}: ${en.directory.unsubscribe}`)).toBeInTheDocument();
+    expect(within(row).getByText(en.directory.noAccount)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.directory.next }));
     await waitFor(() => expect(requests.at(-1)?.searchParams.get('cursor')).toBe('next-page'));
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Anna' } });
     await waitFor(() => expect(requests.at(-1)?.searchParams.get('search')).toBe('Anna'));
     expect(requests.at(-1)?.searchParams.has('cursor')).toBe(false);
-    await userEvent.click(screen.getByRole('combobox', { name: pl.directory.suppression }));
-    await userEvent.click(screen.getByRole('option', { name: pl.directory.notSuppressed }));
+    await userEvent.click(screen.getByRole('combobox', { name: en.directory.suppression }));
+    await userEvent.click(screen.getByRole('option', { name: en.directory.notSuppressed }));
     await waitFor(() => expect(requests.at(-1)?.searchParams.get('suppressed')).toBe('false'));
     expect(requests.at(-1)?.searchParams.has('consentDefinitionId')).toBe(false);
   });
@@ -74,7 +74,7 @@ describe('marketing contacts', () => {
     queryClient.setQueryDefaults(otherTenantQuery.queryKey, { gcTime: Infinity });
     queryClient.setQueryData(otherTenantQuery.queryKey, page);
     const row = await screen.findByRole('row', { name: /Anna Example/ });
-    await userEvent.click(within(row).getByRole('button', { name: pl.directory.archive }));
+    await userEvent.click(within(row).getByRole('button', { name: en.directory.archive }));
     await waitFor(() => expect(screen.queryByRole('row', { name: /Anna Example/ })).not.toBeInTheDocument());
     expect(queryClient.getQueryState(otherTenantQuery.queryKey)?.isInvalidated).toBe(false);
     expect(queryClient.getQueryData(otherTenantQuery.queryKey)).toEqual(page);

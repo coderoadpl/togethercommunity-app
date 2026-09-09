@@ -3,7 +3,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
 import { memberHomePath, memberSearchPath } from './member-nav.js';
@@ -29,8 +29,8 @@ describe('MemberBottomBar', () => {
     expect(screen.getByTestId('member-tab-start')).toHaveAttribute('href', memberHomePath());
     const search = screen.getByTestId('member-tab-search');
     expect(search).toHaveAttribute('href', memberSearchPath());
-    expect(search).toHaveTextContent(pl.shell.searchEntry);
-    expect(screen.getByTestId('member-tab-menu')).toHaveTextContent(pl.shell.menuTab);
+    expect(search).toHaveTextContent(en.shell.searchEntry);
+    expect(screen.getByTestId('member-tab-menu')).toHaveTextContent(en.shell.menuTab);
     expect(screen.queryByTestId('notification-tab')).not.toBeInTheDocument();
     expect(bar.childElementCount).toBe(3);
   });

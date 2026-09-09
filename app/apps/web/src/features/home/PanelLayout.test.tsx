@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -149,6 +149,16 @@ afterEach(() => {
 });
 
 describe('Creator panel routing', () => {
+  it('updates Studio titles on navigation and clears a title-less route', async () => {
+    commonHandlers();
+    const { router } = await renderPanelAt('/panel');
+    await waitFor(() => expect(document.title).toBe(`${en.dashboard.heading} · Studio · Acme`));
+    await act(() => router.navigate({ to: '/panel/products' }));
+    await waitFor(() => expect(document.title).toBe(`${en.products.heading} · Studio · Acme`));
+    await act(() => router.navigate({ to: '/panel/marketing/campaigns' }));
+    await waitFor(() => expect(document.title).toBe('Acme'));
+  });
+
   it('renders only the branded splash while the session is pending', async () => {
     server.use(
       http.get('/api/me', async () => {

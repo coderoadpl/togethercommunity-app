@@ -6,6 +6,7 @@ import { Link, Outlet, useRouterState } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
+import { DocumentTitleProvider } from '../../../components/layout/document-title.js';
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
 import { StatusView } from '../../../components/layout/index.js';
@@ -200,10 +201,14 @@ export const MemberShell = () => {
     </>
   );
 
-  const outlet = courseContext === null ? <Outlet /> : (
+  const routeContent = courseContext === null ? <Outlet /> : (
     <Suspense fallback={<CourseLoading lesson={courseContext.lessonId !== null} anonymous={viewer === 'anonymous'} />}>
       <Outlet />
     </Suspense>
+  );
+
+  const outlet = (
+    <DocumentTitleProvider tenantName={tenant?.name}>{routeContent}</DocumentTitleProvider>
   );
 
   if (viewer === 'anonymous') {

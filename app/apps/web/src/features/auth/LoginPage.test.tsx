@@ -189,6 +189,7 @@ describe('LoginPage', () => {
     expect(screen.queryByText(/workspace togethercommunity\.app/u)).not.toBeInTheDocument();
     expect(screen.queryByText(en.errors.messageTenantNotFound)).not.toBeInTheDocument();
     await waitFor(() => expect(offerCalls).toBe(0));
+    expect(document.title).toBe(`${en.auth.signInTitle} · Together`);
   });
 
   it('keeps single-tenant login usable with a platform caption when no sole tenant exists', async () => {
@@ -670,6 +671,7 @@ describe('LoginPage', () => {
 
     const form = screen.getByLabelText(en.auth.emailLabel).closest('form');
     const socialLink = await screen.findByRole('link', { name: 'YouTube' });
+    expect(document.title).toBe(`${en.auth.signInTitle} · Self-Learner Academy`);
     expect(form).not.toBeNull();
     expect(form?.compareDocumentPosition(socialLink) ?? 0)
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);

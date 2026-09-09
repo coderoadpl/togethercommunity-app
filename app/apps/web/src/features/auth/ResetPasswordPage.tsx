@@ -56,7 +56,7 @@ export const ResetPasswordPage = () => {
   };
 
   return (
-    <AuthShell>
+    <AuthShell title={t.resetPassword.title}>
         {!token || invalidToken || providerRejectedToken ? (
           <StatusView
             state={{

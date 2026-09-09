@@ -3,6 +3,7 @@ import { Box, Container, Stack, Typography, useMediaQuery } from '@mui/material'
 import { useTheme } from '@mui/material/styles';
 
 import { Eyebrow, LedgerBreadcrumbs, LedgerTitle, MemberLedgerHeader } from '../../theme.js';
+import { usePageDocumentTitle } from './document-title.js';
 import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
@@ -14,6 +15,7 @@ export interface BreadcrumbItem {
 
 export interface MemberPageProps {
   title: ReactNode;
+  documentTitle?: string;
   /** Kicker above the title; omit it when it would only restate the title. */
   eyebrow?: ReactNode;
   /** One member shell width; `prose` is the reading column inside lesson content, never a page width. */
@@ -52,6 +54,7 @@ const Crumb = ({ item, isCurrent }: { item: BreadcrumbItem; isCurrent: boolean }
 
 export const MemberPage = ({
   title,
+  documentTitle,
   eyebrow,
   width = 'wide',
   breadcrumbs,
@@ -65,6 +68,7 @@ export const MemberPage = ({
   children,
   'data-testid': testId,
 }: MemberPageProps) => {
+  usePageDocumentTitle(documentTitle ?? title);
   const theme = useTheme();
   const compactCrumbs = useMediaQuery(theme.breakpoints.down('sm'));
   const crumbs = breadcrumbs === undefined || !compactCrumbs ? breadcrumbs : ancestorTrail(breadcrumbs);

@@ -12,7 +12,7 @@ import {
   OutlinedInput,
   Typography,
 } from '@mui/material';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
@@ -24,7 +24,7 @@ import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { isTenantHost, tenantUrl } from '../../lib/tenant.js';
+import { hasConfiguredBaseDomain, isTenantHost, tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
 import { PlatformDataReset } from './PlatformDataReset.js';
 
@@ -85,13 +85,20 @@ const PickTenant = ({
   const t = useTranslations();
   const { language } = useLanguage();
   const tenants = useQuery(actions.tenants);
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [slugInput, setSlugInput] = useState('');
   const slugPreview = slugInput || slugify(name);
 
   const createTenant = useMutation({
     ...actions.createTenant,
-    onSuccess: (data) => openTenant(tenantUrl(data.tenant.slug)),
+    onSuccess: async (data) => {
+      if (hasConfiguredBaseDomain()) {
+        openTenant(tenantUrl(data.tenant.slug));
+      } else {
+        await queryClient.invalidateQueries();
+      }
+    },
   });
   const resendVerification = useMutation(actions.sendVerificationEmail);
 

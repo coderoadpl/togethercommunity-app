@@ -163,19 +163,15 @@ const runMobileMenuJourney = async (page: Page): Promise<void> => {
   );
   const identity = sheet.getByTestId('member-identity');
   assert(await identity.getAttribute('href') === null, 'Menu identity block should not navigate');
-  await assertHref(sheet.getByTestId('sidebar-messages'), '/messages', 'Menu sidebar messages row');
   for (const [testId, expected, label] of [
     ['member-account-products', '/my/products', 'Menu account products row'],
+    ['member-account-messages', '/messages', 'Menu account messages row'],
     ['member-account-link', '/account', 'Menu account settings row'],
   ] as const) {
     await assertHref(sheet.getByTestId(testId), expected, label);
   }
-  assert(
-    await sheet.getByTestId('member-account-messages').count() === 0,
-    'Menu sheet still listed messages in the account group instead of the sidebar',
-  );
   await sheet.getByTestId('member-sign-out').waitFor(visible);
-  for (const testId of ['sidebar-products', 'sidebar-account', 'notification-nav']) {
+  for (const testId of ['sidebar-products', 'sidebar-messages', 'sidebar-account', 'notification-nav']) {
     assert(
       await sheet.getByTestId(testId).count() === 0,
       `Menu sheet still listed legacy row "${testId}" instead of the shared account group`,
@@ -261,6 +257,7 @@ const runDesktopSwapJourney = async (page: Page): Promise<void> => {
     await memberSidebar.getByTestId('sidebar-start').getAttribute('aria-current') === 'page',
     'Desktop Start row was not active after leaving the course sidebar',
   );
+  await assertHref(memberSidebar.getByTestId('sidebar-messages'), '/messages', 'Desktop messages row');
   assert(await page.getByTestId('member-bottom-nav').count() === 0, 'Desktop retained the mobile bottom navigation');
   assert(await page.getByTestId('program-button').count() === 0, 'Desktop retained the mobile Program button');
   console.log('member-shell-e2e: desktop sidebar swap and return journey OK');

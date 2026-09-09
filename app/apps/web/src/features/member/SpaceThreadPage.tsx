@@ -103,6 +103,7 @@ const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: s
 
   return (
     <MemberSurface
+      documentTitle={rootPost?.body.split(/\r?\n/u)[0]?.trim() || t.community.threadTitle}
       title={<ThreadHeadline>{headline ?? t.community.threadTitle}</ThreadHeadline>}
       eyebrow={space.name}
       width="wide"

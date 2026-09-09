@@ -25,6 +25,7 @@ import type {
 
 import { updateLastViewedInputSchema } from '#core/domain/index.js';
 
+import { DocumentTitleProvider } from '../../components/layout/document-title.js';
 import { actions } from '../../api.js';
 import { StartPage } from './StartPage.js';
 import { en } from '../../i18n/en.js';
@@ -215,6 +216,16 @@ describe('LessonPlayerPage', () => {
         HttpResponse.json({ ok: true, data: { progress: progress([]) } }),
       ),
     );
+  });
+
+  it('uses the lesson title with the tenant name', async () => {
+    server.use(okLesson([]), okStructure(), okProgress());
+    await renderPage(
+      <DocumentTitleProvider tenantName="Acme">
+        <LessonPlayerPage courseId="course-1" lessonId="l1" />
+      </DocumentTitleProvider>,
+    );
+    await waitFor(() => expect(document.title).toBe('Intro to Variables · Acme'));
   });
 
   it('refreshes Start after visits A, B, then A, including a visit settled after unmount', async () => {

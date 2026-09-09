@@ -78,7 +78,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
 
   if (registeredOnTenant) {
     return (
-      <AuthShell hostname={hostname}>
+      <AuthShell title={t.auth.registeredTitle} hostname={hostname}>
         <Box sx={{ mb: '1.5rem' }}>
           <AuthTitle variant="h1">{t.auth.registeredTitle}</AuthTitle>
           <AuthLead component="p">{t.auth.registeredOnTenantBody({ host: hostname })}</AuthLead>
@@ -100,6 +100,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
 
   return (
     <AuthShell
+      title={t.auth.createAccount}
       hostname={hostname}
       footer={
         <FinePrint variant="caption" component="p" sx={{ mt: '1.75rem' }}>

@@ -17,6 +17,9 @@ import type {
   PublicNavigation,
 } from '#core/domain/index.js';
 
+import { MemberPage } from '../../../components/layout/MemberPage.js';
+import { DocumentTitleProvider } from '../../../components/layout/document-title.js';
+import { pl } from '../../../i18n/pl.js';
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -257,14 +260,44 @@ const renderShell = async (path: string, lessonComponent: FunctionComponent = pa
   ]);
   const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
   await router.load();
-  return renderWithProviders(
-    <ThemeModeProvider>
-      <RouterProvider router={router} />
-    </ThemeModeProvider>,
-  );
+  return {
+    router,
+    ...renderWithProviders(
+      <ThemeModeProvider>
+        <RouterProvider router={router} />
+      </ThemeModeProvider>,
+    ),
+  };
 };
 
 describe('MemberShell', () => {
+  it.each([en, pl])('uses localized Start and search titles', (t) => {
+    const tree = (title: string) => (
+      <DocumentTitleProvider tenantName="Acme">
+        <MemberPage breadcrumbLabel={en.common.breadcrumbs} title={title} />
+      </DocumentTitleProvider>
+    );
+    const { rerender } = renderWithProviders(tree(t.start.title));
+    expect(document.title).toBe('Start · Acme');
+    rerender(tree(t.search.title));
+    expect(document.title).toBe(`${t.search.title} · Acme`);
+    rerender(tree(''));
+    expect(document.title).toBe('Acme');
+  });
+
+  it('uses the page title and restores the tenant name on a title-less route', async () => {
+    stubViewport(true);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    const { router } = await renderShell(
+      '/my/courses/c1',
+      page('Lesson'),
+      () => <MemberPage breadcrumbLabel={en.common.breadcrumbs} title="Course overview" />,
+    );
+    await waitFor(() => expect(document.title).toBe('Course overview · Acme'));
+    await act(() => router.navigate({ to: '/my' }));
+    await waitFor(() => expect(document.title).toBe('Acme'));
+  });
+
   it.each([
     { anonymous: false, lesson: false },
     { anonymous: false, lesson: true },
@@ -547,11 +580,12 @@ describe('MemberShell', () => {
     );
     await renderShell('/messages');
     if (!desktop) await userEvent.click(await screen.findByTestId('member-tab-menu'));
-    const navigation = within(await screen.findByTestId('member-sidebar'));
-    const messages = await navigation.findByTestId('sidebar-messages');
+    const navigation = within(await screen.findByTestId(desktop ? 'member-sidebar' : 'member-menu-sheet'));
+    const messagesId = desktop ? 'sidebar-messages' : 'member-account-messages';
+    const messages = await navigation.findByTestId(messagesId);
     expect(messages).toHaveAttribute('href', '/messages');
-    expect(messages).toHaveAttribute('aria-current', 'page');
-    expect(await navigation.findByTestId('sidebar-messages-unread')).toHaveTextContent('3');
+    if (desktop) expect(messages).toHaveAttribute('aria-current', 'page');
+    expect(await navigation.findByTestId(`${messagesId}-unread`)).toHaveTextContent('3');
     expect(messages).toHaveTextContent(en.messages.unreadAria({ count: 3 }));
   });
 
@@ -951,10 +985,12 @@ describe('MemberShell', () => {
     expect(space.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect([
       within(actions).getByTestId('member-account-products'),
+      within(actions).getByTestId('member-account-messages'),
       within(actions).getByTestId('member-account-link'),
       within(actions).getByTestId('member-sign-out'),
     ].map((item) => item.textContent)).toEqual([
       en.student.myProducts,
+      en.messages.navLabel,
       en.account.menuAccount,
       en.tenant.signOut,
     ]);
@@ -962,13 +998,14 @@ describe('MemberShell', () => {
       'href',
       '/my/products',
     );
-    expect(within(sheet).getByTestId('sidebar-messages')).toHaveAttribute(
+    expect(within(actions).getByTestId('member-account-messages')).toHaveAttribute(
       'href',
       '/messages',
     );
     expect(within(actions).getByTestId('member-account-link')).toHaveAttribute('href', '/account');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
+    expect(within(sheet).queryByTestId('sidebar-messages')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-start')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-search')).not.toBeInTheDocument();
   });

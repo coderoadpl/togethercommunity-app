@@ -419,7 +419,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     );
 
   const shell = (children: ReactNode, pageFooter: ReactNode = footer) => (
-    <AuthShell hostname={hostname} footer={pageFooter}>
+    <AuthShell title={t.auth.signInTitle} hostname={hostname} footer={pageFooter}>
       {notices}
       {children}
     </AuthShell>

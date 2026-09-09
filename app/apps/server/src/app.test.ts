@@ -321,6 +321,8 @@ const deps = (input: {
     },
     publicRateLimitPolicies: selectPublicRateLimitPolicies({}),
     m2mTransactionalRateLimits: { perMinute: 60, perDay: 5000 },
+    importDailyMemberRecordLimit: 10_000,
+    importDailyRecordLimit: 20_000,
     apiKeyCrypto: {
       generateSecret: () => 'secret',
       hash: (secret) => `hash:${secret}`,

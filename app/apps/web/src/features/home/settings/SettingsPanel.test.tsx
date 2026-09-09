@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import {
   PASSWORD_MIN_LENGTH,
+  deriveLightAccent,
   TENANT_OG_DESCRIPTION_MAX_LENGTH,
   TENANT_OG_TITLE_MAX_LENGTH,
 } from '#core/domain/index.js';
@@ -37,6 +38,7 @@ interface StoredSettings {
   logoUrl: string | null;
   logoDarkUrl: string | null;
   accentColor: string | null;
+  accentLight: string | null;
   faviconUrl: string | null;
   ogTitle?: string | null;
   ogDescription?: string | null;
@@ -104,6 +106,7 @@ const EMPTY_SETTINGS: StoredSettings = {
   logoUrl: null,
   logoDarkUrl: null,
   accentColor: null,
+  accentLight: null,
   faviconUrl: null,
   termsUrl: null,
   privacyUrl: null,
@@ -1087,6 +1090,7 @@ describe('SettingsPanel branding', () => {
     await user.click(await screen.findByTestId('branding-logo-url'));
     await user.paste('https://cdn.example.com/logo.svg');
     await userEvent.type(screen.getByTestId('branding-accent-color'), '#0E7490');
+    await userEvent.type(screen.getByTestId('branding-accent-light'), '#786000');
     await user.click(screen.getByTestId('branding-favicon-url'));
     await user.paste('https://cdn.example.com/favicon.svg');
     await userEvent.click(screen.getByTestId('branding-save'));
@@ -1098,6 +1102,7 @@ describe('SettingsPanel branding', () => {
       logoUrl: 'https://cdn.example.com/logo.svg',
       logoDarkUrl: null,
       accentColor: '#0E7490',
+      accentLight: '#786000',
       faviconUrl: 'https://cdn.example.com/favicon.svg',
       ogTitle: null,
       ogDescription: null,
@@ -1123,6 +1128,7 @@ describe('SettingsPanel branding', () => {
       logoUrl: null,
       logoDarkUrl: null,
       accentColor: null,
+      accentLight: null,
       faviconUrl: null,
       ogTitle: 'Acme Academy',
       ogDescription: 'Practical learning',
@@ -1149,20 +1155,20 @@ describe('SettingsPanel branding', () => {
   }, BRANDING_TEST_TIMEOUT);
 
   it('renames the tenant and round-trips social profiles without a slug field', async () => {
+    const user = userEvent.setup();
     const { queryClient, updates } = renderPanel();
     await openSettingsSection(en.settingsNavigation.brand);
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
 
     const name = await screen.findByTestId('branding-name');
-    await userEvent.clear(name);
-    await userEvent.type(name, 'Practitioner Academy');
-    await userEvent.click(screen.getByTestId('branding-social-add'));
-    await userEvent.type(screen.getByTestId('branding-social-label-0'), 'YouTube');
-    await userEvent.type(
-      screen.getByTestId('branding-social-url-0'),
-      'https://youtube.com/@academy',
-    );
-    await userEvent.click(screen.getByTestId('branding-save'));
+    await user.clear(name);
+    await user.paste('Practitioner Academy');
+    await user.click(screen.getByTestId('branding-social-add'));
+    await user.click(screen.getByTestId('branding-social-label-0'));
+    await user.paste('YouTube');
+    await user.click(screen.getByTestId('branding-social-url-0'));
+    await user.paste('https://youtube.com/@academy');
+    await user.click(screen.getByTestId('branding-save'));
 
     expect(await findToast('success')).toBeInTheDocument();
     expect(updates).toContainEqual(expect.objectContaining({
@@ -1201,6 +1207,21 @@ describe('SettingsPanel branding', () => {
     });
   }, BRANDING_TEST_TIMEOUT);
 
+  it('shows the automatic light accent and rejects malformed overrides', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, accentColor: '#F5C842' });
+    await openSettingsSection(pl.settingsNavigation.brand);
+    const input = await screen.findByTestId('branding-accent-light');
+    expect(input).toHaveValue('');
+    expect(input).not.toHaveAttribute('placeholder');
+    expect(screen.getByText(`${pl.branding.accentLightHint} ${deriveLightAccent('#F5C842')}`)).toBeInTheDocument();
+    expect(screen.getByText(pl.branding.lightPreview)).toBeInTheDocument();
+    expect(screen.getByText(pl.branding.darkPreview)).toBeInTheDocument();
+    await userEvent.type(input, 'invalid');
+    await userEvent.click(screen.getByTestId('branding-save'));
+    expect(await screen.findByText(pl.branding.accentInvalid)).toBeInTheDocument();
+    expect(updates).toHaveLength(0);
+  }, BRANDING_TEST_TIMEOUT);
+
   it('rejects a malformed accent color without calling the API', async () => {
     const { updates } = renderPanel();
     await openSettingsSection(en.settingsNavigation.brand);
@@ -1218,6 +1239,7 @@ describe('SettingsPanel branding', () => {
       ...EMPTY_SETTINGS,
       logoUrl: 'https://cdn.example.com/logo.svg',
       accentColor: '#0E7490',
+      accentLight: '#786000',
     });
     await openSettingsSection(en.settingsNavigation.brand);
 
@@ -1227,6 +1249,7 @@ describe('SettingsPanel branding', () => {
     });
     await userEvent.clear(logoInput);
     await userEvent.clear(screen.getByTestId('branding-accent-color'));
+    await userEvent.clear(screen.getByTestId('branding-accent-light'));
     await userEvent.click(screen.getByTestId('branding-save'));
 
     expect(await findToast('success')).toBeInTheDocument();
@@ -1236,6 +1259,7 @@ describe('SettingsPanel branding', () => {
       logoUrl: null,
       logoDarkUrl: null,
       accentColor: null,
+      accentLight: null,
       faviconUrl: null,
       ogTitle: null,
       ogDescription: null,

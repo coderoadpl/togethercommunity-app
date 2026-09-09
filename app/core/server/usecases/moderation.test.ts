@@ -300,11 +300,11 @@ const makeDeps = (
       listThreadsForSpaces: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,
-      softDelete: async (tenantId: string, input: { id: string; deletedAt: string }) => {
+      softDelete: async (tenantId: string, input: { id: string; deletedAt: string; deletedBy: 'author' | 'moderator'; deletedByUserId: string }) => {
         const index = posts.findIndex((row) => row.tenantId === tenantId && row.id === input.id);
         const current = posts[index];
         if (index < 0 || current === undefined) return null;
-        const next = { ...current, deletedAt: input.deletedAt, pinnedAt: null };
+        const next = { ...current, deletedAt: input.deletedAt, deletedBy: input.deletedBy, deletedByUserId: input.deletedByUserId, pinnedAt: null };
         posts[index] = next;
         return next;
       },

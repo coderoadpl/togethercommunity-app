@@ -65,6 +65,7 @@ export const tenantBrandingSchema = z.object({
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
   logoDarkUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
+  accentLight: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
 });
 
@@ -74,6 +75,7 @@ export const EMPTY_TENANT_BRANDING: TenantBranding = {
   logoUrl: null,
   logoDarkUrl: null,
   accentColor: null,
+  accentLight: null,
   faviconUrl: null,
 };
 
@@ -147,6 +149,7 @@ export const tenantSettingsSchema = z.object({
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
   logoDarkUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
+  accentLight: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
   supportEmail: z.string().email().nullable().default(null),
   supportConfigured: z.boolean().optional(),
@@ -220,6 +223,11 @@ export const updateTenantSettingsInputSchema = z.object({
   logoUrl: clearableBrandingAssetUrl,
   logoDarkUrl: clearableBrandingAssetUrl,
   accentColor: z
+    .union([accentColorSchema, z.literal('')])
+    .nullable()
+    .transform((value) => (value === '' || value === null ? null : value))
+    .optional(),
+  accentLight: z
     .union([accentColorSchema, z.literal('')])
     .nullable()
     .transform((value) => (value === '' || value === null ? null : value))

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
+import { contrastRatio, deriveLightAccent } from '#core/domain/index.js';
+
 import {
   languageFromRequest,
   renderHostedMarkdown,
@@ -17,7 +19,8 @@ const brand: PublicBrand = {
     name: 'Studio Demo',
     socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@studio' }],
     billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: '/brand.svg', logoDarkUrl: null,
-    accentColor: '#0E7490', faviconUrl: '/favicon.svg',
+    accentColor: '#0E7490',
+    accentLight: null, faviconUrl: '/favicon.svg',
     ogTitle: null, ogDescription: null, ogImageUrl: null,
     supportEmail: null, supportUrl: null, termsUrl: null, privacyUrl: null,
     defaultHomeSpaceId: null,
@@ -46,6 +49,20 @@ describe('public marketing pages', () => {
     expect(html).toContain('min-height:44px');
     expect(html).toContain('--bg:#fafafa;--surface:#fff;--ink:#09090b');
     expect(html).not.toContain('together-theme-mode');
+  });
+
+  it.each([null, '#786000'])('uses the light accent %s on hosted pages', (accentLight) => {
+    if (brand.settings == null) throw new Error('Missing brand settings');
+    const html = renderLegalDocumentPage({
+      nonce: 'test-nonce',
+      brand: { ...brand, settings: { ...brand.settings, accentColor: '#F5C842', accentLight } },
+      language: 'en', path: '/legal/privacy', title: 'Privacy', content: '[Policy](https://courses.example.org/privacy)', immutableVersion: null,
+    });
+    const accent = /<html[^>]+style="--accent:(#[0-9a-f]{6})"/i.exec(html)?.[1] ?? '';
+    expect(accent).toBe(accentLight ?? deriveLightAccent('#F5C842'));
+    for (const background of ['#fafafa', '#ffffff']) {
+      expect(contrastRatio(accent, background)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it('renders hosted markdown as prose while escaping markup and unsafe links', () => {

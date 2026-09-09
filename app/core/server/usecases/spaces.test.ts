@@ -319,10 +319,10 @@ class FakePosts implements PostRepository {
     return null;
   }
 
-  async softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null> {
+  async softDelete(tenantId: string, input: { id: string; deletedAt: string; deletedBy: 'author' | 'moderator'; deletedByUserId: string }): Promise<Post | null> {
     const post = await this.findById(tenantId, input.id);
     if (!post) return null;
-    const next = { ...post, deletedAt: input.deletedAt, pinnedAt: null };
+    const next = { ...post, deletedAt: input.deletedAt, deletedBy: input.deletedBy, deletedByUserId: input.deletedByUserId, pinnedAt: null };
     const index = this.rows.findIndex((item) => item.id === post.id);
     this.rows[index] = next;
     return next;
@@ -638,6 +638,7 @@ const tenantSettings = (defaultHomeSpaceId: string | null): TenantSettings => ({
   logoUrl: null,
   logoDarkUrl: null,
   accentColor: null,
+  accentLight: null,
   faviconUrl: null,
   ogTitle: null,
   ogDescription: null,
@@ -1098,9 +1099,26 @@ describe('space feed', () => {
       ok: true,
       value: {
         pinned: [],
-        items: [{ id: created.value.id, deletedAt: expect.any(String), pinnedAt: null }],
+        items: [],
       },
     });
+  });
+
+  it.each([
+    { moderator: false, reply: true, deletedBy: 'author' },
+    { moderator: true, reply: false, deletedBy: 'moderator' },
+  ] as const)('keeps $deletedBy tombstones in the space feed with reply=$reply', async ({ moderator, reply, deletedBy }) => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const input = { contextKind: 'space', contextId: 's-open' } as const;
+    const root = await createPost(ctx(), { ...input, body: 'Original' }, f.deps);
+    if (!root.ok) throw new Error('Root failed');
+    if (reply) await createPost(ctx(), { ...input, body: 'Reply', parentPostId: root.value.id }, f.deps);
+    await setPostPinned(ctx({ staffRole: 'admin' }), { postId: root.value.id, pinned: true }, f.deps);
+    await deletePost(moderator ? ctx({ userId: 'staff', staffRole: 'admin', memberId: null }) : ctx(), { id: root.value.id }, f.deps);
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
+      ok: true, value: { pinned: [], items: [{ id: root.value.id, deletedBy, replyCount: reply ? 1 : 0, pinnedAt: null }] },
+    });
+    expect(await setPostPinned(ctx({ staffRole: 'admin' }), { postId: root.value.id, pinned: true }, f.deps)).toMatchObject({ ok: false });
   });
 
   it('enforces the pin limit and rejects lesson posts and replies', async () => {

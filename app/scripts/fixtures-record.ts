@@ -165,6 +165,8 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
     await call('listUpcomingEvents', [{ limit: 20 }], () => api.listUpcomingEvents({ limit: 20 }));
     const input = { spaceId, scope: 'upcoming' as const, limit: 5 };
     await call('listSpaceEvents', [input], () => api.listSpaceEvents(input));
+    const pastInput = { spaceId, scope: 'past' as const, limit: 5 };
+    await call('listSpaceEvents', [pastInput], () => api.listSpaceEvents(pastInput));
     await call('markSpaceSeen', [{ spaceId }], () => abortedApi.markSpaceSeen({ spaceId }));
   }
   if (scenario.extra) {

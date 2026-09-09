@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Button, Chip, Link as MuiLink, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -22,6 +22,10 @@ import {
 import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
+import { DeletePostDialog } from './DeletePostDialog.js';
+import { PostComposer } from './ThreadDiscussion.js';
+import { usePostMutations } from './usePostMutations.js';
+import { useCanOpenStudio, useImpersonation } from './viewer.js';
 import { ReactionBar } from './ReactionBar.js';
 
 const PAGE_SIZE = 10;
@@ -30,6 +34,14 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const deleted = item.deletedAt !== null;
+  const canModerate = useCanOpenStudio();
+  const impersonating = useImpersonation() !== null;
+  const me = useQuery(actions.me);
+  const writeDisabled = impersonating || (me.data?.tenant?.banned ?? false);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { update, remove } = usePostMutations();
+  const mutationError = update.error ?? remove.error;
   return (
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`home-feed-post-${item.id}`}>
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
@@ -67,8 +79,21 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
 
           {deleted ? (
             <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`home-feed-deleted-${item.id}`}>
-              {t.discussion.deletedPost}
+              {item.deletedBy === 'moderator' ? t.discussion.moderatorDeletedPost : t.discussion.deletedPost}
             </DeletedPostText>
+          ) : editing ? (
+            <PostComposer
+              label={t.discussion.editLabel}
+              submitLabel={t.common.save}
+              pendingLabel={t.discussion.saving}
+              initialValue={item.body}
+              focusOnMount
+              busy={update.isPending}
+              disabled={writeDisabled}
+              onSubmit={(body) => update.mutate({ id: item.id, body }, { onSuccess: () => setEditing(false) })}
+              onCancel={() => setEditing(false)}
+              testId={`edit-composer-${item.id}`}
+            />
           ) : (
             <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`home-feed-body-${item.id}`}>
               <LinkifiedText text={item.body} />
@@ -76,7 +101,7 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
           )}
         </Box>
 
-        <ReactionBar postId={item.id} reactions={item.reactions} testIdPrefix="home-feed-reaction" />
+        {!deleted && <ReactionBar postId={item.id} reactions={item.reactions} testIdPrefix="home-feed-reaction" />}
 
         <Stack
           direction="row"
@@ -98,10 +123,23 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
               postId={item.id}
               postPath={communityPostPath(item.spaceId, item.id)}
               canContactAuthor={!item.isOwn && !deleted}
+              canEdit={item.isOwn && !deleted}
+              canDelete={(item.isOwn || canModerate) && !deleted}
+              writeDisabled={writeDisabled}
+              onEdit={() => setEditing(true)}
+              onDelete={() => setDeleting(true)}
             />
           </Box>
         </Stack>
+        {mutationError !== null ? <Alert severity="error">{localizeError(mutationError, t)}</Alert> : null}
       </Stack>
+      {deleting ? (
+        <DeletePostDialog
+          pending={remove.isPending}
+          onClose={() => setDeleting(false)}
+          onConfirm={() => remove.mutate({ id: item.id }, { onSuccess: () => setDeleting(false) })}
+        />
+      ) : null}
     </DiscussionThread>
   );
 };

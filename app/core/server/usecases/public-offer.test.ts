@@ -67,6 +67,7 @@ const fakeTenants = (branding?: {
   logoUrl: string | null;
   logoDarkUrl: string | null;
   accentColor: string | null;
+  accentLight?: string | null;
   faviconUrl: string | null;
   socialLinks?: Array<{ label: string; url: string }>;
 }): TenantRepository => ({
@@ -91,6 +92,7 @@ const fakeTenants = (branding?: {
           termsUrl: null,
           privacyUrl: null,
           defaultHomeSpaceId: null,
+          accentLight: null,
           ...branding,
         },
   updateSettings: async (_tenantId, next) => next,
@@ -133,7 +135,7 @@ describe('getPublicOffer', () => {
         tenant: {
           slug: 'acme',
           name: 'Acme',
-          branding: { logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null },
+          branding: { logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null, faviconUrl: null },
           socialLinks: [],
           legal: { termsUrl: null, privacyUrl: null },
           support: { url: null },
@@ -237,6 +239,7 @@ describe('getPublicOffer', () => {
       logoUrl: '/assets/akademia-logo.svg',
       logoDarkUrl: null,
       accentColor: '#0E7490',
+      accentLight: '#786000',
       faviconUrl: '/assets/akademia-logo.svg',
     };
     const result = await getPublicOffer(tenant, {
@@ -255,6 +258,7 @@ describe('getPublicOffer', () => {
       logoUrl: '/api/public/assets/logo/light.png',
       logoDarkUrl: '/api/public/assets/logo-dark/dark.png',
       accentColor: null,
+      accentLight: null,
       faviconUrl: null,
     };
     const result = await getPublicOffer(tenant, {
@@ -278,7 +282,7 @@ describe('getPublicOffer', () => {
       prices: noPrices,
       lessons: noLessons,
       courses: noCourses,
-      tenants: fakeTenants({ logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null, socialLinks }),
+      tenants: fakeTenants({ logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null, faviconUrl: null, socialLinks }),
     });
 
     expect(result).toMatchObject({ ok: true, value: { tenant: { socialLinks } } });

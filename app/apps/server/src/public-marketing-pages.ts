@@ -1,4 +1,4 @@
-import { DEFAULT_LANGUAGE, languageSchema, resolveTenantLogo, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
+import { DEFAULT_LANGUAGE, deriveLightAccent, languageSchema, resolveTenantLogo, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
 
 import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
 import type { PublicMarketingMessages } from './public-marketing-pages-messages.js';
@@ -159,7 +159,7 @@ const renderPage = (input: {
   testId: string;
 }): string => {
   const t = messages[input.language];
-  const accent = input.brand.settings?.accentColor ?? '#7c3aed';
+  const accent = input.brand.settings?.accentLight ?? deriveLightAccent(input.brand.settings?.accentColor ?? '#7c3aed');
   const settings = input.brand.settings;
   const logoUrl = settings === null || settings === undefined
     ? null

@@ -9,6 +9,7 @@ import {
   forbidden,
   heuristicSignalsFor,
   internal,
+  isVisiblePostThread,
   listDiscussionInputSchema,
   muteThreadInputSchema,
   notificationListInputSchema,
@@ -273,6 +274,10 @@ export const createPost = async (
     if (!parentPost || parentPost.contextKind !== parsed.data.contextKind || parentPost.contextId !== parsed.data.contextId) {
       return err(validation('Parent post does not belong to this discussion'));
     }
+    const root = parentPost.parentPostId === null ? parentPost : await deps.posts.findById(actor.value.tenantId, parentPost.rootPostId);
+    if (root === null || (root.deletedAt !== null && !isVisiblePostThread(root, (await deps.posts.listReplies(actor.value.tenantId, root.id)).length))) {
+      return err(validation('Thread not found'));
+    }
     rootPostId = parentPost.rootPostId;
   }
   const now = deps.clock.nowIso();
@@ -361,17 +366,18 @@ export const listDiscussion = async (
     limit: parsed.data.limit,
     ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
   });
+  const visibleThreads = listed.threads.filter((thread) => isVisiblePostThread(thread.post, thread.replyCount));
   const repliesByThread = await Promise.all(
-    listed.threads.map((thread) => deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
+    visibleThreads.map((thread) => deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
   );
   const avatarUrls = await avatarUrlsFor(
     scope.value.tenantId,
-    [...listed.threads.map((thread) => thread.post), ...repliesByThread.flat()].map(
+    [...visibleThreads.map((thread) => thread.post), ...repliesByThread.flat()].map(
       (post) => post.authorUserId,
     ),
     deps,
   );
-  const threads = listed.threads.map((thread, index) => ({
+  const threads = visibleThreads.map((thread, index) => ({
     ...toPublicPost(
       renderPost(thread.post),
       scope.value.userId,
@@ -410,6 +416,7 @@ export const editPost = async (
   const access = await contextAccess(ctx, post, deps);
   if (!access.ok) return access;
   if (post.authorUserId !== actor.value.userId) return err(forbidden('Only the author can edit this post'));
+  if (post.deletedAt !== null) return err(validation('Post not found'));
   const body = normalizeBody(parsed.data.body);
   if (body.length === 0) return err(validation('Post body cannot be blank'));
   const now = deps.clock.nowIso();
@@ -443,11 +450,14 @@ export const deletePost = async (
   if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {
     return err(forbidden('Only the author or staff can delete this post'));
   }
+  if (post.deletedAt !== null) return ok(toPublicPost(renderPost(post), actor.value.userId));
   const deleted = await deps.posts.softDelete(actor.value.tenantId, {
     id: post.id,
     deletedAt: deps.clock.nowIso(),
+    deletedBy: post.authorUserId === actor.value.userId ? 'author' : 'moderator',
+    deletedByUserId: actor.value.userId,
   });
-  return deleted ? ok(toPublicPost(deleted, actor.value.userId)) : err(validation('Post not found'));
+  return deleted ? ok(toPublicPost(renderPost(deleted), actor.value.userId)) : err(validation('Post not found'));
 };
 
 export const subscribeThread = async (

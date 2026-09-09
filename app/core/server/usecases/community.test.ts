@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   computeCourseModuleName,
@@ -329,10 +329,10 @@ class FakePosts implements PostRepository {
     return next;
   }
 
-  async softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null> {
+  async softDelete(tenantId: string, input: { id: string; deletedAt: string; deletedBy: 'author' | 'moderator'; deletedByUserId: string }): Promise<Post | null> {
     const post = await this.findById(tenantId, input.id);
     if (!post) return null;
-    const next = { ...post, deletedAt: input.deletedAt, pinnedAt: null };
+    const next = { ...post, deletedAt: input.deletedAt, deletedBy: input.deletedBy, deletedByUserId: input.deletedByUserId, pinnedAt: null };
     this.replace(next);
     return next;
   }
@@ -929,6 +929,7 @@ describe('community use-cases', () => {
 
   it('creates a 10-level reply chain with the root post id preserved', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
+    const listReplies = vi.spyOn(d.posts, 'listReplies');
     const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     expect(root.ok).toBe(true);
     if (!root.ok) return;
@@ -944,6 +945,7 @@ describe('community use-cases', () => {
       expect(reply.value.rootPostId).toBe(root.value.id);
       parent = reply.value;
     }
+    expect(listReplies).not.toHaveBeenCalled();
   });
 
   it('guards lesson access and allows free-preview lesson grants', async () => {
@@ -1081,13 +1083,52 @@ describe('community use-cases', () => {
     expect(d.notifications.rows.map((notification) => notification.recipientUserId)).toEqual(['u3']);
   });
 
-  it('renders soft-deleted posts as placeholders', async () => {
+  it('renders soft-deleted posts with replies as placeholders', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'secret' }, d);
     if (!root.ok) throw new Error('root failed');
+    await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'Reply' }, d);
     await deletePost(ctx(), { id: root.value.id }, d);
     const listed = await listDiscussion(ctx(), { contextKind: 'lesson', contextId: 'l1' }, d);
     expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: '[deleted-post]' }] } });
+  });
+
+  it.each([
+    { own: true, staffRole: null, replies: false, visible: false, deletedBy: 'author' },
+    { own: true, staffRole: 'admin', replies: false, visible: false, deletedBy: 'author' },
+    { own: true, staffRole: null, replies: true, visible: true, deletedBy: 'author' },
+    { own: false, staffRole: 'owner', replies: false, visible: true, deletedBy: 'moderator' },
+    { own: false, staffRole: 'admin', replies: true, visible: true, deletedBy: 'moderator' },
+  ] as const)('preserves deletion provenance and thread visibility: $deletedBy, replies=$replies, staff=$staffRole', async ({ own, staffRole, replies, visible, deletedBy }) => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const root = await createPost(ctx(), { ...input, body: 'Private original' }, d);
+    if (!root.ok) throw new Error('Root failed');
+    if (replies) {
+      const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
+      if (!reply.ok) throw new Error('Reply failed');
+      await deletePost(ctx(), { id: reply.value.id }, d);
+    }
+    const actor = ctx({ userId: own ? 'u1' : 'staff', staffRole });
+    const deleted = await deletePost(actor, { id: root.value.id }, d);
+    expect(deleted).toMatchObject({ ok: true, value: { deletedBy, pinnedAt: null } });
+    expect(JSON.stringify(deleted)).not.toContain('Private original');
+    expect(JSON.stringify(deleted)).not.toContain('deletedByUserId');
+    expect(await d.posts.findById('t1', root.value.id)).toMatchObject({
+      body: 'Private original', deletedAt: NOW, deletedBy, deletedByUserId: actor.identity.userId,
+    });
+    await deletePost(ctx({ userId: 'another-staff', staffRole: 'admin' }), { id: root.value.id }, d);
+    expect(await d.posts.findById('t1', root.value.id)).toMatchObject({ deletedBy, deletedByUserId: actor.identity.userId });
+    const listed = await listDiscussion(ctx(), input, d);
+    if (!listed.ok) throw new Error('Discussion failed');
+    expect(listed.value.threads).toHaveLength(visible ? 1 : 0);
+    if (visible) {
+      expect(listed.value.threads[0]).toMatchObject({ deletedBy, replyCount: replies ? 1 : 0 });
+      if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedBy: 'author' });
+    } else {
+      expect(await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
+    }
+    expect(await editPost(ctx(), { id: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
   });
 
   it('filters search results by lesson entitlements and tenant', async () => {
@@ -1490,5 +1531,6 @@ describe('renderPost', () => {
 
   it('replaces a deleted body with a language-neutral marker', () => {
     expect(renderPost(softDeleted()).body).toBe('[deleted-post]');
+    expect(renderPost({ ...softDeleted(), deletedBy: 'moderator' }).body).toBe('This post was deleted by a moderator.');
   });
 });

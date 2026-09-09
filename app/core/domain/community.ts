@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { communityPl } from './community.pl.js';
+import { DEFAULT_LANGUAGE, type Language } from './language.js';
+
 export const postContextKindSchema = z.enum(['lesson', 'space']);
 
 export type PostContextKind = z.output<typeof postContextKindSchema>;
@@ -19,6 +22,8 @@ export const postSchema = z.object({
   createdAt: z.string().datetime(),
   editedAt: z.string().datetime().nullable(),
   deletedAt: z.string().datetime().nullable(),
+  deletedBy: z.enum(['author', 'moderator']).nullable().optional(),
+  deletedByUserId: z.string().min(1).nullable().optional(),
   pinnedAt: z.string().datetime().nullable().default(null),
 });
 
@@ -28,7 +33,7 @@ export type Post = z.output<typeof postSchema>;
  * What a client is allowed to see: the raw authorUserId is dropped and ownership is
  * pre-computed server-side into isOwn (author checks and moderation stay on the server).
  */
-export const publicPostSchema = postSchema.omit({ authorUserId: true }).extend({
+export const publicPostSchema = postSchema.omit({ authorUserId: true, deletedByUserId: true }).extend({
   isOwn: z.boolean(),
   // Unlike authorDisplay this is never snapshotted, and it stays null on the
   // anonymous surface so public JSON carries no e-mail hash (ADR 0016).
@@ -194,8 +199,23 @@ export type PostSearchHit = z.output<typeof postSearchHitSchema>;
 
 export const DELETED_POST_PLACEHOLDER = '[deleted-post]';
 
-export const renderPost = (post: Post): Post =>
-  post.deletedAt === null ? post : { ...post, body: DELETED_POST_PLACEHOLDER };
+const MODERATOR_DELETED_POST_PLACEHOLDER: Record<Language, string> = {
+  pl: communityPl.moderatorDeletedPost,
+  en: 'This post was deleted by a moderator.',
+};
+
+export const isVisiblePostThread = (post: Post, replyCount: number): boolean =>
+  post.parentPostId !== null || post.deletedAt === null || post.deletedBy !== 'author' || replyCount > 0;
+
+export const renderPost = (post: Post, language: Language = DEFAULT_LANGUAGE): Post =>
+  post.deletedAt === null
+    ? post
+    : {
+      ...post,
+      body: post.deletedBy === 'moderator'
+        ? MODERATOR_DELETED_POST_PLACEHOLDER[language]
+        : DELETED_POST_PLACEHOLDER,
+    };
 
 /** Client projection: the raw author id is dropped, ownership pre-computed into isOwn. */
 export const toPublicPost = (
@@ -215,6 +235,7 @@ export const toPublicPost = (
   createdAt: post.createdAt,
   editedAt: post.editedAt,
   deletedAt: post.deletedAt,
+  deletedBy: post.deletedBy ?? null,
   pinnedAt: post.pinnedAt,
   isOwn: post.authorUserId === viewerUserId,
   authorAvatarUrl,

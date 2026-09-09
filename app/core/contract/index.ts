@@ -11,3 +11,5 @@ export {
   lessonPath,
 } from '#core/domain/index.js';
 export * from './authorization.js';
+
+export * from './marketing-contacts.js';

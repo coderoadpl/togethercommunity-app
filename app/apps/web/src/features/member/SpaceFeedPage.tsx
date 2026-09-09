@@ -29,6 +29,8 @@ import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { LockedSpaceCard, SpaceVisibilityChip } from './SpaceCards.js';
 import { PostComposer } from './ThreadDiscussion.js';
+import { DeletePostDialog } from './DeletePostDialog.js';
+import { usePostMutations } from './usePostMutations.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
 import { useImpersonation, useViewerKind } from './viewer.js';
@@ -43,6 +45,7 @@ const FeedPost = ({
   onToggle,
   busy,
   canPin,
+  writeDisabled,
   pinBusy,
   onPin,
 }: {
@@ -52,11 +55,16 @@ const FeedPost = ({
   onToggle: (postId: string, emoji: ReactionEmoji, reacted: boolean) => void;
   busy: boolean;
   canPin: boolean;
+  writeDisabled: boolean;
   pinBusy: boolean;
   onPin: (postId: string, pinned: boolean) => void;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { update, remove } = usePostMutations();
+  const mutationError = update.error ?? remove.error;
   const deleted = item.deletedAt !== null;
   const postPath = `/community/${encodeURIComponent(spaceId)}/posts/${encodeURIComponent(item.id)}`;
   return (
@@ -80,8 +88,23 @@ const FeedPost = ({
 
           {deleted ? (
             <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`deleted-post-${item.id}`}>
-              {t.discussion.deletedPost}
+              {item.deletedBy === 'moderator' ? t.discussion.moderatorDeletedPost : t.discussion.deletedPost}
             </DeletedPostText>
+          ) : editing ? (
+            <Box sx={{ mt: '0.75rem' }}>
+              <PostComposer
+                label={t.discussion.editLabel}
+                submitLabel={t.common.save}
+                pendingLabel={t.discussion.saving}
+                initialValue={item.body}
+                focusOnMount
+                busy={update.isPending}
+                disabled={writeDisabled}
+                onSubmit={(body) => update.mutate({ id: item.id, body }, { onSuccess: () => setEditing(false) })}
+                onCancel={() => setEditing(false)}
+                testId={`edit-composer-${item.id}`}
+              />
+            </Box>
           ) : (
             <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`post-body-${item.id}`}>
               <LinkifiedText text={item.body} />
@@ -115,7 +138,7 @@ const FeedPost = ({
           <MuiLink component={Link} to={postPath} data-testid={`open-thread-${item.id}`}>
             {t.community.openThread}
           </MuiLink>
-          {canPin ? (
+          {canPin && !deleted ? (
             <PostMetaButton
               size="small"
               variant="text"
@@ -129,9 +152,22 @@ const FeedPost = ({
             postId={item.id}
             postPath={postPath}
             canContactAuthor={!item.isOwn && !deleted}
+            canEdit={item.isOwn && !deleted}
+            canDelete={(item.isOwn || canPin) && !deleted}
+            writeDisabled={writeDisabled}
+            onEdit={() => setEditing(true)}
+            onDelete={() => setDeleting(true)}
           />
         </Stack>
+        {mutationError !== null ? <Alert severity="error">{localizeError(mutationError, t)}</Alert> : null}
       </Stack>
+      {deleting ? (
+        <DeletePostDialog
+          pending={remove.isPending}
+          onClose={() => setDeleting(false)}
+          onConfirm={() => remove.mutate({ id: item.id }, { onSuccess: () => setDeleting(false) })}
+        />
+      ) : null}
     </DiscussionThread>
   );
 };
@@ -321,7 +357,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const items = feed.data?.feed.items ?? [];
   const pinned = feed.data?.feed.pinned ?? [];
   const canPin =
-    me.data?.tenant?.staffRole !== null && me.data?.tenant?.staffRole !== undefined;
+    me.data !== undefined && me.data.tenant !== null && me.data.tenant.staffRole !== null;
 
   return (
     <MemberSurface
@@ -388,6 +424,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
                 onToggle={toggleReaction}
                 busy={reactionBusy}
                 canPin={canPin}
+                writeDisabled={banned || impersonating}
                 pinBusy={pin.isPending}
                 onPin={(postId, nextPinned) => pin.mutate({ postId, pinned: nextPinned })}
               />
@@ -401,6 +438,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
                 onToggle={toggleReaction}
                 busy={reactionBusy}
                 canPin={canPin}
+                writeDisabled={banned || impersonating}
                 pinBusy={pin.isPending}
                 onPin={(postId, nextPinned) => pin.mutate({ postId, pinned: nextPinned })}
               />

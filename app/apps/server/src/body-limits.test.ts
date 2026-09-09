@@ -14,6 +14,11 @@ import {
 } from './body-limits.js';
 
 describe('request body limits', () => {
+  it('bounds directory CSV multipart and JSON chunks separately', () => {
+    expect(requestBodyLimit('POST', API_PATHS.marketingContactImportUpload)).toBe(4 * 1024 * 1024);
+    expect(requestBodyLimit('POST', '/api/marketing/contact-imports/batch/rows')).toBe(1024 * 1024);
+    expect(requestBodyLimit('POST', '/api/m2m/marketing/contact-imports/batch/rows')).toBe(1024 * 1024);
+  });
   it('keeps ordinary API requests at the default limit', () => {
     expect(requestBodyLimit('POST', API_PATHS.checkoutSession)).toBe(DEFAULT_API_BODY_LIMIT);
   });

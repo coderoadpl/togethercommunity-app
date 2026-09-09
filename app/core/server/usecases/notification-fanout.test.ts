@@ -273,6 +273,7 @@ const tenantSettings = (defaultLanguage: Language | undefined): TenantSettings =
   logoUrl: null,
   logoDarkUrl: null,
   accentColor: null,
+  accentLight: null,
   faviconUrl: null,
   ogTitle: null,
   ogDescription: null,

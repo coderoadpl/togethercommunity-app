@@ -48,6 +48,7 @@
         "tenant": {
           "branding": {
             "accentColor": "#0E7490",
+            "accentLight": null,
             "faviconUrl": "/assets/akademia-logo.svg",
             "logoDarkUrl": null,
             "logoUrl": "/assets/akademia-wordmark.svg"

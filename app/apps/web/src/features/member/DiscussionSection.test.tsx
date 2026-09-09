@@ -89,6 +89,16 @@ const okDiscussion = (
   );
 
 describe('DiscussionSection', () => {
+  it('labels moderator tombstones and keeps their replies readable without write actions', async () => {
+    server.use(okMe('owner'), okDiscussion([asThread(post({ id: 'deleted', deletedAt: '2026-07-15T09:00:00.000Z', deletedBy: 'moderator' }), [asThread(post({ id: 'reply', parentPostId: 'deleted', rootPostId: 'deleted' }))])]));
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    expect(await screen.findByTestId('deleted-post-deleted')).toHaveTextContent(pl.discussion.moderatorDeletedPost);
+    expect(screen.getByTestId('post-body-reply')).toBeInTheDocument();
+    expect(screen.queryByTestId('delete-button-deleted')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('edit-button-deleted')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('report-post-deleted')).not.toBeInTheDocument();
+  });
+
   it('spaces post bodies and safely links URLs in roots and replies', async () => {
     const body = '<img src=x onerror=alert(1)> Read https://courses.example.org/guide?a=1&b=2.\njavascript:alert(1)';
     server.use(okMe(), okDiscussion([

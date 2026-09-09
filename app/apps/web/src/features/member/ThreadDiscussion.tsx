@@ -7,7 +7,7 @@ import type { DiscussionPost, PostContextKind, ThreadSubscriptionState } from '#
 
 import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
-import { ConfirmDialog, StatusView } from '../../components/layout/index.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatRelativeTime } from '../../lib/format.js';
 import {
@@ -28,6 +28,8 @@ import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
+import { DeletePostDialog } from './DeletePostDialog.js';
+import { usePostMutations } from './usePostMutations.js';
 import { useImpersonation } from './viewer.js';
 
 export const PAGE_SIZE = 20;
@@ -250,7 +252,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
 
       {deleted ? (
         <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`deleted-post-${post.id}`}>
-          {t.discussion.deletedPost}
+          {post.deletedBy === 'moderator' ? t.discussion.moderatorDeletedPost : t.discussion.deletedPost}
         </DeletedPostText>
       ) : a.editingId === post.id ? (
         <Box sx={{ mt: '0.75rem' }}>
@@ -433,8 +435,7 @@ export const ThreadDiscussion = ({
 
   const invalidate = () => queryClient.invalidateQueries(actions.discussionInvalidates());
   const create = useMutation({ ...actions.createPost, onSettled: invalidate });
-  const update = useMutation({ ...actions.updatePost, onSettled: invalidate });
-  const remove = useMutation({ ...actions.deletePost, onSettled: invalidate });
+  const { update, remove } = usePostMutations();
   const subscribe = useMutation({ ...actions.subscribeThread, onSettled: invalidate });
   const mute = useMutation({ ...actions.muteThread, onSettled: invalidate });
 
@@ -711,18 +712,12 @@ export const ThreadDiscussion = ({
       )}
 
       {deleting !== null && (
-        <ConfirmDialog
-          open
-          title={t.discussion.deleteConfirmTitle}
-          body={t.discussion.deleteConfirmBody}
-          confirmLabel={remove.isPending ? t.discussion.deleting : t.discussion.deleteConfirm}
-          cancelLabel={t.common.cancel}
+        <DeletePostDialog
           pending={remove.isPending}
           onClose={() => setDeleting(null)}
           onConfirm={() =>
             remove.mutate({ id: deleting.id }, { onSuccess: () => setDeleting(null) })
           }
-          confirmTestId="confirm-delete-post"
         />
       )}
     </Box>

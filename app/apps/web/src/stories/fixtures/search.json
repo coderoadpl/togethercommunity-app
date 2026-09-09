@@ -255,6 +255,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null
@@ -287,6 +288,7 @@
               "contextKind": "lesson",
               "createdAt": "2026-06-28T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-js-variables-q",
               "isOwn": true,
@@ -308,6 +310,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-community-resources",
               "isOwn": false,
@@ -329,6 +332,7 @@
               "contextKind": "lesson",
               "createdAt": "2026-06-22T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-js-dom-q-r1",
               "isOwn": false,
@@ -350,6 +354,7 @@
               "contextKind": "lesson",
               "createdAt": "2026-06-11T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-js-variables-tip",
               "isOwn": false,

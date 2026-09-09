@@ -65,14 +65,6 @@ type BlockDraft =
 
 const BLOCK_TYPE_ORDER: BlockType[] = ['video', 'embed', 'pdf', 'link', 'html'];
 const TYPE_FILTERS: (BlockType | 'all')[] = ['all', ...BLOCK_TYPE_ORDER];
-const storageKeyField = 'storageKey';
-const streamVideoIdField = 'streamVideoId';
-const streamLibraryIdField = 'streamLibraryId';
-const streamCollectionIdField = 'streamCollectionId';
-const pdfUrlField = 'pdfUrl';
-const nameField = 'name';
-const urlField = 'url';
-const descriptionField = 'description';
 
 const blockTypeLabel = (t: Messages, value: BlockType): string => {
   switch (value) {
@@ -265,10 +257,10 @@ const VideoBlockFields = ({
           {t.lessons.videoPickFromBunny}
         </Button>
       </Box>
-      {field(t.lessons.storageKeyLabel, storageKeyField, draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }), storageKeyField)}
-      {field(t.lessons.streamVideoIdLabel, streamVideoIdField, draft.streamVideoId, (streamVideoId) => onChange({ ...draft, streamVideoId }), streamVideoIdField)}
-      {field(t.lessons.streamLibraryIdLabel, streamLibraryIdField, draft.streamLibraryId, (streamLibraryId) => onChange({ ...draft, streamLibraryId }), streamLibraryIdField)}
-      {field(t.lessons.streamCollectionIdLabel, streamCollectionIdField, draft.streamCollectionId, (streamCollectionId) => onChange({ ...draft, streamCollectionId }), streamCollectionIdField)}
+      {field(t.lessons.storageKeyLabel, 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }), 'storageKey')}
+      {field(t.lessons.streamVideoIdLabel, 'streamVideoId', draft.streamVideoId, (streamVideoId) => onChange({ ...draft, streamVideoId }), 'streamVideoId')}
+      {field(t.lessons.streamLibraryIdLabel, 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) => onChange({ ...draft, streamLibraryId }), 'streamLibraryId')}
+      {field(t.lessons.streamCollectionIdLabel, 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) => onChange({ ...draft, streamCollectionId }), 'streamCollectionId')}
       {pickerOpen ? (
         <BunnyVideoPickerDialog
           onClose={() => setPickerOpen(false)}
@@ -392,15 +384,15 @@ const BlockFields = ({
     case 'pdf':
       return (
         <Stack useFlexGap spacing="0.6rem">
-          {field(t.lessons.pdfUrlLabel, pdfUrlField, draft.pdfUrl, (pdfUrl) => onChange({ ...draft, pdfUrl }), pdfUrlField)}
-          {field(t.lessons.fileNameLabel, nameField, draft.name, (name) => onChange({ ...draft, name }), nameField)}
+          {field(t.lessons.pdfUrlLabel, 'pdfUrl', draft.pdfUrl, (pdfUrl) => onChange({ ...draft, pdfUrl }), 'pdfUrl')}
+          {field(t.lessons.fileNameLabel, 'name', draft.name, (name) => onChange({ ...draft, name }), 'name')}
         </Stack>
       );
     case 'link':
       return (
         <Stack useFlexGap spacing="0.6rem">
-          {field(t.lessons.linkUrlLabel, urlField, draft.url, (url) => onChange({ ...draft, url }), urlField)}
-          {field(t.lessons.linkDescriptionLabel, descriptionField, draft.description, (description) => onChange({ ...draft, description }), descriptionField)}
+          {field(t.lessons.linkUrlLabel, 'url', draft.url, (url) => onChange({ ...draft, url }), 'url')}
+          {field(t.lessons.linkDescriptionLabel, 'description', draft.description, (description) => onChange({ ...draft, description }), 'description')}
           <MemberLinkPreview
             block={{
               type: 'link',

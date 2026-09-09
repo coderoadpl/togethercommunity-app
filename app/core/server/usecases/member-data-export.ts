@@ -104,8 +104,9 @@ export const exportMyData = async (
   });
   const date = exportedAt.slice(0, 10);
   const tenantSlug = ctx.identity.tenantSlug ?? tenant.value;
+  const filenamePrefix = member.language === 'pl' ? 'moje-dane' : 'my-data';
   return ok({
-    filename: `my-data-${tenantSlug}-${date}.json`,
+    filename: `${filenamePrefix}-${tenantSlug}-${date}.json`,
     mimeType: 'application/json; charset=utf-8',
     content: JSON.stringify(pkg),
   });

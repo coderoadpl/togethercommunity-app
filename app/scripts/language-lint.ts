@@ -21,13 +21,14 @@ const skippedExtensions = new Set([
 const skippedFiles = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock']);
 const legalPhrases = [
   'ustawy o podatku od towarów i usług',
-  'rabat kuponowy',
 ];
 
 const isAllowedFile = (path: string): boolean =>
   path === 'CLA.md' ||
-  path === 'app/apps/web/src/i18n/en.ts' ||
-  path.endsWith('.en.ts') ||
+  path === 'app/docs/terminology-glossary.md' ||
+  path === 'app/core/domain/slug.ts' ||
+  path === 'app/apps/web/src/i18n/pl.ts' ||
+  path.endsWith('.pl.ts') ||
   path.startsWith('app/adapters/invoicing/xsd/') ||
   path.startsWith('app/drizzle/') && path.endsWith('.sql') ||
   path === 'app/adapters/invoicing/ksef-pdf.ts';

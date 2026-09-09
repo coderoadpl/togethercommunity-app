@@ -189,6 +189,19 @@ describe('exportMyData', () => {
     });
   });
 
+  it.each([
+    { language: 'pl', prefix: 'moje-dane' },
+    { language: 'en', prefix: 'my-data' },
+    { language: undefined, prefix: 'my-data' },
+    { language: null, prefix: 'my-data' },
+  ] as const)('names the export for member language $language', async ({ language, prefix }) => {
+    const result = await exportMyData(context('member'), deps({ ...member, language }));
+    expect(result).toMatchObject({
+      ok: true,
+      value: { filename: `${prefix}-acme-2026-07-29.json` },
+    });
+  });
+
   it('forbids staff without a member row', async () => {
     const result = await exportMyData(context('staff'), deps());
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });

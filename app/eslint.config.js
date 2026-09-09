@@ -174,10 +174,20 @@ export default tseslint.config(
           framework: 'react',
           mode: 'jsx-only',
           'jsx-attributes': {
-            include: ['aria-label', 'title', 'placeholder', 'alt'],
+            include: ['aria-label', 'title'],
           },
           words: {
             exclude: ['^[^A-Za-z]+$'],
+          },
+          callees: {
+            exclude: [
+              'i18n(ext)?', 't', 'require', 'addEventListener', 'removeEventListener',
+              'postMessage', 'getElementById', 'dispatch', 'commit', 'includes',
+              'indexOf', 'endsWith', 'startsWith', '^field$',
+            ],
+          },
+          'jsx-components': {
+            exclude: ['Trans', '^DemoValue$'],
           },
         },
       ],

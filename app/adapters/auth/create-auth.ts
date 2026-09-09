@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
+  DEFAULT_LANGUAGE,
   normalizeEmail,
   PASSWORD_MIN_LENGTH,
   type AppError,
@@ -544,7 +545,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         const normalizedEmail = normalizeEmail(user.email);
-        const context = resetPasswordContexts.get(normalizedEmail) ?? { language: 'en' };
+        const context = resetPasswordContexts.get(normalizedEmail) ?? { language: DEFAULT_LANGUAGE };
         resetPasswordContexts.delete(normalizedEmail);
         const actionUrl = context.baseUrl ? rebaseUrl(url, context.baseUrl) : url;
         const queued = await settings.emailOutbox.enqueue({
@@ -570,7 +571,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       sendVerificationEmail: async ({ user, url }) => {
         const normalizedEmail = normalizeEmail(user.email);
         const context = emailVerificationContexts.get(normalizedEmail) ?? {
-          language: 'en',
+          language: DEFAULT_LANGUAGE,
           baseUrl: settings.baseUrl,
         };
         emailVerificationContexts.delete(normalizedEmail);
@@ -603,7 +604,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         sendMagicLink: async ({ email, url, token }) => {
           const normalizedEmail = normalizeEmail(email);
           const context = deliveryContexts.get(normalizedEmail) ?? {
-            language: 'en',
+            language: DEFAULT_LANGUAGE,
             mode: 'email' as const,
           };
           deliveryContexts.delete(normalizedEmail);
@@ -751,7 +752,7 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
     const normalizedEmail = normalizeEmail(email);
     auth.setMagicLinkDeliveryContext(normalizedEmail, {
       tenantName: tenantName ?? 'Together',
-      language: language ?? 'en',
+      language: language ?? DEFAULT_LANGUAGE,
       mode: 'email',
       ...(baseUrl ? { baseUrl } : {}),
       ...(branding === undefined ? {} : { branding }),

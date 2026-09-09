@@ -1,23 +1,60 @@
 {
   "calls": {
-    "getMarketingReputation:[]": {
+    "getMarketingCampaign:[\"campaign-list-audience\"]": {
       "ok": true,
       "value": {
-        "complaint": {
-          "count": 0,
-          "rate": null,
-          "sends": 1,
-          "status": "insufficient_data"
-        },
-        "hardBounce": {
-          "count": 0,
-          "rate": null,
-          "sends": 1,
-          "status": "insufficient_data"
-        },
-        "overallStatus": "insufficient_data",
-        "windowEnd": "2026-07-01T12:00:00.000Z",
-        "windowStart": "2026-06-24T12:00:00.000Z"
+        "campaign": {
+          "audience": {
+            "excludeLists": [],
+            "excludeProductIds": [],
+            "includeLists": [
+              "list-launch"
+            ],
+            "includeMembersWithConsent": false,
+            "version": 2
+          },
+          "audienceFilter": null,
+          "audienceNameSnapshot": null,
+          "audienceSnapshotId": null,
+          "audienceVersion": 2,
+          "bodyHtml": "<p>Latest updates for our contacts.</p>",
+          "bodySource": "Latest updates for our contacts.",
+          "bodyText": null,
+          "candidateCount": 0,
+          "consentDefinitionId": "definition-directory-news",
+          "consentLabelSnapshot": null,
+          "createdAt": "2026-07-01T12:00:00.000Z",
+          "cursorContactId": null,
+          "cursorMemberId": null,
+          "engagement": {
+            "totalClicks": 0,
+            "totalOpens": 0,
+            "uniqueClicks": 0,
+            "uniqueOpens": 0
+          },
+          "errorCount": 0,
+          "failed": 0,
+          "finishedAt": null,
+          "id": "campaign-list-audience",
+          "layoutId": null,
+          "lockedBy": null,
+          "lockedUntil": null,
+          "name": "Newsletter launch",
+          "pausedReason": null,
+          "queued": 0,
+          "replyTo": null,
+          "sendAt": null,
+          "sent": 0,
+          "skipped": 0,
+          "snapshotMaxContactId": null,
+          "snapshotMaxMemberId": null,
+          "startedAt": null,
+          "status": "draft",
+          "subject": "Updates for newsletter contacts",
+          "tenantId": "tenant-studio",
+          "toSend": 0,
+          "unresolved": 0
+        }
       }
     },
     "getTenantSettings:[]": {
@@ -67,48 +104,6 @@
         "reports": []
       }
     },
-    "listMarketingCampaigns:[]": {
-      "ok": true,
-      "value": {
-        "campaigns": [
-          {
-            "audienceFilter": null,
-            "audienceNameSnapshot": "Wszyscy uprawnieni",
-            "bodyHtml": "<p>Plan nauki</p>",
-            "bodySource": "<p>Plan nauki</p>",
-            "bodyText": null,
-            "consentDefinitionId": "consent-definition-studio-news",
-            "consentLabelSnapshot": "Chcę otrzymywać aktualności e-mailem",
-            "createdAt": "2026-06-26T12:00:00.000Z",
-            "cursorMemberId": "member-studio-aktywny",
-            "engagement": {
-              "totalClicks": 0,
-              "totalOpens": 0,
-              "uniqueClicks": 0,
-              "uniqueOpens": 0
-            },
-            "errorCount": 0,
-            "failed": 0,
-            "finishedAt": "2026-06-27T12:00:00.000Z",
-            "id": "campaign-studio-observability",
-            "layoutId": null,
-            "lockedBy": null,
-            "lockedUntil": null,
-            "name": "Premiera kursu",
-            "pausedReason": null,
-            "replyTo": null,
-            "sendAt": "2026-06-27T12:00:00.000Z",
-            "sent": 1,
-            "snapshotMaxMemberId": "member-studio-aktywny",
-            "startedAt": "2026-06-27T12:00:00.000Z",
-            "status": "finished",
-            "subject": "Twój plan nauki na lipiec",
-            "tenantId": "tenant-studio",
-            "toSend": 1
-          }
-        ]
-      }
-    },
     "listMarketingConsentDefinitions:[]": {
       "ok": true,
       "value": {
@@ -127,6 +122,280 @@
             "status": "active",
             "tenantId": "tenant-studio",
             "updatedAt": "2026-06-06T12:00:00.000Z"
+          },
+          {
+            "channel": "email",
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "documentRef": {
+              "mode": "url",
+              "url": "https://courses.example.org/privacy"
+            },
+            "doubleOptIn": false,
+            "id": "definition-directory-news",
+            "key": "directory-news",
+            "kind": "optional_marketing",
+            "status": "active",
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          }
+        ]
+      }
+    },
+    "listMarketingLayouts:[]": {
+      "ok": true,
+      "value": {
+        "layouts": []
+      }
+    },
+    "listMarketingLists:[{\"limit\":100}]": {
+      "ok": true,
+      "value": {
+        "lists": [
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "id": "list-consent_definition",
+            "key": "consent_definition",
+            "kind": "dynamic",
+            "name": "Active permission",
+            "revision": 1,
+            "rule": {
+              "definitionId": "definition-directory-news",
+              "kind": "consent_definition",
+              "state": "active"
+            },
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "id": "list-launch",
+            "key": "launch",
+            "kind": "dynamic",
+            "name": "Launch contacts",
+            "revision": 1,
+            "rule": {
+              "kind": "tag",
+              "match": "any",
+              "tags": [
+                "launch"
+              ]
+            },
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "id": "list-newsletter",
+            "key": "newsletter",
+            "kind": "static",
+            "name": "Newsletter",
+            "revision": 1,
+            "rule": null,
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "id": "list-product_grant",
+            "key": "product_grant",
+            "kind": "dynamic",
+            "name": "Product access",
+            "revision": 1,
+            "rule": {
+              "kind": "product_grant",
+              "productIds": [
+                "product-studio-kurs-101"
+              ],
+              "state": "ever"
+            },
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "listProducts:[]": {
+      "ok": true,
+      "value": {
+        "products": [
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:31.000Z",
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-kurs-101",
+            "legacyId": null,
+            "priceCents": 19900,
+            "published": true,
+            "slug": "kurs-together-101",
+            "tenantId": "tenant-studio",
+            "title": "Kurs Together 101",
+            "type": "course"
+          },
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:32.000Z",
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-warsztat",
+            "legacyId": null,
+            "priceCents": 49900,
+            "published": false,
+            "slug": "warsztat-scenariuszowy",
+            "tenantId": "tenant-studio",
+            "title": "Warsztat scenariuszowy",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:33.000Z",
+            "currency": "PLN",
+            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "id": "product-js-full",
+            "legacyId": null,
+            "priceCents": 39900,
+            "published": true,
+            "slug": "js-full",
+            "tenantId": "tenant-studio",
+            "title": "Kurs JavaScript - pełny dostęp",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:34.000Z",
+            "currency": "PLN",
+            "description": "Pełny dostęp do kursu React w praktyce.",
+            "id": "product-react-full",
+            "legacyId": null,
+            "priceCents": 49900,
+            "published": true,
+            "slug": "react-full",
+            "tenantId": "tenant-studio",
+            "title": "React w praktyce - pełny dostęp",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "modules",
+                "moduleIds": [
+                  "module-js-dom"
+                ]
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:35.000Z",
+            "currency": "PLN",
+            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "id": "product-js-dom-module",
+            "legacyId": null,
+            "priceCents": 9900,
+            "published": true,
+            "slug": "js-dom-module",
+            "tenantId": "tenant-studio",
+            "title": "Pakiet: moduł DOM",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "lessonIds": [
+                  "lesson-js-demo-video",
+                  "lesson-js-zmienne-1",
+                  "lesson-js-dom-1",
+                  "lesson-js-projekt-1"
+                ],
+                "level": "lessons"
+              },
+              {
+                "courseId": "course-react",
+                "lessonIds": [
+                  "lesson-react-jsx-1",
+                  "lesson-react-hooks-1"
+                ],
+                "level": "lessons"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:36.000Z",
+            "currency": "PLN",
+            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "id": "product-free-preview",
+            "legacyId": null,
+            "priceCents": 0,
+            "published": true,
+            "slug": "free-preview",
+            "tenantId": "tenant-studio",
+            "title": "Free preview",
+            "type": "course"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              },
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:38.000Z",
+            "currency": "PLN",
+            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "id": "product-club",
+            "legacyId": null,
+            "priceCents": 4900,
+            "published": true,
+            "slug": "club",
+            "tenantId": "tenant-studio",
+            "title": "Klub Studio — subskrypcja",
+            "type": "membership"
+          },
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:39.000Z",
+            "currency": "PLN",
+            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "id": "product-download-workbook",
+            "legacyId": null,
+            "priceCents": 7900,
+            "published": true,
+            "slug": "download-workbook",
+            "tenantId": "tenant-studio",
+            "title": "Workbook twórcy",
+            "type": "digital_download"
           }
         ]
       }
@@ -198,6 +467,30 @@
           "videoAutoplay": null
         },
         "userId": "fixture-user-f9e5468247b51d08"
+      }
+    },
+    "previewMarketingAudience:[{\"audience\":{\"excludeLists\":[],\"excludeProductIds\":[],\"includeLists\":[\"list-launch\"],\"includeMembersWithConsent\":false,\"version\":2},\"consentDefinitionId\":\"definition-directory-news\"}]": {
+      "ok": true,
+      "value": {
+        "audienceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "candidateCount": 2,
+        "computedAt": "2026-07-01T12:00:00.000Z",
+        "count": 1,
+        "excludedCount": 0,
+        "sample": [
+          {
+            "contactId": "contact-a3bf86238a1c",
+            "displayName": "Anna Example",
+            "email": "anna@example.org",
+            "memberId": null
+          }
+        ],
+        "skipped": {
+          "noConsent": 0,
+          "pendingConfirmation": 0,
+          "suppressed": 1,
+          "withdrawn": 0
+        }
       }
     },
     "publicOffer:[]": {
@@ -379,143 +672,6 @@
       "ok": true,
       "value": {
         "unread": 0
-      }
-    },
-    "listMarketingLists:[{\"limit\":100}]": {
-      "ok": true,
-      "value": {
-        "lists": [
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-launch",
-            "key": "launch",
-            "kind": "dynamic",
-            "name": "Launch contacts",
-            "revision": 1,
-            "rule": {
-              "kind": "tag",
-              "match": "any",
-              "tags": [
-                "launch"
-              ]
-            },
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          },
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-newsletter",
-            "key": "newsletter",
-            "kind": "static",
-            "name": "Newsletter",
-            "revision": 1,
-            "rule": null,
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          }
-        ],
-        "nextCursor": null
-      }
-    },
-    "getMarketingCampaign:[\"campaign-list-audience\"]": {
-      "ok": true,
-      "value": {
-        "campaign": {
-          "audienceFilter": null,
-          "audienceNameSnapshot": "Wszyscy uprawnieni",
-          "bodyHtml": "<p>Latest updates for our contacts.</p>",
-          "bodySource": "Latest updates for our contacts.",
-          "bodyText": null,
-          "consentDefinitionId": "consent-definition-studio-news",
-          "consentLabelSnapshot": "Chcę otrzymywać aktualności e-mailem",
-          "createdAt": "2026-06-26T12:00:00.000Z",
-          "cursorMemberId": null,
-          "engagement": {
-            "totalClicks": 0,
-            "totalOpens": 0,
-            "uniqueClicks": 0,
-            "uniqueOpens": 0
-          },
-          "errorCount": 0,
-          "failed": 0,
-          "finishedAt": null,
-          "id": "campaign-list-audience",
-          "layoutId": null,
-          "lockedBy": null,
-          "lockedUntil": null,
-          "name": "Newsletter launch",
-          "pausedReason": null,
-          "replyTo": null,
-          "sendAt": null,
-          "sent": 0,
-          "snapshotMaxMemberId": null,
-          "startedAt": null,
-          "status": "draft",
-          "subject": "Updates for newsletter contacts",
-          "tenantId": "tenant-studio",
-          "toSend": 0,
-          "audienceVersion": 2,
-          "audience": {
-            "version": 2,
-            "includeLists": [
-              "list-launch"
-            ],
-            "excludeLists": [],
-            "excludeProductIds": [],
-            "includeMembersWithConsent": false
-          },
-          "audienceSnapshotId": null,
-          "snapshotMaxContactId": null,
-          "cursorContactId": null,
-          "candidateCount": 0,
-          "skipped": 0,
-          "queued": 0,
-          "unresolved": 0
-        }
-      }
-    },
-    "listMarketingLayouts:[]": {
-      "ok": true,
-      "value": {
-        "layouts": []
-      }
-    },
-    "listProducts:[]": {
-      "ok": true,
-      "value": {
-        "products": []
-      }
-    },
-    "previewMarketingAudience:[{\"audience\":{\"excludeLists\":[],\"excludeProductIds\":[],\"includeLists\":[\"list-launch\"],\"includeMembersWithConsent\":false,\"version\":2},\"consentDefinitionId\":\"consent-definition-studio-news\"}]": {
-      "ok": true,
-      "value": {
-        "count": 2,
-        "candidateCount": 3,
-        "excludedCount": 1,
-        "skipped": {
-          "suppressed": 1,
-          "withdrawn": 0,
-          "pendingConfirmation": 0,
-          "noConsent": 0
-        },
-        "sample": [
-          {
-            "contactId": "contact-example-1",
-            "email": "first@example.test",
-            "displayName": "First Contact",
-            "memberId": null
-          },
-          {
-            "contactId": "contact-example-2",
-            "email": "second@example.test",
-            "displayName": "Second Contact",
-            "memberId": null
-          }
-        ],
-        "computedAt": "2026-07-01T12:00:00.000Z",
-        "audienceHash": "example-hash"
       }
     }
   },

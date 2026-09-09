@@ -9,7 +9,7 @@ import {
   Stack,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
 
@@ -17,6 +17,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { loginCallbackUrl, returnToFromSearch } from '../../lib/auth-return.js';
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
@@ -32,6 +33,8 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
   const t = useTranslations();
   const { explicitLanguage } = useLanguage();
   useRedirectSignedInWithTenant();
+  const search = useRouterState({ select: (state) => state.location.searchStr });
+  const returnTo = returnToFromSearch(search);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -70,7 +73,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       name,
       email,
       password,
-      callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),
+      callbackURL: loginCallbackUrl(returnTo),
       ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
       ...(consentRequired ? { termsAccepted } : {}),
     });
@@ -91,7 +94,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
             <FinePrint variant="caption" component="p" sx={{ mb: '0.4rem' }}>
               {t.auth.registeredBoughtHint}
             </FinePrint>
-            <MuiLink component={Link} to="/login">{t.auth.registeredUseMagicLinkCta}</MuiLink>
+            <MuiLink component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.registeredUseMagicLinkCta}</MuiLink>
           </Box>
         </Stack>
       </AuthShell>
@@ -104,7 +107,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       hostname={hostname}
       footer={
         <FinePrint variant="caption" component="p" sx={{ mt: '1.75rem' }}>
-          {t.auth.alreadyHaveAccount} <MuiLink component={Link} to="/login">{t.auth.signInLink}</MuiLink>
+          {t.auth.alreadyHaveAccount} <MuiLink component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.signInLink}</MuiLink>
         </FinePrint>
       }
     >

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { Box, Button, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
@@ -11,6 +11,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { Cover } from '../../components/ui/Cover.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import {
   CourseStatTile,
   Eyebrow,
@@ -120,7 +121,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const structure = useQuery(actions.courseStructure(courseId));
   const progress = useQuery(actions.studentProgress(courseId));
   const courses = useQuery(actions.studentCourses);
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const theme = useTheme();
   const isCompact = useMediaQuery(theme.breakpoints.down('md'));
   const unauthorized = isUnauthorized(structure.error);
@@ -136,8 +137,8 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   );
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   if (structure.isPending) {
     return <CourseLoading lesson={false} />;

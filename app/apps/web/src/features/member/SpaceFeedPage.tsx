@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Box, Button, Chip, Link as MuiLink, Stack } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { ReactionEmoji, ReactionSummary, SpaceFeedItem } from '#core/domain/index.js';
@@ -12,6 +12,7 @@ import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { PostContent } from '../../components/ui/PostContent.js';
 import { formatRelativeTime } from '../../lib/format.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import {
   AuthorChip,
   DeletedPostText,
@@ -195,7 +196,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
 const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const queryClient = useQueryClient();
 
   const spaces = useQuery(actions.spaces);
@@ -239,8 +240,8 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   const unauthorized = isUnauthorized(spaces.error) || isUnauthorized(feed.error);
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   const feedReadable = feed.isSuccess;
   useEffect(() => {

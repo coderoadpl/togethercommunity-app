@@ -116,5 +116,6 @@ describe('MessagesListPage', () => {
 
     expect(await screen.findByText('login')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/login');
+    expect(router.state.location.search).toEqual({ returnTo: '/messages' });
   });
 });

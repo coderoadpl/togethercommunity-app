@@ -9,6 +9,7 @@ import { communitySpacePath } from '#core/contract/index.js';
 import { actions } from '../../../api.js';
 import { SectionCard } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { useRedirectToLogin } from '../use-login-redirect.js';
 import { FinePrint, PostBody, PostMetaText } from '../../../theme.js';
 import { MemberSurface } from '../MemberSurface.js';
 import { ThreadDiscussion } from '../ThreadDiscussion.js';
@@ -50,6 +51,7 @@ const MemberEventPage = ({ spaceId, eventId }: { spaceId: string; eventId: strin
   const t = useTranslations();
   const { language } = useLanguage();
   const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const queryClient = useQueryClient();
 
   const spaces = useQuery(actions.spaces);
@@ -58,8 +60,8 @@ const MemberEventPage = ({ spaceId, eventId }: { spaceId: string; eventId: strin
 
   const unauthorized = isUnauthorized(event.error) || isUnauthorized(spaces.error);
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   const space = spaces.data?.spaces.find((candidate) => candidate.id === spaceId);
   const spaceName = space?.name ?? t.community.heading;

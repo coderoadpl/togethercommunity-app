@@ -51,6 +51,7 @@ export const tenantAuditEventSchema = z.object({
     'content_version_restored',
     'redirect_created',
     'redirect_deleted',
+    'post_purged',
   ]),
   actorUserId: z.string().min(1),
   actorEmail: z.string().min(1),

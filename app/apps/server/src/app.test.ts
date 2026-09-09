@@ -670,6 +670,7 @@ const deps = (input: {
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
+      purge: async () => false,
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
@@ -952,6 +953,7 @@ const scopedApp = (
       ...base.posts,
       findById: async () => post,
       countPinnedForContext: async () => 0,
+      purge: async () => false,
       setPinned: async (_tenantId, input) => ({
         ...post,
         pinnedAt: input.pinnedAt,
@@ -7761,5 +7763,31 @@ describe('unlisted and free checkout', () => {
     expect(createGrant).toHaveBeenCalledOnce();
     expect(createOrder).toHaveBeenCalledWith('t-acme', expect.objectContaining({ productId: hidden.id, amountCents: 0, status: 'paid' }));
     expect(recordConsent).toHaveBeenCalledWith('t-acme', expect.objectContaining({ email: 'guest@example.com' }));
+  });
+});
+
+describe('post purge route', () => {
+  it.each(['member', 'staff', 'owner'] as const)('authorizes %s and returns a purge receipt', async (scope) => {
+    const purge = vi.fn<AppDeps['posts']['purge']>(async () => true);
+    const app = scopedApp(scope, { overrides: { posts: { ...deps().posts, purge } } });
+    const response = await app.request(API_PATHS.postsPurge.replace(':postId', 'post-1'), {
+      method: 'DELETE', headers: { [TENANT_HEADER]: acme.slug },
+    });
+    expect(response.status).toBe(scope === 'member' ? 403 : 200);
+    if (scope === 'member') {
+      expect(purge).not.toHaveBeenCalled();
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    } else {
+      expect(await response.json()).toEqual({ ok: true, data: { id: 'post-1' } });
+      expect(purge).toHaveBeenCalledWith(acme.id, 'post-1', expect.objectContaining({ kind: 'post_purged', actorUserId: 'user-1', reason: 'post-1' }));
+    }
+  });
+
+  it('rejects a missing or live post', async () => {
+    const response = await scopedApp('staff').request(API_PATHS.postsPurge.replace(':postId', 'missing'), {
+      method: 'DELETE', headers: { [TENANT_HEADER]: acme.slug },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });

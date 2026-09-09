@@ -1925,10 +1925,12 @@ export const regenerateBackupCodesMutation = (auth: AuthClientPort) =>
     call: (input: { password: string }) => auth.regenerateBackupCodes(input.password),
   });
 
-export const signInWithGoogleMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>
+export const signInWithGoogleMutation = (
+  auth: AuthClientPort,
+): MutationDescriptor<void, { callbackURL: string }> =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-in-google'],
-    call: () => auth.signInWithGoogle(),
+    call: (input) => auth.signInWithGoogle(input),
   });
 
 export const promptGoogleOneTapMutation = (

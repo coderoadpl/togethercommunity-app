@@ -12,7 +12,7 @@ import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { API_PATHS } from '#core/contract/index.js';
-import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
+import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
 
 import {
   bootServer,
@@ -24,7 +24,7 @@ import {
   tsxBin,
 } from './server-harness.js';
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
-import { continueWithIdentifier, signInWithPassword } from './login-flow.js';
+import { continueWithIdentifier, requestMagicLink, signInWithPassword } from './login-flow.js';
 import { passwordFixture } from './password-fixture.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
@@ -245,6 +245,40 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
   }
 };
 
+const runMagicLinkReturnToPath = async (webBaseUrl: string): Promise<void> => {
+  const protectedLessonPath = '/my/courses/course-acme/lessons/lesson-acme-intro';
+  let browser: Browser | null = null;
+  try {
+    browser = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
+    for (const language of ['en', 'pl'] as const) {
+      const context = await browser.newContext();
+      await context.addInitScript((value) => window.localStorage.setItem('together-language', value), language);
+      const page = await context.newPage();
+      await page.goto(`${webBaseUrl}${protectedLessonPath}`, { waitUntil: 'networkidle' });
+      await page.waitForURL(
+        (url) => url.pathname === '/login' && url.searchParams.get('returnTo') === protectedLessonPath,
+        { timeout: 15000 },
+      );
+      await requestMagicLink(page, SMOKE_TENANT_MEMBER_EMAIL);
+      const devLink = page.getByTestId('open-magic-link');
+      await devLink.waitFor({ state: 'visible', timeout: 15000 });
+      const href = await devLink.getAttribute('href');
+      assert(href !== null, `dev magic link was missing for ${language}`);
+      await page.goto(href, { waitUntil: 'networkidle' });
+      await page.waitForURL((url) => url.pathname === protectedLessonPath, { timeout: 15000 });
+      assert(page.url() === `${webBaseUrl}${protectedLessonPath}`, `magic-link returnTo ended at ${page.url()} for ${language}`);
+      await context.close();
+    }
+    console.log('auth-e2e: magic-link returnTo path OK');
+  } finally {
+    if (browser) await browser.close();
+  }
+};
+
 const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
@@ -338,6 +372,7 @@ try {
   await runPasswordResetPath({ connectUrl, origin: webBaseUrl }, webBaseUrl);
   await runTotpPath({ connectUrl, origin: webBaseUrl });
   await runIdentifierFirstPath(webBaseUrl);
+  await runMagicLinkReturnToPath(webBaseUrl);
   await runPasskeyPath(webBaseUrl);
   console.log(`\nauth-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {

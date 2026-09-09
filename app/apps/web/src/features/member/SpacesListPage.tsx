@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
 import { Box } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { EmptySpacesIcon } from './community-icons.js';
 import { MemberSurface } from './MemberSurface.js';
 import { SpaceCard } from './SpaceCards.js';
@@ -21,12 +21,12 @@ const isForbidden = (error: Error | null) =>
 export const SpacesListPage = () => {
   const t = useTranslations();
   const spaces = useQuery(actions.spaces);
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(spaces.error);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   if (spaces.isPending) {
     return (

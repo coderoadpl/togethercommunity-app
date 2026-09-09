@@ -187,7 +187,7 @@ const signInMember = async (page: Page, studioBaseUrl: string): Promise<void> =>
   const href = await magicLink.getAttribute('href');
   assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');
   await page.goto(href, { waitUntil: 'load' });
-  await page.waitForURL('**/my', { timeout: 20000 });
+  await page.waitForURL(/\/(?:my|start)(?:[/?#]|$)/, { timeout: 20000 });
 };
 
 type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;

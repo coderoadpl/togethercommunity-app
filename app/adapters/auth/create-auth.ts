@@ -92,6 +92,7 @@ export const PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS = 5 * 60;
 const PASSKEY_SENSITIVE_COOKIE = 'passkey_sensitive';
 
 const passwordResetRequestSchema = z.object({ redirectTo: z.string().url() });
+const magicLinkRequestSchema = z.object({ callbackURL: z.string().min(1) });
 const googleTokenPayloadSchema = z.object({ picture: z.string().url().optional() });
 
 const googlePictureFromIdToken = (idToken: string | null | undefined): string | null => {
@@ -118,6 +119,30 @@ export const passwordResetOriginMatches = (
     return false;
   }
 };
+
+export type MagicLinkCallbackOriginCheck = 'matches' | 'invalid-callback-url' | 'origin-mismatch';
+
+export const magicLinkCallbackOriginCheck = (
+  body: unknown,
+  headers: Headers | undefined,
+): MagicLinkCallbackOriginCheck => {
+  const origin = headers?.get('origin');
+  if (origin === null || origin === undefined) return 'matches';
+  const parsed = magicLinkRequestSchema.safeParse(body);
+  if (!parsed.success) return 'invalid-callback-url';
+  try {
+    const requestOrigin = new URL(origin).origin;
+    const callbackOrigin = new URL(parsed.data.callbackURL, requestOrigin).origin;
+    return callbackOrigin === requestOrigin ? 'matches' : 'origin-mismatch';
+  } catch {
+    return 'invalid-callback-url';
+  }
+};
+
+export const magicLinkCallbackOriginMatches = (
+  body: unknown,
+  headers: Headers | undefined,
+): boolean => magicLinkCallbackOriginCheck(body, headers) === 'matches';
 
 const resetRedirectConfinement = () => ({
   id: 'reset-redirect-confinement',
@@ -508,6 +533,19 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === '/sign-in/magic-link') {
+          const callbackOriginCheck = magicLinkCallbackOriginCheck(ctx.body, ctx.headers);
+          if (callbackOriginCheck !== 'matches') {
+            throw APIError.from('BAD_REQUEST', {
+              code: callbackOriginCheck === 'origin-mismatch'
+                ? 'INVALID_MAGIC_LINK_CALLBACK_ORIGIN'
+                : 'INVALID_MAGIC_LINK_CALLBACK_URL',
+              message: callbackOriginCheck === 'origin-mismatch'
+                ? 'Magic link must return to the origin that requested it'
+                : 'Magic link callback URL is invalid',
+            });
+          }
+        }
         if (IMAGE_REJECTING_PATHS.has(ctx.path) && carriesImage(ctx.body)) {
           throw APIError.from('BAD_REQUEST', {
             code: 'IMAGE_IS_PROVIDER_MANAGED',

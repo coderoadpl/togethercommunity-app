@@ -28,6 +28,8 @@ export interface TenantScopeSource {
 }
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
+  'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',
   'AccountAvatarTenantReader.listTenantIdsForUser': 'Google sign-in discovers every member tenant before copying the provider avatar into each tenant boundary.',
   'AutoInvoiceJobRepository.claimDue': 'A platform worker leases the next due job across all tenants.',
   'AutomationIdempotencyRepository.sweepExpired': 'A platform worker removes expired keys across all tenants.',
@@ -90,6 +92,8 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   BunnyTokenSigner: 'Media token-signing boundary with no persistence access.',
   CliAuthAdapter: 'CLI authentication transport boundary.',
   Clock: 'Time source with no persistence access.',
+  HtmlToText: 'Pure HTML conversion with no persistence access.',
+  MarketingWaiter: 'Pacing timer with no persistence access.',
   ContentHash: 'Hashing primitive with no persistence access.',
   CursorQueryDescriptor: 'Client query descriptor: cursor bookkeeping over an already tenant-scoped route.',
   DevMarketingScheduler: 'Development scheduler control boundary.',

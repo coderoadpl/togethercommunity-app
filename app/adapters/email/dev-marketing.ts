@@ -9,7 +9,7 @@ export const createDevMarketingSender = (email: EmailPort): SesMarketingSender =
       subject: input.subject,
       html: input.html,
       text: input.text,
-      headers: input.headers,
+      headers: { ...input.headers, 'Reply-To': input.replyTo ?? input.from.address },
       messageId,
     });
     return sent.ok ? ok({ messageId }) : sent;

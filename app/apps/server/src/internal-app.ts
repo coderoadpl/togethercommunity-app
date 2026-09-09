@@ -1,3 +1,5 @@
+import { marketingSnsRetryInputSchema, API_ROUTES } from '#core/contract/index.js';
+import { listMarketingSnsInbox, retryMarketingSnsInbox } from '#core/server/index.js';
 import { registerM2mMarketingContactRoutes, registerSessionMarketingContactRoutes, registerMarketingImportWorkerRoute } from './marketing-contact-routes.js';
 import { type Context, type Hono, type HonoRequest } from 'hono';
 import { z } from 'zod';
@@ -1244,6 +1246,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid campaign test payload', parsed.error.flatten())));
     const resolveOrigin = createTenantOriginResolver(deps);
     const result = await testSendCampaignToSelf(ctxOf(c), parsed.data, {
+      htmlToText: deps.marketing.htmlToText, delivery: deps.marketing.delivery, marketingOutbox: deps.marketing.marketingOutbox, snsInbox: deps.marketing.snsInbox, waiter: deps.marketing.waiter,
       definitions: deps.marketing.definitions, consents: deps.marketing.marketingConsents,
       campaigns: deps.marketing.campaigns, layouts: deps.marketing.layouts, sends: deps.marketing.campaignSends,
       events: deps.marketing.events,
@@ -1325,6 +1328,17 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await saveEmailLayout(ctxOf(c), parsed.data, {
       layouts: deps.marketing.layouts, ids: deps.ids, clock: deps.clock,
     }));
+  });
+
+  app.get(API_ROUTES.marketingSnsInbox.path, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await listMarketingSnsInbox(ctxOf(c), deps.marketing));
+  });
+  app.post(API_ROUTES.marketingSnsRetry.path, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const parsed = marketingSnsRetryInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid SNS retry input')));
+    return respond(await retryMarketingSnsInbox(ctxOf(c), parsed.data, { snsInbox: deps.marketing.snsInbox, clock: deps.clock }));
   });
 
   app.get(API_PATHS.marketingSesSettings, async (c) => {

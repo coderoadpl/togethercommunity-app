@@ -27,7 +27,7 @@ const consent = (id: string, status: MarketingConsent['status'], occurredAt: str
 
 const campaign = (): Campaign => ({
   id: 'campaign-1', tenantId: 'tenant-1', name: 'Weekly', subject: 'Hello', bodyHtml: '<p>Hello</p>',
-  bodySource: '<p>Hello</p>', layoutId: null, consentDefinitionId: 'definition-1', audienceFilter: null,
+  bodyText: null, replyTo: null, bodySource: '<p>Hello</p>', layoutId: null, consentDefinitionId: 'definition-1', audienceFilter: null,
   status: 'running', sendAt: null, snapshotMaxMemberId: 'member-9', cursorMemberId: null, toSend: 2,
   sent: 0, failed: 0, lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
   audienceNameSnapshot: null, consentLabelSnapshot: null, startedAt: null, finishedAt: null,

@@ -13,6 +13,7 @@ export const emailEventTypeSchema = z.enum([
   'skipped',
   'failed',
   'retried',
+  'uncertain',
   'suppressed_written',
   'unsubscribed',
 ]);
@@ -62,6 +63,7 @@ export const emailEventSchema = z.discriminatedUnion('type', [
     meta: z.object({ error: z.string().min(1) }).passthrough(),
   }),
   baseEmailEventSchema.extend({ type: z.literal('retried'), meta: z.record(z.unknown()).nullable() }),
+  baseEmailEventSchema.extend({ type: z.literal('uncertain'), meta: z.object({ error: z.string().min(1) }).passthrough() }),
   baseEmailEventSchema.extend({ type: z.literal('suppressed_written'), meta: z.record(z.unknown()).nullable() }),
   baseEmailEventSchema.extend({ type: z.literal('unsubscribed'), meta: z.record(z.unknown()).nullable() }),
 ]);

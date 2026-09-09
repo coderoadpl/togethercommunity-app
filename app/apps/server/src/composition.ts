@@ -1,3 +1,10 @@
+import { createMarketingDeliveryRepos, createMarketingDeliveryTransaction } from '#adapters/db/marketing-delivery-transactions.js';
+import { createMarketingWaiter } from '#adapters/scheduler/marketing-waiter.js';
+import { processMarketingSnsInbox } from '#core/server/index.js';
+import { dispatchMarketingOutbox } from '#core/server/index.js';
+import type { MarketingDeliveryTransaction, MarketingOutboxRepository, MarketingSnsInboxRepository, MarketingWaiter } from '#core/server/index.js';
+import { createHtmlToText } from '#adapters/email/html-to-text.js';
+import type { HtmlToText } from '#core/server/index.js';
 import { createMarketingImportTransaction, createMarketingImportTransactionRepos } from '#adapters/db/marketing-contact-transactions.js';
 import { createMarketingDirectoryJobs } from '#adapters/db/marketing-contact-import-repository.js';
 import type { MarketingContactDeps, MarketingDirectoryJobs } from '#core/server/index.js';
@@ -293,6 +300,7 @@ import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE
 import {
   DEMO_SEED_PASSWORD,
   isProductionEnvironment,
+  err,
   ok,
   parsePlatformOwnerEmails,
   resettableEnvironment,
@@ -508,6 +516,11 @@ export interface AppDeps {
 }
 
 export interface MarketingAppDeps {
+  htmlToText: HtmlToText;
+  delivery: MarketingDeliveryTransaction;
+  marketingOutbox: MarketingOutboxRepository;
+  snsInbox: MarketingSnsInboxRepository;
+  waiter: MarketingWaiter;
   runs: SchedulerRunRepository;
   events: EmailEventRepository;
   emailSends: EmailSendRepository;
@@ -888,6 +901,9 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     tenantDomains,
     routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
   });
+  const delivery = createMarketingDeliveryTransaction(db);
+  const deliveryRepos = createMarketingDeliveryRepos(db);
+  const waiter = createMarketingWaiter();
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = isProductionEnvironment(env);
   const writeLog = (message: string): void => {
@@ -1000,7 +1016,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     const result = await dispatchEmails('dev');
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
   });
-  const dispatchCampaign = async (tenantId: string, campaignId: string, trigger: 'cron' | 'dev' | 'manual') => {
+  const refreshMarketingQuota = async (tenantId: string) => {
     const settings = await sesSettings.findByTenant(tenantId);
     if (production && settings !== null && (settings.quotaRefreshedAt === null
       || Date.parse(clock.nowIso()) - Date.parse(settings.quotaRefreshedAt) >= 15 * 60 * 1000)) {
@@ -1019,6 +1035,9 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
         }
       }
     }
+  };
+  const dispatchCampaign = async (tenantId: string, campaignId: string, trigger: 'cron' | 'dev' | 'manual', deadlineAt = new Date(Date.parse(clock.nowIso()) + env.MARKETING_SEND_SECONDS * 1000).toISOString()) => {
+    await refreshMarketingQuota(tenantId);
     return campaignTick({
       identity: {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
@@ -1029,9 +1048,11 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
         memberVideoAutoplay: false,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
-    }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
+    }, { campaignId, workerId: randomUUID(), tickSeconds: Math.max(0, Math.min(env.MARKETING_SEND_SECONDS, (Date.parse(deadlineAt) - Date.parse(clock.nowIso())) / 1000)), trigger }, {
       definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, events: emailEvents, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
+      marketingOutbox: deliveryRepos.marketingOutbox, snsInbox: deliveryRepos.snsInbox, delivery, waiter,
+      htmlToText: createHtmlToText(), batchCap: env.MARKETING_BATCH_CAP,
       quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
       unsubscribeBaseUrl, outbox: emailOutbox, scheduler, runs: schedulerRuns,
       ...(production ? { silenceSmokeTenant: true } : {}),
@@ -1052,22 +1073,37 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const reputationDashboardUrl = async (tenantId: string): Promise<string> =>
     `${await resolveOrigin(tenantId)}/panel/marketing`;
   const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
+    let firstError: AppError | null = null;
     const now = clock.nowIso();
+    const deadlineAt = new Date(Date.parse(now) + env.MARKETING_WORKER_SECONDS * 1000).toISOString();
+    const inboxDeadline = new Date(Math.min(Date.parse(deadlineAt), Date.parse(now) + 5000)).toISOString();
+    for (const tenantId of await deliveryRepos.snsInbox.listTenantIds()) {
+      if (clock.nowIso() >= inboxDeadline) break;
+      const inbox = await processMarketingSnsInbox({ identity: workerIdentity(tenantId), capabilities: capabilitiesForPrincipal('webhook') },
+        { workerId: randomUUID(), deadlineAt: inboxDeadline, maxEvents: 100 },
+        { ...deliveryRepos, delivery, clock, ids, hmac: emailHmac, sns, credentials: marketingCredentials });
+      if (!inbox.ok) firstError ??= inbox.error;
+    }
     const marketing = await runScheduledMarketingJobs({
       now,
       pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       engagementOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       sesIdentityRefreshIntervalMs: SES_IDENTITY_REFRESH_INTERVAL_MS,
+      shouldContinue: () => Date.parse(clock.nowIso()) + 1000 < Date.parse(deadlineAt),
+      maintenanceIntervalMs: 30 * 60 * 1000,
+      trigger,
     }, {
       jobs: marketingJobs,
       runs: schedulerRuns,
-      dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger),
+      ids,
+      clock,
+      dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger, deadlineAt),
       runRetention: (tenantId, input) => runMarketingRetentionJobs({
         identity: workerIdentity(tenantId),
         capabilities: capabilitiesForPrincipal('operator-secret'),
       }, input, {
-        definitions, consents: marketingConsents, sends: campaignSends, events: emailEvents, idempotency, clock,
+        definitions, consents: marketingConsents, sends: campaignSends, events: emailEvents, idempotency, clock, marketingOutbox: deliveryRepos.marketingOutbox, snsInbox: deliveryRepos.snsInbox,
       }),
       refreshIdentity: (tenantId) =>
         refreshSesIdentity(
@@ -1096,19 +1132,29 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           },
         ),
     });
-    const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED
+    if (!marketing.ok) firstError ??= marketing.error;
+    for (const tenantId of await deliveryRepos.marketingOutbox.listTenantIds()) {
+      if (Date.parse(clock.nowIso()) + 1000 >= Date.parse(deadlineAt)) break;
+      await refreshMarketingQuota(tenantId);
+      const dispatched = await dispatchMarketingOutbox({ identity: workerIdentity(tenantId), capabilities: capabilitiesForPrincipal('operator-secret') },
+        { workerId: randomUUID(), deadlineAt, maxSends: env.MARKETING_BATCH_CAP }, {
+          ...deliveryRepos, delivery, clock, ids, waiter, definitions, consents: marketingConsents, hmac: emailHmac, credentials: marketingCredentials, throttle: marketingThrottle, ses: marketingSes,
+        });
+      if (!dispatched.ok) firstError ??= dispatched.error;
+    }
+    const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED && clock.nowIso() < deadlineAt
       ? await purgeExpiredConsentEvidence(
           {
             trigger,
             minIntervalMs: CONSENT_EVIDENCE_PURGE_INTERVAL_MS,
             batchSize: CONSENT_EVIDENCE_PURGE_BATCH_SIZE,
-            timeBudgetMs: CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS,
+            timeBudgetMs: Math.min(CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, Math.max(1, Date.parse(deadlineAt) - Date.parse(clock.nowIso()))),
           },
           { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
         )
       : ok({ purged: 0, tenantsProcessed: 0 });
-    const sweptViews = await sweepLapsedImpersonations({ impersonations, ids, clock });
-    if (!marketing.ok) return marketing;
+    const sweptViews = clock.nowIso() < deadlineAt ? await sweepLapsedImpersonations({ impersonations, ids, clock }) : ok(undefined);
+    if (firstError !== null) return err(firstError);
     if (!purged.ok) return purged;
     if (!sweptViews.ok) return sweptViews;
     return marketing;
@@ -1367,6 +1413,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,
     marketing: {
+      marketingOutbox: deliveryRepos.marketingOutbox, snsInbox: deliveryRepos.snsInbox, delivery, waiter,
+      htmlToText: createHtmlToText(),
       runs: schedulerRuns,
       definitions,
       events: emailEvents,

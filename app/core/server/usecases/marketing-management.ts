@@ -239,6 +239,8 @@ export const updateMarketingCampaign = async (
     subject: string;
     bodyHtml: string;
     bodySource?: string | undefined;
+    bodyText?: string | null | undefined;
+    replyTo?: string | null | undefined;
     consentDefinitionId: string;
     productIds: string[];
     layoutId: string | null;
@@ -263,6 +265,8 @@ export const updateMarketingCampaign = async (
     subject: input.subject,
     bodyHtml: input.bodyHtml,
     bodySource: input.bodySource ?? input.bodyHtml,
+    bodyText: input.bodyText === undefined ? campaign.bodyText : input.bodyText,
+    replyTo: input.replyTo === undefined ? campaign.replyTo : input.replyTo,
     consentDefinitionId: input.consentDefinitionId,
     audienceFilter: input.productIds.length === 0 ? null : { productIds: input.productIds },
     layoutId: input.layoutId,
@@ -368,6 +372,7 @@ export const getTenantSesMarketingSettings = async (
 export const updateTenantSesMarketingSettings = async (
   ctx: Ctx,
   input: {
+    replyTo?: string | null | undefined;
     fromAddress: string;
     fromName: string;
     identity: string;
@@ -404,6 +409,7 @@ export const updateTenantSesMarketingSettings = async (
   const settings: TenantSesSettings = {
     tenantId: tenantId.value,
     fromAddress: input.fromAddress,
+    replyTo: input.replyTo === undefined ? current?.replyTo ?? null : input.replyTo,
     fromName: input.fromName,
     identity: input.identity,
     identityVerifiedAt:

@@ -1911,6 +1911,7 @@ export interface ConsentDefinitionRepository {
 }
 
 export interface CampaignRepository {
+  addDeliveryCounts(tenantId: string, campaignId: string, counts: { sent: number; failed: number }): Promise<void>;
   create(tenantId: string, campaign: Campaign): Promise<void>;
   findById(tenantId: string, campaignId: string): Promise<Campaign | null>;
   list(tenantId: string): Promise<Campaign[]>;
@@ -1924,7 +1925,7 @@ export interface CampaignRepository {
   advanceCursor(
     tenantId: string,
     campaignId: string,
-    input: { cursorMemberId: string; sentDelta: number; failedDelta: number },
+    input: { cursorMemberId: string; sentDelta: number; failedDelta: number; lease?: { workerId: string; now: string } },
   ): Promise<Campaign | null>;
 }
 
@@ -2004,6 +2005,9 @@ export interface SesMarketingCredentials {
 
 export interface SesMarketingSender {
   send(input: {
+    replyTo?: string;
+    campaignSendId?: string;
+    timeoutMs?: number;
     credentials: SesMarketingCredentials;
     from: { address: string; name: string };
     to: string;
@@ -2127,6 +2131,8 @@ export interface MarketingThrottleRepository {
 }
 
 export interface VerifiedSnsEnvelope {
+  messageId: string;
+  timestamp: string;
   type: 'SubscriptionConfirmation' | 'Notification';
   topicArn: string;
   message: string;

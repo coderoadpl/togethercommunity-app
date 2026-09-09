@@ -304,6 +304,7 @@ const fallbackValue = (fallback: string | undefined): string => {
 export const renderMarketingTemplate = (
   template: string,
   data: Record<string, unknown>,
+  options: { escape: boolean } = { escape: true },
 ): Result<string, AppError> => {
   let invalid = false;
   const rendered = template.replace(templateSlot, (match, rawPath, rawFallback, escapedPath, escapedFallback) => {
@@ -315,24 +316,12 @@ export const renderMarketingTemplate = (
     const value = lookupPath(data, path);
     const fallback = typeof rawPath === 'string' ? rawFallback : escapedFallback;
     const output = stringifyTemplateValue(value ?? fallbackValue(typeof fallback === 'string' ? fallback : undefined));
-    return typeof rawPath === 'string' ? output : escapeHtml(output);
+    return typeof rawPath === 'string' || !options.escape ? output : escapeHtml(output);
   });
   if (invalid || rendered.includes('{{') || rendered.includes('}}')) {
     return err(validation('Template contains an unsupported expression'));
   }
   return ok(rendered);
-};
-
-export const validateRenderedMarketingOutput = (
-  body: string,
-  required: { unsubscribeUrl: string; legalName: string; address: string; consentReference: string },
-): Result<void, AppError> => {
-  const missing = Object.entries(required)
-    .filter(([, value]) => value.trim() === '' || !body.includes(value))
-    .map(([field]) => field);
-  return missing.length === 0
-    ? ok(undefined)
-    : err(validation('Rendered marketing output is missing mandatory footer content', { missing }));
 };
 
 export type EmailHeaders = Record<string, string>;
@@ -368,8 +357,7 @@ export const buildEmailHeaders = (input: {
   const headers = canonicalMarketingHeaders(input.unsubscribeUrl);
   for (const [name, value] of Object.entries(callerHeaders)) {
     const existing = Object.keys(headers).find((candidate) => candidate.toLowerCase() === name.toLowerCase());
-    if (existing !== undefined) headers[existing] = value;
-    else headers[name] = value;
+    if (existing === undefined && name.toLowerCase() !== 'reply-to') headers[name] = value;
   }
   return ok(headers);
 };
@@ -385,6 +373,9 @@ const campaignStatusSchema = z.enum([
 
 export type CampaignStatus = z.infer<typeof campaignStatusSchema>;
 
+export const marketingReplyToSchema = z.string().refine((value) => !/[\r\n]/u.test(value), 'Reply-To cannot contain line breaks').transform(normalizeEmail).pipe(z.string().email());
+export const marketingBodyTextSchema = z.string().max(500_000).refine((value) => value.trim().length > 0, 'Explicit plaintext cannot be empty');
+
 export const campaignSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),
@@ -392,6 +383,8 @@ export const campaignSchema = z.object({
   subject: z.string().min(1),
   bodyHtml: z.string().min(1),
   bodySource: z.string().min(1),
+  bodyText: marketingBodyTextSchema.nullable().default(null),
+  replyTo: marketingReplyToSchema.nullable().default(null),
   layoutId: z.string().nullable(),
   consentDefinitionId: z.string().min(1),
   audienceFilter: z.object({ productIds: z.array(z.string()).optional() }).nullable(),
@@ -508,6 +501,7 @@ export const bounceAction = (classification: BounceClassification): {
 export const tenantSesSettingsSchema = z.object({
   tenantId: z.string().min(1),
   fromAddress: z.string().email().transform(normalizeEmail),
+  replyTo: marketingReplyToSchema.nullable().default(null),
   fromName: z.string().min(1),
   identity: z.string().min(1),
   identityVerifiedAt: isoDateTimeSchema.nullable(),

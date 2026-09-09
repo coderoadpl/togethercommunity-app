@@ -318,6 +318,9 @@ export const createEmailLayoutRepository = (db: Db): EmailLayoutRepository => ({
 });
 
 export const createCampaignRepository = (db: Db): CampaignRepository => ({
+  addDeliveryCounts: async (tenantId, campaignId, counts) => {
+    await db.update(campaigns).set({ sent: sql`${campaigns.sent} + ${counts.sent}`, failed: sql`${campaigns.failed} + ${counts.failed}`, errorCount: counts.sent > 0 ? 0 : sql`${campaigns.errorCount} + ${counts.failed}` }).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId)));
+  },
   create: async (tenantId, campaign) => { await db.insert(campaigns).values(campaignValues(tenantId, campaign)); },
   findById: async (tenantId, campaignId) => {
     const [row] = await db.select().from(campaigns).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId))).limit(1);
@@ -338,7 +341,7 @@ export const createCampaignRepository = (db: Db): CampaignRepository => ({
       cursorMemberId: input.cursorMemberId,
       sent: sql`${campaigns.sent} + ${input.sentDelta}`,
       failed: sql`${campaigns.failed} + ${input.failedDelta}`,
-    }).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId))).returning();
+    }).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId), ...(input.lease === undefined ? [] : [eq(campaigns.lockedBy, input.lease.workerId), eq(campaigns.status, 'running'), sql`${campaigns.lockedUntil} > ${input.lease.now}`]))).returning();
     return row === undefined ? null : parseCampaign(row);
   },
 });
@@ -350,7 +353,7 @@ export const createMarketingJobRepository = (db: Db): MarketingJobRepository => 
   }).from(campaigns).where(or(
     eq(campaigns.status, 'running'),
     and(eq(campaigns.status, 'scheduled'), lte(campaigns.sendAt, now)),
-  )).orderBy(asc(campaigns.sendAt), asc(campaigns.createdAt), asc(campaigns.id))),
+  )).orderBy(sql`${campaigns.lockedUntil} asc nulls first`, asc(campaigns.sendAt), asc(campaigns.createdAt), asc(campaigns.id))),
   listRetentionTenantIds: async () => {
     const [consentTenants, sendTenants, idempotencyTenants] = await Promise.all([
       db.selectDistinct({ tenantId: marketingConsents.tenantId }).from(marketingConsents),
@@ -433,7 +436,7 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
     }
   },
   findById: async (tenantId, sendId) => {
-    const [row] = await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.id, sendId))).limit(1);
+    const [row] = await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.id, sendId))).limit(1).for('update');
     return row === undefined ? null : parseSend(row);
   },
   update: async (tenantId, send, events = []) => {
@@ -460,7 +463,7 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
     });
   },
   correlateBySesMessageId: async (tenantId, messageId) => {
-    const [row] = await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.sesMessageId, messageId))).limit(1);
+    const [row] = await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.sesMessageId, messageId))).limit(1).for('update');
     return row === undefined ? null : parseSend(row);
   },
   listByCampaign: async (tenantId, campaignId) => (await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.campaignId, campaignId))).orderBy(asc(campaignSends.id))).map(parseSend),

@@ -1,3 +1,4 @@
+import { CampaignTextSection } from './CampaignTextSection.js';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   Alert,
@@ -76,6 +77,8 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const layouts = useQuery(actions.marketingLayouts);
   const [name, setName] = useState(campaign?.name ?? '');
   const [subject, setSubject] = useState(campaign?.subject ?? '');
+  const [bodyText, setBodyText] = useState(campaign?.bodyText ?? '');
+  const [replyTo, setReplyTo] = useState(campaign?.replyTo ?? '');
   const [bodySource, setBodySource] = useState(campaign?.bodySource ?? '');
   const [bodyMode, setBodyMode] = useState<'markdown' | 'html'>(
     campaign !== undefined && campaign.bodySource === campaign.bodyHtml ? 'html' : 'markdown',
@@ -86,6 +89,8 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify([
     campaign?.name ?? '',
     campaign?.subject ?? '',
+    campaign?.bodyText ?? '',
+    campaign?.replyTo ?? '',
     campaign?.bodySource ?? '',
     campaign !== undefined && campaign.bodySource === campaign.bodyHtml ? 'html' : 'markdown',
     campaign?.consentDefinitionId ?? '',
@@ -98,7 +103,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   );
   const effectiveConsentId = consentDefinitionId || activeDefinitions[0]?.id || '';
   const editable = campaign === undefined || campaign.status === 'draft' || campaign.status === 'scheduled';
-  const currentSnapshot = JSON.stringify([name, subject, bodySource, bodyMode, consentDefinitionId, productIds, layoutId]);
+  const currentSnapshot = JSON.stringify([name, subject, bodyText, replyTo, bodySource, bodyMode, consentDefinitionId, productIds, layoutId]);
   const dirty = editable && currentSnapshot !== savedSnapshot;
   const allowNavigation = useUnsavedChanges(dirty, t.common.unsavedChangesConfirm);
 
@@ -133,6 +138,8 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
       subject,
       bodyHtml,
       bodySource,
+      bodyText: bodyText === '' ? null : bodyText,
+      replyTo: replyTo === '' ? null : replyTo,
       consentDefinitionId: effectiveConsentId,
       productIds,
       layoutId: layoutId === '' ? null : layoutId,
@@ -163,6 +170,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
         <FormLabel htmlFor="marketing-campaign-subject">{t.marketing.subjectLabel}</FormLabel>
         <OutlinedInput id="marketing-campaign-subject" value={subject} onChange={(event) => setSubject(event.target.value)} disabled={!editable} required />
       </FormControl>
+      <CampaignTextSection bodyText={bodyText} replyTo={replyTo} disabled={!editable} onBodyTextChange={setBodyText} onReplyToChange={setReplyTo} />
       <Stack useFlexGap spacing="0.75rem">
         <Stack
           direction={{ xs: 'column', sm: 'row' }}

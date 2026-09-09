@@ -80,7 +80,7 @@ const senderSettings = (overrides: Partial<TenantSesSettings> = {}): TenantSesSe
   fromAddress: 'hello@acme.test',
   fromName: 'Acme',
   identity: 'acme.test',
-  identityVerifiedAt: null,
+  replyTo: null, identityVerifiedAt: null,
   identityCheckedAt: null,
   identityCheckError: null,
   configurationSet: null,
@@ -191,7 +191,7 @@ describe('getTenantSetupReadiness', () => {
       (
         await configuredById({
           secretKeys: sesKeys,
-          sender: senderSettings({ identityVerifiedAt: NOW }),
+          sender: senderSettings({ replyTo: null, identityVerifiedAt: NOW }),
         })
       ).email_sending,
     ).toBe(true);
@@ -199,7 +199,7 @@ describe('getTenantSetupReadiness', () => {
       (
         await configuredById({
           secretKeys: ['ses.accessKeyId', 'ses.region'],
-          sender: senderSettings({ identityVerifiedAt: NOW }),
+          sender: senderSettings({ replyTo: null, identityVerifiedAt: NOW }),
         })
       ).email_sending,
     ).toBe(false);

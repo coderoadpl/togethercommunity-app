@@ -1,3 +1,6 @@
+import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
+import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
+import { createHtmlToText } from '#adapters/email/html-to-text.js';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -1011,7 +1014,9 @@ const scopedApp = (
   });
 };
 
-const marketingDeps = (): MarketingAppDeps => ({
+const marketingDeps = (): MarketingAppDeps => {
+ const base: Omit<MarketingAppDeps, 'delivery' | 'marketingOutbox' | 'snsInbox'> = {
+ htmlToText: createHtmlToText(), waiter: { wait: async () => undefined },
   runs: new InMemorySchedulerRunRepository(),
   events: new InMemoryEmailEventRepository(),
   emailSends: {
@@ -1067,7 +1072,9 @@ const marketingDeps = (): MarketingAppDeps => ({
     identityChecksPerformed: 0,
     reputationAlertsSent: 0,
   }),
-});
+};
+return Object.assign(base, createInMemoryMarketingDelivery(() => ({ ...base, sends: base.campaignSends, outbox: new InMemoryEmailOutboxRepository() })));
+};
 
 const marketingApp = (
   marketing = marketingDeps(),
@@ -1687,7 +1694,7 @@ describe('marketing HTTP surfaces', () => {
       const marketing = marketingDeps();
       marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
         tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-        identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
+        replyTo: null, identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
         identityCheckError: null, configurationSet: null, snsTopicArn: 'topic',
         snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
         trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token',
@@ -1709,11 +1716,8 @@ describe('marketing HTTP surfaces', () => {
       request('staff'),
     ]);
     expect(anonymous).toEqual({
-      status: 400,
-      body: {
-        ok: false,
-        error: expect.objectContaining({ code: 'validation' }),
-      },
+      status: 200,
+      body: { ok: true, data: { received: true } },
     });
     expect(member).toEqual(anonymous);
     expect(staff).toEqual(anonymous);
@@ -2002,7 +2006,7 @@ describe('marketing HTTP surfaces', () => {
     marketing.marketingSes = sender;
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
+      replyTo: null, identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: 'marketing',
       snsTopicArn: null, snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false, autoPauseOnCritical: false,
@@ -2028,15 +2032,17 @@ describe('marketing HTTP surfaces', () => {
 
     expect(response.status).toBe(202);
     expect(await marketing.campaigns.list('t-acme')).toMatchObject([{ name: 'API: news' }]);
-    expect(JSON.stringify(sender.sent)).toContain('http://acme.localhost:48730/u/');
-    expect(JSON.stringify(sender.sent)).not.toContain('acme.localhost:9999');
+    const claimedPayload = await marketing.marketingOutbox.claim('t-acme', { workerId: 'inspect', now: '1998-07-23T00:00:00.000Z', lockedUntil: '1998-07-23T00:01:00.000Z' });
+    expect(sender.sent).toHaveLength(0);
+    expect(JSON.stringify(claimedPayload?.payload)).toContain('http://acme.localhost:48730/u/');
+    expect(JSON.stringify(claimedPayload?.payload)).not.toContain('acme.localhost:9999');
   });
 
-  it('returns 429 with Retry-After when the tenant SES throttle is under pressure', async () => {
-    const marketing = marketingDeps();
+  it('queues eligible marketing messages while SES capacity is unavailable', async () => {
+    const marketing = await memberSurfaceMarketing();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
+      replyTo: null, identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: 'marketing',
       snsTopicArn: null, snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false, autoPauseOnCritical: false,
@@ -2050,13 +2056,12 @@ describe('marketing HTTP surfaces', () => {
       method: 'POST',
       headers: { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key', 'content-type': 'application/json' },
       body: JSON.stringify({ messages: [
-        { to: 'one@example.test', consentDefinitionId: 'definition-1', subject: 'One', bodyHtml: '<p>One</p>' },
-        { to: 'two@example.test', consentDefinitionId: 'definition-1', subject: 'Two', bodyHtml: '<p>Two</p>' },
+        { to: 'member@example.test', consentDefinitionId: 'definition-news', subject: 'One', bodyHtml: '<p>One</p>' },
+        { to: 'member@example.test', consentDefinitionId: 'definition-news', subject: 'Two', bodyHtml: '<p>Two</p>' },
       ] }),
     });
-    expect(response.status).toBe(429);
-    expect(response.headers.get('retry-after')).toBe('1');
-    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ ok: true, data: { results: [{ status: 'queued' }, { status: 'queued' }] } });
   });
 
   it('serves the latest published hosted document on the tenant domain', async () => {
@@ -2133,7 +2138,7 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
+      replyTo: null, identityVerifiedAt: '1998-07-22T00:00:00.000Z', identityCheckedAt: null,
       identityCheckError: null, configurationSet: null,
       snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme',
       snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null, trackingEnabled: false,
@@ -2151,13 +2156,13 @@ describe('marketing HTTP surfaces', () => {
     expect(response.status).toBe(200);
   });
 
-  it('marks the webhook verified when an uncorrelated simulator bounce completes the signed SNS round-trip', async () => {
+  it('records an uncorrelated simulator receipt without prematurely marking application readiness', async () => {
     const marketing = marketingDeps();
     const now = '1998-07-22T00:00:00.000Z';
     const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
     const settings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      replyTo: null, identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
       snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
@@ -2183,14 +2188,15 @@ describe('marketing HTTP surfaces', () => {
 
     const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
       method: 'POST',
-      body: '{}',
+      body: JSON.stringify({ Message: JSON.stringify({ eventType: 'Bounce', mail: { messageId: 'ses-simulator-message' }, bounce: { timestamp: now, bounceType: 'Permanent', bouncedRecipients: [{ emailAddress: 'bounce@simulator.amazonses.com', status: '5.1.1' }] } }) }),
     });
 
     expect(response.status).toBe(200);
-    expect((await settings.findByTenant('t-acme'))?.webhookVerifiedAt).not.toBeNull();
+    expect((await settings.findByTenant('t-acme'))?.webhookVerifiedAt).toBeNull();
+    expect(await marketing.snsInbox.list('t-acme')).toMatchObject([{ status: 'pending' }]);
   });
 
-  it('ingests SES configuration-set Open and Click records and tolerates unknown messages', async () => {
+  it('durably records engagement receipts before event application', async () => {
     const marketing = marketingDeps();
     const now = '1998-07-22T00:00:00.000Z';
     const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
@@ -2208,7 +2214,7 @@ describe('marketing HTTP surfaces', () => {
     marketing.campaignSends = sends;
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      replyTo: null, identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
       snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: true, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
@@ -2232,18 +2238,16 @@ describe('marketing HTTP surfaces', () => {
       },
     ]) {
       marketing.sns = new FakeSnsVerifier(ok({
-        type: 'Notification', topicArn, message: JSON.stringify(message), subscribeUrl: null,
+        messageId: JSON.stringify(message), type: 'Notification', topicArn, message: JSON.stringify(message), subscribeUrl: null,
       }));
-      const response = await app.request('/api/webhooks/ses/webhook-token', { method: 'POST', body: '{}' });
+      const response = await app.request('/api/webhooks/ses/webhook-token', { method: 'POST', body: JSON.stringify({ Message: JSON.stringify(message) }) });
       expect(response.status).toBe(200);
     }
-    expect((await events.listByRef('t-acme', 'marketing', 'send-tracked'))).toMatchObject([
-      { type: 'opened' },
-      { type: 'clicked', meta: { linkUrl: 'https://acme.test/offer' } },
-    ]);
+    expect(await events.listByRef('t-acme', 'marketing', 'send-tracked')).toEqual([]);
+    expect(await marketing.snsInbox.list('t-acme')).toHaveLength(3);
   });
 
-  it('ingests configuration-set delivery records and acknowledges unsupported SES event types', async () => {
+  it('durably records delivery and unsupported event receipts', async () => {
     const marketing = marketingDeps();
     const now = '1998-07-22T00:00:00.000Z';
     const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
@@ -2261,7 +2265,7 @@ describe('marketing HTTP surfaces', () => {
     marketing.campaignSends = sends;
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      replyTo: null, identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
       snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
@@ -2281,13 +2285,14 @@ describe('marketing HTTP surfaces', () => {
       },
     ]) {
       marketing.sns = new FakeSnsVerifier(ok({
-        type: 'Notification', topicArn, message: JSON.stringify(message), subscribeUrl: null,
+        messageId: JSON.stringify(message), type: 'Notification', topicArn, message: JSON.stringify(message), subscribeUrl: null,
       }));
-      const response = await app.request('/api/webhooks/ses/webhook-token', { method: 'POST', body: '{}' });
+      const response = await app.request('/api/webhooks/ses/webhook-token', { method: 'POST', body: JSON.stringify({ Message: JSON.stringify(message) }) });
       expect(response.status).toBe(200);
     }
     expect(await sends.correlateBySesMessageId('t-acme', 'ses-delivery'))
-      .toMatchObject({ deliveryStatus: 'delivered' });
+      .toMatchObject({ deliveryStatus: null });
+    expect(await marketing.snsInbox.list('t-acme')).toHaveLength(2);
   });
 
   describe('SNS webhook diagnostics', () => {
@@ -2295,7 +2300,7 @@ describe('marketing HTTP surfaces', () => {
     const now = '1998-07-22T00:00:00.000Z';
     const snsSettings = (): TenantSesSettings => ({
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      replyTo: null, identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: topicArn,
       snsSubscriptionEndpoint: 'https://start.localhost/api/webhooks/ses/webhook-token',
       snsSubscriptionConfirmedAt: null,
@@ -2305,7 +2310,7 @@ describe('marketing HTTP surfaces', () => {
       broadcastsEnabled: false, reputationAlertStatus: null, reputationAlertedAt: null,
     });
 
-    it('records a confirm_failed diagnostic and logs instead of swallowing a failed SNS confirmation', async () => {
+    it('queues subscription confirmation before attempting the network request', async () => {
       const marketing = marketingDeps();
       const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
       marketing.sesSettings = settings;
@@ -2316,20 +2321,21 @@ describe('marketing HTTP surfaces', () => {
       const logger = { error: vi.fn(), warn: vi.fn() };
 
       const response = await marketingApp(marketing, logger).request('/api/webhooks/ses/webhook-token', {
-        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
+        method: 'POST', body: JSON.stringify({ Message: '{}', SubscribeURL: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription' }), headers: { 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
       });
 
       expect(response.status).toBe(200);
       expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
         messageType: 'SubscriptionConfirmation',
-        outcome: 'confirm_failed',
-        errorMessage: 'SNS confirmation returned HTTP 503',
+        outcome: 'recorded',
+        errorMessage: null,
       });
       expect((await settings.findByTenant('t-acme'))?.snsSubscriptionConfirmedAt).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=confirm_failed'));
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(await marketing.snsInbox.list('t-acme')).toMatchObject([{ status: 'pending', messageType: 'SubscriptionConfirmation' }]);
     });
 
-    it('persists the confirmed subscription timestamp when SNS accepts the confirmation', async () => {
+    it('persists the confirmed subscription timestamp after processing the durable webhook receipt', async () => {
       const marketing = marketingDeps();
       const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
       marketing.sesSettings = settings;
@@ -2339,15 +2345,39 @@ describe('marketing HTTP surfaces', () => {
       }));
 
       const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
-        method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
+        method: 'POST', body: JSON.stringify({ Message: '{}', SubscribeURL: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription' }), headers: { 'x-amz-sns-message-type': 'SubscriptionConfirmation' },
       });
 
       expect(response.status).toBe(200);
       expect((await settings.findByTenant('t-acme'))?.snsSubscriptionConfirmedAt)
-        .toBe('1998-07-12T00:00:00.000Z');
+        .toBeNull();
       expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
-        outcome: 'verified', errorMessage: null,
+        outcome: 'recorded', errorMessage: null,
       });
+      const workerDeps = deps();
+      const processed = await processMarketingSnsInbox({
+        identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null,
+          tenantId: 't-acme', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null,
+          memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false },
+        capabilities: capabilitiesForPrincipal('webhook'),
+      }, { workerId: 'worker', deadlineAt: '1998-07-22T00:00:50.000Z', maxEvents: 10 }, {
+        ...marketing, sends: marketing.campaignSends, outbox: workerDeps.emailOutbox,
+        credentials: marketing.marketingCredentials, clock: { nowIso: () => now }, ids: workerDeps.ids,
+      });
+      expect(processed).toEqual(ok({ processed: 1, retried: 0 }));
+      expect((await settings.findByTenant('t-acme'))?.snsSubscriptionConfirmedAt).toBe(now);
+      expect(await marketing.snsInbox.list('t-acme')).toMatchObject([{ status: 'processed', processedAt: now }]);
+
+    });
+
+    it('returns 500 when the verified receipt cannot be committed', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(ok({ type: 'Notification', topicArn, message: '{}', subscribeUrl: null }));
+      marketing.snsInbox.record = async () => { throw new Error('Receipt storage unavailable'); };
+      const response = await marketingApp(marketing, { error: vi.fn(), warn: vi.fn() }).request('/api/webhooks/ses/webhook-token', { method: 'POST', body: '{}' });
+      expect(response.status).toBe(500);
+      expect(await marketing.snsInbox.list('t-acme')).toHaveLength(0);
     });
 
     it('records a signature_failed diagnostic when the SNS envelope does not verify', async () => {
@@ -2408,7 +2438,7 @@ describe('marketing HTTP surfaces', () => {
       });
 
       expect(await marketing.snsDeliveries.findByTenant('t-acme'))
-        .toMatchObject({ messageType: 'SubscriptionConfirmation', outcome: 'verified' });
+        .toMatchObject({ messageType: 'SubscriptionConfirmation', outcome: 'recorded' });
     });
 
     it('logs a topic mismatch that it acknowledges without recording', async () => {
@@ -2455,7 +2485,7 @@ describe('marketing HTTP surfaces', () => {
       });
     });
 
-    it('records an apply_failed diagnostic and logs when the event cannot be applied', async () => {
+    it('refuses a receipt when tenant topic binding disappears', async () => {
       const marketing = marketingDeps();
       const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
       marketing.sesSettings = settings;
@@ -2475,12 +2505,8 @@ describe('marketing HTTP surfaces', () => {
         method: 'POST', body: '{}', headers: { 'x-amz-sns-message-type': 'Notification' },
       });
 
-      expect(response.status).toBe(200);
-      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
-        messageType: 'Notification', outcome: 'apply_failed',
-        errorMessage: 'SNS topic does not match this tenant',
-      });
-      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outcome=apply_failed'));
+      expect(response.status).toBe(403);
+      expect(await marketing.snsInbox.list('t-acme')).toEqual([]);
     });
   });
 });

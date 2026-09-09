@@ -1,3 +1,4 @@
+import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
@@ -2620,6 +2621,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         )
         .limit(1);
 
+      await eraseMarketingDeliveryPayloads(tx, tenantId, { email: member.email, deletedAt: input.deletedAt });
       await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
 
       await tx.insert(erasedMemberImports).values({

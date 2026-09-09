@@ -141,6 +141,19 @@ const stubDesktopViewport = () => {
   }));
 };
 
+const stubMobileViewport = () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('max-width'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 const renderPage = async (node: ReactNode) => {
   const rootRoute = createRootRoute({ component: () => node });
   const router = createRouter({
@@ -1053,6 +1066,43 @@ describe('LessonPlayerPage', () => {
       'margin-inline': '0px',
       'text-align': 'left',
     });
+  });
+
+  it('renders outlined mobile lesson actions and keeps continue primary', async () => {
+    stubMobileViewport();
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const complete = await screen.findByRole('button', { name: en.lesson.markCompleted });
+    const previous = screen.getByRole('button', { name: en.lesson.previousLesson });
+    const next = screen.getByRole('link', { name: en.lesson.nextLesson });
+    for (const action of [previous, next, complete]) {
+      expect(action).toHaveClass('MuiButton-outlined');
+    }
+    expect(previous).toBeDisabled();
+    expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    const primary = screen.getByRole('button', { name: en.lesson.completeContinue });
+    expect(primary).toHaveClass('MuiButton-contained');
+    for (const width of [375, 390, 899]) {
+      for (const action of [previous, next, complete, primary]) {
+        const styles = stylesAt(action, width);
+        expect(styles).toMatchObject({ width: '100%', 'min-height': '48px' });
+        expect(Number.parseFloat(styles['min-width'] ?? '0')).toBeGreaterThanOrEqual(44);
+      }
+      expect(stylesAt(complete.parentElement, width)).toMatchObject({ 'flex-direction': 'column', gap: '0.75rem' });
+    }
+    expect(stylesAt(complete.parentElement, 900)).toMatchObject({ 'flex-direction': 'row' });
+    expect(stylesAt(complete.closest('footer'), 390)).toMatchObject({ position: 'sticky' });
+  });
+
+  it('keeps marking the final lesson complete primary on mobile', async () => {
+    stubMobileViewport();
+    server.use(okStructureOf(structureOf([entry('l1', 'Final lesson')])), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('mark-complete')).toHaveClass('MuiButton-contained');
+    expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
   });
 
   it('makes continue the primary action and demotes marking the lesson complete', async () => {

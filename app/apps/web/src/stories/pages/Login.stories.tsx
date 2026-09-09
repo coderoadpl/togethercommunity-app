@@ -17,3 +17,9 @@ export const MethodCards: Story = {
     await canvas.findByTestId('login-password');
   },
 };
+
+export const MethodCardsMobile: Story = {
+  ...MethodCards,
+  parameters: { viewport: { defaultViewport: 'mobile' } },
+  globals: { viewport: { value: 'mobile' } },
+};

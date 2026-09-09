@@ -804,7 +804,8 @@ describe('MemberShell', () => {
     const Composer = () => (
       <PostComposer
         label="Question"
-        collapsedPrompt="Write a question"
+        compact
+        placeholder="Write a question"
         submitLabel="Send"
         pendingLabel="Sending"
         busy={false}
@@ -815,7 +816,7 @@ describe('MemberShell', () => {
 
     await renderShell('/my/courses/c1/lessons/l1', Composer);
     scrollIntoView.mockClear();
-    await user.click(await screen.findByTestId('keyboard-composer-open'));
+    await user.click(await screen.findByTestId('keyboard-composer-input'));
 
     const input = await screen.findByTestId('keyboard-composer-input');
     expect(input).toHaveFocus();

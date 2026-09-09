@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Alert, Box, Button, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '#core/client/index.js';
@@ -12,7 +12,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
-  ComposerPrompt,
+  ComposerInput,
   DeletedPostText,
   DiscussionThread,
   Eyebrow,
@@ -87,7 +87,7 @@ interface Viewer {
 export const PostComposer = ({
   label,
   placeholder,
-  collapsedPrompt,
+  compact = false,
   submitLabel,
   pendingLabel,
   initialValue = '',
@@ -101,7 +101,7 @@ export const PostComposer = ({
 }: {
   label: string;
   placeholder?: string;
-  collapsedPrompt?: string;
+  compact?: boolean;
   submitLabel: string;
   pendingLabel: string;
   initialValue?: string;
@@ -119,7 +119,7 @@ export const PostComposer = ({
   const [body, setBody] = useState(initialValue);
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const expanded = collapsedPrompt === undefined || open || body.trim().length > 0;
+  const expanded = !compact || open || body.trim().length > 0;
 
   useEffect(() => {
     if (focusOnMount) inputRef.current?.focus();
@@ -141,20 +141,6 @@ export const PostComposer = ({
   const inCard = (content: ReactNode) =>
     surface ? <Paper elevation={1} sx={{ p: '1.25rem' }}>{content}</Paper> : content;
 
-  if (collapsedPrompt !== undefined && !expanded) {
-    return inCard(
-      <ComposerPrompt
-        variant="outlined"
-        fullWidth
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-        data-testid={`${testId}-open`}
-      >
-        {collapsedPrompt}
-      </ComposerPrompt>,
-    );
-  }
-
   return inCard(
     <Stack
       component="form"
@@ -169,11 +155,11 @@ export const PostComposer = ({
       data-mobile-keyboard-anchor
       sx={{ scrollMarginBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
     >
-      <TextField
+      <ComposerInput
         label={label}
         placeholder={placeholder}
         multiline
-        minRows={3}
+        minRows={expanded ? 3 : 1}
         value={body}
         disabled={disabled}
         inputRef={inputRef}
@@ -184,9 +170,9 @@ export const PostComposer = ({
         <Button
           type="submit"
           variant="contained"
+          sx={{ minHeight: 44, minWidth: 44 }}
           disabled={disabled || busy || body.trim().length === 0}
           data-testid={`${testId}-submit`}
-          sx={{ minHeight: '44px' }}
         >
           {busy ? pendingLabel : submitLabel}
         </Button>
@@ -638,7 +624,7 @@ export const ThreadDiscussion = ({
             <PostComposer
               label={t.discussion.composerLabel}
               placeholder={t.discussion.composerPlaceholder}
-              collapsedPrompt={t.discussion.composerPrompt}
+              compact
               submitLabel={t.discussion.post}
               pendingLabel={t.discussion.posting}
               busy={create.isPending}

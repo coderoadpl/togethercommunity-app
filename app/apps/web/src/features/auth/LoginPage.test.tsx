@@ -299,6 +299,23 @@ describe('LoginPage', () => {
     ).toBe(screen.getByTestId('login-identity'));
   });
 
+  it('fits a long identity email while keeping the change button available', async () => {
+    const email = 'member.with.a.very.long.email.address@courses.example.org';
+    await renderLoginPage();
+    await continueWithEmail(email);
+
+    const pill = await screen.findByRole('group', { name: en.auth.signingInAs({ email }) });
+    expect(pill).toHaveStyle({ width: '100%', boxSizing: 'border-box' });
+    expect(within(pill).getByText(email)).toHaveStyle({
+      minWidth: '0', flex: '1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    });
+    const change = within(pill).getByRole('button', { name: en.auth.changeIdentifier });
+    expect(change).toHaveStyle({ minHeight: '44px', minWidth: '44px', flexShrink: '0' });
+    await userEvent.click(change);
+    expect(await screen.findByTestId('login-email')).toHaveValue(email);
+    expect(screen.queryByTestId('login-identity')).not.toBeInTheDocument();
+  });
+
   it('leaves the expanded password card head inert instead of an empty button', async () => {
     await renderLoginPage();
     await continueWithEmail();

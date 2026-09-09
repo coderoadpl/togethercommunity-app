@@ -769,7 +769,14 @@
       "idx": 109,
       "version": "7",
       "when": 1788820540000,
-      "tag": "0109_grant_event_revision",
+      "tag": "0109_tenant_scoped_conflicts",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1788820600000,
+      "tag": "0110_grant_event_revision",
       "breakpoints": true
     }
   ]

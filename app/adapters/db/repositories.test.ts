@@ -499,13 +499,6 @@ describe('member event repository', () => {
       );
       expect(await repo.listForMember(ACME, 'mem-acme')).toContainEqual(deliveredEvent);
     });
-
-    it('surfaces a legacy global key collision across tenants', async () => {
-      await appendMemberEvent(db, deliveredEvent);
-      await expect(appendMemberEvent(db, {
-        ...deliveredEvent, tenantId: GLOBEX, memberId: 'mem-globex',
-      })).rejects.toThrow('Member event idempotency key collision');
-    });
   });
 
   it('merges commerce, access, subscription, and learning events newest-first', async () => {

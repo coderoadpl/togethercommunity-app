@@ -16,7 +16,7 @@ export const appendMemberEvent = async (
 ): Promise<void> => {
   const parsed = memberEventSchema.parse(event);
   const inserted = await db.insert(memberEvents).values(parsed).onConflictDoNothing({
-    target: memberEvents.id,
+    target: [memberEvents.tenantId, memberEvents.id],
   }).returning({ id: memberEvents.id });
   if (inserted.length > 0) return;
 

@@ -226,7 +226,7 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
 
     assert(await step(SMOKE_TENANT_CREATOR_EMAIL) === 'password', 'the acme owner was not offered the password step');
     assert(await step('student2@together.dev') === 'magic-link', 'a passwordless acme member was offered a password');
-    assert(await step('nikt@together.dev') === 'magic-link', 'an unknown address did not fall back to the magic link');
+    assert(await step('nobody@together.dev') === 'magic-link', 'an unknown address did not fall back to the magic link');
     assert(
       await step('creator@together.dev') === 'magic-link',
       'the acme login revealed a password account that belongs to another tenant',

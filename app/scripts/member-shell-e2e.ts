@@ -134,7 +134,7 @@ const runMobileStartAndSearchJourney = async (page: Page, baseUrl: string): Prom
   await page.waitForURL('**/search');
   const searchInput = page.getByTestId('search-input');
   await searchInput.waitFor(visible);
-  await searchInput.fill('konsol');
+  await searchInput.fill('console');
   await page.getByTestId('search-hit-post-js-variables-tip').waitFor(visible);
   console.log('member-shell-e2e: mobile Start, sales surface, and search journey OK');
 };

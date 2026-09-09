@@ -52,7 +52,7 @@
   ],
   "email": "student.akademia@together.dev",
   "globallySuppressed": false,
-  "language": "pl",
+  "language": "en",
   "nonce": "storybook",
   "scope": "consent:consent-definition-akademia-news",
   "scopeLabel": "I would like to receive news and practical resources by email",

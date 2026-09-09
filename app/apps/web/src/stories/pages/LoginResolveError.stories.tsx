@@ -16,7 +16,7 @@ const errorFixture = {
   expectedErrors: { [resolveCall]: 'unavailable' },
 };
 
-const meta = { title: 'Pages/LoginResolveError', id: 'login-resolve-error', render: () => <></>, decorators: [withPage], parameters: { fixture: errorFixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
+const meta = { title: 'Pages/LoginResolveError', id: 'login-resolve-error', render: () => <></>, decorators: [withPage], parameters: { fixture: errorFixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 

@@ -195,7 +195,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
   }
 };
 
-const SELF_SERVE_HOST = 'sklep.acme.example';
+const SELF_SERVE_HOST = 'shop.acme.example';
 
 const readDomainRow = async (
   databaseUrl: string,
@@ -274,11 +274,11 @@ const runSelfServeAdd = async (input: {
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
 
-    await page.getByTestId('tenant-domain-input').fill('sklep.acme.localhost');
+    await page.getByTestId('tenant-domain-input').fill('shop.acme.localhost');
     await page.getByTestId('tenant-domain-add').click();
     await page.locator('[data-testid^="toast-error-"]').first().waitFor({ state: 'visible', timeout: 20000 });
     assert(
-      await readDomainRow(input.databaseUrl, 'sklep.acme.localhost') === null,
+      await readDomainRow(input.databaseUrl, 'shop.acme.localhost') === null,
       'the platform base domain was accepted as a custom domain',
     );
     console.log('custom-domain-e2e: self-serve add refused a platform subdomain OK');

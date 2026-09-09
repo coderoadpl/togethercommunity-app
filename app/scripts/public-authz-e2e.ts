@@ -406,7 +406,7 @@ try {
   );
   const context = await browser.newContext();
   await context.addInitScript(() => {
-    window.localStorage.setItem('together-language', 'pl');
+    window.localStorage.setItem('together-language', 'en');
   });
   const page = await context.newPage();
   page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));

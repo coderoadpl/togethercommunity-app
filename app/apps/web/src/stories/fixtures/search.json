@@ -274,10 +274,99 @@
         }
       }
     },
-    "searchPosts:[{\"query\":\"lekcj\"}]": {
+    "searchPosts:[{\"query\":\"lesson\"}]": {
       "ok": true,
       "value": {
-        "hits": []
+        "hits": [
+          {
+            "lessonId": "lesson-js-variables-1",
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Active Student",
+              "authorIsStaff": false,
+              "body": "Is there still a reason to use var? Older YouTube tutorials use it everywhere, but this lesson only uses let and const. Should I rewrite the older examples or skip them?",
+              "contextId": "lesson-js-variables-1",
+              "contextKind": "lesson",
+              "createdAt": "2026-06-28T12:00:00.000Z",
+              "deletedAt": null,
+              "deletedBy": null,
+              "editedAt": null,
+              "id": "post-js-variables-q",
+              "isOwn": true,
+              "parentPostId": null,
+              "pinnedAt": null,
+              "rootPostId": "post-js-variables-q",
+              "tenantId": "tenant-studio"
+            },
+            "snippet": "Is there still a reason to use var? Older YouTube tutorials use it everywhere, but this lesson only uses let and const. Should I rewrite the older examples or skip them?"
+          },
+          {
+            "lessonId": "space-studio-community",
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Free Account",
+              "authorIsStaff": false,
+              "body": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "contextId": "space-studio-community",
+              "contextKind": "space",
+              "createdAt": "2026-06-25T12:00:00.000Z",
+              "deletedAt": null,
+              "deletedBy": null,
+              "editedAt": null,
+              "id": "post-community-resources",
+              "isOwn": false,
+              "parentPostId": null,
+              "pinnedAt": null,
+              "rootPostId": "post-community-resources",
+              "tenantId": "tenant-studio"
+            },
+            "snippet": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?"
+          },
+          {
+            "lessonId": "lesson-js-dom-1",
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Studio Creator",
+              "authorIsStaff": true,
+              "body": "Good observation! NodeList is a long-standing DOM interface with its own API. Array.from or the spread syntax [...list] gives you an array with methods such as map. We use that approach later in the lesson.",
+              "contextId": "lesson-js-dom-1",
+              "contextKind": "lesson",
+              "createdAt": "2026-06-22T12:00:00.000Z",
+              "deletedAt": null,
+              "deletedBy": null,
+              "editedAt": null,
+              "id": "post-js-dom-q-r1",
+              "isOwn": false,
+              "parentPostId": "post-js-dom-q",
+              "pinnedAt": null,
+              "rootPostId": "post-js-dom-q",
+              "tenantId": "tenant-studio"
+            },
+            "snippet": "Good observation! NodeList is a long-standing DOM interface with its own API. Array.from or the spread syntax [...list] gives you an array with methods such as map. We use that app"
+          },
+          {
+            "lessonId": "lesson-js-variables-1",
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Expired Student",
+              "authorIsStaff": false,
+              "body": "A quick tip: try the examples from this lesson in the browser console (F12 → Console). You can immediately see how const prevents reassignment.\nResources: https://courses.example.org/guide?topic=const&level=1.",
+              "contextId": "lesson-js-variables-1",
+              "contextKind": "lesson",
+              "createdAt": "2026-06-11T12:00:00.000Z",
+              "deletedAt": null,
+              "deletedBy": null,
+              "editedAt": null,
+              "id": "post-js-variables-tip",
+              "isOwn": false,
+              "parentPostId": null,
+              "pinnedAt": null,
+              "rootPostId": "post-js-variables-tip",
+              "tenantId": "tenant-studio"
+            },
+            "snippet": "A quick tip: try the examples from this lesson in the browser console (F12 → Console). You can immediately see how const prevents reassignment. Resources: https://courses.example.o"
+          }
+        ]
       }
     },
     "studentCourseStructure:[\"course-js\"]": {

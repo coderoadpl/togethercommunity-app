@@ -171,28 +171,28 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'marketing-preferences',
     auth: 'public',
     tenantSlug: 'akademia',
-    path: '/u/unsubscribe_akademia_visual_123456?lang=pl',
+    path: '/u/unsubscribe_akademia_visual_123456?lang=en',
     ready: (page) => page.getByTestId('marketing-preferences').waitFor(visible),
   },
   {
     name: 'hosted-legal-document',
     auth: 'public',
     tenantSlug: 'akademia',
-    path: '/legal/privacy-policy/v/1?lang=pl',
+    path: '/legal/privacy-policy/v/1?lang=en',
     ready: (page) => page.getByTestId('hosted-legal-document').waitFor(visible),
   },
   {
     name: 'marketing-confirmation-success',
     auth: 'public',
     tenantSlug: 'akademia',
-    path: '/marketing/confirm/confirmation_akademia_visual_123456?lang=pl',
+    path: '/marketing/confirm/confirmation_akademia_visual_123456?lang=en',
     ready: (page) => page.getByTestId('marketing-confirmation-success').waitFor(visible),
   },
   {
     name: 'marketing-confirmation-expired',
     auth: 'public',
     tenantSlug: 'akademia',
-    path: '/marketing/confirm/expired_confirmation_visual_123456?lang=pl',
+    path: '/marketing/confirm/expired_confirmation_visual_123456?lang=en',
     ready: (page) => page.getByTestId('marketing-confirmation-expired').waitFor(visible),
   },
   {
@@ -280,7 +280,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'member',
     path: '/search',
     ready: async (page) => {
-      await page.getByTestId('search-input').fill('lekcj');
+      await page.getByTestId('search-input').fill('lesson');
       await page.getByTestId('search-space-space-studio-community').waitFor(visible);
       await page.getByTestId('search-lesson-lesson-js-variables-1').waitFor(visible);
       await page.getByTestId('search-lesson-lesson-js-dom-1').waitFor(visible);
@@ -634,7 +634,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-marketing-layouts',
     auth: 'creator',
     path: '/panel/marketing/layouts',
-    ready: (page) => page.getByRole('heading', { name: en.marketing.layoutsTitle }).waitFor(visible),
+    ready: (page) => page.getByRole('heading', { name: en.marketing.layoutsTitle, exact: true }).waitFor(visible),
   },
   {
     name: 'panel-integrations-email',

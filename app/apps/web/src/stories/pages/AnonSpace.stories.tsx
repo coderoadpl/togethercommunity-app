@@ -15,7 +15,7 @@ const anonSpaceFixture = {
   },
 };
 
-const meta = { title: 'Pages/AnonSpace', id: 'anon-space', render: () => <></>, decorators: [withPage], parameters: { fixture: anonSpaceFixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
+const meta = { title: 'Pages/AnonSpace', id: 'anon-space', render: () => <></>, decorators: [withPage], parameters: { fixture: anonSpaceFixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 

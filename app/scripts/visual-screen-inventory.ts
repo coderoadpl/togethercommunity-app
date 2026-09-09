@@ -26,6 +26,7 @@ export interface ScreenSpec {
   waitForNetworkIdle?: boolean;
   minBytes?: number;
   fullPage?: boolean;
+  isolateCapture?: boolean;
   mask?: (page: Page) => Locator[];
 }
 
@@ -265,6 +266,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('member-menu-sheet').waitFor(visible);
       await page.getByTestId('sidebar-course-course-js').waitFor(visible);
       await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
+      // The sheet covers its trigger, so the click position can hover an account action.
       await page.mouse.move(0, 0);
     },
     settled: async (page) => {
@@ -417,7 +419,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
     ready: async (page) => {
       await page.getByTestId('member-breadcrumbs').waitFor(visible);
-      await page.getByTestId('discussion-composer-open').waitFor(visible);
+      await page.getByTestId('discussion-composer-input').waitFor(visible);
       await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor(visible);
     },
   },
@@ -660,6 +662,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'panel-course',
     auth: 'creator',
+    isolateCapture: true,
     path: '/panel/courses/course-js',
     ready: (page) => page.getByTestId('module-card').first().waitFor(visible),
   },

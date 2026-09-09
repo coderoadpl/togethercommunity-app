@@ -47,7 +47,11 @@ hash jump; the harness scrolls to the domain section after fonts settle so the
 sticky sidebar is first painted at the top of the document. Server HTML stories render the production HTML in a nested iframe;
 the harness waits for that document and its fonts. Captures run sequentially,
 once, with no retries. Each viewport/auth group reuses a page in inventory order, matching the
-golden authoring harness and its rounded-shadow paint caches. The shared browser
+golden authoring harness and its rounded-shadow paint caches. The panel course
+editor uses an isolated capture context because inherited paint caches can change
+the upload button's rounded shadow by four counted pixels. The mobile menu capture
+moves the pointer clear of the sheet so the opening click cannot leave sign-out
+hovered. The shared browser
 setup saves native animation-frame scheduling before Playwright installs its
 clock. Capture waits use those native frames, so paint readiness remains tied
 to rendering while application timers retain the authoring clock behavior.

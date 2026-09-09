@@ -257,7 +257,7 @@ export const MemberShell = () => {
                     aria-expanded={openSheet === 'program' ? true : undefined}
                     onClick={() => setOpenSheet('program')}
                     data-testid="program-button"
-                    sx={{ display: { xs: 'inline-flex', sm: 'none' }, flexShrink: 0 }}
+                    sx={{ display: { xs: 'inline-flex', sm: 'none' }, flexShrink: 0, minHeight: 44, minWidth: 44 }}
                   >
                     <ProgramIcon />
                   </IconButton>

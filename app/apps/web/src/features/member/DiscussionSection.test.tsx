@@ -177,27 +177,26 @@ describe('DiscussionSection', () => {
 
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    expect(await screen.findByTestId('discussion-composer-open')).toHaveTextContent(
-      pl.discussion.composerPrompt,
-    );
+    expect(await screen.findByTestId('discussion-composer-input')).toHaveAttribute('placeholder', pl.discussion.composerPlaceholder);
+    expect(screen.getByTestId('discussion-composer-submit')).toBeDisabled();
     expect(screen.getByTestId('discussion-empty')).toHaveTextContent(pl.discussion.empty);
   });
 
-  it('opens the collapsed lesson composer from its prompt and collapses it again on blur', async () => {
+  it('keeps the lesson input and send button visible before focus and after blur', async () => {
     server.use(okMe(), okDiscussion([]));
 
     const user = userEvent.setup();
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    await user.click(await screen.findByTestId('discussion-composer-open'));
+    await user.click(await screen.findByTestId('discussion-composer-input'));
 
     expect(await screen.findByTestId('discussion-composer-submit')).toBeInTheDocument();
     expect(screen.getByTestId('discussion-composer-input')).toHaveFocus();
 
     await user.tab();
 
-    expect(await screen.findByTestId('discussion-composer-open')).toBeInTheDocument();
-    expect(screen.queryByTestId('discussion-composer-submit')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('discussion-composer-input')).toBeInTheDocument();
+    expect(screen.getByTestId('discussion-composer-submit')).toBeDisabled();
   });
 
   it('leaves no empty composer card and no invitation to write while viewing as a member', async () => {
@@ -208,7 +207,7 @@ describe('DiscussionSection', () => {
     expect(await screen.findByTestId('discussion-empty')).toHaveTextContent(
       pl.discussion.emptyReadOnly,
     );
-    expect(screen.queryByTestId('discussion-composer-open')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-composer-input')).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-composer')).not.toBeInTheDocument();
     expect(
       screen.getByTestId('discussion-section').querySelectorAll('.MuiPaper-root'),
@@ -226,22 +225,6 @@ describe('DiscussionSection', () => {
     expect(await screen.findByTestId('reply-button-r1')).toBeDisabled();
     expect(screen.getByTestId('edit-button-r1')).toBeDisabled();
     expect(screen.getByTestId('delete-button-r1')).toBeDisabled();
-  });
-
-  it('keeps the reopened lesson composer mounted when its draft is cleared', async () => {
-    server.use(okMe(), okDiscussion([]));
-
-    const user = userEvent.setup();
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
-
-    await user.click(await screen.findByTestId('discussion-composer-open'));
-    await user.type(await screen.findByTestId('discussion-composer-input'), 'abc');
-    await user.click(document.body);
-
-    await user.clear(await screen.findByTestId('discussion-composer-input'));
-
-    expect(screen.getByTestId('discussion-composer-input')).toBeInTheDocument();
-    expect(screen.queryByTestId('discussion-composer-open')).not.toBeInTheDocument();
   });
 
   it('renders three nesting levels with indentation, author chip and deleted placeholder', async () => {

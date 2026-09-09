@@ -1523,7 +1523,6 @@ export interface Messages {
     lockedNote: string;
     composerLabel: string;
     composerPlaceholder: string;
-    composerPrompt: string;
     post: string;
     posting: string;
     reply: string;
@@ -1577,7 +1576,6 @@ export interface Messages {
     unfollow: string;
     composerLabel: string;
     composerPlaceholder: string;
-    composerPrompt: string;
     post: string;
     posting: string;
     loadingFeed: string;
@@ -1866,6 +1864,11 @@ export interface Messages {
     logoDarkHint: string;
     logoPlaceholder: string;
     accentLabel: string;
+    accentLightLabel: string;
+    accentLightHint: string;
+    darkPreview: string;
+    lightPreview: string;
+    previewAction: string;
     accentPlaceholder: string;
     accentInvalid: string;
     previewHint: string;

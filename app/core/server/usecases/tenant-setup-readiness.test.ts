@@ -48,6 +48,7 @@ const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
   logoUrl: null,
   logoDarkUrl: null,
   accentColor: null,
+  accentLight: null,
   faviconUrl: null,
   ogTitle: null,
   ogDescription: null,
@@ -215,6 +216,7 @@ describe('getTenantSetupReadiness', () => {
         logoUrl: '/assets/logo.png',
         logoDarkUrl: null,
         accentColor: '#112233',
+        accentLight: null,
       }),
     });
 

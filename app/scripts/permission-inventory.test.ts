@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(307);
-    expect(inventory.useCases).toHaveLength(248);
+    expect(inventory.routes).toHaveLength(364);
+    expect(inventory.useCases).toHaveLength(276);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
@@ -30,10 +30,24 @@ describe('permission inventory', () => {
     expect(changes).toEqual([]);
   });
 
+  it('classifies member self-service routes for staff and completion writes consistently', () => {
+    const routes = new Map(collectPermissionInventory().routes.map((row) => [row.subject, row]));
+    for (const subject of [
+      'POST /api/me/profile', 'GET /api/me/erasure-request', 'GET /api/me/data-export',
+      'GET /api/student/progress', 'POST /api/student/progress/last-viewed',
+      'POST /api/student/lessons/complete', 'POST /api/student/lessons/uncomplete',
+    ]) {
+      expect(routes.get(subject)?.after, subject).toEqual(['owner', 'admin', 'member']);
+    }
+    expect(routes.get('POST /api/student/lessons/uncomplete')?.capability).toBe('member:progress:self-write');
+  });
+
   it('reads use-case capabilities from their authorization calls', () => {
     const useCases = new Map(
       collectPermissionInventory().useCases.map((row) => [row.subject, row]),
     );
+    expect(useCases.get('marketing-contacts.ts#listMarketingContacts')?.capability).toBe('marketing:contact:read');
+    expect(useCases.get('marketing-contact-imports.ts#commitMarketingContactImport')?.capability).toBe('marketing:import:write');
     expect(useCases.get('orders.ts#getSalesSummary')?.capability).toBe('sales:read');
     expect(useCases.get('marketing-email.ts#deleteCampaign')?.capability).toBe(
       'marketing:campaign:write',

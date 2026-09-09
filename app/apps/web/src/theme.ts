@@ -69,7 +69,7 @@ declare module '@mui/material/styles' {
   }
 }
 
-const linkInk = (theme: Theme): string => theme.linkColor ?? theme.palette.primary.dark;
+const linkInk = (theme: Theme): string => theme.accentText ?? theme.linkColor ?? theme.palette.primary.dark;
 
 const PAPER = '#f6f2ea';
 const PAPER_RAISED = '#fdfbf6';
@@ -2979,7 +2979,25 @@ export const MemberLedgerHeader = styled(LedgerHeader)<AsElement>(({ theme }) =>
   borderBottomColor: theme.palette.mode === 'dark' ? '#33363C' : '#D6D4D0',
 }));
 
-/** Live accent preview in the branding settings; transparent until a valid color is typed. */
+export const BrandSchemePreview = styled(Stack, {
+  shouldForwardProp: (prop) => prop !== 'scheme' && prop !== 'accent',
+})<{ scheme: ResolvedColorScheme; accent: string }>(({ scheme, accent }) => ({
+  padding: '1rem',
+  gap: '0.5rem',
+  flex: 1,
+  backgroundColor: MEMBER_BACKGROUND[scheme],
+  color: accent,
+}));
+
+export const BrandPreviewControl = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'accent' && prop !== 'ink',
+})<{ accent: string; ink: string }>(({ accent, ink }) => ({
+  padding: '0.5rem',
+  minHeight: 44,
+  backgroundColor: accent,
+  color: ink,
+}));
+
 export const BrandSwatch = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'swatchColor',
 })<{ swatchColor: string | null }>(({ theme, swatchColor }) => ({
@@ -3001,7 +3019,7 @@ export const TenantListItemText = styled(ListItemText)({
   '& .MuiListItemText-primary': { fontWeight: 700 },
 });
 
-export const BreakAllText = styled(Typography)<AsElement>({ wordBreak: 'break-all' });
+export const WrapAnywhereText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
 
 export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,

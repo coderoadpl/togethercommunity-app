@@ -13,7 +13,6 @@ import { localizeError, useTranslations } from '../../i18n/index.js';
 import { CourseCardRoot, ProgressPercentText, RailProgressBar } from '../../theme.js';
 import { CourseCard } from './CourseCards.js';
 import { coursePercent, isCourseDone, type CourseLessonCounts } from './course-progress.js';
-import { continueLessonId, flattenLessons } from './CourseRail.js';
 import { LiveNowBanner } from './events/LiveNowBanner.js';
 import { UpcomingEventsStrip } from './events/UpcomingEventsStrip.js';
 import { HomeFeedSection } from './HomeFeedSection.js';
@@ -43,18 +42,15 @@ const continueCourse = (courses: MemberNavigationCourse[]): MemberNavigationCour
 
 const ContinueCard = ({ course }: { course: MemberNavigationCourse }) => {
   const t = useTranslations();
-  const structure = useQuery(actions.courseStructure(course.courseId));
-  if (structure.data === undefined) return null;
-
-  const targetId = continueLessonId(structure.data.structure, course.lastViewedLessonId);
-  const target = flattenLessons(structure.data.structure).find(
-    (lesson) => lesson.lessonId === targetId,
-  );
-  if (target === undefined) return null;
+  const progress = useQuery({
+    ...actions.studentProgress(course.courseId), staleTime: 0, refetchOnMount: 'always',
+  });
+  const target = progress.data?.progress.resume?.target;
+  if (target == null) return null;
 
   const percent = coursePercent(course);
   const done = isCourseDone(course);
-  const isReview = target.completionStatus === 'fully-completed';
+  const isReview = progress.data?.progress.resume?.isReview === true;
 
   return (
     <CourseCardRoot data-testid="start-continue">
@@ -97,7 +93,7 @@ const ContinueCard = ({ course }: { course: MemberNavigationCourse }) => {
           <Button
             variant="contained"
             component={RouterLink}
-            to={`/my/courses/${encodeURIComponent(course.courseId)}/lessons/${encodeURIComponent(target.lessonId)}`}
+            to={`/my/courses/${encodeURIComponent(course.courseId)}/lessons/${encodeURIComponent(target.id)}`}
             data-testid="start-continue-cta"
           >
             {isReview ? t.start.reviewCta : t.start.continueCta}
@@ -146,7 +142,7 @@ export const TileSection = ({
 
 export const StartPage = () => {
   const t = useTranslations();
-  const navigation = useQuery(actions.memberNavigation);
+  const navigation = useQuery({ ...actions.memberNavigation, staleTime: 0, refetchOnMount: 'always' });
   const courses = useQuery(actions.studentCourses);
   const navigate = useNavigate();
   const unauthorized = isUnauthorized(navigation.error) || isUnauthorized(courses.error);

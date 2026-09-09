@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, ImpersonationPrincipal } from '#core/domain/index.js';
+import { capabilitiesForPrincipal, type Identity, type ImpersonationPrincipal } from '#core/domain/index.js';
 
 import { authorize, authorizeRequiredTenant, authorizeTenant } from './authorize.js';
 
@@ -43,9 +43,7 @@ describe('authorize', () => {
   it('preserves a membership grant on an identity that also carries a staff role', () => {
     const dualIdentity = { ...identity('tenant-1'), memberId: 'member-1' };
     expect(authorize({ identity: dualIdentity }, 'member:billing:read')).toBeNull();
-    expect(authorize({ identity: identity('tenant-1') }, 'member:billing:read')).toMatchObject({
-      code: 'forbidden',
-    });
+    expect(authorize({ identity: identity('tenant-1') }, 'member:billing:read')).toBeNull();
   });
 
   it('withholds only tenant:create from an unverified granted principal', () => {
@@ -196,5 +194,31 @@ describe('authorizeRequiredTenant', () => {
         'marketing:consent:write',
       ),
     ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+});
+
+
+describe('member self-service authorization matrix', () => {
+  const allowedInView = new Set([
+    'tenant:settings:read', 'member:billing:read', 'member:erasure:self-request',
+    'member:product:read', 'member:progress:read', 'lesson:play', 'community:read',
+    'space:read', 'notification:read', 'event:read', 'invoice:member-read',
+    'marketing:consent:read', 'marketing:message:read',
+  ]);
+
+  it.each(['owner', 'admin', 'member'] as const)('grants every member capability to %s acting on their own account', (role) => {
+    const own = role === 'member' ? subjectIdentity : { ...identity('tenant-1'), staffRole: role };
+    for (const capability of capabilitiesForPrincipal('member')) {
+      expect(capabilitiesForPrincipal(role), capability).toContain(capability);
+      expect(authorize({ identity: own }, capability), capability).toBeNull();
+    }
+  });
+
+  it.each(['owner', 'admin'] as const)('preserves the exact member read allowlist for an impersonating %s', (actorStaffRole) => {
+    for (const capability of capabilitiesForPrincipal('member')) {
+      const result = authorize({ identity: subjectIdentity, impersonation: { ...impersonation, actorStaffRole } }, capability);
+      if (allowedInView.has(capability)) expect(result, capability).toBeNull();
+      else expect(result, capability).toMatchObject({ code: 'impersonation_read_only' });
+    }
   });
 });

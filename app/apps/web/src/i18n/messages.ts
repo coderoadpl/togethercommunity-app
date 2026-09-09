@@ -501,6 +501,7 @@ export interface Messages {
     closeNavigation: string;
     accountMenu: string;
     accountMenuUnread: (params: { count: number }) => string;
+    memberView: string;
     myAccount: string;
     signedInAs: string;
   };
@@ -597,6 +598,7 @@ export interface Messages {
     panelTitle: string;
     manageEvents: string;
     allEvents: string;
+    addEvent: string;
     newEvent: string;
     editEvent: string;
     edit: string;
@@ -1449,7 +1451,7 @@ export interface Messages {
     continueLearning: string;
     reviewAgain: string;
     courseCompleted: string;
-    goToFirstLesson: string;
+    firstIncomplete: (p: { name: string }) => string;
     curriculum: string;
     aboutCourse: string;
     coverAlt: (params: { name: string }) => string;
@@ -1535,6 +1537,7 @@ export interface Messages {
     deleteConfirm: string;
     deleting: string;
     deletedPost: string;
+    moderatorDeletedPost: string;
     edited: string;
     authorChip: string;
     follow: string;
@@ -1861,6 +1864,11 @@ export interface Messages {
     logoDarkHint: string;
     logoPlaceholder: string;
     accentLabel: string;
+    accentLightLabel: string;
+    accentLightHint: string;
+    darkPreview: string;
+    lightPreview: string;
+    previewAction: string;
     accentPlaceholder: string;
     accentInvalid: string;
     previewHint: string;

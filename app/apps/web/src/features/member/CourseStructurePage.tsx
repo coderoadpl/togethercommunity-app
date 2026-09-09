@@ -92,7 +92,7 @@ const CourseProgramSection = ({
 }) => {
   const t = useTranslations();
   return (
-    <Box component="section" data-testid="course-tree-inline" sx={{ mt: '0.25rem' }}>
+    <Box component="section" data-testid="course-tree-inline" sx={{ mt: '1.5rem' }}>
       <Typography variant="h3" component="h2" sx={{ mb: '0.9rem' }}>
         {t.courseOverview.curriculum}
       </Typography>
@@ -186,7 +186,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
     <CourseProgressCard
       courseId={courseId}
       structure={course}
-      lastViewedLessonId={lastViewedLessonId}
+      resume={progress.data?.progress.resume}
     />
   );
   const details = (

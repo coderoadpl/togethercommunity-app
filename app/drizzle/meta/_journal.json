@@ -785,6 +785,13 @@
       "when": 1788897660000,
       "tag": "0111_grant_event_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1788915486888,
+      "tag": "0112_marketing_contacts",
+      "breakpoints": true
     }
   ]
 }

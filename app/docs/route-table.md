@@ -255,6 +255,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/tenant/routing` | authenticated | read | tenant routing |
 | `POST /api/tenant/domains` | authenticated | mutating | tenant domain add |
 | `POST /api/tenant/domains/check` | authenticated | mutating | tenant domain check |
+| `POST /api/tenant/domains/storage-cors/check` | authenticated | mutating | tenant domain storage cors check |
 | `POST /api/tenant/domains/remove` | authenticated | mutating | tenant domain remove |
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |

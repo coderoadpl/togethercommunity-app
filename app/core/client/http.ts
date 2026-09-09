@@ -2523,6 +2523,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  checkTenantDomainStorageCors: (input: TenantDomainInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantDomainStorageCorsCheck.method,
+      API_ROUTES.tenantDomainStorageCorsCheck.path,
+      tenantRoutingOutputSchema,
+      input,
+      signal,
+    ),
   removeTenantDomain: (input: TenantDomainInput, signal?: AbortSignal) =>
     request(
       options,

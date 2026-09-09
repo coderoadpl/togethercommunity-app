@@ -2593,9 +2593,13 @@ describe('post repository', () => {
     const second = await repo.listThreadsForContext(ACME, { ...query, cursor: first.nextCursor ?? '' });
     expect(second.threads.map((thread) => thread.post.id)).toEqual([replied.id]);
     expect(second.threads[0]?.replyCount).toBe(1);
-    expect(second.nextCursor).toBeNull();
+    expect(second.nextCursor).not.toBeNull();
+    const third = await repo.listThreadsForContext(ACME, { ...query, cursor: second.nextCursor ?? '' });
+    expect(third.threads.map((thread) => thread.post.id)).toEqual([post.id]);
+    expect(third.threads[0]?.replyCount).toBe(0);
+    expect(third.nextCursor).toBeNull();
     const home = await repo.listThreadsForSpaces(ACME, { spaceIds: [post.contextId], limit: 10 });
-    expect(home.threads.map((thread) => thread.post.id)).toEqual([replied.id, visible.id]);
+    expect(home.threads.map((thread) => thread.post.id)).toEqual([post.id, replied.id, visible.id]);
     await expect(repo.listPinnedForContext(ACME, {
       contextKind: post.contextKind,
       contextId: post.contextId,

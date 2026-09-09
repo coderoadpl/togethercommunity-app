@@ -97,14 +97,14 @@ describe('HomeFeedSection', () => {
     expect(screen.queryByTestId('edit-button-p1') !== null).toBe(canEdit);
   });
 
-  it('confirms deletion and removes an empty own root from the feed without reloading', async () => {
+  it('confirms deletion and keeps an empty own root as a tombstone without reloading', async () => {
     let post = item('p1', { isOwn: true });
     const deletedIds: string[] = [];
     server.use(
       okMe(),
       http.get('/api/member/home-feed', () => HttpResponse.json({
         ok: true,
-        data: { feed: { items: post.deletedAt === null ? [post] : [], nextCursor: null } },
+        data: { feed: { items: [post], nextCursor: null } },
       })),
       http.delete('/api/posts/:postId', ({ params }) => {
         deletedIds.push(String(params['postId']));
@@ -125,9 +125,9 @@ describe('HomeFeedSection', () => {
     await userEvent.click(await screen.findByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
     await userEvent.click(screen.getByTestId('confirm-delete-post'));
-    await waitFor(() => expect(screen.queryByTestId('home-feed-post-p1')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('home-feed-deleted-p1')).toHaveTextContent(en.discussion.deletedPost));
     expect(deletedIds).toEqual(['p1']);
-    expect(screen.getByTestId('start-feed-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('start-feed-empty')).not.toBeInTheDocument();
   });
 
   it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a permanent-delete menu', async (deletedBy) => {

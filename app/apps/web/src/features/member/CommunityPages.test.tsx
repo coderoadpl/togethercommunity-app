@@ -555,12 +555,12 @@ describe('community pages', () => {
     expect(screen.queryByTestId('edit-button-p1') !== null).toBe(canEdit);
   });
 
-  it('confirms deletion and removes an empty own root from the feed without reloading', async () => {
+  it('confirms deletion and keeps an empty own root as a tombstone without reloading', async () => {
     let item = feedItem({ id: 'p1', isOwn: true, replyCount: 0 });
     const deletedIds: string[] = [];
     server.use(okMe(), noNotifications(), okSpaces([space({ id: 's1' })]), okSeen(),
       http.get('/api/spaces/:spaceId/feed', () => HttpResponse.json({ ok: true,
-        data: { feed: { spaceId: 's1', items: [], pinned: item.deletedAt === null ? [item] : [], nextCursor: null, isFollowing: false } } })),
+        data: { feed: { spaceId: 's1', items: item.pinnedAt === null ? [item] : [], pinned: item.pinnedAt === null ? [] : [item], nextCursor: null, isFollowing: false } } })),
       http.delete('/api/posts/:postId', ({ params }) => {
         deletedIds.push(String(params['postId']));
         item = { ...item, body: 'Deleted post', deletedAt: '2026-07-20T09:00:00.000Z', deletedBy: 'author', pinnedAt: null };
@@ -576,9 +576,9 @@ describe('community pages', () => {
     await userEvent.click(screen.getByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
     await userEvent.click(screen.getByTestId('confirm-delete-post'));
-    await waitFor(() => expect(screen.queryByTestId('feed-post-p1')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('deleted-post-p1')).toHaveTextContent(en.discussion.deletedPost));
     expect(deletedIds).toEqual(['p1']);
-    expect(screen.getByTestId('feed-empty-state')).toBeInTheDocument();
+    expect(screen.queryByTestId('feed-empty-state')).not.toBeInTheDocument();
   });
 
   it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a permanent-delete menu', async (deletedBy) => {

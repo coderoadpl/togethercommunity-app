@@ -164,7 +164,11 @@ export const validateMarketingContactImport = async (ctx: Ctx, input: { importId
     await importEvent(tenant.value, batch, 'import_validated', repos, deps, ctx.identity.userId);
     const errors = rows.flatMap((row) => row.errors.map((message) => ({ rowNumber: row.rowNumber, message })));
     const warnings = rows.flatMap((row) => row.warnings.map((message) => ({ rowNumber: row.rowNumber, message })));
-    return ok({ import: batch, validationHash: batch.contentHash, preview: rows.slice(0, 20), counts: { validRows: rows.filter((row) => row.status === 'valid').length, rejectedRows: rows.filter((row) => row.status === 'invalid').length, duplicateRows: rows.filter((row) => row.status === 'duplicate').length, listsToCreate: [...listsToCreate].sort() }, errors, warnings, canCommit: errors.length === 0 });
+    const rawCsv = await repos.imports.readCsv(tenant.value, batch.id);
+    const csv = rawCsv === null ? null : parseMarketingImportCsv(rawCsv, batch.delimiter ?? undefined);
+    const headers = csv?.ok ? csv.value.headers : Object.keys(batch.mapping);
+    const canCommitWithSkippedRows = rows.some((row) => row.status === 'valid') && !rows.some((row) => row.status === 'duplicate' && row.errors.length > 0);
+    return ok({ headers, canCommitWithSkippedRows, import: batch, validationHash: batch.contentHash, preview: rows.slice(0, 20), counts: { validRows: rows.filter((row) => row.status === 'valid').length, rejectedRows: rows.filter((row) => row.status === 'invalid').length, duplicateRows: rows.filter((row) => row.status === 'duplicate').length, listsToCreate: [...listsToCreate].sort() }, errors, warnings, canCommit: errors.length === 0 });
   });
 };
 export const commitMarketingContactImport = async (ctx: Ctx, input: unknown, deps: MarketingImportDeps & { actor: ImportActor }): Promise<Result<{ import: MarketingContactImport }, AppError>> => {
@@ -184,7 +188,7 @@ export const commitMarketingContactImport = async (ctx: Ctx, input: unknown, dep
     const definition = await definitionSnapshot(tenant.value, batch, repos, deps);
     if (!definition.ok) return definition;
     if ((definition.value?.hash ?? null) !== batch.definitionHash) return conflict('Consent definition changed; validate and attest again');
-    if (rows.some((row) => row.errors.some((message) => message.includes('requires correction before consent import')))) return err(validation('Resolve conflicting consent evidence before commit'));
+    if (rows.some((row) => row.status === 'duplicate' && row.errors.length > 0)) return err(validation('Resolve conflicting consent evidence before commit'));
     if (parsed.data.invalidRows === 'reject_batch' && rows.some((row) => row.errors.length > 0)) return err(validation('Correct invalid rows or explicitly select skip_invalid'));
     batch.attestationVersion = parsed.data.attestation.version;
     batch.attestationText = batch.consentDefinitionId === null ? MARKETING_DIRECTORY_ATTESTATION_TEXT : MARKETING_IMPORT_ATTESTATION_TEXT;

@@ -133,3 +133,15 @@ export const SignOutIcon = () => (
     <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
   </SvgIcon>
 );
+
+export const MarketingContactsIcon = () => (
+  <SvgIcon aria-hidden viewBox={iconViewBox} fontSize="small">
+    <path d="M4 3h16v18H4V3zm2 2v14h12V5H6zm6 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm-4 9c0-2 8-2 8 0v1H8v-1z" />
+  </SvgIcon>
+);
+
+export const MarketingListsIcon = () => (
+  <SvgIcon aria-hidden viewBox={iconViewBox} fontSize="small">
+    <path d="M3 4h4v4H3V4zm6 1h12v2H9V5zM3 10h4v4H3v-4zm6 1h12v2H9v-2zM3 16h4v4H3v-4zm6 1h12v2H9v-2z" />
+  </SvgIcon>
+);

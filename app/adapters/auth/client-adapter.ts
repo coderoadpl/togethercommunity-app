@@ -49,6 +49,17 @@ const readTwoFactorChallengeCookie = (response: Response): string | null =>
     .find((entry) => /^(?:__Secure-)?better-auth\.two_factor=/u.test(entry))
     ?.split(';')[0] ?? null;
 
+const browserOrigin = (): string => (typeof window === 'undefined' ? 'http://localhost:3000' : window.location.origin);
+
+const magicLinkErrorCallbackUrl = (callbackURL: string, baseUrl: string): string => {
+  const callbackBase = baseUrl === '' ? browserOrigin() : new URL(baseUrl).origin;
+  const callback = new URL(callbackURL, callbackBase);
+  const error = new URL('/login?error=INVALID_TOKEN', callback);
+  const returnTo = callback.searchParams.get('returnTo');
+  if (returnTo !== null) error.searchParams.set('returnTo', returnTo);
+  return error.toString();
+};
+
 interface GoogleIdentityApi {
   initialize(input: { client_id: string; callback(response: { credential: string }): void }): void;
   prompt(): void;
@@ -239,7 +250,7 @@ export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<
             {
               email,
               callbackURL,
-              errorCallbackURL: new URL('/login?error=INVALID_TOKEN', callbackURL).toString(),
+              errorCallbackURL: magicLinkErrorCallbackUrl(callbackURL, baseUrl),
             },
             language ? { headers: { [MAGIC_LINK_LANGUAGE_HEADER]: language } } : {},
           )
@@ -317,8 +328,8 @@ export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<
       if (!parsed.success) return err(appError('internal', 'Backup-code response did not match the contract'));
       return ok(parsed.data.backupCodes);
     },
-    signInWithGoogle: async () =>
-      toResult(undefined, (await client.signIn.social({ provider: 'google' })).error),
+    signInWithGoogle: async ({ callbackURL }) =>
+      toResult(undefined, (await client.signIn.social({ provider: 'google', callbackURL })).error),
     promptGoogleOneTap: async ({ clientId, callbackURL }) => {
       try {
         await loadGoogleIdentityScript();

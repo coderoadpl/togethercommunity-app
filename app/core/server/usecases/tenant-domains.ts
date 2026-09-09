@@ -33,8 +33,11 @@ import type {
   TenantDomainEventRepository,
   TenantDomainRepository,
   StorageCorsCache,
+  StorageProvider,
+  TenantSecretResolver,
 } from '../ports.js';
 import { canonicalTenantDomain, customDomainOrigin, tenantOriginUrl, tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
+import { resolveStorageConfiguration } from './storage-assets.js';
 
 export interface TenantRoutingDeps {
   tenantDomains: TenantDomainRepository;
@@ -53,6 +56,8 @@ export interface TenantDomainDeps extends TenantRoutingDeps {
   realtimeBus: RealtimeBusPort;
   ids: IdGenerator;
   clock: Clock;
+  storage: StorageProvider;
+  secretResolver: TenantSecretResolver;
   logger?: { warn(message: string): void } | undefined;
   resubscribeSesWebhookAfterDomainRemoval?: ((
     tenantId: string,
@@ -130,6 +135,50 @@ const readRouting = async (
   deps: TenantRoutingDeps,
 ): Promise<TenantRouting> =>
   await routingView(tenantId, tenantSlug, await deps.tenantDomains.listByTenant(tenantId), deps);
+
+const probeDomainStorageCors = async (
+  row: TenantDomain,
+  deps: Pick<TenantDomainDeps, 'clock' | 'routing' | 'secretResolver' | 'storage' | 'storageCorsCache'>,
+  options: { requireConfigured: boolean },
+): Promise<Result<undefined, AppError>> => {
+  if (!row.verified || deps.storageCorsCache === undefined) return ok(undefined);
+  const configuration = await resolveStorageConfiguration(row.tenantId, deps.secretResolver);
+  if (!configuration.ok) {
+    return !options.requireConfigured && configuration.error.code === 'integration_not_configured'
+      ? ok(undefined)
+      : err(configuration.error);
+  }
+  const origin = customDomainOrigin(row.domain, deps.routing);
+  const probed = await deps.storage.probeCors(configuration.value, [origin]);
+  const existing = await deps.storageCorsCache.read(row.tenantId);
+  const result = probed[0] ?? { origin, status: 'unknown' as const };
+  if (result.status === 'unknown') {
+    return err(appError(
+      'integration_unavailable',
+      'The storage CORS probe could not confirm this origin.',
+    ));
+  }
+  await deps.storageCorsCache.write(row.tenantId, {
+    checkedAt: existing?.checkedAt ?? deps.clock.nowIso(),
+    results: [
+      ...(existing?.results.filter((entry) => entry.origin !== origin) ?? []),
+      result,
+    ],
+  });
+  return ok(undefined);
+};
+
+const recordVerifiedDomainStorageCors = async (
+  row: TenantDomain,
+  deps: Pick<TenantDomainDeps, 'clock' | 'logger' | 'routing' | 'secretResolver' | 'storage' | 'storageCorsCache'>,
+): Promise<void> => {
+  const probed = await probeDomainStorageCors(row, deps, { requireConfigured: false });
+  if (!probed.ok) {
+    deps.logger?.warn(
+      `[tenant-domain] storage CORS probe failed tenant=${row.tenantId} domain=${row.domain} error=${probed.error.message}`,
+    );
+  }
+};
 
 export const getTenantRouting = async (
   ctx: Ctx,
@@ -409,6 +458,7 @@ const refreshTenantDomain = async (
         domain: row.domain,
         kind: 'tenant-domain-verified',
       });
+      await recordVerifiedDomainStorageCors(flipped, deps);
       return ok(flipped);
     }
   }
@@ -440,6 +490,27 @@ export const checkTenantDomain = async (
     AbortSignal.timeout(TENANT_DOMAIN_REFRESH_BUDGET_MS),
   );
   if (!refreshed.ok) return refreshed;
+  return ok(await readRouting(tenant.value, ctx.identity.tenantSlug, deps));
+};
+
+export const checkTenantDomainStorageCors = async (
+  ctx: Ctx,
+  input: { domain: string },
+  deps: TenantDomainDeps,
+): Promise<Result<TenantRouting, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'integration:test');
+  if (!tenant.ok) return tenant;
+  const row = await findCustomDomain(tenant.value, input.domain, deps);
+  if (row === null || !row.verified) return err(notFound('This verified domain is not connected to your workspace'));
+  const budget = await claimHourlyBudget(
+    { scope: 'tenant-domain-storage-cors-check', tenantId: tenant.value, limit: CUSTOM_DOMAIN_CHECKS_PER_HOUR },
+    deps,
+  );
+  if (!budget) {
+    return err(rateLimited('Too many domain checks in the last hour. Try again later.'));
+  }
+  const probed = await probeDomainStorageCors(row, deps, { requireConfigured: true });
+  if (!probed.ok) return probed;
   return ok(await readRouting(tenant.value, ctx.identity.tenantSlug, deps));
 };
 

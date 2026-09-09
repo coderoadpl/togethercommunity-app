@@ -19,6 +19,10 @@ export const validateContactImportSearch = (search: Record<string, unknown>) => 
 type Mapping = z.output<typeof marketingImportMappingSchema>;
 const contactFields = ['email', 'name', 'firstName', 'lastName', 'tags', 'source', 'consentSource', 'consentAt', 'lists'] as const;
 const suppressionFields = ['email', 'reason', 'at'] as const;
+const nextUploadId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `import-${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
 
 const ImportPreview = ({ preview }: { preview: MarketingImportValidation }) => {
   const t = useTranslations();
@@ -83,7 +87,7 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
   const validatePreview = () => {
     setAccepted(false); setNote(''); requestedRevision.current = editRevision.current;
     const fingerprint = JSON.stringify({ csv, kind, fileName, mapping, delimiter, defaults, consentDefinitionId });
-    if (uploadRequest.current?.fingerprint !== fingerprint) uploadRequest.current = { fingerprint, key: crypto.randomUUID() };
+    if (uploadRequest.current?.fingerprint !== fingerprint) uploadRequest.current = { fingerprint, key: nextUploadId() };
     const idempotencyKey = uploadRequest.current.key;
     if (batchId) remap.mutate({ importId: batchId, mapping, ...(delimiter ? { delimiter } : {}), defaults, consentDefinitionId: consentDefinitionId || null });
     else upload.mutate({ csv, metadata: { kind, datasetVersion: 'together-marketing-contacts/v1', fileName, mapping, ...(delimiter ? { delimiter } : {}), defaults, consentDefinitionId: consentDefinitionId || null, idempotencyKey } });

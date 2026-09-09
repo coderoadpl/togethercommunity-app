@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { PublicDmMessage } from '#core/domain/index.js';
@@ -9,6 +9,7 @@ import type { PublicDmMessage } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { useRedirectToLogin } from '../use-login-redirect.js';
 import { formatRelativeTime } from '../../../lib/format.js';
 import {
   CONVERSATION_POLL_INTERVAL_MS,
@@ -54,7 +55,7 @@ const MessageRow = ({ message }: { message: PublicDmMessage }) => {
 
 export const ConversationPage = ({ conversationId }: { conversationId: string }) => {
   const t = useTranslations();
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const queryClient = useQueryClient();
   const [limit, setLimit] = useState(PAGE_SIZE);
   const { streamless } = useNotificationsTransport();
@@ -88,8 +89,8 @@ export const ConversationPage = ({ conversationId }: { conversationId: string })
 
   const unauthorized = isUnauthorized(thread.error);
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   const backLink = (
     <Button component={Link} to="/messages" variant="text" data-testid="conversation-back">

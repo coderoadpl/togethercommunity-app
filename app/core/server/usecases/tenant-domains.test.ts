@@ -4,9 +4,13 @@ import {
   err,
   integrationUnavailable,
   ok,
+  notFound,
+  type AppError,
   type DnsRecord,
   type Identity,
   type Notification,
+  type StorageConfiguration,
+  type StorageCorsCacheEntry,
   type TenantDomain,
   type TenantDomainProvider,
 } from '#core/domain/index.js';
@@ -17,9 +21,11 @@ import type {
   DomainProvisionState,
   NotificationRepository,
   PublicRateLimitRepository,
+  StorageProvider,
   TenantAccessReader,
   TenantDomainEventInput,
   TenantDomainRepository,
+  TenantSecretResolver,
 } from '../ports.js';
 import {
   createInMemoryTenantDomainRepository,
@@ -29,6 +35,7 @@ import {
 import {
   addTenantDomain,
   checkTenantDomain,
+  checkTenantDomainStorageCors,
   getTenantRouting,
   removeTenantDomain,
   runTenantDomainChecks,
@@ -61,6 +68,15 @@ const TXT_RECORD: DnsRecord = {
   type: 'TXT',
   name: '_vercel.course.acme.example',
   value: 'vc-domain-verify=course.acme.example,abc',
+};
+
+const storageConfiguration: StorageConfiguration = {
+  provider: 'minio',
+  endpoint: 'https://storage.example.test',
+  region: 'us-east-1',
+  bucket: 'tenant-assets',
+  accessKeyId: 'access-key',
+  secretAccessKey: 'secret-key',
 };
 
 class FakeProvisioner implements DomainProvisioner {
@@ -167,11 +183,18 @@ const harness = (input: {
   tenantDomains?: TenantDomainRepository;
   now?: string;
   clock?: Clock;
+  storageConfiguration?: StorageConfiguration | null;
+  storageConfigurationError?: AppError;
+  storageCorsCache?: StorageCorsCacheEntry | null;
+  storageCorsStatus?: 'ok' | 'blocked' | 'unknown';
 } = {}) => {
   const rows = input.rows ?? [];
   const events: TenantDomainEventInput[] = [];
   const notifications: Notification[] = [];
   const warnings: string[] = [];
+  const storageCorsProbes: string[][] = [];
+  const storageCorsWrites: StorageCorsCacheEntry[] = [];
+  let cachedCors: StorageCorsCacheEntry | null = input.storageCorsCache ?? null;
   let nextId = 0;
   const notificationRepository: NotificationRepository = {
     insert: async (_tenantId, notification) => notification,
@@ -190,6 +213,28 @@ const harness = (input: {
     hasUnreadDmNotification: async () => false,
     markDmConversationRead: async () => 0,
   };
+  const secretResolver: TenantSecretResolver = {
+    resolve: async (_tenantId, key) =>
+      input.storageConfigurationError !== undefined
+        ? err(input.storageConfigurationError)
+        : key === 's3.configuration' && input.storageConfiguration !== undefined && input.storageConfiguration !== null
+        ? ok(JSON.stringify(input.storageConfiguration))
+        : err(notFound(`No secret "${key}"`)),
+  };
+  const storage: StorageProvider = {
+    objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+    probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+    probeCors: async (_configuration, origins) => {
+      storageCorsProbes.push(origins);
+      return origins.map((origin) => ({ origin, status: input.storageCorsStatus ?? 'ok' }));
+    },
+    presignPut: (storageInput) => ok(storageInput.url),
+    presignGet: (storageInput) => ok(storageInput.url),
+    delete: async () => ok({ deleted: true }),
+    head: async () => ok({ sizeBytes: 1 }),
+    healthcheck: async () => ok({ healthy: true }),
+    test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+  };
   const deps: TenantDomainDeps = {
     tenantDomains: input.tenantDomains ?? createInMemoryTenantDomainRepository(rows),
     domainEvents: {
@@ -204,6 +249,15 @@ const harness = (input: {
     realtimeBus: { publish: () => undefined, subscribe: () => () => undefined },
     ids: { nextId: () => `id-${String((nextId += 1))}` },
     clock: input.clock ?? { nowIso: () => input.now ?? '2026-09-04T10:00:00.000Z' },
+    storage,
+    secretResolver,
+    storageCorsCache: {
+      read: async () => cachedCors,
+      write: async (_tenantId, entry) => {
+        cachedCors = entry;
+        storageCorsWrites.push(entry);
+      },
+    },
     logger: { warn: (message) => { warnings.push(message); } },
     routing: {
       appBaseUrl: 'https://start.together.example',
@@ -212,7 +266,7 @@ const harness = (input: {
     },
     customDomainTarget: 'cname.vercel-dns.com',
   };
-  return { deps, rows, events, notifications, warnings };
+  return { deps, rows, events, notifications, warnings, storageCorsProbes, storageCorsWrites };
 };
 
 describe('getTenantRouting', () => {
@@ -519,6 +573,69 @@ describe('checkTenantDomain', () => {
       .toEqual([['u-1', 'tenant-domain-verified']]);
   });
 
+  it('probes the verified custom origin when storage is configured', async () => {
+    const { deps, storageCorsProbes, storageCorsWrites } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
+      provisioner: new FakeProvisioner({
+        verify: { verified: true, misconfigured: false, verification: [] },
+      }),
+      storageConfiguration,
+      storageCorsStatus: 'ok',
+    });
+
+    const result = await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { customDomains: [{ domain: 'course.acme.example', storageCorsStatus: 'ok' }] },
+    });
+    expect(storageCorsProbes).toEqual([['https://course.acme.example']]);
+    expect(storageCorsWrites).toEqual([{
+      checkedAt: '2026-09-04T10:00:00.000Z',
+      results: [{ origin: 'https://course.acme.example', status: 'ok' }],
+    }]);
+  });
+
+  it('leaves storage CORS unknown after verification when storage is not configured', async () => {
+    const { deps, storageCorsProbes, storageCorsWrites } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
+      provisioner: new FakeProvisioner({
+        verify: { verified: true, misconfigured: false, verification: [] },
+      }),
+    });
+
+    const result = await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { customDomains: [{ domain: 'course.acme.example', storageCorsStatus: 'unknown' }] },
+    });
+    expect(storageCorsProbes).toEqual([]);
+    expect(storageCorsWrites).toEqual([]);
+  });
+
+  it('keeps verification successful and warns when storage CORS probing fails', async () => {
+    const { deps, storageCorsProbes, storageCorsWrites, warnings } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
+      provisioner: new FakeProvisioner({
+        verify: { verified: true, misconfigured: false, verification: [] },
+      }),
+      storageConfigurationError: integrationUnavailable('Secret decrypt failed'),
+    });
+
+    const result = await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { customDomains: [{ domain: 'course.acme.example', storageCorsStatus: 'unknown' }] },
+    });
+    expect(storageCorsProbes).toEqual([]);
+    expect(storageCorsWrites).toEqual([]);
+    expect(warnings).toEqual([
+      '[tenant-domain] storage CORS probe failed tenant=t-acme domain=course.acme.example error=Secret decrypt failed',
+    ]);
+  });
+
   it('keeps a misconfigured domain pending and surfaces the DNS records', async () => {
     const { deps, rows } = harness({
       rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
@@ -632,6 +749,132 @@ describe('checkTenantDomain', () => {
   });
 });
 
+describe('checkTenantDomainStorageCors', () => {
+  it('stores the probed status for a verified domain', async () => {
+    const { deps, storageCorsProbes, storageCorsWrites } = harness({
+      rows: [tenantDomainFixture({
+        id: 'd-1',
+        tenantId: 't-acme',
+        domain: 'course.acme.example',
+        verified: true,
+      })],
+      storageConfiguration,
+      storageCorsStatus: 'blocked',
+    });
+
+    const result = await checkTenantDomainStorageCors(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { customDomains: [{ domain: 'course.acme.example', storageCorsStatus: 'blocked' }] },
+    });
+    expect(storageCorsProbes).toEqual([['https://course.acme.example']]);
+    expect(storageCorsWrites).toEqual([{
+      checkedAt: '2026-09-04T10:00:00.000Z',
+      results: [{ origin: 'https://course.acme.example', status: 'blocked' }],
+    }]);
+  });
+
+  it('preserves the existing cache timestamp when refreshing one origin', async () => {
+    const { deps, storageCorsWrites } = harness({
+      rows: [tenantDomainFixture({
+        id: 'd-1',
+        tenantId: 't-acme',
+        domain: 'course.acme.example',
+        verified: true,
+      })],
+      storageConfiguration,
+      storageCorsStatus: 'ok',
+      storageCorsCache: {
+        checkedAt: '2026-09-04T09:00:00.000Z',
+        results: [
+          { origin: 'https://acme.together.example', status: 'ok' },
+          { origin: 'https://course.acme.example', status: 'blocked' },
+        ],
+      },
+    });
+
+    const result = await checkTenantDomainStorageCors(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { customDomains: [{ domain: 'course.acme.example', storageCorsStatus: 'ok' }] },
+    });
+    expect(storageCorsWrites).toEqual([{
+      checkedAt: '2026-09-04T09:00:00.000Z',
+      results: [
+        { origin: 'https://acme.together.example', status: 'ok' },
+        { origin: 'https://course.acme.example', status: 'ok' },
+      ],
+    }]);
+  });
+
+  it('reports a missing storage configuration to the manual check caller', async () => {
+    const { deps, storageCorsProbes, storageCorsWrites } = harness({
+      rows: [tenantDomainFixture({
+        id: 'd-1',
+        tenantId: 't-acme',
+        domain: 'course.acme.example',
+        verified: true,
+      })],
+    });
+
+    const result = await checkTenantDomainStorageCors(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
+    expect(storageCorsProbes).toEqual([]);
+    expect(storageCorsWrites).toEqual([]);
+  });
+
+  it('reports an unreachable storage CORS probe instead of caching unknown', async () => {
+    const { deps, storageCorsProbes, storageCorsWrites } = harness({
+      rows: [tenantDomainFixture({
+        id: 'd-1',
+        tenantId: 't-acme',
+        domain: 'course.acme.example',
+        verified: true,
+      })],
+      storageConfiguration,
+      storageCorsStatus: 'unknown',
+    });
+
+    const result = await checkTenantDomainStorageCors(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(storageCorsProbes).toEqual([['https://course.acme.example']]);
+    expect(storageCorsWrites).toEqual([]);
+  });
+
+  it('refuses once the hourly storage CORS budget is spent', async () => {
+    const { deps, storageCorsProbes } = harness({
+      rows: [tenantDomainFixture({
+        id: 'd-1',
+        tenantId: 't-acme',
+        domain: 'course.acme.example',
+        verified: true,
+      })],
+      storageConfiguration,
+      rateLimit: { claim: async () => false, purgeExpired: async () => 0 },
+    });
+
+    const result = await checkTenantDomainStorageCors(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    expect(storageCorsProbes).toEqual([]);
+  });
+
+  it('refuses a domain that has not been verified', async () => {
+    const { deps } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
+      storageConfiguration,
+    });
+
+    const result = await checkTenantDomainStorageCors(ctx, { domain: 'course.acme.example' }, deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});
+
 describe('removeTenantDomain', () => {
   it('detaches the domain at the provider, deletes the row and appends an event', async () => {
     const provisioner = new FakeProvisioner();
@@ -739,6 +982,43 @@ describe('runTenantDomainChecks', () => {
     expect(result).toEqual({ ok: true, value: { checked: 2, verified: 2, failed: 0, alerted: 0 } });
     expect(rows.filter((row) => row.verified).map((row) => row.id)).toEqual(['d-1', 'd-3', 'd-4']);
     expect(notifications).toHaveLength(2);
+  });
+
+  it('probes storage CORS when the scheduled check verifies a domain', async () => {
+    const { deps, storageCorsProbes, storageCorsWrites } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
+      provisioner: new FakeProvisioner({
+        status: { verified: true, misconfigured: false, verification: [] },
+      }),
+      storageConfiguration,
+      storageCorsStatus: 'blocked',
+    });
+
+    const result = await runTenantDomainChecks(deps);
+
+    expect(result).toEqual({ ok: true, value: { checked: 1, verified: 1, failed: 0, alerted: 0 } });
+    expect(storageCorsProbes).toEqual([['https://course.acme.example']]);
+    expect(storageCorsWrites).toEqual([{
+      checkedAt: '2026-09-04T10:00:00.000Z',
+      results: [{ origin: 'https://course.acme.example', status: 'blocked' }],
+    }]);
+  });
+
+  it('logs storage CORS probe failures during scheduled verification', async () => {
+    const { deps, warnings } = harness({
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
+      provisioner: new FakeProvisioner({
+        status: { verified: true, misconfigured: false, verification: [] },
+      }),
+      storageConfigurationError: integrationUnavailable('Secret decrypt failed'),
+    });
+
+    const result = await runTenantDomainChecks(deps);
+
+    expect(result).toEqual({ ok: true, value: { checked: 1, verified: 1, failed: 0, alerted: 0 } });
+    expect(warnings).toEqual([
+      '[tenant-domain] storage CORS probe failed tenant=t-acme domain=course.acme.example error=Secret decrypt failed',
+    ]);
   });
 
   it('alerts the owner once a domain has been misconfigured for a day', async () => {

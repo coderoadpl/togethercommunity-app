@@ -215,6 +215,7 @@ const restoreCourse = async (
       name: snapshot.name,
       description: snapshot.description,
       imageUrl: snapshot.imageUrl,
+      salesUrl: snapshot.salesUrl ?? null,
       publiclyVisible: snapshot.publiclyVisible,
       moduleOrder: snapshot.moduleOrder.filter((moduleId) => attachedIds.has(moduleId)),
     },

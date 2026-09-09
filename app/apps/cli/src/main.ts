@@ -31,6 +31,7 @@ import {
   storageProviderKindSchema,
   tenantSecretKeySchema,
   transactionalLanguageSchema,
+  updateCourseInputSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
   updateLastViewedInputSchema,
@@ -312,6 +313,7 @@ const courseCreateOptionsSchema = z.object({
   legacyId: z.string().min(1).optional(),
 });
 const courseUpdateOptionsSchema = z.object({
+  salesUrl: z.union([z.literal('').transform(() => null), updateCourseInputSchema.shape.salesUrl]),
   name: z.string().trim().min(1).optional(),
   description: z.string().optional(),
   imageUrl: z.string().url().optional(),
@@ -1590,6 +1592,16 @@ course.command('list').description('List courses').action(
   }),
 );
 
+course.command('show <id>').description('Show a course, including its sales page URL').action(
+  withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [id]) => {
+    const result = await ctx.api.listCourses();
+    if (!result.ok) { emit(result, ctx.json, () => ''); return; }
+    const found = result.value.courses.find((entry) => entry.id === id);
+    emit(found === undefined ? err(notFound('Course not found')) : ok({ course: found }), ctx.json,
+      (data) => `${data.course.name} (${data.course.id})\n${data.course.description}\nSales URL: ${data.course.salesUrl ?? '—'}`);
+  }),
+);
+
 course
   .command('create')
   .description('Create a course')
@@ -1618,6 +1630,7 @@ course
   .option('--name <name>')
   .option('--description <description>')
   .option('--image-url <url>')
+  .option('--sales-url <url>', 'HTTPS sales page URL; an empty value clears it')
   .option('--publicly-visible <value>', "'true' or 'false' — anonymous visitors see the course and its program")
   .option('--module-order <ids>', 'comma-separated module ids in display order')
   .action(
@@ -1628,6 +1641,7 @@ course
           ...(options.name === undefined ? {} : { name: options.name }),
           ...(options.description === undefined ? {} : { description: options.description }),
           ...(options.imageUrl === undefined ? {} : { imageUrl: options.imageUrl }),
+          ...(options.salesUrl === undefined ? {} : { salesUrl: options.salesUrl }),
           ...(options.publiclyVisible === undefined ? {} : { publiclyVisible: options.publiclyVisible }),
           ...(options.moduleOrder === undefined ? {} : { moduleOrder: options.moduleOrder }),
         }),

@@ -1781,7 +1781,7 @@ export const pl: Messages = {
     delete: 'Usuń',
     deleteConfirmTitle: 'Usunąć wpis?',
     deleteConfirmBody:
-      'Treść wpisu zostanie usunięta, a w wątku pozostanie informacja o usunięciu. Tej operacji nie można cofnąć.',
+      'Treść wpisu zostanie ukryta, a w wątku pozostanie informacja o usunięciu. Moderator może później usunąć wpis trwale.',
     deleteConfirm: 'Usuń wpis',
     deleting: 'Usuwanie…',
     purge: 'Usuń trwale',

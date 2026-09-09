@@ -1762,7 +1762,7 @@ export const en: Messages = {
     delete: 'Delete',
     deleteConfirmTitle: 'Delete this post?',
     deleteConfirmBody:
-      'The post content will be removed and a deletion notice will remain in the thread. This cannot be undone.',
+      'The post content will be hidden and a deletion notice will remain in the thread. A moderator can permanently delete the post later.',
     deleteConfirm: 'Delete post',
     deleting: 'Deleting…',
     purge: 'Delete permanently',

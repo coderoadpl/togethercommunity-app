@@ -27,7 +27,7 @@ export const marketingContactPublicSchema = marketingContactSchema.omit({ emailH
 export type MarketingContactPublic = z.output<typeof marketingContactPublicSchema>;
 const marketingConsentStateSchema = z.enum(['none', 'pending_confirmation', 'active', 'withdrawn']);
 export const marketingContactListQuerySchema = z.object({
-  search: z.string().trim().max(200).optional(), tags: marketingTagsSchema.optional(),
+  id: z.string().min(1).optional(), search: z.string().trim().max(200).optional(), tags: marketingTagsSchema.optional(),
   listId: z.string().min(1).optional(), consentDefinitionId: z.string().min(1).optional(),
   consentState: marketingConsentStateSchema.optional(), suppressed: z.boolean().optional(),
   linkedMember: z.boolean().optional(), archived: z.boolean().optional(),

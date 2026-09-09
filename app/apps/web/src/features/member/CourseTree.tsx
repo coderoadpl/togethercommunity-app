@@ -3,7 +3,6 @@ import {
   Box,
   Collapse,
   Chip,
-  Link as MuiLink,
   List,
   ListItemButton,
   OutlinedInput,
@@ -231,33 +230,19 @@ const LessonRow = ({
 
   if (lesson.accessStatus === 'not-accessible' || (guest && !lesson.isPreview)) {
     return (
-      <>
-        <RowTooltip title={t.courseTree.lockedLessonTooltip({ name: lesson.name })}>
-          <Box component="span" sx={{ display: 'block' }}>
-            <ListItemButton
-              disabled
-              ref={rowRef}
-              data-testid={`lesson-button-${lesson.lessonId}`}
-              sx={{ ...LESSON_ROW_SX, opacity: 0.6 }}
-            >
-              {label}
-              {marks}
-            </ListItemButton>
-          </Box>
-        </RowTooltip>
-        {!guest && lesson.unlockProductId !== undefined && (
-          <Box sx={{ pl: LESSON_ROW_SX.pl, pr: '0.75rem', pb: '0.5rem', mt: '-0.25rem' }}>
-            <MuiLink
-              component={Link}
-              to={`/checkout/${encodeURIComponent(lesson.unlockProductId)}`}
-              variant="body2"
-              data-testid={`unlock-lesson-${lesson.lessonId}`}
-            >
-              {t.courseTree.unlockAccess}
-            </MuiLink>
-          </Box>
-        )}
-      </>
+      <RowTooltip title={t.courseTree.lockedLessonTooltip({ name: lesson.name })}>
+        <Box component="span" sx={{ display: 'block' }}>
+          <ListItemButton
+            disabled
+            ref={rowRef}
+            data-testid={`lesson-button-${lesson.lessonId}`}
+            sx={{ ...LESSON_ROW_SX, opacity: 0.6 }}
+          >
+            {label}
+            {marks}
+          </ListItemButton>
+        </Box>
+      </RowTooltip>
     );
   }
 

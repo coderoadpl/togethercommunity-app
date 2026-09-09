@@ -1640,6 +1640,25 @@ export interface EnrollmentTransactionPort {
   run<T>(operation: (deps: { members: MemberRepository; grants: ProductGrantRepository; emailOutbox: EmailOutboxRepository }) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }
 
+export interface CheckoutConsentJob {
+  tenantId: string;
+  checkoutSessionId: string;
+  webhookEventId: string;
+  captureId: string;
+  email: string;
+  orderId: string;
+  productId: string;
+  reason: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface CheckoutConsentJobRepository {
+  enqueue(tenantId: string, job: CheckoutConsentJob): Promise<void>;
+  lockPending(tenantId: string, checkoutSessionId: string): Promise<CheckoutConsentJob | null>;
+  complete(tenantId: string, checkoutSessionId: string, completedAt: string): Promise<void>;
+}
+
 export interface PaymentTransactionPort {
   /** Every payment projection write of one webhook branch commits together or not at all. */
   run<T>(
@@ -1652,6 +1671,11 @@ export interface PaymentTransactionPort {
       couponRedemptions: CouponRedemptionRepository;
       emailOutbox: EmailOutboxRepository;
       autoInvoiceJobs: AutoInvoiceJobRepository;
+      checkoutConsentJobs: CheckoutConsentJobRepository;
+      consentTransaction: PaymentTransactionPort;
+      consents: TermsConsentRepository;
+      marketingConsents: MarketingConsentRepository;
+      confirmations: ConsentConfirmationTokenRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;
       enrollmentTransaction: EnrollmentTransactionPort;
     }) => Promise<Result<T, AppError>>,

@@ -662,6 +662,23 @@ export const ksefSubmissionJobs = pgTable(
   ],
 );
 
+export const checkoutConsentJobs = pgTable(
+  'checkout_consent_jobs',
+  {
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    checkoutSessionId: text('checkout_session_id').notNull(),
+    webhookEventId: text('webhook_event_id').notNull(),
+    captureId: text('capture_id').notNull(),
+    email: text('email').notNull(),
+    orderId: text('order_id').notNull().references(() => orders.id, { onDelete: 'restrict' }),
+    productId: text('product_id').notNull(),
+    reason: text('reason').notNull(),
+    createdAt: text('created_at').notNull(),
+    completedAt: text('completed_at'),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.checkoutSessionId] })],
+);
+
 export const autoInvoiceJobs = pgTable(
   'auto_invoice_jobs',
   {

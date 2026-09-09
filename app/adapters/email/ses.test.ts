@@ -1,5 +1,5 @@
 import type { SendEmailCommand, SendEmailCommandOutput } from '@aws-sdk/client-ses';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createSesEmailPort, type SesSender } from './ses.js';
 
@@ -108,4 +108,16 @@ describe('createSesEmailPort', () => {
       error: { code: 'integration_auth', message: 'SES rejected the credentials.' },
     });
   });
+});
+
+it('passes a message Reply-To to SES and rejects header injection', async () => {
+  const sender = { send: vi.fn<SesSender['send']>(async () => ({ MessageId: 'reply-test', $metadata: {} })), healthcheck: async () => undefined };
+  const port = createSesEmailPort({ from: 'sender@example.test', replyTo: 'tenant@example.test' }, sender);
+  const message = { to: 'recipient@example.test', subject: 'Receipt', html: '<p>Paid</p>', text: 'Paid' };
+  await port.send(message);
+  expect(sender.send.mock.calls[0]?.[0].input.ReplyToAddresses).toEqual(['tenant@example.test']);
+  await port.send({ ...message, headers: { 'Reply-To': 'override@example.test' } });
+  expect(sender.send.mock.calls[1]?.[0].input.ReplyToAddresses).toEqual(['override@example.test']);
+  expect((await port.send({ ...message, headers: { 'Reply-To': 'reply@example.test\r\nBcc: other@example.test' } })).ok).toBe(false);
+  expect(sender.send).toHaveBeenCalledTimes(2);
 });

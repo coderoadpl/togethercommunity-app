@@ -1,6 +1,14 @@
+import type { ContactCampaignAudience } from '#core/domain/marketing-audience.js';
+import type { MarketingContactAudienceDeps, MarketingContactAudienceRepository } from '../marketing-audience-ports.js';
+import { scheduleMarketingContactCampaign } from './marketing-contact-campaigns.js';
+import { prepareMarketingContactAudience } from './marketing-contact-audience.js';
+import type { MarketingContactRepository } from '../marketing-contact-ports.js';
+import { dispatchMarketingOutbox, marketingSendBudget } from './marketing-dispatch.js';
+import type { SesEventApplication, VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
+import type { MarketingDeliveryRepos, MarketingDeliveryTransaction, MarketingSnsInboxRepository, MarketingOutboxRepository, MarketingWaiter, HtmlToText } from '../marketing-delivery-ports.js';
+import { renderMarketingPayload } from './marketing-render.js';
 import {
   appError,
-  buildEmailHeaders,
   campaignCanTransition,
   classifySesEvent,
   deriveConsentState,
@@ -14,12 +22,9 @@ import {
   normalizeEmail,
   notFound,
   ok,
-  renderMarketingTemplate,
   resolveEmailLanguage,
   reputationWindow,
-  throttleBudget,
   tenantSesBroadcastsReady,
-  validateRenderedMarketingOutput,
   validation,
   type AppError,
   type Capability,
@@ -35,7 +40,6 @@ import {
   type MarketingIneligibilityReason,
   type Result,
   type Suppression,
-  type TenantSesSettings,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -602,6 +606,7 @@ export const unsubscribeAllMarketing = async (
 };
 
 interface CampaignDeps {
+  contactAudienceDeps?: MarketingContactAudienceDeps | undefined;
   campaigns: CampaignRepository;
   audience: MarketingAudienceRepository;
   definitions: ConsentDefinitionRepository;
@@ -618,7 +623,10 @@ export const createCampaign = async (
     subject: string;
     bodyHtml: string;
     bodySource?: string | undefined;
+    bodyText?: string | null | undefined;
+    replyTo?: string | null | undefined;
     consentDefinitionId: string;
+    audience?: ContactCampaignAudience | undefined;
     productIds?: string[];
     layoutId?: string | null;
   },
@@ -635,10 +643,17 @@ export const createCampaign = async (
       return err(validation('E-mail layout was not found'));
     }
   }
+  if (input.audience !== undefined) {
+    if (deps.contactAudienceDeps === undefined) return err(validation('Contact audiences are not configured'));
+    const prepared = await prepareMarketingContactAudience(tenantId.value, input.audience, deps.contactAudienceDeps);
+    if (!prepared.ok) return prepared;
+  }
   const now = deps.clock.nowIso();
   const campaign: Campaign = {
     id: deps.ids.nextId(), tenantId: tenantId.value, name: input.name, subject: input.subject,
+    bodyText: input.bodyText ?? null, replyTo: input.replyTo ?? null,
     bodyHtml: input.bodyHtml, bodySource: input.bodySource ?? input.bodyHtml, layoutId: input.layoutId ?? null, consentDefinitionId: input.consentDefinitionId,
+    audienceVersion: input.audience === undefined ? 1 : 2, audience: input.audience ?? null, audienceSnapshotId: null, snapshotMaxContactId: null, cursorContactId: null, candidateCount: 0, skipped: 0,
     audienceFilter: input.productIds === undefined || input.productIds.length === 0 ? null : { productIds: input.productIds }, status: 'draft', sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null,
     toSend: 0, sent: 0, failed: 0, lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
     audienceNameSnapshot: null, consentLabelSnapshot: null, startedAt: null, finishedAt: null, createdAt: now,
@@ -678,25 +693,28 @@ export const getCampaignWithEngagement = async (
   ctx: Ctx,
   input: { campaignId: string },
   deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
-): Promise<Result<Campaign & { engagement: CampaignEngagementStats }, AppError>> => {
+): Promise<Result<Campaign & { engagement: CampaignEngagementStats; queued: number; unresolved: number }, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const campaign = await getCampaign(ctx, input, deps);
   if (!campaign.ok) return campaign;
   const stats = await deps.sends.engagementStats(campaign.value.tenantId, [campaign.value.id]);
-  return ok({ ...campaign.value, engagement: stats.get(campaign.value.id) ?? emptyEngagementStats() });
+  const progress = await deps.sends.progressStats(campaign.value.tenantId, [campaign.value.id]);
+  return ok({ ...campaign.value, ...(progress.get(campaign.value.id) ?? { queued: 0, unresolved: 0 }), engagement: stats.get(campaign.value.id) ?? emptyEngagementStats() });
 };
 
 export const listCampaignsWithEngagement = async (
   ctx: Ctx,
   deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
-): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats }>, AppError>> => {
+): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats; queued: number; unresolved: number }>, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const campaigns = await deps.campaigns.list(tenantId.value);
   const stats = await deps.sends.engagementStats(tenantId.value, campaigns.map((campaign) => campaign.id));
+  const progress = await deps.sends.progressStats(tenantId.value, campaigns.map((campaign) => campaign.id));
   return ok(campaigns.map((campaign) => ({
     ...campaign,
+    ...(progress.get(campaign.id) ?? { queued: 0, unresolved: 0 }),
     engagement: stats.get(campaign.id) ?? emptyEngagementStats(),
   })));
 };
@@ -745,6 +763,13 @@ export const scheduleCampaign = async (
   }
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
+  if (campaign.audienceVersion === 2) {
+    if (deps.contactAudienceDeps === undefined) return err(validation('Contact audiences are not configured'));
+    const scheduled = await scheduleMarketingContactCampaign(ctx, input, { ...deps.contactAudienceDeps, campaigns: deps.campaigns });
+    if (!scheduled.ok) return scheduled;
+    const queued = await deps.scheduler.scheduleCampaignTick(tenantId.value, campaign.id, input.sendAt);
+    return queued.ok ? scheduled : queued;
+  }
   const definition = await deps.definitions.findById(tenantId.value, campaign.consentDefinitionId);
   if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
     return err(validation('Campaign requires an active marketing consent definition'));
@@ -793,7 +818,13 @@ export const cancelCampaign = async (
   return transitionCampaign(ctx, input.campaignId, 'cancelled', deps);
 };
 
-interface SendDeps extends EligibilityDeps {
+export interface SendDeps extends EligibilityDeps {
+  contacts?: MarketingContactRepository | undefined;
+  htmlToText: HtmlToText;
+  delivery: MarketingDeliveryTransaction;
+  marketingOutbox: MarketingOutboxRepository;
+  waiter: MarketingWaiter;
+  batchCap?: number;
   layouts: EmailLayoutRepository;
   sends: CampaignSendRepository;
   events: EmailEventRepository;
@@ -830,6 +861,9 @@ const lifecycleEvent = (
 });
 
 export interface MarketingMessageInput {
+  contactId?: string;
+  audienceSnapshotId?: string;
+  snapshotSkipReason?: MarketingIneligibilityReason | null;
   to: string;
   memberId: string | null;
   campaignId: string | null;
@@ -837,54 +871,23 @@ export interface MarketingMessageInput {
   consentDefinitionId: string;
   subject: string;
   bodyHtml: string;
+  bodyText?: string | null | undefined;
+  replyTo?: string | null | undefined;
   layoutId?: string | null;
   data: Record<string, unknown>;
   idempotencySource?: string;
 }
 
 export type MarketingSendResult =
-  | { to: string; sendId: string; status: 'sent' }
+  | { to: string; sendId: string; status: 'sent' | 'queued' }
   | { to: string; sendId: string | null; status: 'skipped'; reason: MarketingIneligibilityReason }
   | { to: string; sendId: string; status: 'failed'; error: AppError }
   | { to: string; sendId: null; status: 'deduplicated' };
-
-const textFromHtml = (html: string): string => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
 const recordValue = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value))
     : {};
-
-const renderMarketingPayload = (input: {
-  subject: string;
-  bodyHtml: string;
-  data: Record<string, unknown>;
-  unsubscribeUrl: string;
-  legalName: string;
-  address: string;
-  consentReference: string;
-  layoutHtml: string | null;
-}): Result<{ subject: string; html: string; text: string; headers: Record<string, string> }, AppError> => {
-  const footer = `<footer><p>${input.legalName}</p><p>${input.address}</p><p>${input.consentReference}</p><p><a href="${input.unsubscribeUrl}">Unsubscribe</a></p></footer>`;
-  const content = renderMarketingTemplate(`${input.bodyHtml}${footer}`, input.data);
-  if (!content.ok) return content;
-  const body = input.layoutHtml === null
-    ? content
-    : renderMarketingTemplate(input.layoutHtml, { ...input.data, content: content.value });
-  if (!body.ok) return body;
-  const subject = renderMarketingTemplate(input.subject, input.data);
-  if (!subject.ok) return subject;
-  const valid = validateRenderedMarketingOutput(body.value, {
-    unsubscribeUrl: input.unsubscribeUrl,
-    legalName: input.legalName,
-    address: input.address,
-    consentReference: input.consentReference,
-  });
-  if (!valid.ok) return valid;
-  const headers = buildEmailHeaders({ kind: 'marketing', unsubscribeUrl: input.unsubscribeUrl });
-  if (!headers.ok) return headers;
-  return ok({ subject: subject.value, html: body.value, text: textFromHtml(body.value), headers: headers.value });
-};
 
 const eligibilityFor = async (tenantId: string, input: MarketingMessageInput, deps: SendDeps) => {
   const definition = await deps.definitions.findById(tenantId, input.consentDefinitionId);
@@ -908,77 +911,57 @@ export const createSmokeTenantSilencedCredentials = (
     : resolver.resolve(tenantId),
 });
 
-export const sendMarketingMessages = async (
+const enqueueMarketingMessagesExecution = async (
   ctx: Ctx,
   inputs: MarketingMessageInput[],
   deps: SendDeps,
 ): Promise<Result<MarketingSendResult[], AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'marketing:message:send');
   if (!tenantId.ok) return tenantId;
-  let settings = await deps.sesSettings.findByTenant(tenantId.value);
+  const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
   if (settings.trackingEnabled && settings.configurationSet === null) {
     return err(validation('Open and click tracking requires an SES configuration set'));
   }
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
-  const now = deps.clock.nowIso();
-  if (deps.quotaReader !== undefined && (settings.quotaRefreshedAt === null
-    || Date.parse(now) - Date.parse(settings.quotaRefreshedAt) >= 15 * 60 * 1000)) {
-    const quota = await deps.quotaReader.read(credentials.value);
-    if (!quota.ok) return quota;
-    settings = await deps.sesSettings.upsert(tenantId.value, {
-      ...settings,
-      quotaRatePerSec: quota.value.ratePerSecond,
-      quotaDaily: quota.value.daily,
-      quotaSentLast24Hours: quota.value.sentLast24Hours,
-      quotaRefreshedAt: now,
-      inSandbox: quota.value.inSandbox,
-    });
-  }
   if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
-  if (settings.quotaRefreshedAt === null || !await deps.throttle.claim(tenantId.value, {
-    requested: inputs.length,
-    now,
-    ratePerSecond: settings.quotaRatePerSec,
-    dailyQuota: settings.quotaDaily,
-    sentLast24Hours: settings.quotaSentLast24Hours,
-    quotaSnapshotAt: settings.quotaRefreshedAt,
-  })) return err(appError('rate_limited', 'Tenant SES throttle budget is exhausted'));
   const unsubscribeBaseUrl = await deps.unsubscribeBaseUrl(tenantId.value);
   const results: MarketingSendResult[] = [];
   for (const input of inputs) {
     const initial = await eligibilityFor(tenantId.value, input, deps);
     if (initial === null) return err(notFound('Consent definition was not found'));
+    if (input.snapshotSkipReason) initial.eligibility = { eligible: false, reason: input.snapshotSkipReason };
     if (!initial.eligibility.eligible) {
-      const skippedId = input.campaignId === null || initial.latest === null ? null : deps.ids.nextId();
-      if (skippedId !== null && initial.latest !== null) {
-        const skipped: CampaignSend = {
-          id: skippedId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
-          memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
-          consentRowId: initial.latest.id,
-          unsubscribeTokenId: null, status: 'skipped', skipReason: initial.eligibility.reason,
-          sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null,
-          idempotencySource: input.idempotencySource ?? null, renderedBodyPurgedAt: null,
-          createdAt: deps.clock.nowIso(), sentAt: null,
-        };
-        await deps.sends.claimRecipient(tenantId.value, skipped, [
-          lifecycleEvent(
-            deps,
-            tenantId.value,
-            'marketing',
-            skipped.id,
-            'skipped',
-            { reason: initial.eligibility.reason },
-          ),
-        ]);
-      }
+      const skippedId = deps.ids.nextId();
+      const skipped: CampaignSend = {
+        id: skippedId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
+        contactId: input.contactId ?? null, audienceSnapshotId: input.audienceSnapshotId ?? null,
+        memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
+        consentRowId: initial.latest?.id ?? null,
+        unsubscribeTokenId: null, status: 'skipped', skipReason: initial.eligibility.reason,
+        sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null,
+        idempotencySource: input.idempotencySource ?? null, renderedBodyPurgedAt: null,
+        createdAt: deps.clock.nowIso(), sentAt: null,
+      };
+      const claimed = await deps.sends.claimRecipient(tenantId.value, skipped, [
+        lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          skipped.id,
+          'skipped',
+          { reason: initial.eligibility.reason },
+        ),
+      ]);
+      if (!claimed) { results.push({ to: skipped.email, sendId: null, status: 'deduplicated' }); continue; }
       results.push({ to: normalizeEmail(input.to), sendId: skippedId, status: 'skipped', reason: initial.eligibility.reason });
       continue;
     }
     const sendId = deps.ids.nextId();
     const send: CampaignSend = {
       id: sendId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
+      contactId: input.contactId ?? null, audienceSnapshotId: input.audienceSnapshotId ?? null,
       memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
       consentRowId: initial.eligibility.consentRow.id,
       unsubscribeTokenId: null, status: 'pending', skipReason: null, sesMessageId: null,
@@ -1046,6 +1029,7 @@ export const sendMarketingMessages = async (
     const rendered = renderMarketingPayload({
       subject: input.subject,
       bodyHtml: input.bodyHtml,
+      bodyText: input.bodyText,
       data: {
         ...input.data,
         member: { ...recordValue(input.data['member']), email: send.email },
@@ -1067,7 +1051,7 @@ export const sendMarketingMessages = async (
       address: settings.footerAddress,
       consentReference: dequeue.eligibility.consentRow.wordingSnapshot,
       layoutHtml: layout?.bodyHtml ?? null,
-    });
+    }, deps);
     if (!rendered.ok) {
       await deps.sends.update(
         tenantId.value,
@@ -1084,52 +1068,59 @@ export const sendMarketingMessages = async (
       results.push({ to: send.email, sendId, status: 'failed', error: rendered.error });
       continue;
     }
-    const sending = { ...send, unsubscribeTokenId, status: 'sending' as const };
-    await deps.sends.update(
-      tenantId.value,
-      sending,
-      [lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'rendered', null)],
-    );
-    const sent = await deps.ses.send({
-      credentials: credentials.value, from: { address: settings.fromAddress, name: settings.fromName },
-      to: send.email, subject: rendered.value.subject, html: rendered.value.html, text: rendered.value.text,
-      headers: rendered.value.headers,
-      configurationSet: settings.configurationSet,
+    await deps.sends.update(tenantId.value, { ...send, unsubscribeTokenId, subject: rendered.value.subject }, [
+      lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'rendered', null),
+    ]);
+    const queuedAt = deps.clock.nowIso();
+    await deps.marketingOutbox.enqueue(tenantId.value, {
+      id: deps.ids.nextId(), tenantId: tenantId.value, campaignSendId: send.id,
+      payload: { campaignSendId: send.id, consentDefinitionId: input.consentDefinitionId,
+        to: send.email, ...rendered.value,
+        from: { address: settings.fromAddress, name: settings.fromName },
+        replyTo: input.replyTo ?? settings.replyTo ?? settings.fromAddress, configurationSet: settings.configurationSet,
+      },
+      payloadPurgedAt: null, status: 'pending', attempts: 0, nextAttemptAt: queuedAt,
+      lockedBy: null, lockedUntil: null, claimVersion: 0, sesMessageId: null, lastError: null,
+      createdAt: queuedAt, updatedAt: queuedAt,
     });
-    if (!sent.ok) {
-      await deps.sends.update(
-        tenantId.value,
-        { ...sending, status: 'failed' },
-        [lifecycleEvent(
-          deps,
-          tenantId.value,
-          'marketing',
-          send.id,
-          'failed',
-          { error: sent.error.message },
-        )],
-      );
-      results.push({ to: send.email, sendId, status: 'failed', error: sent.error });
-      continue;
-    }
-    await deps.sends.update(
-      tenantId.value,
-      { ...sending, status: 'sent', sesMessageId: sent.value.messageId, sentAt: deps.clock.nowIso() },
-      [lifecycleEvent(
-        deps,
-        tenantId.value,
-        'marketing',
-        send.id,
-        'accepted',
-        { sesMessageId: sent.value.messageId },
-      )],
-    );
-    results.push({ to: send.email, sendId, status: 'sent' });
+    results.push({ to: send.email, sendId, status: 'queued' });
   }
   return ok(results);
 };
 
+export const sendMarketingMessages = async (
+  ctx: Ctx,
+  inputs: MarketingMessageInput[],
+  deps: SendDeps,
+): Promise<Result<MarketingSendResult[], AppError>> => {
+  const tenantId = tenantIdFrom(ctx, 'marketing:message:send');
+  if (!tenantId.ok) return tenantId;
+  if (deps.quotaReader !== undefined) {
+    const settings = await deps.sesSettings.findByTenant(tenantId.value);
+    if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+    const credentials = await deps.credentials.resolve(tenantId.value);
+    if (!credentials.ok) return credentials;
+    const now = deps.clock.nowIso();
+    if (settings.quotaRefreshedAt === null
+      || Date.parse(now) - Date.parse(settings.quotaRefreshedAt) >= 15 * 60 * 1000) {
+      const quota = await deps.quotaReader.read(credentials.value);
+      if (!quota.ok) return quota;
+      await deps.sesSettings.upsert(tenantId.value, {
+        ...settings,
+        quotaRatePerSec: quota.value.ratePerSecond,
+        quotaDaily: quota.value.daily,
+        quotaSentLast24Hours: quota.value.sentLast24Hours,
+        quotaRefreshedAt: now,
+        inSandbox: quota.value.inSandbox,
+      });
+    }
+  }
+  return deps.delivery.run(tenantId.value, (repos) => enqueueMarketingMessagesExecution(ctx, inputs, { ...deps, ...repos }));
+};
+
 interface TickDeps extends SendDeps {
+  contactAudience?: MarketingContactAudienceRepository | undefined;
+  snsInbox: MarketingSnsInboxRepository;
   campaigns: CampaignRepository;
   audience: MarketingAudienceRepository;
   outbox: EmailOutboxRepository;
@@ -1181,11 +1172,6 @@ const campaignTickExecution = async (
     if (scheduled.ok) metrics.reEnqueued = true;
     return scheduled;
   };
-  if (deps.outbox.hasPendingForTenant !== undefined && await deps.outbox.hasPendingForTenant(tenantId.value)) {
-    const scheduled = await scheduleNextTick();
-    if (!scheduled.ok) return scheduled;
-    return ok({ leased: true, yieldedToTransactional: true, sent: 0, failed: 0, skipped: 0 });
-  }
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
   if (settings.autoPauseOnCritical) {
@@ -1204,17 +1190,13 @@ const campaignTickExecution = async (
       return ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
     }
   }
-  const sentSince = new Date(Date.parse(now) - 24 * 60 * 60 * 1000).toISOString();
-  const sentLast24Hours = (await deps.sends.listAll(tenantId.value))
-    .filter((send) => send.status === 'sent' && send.sentAt !== null && send.sentAt >= sentSince)
-    .length;
-  const tickBudget = throttleBudget({
-    ratePerSecond: settings.quotaRatePerSec, tickSeconds: input.tickSeconds,
-    dailyQuota: settings.quotaDaily, sentLast24Hours, inSandbox: settings.inSandbox,
-  });
-  const budget = Math.min(tickBudget, Math.max(1, Math.floor(settings.quotaRatePerSec)));
+  const transactionalPending = await deps.outbox.hasPendingForTenant?.(tenantId.value) ?? false;
+  const budget = marketingSendBudget({ ratePerSecond: settings.quotaRatePerSec * (transactionalPending ? 0.5 : 1), sendSeconds: input.tickSeconds,
+    dailyRemaining: settings.quotaDaily - settings.quotaSentLast24Hours, batchCap: deps.batchCap ?? 1000 });
   metrics.budgetComputed = budget;
-  const maxMemberId = campaign.snapshotMaxMemberId;
+  const contactMode = campaign.audienceVersion === 2;
+  if (contactMode && (deps.contactAudience === undefined || campaign.audienceSnapshotId === null)) return err(validation('Contact audience snapshot is missing'));
+  const maxMemberId = contactMode ? campaign.snapshotMaxContactId : campaign.snapshotMaxMemberId;
   if (maxMemberId === null && campaign.toSend === 0) {
     await deps.campaigns.update(tenantId.value, { ...campaign, status: 'finished', finishedAt: now });
     return ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
@@ -1225,66 +1207,60 @@ const campaignTickExecution = async (
       ? ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 })
       : scheduled;
   }
-  const members = await deps.audience.fetchEligibleBatch(tenantId.value, {
-    definitionId: campaign.consentDefinitionId, productIds: campaign.audienceFilter?.productIds ?? [],
-    afterMemberId: campaign.cursorMemberId, maxMemberId, limit: budget,
-  });
+  const members = contactMode && deps.contactAudience !== undefined && campaign.audienceSnapshotId !== null
+    ? (await deps.contactAudience.fetchSnapshotPage(tenantId.value, { snapshotId: campaign.audienceSnapshotId, afterContactId: campaign.cursorContactId, maxContactId: maxMemberId, limit: budget })).map((row) => ({
+      cursor: row.contactId, memberId: row.memberIdSnapshot, email: row.email, displayName: row.displayNameSnapshot,
+      firstName: row.firstNameSnapshot, contactId: row.contactId, audienceSnapshotId: row.snapshotId, snapshotSkipReason: row.skipReason,
+    }))
+    : (await deps.audience.fetchEligibleBatch(tenantId.value, {
+      definitionId: campaign.consentDefinitionId, productIds: campaign.audienceFilter?.productIds ?? [],
+      afterMemberId: campaign.cursorMemberId, maxMemberId, limit: budget,
+    })).map((row) => ({ ...row, cursor: row.memberId, firstName: null, contactId: undefined, audienceSnapshotId: undefined, snapshotSkipReason: null }));
   metrics.batchSize = members.length;
   metrics.budgetUsed = members.length;
-  let sentCount = 0;
-  let failedCount = 0;
-  let skippedCount = 0;
-  let lastCursor = campaign.cursorMemberId;
-  let current = campaign;
-  let lastError: string | null = null;
-  let consecutiveErrors = campaign.errorCount;
+  let lastCursor = contactMode ? campaign.cursorContactId : campaign.cursorMemberId;
   const unsubscribeBaseUrl = await deps.unsubscribeBaseUrl(tenantId.value);
-  const sendDeps = { ...deps, unsubscribeBaseUrl: async () => unsubscribeBaseUrl };
+  const deadlineAt = new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString();
   for (const member of members) {
-    const outcome = await sendMarketingMessages(ctx, [{
-      to: member.email, memberId: member.memberId, campaignId: campaign.id, source: 'broadcast',
-      consentDefinitionId: campaign.consentDefinitionId, subject: campaign.subject,
-      bodyHtml: campaign.bodyHtml, layoutId: campaign.layoutId,
-      data: { member: { email: member.email, name: member.displayName } },
-    }], sendDeps);
-    if (!outcome.ok) return outcome;
-    const item = outcome.value[0];
-    if (item?.status === 'sent') {
-      sentCount += 1;
-      metrics.sent += 1;
-      consecutiveErrors = 0;
-      lastError = null;
-    }
-    else if (item?.status === 'failed') {
-      failedCount += 1;
-      metrics.failed += 1;
-      consecutiveErrors += 1;
-      lastError = item.error.message;
-      metrics.errors.push(item.error.message);
-    }
-    else if (item?.status === 'skipped') {
-      skippedCount += 1;
-      metrics.skipped += 1;
-    }
-    lastCursor = member.memberId;
-    const advanced = await deps.campaigns.advanceCursor(tenantId.value, campaign.id, {
-      cursorMemberId: member.memberId, sentDelta: item?.status === 'sent' ? 1 : 0, failedDelta: item?.status === 'failed' ? 1 : 0,
+    if (Date.parse(deps.clock.nowIso()) + 100 >= Date.parse(deadlineAt)) break;
+    const outcome = await deps.delivery.run(tenantId.value, async (repos) => {
+      const result = await enqueueMarketingMessagesExecution(ctx, [{
+        ...(member.contactId === undefined ? {} : { contactId: member.contactId }),
+        ...(member.audienceSnapshotId === undefined ? {} : { audienceSnapshotId: member.audienceSnapshotId }),
+        snapshotSkipReason: member.snapshotSkipReason,
+        to: member.email, memberId: member.memberId, campaignId: campaign.id, source: 'broadcast',
+        consentDefinitionId: campaign.consentDefinitionId, subject: campaign.subject,
+        bodyHtml: campaign.bodyHtml, bodyText: campaign.bodyText, replyTo: campaign.replyTo, layoutId: campaign.layoutId,
+        data: { member: { email: member.email, name: member.displayName, firstName: member.firstName }, contact: { email: member.email, name: member.displayName, firstName: member.firstName } },
+      }], { ...deps, ...repos, unsubscribeBaseUrl: async () => unsubscribeBaseUrl });
+      if (!result.ok) return result;
+      const advanced = await repos.campaigns.advanceCursor(tenantId.value, campaign.id, { ...(contactMode ? { cursorContactId: member.cursor } : { cursorMemberId: member.cursor }), skippedDelta: result.value.filter((item) => item.status === 'skipped').length, sentDelta: 0, failedDelta: result.value.filter((item) => item.status === 'failed').length, lease: { workerId: input.workerId, now: deps.clock.nowIso() } });
+      if (advanced === null) return err(appError('conflict', 'Campaign enumeration lease was replaced or the campaign stopped'));
+      return result;
     });
-    if (advanced !== null) current = advanced;
+    if (!outcome.ok) return outcome;
+    metrics.skipped += outcome.value.filter((item) => item.status === 'skipped').length;
+    lastCursor = member.cursor;
   }
-  if (members.length > 0) {
-    current = { ...current, errorCount: consecutiveErrors, pausedReason: lastError };
-    if (consecutiveErrors >= (input.errorThreshold ?? 3)) current.status = 'paused';
-    await deps.campaigns.update(tenantId.value, current);
+  const dispatched = await dispatchMarketingOutbox(ctx, { workerId: input.workerId, deadlineAt, maxSends: budget, ...(input.errorThreshold === undefined ? {} : { errorThreshold: input.errorThreshold }) }, {
+    ...deps,
+  });
+  if (!dispatched.ok) return dispatched;
+  metrics.sent = dispatched.value.sent;
+  metrics.failed = dispatched.value.failed;
+  metrics.skipped += dispatched.value.skipped;
+  const current = await deps.campaigns.findById(tenantId.value, campaign.id);
+  const reachedEnd = (members.length < budget && lastCursor === members.at(-1)?.cursor) || members.length === 0 || lastCursor === maxMemberId;
+  if (current?.status === 'running') {
+    if (reachedEnd && !await deps.sends.hasPendingByCampaign(tenantId.value, campaign.id)) {
+      await deps.campaigns.update(tenantId.value, { ...current, status: 'finished', finishedAt: deps.clock.nowIso(), lockedBy: null, lockedUntil: null });
+    } else {
+      await deps.campaigns.update(tenantId.value, { ...current, lockedBy: null, lockedUntil: deps.clock.nowIso() });
+      const scheduled = await scheduleNextTick();
+      if (!scheduled.ok) return scheduled;
+    }
   }
-  const reachedEnd = members.length < budget || lastCursor === maxMemberId;
-  if (reachedEnd && current.status === 'running' && !await deps.sends.hasPendingByCampaign(tenantId.value, campaign.id)) {
-    await deps.campaigns.update(tenantId.value, { ...current, status: 'finished', finishedAt: now });
-  } else if (current.status === 'running') {
-    const scheduled = await scheduleNextTick();
-    if (!scheduled.ok) return scheduled;
-  }
-  return ok({ leased: true, yieldedToTransactional: false, sent: sentCount, failed: failedCount, skipped: skippedCount });
+  return ok({ leased: true, yieldedToTransactional: transactionalPending, sent: metrics.sent, failed: metrics.failed, skipped: metrics.skipped });
 };
 
 export const campaignTick = async (
@@ -1412,6 +1388,7 @@ export const testSendCampaignToSelf = async (
   const rendered = renderMarketingPayload({
     subject: campaign.subject,
     bodyHtml: campaign.bodyHtml,
+    bodyText: campaign.bodyText,
     data: {
       member: { email: ctx.identity.email, name: ctx.identity.name },
       tenant: {
@@ -1427,13 +1404,14 @@ export const testSendCampaignToSelf = async (
     address: settings.footerAddress,
     consentReference,
     layoutHtml: layout?.bodyHtml ?? null,
-  });
+  }, deps);
   if (!rendered.ok) return rendered;
   return deps.ses.send({
     credentials: credentials.value, from: { address: settings.fromAddress, name: settings.fromName }, to: ctx.identity.email,
     subject: `[TEST] ${rendered.value.subject}`, html: rendered.value.html, text: rendered.value.text,
     headers: rendered.value.headers,
     configurationSet: null,
+    replyTo: campaign.replyTo ?? settings.replyTo ?? settings.fromAddress,
   });
 };
 
@@ -1469,43 +1447,31 @@ export const completeIdempotentRequest = async (
   return ok(undefined);
 };
 
-type VerifiedSesEvent = {
-  topicArn: string;
-  messageId: string;
-  occurredAt: string;
-  raw: unknown;
-} & (
-  | { kind: 'delivery' }
-  | { kind: 'open' }
-  | { kind: 'click'; linkUrl: string }
-  | { kind: 'complaint' }
-  | { kind: 'bounce'; bounceType: string; status: string | null }
-);
-
 export const applyVerifiedSesEvent = async (
   ctx: Ctx,
   event: VerifiedSesEvent,
   deps: Pick<SendDeps, 'sesSettings' | 'sends' | 'events' | 'suppressions' | 'hmac' | 'ids' | 'clock'>
-    & { outbox: EmailOutboxRepository },
-): Promise<Result<{ processed: boolean }, AppError>> => {
+    & { outbox: EmailOutboxRepository; marketingOutbox: MarketingOutboxRepository },
+): Promise<Result<SesEventApplication, AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'webhook:process');
   if (!tenantId.ok) return tenantId;
-  let settings: TenantSesSettings | null;
-  try {
-    settings = await deps.sesSettings.findByTenant(tenantId.value);
-  } catch {
-    return ok({ processed: false });
-  }
+  const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null || settings.snsTopicArn !== event.topicArn) return err(forbidden('SNS topic does not match this tenant'));
-  try {
-    const send = await deps.sends.correlateBySesMessageId(tenantId.value, event.messageId);
+  let send = await deps.sends.correlateBySesMessageId(tenantId.value, event.messageId);
+  if (send === null && event.campaignSendId !== undefined) send = await deps.sends.findById(tenantId.value, event.campaignSendId);
+  if (send !== null && event.recipient !== undefined && normalizeEmail(event.recipient) !== send.email) return ok({ kind: 'ignored', reason: 'Recipient does not match the correlated send' });
+  if (send !== null && send.status !== 'sent') {
+    send = { ...send, status: 'sent', sesMessageId: event.messageId, sentAt: event.occurredAt };
+    await deps.marketingOutbox.reconcile(tenantId.value, send, lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'accepted', { sesMessageId: event.messageId }, event.occurredAt));
+  }
     if (send === null) {
-      if (event.kind === 'open' || event.kind === 'click') return ok({ processed: false });
+      if (event.kind === 'open' || event.kind === 'click') return ok({ kind: 'awaiting_correlation' });
       if (deps.outbox.correlateBySesMessageId === undefined || deps.outbox.markDelivery === undefined) {
-        return ok({ processed: false });
+        return ok({ kind: 'awaiting_correlation' });
       }
       const outbox = await deps.outbox.correlateBySesMessageId(tenantId.value, event.messageId);
-      if (outbox === null) return ok({ processed: false });
+      if (outbox === null) return ok({ kind: 'awaiting_correlation' });
+      if (event.recipient !== undefined && normalizeEmail(event.recipient) !== normalizeEmail(outbox.to)) return ok({ kind: 'ignored', reason: 'Recipient does not match the transactional send' });
       const classification = event.kind === 'delivery'
         ? null
         : classifySesEvent(event);
@@ -1532,7 +1498,7 @@ export const applyVerifiedSesEvent = async (
           event.occurredAt,
         ),
       });
-      if (!marked.ok) return ok({ processed: false });
+      if (!marked.ok) return marked;
       if (classification === 'hard' || classification === 'complaint') {
         const reason =
           classification === 'complaint' ? 'complaint' : 'hard_bounce';
@@ -1561,10 +1527,10 @@ export const applyVerifiedSesEvent = async (
           ),
         );
       }
-      return ok({ processed: true });
+      return ok({ kind: 'applied' });
     }
     if (event.kind === 'open' || event.kind === 'click') {
-      if (!settings.trackingEnabled) return ok({ processed: false });
+      if (!settings.trackingEnabled) return ok({ kind: 'ignored', reason: 'Engagement tracking is disabled' });
       await deps.events.append(
         tenantId.value,
         lifecycleEvent(
@@ -1579,12 +1545,12 @@ export const applyVerifiedSesEvent = async (
           event.occurredAt,
         ),
       );
-      return ok({ processed: true });
+      return ok({ kind: 'applied' });
     }
     if (event.kind === 'delivery') {
       await deps.sends.update(
         tenantId.value,
-        { ...send, deliveryStatus: 'delivered', deliveryOccurredAt: event.occurredAt },
+        { ...send, ...(send.deliveryStatus === 'bounced' || send.deliveryStatus === 'complained' ? {} : { deliveryStatus: 'delivered' as const, deliveryOccurredAt: event.occurredAt }) },
         [lifecycleEvent(
           deps,
           tenantId.value,
@@ -1595,13 +1561,13 @@ export const applyVerifiedSesEvent = async (
           event.occurredAt,
         )],
       );
-      return ok({ processed: true });
+      return ok({ kind: 'applied' });
     }
     const classification = classifySesEvent(event);
     const deliveryStatus = classification === 'complaint' ? 'complained' : 'bounced';
     await deps.sends.update(
       tenantId.value,
-      { ...send, deliveryStatus, deliveryOccurredAt: event.occurredAt },
+      { ...send, ...(send.deliveryStatus === 'complained' ? {} : { deliveryStatus, deliveryOccurredAt: event.occurredAt }) },
       [lifecycleEvent(
         deps,
         tenantId.value,
@@ -1640,10 +1606,7 @@ export const applyVerifiedSesEvent = async (
         ),
       );
     }
-    return ok({ processed: true });
-  } catch {
-    return ok({ processed: false });
-  }
+    return ok({ kind: 'applied' });
 };
 
 export const runMarketingRetentionJobs = async (
@@ -1658,6 +1621,8 @@ export const runMarketingRetentionJobs = async (
     sends: CampaignSendRepository;
     events: EmailEventRepository;
     idempotency: AutomationIdempotencyRepository;
+    marketingOutbox?: MarketingDeliveryRepos['marketingOutbox'];
+    snsInbox?: MarketingDeliveryRepos['snsInbox'];
   },
 ): Promise<Result<{
   pendingConsentsPurged: number;
@@ -1671,6 +1636,8 @@ export const runMarketingRetentionJobs = async (
   const doubleOptInDefinitionIds = definitions.filter((definition) => definition.doubleOptIn).map((definition) => definition.id);
   const pendingConsentsPurged = await deps.consents.purgeStalePending(tenantId.value, input.pendingOlderThan, doubleOptInDefinitionIds);
   const renderedBodiesPurged = await deps.sends.ageOutRenderedBodies(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
+  await deps.marketingOutbox?.purge(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
+  await deps.snsInbox?.purge(tenantId.value, input.renderedBodiesOlderThan);
   const engagementEventsPurged = await deps.events.purgeEngagement(tenantId.value, input.engagementOlderThan);
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
   return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementEventsPurged, idempotencyKeysPurged });
@@ -1694,10 +1661,15 @@ export const runScheduledMarketingJobs = async (
     renderedBodiesOlderThan: string;
     engagementOlderThan: string;
     sesIdentityRefreshIntervalMs: number;
+    shouldContinue?: () => boolean;
+    maintenanceIntervalMs?: number;
+    trigger?: 'cron' | 'dev' | 'manual';
   },
   deps: {
     jobs: MarketingJobRepository;
     runs: SchedulerRunRepository;
+    ids: IdGenerator;
+    clock: Clock;
     dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<unknown, AppError>>;
     runRetention(tenantId: string, input: {
       pendingOlderThan: string;
@@ -1722,13 +1694,19 @@ export const runScheduledMarketingJobs = async (
     finishedAt: input.now,
     error: 'Scheduler run exceeded its timeout',
   });
-  const runnable = await deps.jobs.listRunnableCampaigns(input.now);
-  for (const job of runnable) {
-    const dispatched = await deps.dispatchCampaign(job.tenantId, job.campaignId);
-    if (!dispatched.ok && firstError === null) firstError = dispatched.error;
-  }
-  const retentionTenantIds = await deps.jobs.listRetentionTenantIds();
+  const [previousMaintenance] = (await deps.runs.listPage({ kind: 'marketing_maintenance', status: 'completed', limit: 1 })).runs;
+  const maintenanceDue = previousMaintenance === undefined
+    || Date.parse(input.now) - Date.parse(previousMaintenance.startedAt) >= (input.maintenanceIntervalMs ?? 30 * 60 * 1000);
+  const maintenanceRunId = maintenanceDue ? deps.ids.nextId() : null;
+  const totals = { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false };
+  if (maintenanceRunId !== null) await deps.runs.start({
+    id: maintenanceRunId, kind: 'marketing_maintenance', trigger: input.trigger ?? 'manual',
+    startedAt: input.now, createdAt: input.now, finishedAt: null, durationMs: null, status: 'running', error: null, totals,
+  });
+  let maintenanceIncomplete = false;
+  const retentionTenantIds = !maintenanceDue ? [] : await deps.jobs.listRetentionTenantIds();
   for (const tenantId of retentionTenantIds) {
+    if (input.shouldContinue?.() === false) { maintenanceIncomplete = true; break; }
     const retained = await deps.runRetention(tenantId, {
       pendingOlderThan: input.pendingOlderThan,
       renderedBodiesOlderThan: input.renderedBodiesOlderThan,
@@ -1740,23 +1718,41 @@ export const runScheduledMarketingJobs = async (
   const checkedBefore = new Date(
     Date.parse(input.now) - input.sesIdentityRefreshIntervalMs,
   ).toISOString();
-  const [identityTenantIds, sesTenantIds] = await Promise.all([
+  const [identityTenantIds, sesTenantIds] = !maintenanceDue ? [[], []] : await Promise.all([
     deps.jobs.listSesIdentityRefreshTenantIds(checkedBefore),
     deps.jobs.listSesTenantIds(checkedBefore),
   ]);
   for (const tenantId of identityTenantIds) {
+    if (input.shouldContinue?.() === false) { maintenanceIncomplete = true; break; }
     const refreshed = await deps.refreshIdentity(tenantId);
     if (!refreshed.ok && firstError === null) firstError = refreshed.error;
   }
   let reputationAlertsSent = 0;
   for (const tenantId of sesTenantIds) {
+    if (input.shouldContinue?.() === false) { maintenanceIncomplete = true; break; }
     const alerted = await deps.runReputationAlerts(tenantId);
     if (alerted.ok) reputationAlertsSent += alerted.value.sent;
     else if (firstError === null) firstError = alerted.error;
   }
+  if (maintenanceRunId !== null) {
+    const finishedAt = deps.clock.nowIso();
+    const error = firstError?.message ?? (maintenanceIncomplete ? 'Marketing maintenance exceeded its time budget' : null);
+    await deps.runs.finalize(maintenanceRunId, {
+      finishedAt, durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(input.now)),
+      status: error === null ? 'completed' : 'failed', error, totals, tenants: [],
+    });
+  }
+  const runnable = await deps.jobs.listRunnableCampaigns(input.now);
+  let campaignsDispatched = 0;
+  for (const job of runnable) {
+    if (input.shouldContinue?.() === false) break;
+    campaignsDispatched += 1;
+    const dispatched = await deps.dispatchCampaign(job.tenantId, job.campaignId);
+    if (!dispatched.ok && firstError === null) firstError = dispatched.error;
+  }
   if (firstError !== null) return err(firstError);
   return ok({
-    campaignsDispatched: runnable.length,
+    campaignsDispatched,
     retentionTenantsProcessed: retentionTenantIds.length,
     identityChecksPerformed: identityTenantIds.length,
     reputationAlertsSent,

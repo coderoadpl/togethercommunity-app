@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { lazy, type FunctionComponent } from 'react';
+import { lazy, useState, type FunctionComponent } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -21,6 +21,7 @@ import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ThemeModeProvider } from '../../../theme-mode.js';
+import { PostComposer } from '../ThreadDiscussion.js';
 import { memberHomePath, memberSearchPath } from './member-nav.js';
 import { MemberShell } from './MemberShell.js';
 
@@ -35,6 +36,25 @@ const stubViewport = (isDesktop: boolean) => {
     removeEventListener: () => undefined,
     dispatchEvent: () => false,
   }));
+};
+
+const stubViewportWidth = (width: number) => {
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const minimum = /min-width:\s*(\d+)/u.exec(query)?.[1];
+    const maximum = /max-width:\s*(\d+)/u.exec(query)?.[1];
+    return {
+      matches:
+        (minimum === undefined || width >= Number(minimum)) &&
+        (maximum === undefined || width <= Number(maximum)),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    };
+  });
 };
 
 const okMe = (
@@ -167,7 +187,7 @@ const okStructure = () =>
   http.get('/api/student/courses/:courseId/structure', () =>
     HttpResponse.json({ ok: true, data: { structure: courseStructure } }));
 
-const okOffer = (withSocialLinks = false) =>
+const okOffer = (withSocialLinks = false, logoUrl: string | null = null) =>
   http.get('/api/public/offer', () =>
     HttpResponse.json({
       ok: true,
@@ -175,7 +195,7 @@ const okOffer = (withSocialLinks = false) =>
         tenant: {
           slug: 'acme',
           name: 'Acme',
-          branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+          branding: { logoUrl, accentColor: null, faviconUrl: null },
           socialLinks: withSocialLinks ? [{ label: 'Community', url: 'https://courses.example.org/community' }] : [],
         },
         contentVersion: 1,
@@ -305,7 +325,7 @@ describe('MemberShell', () => {
 
   it.each(['/my/courses/c1', '/my/courses/c1/lessons/l1'])('keeps the sidebar beside the app bar with internal scrolling on %s', async (path) => {
     stubViewport(true);
-    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(false, 'https://courses.example.org/logo.svg'), noNotifications());
 
     await renderShell(path);
 
@@ -318,6 +338,12 @@ describe('MemberShell', () => {
       maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
     });
     expect(sidebar).toHaveStyle({ overflowY: 'auto' });
+    const brand = screen.getByTestId('shell-brand');
+    expect(brand.closest('aside')).toBeNull();
+    expect(brand.parentElement).toHaveStyle({ position: 'sticky', top: '0', height: 'var(--member-app-bar-height)' });
+    expect(brand).toHaveAttribute('href', '/start');
+    expect(await within(brand).findByRole('img', { name: 'Acme' })).toHaveAttribute('src', 'https://courses.example.org/logo.svg');
+    expect(screen.getByTestId('course-sidebar-back')).toHaveAttribute('href', '/start');
   });
 
   it('carries the lesson breadcrumb in the app bar', async () => {
@@ -368,6 +394,44 @@ describe('MemberShell', () => {
 
     await screen.findByTestId('course-sidebar');
     expect(screen.queryByTestId('member-breadcrumbs')).not.toBeInTheDocument();
+  });
+
+  it('uses the member shell navigation for a definite missing course', async () => {
+    stubViewport(true);
+    server.use(
+      okMe(),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.get('/api/student/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
+      ),
+    );
+
+    await renderShell('/my/courses/c-missing');
+
+    expect(await screen.findByTestId('member-sidebar')).toBeInTheDocument();
+    expect(screen.queryByTestId('course-sidebar')).not.toBeInTheDocument();
+  });
+
+  it('does not offer an empty program sheet below md for a definite missing course', async () => {
+    stubViewport(false);
+    server.use(
+      okMe(),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.get('/api/student/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
+      ),
+    );
+
+    await renderShell('/my/courses/c-missing');
+
+    expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('program-button')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('program-button-wide')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-program-sheet')).not.toBeInTheDocument();
   });
 
   it('shows the Studio app-bar button only to staff', async () => {
@@ -696,6 +760,16 @@ describe('MemberShell', () => {
     expect(await screen.findAllByText(pl.community.bannedBanner)).toHaveLength(1);
   });
 
+  it('keeps the global banned banner on accessible lesson pages', async () => {
+    stubViewport(true);
+    server.use(okMe({ banned: true }), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    expect(await screen.findByTestId('course-sidebar')).toBeInTheDocument();
+    expect(screen.getByText(pl.community.bannedBanner)).toBeInTheDocument();
+  });
+
   it('keeps the member-view banner in the sticky app bar, out of the scrolling page', async () => {
     stubViewport(true);
     server.use(okMe({ impersonated: true }), okNavigation(), okOffer(), noNotifications());
@@ -770,7 +844,76 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
   });
 
-  it('opens the menu sheet with the same navigation list and no second bell', async () => {
+  it('hides the mobile bottom bar and reveals a focused composer above the keyboard', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const user = userEvent.setup();
+    const Composer = () => (
+      <PostComposer
+        label="Question"
+        compact
+        placeholder="Write a question"
+        submitLabel="Send"
+        pendingLabel="Sending"
+        busy={false}
+        onSubmit={() => undefined}
+        testId="keyboard-composer"
+      />
+    );
+
+    await renderShell('/my/courses/c1/lessons/l1', Composer);
+    scrollIntoView.mockClear();
+    await user.click(await screen.findByTestId('keyboard-composer-input'));
+
+    const input = await screen.findByTestId('keyboard-composer-input');
+    expect(input).toHaveFocus();
+    expect(input.closest('[data-mobile-keyboard-anchor]')).toHaveStyle({
+      scrollMarginBottom: 'calc(5.5rem + env(safe-area-inset-bottom))',
+    });
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    expect(screen.queryByTestId('member-bottom-nav')).not.toBeInTheDocument();
+
+    await user.click(document.body);
+    expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it('restores the mobile bottom bar when the focused composer unmounts', async () => {
+    stubViewport(false);
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const user = userEvent.setup();
+    const RemovableComposer = () => {
+      const [visible, setVisible] = useState(true);
+      return visible ? (
+        <PostComposer
+          label="Question"
+          submitLabel="Send"
+          pendingLabel="Sending"
+          focusOnMount
+          busy={false}
+          onSubmit={() => undefined}
+          onCancel={() => setVisible(false)}
+          testId="removable-composer"
+        />
+      ) : null;
+    };
+
+    await renderShell('/my/courses/c1/lessons/l1', RemovableComposer);
+
+    expect(await screen.findByTestId('removable-composer-input')).toHaveFocus();
+    expect(screen.queryByTestId('member-bottom-nav')).not.toBeInTheDocument();
+    scrollIntoView.mockClear();
+
+    await user.click(screen.getByRole('button', { name: pl.common.cancel }));
+
+    expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    scrollIntoView.mockRestore();
+  });
+
+  it('opens the menu sheet with navigation and the avatar account actions', async () => {
     stubViewport(false);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
     const user = userEvent.setup();
@@ -780,13 +923,123 @@ describe('MemberShell', () => {
 
     const sheet = await screen.findByTestId('member-menu-sheet');
     expect(within(sheet).getByTestId('member-sidebar')).toBeInTheDocument();
-    expect(await within(sheet).findByTestId('sidebar-space-s1')).toHaveTextContent('Ogólna');
+    const identity = within(sheet).getByTestId('member-identity');
+    const space = await within(sheet).findByTestId('sidebar-space-s1');
+    const actions = within(sheet).getByTestId('member-menu-account-actions');
+    expect(space).toHaveTextContent('Ogólna');
     expect(within(sheet).queryByTestId('sidebar-products')).not.toBeInTheDocument();
-    expect(within(sheet).getByTestId('member-identity')).toHaveTextContent('Jan Uczestnik');
+    expect(identity).toHaveTextContent('Jan Uczestnik');
+    expect(identity).not.toHaveAttribute('href');
+    expect(identity.compareDocumentPosition(space)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(space.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect([
+      within(actions).getByTestId('member-account-products'),
+      within(actions).getByTestId('member-account-messages'),
+      within(actions).getByTestId('member-account-link'),
+      within(actions).getByTestId('member-sign-out'),
+    ].map((item) => item.textContent)).toEqual([
+      pl.student.myProducts,
+      pl.messages.navLabel,
+      pl.account.menuAccount,
+      pl.tenant.signOut,
+    ]);
+    expect(within(actions).getByTestId('member-account-products')).toHaveAttribute(
+      'href',
+      '/my/products',
+    );
+    expect(within(actions).getByTestId('member-account-messages')).toHaveAttribute(
+      'href',
+      '/messages',
+    );
+    expect(within(actions).getByTestId('member-account-link')).toHaveAttribute('href', '/account');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-start')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-search')).not.toBeInTheDocument();
+  });
+
+  it('includes the staff Studio row in the mobile menu account group', async () => {
+    stubViewport(false);
+    server.use(okMe({ staffRole: 'admin', memberId: null }), okNavigation(), okOffer(), noNotifications());
+    const user = userEvent.setup();
+
+    await renderShell('/my');
+    await user.click(await screen.findByTestId('member-tab-menu'));
+
+    const actions = within(await screen.findByTestId('member-menu-sheet')).getByTestId(
+      'member-menu-account-actions',
+    );
+    const studio = within(actions).getByTestId('member-account-studio-link');
+    const products = within(actions).getByTestId('member-account-products');
+    expect(studio).toHaveAttribute('href', '/panel');
+    expect(studio).toHaveTextContent(pl.account.menuStudio);
+    expect(studio.compareDocumentPosition(products)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('keeps a mobile menu sign-out failure visible after the sheet closes', async () => {
+    stubViewport(false);
+    let signOutCalls = 0;
+    server.use(
+      okMe(),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.post('*', () => {
+        signOutCalls += 1;
+        return HttpResponse.json(
+          { code: 'TEST_FAILURE', message: 'Could not sign out' },
+          { status: 500 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+
+    await renderShell('/my');
+    await user.click(await screen.findByTestId('member-tab-menu'));
+    const sheet = await screen.findByTestId('member-menu-sheet');
+    await user.click(within(sheet).getByTestId('member-sign-out'));
+
+    await waitFor(() => expect(signOutCalls).toBe(1));
+    await waitFor(() => expect(screen.queryByTestId('member-menu-sheet')).not.toBeInTheDocument());
+    expect(await screen.findByRole('alert')).toHaveTextContent(pl.errors.messageInternal);
+  });
+
+  it('exits impersonation from the mobile menu without signing out', async () => {
+    stubViewport(false);
+    const assign = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, assign });
+    let stopped = false;
+    const signOutCalls: string[] = [];
+    server.use(
+      okMe({ impersonated: true }),
+      okNavigation(),
+      okOffer(),
+      noNotifications(),
+      http.post('/api/impersonation/stop', () => {
+        stopped = true;
+        return HttpResponse.json({ ok: true, data: { ended: true } });
+      }),
+      http.post('*', ({ request }) => {
+        signOutCalls.push(new URL(request.url).pathname);
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    const user = userEvent.setup();
+
+    await renderShell('/my');
+    await user.click(await screen.findByTestId('member-tab-menu'));
+
+    const sheet = await screen.findByTestId('member-menu-sheet');
+    const control = within(sheet).getByTestId('member-sign-out');
+    await waitFor(() => expect(control).toHaveTextContent(pl.shell.impersonationExit));
+    expect(within(sheet).queryByTestId('member-account-messages')).not.toBeInTheDocument();
+    await user.click(control);
+
+    await waitFor(() => {
+      expect(stopped).toBe(true);
+      expect(assign).toHaveBeenCalledWith('/panel/members');
+    });
+    expect(signOutCalls).toEqual([]);
   });
 
   it('offers the program in both a compact and a wide app-bar control', async () => {
@@ -859,6 +1112,17 @@ describe('MemberShell', () => {
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
     expect(screen.getByTestId('color-scheme-cycle')).toBeInTheDocument();
     expect(screen.queryByTestId('color-scheme-switcher')).not.toBeInTheDocument();
+  });
+
+  it('keeps the public sign-in action on one line with a compact brand below 400px', async () => {
+    stubViewportWidth(390);
+    server.use(okMe({ tenant: null }), okOffer(), okPublicNavigation());
+
+    await renderShell('/my');
+
+    const signIn = await screen.findByRole('link', { name: pl.auth.signInLink });
+    expect(signIn).toHaveStyle({ whiteSpace: 'nowrap', minHeight: '44px' });
+    expect(screen.getByTestId('tenant-name-mark')).toHaveStyle({ fontSize: '0.95rem' });
   });
 
   it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {

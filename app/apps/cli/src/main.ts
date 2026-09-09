@@ -1,3 +1,4 @@
+import { registerMarketingCommands } from './marketing-commands.js';
 import { readFile, writeFile } from 'node:fs/promises';
 
 import { Command, CommanderError } from 'commander';
@@ -13,6 +14,7 @@ import {
 import {
   accessItemSchema,
   currencySchema,
+  contactCampaignAudienceSchema,
   devGrantInputSchema,
   err,
   internal,
@@ -30,6 +32,7 @@ import {
   storageProviderKindSchema,
   tenantSecretKeySchema,
   transactionalLanguageSchema,
+  updateCourseInputSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
   updateLastViewedInputSchema,
@@ -52,6 +55,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { emit } from './output.js';
+import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
 
@@ -137,6 +141,10 @@ const changePasswordOptionsSchema = z.object({
 });
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
 const tenantSettingsOptionsSchema = z.object({
+  accentColor: z.string().optional(),
+  accentLight: z.string().optional(),
+  clearAccentColor: z.boolean().optional(),
+  clearAccentLight: z.boolean().optional(),
   billingPortalUrl: z.string().url().optional(),
   clearBillingPortalUrl: z.boolean().optional(),
   videoAutoplayDefault: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
@@ -278,7 +286,7 @@ const redirectCreateOptionsSchema = z.object({
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 const schedulerRunsListOptionsSchema = z.object({
   secret: z.string().min(1),
-  kind: z.enum(['marketing_tick', 'outbox_dispatch', 'consent_evidence_purge']).optional(),
+  kind: z.enum(['marketing_tick', 'marketing_maintenance', 'outbox_dispatch', 'consent_evidence_purge']).optional(),
   status: z.enum(['running', 'completed', 'failed']).optional(),
   since: z.string().datetime().optional(),
   cursor: z.string().min(1).optional(),
@@ -288,8 +296,12 @@ const schedulerRunShowOptionsSchema = z.object({ secret: z.string().min(1) });
 const consentDefinitionCreateOptionsSchema = z.object({
   key: z.string().min(1), label: z.string().min(1), documentUrl: z.string().url(), singleOptIn: z.boolean().optional(),
 });
+const campaignAudienceJsonSchema = z.string().transform((value, ctx) => {
+  try { return JSON.parse(value); } catch { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Audience must be JSON' }); return z.NEVER; }
+}).pipe(contactCampaignAudienceSchema);
 const campaignCreateOptionsSchema = z.object({
-  name: z.string().min(1), subject: z.string().min(1), bodyHtml: z.string().min(1), consentDefinition: z.string().min(1),
+  audience: campaignAudienceJsonSchema.optional(),
+  name: z.string().min(1), subject: z.string().min(1), bodyHtml: z.string().min(1), bodyText: z.string().optional(), replyTo: z.string().email().optional(), consentDefinition: z.string().min(1),
 });
 const campaignScheduleOptionsSchema = z.object({ campaign: z.string().min(1), sendAt: z.string().datetime() });
 const suppressionAddOptionsSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).optional() });
@@ -306,6 +318,7 @@ const courseCreateOptionsSchema = z.object({
   legacyId: z.string().min(1).optional(),
 });
 const courseUpdateOptionsSchema = z.object({
+  salesUrl: z.union([z.literal('').transform(() => null), updateCourseInputSchema.shape.salesUrl]),
   name: z.string().trim().min(1).optional(),
   description: z.string().optional(),
   imageUrl: z.string().url().optional(),
@@ -604,6 +617,8 @@ const cliCtx = (): Result<CliCtx, AppError> => {
   });
 };
 
+registerMarketingCommands(program, cliCtx);
+
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
     updateOriginProfile(ctx.config, ctx.origin, patch, ctx.originSource !== 'repo'),
@@ -876,6 +891,8 @@ tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
       [
+        `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
+        `light accent: ${data.settings.accentLight ?? '(automatic)'}`,
         `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
         `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
         `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
@@ -887,14 +904,21 @@ tenant.command('settings').description('Show tenant settings').action(
 tenant
   .command('settings-set')
   .description('Update tenant settings (owner only)')
+  .option('--accent-color <hex>', 'dark-scheme accent (#RRGGBB)')
+  .option('--accent-light <hex>', 'optional light-scheme accent (#RRGGBB)')
+  .option('--clear-accent-color', 'use the platform accent')
+  .option('--clear-accent-light', 'derive the light accent automatically')
   .option('--billing-portal-url <url>', 'billing portal URL shown to members')
   .option('--clear-billing-portal-url', 'remove the billing portal URL')
   .option('--video-autoplay-default <value>', "'true' or 'false' — default lesson video autoplay")
   .option('--member-video-autoplay-override <value>', "'true' or 'false' — let members override autoplay")
   .action(
     withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
+      const accentColor = options.clearAccentColor === true ? null : options.accentColor;
+      const accentLight = options.clearAccentLight === true ? null : options.accentLight;
       const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
       if (
+        accentColor === undefined && accentLight === undefined &&
         billingPortalUrl === undefined &&
         options.videoAutoplayDefault === undefined &&
         options.memberVideoAutoplayOverride === undefined
@@ -907,6 +931,8 @@ tenant
         return;
       }
       emit(await ctx.api.updateTenantSettings({
+        ...(accentColor === undefined ? {} : { accentColor }),
+        ...(accentLight === undefined ? {} : { accentLight }),
         ...(billingPortalUrl === undefined ? {} : { billingPortalUrl }),
         ...(options.videoAutoplayDefault === undefined
           ? {}
@@ -916,6 +942,8 @@ tenant
           : { memberVideoAutoplayOverride: options.memberVideoAutoplayOverride }),
       }), ctx.json, (data) =>
         [
+          `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
+          `light accent: ${data.settings.accentLight ?? '(automatic)'}`,
           `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
           `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
           `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
@@ -1569,6 +1597,16 @@ course.command('list').description('List courses').action(
   }),
 );
 
+course.command('show <id>').description('Show a course, including its sales page URL').action(
+  withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [id]) => {
+    const result = await ctx.api.listCourses();
+    if (!result.ok) { emit(result, ctx.json, () => ''); return; }
+    const found = result.value.courses.find((entry) => entry.id === id);
+    emit(found === undefined ? err(notFound('Course not found')) : ok({ course: found }), ctx.json,
+      (data) => `${data.course.name} (${data.course.id})\n${data.course.description}\nSales URL: ${data.course.salesUrl ?? '—'}`);
+  }),
+);
+
 course
   .command('create')
   .description('Create a course')
@@ -1597,6 +1635,7 @@ course
   .option('--name <name>')
   .option('--description <description>')
   .option('--image-url <url>')
+  .option('--sales-url <url>', 'HTTPS sales page URL; an empty value clears it')
   .option('--publicly-visible <value>', "'true' or 'false' — anonymous visitors see the course and its program")
   .option('--module-order <ids>', 'comma-separated module ids in display order')
   .action(
@@ -1607,6 +1646,7 @@ course
           ...(options.name === undefined ? {} : { name: options.name }),
           ...(options.description === undefined ? {} : { description: options.description }),
           ...(options.imageUrl === undefined ? {} : { imageUrl: options.imageUrl }),
+          ...(options.salesUrl === undefined ? {} : { salesUrl: options.salesUrl }),
           ...(options.publiclyVisible === undefined ? {} : { publiclyVisible: options.publiclyVisible }),
           ...(options.moduleOrder === undefined ? {} : { moduleOrder: options.moduleOrder }),
         }),
@@ -1801,8 +1841,10 @@ lesson
   .description('Update a lesson (contents via --data inline JSON or --json-file)')
   .option('--data <json>', 'inline JSON lesson payload (must include id)')
   .option('--json-file <path>', 'path to a JSON file with the lesson payload')
+  .option('--preview', 'make the lesson a preview (overrides the payload)')
+  .option('--no-preview', 'disable lesson preview (overrides the payload)')
   .action(
-    withInput(z.tuple([jsonSourceOptionsSchema]), async (ctx, [options]) => {
+    withInput(z.tuple([jsonSourceOptionsSchema.extend({ preview: z.boolean().optional() })]), async (ctx, [options]) => {
       const payload = await readJsonPayload(options.data, options.jsonFile);
       if (!payload.ok) {
         emit(payload, ctx.json, () => '');
@@ -1813,11 +1855,56 @@ lesson
         emit(input, ctx.json, () => '');
         return;
       }
-      emit(await ctx.api.updateLesson(input.value), ctx.json, (data) =>
+      emit(await ctx.api.updateLesson({
+        ...input.value,
+        ...(options.preview === undefined ? {} : { isPreview: options.preview }),
+      }), ctx.json, (data) =>
         `updated lesson: ${data.lesson.name} (${data.lesson.id.slice(0, 8)})`,
       );
     }),
   );
+
+lesson.command('preview').description('Manage course lesson previews')
+  .command('set')
+  .description('Replace the preview selection for a course (shared lessons change everywhere)')
+  .requiredOption('--course <courseId>')
+  .option('--lessons <ids>', 'comma-separated lesson IDs to enable; disable all other course lessons')
+  .option('--first-per-module', 'enable the first lesson across chapters of each nonempty module')
+  .option('--all', 'enable every course lesson')
+  .option('--none', 'disable every course lesson')
+  .option('--dry-run', 'print the plan without updating lessons')
+  .action(withInput(z.tuple([lessonPreviewOptionsSchema]), async (ctx, [options]) => {
+    const courses = await ctx.api.listCourses();
+    if (!courses.ok) return emit(courses, ctx.json, () => '');
+    const selectedCourse = courses.value.courses.find((item) => item.id === options.course);
+    if (selectedCourse === undefined) return emit(err(notFound('Course not found')), ctx.json, () => '');
+    const modules = await ctx.api.listModules();
+    if (!modules.ok) return emit(modules, ctx.json, () => '');
+    const lessons = await ctx.api.listLessons();
+    if (!lessons.ok) return emit(lessons, ctx.json, () => '');
+    const plan = planLessonPreviews(selectedCourse, modules.value.modules, lessons.value.lessons, options);
+    if (!plan.ok) return emit(plan, ctx.json, () => '');
+    const changes = new Map(plan.value.filter((row) => row.currentIsPreview !== row.isPreview)
+      .map((row) => [row.lessonId, row.isPreview]));
+    if (!ctx.json) console.log(formatLessonPreviews(plan.value));
+    const updatedLessonIds: string[] = [];
+    if (!options.dryRun) {
+      for (const [id, isPreview] of changes) {
+        const result = await ctx.api.updateLesson({ id, isPreview });
+        if (!result.ok) {
+          emit(err({ ...result.error,
+            message: `${result.error.message} (lesson ${id}; ${updatedLessonIds.length} updates applied)`,
+            details: { cause: result.error.details, failedLessonId: id, updatedLessonIds },
+          }), ctx.json, () => '');
+          return;
+        }
+        updatedLessonIds.push(id);
+      }
+    }
+    emit(ok({ courseId: options.course, dryRun: options.dryRun, lessons: plan.value,
+      changedLessonCount: changes.size, updatedLessonIds }), ctx.json,
+    () => options.dryRun ? `dry run: ${changes.size} lesson(s) would change` : `updated ${updatedLessonIds.length} lesson(s)`);
+  }));
 
 const describeLessonReferences = (references: LessonReferences): string => {
   const lines = [`lesson ${references.lessonName} (${references.lessonId.slice(0, 8)})`];
@@ -1940,7 +2027,7 @@ student
   .action(
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [courseId]) => {
       emit(await ctx.api.studentProgress(courseId), ctx.json, (data) =>
-        `${data.progress.completedLessonIds.length} completed; last lesson ${data.progress.lastViewedLessonId ?? 'none'}`,
+        `${data.progress.completedLessonIds.length} completed; last lesson ${data.progress.lastViewedLessonId ?? 'none'}; ${data.progress.resume?.isReview === true ? 'review' : 'resume'} ${data.progress.resume?.target?.name ?? 'none'}`,
       );
     }),
   );
@@ -2681,7 +2768,7 @@ const schedulerRuns = program.command('scheduler-runs').description('Global sche
 schedulerRuns
   .command('list')
   .requiredOption('--secret <secret>', 'scheduler operator secret')
-  .option('--kind <kind>', 'marketing_tick, outbox_dispatch, or consent_evidence_purge')
+  .option('--kind <kind>', 'marketing_tick, marketing_maintenance, outbox_dispatch, or consent_evidence_purge')
   .option('--status <status>', 'running, completed, or failed')
   .option('--since <iso>', 'only runs started at or after this ISO datetime')
   .option('--cursor <cursor>', 'keyset pagination cursor')
@@ -3289,16 +3376,38 @@ consentDefinition.command('create')
 const campaign = program.command('campaign').description('Marketing campaigns');
 
 campaign.command('create')
+  .option('--audience <json>', 'Version 2 contact list audience')
   .requiredOption('--name <name>')
   .requiredOption('--subject <subject>')
   .requiredOption('--body-html <html>')
+  .option('--body-text <text>', 'Plaintext template; defaults to HTML conversion')
+  .option('--reply-to <email>', 'Override the tenant Reply-To address')
   .requiredOption('--consent-definition <id>')
   .action(withInput(z.tuple([campaignCreateOptionsSchema]), async (ctx, [options]) => {
     emit(await ctx.api.createMarketingCampaign({
       name: options.name, subject: options.subject, bodyHtml: options.bodyHtml,
+      ...(options.bodyText === undefined ? {} : { bodyText: options.bodyText }),
+      ...(options.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+      ...(options.audience === undefined ? {} : { audience: options.audience }),
       consentDefinitionId: options.consentDefinition,
     }), ctx.json, (data) => `created campaign ${data.campaign.name} (${data.campaign.id})`);
   }));
+
+const campaignAudience = campaign.command('audience').description('Set and preview contact list audiences');
+campaignAudience.command('set').requiredOption('--campaign <id>').requiredOption('--audience <json>')
+  .action(withInput(z.tuple([z.object({ campaign: z.string().min(1), audience: campaignAudienceJsonSchema })]), async (ctx, [options]) => {
+    emit(await ctx.api.setMarketingCampaignAudience({ campaignId: options.campaign, audience: options.audience }), ctx.json, (data) => `updated audience for ${data.campaign.id}`);
+  }));
+campaignAudience.command('preview').requiredOption('--campaign <id>')
+  .action(withInput(z.tuple([z.object({ campaign: z.string().min(1) })]), async (ctx, [options]) => {
+    const saved = await ctx.api.getMarketingCampaign(options.campaign);
+    if (!saved.ok) { emit(saved, ctx.json, () => ''); return; }
+    const value = saved.value.campaign;
+    emit(await ctx.api.previewMarketingAudience({ consentDefinitionId: value.consentDefinitionId, productIds: value.audienceFilter?.productIds ?? [], ...(value.audience === null ? {} : { audience: value.audience }) }), ctx.json, (data) => `${data.count} estimated recipients${'sample' in data ? '\n' + data.sample.map((contact) => contact.email).join('\n') : ''}`);
+  }));
+campaign.command('draft <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+  emit(await ctx.api.actOnMarketingCampaign({ campaignId: id, action: 'draft' }), ctx.json, () => `returned ${id} to draft`);
+}));
 
 campaign.command('schedule')
   .requiredOption('--campaign <id>')
@@ -3308,9 +3417,27 @@ campaign.command('schedule')
       (data) => `scheduled campaign ${data.campaign.id} for ${data.campaign.sendAt ?? options.sendAt}`);
   }));
 
+campaign.command('sends').option('--contact <id>', 'Filter by contact').option('--campaign <id>', 'Filter by campaign')
+  .action(withInput(z.tuple([z.object({ contact: z.string().optional(), campaign: z.string().optional() })]), async (ctx, [options]) => {
+    emit(await ctx.api.listEmailSends({ kind: 'marketing', ...(options.contact === undefined ? {} : { contactId: options.contact }), ...(options.campaign === undefined ? {} : { campaignId: options.campaign }) }), ctx.json, (data) => data.sends.map((send) => `${send.id}\t${send.recipient}\t${send.status}\t${send.skipReason ?? ''}`).join('\n'));
+  }));
+
 campaign.command('status <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
   emit(await ctx.api.getMarketingCampaign(id), ctx.json,
     (data) => `${data.campaign.status}\t${data.campaign.sent}/${data.campaign.toSend} sent\t${data.campaign.failed} failed`);
+}));
+
+campaign.command('dispatch')
+  .requiredOption('--secret <secret>', 'Internal marketing worker secret')
+  .action(withInput(z.tuple([emailDispatchOptionsSchema]), async (ctx, [options]) => {
+    emit(await ctx.api.runMarketingWorker(options.secret), ctx.json, (data) => `${String(data.campaignsDispatched)} campaigns processed`);
+  }));
+const snsInboxCommand = program.command('sns-inbox').description('Durable SES feedback receipts');
+snsInboxCommand.command('list').action(withCtx(async (ctx) => {
+  emit(await ctx.api.listMarketingSnsInbox(), ctx.json, (data) => data.receipts.map((row) => `${row.id}\t${row.status}\t${row.lastError ?? ''}`).join('\n'));
+}));
+snsInboxCommand.command('retry <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+  emit(await ctx.api.retryMarketingSnsInbox(id), ctx.json, () => `queued SNS receipt ${id} for retry`);
 }));
 
 const suppression = program.command('suppression').description('Marketing suppressions');

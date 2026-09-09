@@ -91,7 +91,35 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/m2m/marketing/consent-definitions` | self-authenticating | read | api m2m marketing consent-definitions |
 | `GET /api/m2m/marketing/templates` | self-authenticating | read | marketing templates |
 | `POST /api/internal/marketing/tick` | self-authenticating | mutating | marketing tick |
-| `GET /api/internal/marketing/tick` | self-authenticating | read | api internal marketing tick |
+| `GET /api/internal/marketing/tick` | self-authenticating | read | marketing worker |
+| `GET /api/m2m/marketing/contacts` | self-authenticating | read | m2m list marketing contacts |
+| `GET /api/m2m/marketing/contacts/export` | self-authenticating | read | m2m export marketing contacts |
+| `POST /api/m2m/marketing/contacts` | self-authenticating | mutating | m2m upsert marketing contact |
+| `GET /api/m2m/marketing/contacts/:id` | self-authenticating | read | m2m get marketing contact |
+| `POST /api/m2m/marketing/contacts/:id/update` | self-authenticating | mutating | m2m update marketing contact |
+| `POST /api/m2m/marketing/contacts/:id/archive` | self-authenticating | mutating | m2m archive marketing contact |
+| `POST /api/m2m/marketing/contacts/:id/restore` | self-authenticating | mutating | m2m restore marketing contact |
+| `GET /api/m2m/marketing/lists` | self-authenticating | read | m2m list marketing lists |
+| `POST /api/m2m/marketing/lists` | self-authenticating | mutating | m2m create marketing list |
+| `GET /api/m2m/marketing/lists/:id` | self-authenticating | read | m2m get marketing list |
+| `POST /api/m2m/marketing/lists/:id/update` | self-authenticating | mutating | m2m update marketing list |
+| `POST /api/m2m/marketing/lists/:id/archive` | self-authenticating | mutating | m2m archive marketing list |
+| `POST /api/m2m/marketing/lists/:id/add` | self-authenticating | mutating | m2m add marketing list contacts |
+| `POST /api/m2m/marketing/lists/:id/remove` | self-authenticating | mutating | m2m remove marketing list contacts |
+| `POST /api/m2m/marketing/lists/:id/preview` | self-authenticating | mutating | m2m preview marketing list |
+| `GET /api/m2m/marketing/lists/:id/contacts` | self-authenticating | read | m2m get marketing list contacts |
+| `POST /api/m2m/marketing/contact-imports` | self-authenticating | mutating | m2m create marketing contact import |
+| `POST /api/m2m/marketing/contact-imports/:id/rows` | self-authenticating | mutating | m2m append marketing contact import rows |
+| `POST /api/m2m/marketing/contact-imports/:id/validate` | self-authenticating | mutating | m2m validate marketing contact import |
+| `POST /api/m2m/marketing/contact-imports/:id/commit` | self-authenticating | mutating | m2m commit marketing contact import |
+| `GET /api/m2m/marketing/contact-imports/:id` | self-authenticating | read | m2m get marketing contact import |
+| `GET /api/m2m/marketing/contact-imports/:id/rows` | self-authenticating | read | m2m get marketing contact import rows |
+| `POST /api/m2m/marketing/contact-imports/:id/retry` | self-authenticating | mutating | m2m retry marketing contact import |
+| `POST /api/m2m/marketing/contact-imports/:id/cancel` | self-authenticating | mutating | m2m cancel marketing contact import |
+| `POST /api/m2m/marketing/suppressions/import` | self-authenticating | mutating | m2m import marketing suppressions |
+| `POST /api/m2m/marketing/contact-imports/:id/process` | self-authenticating | mutating | m2m process marketing contact import |
+| `POST /api/m2m/marketing/contacts/sync` | self-authenticating | mutating | m2m sync marketing member contacts |
+| `GET /api/internal/marketing/imports/tick` | self-authenticating | read | marketing imports tick |
 | `POST /api/m2m/import/validate` | self-authenticating | mutating | m2m import validate |
 | `POST /api/m2m/import/courses` | self-authenticating | mutating | m2m import courses |
 | `POST /api/m2m/import/modules` | self-authenticating | mutating | m2m import modules |
@@ -104,6 +132,35 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |
+| `POST /api/marketing/contact-imports/upload` | authenticated | mutating | marketing contact import upload |
+| `POST /api/marketing/contact-imports/:id/preview` | authenticated | mutating | marketing contact import preview |
+| `GET /api/marketing/contacts` | authenticated | read | list marketing contacts |
+| `GET /api/marketing/contacts/export` | authenticated | read | export marketing contacts |
+| `POST /api/marketing/contacts` | authenticated | mutating | upsert marketing contact |
+| `GET /api/marketing/contacts/:id` | authenticated | read | get marketing contact |
+| `POST /api/marketing/contacts/:id/update` | authenticated | mutating | update marketing contact |
+| `POST /api/marketing/contacts/:id/archive` | authenticated | mutating | archive marketing contact |
+| `POST /api/marketing/contacts/:id/restore` | authenticated | mutating | restore marketing contact |
+| `GET /api/marketing/lists` | authenticated | read | list marketing lists |
+| `POST /api/marketing/lists` | authenticated | mutating | create marketing list |
+| `GET /api/marketing/lists/:id` | authenticated | read | get marketing list |
+| `POST /api/marketing/lists/:id/update` | authenticated | mutating | update marketing list |
+| `POST /api/marketing/lists/:id/archive` | authenticated | mutating | archive marketing list |
+| `POST /api/marketing/lists/:id/add` | authenticated | mutating | add marketing list contacts |
+| `POST /api/marketing/lists/:id/remove` | authenticated | mutating | remove marketing list contacts |
+| `POST /api/marketing/lists/:id/preview` | authenticated | mutating | preview marketing list |
+| `GET /api/marketing/lists/:id/contacts` | authenticated | read | get marketing list contacts |
+| `POST /api/marketing/contact-imports` | authenticated | mutating | create marketing contact import |
+| `POST /api/marketing/contact-imports/:id/rows` | authenticated | mutating | append marketing contact import rows |
+| `POST /api/marketing/contact-imports/:id/validate` | authenticated | mutating | validate marketing contact import |
+| `POST /api/marketing/contact-imports/:id/commit` | authenticated | mutating | commit marketing contact import |
+| `GET /api/marketing/contact-imports/:id` | authenticated | read | get marketing contact import |
+| `GET /api/marketing/contact-imports/:id/rows` | authenticated | read | get marketing contact import rows |
+| `POST /api/marketing/contact-imports/:id/retry` | authenticated | mutating | retry marketing contact import |
+| `POST /api/marketing/contact-imports/:id/cancel` | authenticated | mutating | cancel marketing contact import |
+| `POST /api/marketing/suppressions/import` | authenticated | mutating | import marketing suppressions |
+| `POST /api/marketing/contact-imports/:id/process` | authenticated | mutating | process marketing contact import |
+| `POST /api/marketing/contacts/sync` | authenticated | mutating | sync marketing member contacts |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |
@@ -114,6 +171,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/marketing/campaigns/update` | authenticated | mutating | marketing campaign update |
 | `POST /api/marketing/campaigns/action` | authenticated | mutating | marketing campaign action |
 | `POST /api/marketing/campaigns/test` | authenticated | mutating | marketing campaign test |
+| `POST /api/marketing/campaigns/audience` | authenticated | mutating | marketing campaign audience |
 | `POST /api/marketing/audience-preview` | authenticated | mutating | marketing audience preview |
 | `GET /api/marketing/documents` | authenticated | read | marketing documents |
 | `POST /api/marketing/documents` | authenticated | mutating | marketing documents create |
@@ -122,6 +180,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/marketing/documents/publish` | authenticated | mutating | marketing document publish |
 | `GET /api/marketing/layouts` | authenticated | read | marketing layouts |
 | `POST /api/marketing/layouts` | authenticated | mutating | marketing layouts save |
+| `GET /api/marketing/sns-inbox` | authenticated | read | marketing sns inbox |
+| `POST /api/marketing/sns-inbox/retry` | authenticated | mutating | marketing sns retry |
 | `GET /api/marketing/ses-settings` | authenticated | read | marketing ses settings |
 | `GET /api/marketing/reputation` | authenticated | read | marketing reputation |
 | `POST /api/marketing/ses-settings` | authenticated | mutating | marketing ses settings update |

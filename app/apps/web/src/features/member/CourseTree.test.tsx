@@ -226,6 +226,14 @@ describe('CourseTree', () => {
     }
   });
 
+  it('offsets lesson scroll targets below the sticky module header', async () => {
+    await renderTree();
+
+    expect(await screen.findByTestId('lesson-button-l1')).toHaveStyle({
+      scrollMarginTop: 'calc(46px + 0.5rem)',
+    });
+  });
+
   it('exposes module disclosure state and toggles it from the keyboard', async () => {
     const user = userEvent.setup();
     await renderTree();
@@ -334,6 +342,39 @@ describe('CourseTree', () => {
     scrollIntoView.mockRestore();
   });
 
+  it('scrolls the focused lesson when the sticky module header covers it', async () => {
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute('data-course-tree-scroll') ? 400 : 44;
+      },
+    });
+    const rects = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: Element) {
+      if (this.hasAttribute('data-course-tree-scroll')) return new DOMRect(0, 0, 320, 400);
+      if (this.getAttribute('data-testid') === 'module-toggle-m1') return new DOMRect(0, 8, 320, 46);
+      if (this.getAttribute('data-testid') === 'lesson-button-l3') return new DOMRect(0, 40, 320, 44);
+      return new DOMRect(0, 0, 320, 44);
+    });
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    try {
+      await renderFocusedTree('l3');
+
+      const focused = await screen.findByTestId('lesson-button-l3');
+      expect(scrollIntoView.mock.instances).toEqual([focused]);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    } finally {
+      scrollIntoView.mockRestore();
+      rects.mockRestore();
+      if (originalClientHeight === undefined) {
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+      } else {
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight);
+      }
+    }
+  });
+
   it('leaves scrolling to callers that own a scroll container', async () => {
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
 
@@ -344,7 +385,7 @@ describe('CourseTree', () => {
     scrollIntoView.mockRestore();
   });
 
-  it('reveals a collapsed module with its marks and unlock link on demand', async () => {
+  it('reveals a collapsed module with its marks on demand', async () => {
     const user = userEvent.setup();
     await renderCollapsedTree();
 
@@ -358,7 +399,7 @@ describe('CourseTree', () => {
 
     const locked = await screen.findByTestId('lesson-button-l4');
     expect(within(locked).getByTestId('lock-closed')).toBeInTheDocument();
-    expect(screen.getByTestId('unlock-lesson-l4')).toHaveAttribute('href', '/checkout/prod-advanced');
+    expect(screen.queryByTestId('unlock-lesson-l4')).not.toBeInTheDocument();
   });
 
   it('lets the reader collapse the focused module and expand another one', async () => {
@@ -415,12 +456,11 @@ describe('CourseTree', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Intro to Variables');
   });
 
-  it('offers an unlock link only for locked lessons covered by a product', async () => {
+  it('does not add a separate unlock row for locked lessons', async () => {
     await renderTree();
 
-    const unlock = await screen.findByTestId('unlock-lesson-l4');
-    expect(unlock).toHaveAttribute('href', '/checkout/prod-advanced');
-    expect(unlock).toHaveTextContent(pl.courseTree.unlockAccess);
+    expect(screen.getByTestId('lesson-button-l4')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByTestId('unlock-lesson-l4')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlock-lesson-l5')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlock-lesson-l1')).not.toBeInTheDocument();
   });

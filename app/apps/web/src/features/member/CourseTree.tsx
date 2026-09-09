@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useState, type ReactElement } from 'react';
 import {
   Box,
   Collapse,
-  Link as MuiLink,
+  Chip,
   List,
   ListItemButton,
   OutlinedInput,
@@ -40,10 +40,26 @@ import { Caret, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js'
 
 const TITLE_TOOLTIP_DELAY_MS = 500;
 
+const SCROLL_PADDING_REM = 0.5;
+const STICKY_MODULE_HEADER_HEIGHT_PX = 46;
+const LESSON_SCROLL_MARGIN_TOP = `calc(${STICKY_MODULE_HEADER_HEIGHT_PX}px + ${SCROLL_PADDING_REM}rem)`;
+
 const ROW_SX = { width: '100%', pr: '0.75rem' } as const;
-const MODULE_ROW_SX = { ...ROW_SX, pl: '0.75rem', py: '0.5rem', minHeight: 46, columnGap: '0.4rem' } as const;
+const MODULE_ROW_SX = {
+  ...ROW_SX,
+  pl: '0.75rem',
+  py: '0.5rem',
+  minHeight: STICKY_MODULE_HEADER_HEIGHT_PX,
+  columnGap: '0.4rem',
+} as const;
 const CHAPTER_ROW_SX = { ...ROW_SX, pl: '1.4rem', py: '0.45rem', minHeight: 44, columnGap: '0.4rem' } as const;
-const LESSON_ROW_SX = { ...ROW_SX, pl: '2rem', py: '0.4rem', minHeight: 44 } as const;
+const LESSON_ROW_SX = {
+  ...ROW_SX,
+  pl: '2rem',
+  py: '0.4rem',
+  minHeight: 44,
+  scrollMarginTop: LESSON_SCROLL_MARGIN_TOP,
+} as const;
 
 const RowTooltip = ({ title, children }: { title: string; children: ReactElement }) => (
   <Tooltip describeChild title={title} enterDelay={TITLE_TOOLTIP_DELAY_MS} enterNextDelay={TITLE_TOOLTIP_DELAY_MS}>
@@ -88,8 +104,9 @@ const LessonCompletion = ({ status }: { status: CompletionStatus }) => {
   return null;
 };
 
-const ProgressMark = ({ lessons }: { lessons: CourseStructureLesson[] }) => {
+const ProgressMark = ({ lessons, guest }: { lessons: CourseStructureLesson[]; guest: boolean }) => {
   const t = useTranslations();
+  if (guest) return <TreeProgressCount variant="caption" component="span">{`${lessons.length} ${t.courseOverview.statLessons({ count: lessons.length })}`}</TreeProgressCount>;
   const done = lessons.filter((lesson) => lesson.completionStatus === 'fully-completed').length;
   const total = lessons.length;
   if (done === total && total > 0) {
@@ -129,8 +146,6 @@ const filterModules = (
     }))
     .filter((module) => module.chapters.length > 0);
 
-const SCROLL_PADDING_REM = 0.5;
-
 const nearestTreeScroller = (node: HTMLElement): HTMLElement | null =>
   node.closest('[data-course-tree-scroll]');
 
@@ -151,9 +166,9 @@ const isComfortablyVisible = (node: HTMLElement, scroller: HTMLElement): boolean
   const nodeRect = node.getBoundingClientRect();
   const headerRect = nearestModuleHeader(node)?.getBoundingClientRect();
   const scrollerRect = scroller.getBoundingClientRect();
-  const visibleTop = Math.min(nodeRect.top, headerRect?.top ?? nodeRect.top);
+  const visibleTop = Math.max(scrollerRect.top + padding, headerRect?.bottom ?? scrollerRect.top + padding);
   return (
-    visibleTop >= scrollerRect.top + padding &&
+    nodeRect.top >= visibleTop &&
     nodeRect.bottom <= scrollerRect.bottom - padding
   );
 };
@@ -175,17 +190,20 @@ const LessonRow = ({
   search,
   currentLessonId,
   scrollIntoView,
+  guest,
 }: {
   lesson: CourseStructureLesson;
   courseId: string;
   search: string;
   currentLessonId?: string | undefined;
   scrollIntoView: boolean;
+  guest: boolean;
 }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const rowRef = useScrollIntoViewWhen(scrollIntoView);
   const prefetch = () => {
+    if (guest) return;
     void queryClient.prefetchQuery(actions.studentLesson(lesson.lessonId));
   };
   const label = (
@@ -204,40 +222,27 @@ const LessonRow = ({
           {t.courseTree.lessonDuration({ minutes: lesson.durationMinutes })}
         </LessonDurationText>
       )}
+      {guest && lesson.isPreview ? <Chip size="small" label={t.anon.previewChip} color="primary" variant="outlined" /> : null}
       <LessonCompletion status={lesson.completionStatus} />
       <AccessMark status={lesson.accessStatus} />
     </Stack>
   );
 
-  if (lesson.accessStatus === 'not-accessible') {
+  if (lesson.accessStatus === 'not-accessible' || (guest && !lesson.isPreview)) {
     return (
-      <>
-        <RowTooltip title={t.courseTree.lockedLessonTooltip({ name: lesson.name })}>
-          <Box component="span" sx={{ display: 'block' }}>
-            <ListItemButton
-              disabled
-              ref={rowRef}
-              data-testid={`lesson-button-${lesson.lessonId}`}
-              sx={{ ...LESSON_ROW_SX, opacity: 0.6 }}
-            >
-              {label}
-              {marks}
-            </ListItemButton>
-          </Box>
-        </RowTooltip>
-        {lesson.unlockProductId !== undefined && (
-          <Box sx={{ pl: LESSON_ROW_SX.pl, pr: '0.75rem', pb: '0.5rem', mt: '-0.25rem' }}>
-            <MuiLink
-              component={Link}
-              to={`/checkout/${encodeURIComponent(lesson.unlockProductId)}`}
-              variant="body2"
-              data-testid={`unlock-lesson-${lesson.lessonId}`}
-            >
-              {t.courseTree.unlockAccess}
-            </MuiLink>
-          </Box>
-        )}
-      </>
+      <RowTooltip title={t.courseTree.lockedLessonTooltip({ name: lesson.name })}>
+        <Box component="span" sx={{ display: 'block' }}>
+          <ListItemButton
+            disabled
+            ref={rowRef}
+            data-testid={`lesson-button-${lesson.lessonId}`}
+            sx={{ ...LESSON_ROW_SX, opacity: 0.6 }}
+          >
+            {label}
+            {marks}
+          </ListItemButton>
+        </Box>
+      </RowTooltip>
     );
   }
 
@@ -268,6 +273,7 @@ const ChapterNode = ({
   onToggle,
   currentLessonId,
   scrollLessonId,
+  guest,
 }: {
   chapter: VisibleChapter;
   courseId: string;
@@ -276,6 +282,7 @@ const ChapterNode = ({
   onToggle: () => void;
   currentLessonId?: string | undefined;
   scrollLessonId: string | null;
+  guest: boolean;
 }) => {
   const contentId = useId();
   return (
@@ -299,7 +306,7 @@ const ChapterNode = ({
             useFlexGap
             sx={{ alignItems: 'center', columnGap: '0.35rem', flexShrink: 0 }}
           >
-            <ProgressMark lessons={chapter.allLessons} />
+            <ProgressMark lessons={chapter.allLessons} guest={guest} />
             <AccessMark status={chapter.accessStatus} />
           </Stack>
         </ListItemButton>
@@ -309,6 +316,7 @@ const ChapterNode = ({
           {chapter.lessons.map((lesson) => (
             <Box component="li" key={lesson.contentId} sx={{ listStyle: 'none' }}>
               <LessonRow
+                guest={guest}
                 lesson={lesson}
                 courseId={courseId}
                 search={search}
@@ -331,6 +339,7 @@ const ModuleNode = ({
   onToggle,
   currentLessonId,
   scrollLessonId,
+  guest,
 }: {
   module: VisibleModule;
   courseId: string;
@@ -339,6 +348,7 @@ const ModuleNode = ({
   onToggle: (id: string) => void;
   currentLessonId?: string | undefined;
   scrollLessonId: string | null;
+  guest: boolean;
 }) => {
   const open = isOpen(module.id);
   const contentId = useId();
@@ -369,7 +379,7 @@ const ModuleNode = ({
             useFlexGap
             sx={{ alignItems: 'center', columnGap: '0.35rem', flexShrink: 0 }}
           >
-            <ProgressMark lessons={module.allLessons} />
+            <ProgressMark lessons={module.allLessons} guest={guest} />
             <AccessMark status={module.accessStatus} />
           </Stack>
         </CourseTreeModuleButton>
@@ -379,6 +389,7 @@ const ModuleNode = ({
           {module.chapters.map((chapter) => (
             <ChapterNode
               key={chapter.id}
+              guest={guest}
               chapter={chapter}
               courseId={courseId}
               search={search}
@@ -402,6 +413,7 @@ export const CourseTree = ({
   currentLessonId,
   focusLessonId = null,
   expandAll = false,
+  guest = false,
   scrollFocusIntoView = false,
 }: {
   courseId: string;
@@ -409,6 +421,7 @@ export const CourseTree = ({
   currentLessonId?: string | undefined;
   focusLessonId?: string | null | undefined;
   expandAll?: boolean;
+  guest?: boolean;
   scrollFocusIntoView?: boolean;
 }) => {
   const t = useTranslations();
@@ -431,7 +444,8 @@ export const CourseTree = ({
 
   const searchActive = search !== '';
   const flipped = flips.focus === focusLessonId ? flips.ids : NO_FLIPS;
-  const openByDefault = (id: string) => expandAll || branch.has(id);
+  const openByDefault = (id: string) => expandAll || branch.has(id)
+    || (guest && structure.modules.some((module) => module.chapters.some((chapter) => chapter.id === id)));
   const isOpen = (id: string) => searchActive || flipped.has(id) !== openByDefault(id);
   const toggle = (id: string) =>
     setFlips((prev) => {
@@ -482,6 +496,7 @@ export const CourseTree = ({
             {modules.map((module) => (
               <ModuleNode
                 key={module.id}
+                guest={guest}
                 module={module}
                 courseId={courseId}
                 search={searchActive ? search : ''}

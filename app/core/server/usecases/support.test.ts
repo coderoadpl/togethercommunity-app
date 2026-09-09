@@ -52,6 +52,7 @@ const harness = (supportEmail: string | null, defaultLanguage?: Language) => {
         logoUrl: null,
         logoDarkUrl: null,
         accentColor: null,
+        accentLight: null,
         faviconUrl: null,
         ogTitle: null,
         ogDescription: null,

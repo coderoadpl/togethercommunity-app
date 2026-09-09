@@ -3,6 +3,7 @@ import { context, trace } from '@opentelemetry/api';
 import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import {
   authConfigQuery,
+  marketingDirectoryActions,
   apiKeysInvalidates,
   apiKeysQuery,
   apiKeyImportAuditQuery,
@@ -264,6 +265,7 @@ import {
   updateModuleMutation,
   updatePostMutation,
   studentCourseInvalidates,
+  studentProgressInvalidates,
   studentCoursesQuery,
   uncompleteLessonMutation,
   studentLessonQuery,
@@ -319,6 +321,7 @@ const authClient = createBetterAuthClientAdapter('');
  * these ready actions and never see a client, a port or an adapter.
  */
 export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClientPort, 'listPasskeys'> = authClient) => ({
+  directory: marketingDirectoryActions(apiClient),
   health: healthQuery(apiClient),
   me: meQuery(apiClient),
   meInvalidates,
@@ -446,6 +449,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   uncompleteLesson: uncompleteLessonMutation(apiClient),
   updateLastViewed: updateLastViewedMutation(apiClient),
   studentCourseInvalidates,
+  studentProgressInvalidates,
   discussion: (input: DiscussionGetInput) => discussionQuery(apiClient, input),
   createPost: createPostMutation(apiClient),
   updatePost: updatePostMutation(apiClient),

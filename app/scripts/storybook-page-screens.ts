@@ -2,6 +2,7 @@ import { SCREENS, type ScreenSpec } from './visual-screen-inventory.js';
 
 const pageScreenNames = new Set([
   'login',
+  'login-resolve-error',
   'login-tenant',
   'forgot-password',
   'reset-password',
@@ -13,6 +14,7 @@ const pageScreenNames = new Set([
   'anon-home-branded',
   'anon-home-tiles',
   'anon-course',
+  'anon-space',
   'start',
   'start-menu-sheet',
   'search',
@@ -32,6 +34,7 @@ const pageScreenNames = new Set([
   'panel-settings-domains-active',
   'panel-settings-redirects',
   'panel-storage-wizard',
+  'panel-storage-wizard-connection',
   'panel-lesson-attachments',
   'panel-products',
   'panel-product-downloads',
@@ -39,6 +42,9 @@ const pageScreenNames = new Set([
   'panel-coupon-create',
   'panel-coupon-detail',
   'panel-order-detail',
+  'panel-marketing-contacts',
+  'panel-marketing-lists',
+  'panel-marketing-contact-import',
   'panel-marketing-campaigns',
   'panel-marketing-activity',
   'panel-marketing-activity-detail',

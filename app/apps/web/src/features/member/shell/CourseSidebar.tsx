@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Box, List, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
+import { ApiError } from '#core/client/index.js';
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -17,6 +18,9 @@ import { memberHomePath } from './member-nav.js';
 import { BrandLink } from './shell-chrome.js';
 import { BackIcon, CourseOverviewIcon, SpaceIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
+
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
 
 const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) => {
   const t = useTranslations();
@@ -79,10 +83,12 @@ export const CourseSidebar = ({
   courseId,
   currentLessonId,
   tenantName,
+  notFoundFallback = null,
 }: {
   courseId: string;
   currentLessonId: string | null;
   tenantName: string;
+  notFoundFallback?: ReactNode;
 }) => {
   const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
@@ -97,6 +103,10 @@ export const CourseSidebar = ({
         : focusLesson(tree, { currentLessonId, lastViewedLessonId }),
     [tree, waitingForLastViewed, currentLessonId, lastViewedLessonId],
   );
+
+  if (structure.isError && isNotFound(structure.error)) {
+    return notFoundFallback;
+  }
 
   return (
     <Box

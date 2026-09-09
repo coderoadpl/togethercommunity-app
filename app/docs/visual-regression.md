@@ -15,7 +15,7 @@ and `LANG=C` alone do not override them. Empty coupon validity fields must show
 `dd/mm/yyyy, --:--`; an `mm/dd/yyyy` placeholder with an AM/PM field indicates
 native locale drift, not a changing default date.
 
-The catalogue currently covers 118 captures in Shadcn, the maintained base theme
+The catalogue currently covers 130 captures in Shadcn, the maintained base theme
 ([ADR-0010](decisions/0010-shadcn-base-theme.md)). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
 
@@ -47,7 +47,11 @@ hash jump; the harness scrolls to the domain section after fonts settle so the
 sticky sidebar is first painted at the top of the document. Server HTML stories render the production HTML in a nested iframe;
 the harness waits for that document and its fonts. Captures run sequentially,
 once, with no retries. Each viewport/auth group reuses a page in inventory order, matching the
-golden authoring harness and its rounded-shadow paint caches. The shared browser
+golden authoring harness and its rounded-shadow paint caches. The panel course
+editor uses an isolated capture context because inherited paint caches can change
+the upload button's rounded shadow by four counted pixels. The mobile menu capture
+moves the pointer clear of the sheet so the opening click cannot leave sign-out
+hovered. The shared browser
 setup saves native animation-frame scheduling before Playwright installs its
 clock. Capture waits use those native frames, so paint readiness remains tied
 to rendering while application timers retain the authoring clock behavior.
@@ -165,9 +169,16 @@ Before/After gallery from `.github/workflows/visual-golden-gallery.yml`. Its
 images are pinned to the compared commits. The publisher uses trusted base-ref
 workflow code and never executes pull-request code.
 
-## Chromatic (promotion PRs)
+## Chromatic
 
-Chromatic runs only for promotion pull requests targeting `main`, plus manual
+The `preview` project publishes a Storybook preview permalink for non-draft pull requests
+targeting `staging` and pushes to `staging` when `CHROMATIC_PREVIEW_PROJECT_TOKEN` is
+available and changes affect `app/apps/web/**`, `app/.storybook/**`,
+`app/tasks/visual-goldens/**`, or `.github/workflows/chromatic-preview.yml`.
+The preview command uses TurboSnap (`--only-changed`) to copy unchanged stories
+instead of capturing them, while retaining `--exit-zero-on-changes` and `--exit-once-uploaded`.
+
+Chromatic snapshot testing runs only for promotion pull requests targeting `main`, plus manual
 `workflow_dispatch` runs. It reviews Storybook UI snapshots for baseline changes
 before promotion; it is not the visual regression gate and does not replace
 `pnpm run visual` or the committed route goldens.

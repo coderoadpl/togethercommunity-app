@@ -201,6 +201,39 @@ describe('listMemberTimeline', () => {
     expect(calls).toEqual([['tenant-1', 'member-1']]);
   });
 
+  it('preserves repeated grant and revoke entries with product titles for the timeline', async () => {
+    const accessEvents: MemberEvent[] = ['transition-3', 'transition-2', 'transition-1'].map((id) => ({
+      id,
+      tenantId: member.tenantId,
+      memberId: member.id,
+      occurredAt: event.occurredAt,
+      ...(id === 'transition-2' ? {
+        type: 'revoke' as const,
+        payload: { grantId: 'grant-1', productId: product.id, expiresAt: event.occurredAt },
+      } : {
+        type: 'grant' as const,
+        payload: {
+          grantId: 'grant-1', productId: product.id, source: 'manual' as const,
+          startsAt: member.createdAt, expiresAt: null,
+        },
+      }),
+    }));
+    const result = await listMemberTimeline(
+      { identity: identity(member.tenantId) },
+      { memberId: member.id },
+      {
+        members, products, courses, lessons,
+        memberEvents: { append: async () => undefined, listForMember: async () => accessEvents },
+      },
+    );
+    expect(result).toEqual({
+      ok: true,
+      value: accessEvents.map((entry) => ({
+        ...entry, payload: { ...entry.payload, productTitle: product.title },
+      })),
+    });
+  });
+
   it('does not query another tenant or an unknown member', async () => {
     let queried = false;
     const memberEvents: MemberEventRepository = {

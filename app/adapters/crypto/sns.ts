@@ -108,6 +108,8 @@ export const createSnsVerifier = (input: {
           return { ok: false, error: forbidden('Invalid SNS signature') };
         }
         return ok({
+          messageId: parsed.MessageId,
+          timestamp: parsed.Timestamp,
           type: parsed.Type,
           topicArn: parsed.TopicArn,
           message: parsed.Message,
@@ -120,7 +122,7 @@ export const createSnsVerifier = (input: {
     confirmSubscription: async ({ subscribeUrl, region }) => {
       if (!trustedUrl(subscribeUrl, region)) return { ok: false, error: forbidden('Untrusted SNS confirmation URL') };
       try {
-        const response = await fetch(subscribeUrl, { redirect: 'error' });
+        const response = await fetch(subscribeUrl, { redirect: 'error', signal: AbortSignal.timeout(4000) });
         return response.ok
           ? ok(undefined)
           : { ok: false, error: integrationUnavailable(`SNS confirmation returned HTTP ${response.status}`) };

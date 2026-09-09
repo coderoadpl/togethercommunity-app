@@ -239,6 +239,8 @@ describe('Creator panel routing', () => {
       'settings',
     ] as const;
     const marketingSectionIds = [
+      'marketingContacts',
+      'marketingLists',
       'marketingCampaigns',
       'marketingActivity',
       'marketingSends',
@@ -416,6 +418,22 @@ describe('Creator panel routing', () => {
     expect(screen.getByTestId('section-sales')).toHaveAttribute('aria-current', 'page');
   });
 
+  it.each([true, false])('links to the student view from the app bar and avatar menu on desktop=%s', async (desktop) => {
+    stubViewport(desktop);
+    commonHandlers();
+    await renderPanelAt('/panel/products');
+    const link = await screen.findByTestId('panel-member-view-link');
+    expect(link).toHaveAttribute('href', '/start');
+    expect(link).toHaveTextContent(pl.panel.memberView);
+    expect(link.querySelector('svg')).toBeInTheDocument();
+    expect(window.getComputedStyle(link).getPropertyValue('min-height')).toBe('44px');
+    await userEvent.click(screen.getByTestId('user-menu'));
+    const menuLink = screen.getByTestId('user-menu-member-view');
+    expect(menuLink).toHaveAttribute('href', '/start');
+    expect(menuLink).toHaveTextContent(pl.panel.memberView);
+    expect(menuLink.compareDocumentPosition(screen.getByTestId('user-menu-account'))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it('signs out from the account menu in the app bar', async () => {
     stubViewport(true);
     commonHandlers();
@@ -430,14 +448,16 @@ describe('Creator panel routing', () => {
     const menu = screen.getByRole('menu');
     const items = within(menu).getAllByRole('menuitem');
     expect(items.map((item) => item.textContent)).toEqual([
+      pl.panel.memberView,
       pl.student.myProducts,
       pl.messages.navLabel,
       pl.panel.myAccount,
       pl.tenant.signOut,
     ]);
-    expect(items[0]).toHaveAttribute('href', '/my/products');
-    expect(items[1]).toHaveAttribute('href', '/messages');
-    expect(items[2]).toHaveAttribute('href', '/account');
+    expect(items[0]).toHaveAttribute('href', '/start');
+    expect(items[1]).toHaveAttribute('href', '/my/products');
+    expect(items[2]).toHaveAttribute('href', '/messages');
+    expect(items[3]).toHaveAttribute('href', '/account');
 
     await userEvent.click(screen.getByTestId('sign-out'));
 

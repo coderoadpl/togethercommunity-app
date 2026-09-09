@@ -29,12 +29,13 @@ import { DashboardPanel } from '../features/home/DashboardPanel.js';
 import { usePanelContext } from '../features/home/panel-context.js';
 import { StudioChecklistDock, StudioChecklistPanel } from '../features/onboarding/index.js';
 import { PanelMemberDetailRoute, PanelCouponCreateRoute, PanelCouponDetailRoute, PanelCouponsRoute, PanelCourseDetailRoute, PanelIntegrationsRoute, PanelLessonEditRoute, PanelOrderDetailRoute, PanelProductDetailRoute, PanelProductsRoute, PanelRedirectsRoute, PanelSettingsRoute, PanelSpacesRoute } from '../features/home/panel-routes.js';
-import { CampaignsPanel } from '../features/home/marketing/CampaignsPanel.js';
+import { CampaignsPanel, CampaignCreatePage, CampaignDetailPage } from '../features/home/marketing/CampaignsPanel.js';
 import { ConsentsPanel } from '../features/home/marketing/ConsentsPanel.js';
 import { DocumentsPanel } from '../features/home/marketing/DocumentsPanel.js';
 import { LayoutsPanel } from '../features/home/marketing/LayoutsPanel.js';
 import { SchedulerActivityPanel, SchedulerActivityDetailPage } from '../features/home/marketing/SchedulerActivityPanel.js';
 import { SendsPanel, SendDetailPage, validateSendsSearch } from '../features/home/marketing/SendsPanel.js';
+import { ContactsPanel, ContactDetailPanel, ContactImportWizard, validateContactImportSearch, ListsPanel, ListCreatePanel, ListDetailPanel } from '../routes/panel.js';
 
 const PageRoot = () => <><LanguageSwitcher /><Outlet /></>;
 
@@ -99,7 +100,15 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
       createRoute({ getParentRoute: () => panel, path: 'settings/redirects', component: PanelRedirectsRoute }),
       createRoute({ getParentRoute: () => panel, path: 'settings', component: PanelSettingsRoute }),
       createRoute({ getParentRoute: () => panel, path: 'integrations', component: PanelIntegrationsRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/contacts', component: ContactsPanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/contacts/import', component: ContactImportWizard, validateSearch: validateContactImportSearch }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/contacts/$contactId', component: ContactDetailPanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/lists', component: ListsPanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/lists/new', component: ListCreatePanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/lists/$listId', component: ListDetailPanel }),
       createRoute({ getParentRoute: () => panel, path: 'marketing/campaigns', component: CampaignsPanel }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/campaigns/new', component: CampaignCreatePage }),
+      createRoute({ getParentRoute: () => panel, path: 'marketing/campaigns/$campaignId', component: CampaignDetailPage }),
       createRoute({ getParentRoute: () => panel, path: 'marketing/activity', component: SchedulerActivityPanel }),
       createRoute({ getParentRoute: () => panel, path: 'marketing/activity/$runId', component: SchedulerActivityDetailPage }),
       createRoute({ getParentRoute: () => panel, path: 'marketing/sends', component: SendsPanel, validateSearch: validateSendsSearch }),

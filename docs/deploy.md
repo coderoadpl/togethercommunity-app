@@ -39,7 +39,7 @@ The build stamps the version, migrates the database, optionally seeds empty stag
 and builds the web bundle before uploading the artifact. Repository code can access
 `DATABASE_URL`. `app/vercel.json` pins the reset function's 300-second limit as an
 additional declaration alongside `export const maxDuration = 300`; the Node builder
-reads that export through static configuration. The shared API retains its 30-second
+reads that export through static configuration. The shared API retains its 60-second
 limit. The build script ends with `build:web`; typecheck stays in `pnpm run build`
 for local use and in CI.
 

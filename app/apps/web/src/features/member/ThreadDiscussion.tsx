@@ -1,17 +1,17 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Alert, Box, Button, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '#core/client/index.js';
 import type { DiscussionPost, PostContextKind, ThreadSubscriptionState } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { ConfirmDialog, StatusView } from '../../components/layout/index.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
-  ComposerPrompt,
+  ComposerInput,
   DeletedPostText,
   DiscussionThread,
   Eyebrow,
@@ -27,6 +27,8 @@ import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
+import { DeletePostDialog } from './DeletePostDialog.js';
+import { usePostMutations } from './usePostMutations.js';
 import { useImpersonation } from './viewer.js';
 
 export const PAGE_SIZE = 20;
@@ -84,7 +86,7 @@ interface Viewer {
 export const PostComposer = ({
   label,
   placeholder,
-  collapsedPrompt,
+  compact = false,
   submitLabel,
   pendingLabel,
   initialValue = '',
@@ -98,7 +100,7 @@ export const PostComposer = ({
 }: {
   label: string;
   placeholder?: string;
-  collapsedPrompt?: string;
+  compact?: boolean;
   submitLabel: string;
   pendingLabel: string;
   initialValue?: string;
@@ -116,7 +118,7 @@ export const PostComposer = ({
   const [body, setBody] = useState(initialValue);
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const expanded = collapsedPrompt === undefined || open || body.trim().length > 0;
+  const expanded = !compact || open || body.trim().length > 0;
 
   useEffect(() => {
     if (focusOnMount) inputRef.current?.focus();
@@ -138,20 +140,6 @@ export const PostComposer = ({
   const inCard = (content: ReactNode) =>
     surface ? <Paper elevation={1} sx={{ p: '1.25rem' }}>{content}</Paper> : content;
 
-  if (collapsedPrompt !== undefined && !expanded) {
-    return inCard(
-      <ComposerPrompt
-        variant="outlined"
-        fullWidth
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-        data-testid={`${testId}-open`}
-      >
-        {collapsedPrompt}
-      </ComposerPrompt>,
-    );
-  }
-
   return inCard(
     <Stack
       component="form"
@@ -163,12 +151,14 @@ export const PostComposer = ({
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
       data-testid={testId}
+      data-mobile-keyboard-anchor
+      sx={{ scrollMarginBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
     >
-      <TextField
+      <ComposerInput
         label={label}
         placeholder={placeholder}
         multiline
-        minRows={3}
+        minRows={expanded ? 3 : 1}
         value={body}
         disabled={disabled}
         inputRef={inputRef}
@@ -179,13 +169,14 @@ export const PostComposer = ({
         <Button
           type="submit"
           variant="contained"
+          sx={{ minHeight: 44, minWidth: 44 }}
           disabled={disabled || busy || body.trim().length === 0}
           data-testid={`${testId}-submit`}
         >
           {busy ? pendingLabel : submitLabel}
         </Button>
         {onCancel !== undefined && (
-          <Button variant="text" onClick={onCancel}>
+          <Button variant="text" onClick={onCancel} sx={{ minHeight: '44px' }}>
             {t.common.cancel}
           </Button>
         )}
@@ -246,7 +237,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
 
       {deleted ? (
         <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`deleted-post-${post.id}`}>
-          {t.discussion.deletedPost}
+          {post.deletedBy === 'moderator' ? t.discussion.moderatorDeletedPost : t.discussion.deletedPost}
         </DeletedPostText>
       ) : a.editingId === post.id ? (
         <Box sx={{ mt: '0.75rem' }}>
@@ -429,8 +420,7 @@ export const ThreadDiscussion = ({
 
   const invalidate = () => queryClient.invalidateQueries(actions.discussionInvalidates());
   const create = useMutation({ ...actions.createPost, onSettled: invalidate });
-  const update = useMutation({ ...actions.updatePost, onSettled: invalidate });
-  const remove = useMutation({ ...actions.deletePost, onSettled: invalidate });
+  const { update, remove } = usePostMutations();
   const subscribe = useMutation({ ...actions.subscribeThread, onSettled: invalidate });
   const mute = useMutation({ ...actions.muteThread, onSettled: invalidate });
 
@@ -633,7 +623,7 @@ export const ThreadDiscussion = ({
             <PostComposer
               label={t.discussion.composerLabel}
               placeholder={t.discussion.composerPlaceholder}
-              collapsedPrompt={t.discussion.composerPrompt}
+              compact
               submitLabel={t.discussion.post}
               pendingLabel={t.discussion.posting}
               busy={create.isPending}
@@ -707,18 +697,12 @@ export const ThreadDiscussion = ({
       )}
 
       {deleting !== null && (
-        <ConfirmDialog
-          open
-          title={t.discussion.deleteConfirmTitle}
-          body={t.discussion.deleteConfirmBody}
-          confirmLabel={remove.isPending ? t.discussion.deleting : t.discussion.deleteConfirm}
-          cancelLabel={t.common.cancel}
+        <DeletePostDialog
           pending={remove.isPending}
           onClose={() => setDeleting(null)}
           onConfirm={() =>
             remove.mutate({ id: deleting.id }, { onSuccess: () => setDeleting(null) })
           }
-          confirmTestId="confirm-delete-post"
         />
       )}
     </Box>

@@ -1,6 +1,8 @@
 import { decomposeColor, hslToRgb, type PaletteMode, type Theme } from '@mui/material/styles';
 
-import type { TenantBranding } from '#core/domain/index.js';
+import { contrastRatio, relativeLuminance, deriveLightAccent, type TenantBranding } from '#core/domain/index.js';
+
+export { contrastRatio };
 
 const CSS_COLOR_4 = /^(rgba?|hsla?)\(\s*([^,]+?)\s*\)$/;
 
@@ -26,25 +28,6 @@ export const toHex = (color: string): string => {
 
 const hexChannel = (hex: string, offset: number): number =>
   Number.parseInt(hex.slice(offset + 1, offset + 3), 16);
-
-const linearChannel = (value: number): number => {
-  const scaled = value / 255;
-  return scaled <= 0.04045 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
-};
-
-export const relativeLuminance = (hex: string): number =>
-  0.2126 * linearChannel(hexChannel(hex, 0)) +
-  0.7152 * linearChannel(hexChannel(hex, 2)) +
-  0.0722 * linearChannel(hexChannel(hex, 4));
-
-/** WCAG contrast ratio between two #RRGGBB colors, 1..21. */
-export const contrastRatio = (a: string, b: string): number => {
-  const first = relativeLuminance(a);
-  const second = relativeLuminance(b);
-  const lighter = Math.max(first, second);
-  const darker = Math.min(first, second);
-  return (lighter + 0.05) / (darker + 0.05);
-};
 
 export const mix = (hex: string, target: string, weight: number): string => {
   const blended = [0, 2, 4].map((offset) => {
@@ -85,13 +68,14 @@ export const nudgeToward = (
   return result;
 };
 
-/**
- * Text on the accent picks whichever of white/near-black clears the higher
- * WCAG ratio, and mid-tone accents are nudged away from the text color until
- * the pair clears AA (4.5:1) — mirroring how createPlainTheme darkens its
- * hue-derived accent. Hover ("dark") shifts further in the same direction,
- * falling back to lightening if that would drop the hover pair under AA.
- */
+const accentFillStates = (main: string, ink: string): { hover: string; active: string } => {
+  const away = ink === LIGHT_TEXT ? '#000000' : '#ffffff';
+  const toward = ink === LIGHT_TEXT ? '#ffffff' : '#000000';
+  const target = contrastRatio(main, mix(main, away, 0.26)) >= 1.1
+    || contrastRatio(mix(main, toward, 0.26), ink) < AA_MIN ? away : toward;
+  return { hover: mix(main, target, 0.14), active: mix(main, target, 0.26) };
+};
+
 export const deriveBrandPalette = (
   accentColor: string,
   scheme: PaletteMode = 'light',
@@ -114,7 +98,7 @@ export const deriveBrandPalette = (
     return {
       main,
       dark,
-      light: mix(main, '#ffffff', 0.14),
+      light: accentFillStates(main, contrastText).hover,
       contrastText,
     };
   }
@@ -127,12 +111,11 @@ export const deriveBrandPalette = (
   for (let step = 0; step < 24 && contrastRatio(main, contrastText) < AA_MIN; step += 1) {
     main = mix(main, away, 0.08);
   }
-  const deepened = mix(main, '#000000', 0.18);
-  const dark = contrastRatio(deepened, contrastText) >= AA_MIN ? deepened : mix(main, '#ffffff', 0.18);
+  const states = accentFillStates(main, contrastText);
   return {
     main,
-    dark,
-    light: mix(main, '#ffffff', 0.18),
+    dark: states.active,
+    light: states.hover,
     contrastText,
   };
 };
@@ -142,8 +125,11 @@ export const accentOnSurface = (
   accent: string,
   background: string,
   minimum: number = NON_TEXT_MIN,
-): string =>
-  nudgeToward(accent, relativeLuminance(background) > 0.5 ? '#000000' : '#ffffff', background, minimum);
+): string => {
+  const hexAccent = /^#[0-9a-f]{6}$/i.test(accent) ? accent : toHex(accent);
+  const hexBackground = toHex(background);
+  return nudgeToward(hexAccent, relativeLuminance(hexBackground) > 0.5 ? '#000000' : '#ffffff', hexBackground, minimum);
+};
 
 const accentTextOn = (accent: string, background: string): string =>
   accentOnSurface(accent, background, AA_MIN);
@@ -210,19 +196,31 @@ const focusRingFor = (accent: string, theme: Theme): string =>
 const withAccentTokens = (theme: Theme): Theme => ({
   ...theme,
   accentInk: theme.palette.primary.contrastText,
-  accentText: accentTextOn(theme.palette.primary.main, theme.palette.background.default),
+  accentText: accentTextOn(
+    accentTextOn(theme.palette.primary.main, theme.palette.background.default),
+    theme.palette.background.paper,
+  ),
 });
 
 export const applyBranding = (theme: Theme, branding: TenantBranding | null | undefined): Theme => {
-  if (branding === null || branding === undefined || branding.accentColor === null) {
-    return withAccentTokens(theme);
-  }
-  const primary = deriveBrandPalette(branding.accentColor, theme.palette.mode);
+  const configuredAccent = theme.palette.mode === 'light'
+    ? branding?.accentLight ?? branding?.accentColor
+    : branding?.accentColor;
+  if (configuredAccent === null || configuredAccent === undefined) return withAccentTokens(theme);
+  const accent = theme.palette.mode === 'light' && branding?.accentLight == null
+    ? deriveLightAccent(configuredAccent, [
+      toHex(theme.palette.background.default), toHex(theme.palette.background.paper),
+      ...(/^#[0-9a-f]{6}$/i.test(theme.palette.action.hover) ? [theme.palette.action.hover] : []),
+    ])
+    : configuredAccent;
+  const primary = deriveBrandPalette(accent, theme.palette.mode);
+  const states = accentFillStates(primary.main, primary.contrastText);
   return withAccentTokens({
     ...theme,
     focusRing: focusRingFor(primary.main, theme),
     brandAccent: primary.main,
-    ...(theme.primaryActive === undefined ? {} : { primaryActive: primary.light }),
+    emberCta: { main: primary.main, hover: states.hover, active: states.active, contrastText: primary.contrastText },
+    ...(theme.primaryActive === undefined ? {} : { primaryActive: states.active }),
     palette: {
       ...theme.palette,
       primary: { ...theme.palette.primary, ...primary },

@@ -5,6 +5,7 @@
       "value": {
         "settings": {
           "accentColor": null,
+          "accentLight": null,
           "autoIssueInvoices": false,
           "autoIssueInvoiceScope": "b2b_only",
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
@@ -42,23 +43,23 @@
       "ok": true,
       "value": {
         "avatarUrl": null,
-        "email": "free@together.dev",
+        "email": "kursant.modul@together.dev",
         "emailVerified": true,
         "impersonation": null,
-        "name": "Konto Free",
+        "name": "Kursant Modułowy",
         "tenant": {
-          "banned": true,
-          "displayName": "Konto Free",
+          "banned": false,
+          "displayName": "Kursant Modułowy",
           "dmOptOut": false,
           "id": "tenant-studio",
           "language": null,
-          "memberId": "member-studio-free",
+          "memberId": "member-studio-modul",
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": null,
           "videoAutoplay": null
         },
-        "userId": "fixture-user-48b35d5bade1b6c2"
+        "userId": "fixture-user-a1d1fac3e1e681ac"
       }
     },
     "memberNavigation:[]": {
@@ -67,17 +68,10 @@
         "navigation": {
           "courses": [
             {
-              "accessibleLessonCount": 4,
+              "accessibleLessonCount": 2,
               "completedLessonCount": 0,
               "courseId": "course-js",
               "courseName": "Kurs JavaScript od podstaw",
-              "lastActivityAt": null
-            },
-            {
-              "accessibleLessonCount": 2,
-              "completedLessonCount": 0,
-              "courseId": "course-react",
-              "courseName": "React w praktyce",
               "lastActivityAt": null
             }
           ],
@@ -118,7 +112,7 @@
             {
               "courseIds": [],
               "id": "space-studio-spolecznosc",
-              "isFollowing": true,
+              "isFollowing": false,
               "name": "Społeczność",
               "position": 0,
               "products": [],
@@ -288,6 +282,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null
@@ -314,42 +309,47 @@
           "courseId": "course-js",
           "modules": [
             {
-              "accessStatus": "partially-accessible",
+              "accessStatus": "not-accessible",
               "chapters": [
                 {
-                  "accessStatus": "fully-accessible",
+                  "accessStatus": "not-accessible",
                   "completionStatus": "not-completed",
                   "id": "chapter-js-demo",
                   "lessons": [
                     {
-                      "accessStatus": "fully-accessible",
+                      "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-js-demo-video",
-                      "name": "Demo wideo (Bunny Stream)"
+                      "name": "Demo wideo (Bunny Stream)",
+                      "unlockProductId": "product-club"
                     }
                   ],
                   "name": "Wprowadzenie"
                 },
                 {
-                  "accessStatus": "partially-accessible",
+                  "accessStatus": "not-accessible",
                   "completionStatus": "not-completed",
                   "id": "chapter-js-zmienne",
                   "lessons": [
                     {
-                      "accessStatus": "fully-accessible",
+                      "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-zmienne-1",
                       "durationMinutes": 12,
+                      "isPreview": false,
                       "lessonId": "lesson-js-zmienne-1",
-                      "name": "Deklarowanie zmiennych"
+                      "name": "Deklarowanie zmiennych",
+                      "unlockProductId": "product-club"
                     },
                     {
                       "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-zmienne-2",
                       "durationMinutes": 15,
+                      "isPreview": false,
                       "lessonId": "lesson-js-zmienne-2",
                       "name": "Typy proste i złożone",
                       "unlockProductId": "product-club"
@@ -367,6 +367,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-funkcje-1",
                       "durationMinutes": 18,
+                      "isPreview": false,
                       "lessonId": "lesson-js-funkcje-1",
                       "name": "Funkcje i argumenty",
                       "unlockProductId": "product-club"
@@ -376,6 +377,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-funkcje-2",
                       "durationMinutes": 22,
+                      "isPreview": false,
                       "lessonId": "lesson-js-funkcje-2",
                       "name": "Domknięcia i zakres",
                       "unlockProductId": "product-club"
@@ -389,10 +391,10 @@
               "name": "Część 1 - Podstawy"
             },
             {
-              "accessStatus": "partially-accessible",
+              "accessStatus": "fully-accessible",
               "chapters": [
                 {
-                  "accessStatus": "partially-accessible",
+                  "accessStatus": "fully-accessible",
                   "completionStatus": "not-completed",
                   "id": "chapter-js-dom",
                   "lessons": [
@@ -401,17 +403,18 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-1",
                       "name": "Wybieranie elementów DOM"
                     },
                     {
-                      "accessStatus": "not-accessible",
+                      "accessStatus": "fully-accessible",
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-2",
-                      "name": "Zdarzenia i interakcja",
-                      "unlockProductId": "product-club"
+                      "name": "Zdarzenia i interakcja"
                     }
                   ],
                   "name": "Manipulacja DOM"
@@ -422,20 +425,22 @@
               "name": "Część 2 - DOM"
             },
             {
-              "accessStatus": "fully-accessible",
+              "accessStatus": "not-accessible",
               "chapters": [
                 {
-                  "accessStatus": "fully-accessible",
+                  "accessStatus": "not-accessible",
                   "completionStatus": "not-completed",
                   "id": "chapter-js-projekty",
                   "lessons": [
                     {
-                      "accessStatus": "fully-accessible",
+                      "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-projekt-1",
                       "durationMinutes": 35,
+                      "isPreview": false,
                       "lessonId": "lesson-js-projekt-1",
-                      "name": "Projekt: lista zadań"
+                      "name": "Projekt: lista zadań",
+                      "unlockProductId": "product-club"
                     }
                   ],
                   "name": "Projekt końcowy"
@@ -492,7 +497,18 @@
       "value": {
         "progress": {
           "completedLessonIds": [],
-          "courseId": "course-js"
+          "courseId": "course-js",
+          "resume": {
+            "firstIncomplete": {
+              "id": "lesson-js-dom-1",
+              "name": "Wybieranie elementów DOM"
+            },
+            "isReview": false,
+            "target": {
+              "id": "lesson-js-dom-1",
+              "name": "Wybieranie elementów DOM"
+            }
+          }
         }
       }
     },
@@ -512,7 +528,7 @@
   "expectedErrors": {
     "studentLesson:[\"lesson-js-zmienne-2\"]": "forbidden"
   },
-  "principal": "free@together.dev",
+  "principal": "kursant.modul@together.dev",
   "route": "/my/courses/course-js/lessons/lesson-js-zmienne-2",
   "scenario": "lesson-locked",
   "tenant": "studio"

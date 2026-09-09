@@ -117,7 +117,7 @@ only when `APP_ENV` is `staging` or `preview`, so every other deployment answers
 `api/platform-reset.ts`, whose exported `maxDuration` of 300 s is read by the Node
 builder through static configuration. `app/vercel.json` repeats that 300 s limit
 as an additional declaration, without raising the shared `api/index.ts` ceiling
-of 30 s.
+of 60 s.
 The action is offered and the capability granted only to a platform owner whose
 e-mail address is verified. Every attempt that reaches the reseed is recorded in
 `platform_audit_events`, a platform-scoped table the wipe never touches.

@@ -188,6 +188,7 @@ export const createCourse = async (
     name: parsed.data.name,
     description: parsed.data.description,
     imageUrl: parsed.data.imageUrl,
+    salesUrl: parsed.data.salesUrl ?? null,
     moduleOrder: [],
     publiclyVisible: parsed.data.publiclyVisible,
     legacyId: parsed.data.legacyId,
@@ -237,12 +238,15 @@ export const updateCourse = async (
     name: parsed.data.name ?? existing.name,
     description: parsed.data.description ?? existing.description,
     imageUrl: parsed.data.imageUrl === undefined ? existing.imageUrl : parsed.data.imageUrl,
+    salesUrl: parsed.data.salesUrl === undefined ? existing.salesUrl ?? null : parsed.data.salesUrl,
     moduleOrder,
     publiclyVisible: parsed.data.publiclyVisible ?? existing.publiclyVisible,
   };
   const saved = await deps.courses.update(tenant.value, updated, snapshot.value);
   if (!saved) return err(notFound(`No course "${parsed.data.id}" in this tenant`));
-  if (saved.publiclyVisible !== existing.publiclyVisible) {
+  const offerChanged = saved.name !== existing.name || saved.description !== existing.description
+    || saved.imageUrl !== existing.imageUrl || saved.salesUrl !== existing.salesUrl;
+  if (saved.publiclyVisible !== existing.publiclyVisible || (saved.publiclyVisible && offerChanged)) {
     await deps.products.bumpContentVersion(tenant.value);
   }
   return ok(saved);

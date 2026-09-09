@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { Box, Link as MuiLink, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
+import { Box, Button, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -81,6 +81,26 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
   );
 };
 
+const CourseProgramSection = ({
+  courseId,
+  structure,
+  focusLessonId,
+}: {
+  courseId: string;
+  structure: CourseStructureWithAccess;
+  focusLessonId: string | null;
+}) => {
+  const t = useTranslations();
+  return (
+    <Box component="section" data-testid="course-tree-inline" sx={{ mt: '1.5rem' }}>
+      <Typography variant="h3" component="h2" sx={{ mb: '0.9rem' }}>
+        {t.courseOverview.curriculum}
+      </Typography>
+      <CourseTree courseId={courseId} structure={structure} focusLessonId={focusLessonId} />
+    </Box>
+  );
+};
+
 export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
   const viewer = useViewerKind();
 
@@ -127,23 +147,35 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
 
   if (structure.isError) {
     const notFound = isNotFound(structure.error);
+    if (notFound) {
+      return (
+        <MemberSurface
+          title={t.courseTree.courseNotFound}
+          eyebrow={t.student.courseEyebrow}
+          width="wide"
+          state={{
+            kind: 'not-found',
+            title: t.courseTree.courseNotInLibrary,
+            action: (
+              <Button component={Link} to="/my" variant="contained">
+                {t.courseTree.backToMyCourses}
+              </Button>
+            ),
+          }}
+        />
+      );
+    }
+
     return (
       <MemberSurface
-        title={notFound ? t.courseTree.courseNotFound : t.student.myCourses}
+        title={t.student.myCourses}
         eyebrow={t.student.courseEyebrow}
-        width={notFound ? 'prose' : 'wide'}
-        state={notFound
-          ? {
-              kind: 'not-found',
-              title: t.courseTree.courseNotFound,
-              body: t.courseTree.courseNotInLibrary,
-              action: <MuiLink component={Link} to="/my">{t.courseTree.backToMyCourses}</MuiLink>,
-            }
-          : {
-              kind: 'error',
-              message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
-              retry: { label: t.common.retry, onRetry: () => void structure.refetch() },
-            }}
+        width="wide"
+        state={{
+          kind: 'error',
+          message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
+          retry: { label: t.common.retry, onRetry: () => void structure.refetch() },
+        }}
       />
     );
   }
@@ -151,6 +183,70 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const course = structure.data.structure;
   const catalogEntry = courses.data?.courses.find((entry) => entry.id === courseId);
   const hasModules = course.modules.length > 0;
+  const aboutCard = catalogEntry !== undefined && catalogEntry.description !== '' ? (
+    <Paper elevation={1} sx={{ p: '1.5rem' }} data-testid="course-about-card">
+      <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+        {t.courseOverview.aboutCourse}
+      </Eyebrow>
+      <Typography variant="body1">{catalogEntry.description}</Typography>
+    </Paper>
+  ) : null;
+  const discussionSearch = hasModules ? (
+    <CourseDiscussionSearch courseId={courseId} structure={course} />
+  ) : null;
+  const progressCard = (
+    <CourseProgressCard
+      courseId={courseId}
+      structure={course}
+      resume={progress.data?.progress.resume}
+    />
+  );
+  const details = (
+    <>
+      <CourseStatTiles structure={course} />
+      {catalogEntry === undefined ? null : (
+        <Cover
+          src={catalogEntry.imageUrl}
+          title={course.name}
+          alt={t.courseOverview.coverAlt({ name: course.name })}
+          frame="standalone"
+          whenMissing="omit"
+          testId="course-cover"
+          fallbackTestId="course-cover-fallback"
+        />
+      )}
+    </>
+  );
+  const emptyState = !hasModules ? (
+    <StatusView
+      state={{
+        kind: 'empty',
+        icon: <EmptyCourseIcon />,
+        title: t.courseTree.emptyCourseTitle,
+        body: t.courseTree.noPublishedContent,
+      }}
+      data-testid="course-empty-state"
+    />
+  ) : null;
+  const compactSections = (
+    <>
+      {progressCard}
+      {aboutCard}
+      {discussionSearch}
+      {details}
+      {emptyState}
+      {hasModules ? (
+        <CourseProgramSection courseId={courseId} structure={course} focusLessonId={focusLessonId} />
+      ) : null}
+    </>
+  );
+  const desktopSections = (
+    <>
+      {details}
+      {aboutCard}
+      {emptyState}
+    </>
+  );
 
   return (
     <MemberSurface
@@ -158,59 +254,13 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       eyebrow={t.student.courseEyebrow}
       width="wide"
       mobileRail="split"
-      railLeading={
-        <>
-          <CourseProgressCard
-            courseId={courseId}
-            structure={course}
-            lastViewedLessonId={lastViewedLessonId}
-          />
-          {hasModules && isCompact ? (
-            <Box data-testid="course-tree-inline">
-              <Typography variant="overline" component="h2">
-                {t.courseOverview.curriculum}
-              </Typography>
-              <CourseTree courseId={courseId} structure={course} focusLessonId={focusLessonId} />
-            </Box>
-          ) : null}
-        </>
-      }
-      rail={hasModules ? <CourseDiscussionSearch courseId={courseId} structure={course} /> : undefined}
+      railLeading={isCompact ? undefined : progressCard}
+      rail={hasModules && !isCompact ? discussionSearch : undefined}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>
         {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
         {courses.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} /> : null}
-        <CourseStatTiles structure={course} />
-        {catalogEntry === undefined ? null : (
-          <Cover
-            src={catalogEntry.imageUrl}
-            title={course.name}
-            alt={t.courseOverview.coverAlt({ name: course.name })}
-            frame="standalone"
-            whenMissing="omit"
-            testId="course-cover"
-            fallbackTestId="course-cover-fallback"
-          />
-        )}
-        {catalogEntry !== undefined && catalogEntry.description !== '' && (
-          <Paper elevation={1} sx={{ p: '1.5rem' }} data-testid="course-about-card">
-            <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
-              {t.courseOverview.aboutCourse}
-            </Eyebrow>
-            <Typography variant="body1">{catalogEntry.description}</Typography>
-          </Paper>
-        )}
-        {!hasModules && (
-          <StatusView
-            state={{
-              kind: 'empty',
-              icon: <EmptyCourseIcon />,
-              title: t.courseTree.emptyCourseTitle,
-              body: t.courseTree.noPublishedContent,
-            }}
-            data-testid="course-empty-state"
-          />
-        )}
+        {isCompact ? compactSections : desktopSections}
       </Stack>
     </MemberSurface>
   );

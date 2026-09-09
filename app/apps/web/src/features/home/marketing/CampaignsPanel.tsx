@@ -1,3 +1,6 @@
+import { CampaignAudienceSection } from './CampaignAudienceSection.js';
+import type { ContactCampaignAudience } from '#core/domain/index.js';
+import { CampaignTextSection } from './CampaignTextSection.js';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   Alert,
@@ -76,29 +79,35 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const layouts = useQuery(actions.marketingLayouts);
   const [name, setName] = useState(campaign?.name ?? '');
   const [subject, setSubject] = useState(campaign?.subject ?? '');
+  const [bodyText, setBodyText] = useState(campaign?.bodyText ?? '');
+  const [replyTo, setReplyTo] = useState(campaign?.replyTo ?? '');
   const [bodySource, setBodySource] = useState(campaign?.bodySource ?? '');
   const [bodyMode, setBodyMode] = useState<'markdown' | 'html'>(
     campaign !== undefined && campaign.bodySource === campaign.bodyHtml ? 'html' : 'markdown',
   );
   const [consentDefinitionId, setConsentDefinitionId] = useState(campaign?.consentDefinitionId ?? '');
+  const [audience, setAudience] = useState<ContactCampaignAudience | null>(campaign === undefined ? { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false } : campaign.audience);
   const [productIds, setProductIds] = useState<string[]>(campaign?.audienceFilter?.productIds ?? []);
   const [layoutId, setLayoutId] = useState(campaign?.layoutId ?? '');
   const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify([
     campaign?.name ?? '',
     campaign?.subject ?? '',
+    campaign?.bodyText ?? '',
+    campaign?.replyTo ?? '',
     campaign?.bodySource ?? '',
     campaign !== undefined && campaign.bodySource === campaign.bodyHtml ? 'html' : 'markdown',
     campaign?.consentDefinitionId ?? '',
     campaign?.audienceFilter?.productIds ?? [],
     campaign?.layoutId ?? '',
+    campaign === undefined ? { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false } : campaign.audience,
   ]));
 
   const activeDefinitions = (consents.data?.definitions ?? []).filter((definition) =>
     definition.status === 'active' && definition.kind === 'optional_marketing'
   );
   const effectiveConsentId = consentDefinitionId || activeDefinitions[0]?.id || '';
-  const editable = campaign === undefined || campaign.status === 'draft' || campaign.status === 'scheduled';
-  const currentSnapshot = JSON.stringify([name, subject, bodySource, bodyMode, consentDefinitionId, productIds, layoutId]);
+  const editable = campaign === undefined || campaign.status === 'draft' || (campaign.audienceVersion === 1 && campaign.status === 'scheduled');
+  const currentSnapshot = JSON.stringify([name, subject, bodyText, replyTo, bodySource, bodyMode, consentDefinitionId, productIds, layoutId, audience]);
   const dirty = editable && currentSnapshot !== savedSnapshot;
   const allowNavigation = useUnsavedChanges(dirty, t.common.unsavedChangesConfirm);
 
@@ -106,8 +115,8 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const previewAudience = preview.mutate;
 
   useEffect(() => {
-    if (editable && effectiveConsentId !== '') previewAudience({ consentDefinitionId: effectiveConsentId, productIds });
-  }, [editable, effectiveConsentId, previewAudience, productIds]);
+    if (audience === null && editable && effectiveConsentId !== '') previewAudience({ consentDefinitionId: effectiveConsentId, productIds });
+  }, [audience, editable, effectiveConsentId, previewAudience, productIds]);
 
   const create = useMutation({
     ...actions.createMarketingCampaign,
@@ -133,8 +142,11 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
       subject,
       bodyHtml,
       bodySource,
+      bodyText: bodyText === '' ? null : bodyText,
+      replyTo: replyTo === '' ? null : replyTo,
       consentDefinitionId: effectiveConsentId,
       productIds,
+      ...(audience === null ? {} : { audience }),
       layoutId: layoutId === '' ? null : layoutId,
     };
     if (campaign === undefined) create.mutate(input);
@@ -163,6 +175,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
         <FormLabel htmlFor="marketing-campaign-subject">{t.marketing.subjectLabel}</FormLabel>
         <OutlinedInput id="marketing-campaign-subject" value={subject} onChange={(event) => setSubject(event.target.value)} disabled={!editable} required />
       </FormControl>
+      <CampaignTextSection bodyText={bodyText} replyTo={replyTo} disabled={!editable} onBodyTextChange={setBodyText} onReplyToChange={setReplyTo} />
       <Stack useFlexGap spacing="0.75rem">
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
@@ -228,13 +241,14 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
           onChange={(event) => {
             const value = event.target.value;
             setConsentDefinitionId(value);
-            previewAudience({ consentDefinitionId: value, productIds });
+            if (audience === null) previewAudience({ consentDefinitionId: value, productIds });
           }}
           required
         >
           {activeDefinitions.map((definition) => <MenuItem key={definition.id} value={definition.id}>{definition.key}</MenuItem>)}
         </Select>
       </FormControl>
+      {audience !== null ? <CampaignAudienceSection audience={audience} consentDefinitionId={effectiveConsentId} disabled={!editable} frozen={campaign?.audienceSnapshotId != null} onChange={setAudience} /> : <>
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-products-label">{t.marketing.productFilterLabel}</FormLabel>
         <Select
@@ -270,6 +284,8 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
           </Button>
         ) : null}
       </FormControl>
+      {campaign?.status === 'draft' ? <Button onClick={() => setAudience({ version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false })}>{t.marketing.switchToLists}</Button> : null}
+      </>}
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-layout-label">{t.marketing.layoutLabel}</FormLabel>
         <Select labelId="marketing-campaign-layout-label" value={layoutId} disabled={!editable || layouts.isPending} onChange={(event) => setLayoutId(event.target.value)}>
@@ -341,6 +357,7 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
         </Stack>
       ) : null}
       <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ flexWrap: 'wrap' }}>
+        {campaign.status === 'scheduled' ? <Button disabled={action.isPending} onClick={() => action.mutate({ campaignId: campaign.id, action: 'draft' })}>{t.marketing.returnToDraft}</Button> : null}
         {campaign.status === 'running' ? <Button onClick={() => action.mutate({ campaignId: campaign.id, action: 'pause' })}>{t.marketing.pause}</Button> : null}
         {campaign.status === 'paused' ? <Button onClick={() => action.mutate({ campaignId: campaign.id, action: 'resume' })}>{t.marketing.resume}</Button> : null}
         {['draft', 'scheduled', 'running', 'paused'].includes(campaign.status) ? (
@@ -408,6 +425,7 @@ export const CampaignsPanel = () => {
                 summary={(
                   <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing={{ xs: '0.25rem', sm: '1rem' }}>
                     <span>{t.marketing.counters({ toSend: campaign.toSend, sent: campaign.sent, failed: campaign.failed })}</span>
+                    {campaign.audienceVersion === 2 ? <span>{t.marketing.contactProgress({ candidates: campaign.candidateCount, skipped: campaign.skipped, queued: campaign.queued, unresolved: campaign.unresolved })}</span> : null}
                     <span>{t.marketing.compactOpens({
                       unique: campaign.engagement.uniqueOpens,
                       total: campaign.engagement.totalOpens,
@@ -445,7 +463,8 @@ export const CampaignDetailPage = () => {
   return (
     <PanelPage title={campaign.data.campaign.name} backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}>
       <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} />
-      <CampaignForm campaign={campaign.data.campaign} />
+      {campaign.data.campaign.audienceVersion === 2 ? <Typography>{t.marketing.contactProgress({ candidates: campaign.data.campaign.candidateCount, skipped: campaign.data.campaign.skipped, queued: campaign.data.campaign.queued, unresolved: campaign.data.campaign.unresolved })}</Typography> : null}
+      <CampaignForm key={`${campaign.data.campaign.id}:${campaign.data.campaign.status}`} campaign={campaign.data.campaign} />
       <CampaignActions campaign={campaign.data.campaign} />
     </PanelPage>
   );

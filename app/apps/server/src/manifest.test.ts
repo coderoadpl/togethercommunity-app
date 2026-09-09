@@ -57,6 +57,7 @@ const deps = (tenants: Tenant[], accentColor: string | null = null): ManifestDep
         logoUrl: null,
         logoDarkUrl: null,
         accentColor,
+        accentLight: null,
         faviconUrl: null,
         ogTitle: null,
         ogDescription: null,

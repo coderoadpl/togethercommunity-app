@@ -26,6 +26,7 @@ export interface ScreenSpec {
   waitForNetworkIdle?: boolean;
   minBytes?: number;
   fullPage?: boolean;
+  isolateCapture?: boolean;
   mask?: (page: Page) => Locator[];
 }
 
@@ -127,6 +128,14 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
   },
   {
+    name: 'login-resolve-error',
+    auth: 'public',
+    path: '/login',
+    fixtureName: 'login',
+    viewports: ['mobile'],
+    ready: (page) => page.getByTestId('sign-in-methods-unavailable').waitFor(visible),
+  },
+  {
     name: 'login-tenant',
     auth: 'public',
     path: '/login',
@@ -221,6 +230,18 @@ export const SCREENS: readonly ScreenSpec[] = [
     },
   },
   {
+    name: 'anon-space',
+    auth: 'public',
+    path: '/community/space-studio-spolecznosc',
+    fixtureName: 'anon-home-tiles',
+    viewports: ['mobile'],
+    ready: async (page) => {
+      await page.getByTestId('anon-join-cta').waitFor(visible);
+      await page.getByTestId('public-space-events-empty').waitFor(visible);
+      await page.getByTestId('public-post-body-post-spolecznosc-hello').waitFor(visible);
+    },
+  },
+  {
     // Waits target the LAST async element of each screen (waterfall queries),
     // otherwise a shot can land mid-load and produce a flaky golden.
     name: 'start',
@@ -245,6 +266,12 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('member-menu-sheet').waitFor(visible);
       await page.getByTestId('sidebar-course-course-js').waitFor(visible);
       await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
+      // The sheet covers its trigger, so the click position can hover an account action.
+      await page.mouse.move(0, 0);
+    },
+    settled: async (page) => {
+      // The opening sheet moves its sign-out row under the menu trigger's pointer position.
+      await page.mouse.move(0, 0);
     },
   },
   {
@@ -392,7 +419,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
     ready: async (page) => {
       await page.getByTestId('member-breadcrumbs').waitFor(visible);
-      await page.getByTestId('discussion-composer-open').waitFor(visible);
+      await page.getByTestId('discussion-composer-input').waitFor(visible);
       await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor(visible);
     },
   },
@@ -508,6 +535,19 @@ export const SCREENS: readonly ScreenSpec[] = [
     mask: (page) => [page.locator('[data-testid^="storage-cors-origin-"]'), page.getByTestId('storage-cors-json')],
   },
   {
+    name: 'panel-storage-wizard-connection',
+    auth: 'creator',
+    path: '/panel/integrations#storage',
+    fixtureName: 'panel-storage-wizard',
+    ready: (page) => page.getByTestId('storage-connection-step').waitFor(visible),
+    settled: async (page) => {
+      await page.getByTestId('storage-wizard').evaluate((element) =>
+        element.scrollIntoView({ block: 'start' }),
+      );
+    },
+    mask: (page) => [page.locator('[data-testid^="storage-cors-origin-"]')],
+  },
+  {
     name: 'panel-lesson-attachments',
     auth: 'creator',
     path: '/panel/lessons/lesson-js-zmienne-1',
@@ -559,6 +599,24 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/sales/order-studio-aktywny-js',
     ready: (page) => page.getByText('PARTNER20').waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-contacts',
+    auth: 'creator',
+    path: '/panel/marketing/contacts',
+    ready: (page) => page.getByRole('table', { name: 'Kontakty', exact: true }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-lists',
+    auth: 'creator',
+    path: '/panel/marketing/lists',
+    ready: (page) => page.getByRole('table', { name: 'Listy', exact: true }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-contact-import',
+    auth: 'creator',
+    path: '/panel/marketing/contacts/import',
+    ready: (page) => page.locator('input[type="file"]').waitFor(visible),
   },
   {
     name: 'panel-marketing-campaigns',
@@ -617,6 +675,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'panel-course',
     auth: 'creator',
+    isolateCapture: true,
     path: '/panel/courses/course-js',
     ready: (page) => page.getByTestId('module-card').first().waitFor(visible),
   },

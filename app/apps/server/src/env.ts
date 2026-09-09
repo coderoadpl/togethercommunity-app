@@ -132,6 +132,10 @@ export const envSchema = z
     SMOKE_CREATOR_PASSWORD: optionalNonEmptyString,
     SNS_TEST_CERT_PEM_BASE64: optionalNonEmptyString,
     EMAIL_DISPATCH_RATE_PER_SECOND: z.coerce.number().positive().default(5),
+    MARKETING_WORKER_SECONDS: z.coerce.number().min(1).max(55).default(55),
+    MARKETING_SEND_SECONDS: z.coerce.number().min(1).max(50).default(50),
+    MARKETING_BATCH_CAP: z.coerce.number().int().min(1).max(10000).default(1000),
+    MARKETING_WORKER_INTERVAL_MS: z.coerce.number().int().min(1000).default(60000),
     EMAIL_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(2000).default(1000),
     KSEF_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
     CONSENT_EVIDENCE_PURGE_ENABLED: z

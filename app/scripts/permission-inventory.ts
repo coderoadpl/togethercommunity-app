@@ -47,7 +47,6 @@ const allHumans = ['owner', 'admin', 'member', 'authenticated'] as const;
 const tenantActors = ['owner', 'admin', 'member'] as const;
 const staff = ['owner', 'admin'] as const;
 const owner = ['owner'] as const;
-const member = ['member'] as const;
 const publicPrincipal = ['public'] as const;
 const apiKey = ['api-key'] as const;
 const transactionalApiKey = ['transactional-api-key'] as const;
@@ -115,6 +114,11 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     || path === '/api/m2m/import/progress'
   ) return 'import:users-write';
   if (path.startsWith('/api/m2m/import/')) return 'import:content-write';
+  const directoryPath = path.replace('/api/m2m/marketing/', '/api/marketing/');
+  if (path === '/api/internal/marketing/imports/tick' || (directoryPath.startsWith('/api/marketing/') && (directoryPath.endsWith('/contacts/sync') || directoryPath.endsWith('/process')))) return 'scheduler:dispatch';
+  if (directoryPath.startsWith('/api/marketing/contacts')) return method === 'GET' ? 'marketing:contact:read' : 'marketing:contact:write';
+  if (directoryPath.startsWith('/api/marketing/lists')) return method === 'GET' || directoryPath.endsWith('/preview') ? 'marketing:list:read' : 'marketing:list:write';
+  if (directoryPath.startsWith('/api/marketing/contact-imports') || directoryPath === '/api/marketing/suppressions/import') return 'marketing:import:write';
   if (path.startsWith('/api/m2m/marketing/messages')) return method === 'GET' ? 'marketing:message:read' : 'marketing:message:send';
   if (path === '/api/m2m/marketing/eligibility') return 'marketing:consent:read';
   if (path === '/api/m2m/marketing/consents') return 'marketing:consent:write';
@@ -134,7 +138,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/marketing/documents')) return method === 'GET' ? 'marketing:document:read' : 'marketing:document:write';
   if (path.startsWith('/api/marketing/layouts')) return method === 'GET' ? 'marketing:layout:read' : 'marketing:layout:write';
   if (path === '/api/marketing/ses-onboarding/identities') return 'marketing:ses:write';
-  if (path.startsWith('/api/marketing/ses-') || path === '/api/marketing/smtp/test') return method === 'GET' ? 'marketing:ses:read' : 'marketing:ses:write';
+  if (path.startsWith('/api/marketing/sns-inbox') || path.startsWith('/api/marketing/ses-') || path === '/api/marketing/smtp/test') return method === 'GET' ? 'marketing:ses:read' : 'marketing:ses:write';
   if (path === '/api/marketing/reputation') return 'marketing:reputation:read';
   if (path === '/api/marketing/suppressions') return method === 'GET' ? 'marketing:suppression:read' : 'marketing:suppression:write';
   if (path.startsWith('/api/marketing/sends') || /^\/api\/members\/:id\/emails$/.test(path)) return 'marketing:delivery:read';
@@ -210,7 +214,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/courses' || path.startsWith('/api/courses/')) return method === 'GET' ? 'course:read' : 'course:write';
   if (path.startsWith('/api/modules') || path.startsWith('/api/lessons')) return method === 'GET' ? 'course:read' : 'course:write';
   if (path.startsWith('/api/student/')) {
-    if (path.includes('/progress') || path.includes('/last-viewed') || path.includes('/complete')) {
+    if (path.includes('/progress') || path.includes('/last-viewed') || path.includes('/complete') || path.includes('/uncomplete')) {
       return method === 'GET' ? 'member:progress:read' : 'member:progress:self-write';
     }
     return 'lesson:play';
@@ -239,6 +243,7 @@ const beforeForRoute = (
   method: string,
   path: string,
 ): readonly Principal[] => {
+  if (/^\/api\/(?:m2m\/)?marketing\//.test(path) && (path.endsWith('/process') || path.endsWith('/contacts/sync'))) return path.startsWith('/api/m2m/') ? [] : staff;
   const route = { method, path };
   const publicEntry = publicRouteManifestEntry(route);
   if (publicEntry !== undefined) {
@@ -264,7 +269,7 @@ const beforeForRoute = (
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
   if (path.startsWith('/api/me/sessions')) return tenantActors;
-  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/me/avatar/') || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/me/avatar/') || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return tenantActors;
   if (path === '/api/member/navigation') return tenantActors;
   if (path === '/api/member/home-feed') return tenantActors;
   if (path === '/api/member/upcoming-events') return tenantActors;
@@ -272,7 +277,7 @@ const beforeForRoute = (
     return method === 'GET' || path === '/api/events/rsvp' ? tenantActors : staff;
   }
   if (path.startsWith('/api/student/')) {
-    return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
+    return tenantActors;
   }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
   if (path === '/api/tenant/routing') return staff;
@@ -381,7 +386,8 @@ const capabilityFromBody = (
     ts.forEachChild(node, visit);
   };
   visit(body);
-  if (capabilities.length !== 1) {
+  const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
+  if (capabilities.length !== 1 && !directoryConjunction) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
     );
@@ -496,6 +502,7 @@ const beforeForUseCase = (
   name: string,
   capability: Capability,
 ): readonly Principal[] => {
+  if (['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
@@ -505,18 +512,18 @@ const beforeForUseCase = (
   }
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'account-sessions.ts') return tenantActors;
-  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
+  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return tenantActors;
   if (file === 'entitlements.ts') {
-    return name === 'resolveMemberEntitlements' ? member : tenantActors;
+    return tenantActors;
   }
   if (file === 'lesson-media.ts') return tenantActors;
   if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
   if (file === 'image-assets.ts') {
-    if (capability === 'member:profile:self-write') return member;
+    if (capability === 'member:profile:self-write') return tenantActors;
     return capability === 'tenant:settings:write' ? owner : staff;
   }
-  if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
-  if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
+  if (file === 'product-downloads.ts') return capability === 'member:product:read' ? tenantActors : staff;
+  if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : tenantActors;
   if (file === 'lesson-playback.ts') return tenantActors;
   if (file === 'tenant-domains.ts' || file === 'tenant-redirects.ts') {
     return capability === 'tenant:domain:read' ? staff : owner;
@@ -550,7 +557,8 @@ const beforeForUseCase = (
 const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
-    const reachable = before === allHumans
+    const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
+    const reachable = directory ? before : before === allHumans
       ? allHumans
       : before === platformOwner
         ? platformOwner
@@ -667,6 +675,10 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.',
     '',
     'The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.',
+    '',
+    'Directory imports additionally require the relevant contact, list, consent or suppression writes; previews and row results require corresponding reads. List previews require both `marketing:list:read` and `marketing:contact:read`. The table lists the primary capability, while use-case guards enforce these conjunctions. Marketing API keys cannot invoke scheduler operations.',
+    '',
+    'Staff acting on their own account share all member capabilities. Tenant identity resolution ensures their member row, while impersonation retains its separate read allowlist and mutation guard.',
     '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',

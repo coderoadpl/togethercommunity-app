@@ -93,6 +93,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null
@@ -125,6 +126,7 @@
             ],
             "name": "Acme Course",
             "publiclyVisible": false,
+            "salesUrl": null,
             "tenantId": "tenant-acme"
           }
         ]
@@ -151,6 +153,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-acme-intro",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-acme-intro",
                       "name": "Lekcja wprowadzająca"
                     }
@@ -164,6 +167,26 @@
             }
           ],
           "name": "Acme Course"
+        }
+      }
+    },
+    "studentProgress:[\"course-acme\"]": {
+      "ok": true,
+      "value": {
+        "progress": {
+          "completedLessonIds": [],
+          "courseId": "course-acme",
+          "resume": {
+            "firstIncomplete": {
+              "id": "lesson-acme-intro",
+              "name": "Lekcja wprowadzająca"
+            },
+            "isReview": false,
+            "target": {
+              "id": "lesson-acme-intro",
+              "name": "Lekcja wprowadzająca"
+            }
+          }
         }
       }
     },

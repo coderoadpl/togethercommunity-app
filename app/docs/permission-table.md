@@ -10,13 +10,17 @@ The `operator-secret` principal requires both `marketing:campaign:dispatch` and 
 
 The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.
 
+Directory imports additionally require the relevant contact, list, consent or suppression writes; previews and row results require corresponding reads. List previews require both `marketing:list:read` and `marketing:contact:read`. The table lists the primary capability, while use-case guards enforce these conjunctions. Marketing API keys cannot invoke scheduler operations.
+
+Staff acting on their own account share all member capabilities. Tenant identity resolution ensures their member row, while impersonation retains its separate read allowlist and mutation guard.
+
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
 `member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 110. Route rows: 307. Exported `Ctx` use-case rows: 248.
+Closed capability count: 115. Route rows: 367. Exported `Ctx` use-case rows: 286.
 
 ## Human-readable diff
 
@@ -111,6 +115,34 @@ no changes
 | `GET /api/m2m/marketing/templates` | marketing:layout:read | api-key | api-key | yes | Tenant API key |
 | `POST /api/internal/marketing/tick` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/marketing/tick` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
+| `GET /api/m2m/marketing/contacts` | marketing:contact:read | api-key | api-key | yes | Tenant API key |
+| `GET /api/m2m/marketing/contacts/export` | marketing:contact:read | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contacts` | marketing:contact:write | api-key | api-key | yes | Tenant API key |
+| `GET /api/m2m/marketing/contacts/:id` | marketing:contact:read | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contacts/:id/update` | marketing:contact:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contacts/:id/archive` | marketing:contact:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contacts/:id/restore` | marketing:contact:write | api-key | api-key | yes | Tenant API key |
+| `GET /api/m2m/marketing/lists` | marketing:list:read | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/lists` | marketing:list:write | api-key | api-key | yes | Tenant API key |
+| `GET /api/m2m/marketing/lists/:id` | marketing:list:read | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/lists/:id/update` | marketing:list:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/lists/:id/archive` | marketing:list:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/lists/:id/add` | marketing:list:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/lists/:id/remove` | marketing:list:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/lists/:id/preview` | marketing:list:read | api-key | api-key | yes | Tenant API key |
+| `GET /api/m2m/marketing/lists/:id/contacts` | marketing:list:read | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contact-imports` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contact-imports/:id/rows` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contact-imports/:id/validate` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contact-imports/:id/commit` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `GET /api/m2m/marketing/contact-imports/:id` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `GET /api/m2m/marketing/contact-imports/:id/rows` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contact-imports/:id/retry` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contact-imports/:id/cancel` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/suppressions/import` | marketing:import:write | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/marketing/contact-imports/:id/process` | scheduler:dispatch | none | none | yes | Tenant API key |
+| `POST /api/m2m/marketing/contacts/sync` | scheduler:dispatch | none | none | yes | Tenant API key |
+| `GET /api/internal/marketing/imports/tick` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/m2m/import/validate` | import:content-write | import-content-api-key, import-users-api-key | import-content-api-key, import-users-api-key | review | Tenant API key + either import scope |
 | `POST /api/m2m/import/courses` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/modules` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
@@ -123,6 +155,35 @@ no changes
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports/upload` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports/:id/preview` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/contacts` | marketing:contact:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/contacts/export` | marketing:contact:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contacts` | marketing:contact:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/contacts/:id` | marketing:contact:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contacts/:id/update` | marketing:contact:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contacts/:id/archive` | marketing:contact:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contacts/:id/restore` | marketing:contact:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/lists` | marketing:list:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/lists` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/lists/:id` | marketing:list:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/lists/:id/update` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/lists/:id/archive` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/lists/:id/add` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/lists/:id/remove` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/lists/:id/preview` | marketing:list:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/lists/:id/contacts` | marketing:list:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports/:id/rows` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports/:id/validate` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports/:id/commit` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/contact-imports/:id` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/contact-imports/:id/rows` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports/:id/retry` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports/:id/cancel` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/suppressions/import` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contact-imports/:id/process` | scheduler:dispatch | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/contacts/sync` | scheduler:dispatch | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions/update` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -133,6 +194,7 @@ no changes
 | `POST /api/marketing/campaigns/update` | marketing:campaign:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/campaigns/action` | marketing:campaign:send | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/campaigns/test` | marketing:campaign:send | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/campaigns/audience` | marketing:campaign:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/audience-preview` | marketing:campaign:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/documents` | marketing:document:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/documents` | marketing:document:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -141,6 +203,8 @@ no changes
 | `POST /api/marketing/documents/publish` | marketing:document:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/layouts` | marketing:layout:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/layouts` | marketing:layout:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/sns-inbox` | marketing:ses:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/sns-inbox/retry` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/ses-settings` | marketing:ses:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/reputation` | marketing:reputation:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-settings` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -159,18 +223,18 @@ no changes
 | `POST /api/impersonation/start` | member:impersonate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/impersonation/stop` | member:impersonate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenant/audit-events` | member:impersonate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `POST /api/me/profile` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/me/avatar/upload` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/me/avatar/complete` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/me/avatar/remove` | member:profile:self-write | member | member | yes | identity middleware + use-case guard |
+| `POST /api/me/profile` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/upload` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/complete` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/avatar/remove` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/me/sessions` | account:session:self-read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/me/sessions/revoke` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/me/sessions/revoke-others` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
-| `GET /api/me/billing-orders` | member:billing:read | member | member | yes | identity middleware + use-case guard |
-| `GET /api/me/data-export` | member:data-export:self-read | member | member | yes | identity middleware + use-case guard |
-| `GET /api/me/erasure-request` | member:erasure:self-request | member | member | yes | identity middleware + use-case guard |
-| `POST /api/me/erasure-request` | member:erasure:self-request | member | member | yes | identity middleware + use-case guard |
-| `DELETE /api/me/erasure-request` | member:erasure:self-request | member | member | yes | identity middleware + use-case guard |
+| `GET /api/me/billing-orders` | member:billing:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/me/data-export` | member:data-export:self-read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/me/erasure-request` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/erasure-request` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `DELETE /api/me/erasure-request` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/members/erasure-requests` | member:erasure:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/erasure-requests/:requestId/reject` | member:remove | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | identity middleware + use-case guard |
@@ -187,8 +251,8 @@ no changes
 | `POST /api/image-assets/product-cover/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/branding/upload` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/branding/complete` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
-| `GET /api/my/products` | member:product:read | member | member | yes | identity middleware + use-case guard |
-| `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | member | member | yes | identity middleware + use-case guard |
+| `GET /api/my/products` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/members` | member:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/export` | member:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/ban` | member:ban | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -244,7 +308,7 @@ no changes
 | `POST /api/invoices/:invoiceId/refresh` | invoice:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/invoices/:invoiceId/download` | invoice:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/invoices/:invoiceId/upo` | invoice:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `GET /api/me/invoices/:invoiceId/download` | invoice:member-read | member | member | yes | identity middleware + use-case guard |
+| `GET /api/me/invoices/:invoiceId/download` | invoice:member-read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/sales/summary` | sales:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/coupons/export` | coupon:report | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/coupons/archive` | coupon:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -277,11 +341,11 @@ no changes
 | `GET /api/student/lessons/:lessonId/attachments` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/:lessonId/playback` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
-| `POST /api/student/lessons/complete` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/student/lessons/uncomplete` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
-| `POST /api/student/progress/last-viewed` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
+| `POST /api/student/lessons/complete` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/student/lessons/uncomplete` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/student/progress/last-viewed` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/next` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
-| `GET /api/student/progress` | member:progress:read | member | member | yes | identity middleware + use-case guard |
+| `GET /api/student/progress` | member:progress:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/posts` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/support/message` | support:request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/platform/data-reset` | platform:data:reset | platform-owner | platform-owner | yes | identity middleware + use-case guard |
@@ -402,7 +466,7 @@ no changes
 | `email-send-observability.ts#getEmailSend` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
 | `email-send-observability.ts#listMemberEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
 | `email-send-observability.ts#exportEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
-| `entitlements.ts#resolveMemberEntitlements` | member:product:read | member | member | yes | core/server/usecases/entitlements.ts authorization call |
+| `entitlements.ts#resolveMemberEntitlements` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#isLessonAccessible` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#getAccessibleLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#getCourseStructureWithAccess` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
@@ -425,14 +489,14 @@ no changes
 | `image-assets.ts#completeProductCoverUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#beginBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#completeBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
-| `image-assets.ts#beginAvatarUpload` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
-| `image-assets.ts#completeAvatarUpload` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
-| `image-assets.ts#removeAvatar` | member:profile:self-write | member | member | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#beginAvatarUpload` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#completeAvatarUpload` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#removeAvatar` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/image-assets.ts authorization call |
 | `impersonation.ts#startImpersonation` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
 | `impersonation.ts#stopImpersonation` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
 | `impersonation.ts#listTenantAuditEvents` | member:impersonate | owner, admin | owner, admin | yes | core/server/usecases/impersonation.ts authorization call |
 | `invoices.ts#downloadInvoice` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
-| `invoices.ts#downloadMemberInvoice` | invoice:member-read | member | member | yes | core/server/usecases/invoices.ts authorization call |
+| `invoices.ts#downloadMemberInvoice` | invoice:member-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#downloadInvoiceUpo` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#requestInvoice` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
@@ -453,6 +517,30 @@ no changes
 | `m2m-import.ts#validateM2mImport` | import:validate | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
 | `m2m-transactional-email.ts#sendM2mTransactionalMessage` | transactional:message:send | transactional-api-key | transactional-api-key | yes | core/server/usecases/m2m-transactional-email.ts authorization call |
 | `m2m-transactional-email.ts#getM2mTransactionalMessage` | transactional:message:read | transactional-api-key | transactional-api-key | yes | core/server/usecases/m2m-transactional-email.ts authorization call |
+| `marketing-contact-audience.ts#previewMarketingContactAudience` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-contact-audience.ts authorization call |
+| `marketing-contact-campaigns.ts#setMarketingCampaignAudience` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-contact-campaigns.ts authorization call |
+| `marketing-contact-campaigns.ts#scheduleMarketingContactCampaign` | marketing:campaign:send | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-contact-campaigns.ts authorization call |
+| `marketing-contact-campaigns.ts#returnMarketingCampaignToDraft` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-contact-campaigns.ts authorization call |
+| `marketing-contact-imports.ts#createMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#appendMarketingContactImportRows` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#validateMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#commitMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#getMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#getMarketingContactImportRows` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#processMarketingContactImport` | scheduler:dispatch | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#retryMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#cancelMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#importMarketingSuppressions` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#uploadMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#previewMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contacts.ts#listMarketingContacts` | marketing:contact:read | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
+| `marketing-contacts.ts#getMarketingContact` | marketing:contact:read | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
+| `marketing-contacts.ts#upsertMarketingContact` | marketing:contact:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
+| `marketing-contacts.ts#updateMarketingContact` | marketing:contact:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
+| `marketing-contacts.ts#archiveMarketingContact` | marketing:contact:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
+| `marketing-contacts.ts#restoreMarketingContact` | marketing:contact:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
+| `marketing-contacts.ts#exportMarketingContacts` | marketing:contact:read | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
+| `marketing-dispatch.ts#dispatchMarketingOutbox` | marketing:campaign:dispatch | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-dispatch.ts authorization call |
 | `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#recordMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
@@ -483,6 +571,14 @@ no changes
 | `marketing-email.ts#applyVerifiedSesEvent` | webhook:process | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#runMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#scheduleMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
+| `marketing-lists.ts#createMarketingList` | marketing:list:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-lists.ts authorization call |
+| `marketing-lists.ts#updateMarketingList` | marketing:list:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-lists.ts authorization call |
+| `marketing-lists.ts#archiveMarketingList` | marketing:list:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-lists.ts authorization call |
+| `marketing-lists.ts#listMarketingLists` | marketing:list:read | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-lists.ts authorization call |
+| `marketing-lists.ts#getMarketingList` | marketing:list:read | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-lists.ts authorization call |
+| `marketing-lists.ts#addMarketingListContacts` | marketing:list:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-lists.ts authorization call |
+| `marketing-lists.ts#removeMarketingListContacts` | marketing:list:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-lists.ts authorization call |
+| `marketing-lists.ts#previewMarketingList` | marketing:list:read | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-lists.ts authorization call |
 | `marketing-management.ts#getMarketingConsentDefinition` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#updateMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#listTenantDocuments` | marketing:document:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
@@ -496,23 +592,29 @@ no changes
 | `marketing-management.ts#updateMarketingCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#getTenantSesMarketingSettings` | marketing:ses:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#updateTenantSesMarketingSettings` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
+| `marketing-member-contacts.ts#syncMarketingMemberContacts` | scheduler:dispatch | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-member-contacts.ts authorization call |
+| `marketing-outbox.ts#enqueueMarketingMessages` | marketing:message:send | owner, admin, api-key, operator-secret | owner, admin, api-key, operator-secret | yes | core/server/usecases/marketing-outbox.ts authorization call |
 | `marketing-ses-onboarding.ts#startSesIdentityVerification` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#provisionSesInfrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#pollSesOnboarding` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#listSesIdentities` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
-| `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | member | member | yes | core/server/usecases/member-billing-orders.ts authorization call |
+| `marketing-sns-inbox.ts#recordVerifiedMarketingSnsEnvelope` | webhook:process | owner, admin, webhook | owner, admin, webhook | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
+| `marketing-sns-inbox.ts#processMarketingSnsInbox` | webhook:process | owner, admin, webhook | owner, admin, webhook | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
+| `marketing-sns-inbox.ts#retryMarketingSnsInbox` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
+| `marketing-sns-inbox.ts#listMarketingSnsInbox` | marketing:ses:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
+| `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-billing-orders.ts authorization call |
 | `member-commerce.ts#getMemberCommerceOverview` | member:commerce:read | owner, admin | owner, admin | yes | core/server/usecases/member-commerce.ts authorization call |
-| `member-data-export.ts#exportMyData` | member:data-export:self-read | member | member | yes | core/server/usecases/member-data-export.ts authorization call |
-| `member-erasure-requests.ts#requestMyErasure` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
-| `member-erasure-requests.ts#getMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
-| `member-erasure-requests.ts#cancelMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
+| `member-data-export.ts#exportMyData` | member:data-export:self-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-data-export.ts authorization call |
+| `member-erasure-requests.ts#requestMyErasure` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
+| `member-erasure-requests.ts#getMyErasureRequest` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
+| `member-erasure-requests.ts#cancelMyErasureRequest` | member:erasure:self-request | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-events.ts#listMemberTimeline` | member:timeline:read | owner, admin | owner, admin | yes | core/server/usecases/member-events.ts authorization call |
 | `member-home-feed.ts#getMemberHomeFeed` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-home-feed.ts authorization call |
 | `member-learning.ts#getMemberLearningSummary` | member:learning:read | owner, admin | owner, admin | yes | core/server/usecases/member-learning.ts authorization call |
 | `member-navigation.ts#getMemberNavigation` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-navigation.ts authorization call |
-| `member-profile.ts#updateMyProfile` | member:profile:self-write | member | member | yes | core/server/usecases/member-profile.ts authorization call |
+| `member-profile.ts#updateMyProfile` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-profile.ts authorization call |
 | `members.ts#listMembers` | member:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#exportMembers` | member:export | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#removeMember` | member:remove | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
@@ -525,7 +627,7 @@ no changes
 | `moderation.ts#reportDmConversation` | community:report | owner, admin, member | owner, admin, member | yes | core/server/usecases/moderation.ts authorization call |
 | `moderation.ts#listDmReports` | community:report:read | owner, admin | owner, admin | yes | core/server/usecases/moderation.ts authorization call |
 | `moderation.ts#resolveDmReport` | community:moderate | owner, admin | owner, admin | yes | core/server/usecases/moderation.ts authorization call |
-| `my-products.ts#listMyProducts` | member:product:read | member | member | yes | core/server/usecases/my-products.ts authorization call |
+| `my-products.ts#listMyProducts` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/my-products.ts authorization call |
 | `onboarding.ts#getCreatorOnboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
 | `onboarding.ts#dismissCreatorOnboarding` | tenant:onboarding:write | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
 | `order-reconciliation.ts#listPaidOrdersWithoutGrant` | order:reconcile | owner, admin | owner, admin | yes | core/server/usecases/order-reconciliation.ts authorization call |
@@ -538,7 +640,7 @@ no changes
 | `product-downloads.ts#beginProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#completeProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#listProductDownloadAssets` | product:read | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
-| `product-downloads.ts#getProductDownload` | member:product:read | member | member | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#getProductDownload` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#deleteProductDownloadAsset` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-prices.ts#listProductPrices` | product:price:read | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#createProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
@@ -548,11 +650,11 @@ no changes
 | `products.ts#updateProduct` | product:write | owner, admin | owner, admin | yes | core/server/usecases/products.ts authorization call |
 | `products.ts#publishProduct` | product:publish | owner, admin | owner, admin | yes | core/server/usecases/products.ts authorization call |
 | `products.ts#unpublishProduct` | product:publish | owner, admin | owner, admin | yes | core/server/usecases/products.ts authorization call |
-| `progress.ts#markLessonCompleted` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts authorization call |
-| `progress.ts#unmarkLessonCompleted` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts authorization call |
+| `progress.ts#markLessonCompleted` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
+| `progress.ts#unmarkLessonCompleted` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `progress.ts#resetMemberCourseProgress` | member:progress:manage | owner, admin | owner, admin | yes | core/server/usecases/progress.ts authorization call |
-| `progress.ts#updateLastViewed` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts authorization call |
-| `progress.ts#getProgress` | member:progress:read | member | member | yes | core/server/usecases/progress.ts authorization call |
+| `progress.ts#updateLastViewed` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
+| `progress.ts#getProgress` | member:progress:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `provider-diagnostics.ts#testIntegration` | integration:test | owner | owner | yes | core/server/usecases/provider-diagnostics.ts authorization call |
 | `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
@@ -593,20 +695,20 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:168` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1056` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1058` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1527` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1527` | `(identity.staffRole \|\| identity.memberId)` |
-| api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:173` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1061` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1063` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1564` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1564` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
 | api-key | `apps/server/src/marketing-routes.ts:99` | `identity: apiIdentity(tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:110` | `const key = headers.get(API_KEY_HEADER);` |
 | api-key | `apps/server/src/marketing-routes.ts:112` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:118` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:660` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| api-key | `apps/server/src/marketing-routes.ts:585` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -616,9 +718,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
 | staff-role | `core/server/usecases/community-access.ts:248` | `if (ctx.identity.staffRole) return ok(space);` |
 | staff-role | `core/server/usecases/community-access.ts:264` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:232` | `if (tenantId !== null && identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:246` | `if (ctx.identity.staffRole !== null) return false;` |
-| staff-role | `core/server/usecases/community.ts:441` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| member-scope | `core/server/usecases/community.ts:233` | `if (tenantId !== null && identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:247` | `if (ctx.identity.staffRole !== null) return false;` |
+| staff-role | `core/server/usecases/community.ts:448` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
@@ -646,9 +748,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
-| member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
-| member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/resolve-identity.ts:86` | `staffRole: staffGrant?.staffRole ?? null,` |
+| member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
+| member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
+| staff-role | `core/server/usecases/progress.ts:72` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
+| staff-role | `core/server/usecases/progress.ts:113` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
+| staff-role | `core/server/usecases/resolve-identity.ts:91` | `staffRole: staffGrant?.staffRole ?? null,` |
 
 ## Suspicious but preserved
 

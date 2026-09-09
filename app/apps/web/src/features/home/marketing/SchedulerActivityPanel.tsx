@@ -29,7 +29,7 @@ import { SchedulerActivitySummary, SchedulerRunStatusChip } from './SchedulerAct
 const PAGE_SIZES = [10, 25, 50, 100];
 
 const isRunKind = (value: string): value is SchedulerRunKind =>
-  value === 'marketing_tick' || value === 'outbox_dispatch' || value === 'consent_evidence_purge';
+  value === 'marketing_tick' || value === 'marketing_maintenance' || value === 'outbox_dispatch' || value === 'consent_evidence_purge';
 
 const isRunStatus = (value: string): value is SchedulerRunStatus =>
   value === 'running' || value === 'completed' || value === 'failed';
@@ -97,7 +97,7 @@ export const SchedulerActivityPanel = () => {
                   }}
                 >
                   <MenuItem value="all">{t.marketing.all}</MenuItem>
-                  {(['marketing_tick', 'outbox_dispatch', 'consent_evidence_purge'] as const).map((value) => (
+                  {(['marketing_tick', 'marketing_maintenance', 'outbox_dispatch', 'consent_evidence_purge'] as const).map((value) => (
                     <MenuItem key={value} value={value}>{t.marketing.activity.kinds[value]}</MenuItem>
                   ))}
                 </Select>

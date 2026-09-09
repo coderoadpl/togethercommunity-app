@@ -37,6 +37,7 @@ describe('version previews', () => {
       { name: 'title', value: { kind: 'text', value: 'Course' } },
       { name: 'description', value: { kind: 'text', value: 'Body' } },
       { name: 'imageUrl', value: { kind: 'image', url: '/covers/a.png' } },
+      { name: 'salesUrl', value: { kind: 'text', value: '' } },
       { name: 'publiclyVisible', value: { kind: 'flag', value: false } },
       { name: 'modules', value: { kind: 'list', items: ['Foundations'] } },
     ]);

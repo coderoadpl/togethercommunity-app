@@ -1,6 +1,7 @@
+import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { appError, err, ok, PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+import { appError, err, ok, PASSWORD_MIN_LENGTH, type AppError, type Result } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
 
@@ -13,7 +14,14 @@ interface Hoisted {
   config: CliConfig;
   loadError: Error | null;
   saved: CliConfig[];
+  listCourses: ReturnType<typeof vi.fn>;
+  listModules: ReturnType<typeof vi.fn>;
+  listLessons: ReturnType<typeof vi.fn>;
+  updateLesson: ReturnType<typeof vi.fn<
+    (input: { id: string; isPreview?: boolean }) => Promise<Result<{ lesson: unknown }, AppError>>
+  >>;
   health: ReturnType<typeof vi.fn>;
+  updateCourse: ReturnType<typeof vi.fn>;
   configureStorage: ReturnType<typeof vi.fn>;
   changePassword: ReturnType<typeof vi.fn>;
   requestPasswordReset: ReturnType<typeof vi.fn>;
@@ -22,6 +30,8 @@ interface Hoisted {
   verifyTotp: ReturnType<typeof vi.fn>;
   verifyBackupCode: ReturnType<typeof vi.fn>;
   configureStripe: ReturnType<typeof vi.fn>;
+  getTenantSettings: ReturnType<typeof vi.fn>;
+  updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
   getTenantRedirects: ReturnType<typeof vi.fn>;
   createTenantRedirect: ReturnType<typeof vi.fn>;
@@ -40,7 +50,14 @@ const h = vi.hoisted(
     },
     loadError: null,
     saved: [],
+    listCourses: vi.fn(),
+    listModules: vi.fn(),
+    listLessons: vi.fn(),
+    updateLesson: vi.fn<
+      (input: { id: string; isPreview?: boolean }) => Promise<Result<{ lesson: unknown }, AppError>>
+    >(),
     health: vi.fn(),
+    updateCourse: vi.fn(),
     configureStorage: vi.fn(),
     changePassword: vi.fn(),
     requestPasswordReset: vi.fn(),
@@ -49,6 +66,8 @@ const h = vi.hoisted(
     verifyTotp: vi.fn(),
     verifyBackupCode: vi.fn(),
     configureStripe: vi.fn(),
+    getTenantSettings: vi.fn(),
+    updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
     getTenantRedirects: vi.fn(),
     createTenantRedirect: vi.fn(),
@@ -95,9 +114,17 @@ vi.mock('./config.js', () => ({
   }),
 }));
 
-vi.mock('#core/client/index.js', () => ({
+vi.mock('#core/client/index.js', async (importOriginal) => ({
+  ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    listCourses: h.listCourses,
+    listModules: h.listModules,
+    listLessons: h.listLessons,
+    updateLesson: h.updateLesson,
+    getTenantSettings: h.getTenantSettings,
+    updateTenantSettings: h.updateTenantSettings,
     health: h.health,
+    updateCourse: h.updateCourse,
     configureStorage: h.configureStorage,
     configureStripe: h.configureStripe,
     getTenantRouting: h.getTenantRouting,
@@ -147,9 +174,14 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.listCourses.mockReset();
+  h.listModules.mockReset();
+  h.listLessons.mockReset();
+  h.updateLesson.mockReset();
   h.loadError = null;
   h.saved = [];
   h.health.mockReset();
+  h.updateCourse.mockReset();
   h.health.mockResolvedValue(ok({
     status: 'ok',
     database: 'up',
@@ -660,5 +692,226 @@ describe('domain show', () => {
       'CNAME\tcourses.example.org\trouting.example.org\tpending',
       'TXT\t_vercel.courses.example.org\tchallenge\tverified',
     ].join('\n'));
+  });
+});
+
+describe('course sales URL commands', () => {
+  it('includes the sales URL in course show', async () => {
+    const course = { id: 'course-1', name: 'Course', description: 'Learn the basics', salesUrl: 'https://courses.example.org/offer' };
+    h.listCourses.mockResolvedValue(ok({ courses: [course] }));
+    await run('--json', 'course', 'show', 'course-1');
+    expect(soleJson()).toEqual({ ok: true, data: { course } });
+  });
+
+  it.each([
+    ['https://courses.example.org/offer', 'https://courses.example.org/offer'],
+    ['', null],
+  ])('updates or clears the sales URL using %s', async (input, salesUrl) => {
+    h.updateCourse.mockResolvedValue(ok({ course: { id: 'course-1', name: 'Course', salesUrl } }));
+    await run('--json', 'course', 'update', 'course-1', '--sales-url', input ?? '');
+    expect(h.updateCourse).toHaveBeenCalledExactlyOnceWith({ id: 'course-1', salesUrl });
+    expect(soleJson()).toMatchObject({ ok: true, data: { course: { salesUrl } } });
+  });
+
+  it('rejects a non-HTTPS sales URL before calling the API', async () => {
+    await run('--json', 'course', 'update', 'course-1', '--sales-url', 'http://courses.example.org/offer');
+    expect(h.updateCourse).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('lesson preview commands', () => {
+  const previewLesson = (id: string, isPreview = false) => ({
+    id, name: `Lesson ${id}`, isPreview, contents: [],
+  });
+  const previewModule = (id: string, chapters: string[][], courseIds = ['course-1']) => ({
+    id, name: `Module ${id}`, courseIds, createdAt: '2026-09-01T00:00:00.000Z',
+    chapters: chapters.map((ids, index) => ({ id: `chapter-${index}`, name: `Chapter ${index}`,
+      contents: ids.map((lessonId) => ({ id: lessonId, name: lessonId, lessonId })),
+    })),
+  });
+  const select = (...args: string[]) => run('--json', 'lesson', 'preview', 'set', '--course', 'course-1', ...args);
+
+  beforeEach(() => {
+    h.listCourses.mockResolvedValue(ok({ courses: [{ id: 'course-1', moduleOrder: ['module-2', 'module-1'] }] }));
+    h.listModules.mockResolvedValue(ok({ modules: [
+      previewModule('module-1', [[], ['one', 'two'], ['three']]),
+      previewModule('module-2', [['two', 'four', 'two']]),
+      previewModule('empty', [[]]),
+      previewModule('unrelated', [['outside']], ['course-2']),
+    ] }));
+    h.listLessons.mockResolvedValue(ok({ lessons: [
+      previewLesson('one'), previewLesson('two', true), previewLesson('three', true),
+      previewLesson('four'), previewLesson('outside', true),
+    ] }));
+    h.updateLesson.mockImplementation((input: { id: string; isPreview?: boolean }) =>
+      Promise.resolve(ok({ lesson: previewLesson(input.id, input.isPreview) })));
+  });
+
+  it.each([
+    { flags: ['--preview'], payload: { id: 'one', isPreview: false }, expected: { id: 'one', isPreview: true } },
+    { flags: ['--no-preview'], payload: { id: 'one', isPreview: true }, expected: { id: 'one', isPreview: false } },
+    { flags: [], payload: { id: 'one', name: 'Renamed' }, expected: { id: 'one', name: 'Renamed' } },
+    { flags: [], payload: { id: 'one', isPreview: true }, expected: { id: 'one', isPreview: true } },
+  ])('updates a lesson with $flags and preserves omitted preview state', async ({ flags, payload, expected }) => {
+    await run('--json', 'lesson', 'update', '--data', JSON.stringify(payload), ...flags);
+    expect(h.updateLesson).toHaveBeenCalledExactlyOnceWith(expected);
+    expect(soleJson()).toMatchObject({ ok: true, data: { lesson: { id: 'one' } } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('rejects an invalid update before calling the client', async () => {
+    await run('--json', 'lesson', 'update', '--data', '{}', '--preview');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.updateLesson).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('preserves update error taxonomy', async () => {
+    h.updateLesson.mockResolvedValue(err(appError('forbidden', 'Staff only')));
+    await run('--json', 'lesson', 'update', '--data', '{"id":"one"}', '--preview');
+    expect(soleJson()).toEqual({ ok: false, error: { code: 'forbidden', message: 'Staff only' } });
+    expect(process.exitCode).toBe(4);
+  });
+
+  it('selects the first lesson across chapters per module and disables other previews', async () => {
+    await select('--first-per-module');
+    expect(h.updateLesson.mock.calls).toEqual([[{ id: 'one', isPreview: true }], [{ id: 'three', isPreview: false }]]);
+    expect(soleJson()).toMatchObject({ ok: true, data: {
+      changedLessonCount: 2, updatedLessonIds: ['one', 'three'],
+      lessons: [
+        { moduleId: 'module-2', lessonId: 'two', isPreview: true },
+        { moduleId: 'module-2', lessonId: 'four', isPreview: false },
+        { moduleId: 'module-1', lessonId: 'one', isPreview: true },
+        { moduleId: 'module-1', lessonId: 'two', isPreview: true },
+        { moduleId: 'module-1', lessonId: 'three', isPreview: false },
+      ],
+    } });
+  });
+
+  it('replaces the selection with trimmed and deduplicated explicit IDs', async () => {
+    await select('--lessons', ' four, four ');
+    expect(h.updateLesson.mock.calls).toEqual([
+      [{ id: 'two', isPreview: false }], [{ id: 'four', isPreview: true }], [{ id: 'three', isPreview: false }],
+    ]);
+    expect(soleJson()).toMatchObject({ ok: true, data: { changedLessonCount: 3 } });
+  });
+
+  it.each([
+    { mode: '--all', updates: [{ id: 'four', isPreview: true }, { id: 'one', isPreview: true }] },
+    { mode: '--none', updates: [{ id: 'two', isPreview: false }, { id: 'three', isPreview: false }] },
+  ])('applies $mode once per changed lesson', async ({ mode, updates }) => {
+    await select(mode);
+    expect(h.updateLesson.mock.calls).toEqual(updates.map((update) => [update]));
+    expect(soleJson()).toMatchObject({ ok: true, data: { changedLessonCount: 2 } });
+  });
+
+  it('does not write during a dry run and emits one JSON plan', async () => {
+    await select('--all', '--dry-run');
+    expect(h.updateLesson).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: true, data: { dryRun: true, changedLessonCount: 2, updatedLessonIds: [] } });
+  });
+
+  it('prints the human table before writing', async () => {
+    h.updateLesson.mockImplementation((input: { id: string; isPreview?: boolean }) => {
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Module\tLesson\tCurrent -> new'));
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Lesson four (four)\tfalse -> true'));
+      return Promise.resolve(ok({ lesson: previewLesson(input.id, input.isPreview) }));
+    });
+    await run('lesson', 'preview', 'set', '--course', 'course-1', '--all');
+    expect(logSpy).toHaveBeenLastCalledWith('updated 2 lesson(s)');
+    expect(h.updateLesson).toHaveBeenCalledTimes(2);
+  });
+
+  it('is idempotent when the command is repeated', async () => {
+    const lessons = [previewLesson('one'), previewLesson('two'), previewLesson('three'), previewLesson('four')];
+    h.listLessons.mockResolvedValue(ok({ lessons }));
+    h.updateLesson.mockImplementation((input: { id: string; isPreview?: boolean }) => {
+      const lesson = lessons.find((item) => item.id === input.id);
+      if (lesson === undefined) throw new Error('Unexpected lesson');
+      lesson.isPreview = input.isPreview ?? false;
+      return Promise.resolve(ok({ lesson }));
+    });
+    await select('--all');
+    expect(h.updateLesson).toHaveBeenCalledTimes(4);
+    h.updateLesson.mockClear();
+    logSpy.mockClear();
+    await select('--all');
+    expect(h.updateLesson).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: true, data: { changedLessonCount: 0, updatedLessonIds: [] } });
+  });
+
+  it.each([[], ['--all', '--none'], ['--first-per-module', '--lessons', 'one'], ['--lessons', 'one,,two']])(
+    'rejects invalid selection %j before fetching', async (...args) => {
+      await select(...args);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(h.listCourses).not.toHaveBeenCalled();
+      expect(h.updateLesson).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(2);
+    },
+  );
+
+  it('rejects an ID outside the course before making changes', async () => {
+    await select('--lessons', 'one,outside');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('outside') } });
+    expect(h.updateLesson).not.toHaveBeenCalled();
+  });
+
+  it('rejects broken lesson references before making changes', async () => {
+    h.listLessons.mockResolvedValue(ok({ lessons: [] }));
+    await select('--all');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.updateLesson).not.toHaveBeenCalled();
+  });
+
+  it('handles empty courses without writes', async () => {
+    h.listModules.mockResolvedValue(ok({ modules: [] }));
+    await select('--first-per-module');
+    expect(soleJson()).toMatchObject({ ok: true, data: { lessons: [], changedLessonCount: 0 } });
+    expect(h.updateLesson).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing course', async () => {
+    h.listCourses.mockResolvedValue(ok({ courses: [] }));
+    await select('--none');
+    expect(soleJson()).toEqual({ ok: false, error: { code: 'not_found', message: 'Course not found' } });
+    expect(process.exitCode).toBe(5);
+    expect(h.listModules).not.toHaveBeenCalled();
+  });
+
+  it.each(['listCourses', 'listModules', 'listLessons'] as const)('propagates %s failures without writes', async (method) => {
+    h[method].mockResolvedValue(err(appError('unauthorized', 'Sign in')));
+    await select('--all');
+    expect(soleJson()).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } });
+    expect(process.exitCode).toBe(3);
+    expect(h.updateLesson).not.toHaveBeenCalled();
+  });
+
+  it('stops after a write failure and reports completed updates in one error envelope', async () => {
+    h.updateLesson.mockResolvedValueOnce(ok({ lesson: previewLesson('two') }))
+      .mockResolvedValueOnce(err(appError('conflict', 'Concurrent update')));
+    await select('--lessons', 'four');
+    expect(h.updateLesson).toHaveBeenCalledTimes(2);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict',
+      details: { failedLessonId: 'four', updatedLessonIds: ['two'] },
+    } });
+    expect(process.exitCode).toBe(6);
+  });
+});
+
+describe('tenant accent settings', () => {
+  it('sends both accents and clears only the light override', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { accentColor: '#F5C842', accentLight: '#786000' } }));
+    await run('--json', 'tenant', 'settings-set', '--accent-color', '#F5C842', '--accent-light', '#786000');
+    expect(h.updateTenantSettings).toHaveBeenLastCalledWith({ accentColor: '#F5C842', accentLight: '#786000' });
+    await run('--json', 'tenant', 'settings-set', '--clear-accent-light');
+    expect(h.updateTenantSettings).toHaveBeenLastCalledWith({ accentLight: null });
+  });
+
+  it('shows both accents in settings output', async () => {
+    h.getTenantSettings.mockResolvedValue(ok({ settings: { accentColor: '#F5C842', accentLight: '#786000' } }));
+    await run('tenant', 'settings');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('dark accent: #F5C842'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('light accent: #786000'));
   });
 });

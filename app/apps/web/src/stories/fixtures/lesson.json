@@ -15,6 +15,7 @@
               "contextKind": "lesson",
               "createdAt": "2026-06-11T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-js-zmienne-tip",
               "isOwn": false,
@@ -30,6 +31,7 @@
                   "contextKind": "lesson",
                   "createdAt": "2026-06-12T12:00:00.000Z",
                   "deletedAt": "2026-06-13T12:00:00.000Z",
+                  "deletedBy": null,
                   "editedAt": null,
                   "id": "post-js-zmienne-tip-r1",
                   "isOwn": false,
@@ -54,6 +56,7 @@
               "contextKind": "lesson",
               "createdAt": "2026-06-28T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-js-zmienne-q",
               "isOwn": true,
@@ -69,6 +72,7 @@
                   "contextKind": "lesson",
                   "createdAt": "2026-06-29T12:00:00.000Z",
                   "deletedAt": null,
+                  "deletedBy": null,
                   "editedAt": null,
                   "id": "post-js-zmienne-q-r1",
                   "isOwn": false,
@@ -84,6 +88,7 @@
                       "contextKind": "lesson",
                       "createdAt": "2026-06-30T12:00:00.000Z",
                       "deletedAt": null,
+                      "deletedBy": null,
                       "editedAt": null,
                       "id": "post-js-zmienne-q-r2",
                       "isOwn": false,
@@ -116,6 +121,7 @@
       "value": {
         "settings": {
           "accentColor": null,
+          "accentLight": null,
           "autoIssueInvoices": false,
           "autoIssueInvoiceScope": "b2b_only",
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
@@ -404,6 +410,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null
@@ -442,6 +449,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-js-demo-video",
                       "name": "Demo wideo (Bunny Stream)"
                     }
@@ -458,6 +466,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-zmienne-1",
                       "durationMinutes": 12,
+                      "isPreview": false,
                       "lessonId": "lesson-js-zmienne-1",
                       "name": "Deklarowanie zmiennych"
                     },
@@ -466,6 +475,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-zmienne-2",
                       "durationMinutes": 15,
+                      "isPreview": false,
                       "lessonId": "lesson-js-zmienne-2",
                       "name": "Typy proste i złożone"
                     }
@@ -482,6 +492,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-funkcje-1",
                       "durationMinutes": 18,
+                      "isPreview": false,
                       "lessonId": "lesson-js-funkcje-1",
                       "name": "Funkcje i argumenty"
                     },
@@ -490,6 +501,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-funkcje-2",
                       "durationMinutes": 22,
+                      "isPreview": false,
                       "lessonId": "lesson-js-funkcje-2",
                       "name": "Domknięcia i zakres"
                     }
@@ -514,6 +526,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-1",
                       "name": "Wybieranie elementów DOM"
                     },
@@ -522,6 +535,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-2",
                       "name": "Zdarzenia i interakcja"
                     }
@@ -546,6 +560,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-projekt-1",
                       "durationMinutes": 35,
+                      "isPreview": false,
                       "lessonId": "lesson-js-projekt-1",
                       "name": "Projekt: lista zadań"
                     }
@@ -634,7 +649,18 @@
           "courseId": "course-js",
           "lastViewedChapterId": "chapter-js-funkcje",
           "lastViewedLessonId": "lesson-js-funkcje-1",
-          "lastViewedModuleId": "module-js-podstawy"
+          "lastViewedModuleId": "module-js-podstawy",
+          "resume": {
+            "firstIncomplete": {
+              "id": "lesson-js-demo-video",
+              "name": "Demo wideo (Bunny Stream)"
+            },
+            "isReview": false,
+            "target": {
+              "id": "lesson-js-funkcje-1",
+              "name": "Funkcje i argumenty"
+            }
+          }
         }
       }
     },

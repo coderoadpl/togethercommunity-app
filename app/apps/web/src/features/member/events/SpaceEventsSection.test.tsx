@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -14,7 +14,7 @@ import type { PublicSpaceEvent } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
-import { server } from '../../../test/server.js';
+import { memberMe, staffMe, server } from '../../../test/server.js';
 import { SpaceEventsSection } from './SpaceEventsSection.js';
 
 const event = (input: { id: string; title: string; goingCount?: number }): PublicSpaceEvent => ({
@@ -47,7 +47,8 @@ const okEvents = (byScope: Record<string, PublicSpaceEvent[]>) =>
     });
   });
 
-const renderSection = async () => {
+const renderSection = async (staff = false) => {
+  server.use(staff ? staffMe() : memberMe());
   const rootRoute = createRootRoute();
   const spaceRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -92,13 +93,35 @@ describe('SpaceEventsSection', () => {
     expect(await screen.findByTestId('space-events-empty')).toHaveTextContent(pl.events.emptyPast);
   });
 
-  it('states that nothing is scheduled when the space has no upcoming events', async () => {
+  it('keeps an empty card with an event creation link for staff', async () => {
     server.use(okEvents({ upcoming: [] }));
 
-    await renderSection();
+    await renderSection(true);
 
+    const add = await screen.findByTestId('space-events-add');
+    expect(add).toHaveTextContent(pl.events.addEvent);
+    expect(add).toHaveAttribute('href', '/panel/spaces/s1/events/new');
     expect(await screen.findByTestId('space-events-empty')).toHaveTextContent(
       pl.events.emptyUpcoming,
     );
   });
+  it('hides the card for members when both scopes are empty', async () => {
+    const scopes: string[] = [];
+    server.use(http.get('*/api/spaces/:spaceId/events', ({ request }) => {
+      scopes.push(new URL(request.url).searchParams.get('scope') ?? '');
+      return HttpResponse.json({ ok: true, data: { events: [], nextCursor: null } });
+    }));
+    await renderSection();
+    await waitFor(() => expect(scopes).toEqual(expect.arrayContaining(['upcoming', 'past'])));
+    await waitFor(() => expect(screen.queryByTestId('space-events')).not.toBeInTheDocument());
+  });
+
+  it('keeps past events reachable when there are no upcoming events', async () => {
+    server.use(okEvents({ upcoming: [], past: [event({ id: 'past', title: 'Past workshop' })] }));
+    await renderSection();
+    await userEvent.click(await screen.findByTestId('space-events-scope-past'));
+    expect(await screen.findByTestId('event-card-past')).toHaveTextContent('Past workshop');
+    expect(screen.queryByTestId('space-events-add')).not.toBeInTheDocument();
+  });
+
 });

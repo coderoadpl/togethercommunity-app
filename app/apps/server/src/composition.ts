@@ -195,6 +195,7 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
+  TokenGenerator,
   ImpersonationSessionRepository,
   ImpersonationTokenCodec,
   TenantAuditEventRepository,
@@ -483,6 +484,7 @@ export interface AppDeps {
   commitSha: string;
   deploymentIdentity: DeploymentIdentity;
   tenantCreationMode: TenantCreationMode;
+  consentTokens: TokenGenerator;
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void; warn(message: string): void };
@@ -1312,6 +1314,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),
     paymentTransaction: createPaymentTransactionPort(db),
+    consentTokens: { nextToken: () => randomUUID().replaceAll('-', '') },
     dispatchEmails,
     drainNotificationFanout: async () => drainNotificationFanoutJobs(deps),
     dispatchAutoInvoices,

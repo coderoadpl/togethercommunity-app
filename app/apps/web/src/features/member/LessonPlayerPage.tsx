@@ -284,6 +284,10 @@ export const LessonPlayerPage = ({
 
   const lastViewed = useMutation({
     ...actions.updateLastViewed,
+    onSettled: (_data, _error, input) => Promise.all([
+      queryClient.invalidateQueries(actions.studentProgressInvalidates(input.courseId)),
+      queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+    ]),
     meta: { background: true },
   });
   const lastViewedRef = useRef<string | null>(null);

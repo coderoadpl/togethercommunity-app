@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createPostInputSchema,
   reactToPostInputSchema,
+  updatePostInputSchema,
   type DiscussionPost,
   type MemberNavigation,
   type MemberSpace,
@@ -34,7 +35,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const okMe = () =>
+const okMe = (staffRole: 'owner' | 'admin' | null = null) =>
   http.get('/api/me', () =>
     HttpResponse.json({
       ok: true,
@@ -43,7 +44,7 @@ const okMe = () =>
         email: 'user@example.com',
         emailVerified: true,
         name: 'Jan Uczestnik',
-        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
+        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole, memberId: 'm1', banned: false },
       },
     }),
   );
@@ -538,6 +539,80 @@ describe('community pages', () => {
 
     expect(screen.getByTestId('space-composer-submit')).toBeDisabled();
     expect(screen.getByTestId('space-composer-input')).toBeInTheDocument();
+  });
+
+  it.each([
+    { staffRole: null, isOwn: true, canDelete: true, canEdit: true },
+    { staffRole: 'owner', isOwn: false, canDelete: true, canEdit: false },
+    { staffRole: 'admin', isOwn: false, canDelete: true, canEdit: false },
+    { staffRole: null, isOwn: false, canDelete: false, canEdit: false },
+  ] as const)('offers feed actions for $staffRole, own=$isOwn', async ({ staffRole, isOwn, canDelete, canEdit }) => {
+    server.use(okMe(staffRole), noNotifications(), okSpaces([space({ id: 's1' })]),
+      okFeed('s1', [feedItem({ id: 'p1', isOwn })]), okSeen());
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
+    expect(screen.queryByTestId('delete-button-p1') !== null).toBe(canDelete);
+    expect(screen.queryByTestId('edit-button-p1') !== null).toBe(canEdit);
+  });
+
+  it('confirms deletion and removes an empty own root from the feed without reloading', async () => {
+    let item = feedItem({ id: 'p1', isOwn: true, replyCount: 0 });
+    const deletedIds: string[] = [];
+    server.use(okMe(), noNotifications(), okSpaces([space({ id: 's1' })]), okSeen(),
+      http.get('/api/spaces/:spaceId/feed', () => HttpResponse.json({ ok: true,
+        data: { feed: { spaceId: 's1', items: [], pinned: item.deletedAt === null ? [item] : [], nextCursor: null, isFollowing: false } } })),
+      http.delete('/api/posts/:postId', ({ params }) => {
+        deletedIds.push(String(params['postId']));
+        item = { ...item, body: 'Deleted post', deletedAt: '2026-07-20T09:00:00.000Z', deletedBy: 'author', pinnedAt: null };
+        return HttpResponse.json({ ok: true, data: { post: item } });
+      }));
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
+    await userEvent.click(screen.getByTestId('delete-button-p1'));
+    expect(await screen.findByText(pl.discussion.deleteConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(pl.discussion.deleteConfirmBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
+    expect(deletedIds).toEqual([]);
+    await userEvent.click(screen.getByTestId('post-menu-p1'));
+    await userEvent.click(screen.getByTestId('delete-button-p1'));
+    await userEvent.click(screen.getByTestId('confirm-delete-post'));
+    await waitFor(() => expect(screen.queryByTestId('feed-post-p1')).not.toBeInTheDocument());
+    expect(deletedIds).toEqual(['p1']);
+    expect(screen.getByTestId('feed-empty-state')).toBeInTheDocument();
+  });
+
+  it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a copy-link menu', async (deletedBy) => {
+    server.use(okMe('admin'), noNotifications(), okSpaces([space({ id: 's1' })]), okSeen(),
+      okFeed('s1', [feedItem({ id: 'p1', isOwn: true, replyCount: 2, deletedAt: '2026-07-20T09:00:00.000Z', deletedBy })]));
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+    expect(await screen.findByTestId('deleted-post-p1')).toHaveTextContent(
+      deletedBy === 'moderator' ? pl.discussion.moderatorDeletedPost : pl.discussion.deletedPost,
+    );
+    expect(screen.queryByRole('button', { name: pl.community.pin })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('post-menu-p1'));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(screen.getByTestId('copy-link-p1')).toBeInTheDocument();
+  });
+
+  it('edits an own feed post and refreshes its body', async () => {
+    let item = feedItem({ id: 'p1', isOwn: true });
+    server.use(okMe(), noNotifications(), okSpaces([space({ id: 's1' })]), okSeen(),
+      http.get('/api/spaces/:spaceId/feed', () => HttpResponse.json({ ok: true,
+        data: { feed: { spaceId: 's1', items: [item], nextCursor: null, isFollowing: false } } })),
+      http.post('/api/posts/update', async ({ request }) => {
+        const input = updatePostInputSchema.parse(await request.json());
+        item = { ...item, body: input.body, editedAt: '2026-07-20T09:00:00.000Z' };
+        return HttpResponse.json({ ok: true, data: { post: item } });
+      }));
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
+    await userEvent.click(screen.getByTestId('edit-button-p1'));
+    const input = screen.getByTestId('edit-composer-p1-input');
+    expect(input).toHaveValue(item.body);
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Updated post');
+    await userEvent.click(screen.getByTestId('edit-composer-p1-submit'));
+    expect(await screen.findByTestId('post-body-p1')).toHaveTextContent('Updated post');
   });
 
   it('copies a post permalink from the feed overflow menu', async () => {

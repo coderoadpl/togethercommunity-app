@@ -49,6 +49,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-27T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-klub-wyzwanie",
               "isOwn": false,
@@ -76,6 +77,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-spolecznosc-polecajki",
               "isOwn": false,
@@ -108,6 +110,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-17T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-spolecznosc-hello",
               "isOwn": false,
@@ -552,6 +555,32 @@
             }
           ],
           "name": "Kurs JavaScript od podstaw"
+        }
+      }
+    },
+    "studentProgress:[\"course-js\"]": {
+      "ok": true,
+      "value": {
+        "progress": {
+          "completedLessonIds": [
+            "lesson-js-zmienne-1",
+            "lesson-js-zmienne-2"
+          ],
+          "courseId": "course-js",
+          "lastViewedChapterId": "chapter-js-funkcje",
+          "lastViewedLessonId": "lesson-js-funkcje-1",
+          "lastViewedModuleId": "module-js-podstawy",
+          "resume": {
+            "firstIncomplete": {
+              "id": "lesson-js-demo-video",
+              "name": "Demo wideo (Bunny Stream)"
+            },
+            "isReview": false,
+            "target": {
+              "id": "lesson-js-funkcje-1",
+              "name": "Funkcje i argumenty"
+            }
+          }
         }
       }
     },

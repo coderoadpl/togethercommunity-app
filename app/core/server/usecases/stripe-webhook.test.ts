@@ -7,6 +7,7 @@ import {
   ok,
   validation,
   type Member,
+  type TermsConsent,
   type MemberSubscription,
   type Order,
   type ProcessedPaymentEvent,
@@ -18,9 +19,10 @@ import {
   type EmailOutboxPayload,
 } from '#core/domain/index.js';
 
+import { InMemoryConsentDefinitionRepository, InMemoryMarketingConsentRepository, InMemoryConsentConfirmationTokenRepository } from '../testing/marketing-fakes.js';
 import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
 
-import type { AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
+import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
@@ -181,11 +183,16 @@ const harness = (
   }>();
   const orders: Order[] = [];
   const warnings: string[] = [];
+  const errors: string[] = [];
   const subscriptions = new Map<string, MemberSubscription>();
   const prices = options.prices ?? [];
   const sent: string[] = [];
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const autoInvoiceJobs: AutoInvoiceJob[] = [];
+  const consents: TermsConsent[] = [];
+  const consentJobs: CheckoutConsentJob[] = [];
+  const marketingConsents = new InMemoryMarketingConsentRepository();
+  const confirmations = new InMemoryConsentConfirmationTokenRepository();
   let sequence = 0;
   let clockNow = now;
   let refundTransitions = 0;
@@ -418,6 +425,10 @@ const harness = (
         const queuedSnapshot = [...queued];
         const autoInvoiceJobsSnapshot = [...autoInvoiceJobs];
         const refundSnapshot = refundTransitions;
+        const consentSnapshot = [...consents];
+        const marketingSnapshot = marketingConsents.snapshot();
+        const confirmationSnapshot = structuredClone(confirmations.rows);
+        const jobSnapshot = structuredClone(consentJobs);
         const result = await operation({
           members: deps.members,
           grants: deps.grants,
@@ -441,9 +452,26 @@ const harness = (
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          consents: {
+            record: async (_tenantId, consent) => { consents.push(consent); },
+            listByEmail: async (tenantId, email) => consents.filter((row) => row.tenantId === tenantId && row.email === email),
+          },
+          marketingConsents,
+          confirmations,
+          consentTransaction: { run: (nested) => deps.paymentTransaction.run(nested) },
+          checkoutConsentJobs: {
+            enqueue: async (tenantId, job) => {
+              if (!consentJobs.some((row) => row.tenantId === tenantId && row.checkoutSessionId === job.checkoutSessionId)) consentJobs.push(job);
+            },
+            lockPending: async (tenantId, sessionId) => consentJobs.find((row) => row.tenantId === tenantId && row.checkoutSessionId === sessionId && row.completedAt === null) ?? null,
+            complete: async (tenantId, sessionId, completedAt) => {
+              const job = consentJobs.find((row) => row.tenantId === tenantId && row.checkoutSessionId === sessionId);
+              if (job !== undefined) job.completedAt = completedAt;
+            },
+          },
           processedPaymentEvents: deps.processedPaymentEvents,
           enrollmentTransaction: deps.enrollmentTransaction,
-        });
+        }).catch((cause: unknown) => err(internal(String(cause))));
         if (result.ok && !options.rejectPaymentCommit) return result;
         members.clear();
         memberSnapshot.forEach((value, key) => members.set(key, value));
@@ -460,6 +488,10 @@ const harness = (
         queued.splice(0, queued.length, ...queuedSnapshot);
         autoInvoiceJobs.splice(0, autoInvoiceJobs.length, ...autoInvoiceJobsSnapshot);
         refundTransitions = refundSnapshot;
+        consents.splice(0, consents.length, ...consentSnapshot);
+        marketingConsents.restore(marketingSnapshot);
+        confirmations.rows.splice(0, confirmations.rows.length, ...confirmationSnapshot);
+        consentJobs.splice(0, consentJobs.length, ...jobSnapshot);
         return options.rejectPaymentCommit ? err(internal('commit rejected')) : result;
       },
     },
@@ -490,6 +522,7 @@ const harness = (
     dispatchEmail: () => undefined,
     devMagicLinks: { findByEmail: async () => null },
     ids: { nextId: () => `id-${++sequence}` },
+    consentTokens: { nextToken: () => `confirmation-${++sequence}` },
     clock: { nowIso: () => clockNow },
     tenantDomains: createInMemoryTenantDomainRepository(),
     appBaseUrl: 'https://alpha.example.com',
@@ -497,6 +530,7 @@ const harness = (
     singleTenantMode: false,
     exposeMagicLinks: false,
     logger: {
+      error: (message: string) => { errors.push(message); },
       warn: (message: string) => {
         warnings.push(message);
       },
@@ -505,6 +539,11 @@ const harness = (
 
   return {
     deps,
+    consents,
+    consentJobs,
+    errors,
+    marketingConsents,
+    confirmations,
     members,
     grants,
     events,
@@ -621,10 +660,227 @@ const couponHarness = (
       return true;
     },
   };
+  const transaction = h.deps.paymentTransaction;
+  h.deps.paymentTransaction = {
+    run: async (operation) => {
+      const snapshot = structuredClone(redemptions);
+      const result = await transaction.run(operation);
+      if (!result.ok) redemptions.splice(0, redemptions.length, ...snapshot);
+      return result;
+    },
+  };
   return { ...h, coupon, redemptions };
 };
 
+const consentHarness = async () => {
+  const h = harness({ prices: [monthlyPrice(tenantA.id)] });
+  h.deps.tenants.findSettings = async () => ({
+    name: 'Acme', socialLinks: [], billingPortalUrl: null,
+    bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
+    logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null,
+    ogTitle: null, ogDescription: null, ogImageUrl: null,
+    supportEmail: null, supportUrl: null, defaultHomeSpaceId: null,
+    termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy',
+  });
+  const definitions = new InMemoryConsentDefinitionRepository();
+  await definitions.create(tenantA.id, {
+    id: 'news', tenantId: tenantA.id, key: 'news', kind: 'optional_marketing',
+    channel: 'email', doubleOptIn: true, status: 'active',
+    documentRef: { mode: 'url', url: 'https://acme.example/news' },
+    createdAt: now, updatedAt: now,
+  }, {
+    id: 'news-v1', tenantId: tenantA.id, definitionId: 'news', version: 1,
+    label: 'News', documentVersionRef: { mode: 'url', url: 'https://acme.example/news' },
+    createdAt: now, createdBy: null,
+  });
+  h.deps.marketing = { definitions };
+  h.deps.checkoutConsentCaptures = {
+    create: async () => undefined,
+    findById: async () => ({
+      termsAccepted: true, selectedDefinitionIds: ['news'], attachedDefinitionIds: ['news'],
+      collectedAt: now, confirmationBaseUrl: 'https://acme.example/marketing/confirm',
+    }),
+  };
+  return { ...h, definitions };
+};
+
 describe('fulfillStripeWebhook', () => {
+
+  it.each(['none', 'terms', 'confirmation-email'] as const)('records checkout consent exactly once after duplicate delivery (failure: %s)', async (failurePoint) => {
+    const h = await consentHarness();
+    const transaction = h.deps.paymentTransaction;
+    let shouldFail = failurePoint !== 'none';
+    let finalized = false;
+    h.deps.paymentTransaction = {
+      run: (operation) => transaction.run((repositories) => operation({
+        ...repositories,
+        processedPaymentEvents: {
+          ...repositories.processedPaymentEvents,
+          finalize: async (...args) => {
+            await repositories.processedPaymentEvents.finalize(...args);
+            finalized = true;
+          },
+        },
+        emailOutbox: {
+          ...repositories.emailOutbox,
+          enqueue: async (message) => {
+            const result = await repositories.emailOutbox.enqueue(message);
+            if (shouldFail && failurePoint === 'confirmation-email' && message.payload.kind === 'marketing-consent-confirmation') {
+              expect(h.marketingConsents.snapshot()).toHaveLength(1);
+              expect(h.confirmations.rows).toHaveLength(1);
+              return err(internal('Confirmation outbox unavailable'));
+            }
+            return result;
+          },
+        },
+        consents: {
+          ...repositories.consents,
+          record: async (tenantId, consent) => {
+            expect(finalized).toBe(true);
+            if (shouldFail && failurePoint === 'terms') throw new Error('Consent storage unavailable after finalization');
+            await repositories.consents.record(tenantId, consent);
+          },
+        },
+      }).catch(() => err(internal('Consent transaction failed')))),
+    };
+    const event = completedEvent({ id: 'evt-consent', checkoutConsentCaptureId: 'capture-consent' });
+    if (failurePoint !== 'none') {
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({ ok: false });
+      expect(h.events.size).toBe(0);
+      expect(h.orders).toHaveLength(0);
+      expect(h.consents).toHaveLength(0);
+      expect(h.marketingConsents.snapshot()).toHaveLength(0);
+      expect(h.confirmations.rows).toHaveLength(0);
+      expect(h.queued).toHaveLength(0);
+      expect(h.consentJobs).toHaveLength(0);
+      expect(h.errors).toEqual([expect.stringContaining('tenant=tenant-a event=evt-consent capture=capture-consent')]);
+      expect(h.autoInvoiceJobs).toHaveLength(0);
+      shouldFail = false;
+      finalized = false;
+    }
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.consents).toHaveLength(1);
+    expect(await h.marketingConsents.listByEmail(tenantA.id, 'buyer@example.com')).toHaveLength(1);
+    expect(h.confirmations.rows).toHaveLength(1);
+    expect(h.confirmations.rows[0]?.token).toMatch(/^confirmation-/);
+    expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(1);
+  });
+
+  it.each(['legal-config-change', 'missing-capture', 'missing-marketing', 'invalid-definition'] as const)(
+    'preserves paid access and pending consent on permanent %s failures', async (failure) => {
+      const h = await consentHarness();
+      const captures = h.deps.checkoutConsentCaptures;
+      if (captures === undefined) throw new Error('Missing capture fixture');
+      let repaired = false;
+      h.deps.checkoutConsentCaptures = {
+        ...captures,
+        findById: async (tenantId, captureId) => {
+          if (failure === 'missing-capture' && !repaired) return null;
+          const capture = await captures.findById(tenantId, captureId);
+          if (capture === null) return null;
+          return {
+            ...capture,
+            termsAccepted: failure !== 'legal-config-change',
+            selectedDefinitionIds: failure === 'invalid-definition' && !repaired ? ['news', 'missing'] : ['news'],
+            attachedDefinitionIds: ['news', 'missing'],
+          };
+        },
+      };
+      if (failure === 'missing-marketing') delete h.deps.marketing;
+      const event = completedEvent({
+        type: 'checkout.session.async_payment_succeeded',
+        id: 'evt-pending', checkoutConsentCaptureId: 'capture-pending',
+        priceId: 'price-monthly', subscriptionId: 'sub-pending',
+      });
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+      expect(h.members.size).toBe(1);
+      expect(h.grants.size).toBe(1);
+      expect(h.orders).toHaveLength(1);
+      expect(h.subscriptions.size).toBe(1);
+      expect(h.autoInvoiceJobs).toHaveLength(1);
+      expect(h.consents).toHaveLength(0);
+      expect(h.marketingConsents.snapshot()).toHaveLength(0);
+      expect(h.confirmations.rows).toHaveLength(0);
+      expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(0);
+      expect(h.consentJobs).toMatchObject([{ captureId: 'capture-pending', completedAt: null }]);
+      expect(h.errors).toEqual([expect.stringContaining('[checkout-consent] pending tenant=tenant-a event=evt-pending capture=capture-pending')]);
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+      expect(h.consentJobs).toHaveLength(1);
+      if (failure === 'legal-config-change') {
+        expect(h.consentJobs[0]?.completedAt).toBeNull();
+        return;
+      }
+      repaired = true;
+      h.deps.marketing = { definitions: h.definitions };
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+      expect(h.consentJobs[0]?.completedAt).toBe(now);
+      expect(h.consents).toHaveLength(1);
+      expect(h.marketingConsents.snapshot()).toHaveLength(1);
+      expect(h.confirmations.rows).toHaveLength(1);
+      expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(1);
+      expect(h.orders).toHaveLength(1);
+      expect(h.autoInvoiceJobs).toHaveLength(1);
+    },
+  );
+
+  it('retries pending consent after an outbox failure without rolling back paid access or duplicating consent', async () => {
+    const h = await consentHarness();
+    delete h.deps.marketing;
+    const event = completedEvent({ id: 'evt-pending-retry', checkoutConsentCaptureId: 'capture-pending-retry' });
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    const paidOrders = structuredClone(h.orders);
+    const invoiceJobs = structuredClone(h.autoInvoiceJobs);
+    const paymentEvents = structuredClone(h.events);
+    h.deps.marketing = { definitions: h.definitions };
+    const transaction = h.deps.paymentTransaction;
+    let failEnqueue = true;
+    h.deps.paymentTransaction = {
+      run: (operation) => transaction.run((repositories) => operation({
+        ...repositories,
+        emailOutbox: {
+          ...repositories.emailOutbox,
+          enqueue: async (message) => {
+            const queued = await repositories.emailOutbox.enqueue(message);
+            if (failEnqueue && message.payload.kind === 'marketing-consent-confirmation') {
+              expect(h.marketingConsents.snapshot()).toHaveLength(1);
+              expect(h.confirmations.rows).toHaveLength(1);
+              return err(internal('Confirmation outbox unavailable during replay'));
+            }
+            return queued;
+          },
+        },
+      })),
+    };
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(h.orders).toEqual(paidOrders);
+    expect(h.autoInvoiceJobs).toEqual(invoiceJobs);
+    expect(h.events).toEqual(paymentEvents);
+    expect(h.members.size).toBe(1);
+    expect(h.grants.size).toBe(1);
+    expect(h.consentJobs).toMatchObject([{ completedAt: null }]);
+    expect(h.consents).toHaveLength(0);
+    expect(h.marketingConsents.snapshot()).toHaveLength(0);
+    expect(h.confirmations.rows).toHaveLength(0);
+    expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(0);
+    expect(h.errors.at(-1)).toBe('[stripe-webhook] tenant=tenant-a event=evt-pending-retry capture=capture-pending-retry error=internal:Confirmation outbox unavailable during replay');
+
+    failEnqueue = false;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.consentJobs).toMatchObject([{ completedAt: now }]);
+    expect(h.consents).toHaveLength(1);
+    expect(h.marketingConsents.snapshot()).toHaveLength(1);
+    expect(h.confirmations.rows).toHaveLength(1);
+    expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(1);
+    expect(h.orders).toEqual(paidOrders);
+    expect(h.autoInvoiceJobs).toEqual(invoiceJobs);
+    expect(h.events).toEqual(paymentEvents);
+  });
+
   it('copies captured billing data onto the paid order', async () => {
     const h = harness();
     const billing = {
@@ -928,7 +1184,7 @@ describe('fulfillStripeWebhook', () => {
     ]);
   });
 
-  it('reuses coupon accounting when a recurring checkout retries after subscription creation fails', async () => {
+  it('rolls back coupon accounting and retries when subscription creation fails', async () => {
     const h = couponHarness({ price: monthlyPrice(tenantA.id) });
     const create = h.deps.subscriptions.create;
     let attempts = 0;
@@ -951,8 +1207,8 @@ describe('fulfillStripeWebhook', () => {
       ok: false,
       error: { code: 'internal' },
     });
-    expect(h.orders).toHaveLength(1);
-    expect(h.redemptions).toHaveLength(1);
+    expect(h.orders).toHaveLength(0);
+    expect(h.redemptions).toHaveLength(0);
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
       ok: true,
       value: { processed: true },

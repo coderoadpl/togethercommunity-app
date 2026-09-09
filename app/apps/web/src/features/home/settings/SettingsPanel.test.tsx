@@ -21,9 +21,12 @@ import {
 import { ToastProvider } from '../../../components/ui/Toast.js';
 import { FONT_MONO } from '../../../theme.js';
 import { en } from '../../../i18n/en.js';
+import { LanguageProvider, type Language } from '../../../i18n/index.js';
+import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { languagePreference } from '../../../theme-mode.js';
 import { PanelContextProvider } from '../panel-context.js';
 import { SettingsPanel } from './SettingsPanel.js';
 
@@ -125,6 +128,7 @@ const domainRequestSchema = z.object({ domain: z.string() });
 const customDomainEntry = (input: {
   domain: string;
   status: 'active' | 'pending-dns' | 'provider-verification' | 'error';
+  storageCorsStatus?: 'ok' | 'blocked' | 'unknown';
 }) => ({
   domain: input.domain,
   verified: input.status === 'active',
@@ -132,10 +136,10 @@ const customDomainEntry = (input: {
   records: [{ type: 'CNAME' as const, name: input.domain, value: 'cname.vercel-dns.com', purpose: 'routing' as const, status: input.status === 'active' ? 'verified' as const : 'pending' as const }],
   lastCheckedAt: null,
   lastError: null,
-  storageCorsStatus: 'unknown' as const,
+  storageCorsStatus: input.storageCorsStatus ?? 'unknown',
 });
 
-const initialRouting = () => ({
+const initialRouting = (storageCorsStatus: 'ok' | 'blocked' | 'unknown' = 'unknown') => ({
   tenantHost: 'academy.together.example',
   storageCorsOrigins: [
     'https://academy.together.example',
@@ -143,7 +147,7 @@ const initialRouting = () => ({
   ],
   canonicalOrigin: 'https://courses.acme.example',
   customDomains: [
-    customDomainEntry({ domain: 'courses.acme.example', status: 'active' }),
+    customDomainEntry({ domain: 'courses.acme.example', status: 'active', storageCorsStatus }),
     customDomainEntry({ domain: 'new.acme.example', status: 'pending-dns' }),
   ],
   customDomainTarget: 'cname.vercel-dns.com',
@@ -156,6 +160,7 @@ const installSettingsBackend = (
   spaces: StubSpace[] = [],
   courses: StubCourse[] | 'unavailable' = [],
   removeRedirectTo: string | null = null,
+  initialRoutingState = initialRouting(),
 ) => {
   let settings = { ...initial };
   const updates: unknown[] = [];
@@ -163,7 +168,7 @@ const installSettingsBackend = (
   const courseList = courses === 'unavailable' ? [] : courses;
   const domainCalls: string[] = [];
   const redirectQueries: URLSearchParams[] = [];
-  let routingState = initialRouting();
+  let routingState = initialRoutingState;
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
@@ -212,6 +217,18 @@ const installSettingsBackend = (
       };
       return HttpResponse.json({ ok: true, data: { routing: routingState } });
     }),
+    http.post('/api/tenant/domains/storage-cors/check', async ({ request }) => {
+      const body = domainRequestSchema.parse(await request.json());
+      domainCalls.push(`cors:${body.domain}`);
+      routingState = {
+        ...routingState,
+        customDomains: routingState.customDomains.map((entry) =>
+          entry.domain === body.domain
+            ? { ...entry, storageCorsStatus: 'ok' as const }
+            : entry),
+      };
+      return HttpResponse.json({ ok: true, data: { routing: routingState } });
+    }),
     http.post('/api/tenant/domains/remove', async ({ request }) => {
       const body = domainRequestSchema.parse(await request.json());
       domainCalls.push(`remove:${body.domain}`);
@@ -250,9 +267,11 @@ const renderPanel = (
   spaces: StubSpace[] = [],
   courses: StubCourse[] | 'unavailable' = [],
   removeRedirectTo: string | null = null,
+  options: { routing?: ReturnType<typeof initialRouting>; language?: Language } = {},
 ) => {
+  languagePreference.save(options.language ?? 'en');
   const { updates, courseUpdates, domainCalls, redirectQueries } =
-    installSettingsBackend(initial, spaces, courses, removeRedirectTo);
+    installSettingsBackend(initial, spaces, courses, removeRedirectTo, options.routing);
 
   const rootRoute = createRootRoute();
   const settingsRoute = createRoute({
@@ -279,9 +298,11 @@ const renderPanel = (
   });
 
   const { queryClient } = renderWithProviders(
-    <ToastProvider>
-      <RouterProvider router={router} />
-    </ToastProvider>,
+    <LanguageProvider>
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
+    </LanguageProvider>,
   );
 
   return { queryClient, router, updates, courseUpdates, domainCalls, redirectQueries };
@@ -404,32 +425,49 @@ describe('SettingsPanel information architecture', () => {
     await waitFor(() => { expect(domainCalls).toEqual(['check:courses.acme.example']); });
   });
 
-  it('shows the storage CORS hint until the verified origin passes its probe', async () => {
-    const { queryClient } = renderPanel();
+  it.each([
+    { language: 'en' as const, t: en },
+    { language: 'pl' as const, t: pl },
+  ])('shows the blocked storage CORS warning in $language', async ({ language, t }) => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { routing: initialRouting('blocked'), language });
 
     const hint = await screen.findByTestId('tenant-domain-cors-hint-courses.acme.example');
-    expect(hint).toHaveTextContent(en.tenantDomains.storageCorsHint);
-    expect(within(hint).getByRole('link', { name: en.tenantDomains.storageCorsLink }))
+    expect(hint).toHaveTextContent(t.tenantDomains.storageCorsHint);
+    expect(within(hint).getByRole('link', { name: t.tenantDomains.storageCorsLink }))
       .toHaveAttribute('href', '/panel/integrations#storage');
+    expect(screen.queryByTestId('tenant-domain-cors-unknown-courses.acme.example')).not.toBeInTheDocument();
     expect(screen.queryByTestId('tenant-domain-cors-hint-new.acme.example')).not.toBeInTheDocument();
+  });
 
-    server.use(http.get('/api/tenant/routing', () => HttpResponse.json({
-      ok: true,
-      data: {
-        routing: {
-          ...initialRouting(),
-          customDomains: initialRouting().customDomains.map((entry) =>
-            entry.domain === 'courses.acme.example'
-              ? { ...entry, storageCorsStatus: 'ok' }
-              : entry),
-        },
-      },
-    })));
-    await queryClient.invalidateQueries();
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('tenant-domain-cors-hint-courses.acme.example')).not.toBeInTheDocument();
+  it.each([
+    { language: 'en' as const, t: en },
+    { language: 'pl' as const, t: pl },
+  ])('shows the unknown storage CORS caption and check action in $language', async ({ language, t }) => {
+    const { domainCalls } = renderPanel(EMPTY_SETTINGS, true, [], [], null, {
+      routing: initialRouting('unknown'),
+      language,
     });
+
+    const unknown = await screen.findByTestId('tenant-domain-cors-unknown-courses.acme.example');
+    expect(unknown).toHaveTextContent(t.tenantDomains.storageCorsUnknown);
+    expect(within(unknown).getByRole('button', { name: t.tenantDomains.storageCorsCheck })).toBeEnabled();
+    expect(screen.queryByTestId('tenant-domain-cors-hint-courses.acme.example')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('tenant-domain-cors-check-courses.acme.example'));
+
+    await waitFor(() => { expect(domainCalls).toContain('cors:courses.acme.example'); });
+    await waitFor(() => {
+      expect(screen.queryByTestId('tenant-domain-cors-unknown-courses.acme.example')).not.toBeInTheDocument();
+    });
+  });
+
+  it.each(['en', 'pl'] as const)('hides storage CORS copy once the verified origin is ok in %s', async (language) => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { routing: initialRouting('ok'), language });
+
+    await screen.findByTestId('tenant-domain-courses.acme.example');
+
+    expect(screen.queryByTestId('tenant-domain-cors-hint-courses.acme.example')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tenant-domain-cors-unknown-courses.acme.example')).not.toBeInTheDocument();
   });
 
   it('warns about signing in again until a custom domain is verified', async () => {

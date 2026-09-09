@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MARKETING_IMPORT_ATTESTATION_TEXT, marketingDirectoryContracts } from '#core/client/index.js';
 import { directoryTestFixtures } from './directory-test-data.js';
 import { en } from '../../../i18n/en.js';
@@ -77,21 +77,32 @@ describe('contact import wizard', () => {
   it('requires explicit delimiter for ambiguous CSV and allows custom column mapping before upload', async () => {
     installDirectoryFixture(uploadFixture);
     let metadata: string | undefined;
-    server.use(http.post('/api/marketing/contact-imports/upload', async ({ request }) => { metadata = await request.text(); return HttpResponse.json({ ok: true, data: preview }); }));
-    await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import');
-    uploadFile('address;label,extra\nanna@example.org;Anna,Example');
-    expect(await screen.findByText(en.directory.parseError)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: en.directory.next })).toBeDisabled();
-    await userEvent.click(screen.getByRole('combobox', { name: en.directory.delimiter }));
-    await userEvent.click(screen.getByRole('option', { name: en.directory.semicolon }));
-    await userEvent.click(screen.getByRole('button', { name: en.directory.next }));
-    expect(screen.getByRole('combobox', { name: 'address' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('combobox', { name: 'address' }));
-    await userEvent.click(screen.getByRole('option', { name: 'email' }));
-    expect(screen.getByRole('combobox', { name: 'address' })).toHaveTextContent('email');
-    await userEvent.click(screen.getByRole('button', { name: en.directory.validate }));
-    await waitFor(() => expect(metadata).toContain('"address":"email"'));
-    expect(metadata).toContain('"delimiter":";"');
+    const append = FormData.prototype.append;
+    const appendSpy = vi.spyOn(FormData.prototype, 'append').mockImplementation(function (this: FormData, name, value, fileName) {
+      if (name === 'metadata' && typeof value === 'string') metadata = value;
+      if (fileName === undefined) return append.call(this, name, value);
+      return append.call(this, name, value, fileName);
+    });
+    try {
+      server.use(http.post('*/api/marketing/contact-imports/upload', () => HttpResponse.json({ ok: true, data: preview })));
+      await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import');
+      uploadFile('address;label,extra\nanna@example.org;Anna,Example');
+      expect(await screen.findByText(en.directory.parseError)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: en.directory.next })).toBeDisabled();
+      await userEvent.click(screen.getByRole('combobox', { name: en.directory.delimiter }));
+      await userEvent.click(screen.getByRole('option', { name: en.directory.semicolon }));
+      await userEvent.click(screen.getByRole('button', { name: en.directory.next }));
+      expect(screen.getByRole('combobox', { name: 'address' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('combobox', { name: 'address' }));
+      await userEvent.click(screen.getByRole('option', { name: 'email' }));
+      expect(screen.getByRole('combobox', { name: 'address' })).toHaveTextContent('email');
+      await waitFor(() => expect(screen.getByRole('button', { name: en.directory.validate })).toBeEnabled());
+      await userEvent.click(screen.getByRole('button', { name: en.directory.validate }));
+      await waitFor(() => expect(metadata ?? '').toContain('"address":"email"'));
+      expect(metadata).toContain('"delimiter":";"');
+    } finally {
+      appendSpy.mockRestore();
+    }
   });
 
   it('requires explicit skipping, an unchecked legal checkbox and a note, then restores durable progress', async () => {

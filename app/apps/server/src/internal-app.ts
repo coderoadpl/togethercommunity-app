@@ -260,6 +260,7 @@ import {
   getTenantDocument,
   addTenantDomain,
   checkTenantDomain,
+  checkTenantDomainStorageCors,
   getTenantRouting,
   removeTenantDomain,
   resubscribeSesWebhookAfterDomainRemoval,
@@ -2127,6 +2128,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     realtimeBus: deps.realtimeBus,
     ids: deps.ids,
     clock: deps.clock,
+    storage: deps.storage,
+    secretResolver: deps.secretResolver,
     logger: deps.logger,
     ...(marketing === undefined || sesOnboarding === undefined ? {} : {
       resubscribeSesWebhookAfterDomainRemoval: (tenantId: string, domain: string) =>
@@ -2199,6 +2202,13 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = await parseTenantDomainInput(c);
     if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
     const result = await checkTenantDomain(ctxOf(c), parsed.data, tenantDomainDeps);
+    return respond(result.ok ? ok({ routing: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantDomainStorageCorsCheck, async (c) => {
+    const parsed = await parseTenantDomainInput(c);
+    if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
+    const result = await checkTenantDomainStorageCors(ctxOf(c), parsed.data, tenantDomainDeps);
     return respond(result.ok ? ok({ routing: result.value }) : result);
   });
 

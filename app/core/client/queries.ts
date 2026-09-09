@@ -1696,6 +1696,12 @@ export const checkTenantDomainMutation = (api: ApiClient) =>
     call: (input: TenantDomainInput) => api.checkTenantDomain(input),
   });
 
+export const checkTenantDomainStorageCorsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRoutingScopes.all(), 'storage-cors-check'],
+    call: (input: TenantDomainInput) => api.checkTenantDomainStorageCors(input),
+  });
+
 export const removeTenantDomainMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantRoutingScopes.all(), 'remove'],

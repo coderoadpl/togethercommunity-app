@@ -181,6 +181,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/tenant/redirects')) {
     return method === 'GET' ? 'tenant:domain:read' : 'tenant:settings:write';
   }
+  if (path === '/api/tenant/domains/storage-cors/check') return 'integration:test';
   if (path.startsWith('/api/tenant/domains')) return 'tenant:settings:write';
   if (path === '/api/support/message') return 'support:request';
   if (path === '/api/platform/data-reset') return 'platform:data:reset';

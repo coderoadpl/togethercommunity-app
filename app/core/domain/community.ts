@@ -21,6 +21,8 @@ export const postSchema = z.object({
   createdAt: z.string().datetime(),
   editedAt: z.string().datetime().nullable(),
   deletedAt: z.string().datetime().nullable(),
+  deletedBy: z.enum(['author', 'moderator']).nullable().optional(),
+  deletedByUserId: z.string().min(1).nullable().optional(),
   pinnedAt: z.string().datetime().nullable().default(null),
 });
 
@@ -30,7 +32,7 @@ export type Post = z.output<typeof postSchema>;
  * What a client is allowed to see: the raw authorUserId is dropped and ownership is
  * pre-computed server-side into isOwn (author checks and moderation stay on the server).
  */
-export const publicPostSchema = postSchema.omit({ authorUserId: true }).extend({
+export const publicPostSchema = postSchema.omit({ authorUserId: true, deletedByUserId: true }).extend({
   isOwn: z.boolean(),
   // Unlike authorDisplay this is never snapshotted, and it stays null on the
   // anonymous surface so public JSON carries no e-mail hash (ADR 0016).
@@ -199,9 +201,17 @@ const DELETED_POST_PLACEHOLDER: Record<Language, string> = {
   en: 'Deleted post',
 };
 
+const MODERATOR_DELETED_POST_PLACEHOLDER: Record<Language, string> = {
+  pl: 'Wpis usunięty przez moderatora.',
+  en: 'This post was deleted by a moderator.',
+};
+
+export const isVisiblePostThread = (post: Post, replyCount: number): boolean =>
+  post.parentPostId !== null || post.deletedAt === null || post.deletedBy !== 'author' || replyCount > 0;
+
 /** Soft-deleted posts keep the thread shape but never leak their body. */
 export const renderPost = (post: Post, language: Language = DEFAULT_LANGUAGE): Post =>
-  post.deletedAt === null ? post : { ...post, body: DELETED_POST_PLACEHOLDER[language] };
+  post.deletedAt === null ? post : { ...post, body: post.deletedBy === 'moderator' ? MODERATOR_DELETED_POST_PLACEHOLDER[language] : DELETED_POST_PLACEHOLDER[language] };
 
 /** Client projection: the raw author id is dropped, ownership pre-computed into isOwn. */
 export const toPublicPost = (
@@ -221,6 +231,7 @@ export const toPublicPost = (
   createdAt: post.createdAt,
   editedAt: post.editedAt,
   deletedAt: post.deletedAt,
+  deletedBy: post.deletedBy ?? null,
   pinnedAt: post.pinnedAt,
   isOwn: post.authorUserId === viewerUserId,
   authorAvatarUrl,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import {
@@ -439,6 +440,14 @@ describe('email branding header', () => {
 
 describe('emailBrandingFrom', () => {
   const baseUrl = 'https://akademia.together.test/';
+
+  it.each([null, '#786000'])('resolves the light accent %s for email rules', (accentLight) => {
+    const branding = emailBrandingFrom({ logoUrl: null, accentColor: '#F5C842', accentLight }, baseUrl);
+    expect(branding.accentColor).toBe(accentLight ?? deriveLightAccent('#F5C842'));
+    expect(contrastRatio(branding.accentColor ?? '', '#ffffff')).toBeGreaterThanOrEqual(4.5);
+    const message = welcomeSignIn('en', { tenantName: 'Acme', actionUrl: baseUrl, branding });
+    expect(message.html).toContain(`border-top:4px solid ${branding.accentColor}`);
+  });
 
   it('resolves app-relative branding assets against the tenant base URL', () => {
     expect(

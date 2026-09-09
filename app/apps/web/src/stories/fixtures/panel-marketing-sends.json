@@ -5,6 +5,7 @@
       "value": {
         "settings": {
           "accentColor": null,
+          "accentLight": null,
           "autoIssueInvoices": false,
           "autoIssueInvoiceScope": "b2b_only",
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
@@ -73,8 +74,10 @@
             "transport": "platform"
           },
           {
+            "audienceSnapshotId": null,
             "campaignId": "campaign-studio-observability",
             "campaignName": "Premiera kursu",
+            "contactId": null,
             "createdAt": "2026-06-27T12:00:00.000Z",
             "deliveryOccurredAt": "2026-06-27T12:00:00.000Z",
             "deliveryStatus": "delivered",
@@ -101,13 +104,19 @@
       "value": {
         "campaigns": [
           {
+            "audience": null,
             "audienceFilter": null,
             "audienceNameSnapshot": "Wszyscy uprawnieni",
+            "audienceSnapshotId": null,
+            "audienceVersion": 1,
             "bodyHtml": "<p>Plan nauki</p>",
             "bodySource": "<p>Plan nauki</p>",
+            "bodyText": null,
+            "candidateCount": 0,
             "consentDefinitionId": "consent-definition-studio-news",
             "consentLabelSnapshot": "Chcę otrzymywać aktualności e-mailem",
             "createdAt": "2026-06-26T12:00:00.000Z",
+            "cursorContactId": null,
             "cursorMemberId": "member-studio-aktywny",
             "engagement": {
               "totalClicks": 0,
@@ -124,14 +133,19 @@
             "lockedUntil": null,
             "name": "Premiera kursu",
             "pausedReason": null,
+            "queued": 0,
+            "replyTo": null,
             "sendAt": "2026-06-27T12:00:00.000Z",
             "sent": 1,
+            "skipped": 0,
+            "snapshotMaxContactId": null,
             "snapshotMaxMemberId": "member-studio-aktywny",
             "startedAt": "2026-06-27T12:00:00.000Z",
             "status": "finished",
             "subject": "Twój plan nauki na lipiec",
             "tenantId": "tenant-studio",
-            "toSend": 1
+            "toSend": 1,
+            "unresolved": 0
           }
         ]
       }
@@ -151,6 +165,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-spolecznosc-polecajki",
               "isOwn": false,
@@ -361,6 +376,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null

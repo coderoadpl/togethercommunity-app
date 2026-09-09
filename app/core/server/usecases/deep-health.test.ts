@@ -38,6 +38,7 @@ const settings: TenantSettings = {
   logoUrl: null,
   logoDarkUrl: null,
   accentColor: null,
+  accentLight: null,
   faviconUrl: null,
   ogTitle: null,
   ogDescription: null,

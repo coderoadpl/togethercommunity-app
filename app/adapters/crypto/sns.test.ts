@@ -42,6 +42,7 @@ describe('SNS verifier', () => {
       rawBody: JSON.stringify({ ...unsigned, Signature: signature }), headers: {}, region: 'eu-central-1',
     });
     expect(result).toEqual({ ok: true, value: {
+      messageId: 'sns-message', timestamp: '2026-07-22T00:00:00.000Z',
       type: 'Notification', topicArn: 'arn:aws:sns:eu-central-1:123:topic', message: '{}', subscribeUrl: null,
     } });
   });

@@ -18,6 +18,7 @@ const VERSION_PREVIEW_FIELDS = [
   'title',
   'description',
   'imageUrl',
+  'salesUrl',
   'publiclyVisible',
   'modules',
   'prefix',
@@ -69,6 +70,7 @@ const courseSchemaShape = z.object({
   name: z.string(),
   description: z.string(),
   imageUrl: z.string().nullable(),
+  salesUrl: z.string().nullable().optional(),
   moduleOrder: z.array(z.string()),
   publiclyVisible: z.boolean(),
 });
@@ -119,6 +121,7 @@ const courseFields = (payload: unknown, moduleNames: ReadonlyMap<string, string>
     text('title', course.name),
     text('description', course.description),
     { name: 'imageUrl', value: { kind: 'image', url: course.imageUrl } },
+    text('salesUrl', course.salesUrl ?? ''),
     { name: 'publiclyVisible', value: { kind: 'flag', value: course.publiclyVisible } },
     {
       name: 'modules',

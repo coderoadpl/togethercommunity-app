@@ -1,28 +1,30 @@
 import { GetSendQuotaCommand, SendRawEmailCommand, SESClient } from '@aws-sdk/client-ses';
 
-import { integrationUnavailable, ok, validation, type AppError, type Result } from '#core/domain/index.js';
+import { appError, integrationUnavailable, ok, validation, marketingReplyToSchema, type AppError, type Result } from '#core/domain/index.js';
 import type { SesMarketingCredentials, SesMarketingSender } from '#core/server/index.js';
 
 export interface RawSesClient {
-  sendRaw(input: { raw: Uint8Array; configurationSet: string | null }): Promise<{ messageId: string | null }>;
+  sendRaw(input: { raw: Uint8Array; configurationSet: string | null; campaignSendId?: string; timeoutMs?: number }): Promise<{ messageId: string | null }>;
   getQuota(): Promise<{ maxSendRate: number; max24HourSend: number; sentLast24Hours: number }>;
 }
 
 const awsClient = (credentials: SesMarketingCredentials): RawSesClient => {
   const client = new SESClient({
     region: credentials.region,
+    maxAttempts: 1,
     credentials: { accessKeyId: credentials.accessKeyId, secretAccessKey: credentials.secretAccessKey },
   });
   return {
-    sendRaw: async ({ raw, configurationSet }) => {
+    sendRaw: async ({ raw, configurationSet, campaignSendId, timeoutMs }) => {
       const output = await client.send(new SendRawEmailCommand({
         RawMessage: { Data: raw },
+        ...(campaignSendId === undefined ? {} : { Tags: [{ Name: 'together-send-id', Value: campaignSendId }] }),
         ...(configurationSet === null ? {} : { ConfigurationSetName: configurationSet }),
-      }));
+      }), { abortSignal: AbortSignal.timeout(timeoutMs ?? 10000) });
       return { messageId: output.MessageId ?? null };
     },
     getQuota: async () => {
-      const output = await client.send(new GetSendQuotaCommand({}));
+      const output = await client.send(new GetSendQuotaCommand({}), { abortSignal: AbortSignal.timeout(5000) });
       return {
         maxSendRate: output.MaxSendRate ?? 0,
         max24HourSend: output.Max24HourSend ?? 0,
@@ -66,7 +68,9 @@ const base64Lines = (value: string): string[] => Buffer.from(value)
 
 const rawMessage = (input: Parameters<SesMarketingSender['send']>[0]): Result<Uint8Array, AppError> => {
   const fields = [input.from.address, input.from.name, input.to, input.subject];
-  const headerEntries = Object.entries(input.headers);
+  const replyTo = marketingReplyToSchema.safeParse(input.replyTo ?? input.from.address);
+  if (!replyTo.success) return { ok: false, error: validation('Invalid Reply-To address') };
+  const headerEntries = Object.entries(input.headers).filter(([name]) => name.toLowerCase() !== 'reply-to');
   if (fields.some(hasLineBreak) || headerEntries.some(([name, value]) =>
     hasLineBreak(name) || hasLineBreak(value) || name.includes(':') || name.trim() === '')) {
     return { ok: false, error: validation('Email headers cannot contain line breaks or invalid names') };
@@ -75,6 +79,7 @@ const rawMessage = (input: Parameters<SesMarketingSender['send']>[0]): Result<Ui
   const headerLines = [
     ...foldHeader('From', `${encodedWords(input.from.name)} <${input.from.address}>`),
     ...foldHeader('To', input.to),
+    ...foldHeader('Reply-To', replyTo.data),
     ...foldHeader('Subject', encodedWords(input.subject)),
     'MIME-Version: 1.0',
     ...foldHeader('Content-Type', `multipart/alternative; boundary="${boundary}"`),
@@ -104,10 +109,12 @@ export const createSesMarketingSender = (
     const raw = rawMessage(input);
     if (!raw.ok) return raw;
     try {
-      const sent = await clientFor(input.credentials).sendRaw({ raw: raw.value, configurationSet: input.configurationSet });
+      const sent = await clientFor(input.credentials).sendRaw({ raw: raw.value, configurationSet: input.configurationSet, ...(input.campaignSendId === undefined ? {} : { campaignSendId: input.campaignSendId }), ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }) });
       if (sent.messageId === null) return { ok: false, error: integrationUnavailable('SES did not return a message id') };
       return ok({ messageId: sent.messageId });
     } catch (cause) {
+      if (cause instanceof Error && ['Throttling', 'ThrottlingException'].includes(cause.name)) return { ok: false, error: appError('rate_limited', 'SES throttled the request before acceptance') };
+      if (cause instanceof Error && cause.name === 'MessageRejected') return { ok: false, error: validation('SES rejected the message before acceptance') };
       return { ok: false, error: integrationUnavailable(`Could not send marketing e-mail: ${String(cause)}`) };
     }
   },

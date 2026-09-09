@@ -142,7 +142,7 @@ const sesSettings = (): TenantSesSettings => ({
   fromAddress: 'news@tenant.test',
   fromName: 'Tenant',
   identity: 'tenant.test',
-  identityVerifiedAt: NOW,
+  replyTo: null, identityVerifiedAt: NOW,
   identityCheckedAt: NOW,
   identityCheckError: null,
   configurationSet: 'marketing',

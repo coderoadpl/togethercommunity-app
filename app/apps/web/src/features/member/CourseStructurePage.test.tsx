@@ -5,6 +5,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -158,10 +159,12 @@ const mockPage = ({
   body = structure,
   lastViewedLessonId,
   progressPending = false,
+  resume = { target: { id: 'l2', name: 'Advanced Variables' }, firstIncomplete: { id: 'l2', name: 'Advanced Variables' }, isReview: false },
 }: {
   body?: CourseStructureWithAccess;
   lastViewedLessonId?: string;
   progressPending?: boolean;
+  resume?: ProgressView['resume'];
 } = {}) => {
   server.use(
     okMe(),
@@ -171,7 +174,7 @@ const mockPage = ({
     http.get('/api/student/progress', () =>
       progressPending
         ? new Promise<never>(() => undefined)
-        : HttpResponse.json({ ok: true, data: { progress: progressView(lastViewedLessonId) } }),
+        : HttpResponse.json({ ok: true, data: { progress: { ...progressView(lastViewedLessonId), resume } } }),
     ),
     http.get('/api/student/courses', () =>
       HttpResponse.json({ ok: true, data: { courses: catalog } }),
@@ -192,11 +195,21 @@ const stubViewport = (isCompact: boolean) => {
   }));
 };
 
-const anonCoursePage = (imageUrl: string | null) => {
+const anonOffer = {
+  description: 'Start from zero.', imageUrl: null, salesUrl: null, supportUrl: null,
+  product: { id: 'prod-advanced', priceCents: 19900, currency: 'PLN', interval: null },
+} satisfies NonNullable<CourseStructureWithAccess['offer']>;
+
+const anonCoursePage = (imageUrl: string | null, offer: NonNullable<CourseStructureWithAccess['offer']> = anonOffer) => {
   server.use(
     anonMe(),
     http.get('/api/public/courses/:courseId/structure', () =>
-      HttpResponse.json({ ok: true, data: { structure } }),
+      HttpResponse.json({ ok: true, data: { structure: {
+        ...structure, offer: { ...offer, imageUrl },
+        modules: structure.modules.map((module) => ({ ...module, chapters: module.chapters.map((chapter) => ({
+          ...chapter, lessons: chapter.lessons.map((lesson) => ({ ...lesson, isPreview: lesson.lessonId === 'l1' })),
+        })) })),
+      } } }),
     ),
     http.get('/api/public/navigation', () =>
       HttpResponse.json({
@@ -262,20 +275,23 @@ describe('CourseStructurePage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps progress plus the small-screen program leading and discussion trailing', async () => {
+  it('orders compact course sections before the curriculum', async () => {
     stubViewport(true);
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    const leading = await screen.findByTestId('member-rail-leading');
-    const trailing = screen.getByTestId('member-rail-trailing');
-    const inlineProgram = within(leading).getByTestId('course-tree-inline');
+    const progressCard = await screen.findByTestId('course-progress-card');
+    const aboutCard = screen.getByTestId('course-about-card');
+    const discussionSearch = screen.getByTestId('course-discussion-search');
+    const inlineProgram = screen.getByTestId('course-tree-inline');
+    const compactOrder = [progressCard, aboutCard, discussionSearch, inlineProgram]
+      .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
 
-    expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
+    expect(compactOrder).toEqual([...compactOrder].sort((left, right) => left - right));
     expect(inlineProgram).toHaveStyle({ marginTop: '1.5rem' });
     expect(screen.getAllByTestId('course-progress-card')).toHaveLength(1);
-    expect(within(trailing).getByTestId('course-discussion-search')).toBeInTheDocument();
     expect(within(inlineProgram).getByTestId('course-tree')).toBeInTheDocument();
+    expect(within(inlineProgram).getByRole('heading', { level: 2, name: pl.courseOverview.curriculum })).toBeInTheDocument();
     expect(screen.getAllByTestId('course-tree')).toHaveLength(1);
     expect(within(inlineProgram).getByTestId('lesson-search')).toBeInTheDocument();
     expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
@@ -352,6 +368,18 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('course-tree')).not.toBeInTheDocument();
   });
 
+  it('keeps desktop progress and discussion search in the rail', async () => {
+    stubViewport(false);
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const leading = await screen.findByTestId('member-rail-leading');
+    const trailing = screen.getByTestId('member-rail-trailing');
+
+    expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
+    expect(within(trailing).getByTestId('course-discussion-search')).toBeInTheDocument();
+  });
+
   it('renders the course title as the single page heading', async () => {
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
@@ -377,10 +405,20 @@ describe('CourseStructurePage', () => {
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
-    expect(screen.getByTestId('first-lesson-link')).toHaveAttribute(
-      'href',
-      '/my/courses/course-1/lessons/l1',
-    );
+    expect(cta).toHaveTextContent('Advanced Variables');
+    expect(cta).toHaveAttribute('title', `${pl.courseOverview.continueLearning}: Advanced Variables`);
+    expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
+  });
+
+  it('offers the server-provided first incomplete lesson beneath a different resume target', async () => {
+    mockPage({ lastViewedLessonId: 'l2', resume: {
+      target: { id: 'l2', name: 'Advanced Variables' },
+      firstIncomplete: { id: 'l1', name: 'Intro to Variables' }, isReview: false,
+    } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+    const link = await screen.findByTestId('first-lesson-link');
+    expect(link).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    expect(link).toHaveTextContent(pl.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
   });
 
   it('skips a completed last-viewed lesson and targets the first unfinished one', async () => {
@@ -390,6 +428,7 @@ describe('CourseStructurePage', () => {
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
+    expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
   });
 
   it('falls back to the first unfinished accessible lesson without a last viewed one', async () => {
@@ -440,12 +479,14 @@ describe('CourseStructurePage', () => {
         },
       ],
     };
-    mockPage({ body: completed, lastViewedLessonId: 'l2' });
+    mockPage({ body: completed, lastViewedLessonId: 'l2', resume: {
+      target: { id: 'l2', name: 'Advanced Variables' }, firstIncomplete: null, isReview: true,
+    } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveTextContent(pl.courseOverview.reviewAgain);
-    expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     const card = screen.getByTestId('course-progress-card');
     expect(within(card).getByTestId('completion-mark')).toHaveAccessibleName(
       pl.courseOverview.courseCompleted,
@@ -471,7 +512,7 @@ describe('CourseStructurePage', () => {
         })),
       })),
     };
-    mockPage({ body: locked });
+    mockPage({ body: locked, resume: { target: null, firstIncomplete: null, isReview: false } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     await screen.findByTestId('course-progress-card');
@@ -505,6 +546,10 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-9" />);
 
     expect(await screen.findByRole('heading', { level: 1, name: pl.courseTree.courseNotFound })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: pl.courseTree.courseNotFound })).toHaveLength(1);
+    expect(screen.getByText(pl.courseTree.courseNotInLibrary)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.courseTree.backToMyCourses })).toHaveAttribute('href', '/my');
+    expect(screen.queryByRole('button', { name: pl.common.retry })).not.toBeInTheDocument();
   });
 
   it('serves an anonymous visitor the public program without progress or discussion', async () => {
@@ -516,13 +561,13 @@ describe('CourseStructurePage', () => {
       pl.anon.lockedCourseHint,
     );
     expect(screen.getByTestId('course-tree')).toBeInTheDocument();
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Closures Deep Dive')).toBeInTheDocument();
+    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
     expect(screen.getByTestId('stat-tile-lessons')).toHaveTextContent('5');
     expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
-    for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-program']) {
+    for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-mobile']) {
       expect(screen.getByTestId(testId)).toHaveAttribute('href', '/checkout/prod-advanced');
     }
     expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(pl.shell.start);
@@ -547,6 +592,22 @@ describe('CourseStructurePage', () => {
     expect(anonStyles['max-height']).toBeUndefined();
   });
 
+  it('keeps the full guest description readable below the offer', async () => {
+    const description = 'Learn the fundamentals through practical exercises. Build a complete project, explore advanced techniques, and apply everything in a final workshop.';
+    anonCoursePage(null, { ...anonOffer, description });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const about = await screen.findByTestId('course-about-card');
+    expect(about).toHaveTextContent(pl.courseOverview.aboutCourse);
+    const text = within(about).getByText(description);
+    for (const width of [390, 1440]) {
+      expect(stylesAt(text, width)['white-space']).not.toBe('nowrap');
+      expect(stylesAt(text, width)['overflow']).not.toBe('hidden');
+      expect(stylesAt(text, width)['-webkit-line-clamp']).toBeUndefined();
+    }
+    expect(screen.getByTestId('guest-course-offer').compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('keeps the member course cover and about card on the same column width', async () => {
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
@@ -560,26 +621,59 @@ describe('CourseStructurePage', () => {
     }
   });
 
-  it('keeps the anonymous course cover and about card on the same column width', async () => {
-    anonCoursePage('https://picsum.photos/seed/js/960/540');
-    await renderPage(<CourseStructurePage courseId="course-1" />);
-
-    const cover = await screen.findByTestId('course-cover');
-    const about = screen.getByTestId('course-about-card');
-    for (const columnWidth of [820, 375]) {
-      expect(constrainedWidth(cover, columnWidth, columnWidth)).toBe(
-        constrainedWidth(about, columnWidth, columnWidth),
-      );
-    }
-  });
-
-  it('leaves out the cover block entirely when the anonymous course has no cover', async () => {
+  it('shows a cover fallback when the anonymous course has no cover', async () => {
     anonCoursePage(null);
 
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
-    expect(screen.queryByTestId('course-cover-fallback')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('course-cover-fallback')).toBeInTheDocument();
     expect(screen.queryByTestId('course-cover')).not.toBeInTheDocument();
   });
+  it.each([
+    { name: 'product before sales URL', product: anonOffer.product, salesUrl: 'https://courses.example.org/offer', supportUrl: 'https://courses.example.org/contact', href: '/checkout/prod-advanced', label: pl.anon.unlockCta, contact: false },
+    { name: 'sales URL without product', product: null, salesUrl: 'https://courses.example.org/offer', supportUrl: 'https://courses.example.org/contact', href: 'https://courses.example.org/offer', label: pl.anon.salesCta, contact: false },
+    { name: 'login and contact', product: null, salesUrl: null, supportUrl: 'https://courses.example.org/contact', href: '/login', label: pl.auth.signInLink, contact: true },
+    { name: 'login without contact', product: null, salesUrl: null, supportUrl: null, href: '/login', label: pl.auth.signInLink, contact: false },
+  ])('resolves $name', async ({ product, salesUrl, supportUrl, href, label, contact }) => {
+    anonCoursePage(null, { ...anonOffer, product, salesUrl, supportUrl });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+    for (const id of ['public-course-unlock-cta', 'public-course-unlock-cta-mobile']) {
+      expect(await screen.findByTestId(id)).toHaveAttribute('href', href);
+      expect(screen.getByTestId(id)).toHaveTextContent(label);
+    }
+    const contactLink = screen.queryByRole('link', { name: pl.anon.contactCreator });
+    if (contact) {
+      expect(contactLink).toHaveAttribute('href', supportUrl);
+      if (contactLink === null) throw new Error('Expected public contact link');
+      for (const width of [390, 1440]) {
+        expect(stylesAt(contactLink, width)['min-height']).toBe('44px');
+      }
+    } else expect(contactLink).not.toBeInTheDocument();
+  });
+
+  it('opens only preview rows after expanding a guest module', async () => {
+    anonCoursePage(null);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+    const user = userEvent.setup();
+    const module = await screen.findByTestId('module-toggle-m1');
+    expect(module).toHaveAttribute('aria-expanded', 'false');
+    expect(module).toHaveTextContent(`3 ${pl.courseOverview.statLessons({ count: 3 })}`);
+    await user.click(module);
+    expect(await screen.findByTestId('chapter-toggle-c1')).toHaveAttribute('aria-expanded', 'true');
+    expect(await screen.findByTestId('lesson-button-l1')).toHaveTextContent(pl.anon.previewChip);
+    expect(screen.getByTestId('lesson-button-l1')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    expect(screen.getByTestId('lesson-button-l2')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('lesson-button-l2')).not.toHaveAttribute('href');
+    expect(screen.queryByTestId('unlock-lesson-l2')).not.toBeInTheDocument();
+  });
+
+  it.each(['month', 'year'] as const)('shows the %s cadence on the offer and mobile bar', async (interval) => {
+    anonCoursePage(null, { ...anonOffer, product: { ...anonOffer.product, interval } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+    const price = await screen.findByTestId('guest-course-price');
+    expect(price).toHaveTextContent(interval === 'month' ? '/ miesiąc' : '/ rok');
+    expect(screen.getByTestId('guest-course-sticky-offer')).toHaveTextContent((price.textContent ?? '').replaceAll('\u00a0', ' '));
+  });
+
 });

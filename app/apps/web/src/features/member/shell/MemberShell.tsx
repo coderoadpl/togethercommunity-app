@@ -33,6 +33,9 @@ const TOOLBAR_MIN_HEIGHT = 52;
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
 
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
+
 export const MemberShell = () => {
   useSuppressGlobalChrome();
   const t = useTranslations();
@@ -41,6 +44,10 @@ export const MemberShell = () => {
   const viewer = useViewerKind();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const courseContext = courseContextFromPath(pathname);
+  const courseStructure = useQuery({
+    ...actions.courseStructure(courseContext?.courseId ?? ''),
+    enabled: viewer === 'member' && courseContext !== null,
+  });
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [openSheet, setOpenSheet] = useState<'menu' | 'program' | null>(null);
   const [mobileKeyboardActive, setMobileKeyboardActive] = useState(false);
@@ -91,10 +98,13 @@ export const MemberShell = () => {
     }
     : null;
 
-  const lessonCrumbs = courseContext === null || courseContext.lessonId === null
+  const courseNotFound = courseStructure.isError && isNotFound(courseStructure.error);
+  const activeCourseContext = courseContext !== null && !courseNotFound ? courseContext : null;
+  const lessonCrumbs = activeCourseContext === null || activeCourseContext.lessonId === null
     ? null
-    : { courseId: courseContext.courseId, lessonId: courseContext.lessonId };
+    : { courseId: activeCourseContext.courseId, lessonId: activeCourseContext.lessonId };
   const hasMobileNavigation = identity !== null && !isDesktop;
+  const showBannedBanner = tenant?.banned === true;
   const closeSheet = () => setOpenSheet(null);
   const mobileKeyboardAnchor = (target: EventTarget): Element | null =>
     target instanceof Element ? target.closest('[data-mobile-keyboard-anchor]') : null;
@@ -118,18 +128,21 @@ export const MemberShell = () => {
     setMobileKeyboardActive(false);
   };
 
-  const sidebar = identity === null || !isDesktop ? null : courseContext === null ? (
+  const memberSidebar = identity === null ? null : (
     <MemberSidebar
       name={identity.name}
       email={identity.email}
       avatarUrl={identity.avatarUrl}
       variant="drawer"
     />
-  ) : (
+  );
+
+  const sidebar = identity === null || !isDesktop ? null : activeCourseContext === null ? memberSidebar : (
     <CourseSidebar
-      courseId={courseContext.courseId}
-      currentLessonId={courseContext.lessonId}
+      courseId={activeCourseContext.courseId}
+      currentLessonId={activeCourseContext.lessonId}
       tenantName={identity.tenantName}
+      notFoundFallback={memberSidebar}
     />
   );
 
@@ -145,13 +158,21 @@ export const MemberShell = () => {
         email={identity.email}
         avatarUrl={identity.avatarUrl}
       />
-      {courseContext === null ? null : (
+      {activeCourseContext === null ? null : (
         <CourseProgramSheet
           open={openSheet === 'program'}
           onClose={closeSheet}
-          courseId={courseContext.courseId}
-          currentLessonId={courseContext.lessonId}
+          courseId={activeCourseContext.courseId}
+          currentLessonId={activeCourseContext.lessonId}
           tenantName={identity.tenantName}
+          notFoundFallback={(
+            <MemberSidebar
+              name={identity.name}
+              email={identity.email}
+              avatarUrl={identity.avatarUrl}
+              variant="sheet"
+            />
+          )}
         />
       )}
     </>
@@ -175,7 +196,7 @@ export const MemberShell = () => {
           }}
         />
       ) : null}
-      {tenant?.banned === true ? <Alert severity="info">{t.community.bannedBanner}</Alert> : null}
+      {showBannedBanner ? <Alert severity="info">{t.community.bannedBanner}</Alert> : null}
     </>
   );
 
@@ -202,24 +223,30 @@ export const MemberShell = () => {
         onBlurCapture={handleMobileBlur}
         sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${TOOLBAR_MIN_HEIGHT + 1}px` }}
       >
-        {sidebar === null ? null : (
-          <SidebarColumn
-            component="aside"
-            sx={courseContext === null ? undefined : {
-              top: 'var(--member-app-bar-height)',
-              mt: 'var(--member-app-bar-height)',
-              height: 'calc(100dvh - var(--member-app-bar-height))',
-              maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
-              overflowY: 'auto',
-            }}
-          >
-            {sidebar}
-          </SidebarColumn>
+        {sidebar === null ? null : activeCourseContext === null ? (
+          <SidebarColumn component="aside">{sidebar}</SidebarColumn>
+        ) : (
+          <Box sx={{ flexShrink: 0 }}>
+            <SidebarColumn sx={{ height: 'var(--member-app-bar-height)', justifyContent: 'center', px: '1.2rem' }}>
+              {brand}
+            </SidebarColumn>
+            <SidebarColumn
+              component="aside"
+              sx={{
+                top: 'var(--member-app-bar-height)',
+                height: 'calc(100dvh - var(--member-app-bar-height))',
+                maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
+                overflowY: 'auto',
+              }}
+            >
+              {sidebar}
+            </SidebarColumn>
+          </Box>
         )}
         <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
           <AppBar ref={appBarRef} position="sticky">
             <Toolbar variant="dense" sx={{ minHeight: `${TOOLBAR_MIN_HEIGHT}px`, px: '1.25rem', gap: '0.75rem' }}>
-              {lessonCrumbs === null ? (
+              {lessonCrumbs === null && (activeCourseContext === null || !isDesktop) ? (
                 <Box sx={{ display: { xs: 'flex', md: 'none' }, flex: '1 1 auto', minWidth: 0 }}>
                   {brand}
                 </Box>
@@ -241,7 +268,7 @@ export const MemberShell = () => {
                   />
                 )}
               </Box>
-              {hasMobileNavigation && courseContext !== null ? (
+              {hasMobileNavigation && activeCourseContext !== null ? (
                 <>
                   <IconButton
                     color="inherit"
@@ -251,7 +278,7 @@ export const MemberShell = () => {
                     aria-expanded={openSheet === 'program' ? true : undefined}
                     onClick={() => setOpenSheet('program')}
                     data-testid="program-button"
-                    sx={{ display: { xs: 'inline-flex', sm: 'none' }, flexShrink: 0 }}
+                    sx={{ display: { xs: 'inline-flex', sm: 'none' }, flexShrink: 0, minHeight: 44, minWidth: 44 }}
                   >
                     <ProgramIcon />
                   </IconButton>

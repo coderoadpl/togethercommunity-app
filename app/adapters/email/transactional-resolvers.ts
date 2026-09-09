@@ -19,6 +19,7 @@ export const createTenantSesTransactionalResolver = (
   credentials: MarketingSesCredentialResolver,
   emailFor: (input: {
     from: string;
+    replyTo: string;
     region: string;
     credentials: { accessKeyId: string; secretAccessKey: string };
     configurationSet: string | null;
@@ -31,6 +32,7 @@ export const createTenantSesTransactionalResolver = (
     if (!resolved.ok) return null;
     return emailFor({
       from: fromLine(tenantSettings.fromName, tenantSettings.fromAddress),
+      replyTo: tenantSettings.replyTo ?? tenantSettings.fromAddress,
       region: resolved.value.region,
       credentials: {
         accessKeyId: resolved.value.accessKeyId,

@@ -1,3 +1,7 @@
+import { contactCampaignAudienceSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
+import { marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
+import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/index.js';
+import { MARKETING_CONTACT_ROUTES } from './marketing-contacts.js';
 import { z } from 'zod';
 
 import {
@@ -1564,7 +1568,10 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
   status: z.enum(['active', 'archived']),
 });
 export const marketingCampaignCreateInputSchema = z.object({
+  audience: contactCampaignAudienceSchema.optional(),
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
+  bodyText: marketingBodyTextSchema.nullable().optional(),
+  replyTo: marketingReplyToSchema.nullable().optional(),
   bodyHtml: z.string().min(1), bodySource: z.string().min(1).optional(),
   consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
@@ -1574,19 +1581,22 @@ export const marketingCampaignScheduleInputSchema = z.object({ campaignId: z.str
 export const marketingCampaignUpdateInputSchema = marketingCampaignCreateInputSchema.extend({ campaignId: z.string().min(1) });
 export const marketingCampaignActionInputSchema = z.object({
   campaignId: z.string().min(1),
-  action: z.enum(['pause', 'resume', 'cancel']),
+  action: z.enum(['pause', 'resume', 'cancel', 'draft']),
 });
 export const marketingAudiencePreviewInputSchema = z.object({
+  audience: contactCampaignAudienceSchema.optional(),
   consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
 });
-export const marketingAudiencePreviewOutputSchema = z.object({ count: z.number().int().nonnegative() });
+export const marketingAudiencePreviewOutputSchema = z.union([contactAudiencePreviewSchema, z.object({ count: z.number().int().nonnegative() })]);
+export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.string().min(1), audience: contactCampaignAudienceSchema });
+export type MarketingCampaignAudienceInput = z.input<typeof marketingCampaignAudienceInputSchema>;
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignDetailOutputSchema = z.object({
-  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema }),
+  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0) }),
 });
 export const marketingCampaignsOutputSchema = z.object({
-  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema })),
+  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0) })),
 });
 export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });
@@ -1608,6 +1618,10 @@ export const marketingLayoutOutputSchema = z.object({ layout: emailLayoutSchema 
 export const marketingLayoutSaveInputSchema = z.object({
   layoutId: z.string().min(1).optional(), name: z.string().trim().min(1), bodyHtml: z.string().min(1),
 });
+export const marketingSnsInboxOutputSchema = z.object({ receipts: z.array(marketingSnsReceiptSchema) });
+export const marketingSnsRetryInputSchema = z.object({ inboxId: z.string().min(1) });
+export const marketingSnsRetryOutputSchema = z.object({ retried: z.literal(true) });
+export const marketingWorkerOutputSchema = z.object({ campaignsDispatched: z.number(), retentionTenantsProcessed: z.number(), identityChecksPerformed: z.number(), reputationAlertsSent: z.number() });
 export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
@@ -1620,6 +1634,7 @@ export const marketingSesSettingsOutputSchema = z.object({
 });
 export const marketingReputationOutputSchema = emailReputationSchema;
 export const marketingSesSettingsUpdateInputSchema = z.object({
+  replyTo: marketingReplyToSchema.nullable().optional(),
   fromAddress: z.string().email(),
   fromName: z.string().trim().min(1),
   identity: z.string().trim().min(1),
@@ -1736,6 +1751,7 @@ export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
  * verbs are commands. `core/client` brands its call surface from these methods.
  */
 export const API_ROUTES = {
+  ...MARKETING_CONTACT_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -1965,6 +1981,7 @@ export const API_ROUTES = {
   marketingCampaignUpdate: { method: 'POST', path: '/api/marketing/campaigns/update' },
   marketingCampaignAction: { method: 'POST', path: '/api/marketing/campaigns/action' },
   marketingCampaignTest: { method: 'POST', path: '/api/marketing/campaigns/test' },
+  marketingCampaignAudience: { method: 'POST', path: '/api/marketing/campaigns/audience' },
   marketingAudiencePreview: { method: 'POST', path: '/api/marketing/audience-preview' },
   marketingCampaign: { method: 'GET', path: '/api/marketing/campaigns/:id' },
   marketingDocuments: { method: 'GET', path: '/api/marketing/documents' },
@@ -1974,6 +1991,9 @@ export const API_ROUTES = {
   marketingDocumentPublish: { method: 'POST', path: '/api/marketing/documents/publish' },
   marketingLayouts: { method: 'GET', path: '/api/marketing/layouts' },
   marketingLayoutsSave: { method: 'POST', path: '/api/marketing/layouts' },
+  marketingSnsInbox: { method: 'GET', path: '/api/marketing/sns-inbox' },
+  marketingSnsRetry: { method: 'POST', path: '/api/marketing/sns-inbox/retry' },
+  marketingWorker: { method: 'GET', path: '/api/internal/marketing/tick' },
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
   marketingSesOnboarding: { method: 'POST', path: '/api/marketing/ses-onboarding/poll' },
@@ -2013,6 +2033,64 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  listMarketingContacts: API_ROUTES.listMarketingContacts.path,
+  m2mListMarketingContacts: API_ROUTES.m2mListMarketingContacts.path,
+  exportMarketingContacts: API_ROUTES.exportMarketingContacts.path,
+  m2mExportMarketingContacts: API_ROUTES.m2mExportMarketingContacts.path,
+  upsertMarketingContact: API_ROUTES.upsertMarketingContact.path,
+  m2mUpsertMarketingContact: API_ROUTES.m2mUpsertMarketingContact.path,
+  getMarketingContact: API_ROUTES.getMarketingContact.path,
+  m2mGetMarketingContact: API_ROUTES.m2mGetMarketingContact.path,
+  updateMarketingContact: API_ROUTES.updateMarketingContact.path,
+  m2mUpdateMarketingContact: API_ROUTES.m2mUpdateMarketingContact.path,
+  archiveMarketingContact: API_ROUTES.archiveMarketingContact.path,
+  m2mArchiveMarketingContact: API_ROUTES.m2mArchiveMarketingContact.path,
+  restoreMarketingContact: API_ROUTES.restoreMarketingContact.path,
+  m2mRestoreMarketingContact: API_ROUTES.m2mRestoreMarketingContact.path,
+  listMarketingLists: API_ROUTES.listMarketingLists.path,
+  m2mListMarketingLists: API_ROUTES.m2mListMarketingLists.path,
+  createMarketingList: API_ROUTES.createMarketingList.path,
+  m2mCreateMarketingList: API_ROUTES.m2mCreateMarketingList.path,
+  getMarketingList: API_ROUTES.getMarketingList.path,
+  m2mGetMarketingList: API_ROUTES.m2mGetMarketingList.path,
+  updateMarketingList: API_ROUTES.updateMarketingList.path,
+  m2mUpdateMarketingList: API_ROUTES.m2mUpdateMarketingList.path,
+  archiveMarketingList: API_ROUTES.archiveMarketingList.path,
+  m2mArchiveMarketingList: API_ROUTES.m2mArchiveMarketingList.path,
+  addMarketingListContacts: API_ROUTES.addMarketingListContacts.path,
+  m2mAddMarketingListContacts: API_ROUTES.m2mAddMarketingListContacts.path,
+  removeMarketingListContacts: API_ROUTES.removeMarketingListContacts.path,
+  m2mRemoveMarketingListContacts: API_ROUTES.m2mRemoveMarketingListContacts.path,
+  previewMarketingList: API_ROUTES.previewMarketingList.path,
+  m2mPreviewMarketingList: API_ROUTES.m2mPreviewMarketingList.path,
+  getMarketingListContacts: API_ROUTES.getMarketingListContacts.path,
+  m2mGetMarketingListContacts: API_ROUTES.m2mGetMarketingListContacts.path,
+  createMarketingContactImport: API_ROUTES.createMarketingContactImport.path,
+  m2mCreateMarketingContactImport: API_ROUTES.m2mCreateMarketingContactImport.path,
+  appendMarketingContactImportRows: API_ROUTES.appendMarketingContactImportRows.path,
+  m2mAppendMarketingContactImportRows: API_ROUTES.m2mAppendMarketingContactImportRows.path,
+  validateMarketingContactImport: API_ROUTES.validateMarketingContactImport.path,
+  m2mValidateMarketingContactImport: API_ROUTES.m2mValidateMarketingContactImport.path,
+  commitMarketingContactImport: API_ROUTES.commitMarketingContactImport.path,
+  m2mCommitMarketingContactImport: API_ROUTES.m2mCommitMarketingContactImport.path,
+  getMarketingContactImport: API_ROUTES.getMarketingContactImport.path,
+  m2mGetMarketingContactImport: API_ROUTES.m2mGetMarketingContactImport.path,
+  getMarketingContactImportRows: API_ROUTES.getMarketingContactImportRows.path,
+  m2mGetMarketingContactImportRows: API_ROUTES.m2mGetMarketingContactImportRows.path,
+  retryMarketingContactImport: API_ROUTES.retryMarketingContactImport.path,
+  m2mRetryMarketingContactImport: API_ROUTES.m2mRetryMarketingContactImport.path,
+  cancelMarketingContactImport: API_ROUTES.cancelMarketingContactImport.path,
+  m2mCancelMarketingContactImport: API_ROUTES.m2mCancelMarketingContactImport.path,
+  importMarketingSuppressions: API_ROUTES.importMarketingSuppressions.path,
+  m2mImportMarketingSuppressions: API_ROUTES.m2mImportMarketingSuppressions.path,
+  processMarketingContactImport: API_ROUTES.processMarketingContactImport.path,
+  m2mProcessMarketingContactImport: API_ROUTES.m2mProcessMarketingContactImport.path,
+  syncMarketingMemberContacts: API_ROUTES.syncMarketingMemberContacts.path,
+  m2mSyncMarketingMemberContacts: API_ROUTES.m2mSyncMarketingMemberContacts.path,
+  marketingContactImportUpload: API_ROUTES.marketingContactImportUpload.path,
+  marketingContactImportPreview: API_ROUTES.marketingContactImportPreview.path,
+  marketingImportsTick: API_ROUTES.marketingImportsTick.path,
+
   health: API_ROUTES.health.path,
   healthLive: API_ROUTES.healthLive.path,
   healthReady: API_ROUTES.healthReady.path,
@@ -2226,6 +2304,7 @@ export const API_PATHS = {
   marketingCampaignUpdate: API_ROUTES.marketingCampaignUpdate.path,
   marketingCampaignAction: API_ROUTES.marketingCampaignAction.path,
   marketingCampaignTest: API_ROUTES.marketingCampaignTest.path,
+  marketingCampaignAudience: API_ROUTES.marketingCampaignAudience.path,
   marketingAudiencePreview: API_ROUTES.marketingAudiencePreview.path,
   marketingCampaign: API_ROUTES.marketingCampaign.path,
   marketingDocuments: API_ROUTES.marketingDocuments.path,

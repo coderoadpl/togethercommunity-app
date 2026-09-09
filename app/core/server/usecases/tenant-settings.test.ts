@@ -15,6 +15,7 @@ const settings: TenantSettings = {
   logoUrl: null,
   logoDarkUrl: null,
   accentColor: null,
+  accentLight: null,
   faviconUrl: null,
   ogTitle: null,
   ogDescription: null,
@@ -107,6 +108,18 @@ describe('updateTenantSettings', () => {
     identity: identity('admin'),
     capabilities: ['tenant:settings:write' as const],
   };
+
+  it('stores, preserves and clears the optional light accent', async () => {
+    const saved = await updateTenantSettings(adminCtx, { accentLight: '#786000' }, deps);
+    expect(saved).toMatchObject({ ok: true, value: { accentLight: '#786000', accentColor: null } });
+    const configured = { ...deps, tenants: { ...deps.tenants, findSettings: async () => ({ ...settings, accentLight: '#786000' }) } };
+    expect(await updateTenantSettings(adminCtx, { name: 'Acme' }, configured))
+      .toMatchObject({ ok: true, value: { accentLight: '#786000' } });
+    expect(await updateTenantSettings(adminCtx, { accentLight: '' }, configured))
+      .toMatchObject({ ok: true, value: { accentLight: null } });
+    expect(await updateTenantSettings(adminCtx, { accentLight: 'yellow' }, deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
 
   it('invalidates public caches after storing settings', async () => {
     const contentVersionBumps: string[] = [];

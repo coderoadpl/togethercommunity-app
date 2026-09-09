@@ -227,6 +227,7 @@ export const buildCourseStructure = (
         const durationMinutes = lessonsById.get(content.lessonId)?.durationMinutes;
         return {
           contentId: content.id,
+          isPreview: lessonsById.get(content.lessonId)?.isPreview ?? false,
           lessonId: content.lessonId,
           name: lessonsById.get(content.lessonId)?.name ?? content.name,
           accessStatus: accessible ? ('fully-accessible' as const) : ('not-accessible' as const),

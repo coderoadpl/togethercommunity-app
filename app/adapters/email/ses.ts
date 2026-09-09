@@ -10,6 +10,8 @@ import {
   integrationAuth,
   integrationUnavailable,
   internal,
+  marketingReplyToSchema,
+  validation,
   ok,
   type AppError,
   type Result,
@@ -18,6 +20,7 @@ import type { EmailPort } from '#core/server/index.js';
 
 export interface SesEmailSettings {
   from: string;
+  replyTo?: string;
   region?: string;
   credentials?: { accessKeyId: string; secretAccessKey: string };
   configurationSet?: string | null;
@@ -88,10 +91,14 @@ export const createSesEmailPort = (
         : healthy;
     },
     send: async (message): Promise<Result<{ messageId: string }, AppError>> => {
+      const replyTo = Object.entries(message.headers ?? {}).find(([name]) => name.toLowerCase() === 'reply-to')?.[1] ?? settings.replyTo;
+      const parsedReplyTo = replyTo === undefined ? null : marketingReplyToSchema.safeParse(replyTo);
+      if (parsedReplyTo !== null && !parsedReplyTo.success) return err(validation('Invalid Reply-To address'));
       try {
         const output = await sender.send(
           new SendEmailCommand({
             Source: settings.from,
+            ...(parsedReplyTo?.success ? { ReplyToAddresses: [parsedReplyTo.data] } : {}),
             Destination: { ToAddresses: [message.to] },
             Message: {
               Subject: { Data: message.subject, Charset: 'UTF-8' },

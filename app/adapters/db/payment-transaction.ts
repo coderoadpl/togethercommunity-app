@@ -2,6 +2,7 @@ import { internal, type AppError, type Result } from '#core/domain/index.js';
 import type { EnrollmentTransactionPort, PaymentTransactionPort } from '#core/server/index.js';
 
 import { createCouponRedemptionRepository } from './coupon-repositories.js';
+import { createCheckoutConsentJobRepository } from './checkout-consent-jobs.js';
 import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import {
@@ -11,7 +12,9 @@ import {
   createPaymentRefundRepository,
   createProcessedPaymentEventRepository,
   createProductGrantRepository,
+  createTermsConsentRepository,
 } from './repositories.js';
+import { createMarketingConsentRepository, createConsentConfirmationTokenRepository } from './marketing-repositories.js';
 import type { Db } from './client.js';
 
 export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => ({
@@ -56,6 +59,11 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
           couponRedemptions: createCouponRedemptionRepository(tx),
           emailOutbox,
           autoInvoiceJobs: createAutoInvoiceJobRepository(tx),
+          checkoutConsentJobs: createCheckoutConsentJobRepository(tx),
+          consentTransaction: createPaymentTransactionPort(tx),
+          consents: createTermsConsentRepository(tx),
+          marketingConsents: createMarketingConsentRepository(tx),
+          confirmations: createConsentConfirmationTokenRepository(tx),
           processedPaymentEvents: createProcessedPaymentEventRepository(tx),
           enrollmentTransaction,
         });

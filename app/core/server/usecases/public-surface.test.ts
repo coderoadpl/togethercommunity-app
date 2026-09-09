@@ -6,6 +6,7 @@ import type {
   CourseModule,
   Post,
   Product,
+  ProductPrice,
   Space,
   SpaceEvent,
   Tenant,
@@ -140,6 +141,8 @@ const navigationDeps = (input: {
   courses?: Course[];
   products?: Product[];
   defaultHomeSpaceId?: string | null;
+  supportEmail?: string;
+  supportUrl?: string | null;
 }): PublicNavigationDeps => ({
   spaces: { list: async () => input.spaces.filter((row) => row.archivedAt === null) },
   courses: { list: async () => input.courses ?? [] },
@@ -154,12 +157,13 @@ const navigationDeps = (input: {
       logoUrl: null,
       logoDarkUrl: null,
       accentColor: null,
+      accentLight: null,
       faviconUrl: null,
       ogTitle: null,
       ogDescription: null,
       ogImageUrl: null,
-      supportEmail: null,
-      supportUrl: null,
+      supportEmail: input.supportEmail ?? null,
+      supportUrl: input.supportUrl ?? null,
       termsUrl: null,
       privacyUrl: null,
       defaultHomeSpaceId: input.defaultHomeSpaceId ?? null,
@@ -172,7 +176,10 @@ const structureDeps = (input: {
   modules: CourseModule[];
   lessons: CourseLesson[];
   products?: Product[];
+  prices?: ProductPrice[];
 }): PublicCourseStructureDeps => ({
+  prices: { listActiveByProducts: async () => input.prices ?? [] },
+  tenants: { findSettings: async () => null },
   courses: { findById: async (_tenantId, id) => input.courses.find((row) => row.id === id) ?? null },
   modules: { list: async () => input.modules },
   lessons: { list: async () => input.lessons },
@@ -536,6 +543,41 @@ describe('getPublicCourseStructure', () => {
     });
   });
 
+
+  it('returns a linked published product even for an empty curriculum and uses its checkout price', async () => {
+    const result = await getPublicCourseStructure(tenant, open.id, structureDeps({
+      courses: [{ ...open, salesUrl: 'https://courses.example.org/offer' }], modules: [], lessons: [],
+      products: [{ ...product('draft', [], open.id), published: false, priceCents: 0 }, product('unrelated', [], 'other'), product('paid', [], open.id)],
+      prices: [{ id: 'price', productId: 'paid', tenantId: tenant.id, kind: 'recurring', interval: 'year', amountCents: 9900, currency: 'EUR', active: true, createdAt: '2026-01-01T00:00:00.000Z' }],
+    }));
+    expect(result).toMatchObject({ ok: true, value: { offer: {
+      salesUrl: 'https://courses.example.org/offer',
+      product: { id: 'paid', priceCents: 9900, currency: 'EUR', interval: 'year' },
+    } } });
+  });
+
+  it('returns no product for draft or unrelated products', async () => {
+    const result = await getPublicCourseStructure(tenant, open.id, structureDeps({
+      courses: [open], modules: [], lessons: [],
+      products: [{ ...product('draft', [], open.id), published: false }, product('other', [], 'other')],
+    }));
+    expect(result).toMatchObject({ ok: true, value: { offer: { product: null, salesUrl: null, supportUrl: null } } });
+  });
+
+  it.each(['https://courses.example.org/contact', null])('exposes only the public contact URL (%s)', async (supportUrl) => {
+    const supportEmail = 'staff@example.org';
+    const result = await getPublicCourseStructure(tenant, open.id, {
+      ...structureDeps({ courses: [open], modules: [], lessons: [] }),
+      tenants: navigationDeps({ spaces: [], supportEmail, supportUrl }).tenants,
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { offer: { supportUrl } } });
+    expect(JSON.stringify(result)).not.toContain(supportEmail);
+    if (!result.ok) throw new Error('Expected public course structure');
+    expect(result.value.offer).not.toHaveProperty('contactEmail');
+    expect(result.value.offer).not.toHaveProperty('supportEmail');
+  });
+
   it('answers not_found for missing and non-public courses alike', async () => {
     const deps = structureDeps({ courses: [hidden], modules: [], lessons: [] });
 
@@ -645,6 +687,18 @@ describe('getPublicSpaceThread', () => {
     expect(
       await getPublicSpaceThread(tenant, { spaceId: open.id, postId: 'absent' }, deps),
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it.each(['author', 'moderator'] as const)('applies %s deletion visibility to public feeds and permalinks', async (deletedBy) => {
+    const root = { ...post({ id: 'deleted-root', contextId: open.id }), deletedAt: PUBLIC_NOW, deletedBy };
+    const deps = spaceDeps({ spaces: [open], posts: [root] });
+    deps.posts.listThreadsForContext = async () => ({ threads: [{ post: root, replyCount: 0 }], nextCursor: null });
+    const feed = await getPublicSpaceFeed(tenant, { spaceId: open.id }, deps);
+    expect(feed).toMatchObject({ ok: true, value: { items: deletedBy === 'author' ? [] : [{ deletedBy }] } });
+    const thread = await getPublicSpaceThread(tenant, { spaceId: open.id, postId: root.id }, deps);
+    expect(thread).toMatchObject(deletedBy === 'author'
+      ? { ok: false, error: { code: 'not_found' } }
+      : { ok: true, value: { threads: [{ deletedBy, body: 'Wpis usunięty przez moderatora.' }] } });
   });
 
   it('rejects a malformed thread query', async () => {

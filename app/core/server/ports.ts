@@ -315,7 +315,7 @@ export interface PostRepository {
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
   updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null>;
   /** Clears pinnedAt when marking a post deleted. */
-  softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null>;
+  softDelete(tenantId: string, input: { id: string; deletedAt: string; deletedBy: 'author' | 'moderator'; deletedByUserId: string }): Promise<Post | null>;
   setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null>;
   listPinnedForContext(
     tenantId: string,
@@ -1640,6 +1640,25 @@ export interface EnrollmentTransactionPort {
   run<T>(operation: (deps: { members: MemberRepository; grants: ProductGrantRepository; emailOutbox: EmailOutboxRepository }) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }
 
+export interface CheckoutConsentJob {
+  tenantId: string;
+  checkoutSessionId: string;
+  webhookEventId: string;
+  captureId: string;
+  email: string;
+  orderId: string;
+  productId: string;
+  reason: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface CheckoutConsentJobRepository {
+  enqueue(tenantId: string, job: CheckoutConsentJob): Promise<void>;
+  lockPending(tenantId: string, checkoutSessionId: string): Promise<CheckoutConsentJob | null>;
+  complete(tenantId: string, checkoutSessionId: string, completedAt: string): Promise<void>;
+}
+
 export interface PaymentTransactionPort {
   /** Every payment projection write of one webhook branch commits together or not at all. */
   run<T>(
@@ -1652,6 +1671,11 @@ export interface PaymentTransactionPort {
       couponRedemptions: CouponRedemptionRepository;
       emailOutbox: EmailOutboxRepository;
       autoInvoiceJobs: AutoInvoiceJobRepository;
+      checkoutConsentJobs: CheckoutConsentJobRepository;
+      consentTransaction: PaymentTransactionPort;
+      consents: TermsConsentRepository;
+      marketingConsents: MarketingConsentRepository;
+      confirmations: ConsentConfirmationTokenRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;
       enrollmentTransaction: EnrollmentTransactionPort;
     }) => Promise<Result<T, AppError>>,
@@ -1887,6 +1911,7 @@ export interface ConsentDefinitionRepository {
 }
 
 export interface CampaignRepository {
+  addDeliveryCounts(tenantId: string, campaignId: string, counts: { sent: number; failed: number; skipped?: number }): Promise<void>;
   create(tenantId: string, campaign: Campaign): Promise<void>;
   findById(tenantId: string, campaignId: string): Promise<Campaign | null>;
   list(tenantId: string): Promise<Campaign[]>;
@@ -1900,7 +1925,7 @@ export interface CampaignRepository {
   advanceCursor(
     tenantId: string,
     campaignId: string,
-    input: { cursorMemberId: string; sentDelta: number; failedDelta: number },
+    input: { cursorMemberId?: string; cursorContactId?: string; skippedDelta?: number; sentDelta: number; failedDelta: number; lease?: { workerId: string; now: string } },
   ): Promise<Campaign | null>;
 }
 
@@ -1919,6 +1944,7 @@ export interface EmailLayoutRepository {
 }
 
 export interface CampaignSendRepository {
+  progressStats(tenantId: string, campaignIds: string[]): Promise<Map<string, { queued: number; unresolved: number }>>;
   claimRecipient(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<boolean>;
   findById(tenantId: string, sendId: string): Promise<CampaignSend | null>;
   update(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<CampaignSend | null>;
@@ -1980,6 +2006,9 @@ export interface SesMarketingCredentials {
 
 export interface SesMarketingSender {
   send(input: {
+    replyTo?: string;
+    campaignSendId?: string;
+    timeoutMs?: number;
     credentials: SesMarketingCredentials;
     from: { address: string; name: string };
     to: string;
@@ -2103,6 +2132,8 @@ export interface MarketingThrottleRepository {
 }
 
 export interface VerifiedSnsEnvelope {
+  messageId: string;
+  timestamp: string;
   type: 'SubscriptionConfirmation' | 'Notification';
   topicArn: string;
   message: string;

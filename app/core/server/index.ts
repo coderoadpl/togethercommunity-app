@@ -97,3 +97,26 @@ export * from './usecases/marketing-management.js';
 export * from './usecases/marketing-ses-onboarding.js';
 export * from './usecases/ses-webhook-url.js';
 export * from './usecases/deep-health.js';
+
+export * from './marketing-contact-ports.js';
+
+export * from './usecases/marketing-contacts.js';
+
+export * from './usecases/marketing-lists.js';
+
+export * from './usecases/marketing-member-contacts.js';
+
+export * from './usecases/marketing-contact-imports.js';
+
+export type { HtmlToText, MarketingWaiter } from './marketing-delivery-ports.js';
+
+export type { MarketingOutboxRepository, MarketingSnsInboxRepository, MarketingDeliveryRepos, MarketingDeliveryTransaction } from './marketing-delivery-ports.js';
+
+export { enqueueMarketingMessages } from './usecases/marketing-outbox.js';
+export { dispatchMarketingOutbox } from './usecases/marketing-dispatch.js';
+
+export { recordVerifiedMarketingSnsEnvelope, processMarketingSnsInbox, retryMarketingSnsInbox, listMarketingSnsInbox } from './usecases/marketing-sns-inbox.js';
+
+export * from './marketing-audience-ports.js';
+export * from './usecases/marketing-contact-audience.js';
+export * from './usecases/marketing-contact-campaigns.js';

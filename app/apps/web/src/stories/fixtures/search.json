@@ -255,6 +255,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null
@@ -287,6 +288,7 @@
               "contextKind": "lesson",
               "createdAt": "2026-06-28T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-js-zmienne-q",
               "isOwn": true,
@@ -308,6 +310,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-spolecznosc-polecajki",
               "isOwn": false,
@@ -329,6 +332,7 @@
               "contextKind": "lesson",
               "createdAt": "2026-06-22T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-js-dom-q-r1",
               "isOwn": false,
@@ -350,6 +354,7 @@
               "contextKind": "lesson",
               "createdAt": "2026-06-11T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-js-zmienne-tip",
               "isOwn": false,
@@ -384,6 +389,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
+                      "isPreview": false,
                       "lessonId": "lesson-js-demo-video",
                       "name": "Demo wideo (Bunny Stream)"
                     }
@@ -400,6 +406,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-zmienne-1",
                       "durationMinutes": 12,
+                      "isPreview": false,
                       "lessonId": "lesson-js-zmienne-1",
                       "name": "Deklarowanie zmiennych"
                     },
@@ -408,6 +415,7 @@
                       "completionStatus": "fully-completed",
                       "contentId": "content-lesson-js-zmienne-2",
                       "durationMinutes": 15,
+                      "isPreview": false,
                       "lessonId": "lesson-js-zmienne-2",
                       "name": "Typy proste i złożone"
                     }
@@ -424,6 +432,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-funkcje-1",
                       "durationMinutes": 18,
+                      "isPreview": false,
                       "lessonId": "lesson-js-funkcje-1",
                       "name": "Funkcje i argumenty"
                     },
@@ -432,6 +441,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-funkcje-2",
                       "durationMinutes": 22,
+                      "isPreview": false,
                       "lessonId": "lesson-js-funkcje-2",
                       "name": "Domknięcia i zakres"
                     }
@@ -456,6 +466,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-1",
                       "name": "Wybieranie elementów DOM"
                     },
@@ -464,6 +475,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
+                      "isPreview": false,
                       "lessonId": "lesson-js-dom-2",
                       "name": "Zdarzenia i interakcja"
                     }
@@ -488,6 +500,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-js-projekt-1",
                       "durationMinutes": 35,
+                      "isPreview": false,
                       "lessonId": "lesson-js-projekt-1",
                       "name": "Projekt: lista zadań"
                     }
@@ -525,6 +538,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-jsx-1",
                       "durationMinutes": 11,
+                      "isPreview": false,
                       "lessonId": "lesson-react-jsx-1",
                       "name": "Czym jest JSX"
                     },
@@ -533,6 +547,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-jsx-2",
                       "durationMinutes": 16,
+                      "isPreview": false,
                       "lessonId": "lesson-react-jsx-2",
                       "name": "Komponenty i propsy"
                     }
@@ -549,6 +564,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-state-1",
                       "durationMinutes": 14,
+                      "isPreview": false,
                       "lessonId": "lesson-react-state-1",
                       "name": "Stan komponentu z useState"
                     },
@@ -557,6 +573,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-state-2",
                       "durationMinutes": 17,
+                      "isPreview": false,
                       "lessonId": "lesson-react-state-2",
                       "name": "Przepływ danych i podnoszenie stanu"
                     }
@@ -581,6 +598,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-hooks-1",
                       "durationMinutes": 21,
+                      "isPreview": false,
                       "lessonId": "lesson-react-hooks-1",
                       "name": "Efekty uboczne z useEffect"
                     },
@@ -589,6 +607,7 @@
                       "completionStatus": "not-completed",
                       "contentId": "content-lesson-react-hooks-2",
                       "durationMinutes": 25,
+                      "isPreview": false,
                       "lessonId": "lesson-react-hooks-2",
                       "name": "Tworzenie własnych hooków"
                     }

@@ -37,9 +37,10 @@ import { deliveryStatusLabel, sendKindLabel, sendStatusLabel } from './EmailSend
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
-export const validateSendsSearch = (search: Record<string, unknown>): { runId?: string } => {
+export const validateSendsSearch = (search: Record<string, unknown>): { runId?: string; contactId?: string } => {
   const runId = search['runId'];
-  return typeof runId === 'string' && runId.trim().length > 0 ? { runId: runId.trim() } : {};
+  const contactId = search['contactId'];
+  return { ...(typeof runId === 'string' && runId.trim() ? { runId: runId.trim() } : {}), ...(typeof contactId === 'string' && contactId.trim() ? { contactId: contactId.trim() } : {}) };
 };
 
 const statusColor = (status: EmailSendStatus): 'success' | 'warning' | 'error' | 'default' =>
@@ -81,7 +82,7 @@ export const SendsPanel = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: '/panel/marketing/sends' });
-  const { runId = '' } = useSearch({ from: '/panel/marketing/sends' });
+  const { runId = '', contactId = '' } = useSearch({ from: '/panel/marketing/sends' });
   const campaigns = useQuery(actions.marketingCampaigns);
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'all' | EmailSendProjection['kind']>('all');
@@ -105,6 +106,7 @@ export const SendsPanel = () => {
     ...(transport === 'all' ? {} : { transport }),
     ...(campaignId === 'all' ? {} : { campaignId }),
     ...(runId.length === 0 ? {} : { runId }),
+    ...(contactId.length === 0 ? {} : { contactId }),
     ...(debouncedSourceApp.length === 0 ? {} : { sourceApp: debouncedSourceApp }),
     ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
   };
@@ -363,7 +365,7 @@ export const SendsPanel = () => {
                 {rows.map((send) => (
                   <TableRow key={`${send.kind}:${send.id}`} data-testid="email-send-row">
                     <TableCell><Chip size="small" variant="outlined" label={sendKindLabel(send.kind, t)} /></TableCell>
-                    <TableCell>{send.recipient}</TableCell>
+                    <TableCell>{send.contactId ? <Link to="/panel/marketing/contacts/$contactId" params={{ contactId: send.contactId }}>{send.recipient}</Link> : send.recipient}</TableCell>
                     <TableCell>{send.subject}</TableCell>
                     <TableCell>
                       <Stack useFlexGap spacing="0.25rem">

@@ -415,6 +415,7 @@ export const EmailTab = () => {
     enabled: result.data?.credentialsConfigured === true,
   });
   const settings = result.data?.settings ?? null;
+  const [replyTo, setReplyTo] = useState<string | null>(null);
   const [fromAddress, setFromAddress] = useState<string | null>(null);
   const [fromName, setFromName] = useState<string | null>(null);
   const [identity, setIdentity] = useState<string | null>(null);
@@ -435,6 +436,7 @@ export const EmailTab = () => {
     .map((item) => item.identity);
 
   const values = {
+    replyTo: (replyTo ?? settings?.replyTo ?? '') || null,
     fromAddress: fromAddress ?? settings?.fromAddress ?? '',
     fromName: fromName ?? settings?.fromName ?? '',
     identity: identity ?? settings?.identity ?? suggestedDomain ?? '',
@@ -573,6 +575,11 @@ export const EmailTab = () => {
       <CredentialsForm configured={credentialsConfigured} />
       <SectionCard title={t.marketing.sender} onSubmit={submitSender} actions={<Button type="submit" variant="contained" disabled={senderUpdate.isPending}>{senderUpdate.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}>
         <Alert severity="info">{t.marketing.identityAuthenticationHint}</Alert>
+        <FormControl fullWidth>
+          <FormLabel htmlFor="marketing-reply-to">{t.marketing.replyToLabel}</FormLabel>
+          <OutlinedInput id="marketing-reply-to" aria-describedby="marketing-reply-to-hint" type="email" value={values.replyTo ?? ''} onChange={(event) => setReplyTo(event.target.value)} />
+          <FormHelperText id="marketing-reply-to-hint">{t.marketing.replyToHint}</FormHelperText>
+        </FormControl>
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-from-address">{t.marketing.fromAddressLabel}</FormLabel>
           <OutlinedInput id="marketing-from-address" type="email" value={values.fromAddress} onChange={(event) => setFromAddress(event.target.value)} required />

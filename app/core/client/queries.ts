@@ -1790,6 +1790,10 @@ export const memberLearningSummaryInvalidates = (memberId: string) => ({
 /** Invalidation filter progress mutations apply to refresh a course's tree. */
 export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });
 
+export const studentProgressInvalidates = (courseId: string) => ({
+  queryKey: studentScopes.progress(courseId),
+});
+
 export const notificationsInvalidates = () => ({ queryKey: notificationScopes.all() });
 
 /** @public */
@@ -1928,3 +1932,31 @@ export const promptGoogleOneTapMutation = (
     mutationKey: [...authScopes.all(), 'google', 'one-tap'],
     call: (input: { clientId: string; callbackURL: string }) => auth.promptGoogleOneTap(input),
   });
+
+export const marketingDirectoryActions = (api: ApiClient) => ({
+  contactSends: (tenantId: string, input: EmailSendsQueryInput) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'contact-sends', input] as const, call: ({ signal }) => api.listEmailSends(input, signal) }),
+  contacts: (tenantId: string, input: Parameters<ApiClient['listMarketingContacts']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'contacts', input] as const, call: ({ signal }) => api.listMarketingContacts(input, undefined, signal) }),
+  contact: (tenantId: string, input: Parameters<ApiClient['getMarketingContact']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'contact', input] as const, call: ({ signal }) => api.getMarketingContact(input, undefined, signal) }),
+  lists: (tenantId: string, input: Parameters<ApiClient['listMarketingLists']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'lists', input] as const, call: ({ signal }) => api.listMarketingLists(input, undefined, signal) }),
+  list: (tenantId: string, input: Parameters<ApiClient['getMarketingList']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'list', input] as const, call: ({ signal }) => api.getMarketingList(input, undefined, signal) }),
+  listContacts: (tenantId: string, input: Parameters<ApiClient['getMarketingListContacts']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'listContacts', input] as const, call: ({ signal }) => api.getMarketingListContacts(input, undefined, signal) }),
+  import: (tenantId: string, input: Parameters<ApiClient['getMarketingContactImport']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'import', input] as const, call: ({ signal }) => api.getMarketingContactImport(input, undefined, signal) }),
+  importRows: (tenantId: string, input: Parameters<ApiClient['getMarketingContactImportRows']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'importRows', input] as const, call: ({ signal }) => api.getMarketingContactImportRows(input, undefined, signal) }),
+  listOptions: (tenantId: string) => defineCursorQuery({ queryKey: ['marketing', 'directory', tenantId, 'list-options'] as const, call: ({ signal, pageParam }) => api.listMarketingLists({ limit: 100, ...(pageParam === undefined ? {} : { cursor: pageParam }) }, undefined, signal), nextCursor: (page) => page.nextCursor }),
+  updateMarketingContact: defineMutation({ mutationKey: ['marketing', 'directory', 'updateMarketingContact'], call: (input: Parameters<ApiClient['updateMarketingContact']>[0]) => api.updateMarketingContact(input) }),
+  archiveMarketingContact: defineMutation({ mutationKey: ['marketing', 'directory', 'archiveMarketingContact'], call: (input: Parameters<ApiClient['archiveMarketingContact']>[0]) => api.archiveMarketingContact(input) }),
+  restoreMarketingContact: defineMutation({ mutationKey: ['marketing', 'directory', 'restoreMarketingContact'], call: (input: Parameters<ApiClient['restoreMarketingContact']>[0]) => api.restoreMarketingContact(input) }),
+  createMarketingList: defineMutation({ mutationKey: ['marketing', 'directory', 'createMarketingList'], call: (input: Parameters<ApiClient['createMarketingList']>[0]) => api.createMarketingList(input) }),
+  updateMarketingList: defineMutation({ mutationKey: ['marketing', 'directory', 'updateMarketingList'], call: (input: Parameters<ApiClient['updateMarketingList']>[0]) => api.updateMarketingList(input) }),
+  archiveMarketingList: defineMutation({ mutationKey: ['marketing', 'directory', 'archiveMarketingList'], call: (input: Parameters<ApiClient['archiveMarketingList']>[0]) => api.archiveMarketingList(input) }),
+  addMarketingListContacts: defineMutation({ mutationKey: ['marketing', 'directory', 'addMarketingListContacts'], call: (input: Parameters<ApiClient['addMarketingListContacts']>[0]) => api.addMarketingListContacts(input) }),
+  removeMarketingListContacts: defineMutation({ mutationKey: ['marketing', 'directory', 'removeMarketingListContacts'], call: (input: Parameters<ApiClient['removeMarketingListContacts']>[0]) => api.removeMarketingListContacts(input) }),
+  previewMarketingList: defineMutation({ mutationKey: ['marketing', 'directory', 'previewMarketingList'], call: (input: Parameters<ApiClient['previewMarketingList']>[0]) => api.previewMarketingList(input) }),
+  uploadMarketingContactImport: defineMutation({ mutationKey: ['marketing', 'directory', 'uploadMarketingContactImport'], call: (input: Parameters<ApiClient['uploadMarketingContactImport']>[0]) => api.uploadMarketingContactImport(input) }),
+  previewMarketingContactImport: defineMutation({ mutationKey: ['marketing', 'directory', 'previewMarketingContactImport'], call: (input: Parameters<ApiClient['previewMarketingContactImport']>[0]) => api.previewMarketingContactImport(input) }),
+  validateMarketingContactImport: defineMutation({ mutationKey: ['marketing', 'directory', 'validateMarketingContactImport'], call: (input: Parameters<ApiClient['validateMarketingContactImport']>[0]) => api.validateMarketingContactImport(input) }),
+  commitMarketingContactImport: defineMutation({ mutationKey: ['marketing', 'directory', 'commitMarketingContactImport'], call: (input: Parameters<ApiClient['commitMarketingContactImport']>[0]) => api.commitMarketingContactImport(input) }),
+  retryMarketingContactImport: defineMutation({ mutationKey: ['marketing', 'directory', 'retryMarketingContactImport'], call: (input: Parameters<ApiClient['retryMarketingContactImport']>[0]) => api.retryMarketingContactImport(input) }),
+  cancelMarketingContactImport: defineMutation({ mutationKey: ['marketing', 'directory', 'cancelMarketingContactImport'], call: (input: Parameters<ApiClient['cancelMarketingContactImport']>[0]) => api.cancelMarketingContactImport(input) }),
+  invalidates: (tenantId: string) => ({ queryKey: ['marketing', 'directory', tenantId] as const }),
+});

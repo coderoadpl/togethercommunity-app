@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Chip,
   Collapse,
   Divider,
@@ -58,6 +59,8 @@ import {
   LessonsIcon,
   MarketingActivityIcon,
   MarketingCampaignsIcon,
+  MarketingContactsIcon,
+  MarketingListsIcon,
   MarketingConsentsIcon,
   MarketingDocumentsIcon,
   MarketingLayoutsIcon,
@@ -87,6 +90,8 @@ type PanelSection =
   | 'integrations'
   | 'marketingActivity'
   | 'marketingSends'
+  | 'marketingContacts'
+  | 'marketingLists'
   | 'marketingCampaigns'
   | 'marketingConsents'
   | 'marketingDocuments'
@@ -174,6 +179,8 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
   {
     id: 'marketing',
     sections: [
+      { id: 'marketingContacts', to: '/panel/marketing/contacts' },
+      { id: 'marketingLists', to: '/panel/marketing/lists' },
       { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
       { id: 'marketingActivity', to: '/panel/marketing/activity' },
       { id: 'marketingSends', to: '/panel/marketing/sends' },
@@ -220,6 +227,10 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <MarketingActivityIcon />;
     case 'marketingSends':
       return <MarketingSendsIcon />;
+    case 'marketingContacts':
+      return <MarketingContactsIcon />;
+    case 'marketingLists':
+      return <MarketingListsIcon />;
     case 'marketingCampaigns':
       return <MarketingCampaignsIcon />;
     case 'marketingConsents':
@@ -473,6 +484,16 @@ const UserMenu = ({
         <Divider sx={{ display: { xs: 'block', sm: 'none' } }} />
         <MenuItem
           component={Link}
+          to="/start"
+          data-testid="user-menu-member-view"
+          sx={{ minHeight: '44px', px: '1rem' }}
+          onClick={() => setAnchorEl(null)}
+        >
+          <ListItemIcon><CoursesIcon /></ListItemIcon>
+          <ListItemText primary={t.panel.memberView} />
+        </MenuItem>
+        <MenuItem
+          component={Link}
           to="/my/products"
           data-testid="user-menu-products"
           sx={{ minHeight: '44px', px: '1rem' }}
@@ -613,6 +634,25 @@ const PanelShell = ({ tenant, name, email, avatarUrl }: {
             </AppBarTitle>
           )}
           <Box sx={{ flex: 1 }} />
+          <Tooltip title={t.panel.memberView}>
+            <Button
+              component={Link}
+              to="/start"
+              color="inherit"
+              size="small"
+              startIcon={<CoursesIcon />}
+              aria-label={t.panel.memberView}
+              data-testid="panel-member-view-link"
+              sx={{
+                minHeight: '44px', minWidth: '44px', flexShrink: 0,
+                '& .MuiButton-startIcon': { mr: { xs: 0, sm: '8px' }, ml: { xs: 0, sm: '-2px' } },
+              }}
+            >
+              <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                {t.panel.memberView}
+              </Box>
+            </Button>
+          </Tooltip>
           <Box
             sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}
           >

@@ -31,14 +31,14 @@ export const TermsConsentField = ({
   if (legal.termsUrl === null && legal.privacyUrl === null) return null;
   return (
     <FormControlLabel
-      sx={{ alignItems: 'flex-start', mr: 0 }}
+      sx={{ alignItems: 'flex-start', minHeight: 44, mr: 0 }}
       control={
         <Checkbox
           required
           checked={checked}
           onChange={(event) => onChange(event.target.checked)}
           data-testid="terms-consent"
-          sx={{ mt: '-0.45rem' }}
+          sx={{ mt: '-0.75rem', minHeight: 44, minWidth: 44 }}
         />
       }
       label={

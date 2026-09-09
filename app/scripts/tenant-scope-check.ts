@@ -28,6 +28,8 @@ export interface TenantScopeSource {
 }
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
+  'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',
   'AccountAvatarTenantReader.listTenantIdsForUser': 'Google sign-in discovers every member tenant before copying the provider avatar into each tenant boundary.',
   'AutoInvoiceJobRepository.claimDue': 'A platform worker leases the next due job across all tenants.',
   'AutomationIdempotencyRepository.sweepExpired': 'A platform worker removes expired keys across all tenants.',
@@ -49,6 +51,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'PlatformAuditRepository.record': 'Platform audit entries record operator actions taken outside any tenant boundary.',
   'PlatformDataResetPort.run': 'The disposable-environment reset rebuilds every demo tenant, so it spans all of them by definition.',
   'SmokeTenantReseedPort.run': 'The smoke-tenant reseed owns its tenant ID; the caller cannot choose which tenant is rebuilt.',
+  'MarketingDirectoryJobs.tenantIds': 'A platform worker discovers tenants with import or member synchronization work.',
   'MarketingJobRepository.listRetentionTenantIds': 'A platform worker discovers tenants due for retention work.',
   'MarketingJobRepository.listRunnableCampaigns': 'A platform worker discovers runnable campaigns with their tenant IDs.',
   'MarketingJobRepository.listSesIdentityRefreshTenantIds': 'A platform worker discovers tenants due for identity refresh.',
@@ -89,6 +92,8 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   BunnyTokenSigner: 'Media token-signing boundary with no persistence access.',
   CliAuthAdapter: 'CLI authentication transport boundary.',
   Clock: 'Time source with no persistence access.',
+  HtmlToText: 'Pure HTML conversion with no persistence access.',
+  MarketingWaiter: 'Pacing timer with no persistence access.',
   ContentHash: 'Hashing primitive with no persistence access.',
   CursorQueryDescriptor: 'Client query descriptor: cursor bookkeeping over an already tenant-scoped route.',
   DevMarketingScheduler: 'Development scheduler control boundary.',

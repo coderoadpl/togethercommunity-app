@@ -83,7 +83,7 @@ export const StartMessageButton = ({ postId }: { postId: string }) => {
         disabled={conversation.pending}
         onClick={conversation.start}
       >
-        {conversation.pending ? t.messages.starting : t.messages.startFromAuthor}
+        {conversation.pending ? t.messages.starting : t.messages.messageAuthor}
       </PostToolbarButton>
       <StartMessageErrorSnackbar conversation={conversation} />
     </>

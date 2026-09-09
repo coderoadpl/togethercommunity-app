@@ -318,6 +318,7 @@ export interface PostRepository {
   ): Promise<Post | null>;
   /** Clears pinnedAt when marking a post deleted. */
   softDelete(tenantId: string, input: { id: string; deletedAt: string; deletedBy: 'author' | 'moderator'; deletedByUserId: string }): Promise<Post | null>;
+  purge(tenantId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
   setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null>;
   listPinnedForContext(
     tenantId: string,

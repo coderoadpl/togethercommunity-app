@@ -119,6 +119,7 @@ const unusedPosts: Omit<PostRepository, 'findById'> = {
   listReplies: async () => [],
   updateBody: async () => null,
   softDelete: async () => null,
+  purge: async () => false,
   setPinned: async () => null,
   listPinnedForContext: async () => [],
   countPinnedForContext: async () => 0,

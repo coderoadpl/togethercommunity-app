@@ -2230,6 +2230,7 @@ export const tenantAuditEvents = pgTable(
         'content_version_restored',
         'redirect_created',
         'redirect_deleted',
+        'post_purged',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),

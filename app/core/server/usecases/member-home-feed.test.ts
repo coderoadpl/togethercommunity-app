@@ -129,7 +129,7 @@ const postsRepository = (rows: Post[]) => {
         threads: page.map((row) => ({
           post: row,
           replyCount: rows.filter(
-            (reply) => reply.rootPostId === row.rootPostId && reply.id !== row.id,
+            (reply) => reply.rootPostId === row.rootPostId && reply.id !== row.id && reply.deletedAt === null,
           ).length,
         })),
         nextCursor: roots[query.limit] !== undefined && last !== undefined ? cursorOf(last) : null,
@@ -138,6 +138,7 @@ const postsRepository = (rows: Post[]) => {
     listReplies: async () => [],
     updateBody: async () => null,
     softDelete: async () => null,
+    purge: async () => false,
     setPinned: async () => null,
     listPinnedForContext: async () => [],
     countPinnedForContext: async () => 0,
@@ -301,17 +302,17 @@ describe('member home feed', () => {
     expect(second.value.nextCursor).toBeNull();
   });
 
-  it('omits empty author deletions and retains moderator and replied-to tombstones', async () => {
+  it('omits empty legacy and attributed deletions and retains roots with live replies', async () => {
     const f = fixture({ spaces: [space('s1')], posts: [
+      post('legacy-empty', 's1', NOW, { deletedAt: NOW }),
       post('author-empty', 's1', NOW, { deletedAt: NOW, deletedBy: 'author' }),
       post('moderator-empty', 's1', NOW, { deletedAt: NOW, deletedBy: 'moderator' }),
       post('author-thread', 's1', NOW, { deletedAt: NOW, deletedBy: 'author' }),
-      post('reply', 's1', NOW, { rootPostId: 'author-thread', parentPostId: 'author-thread', deletedAt: NOW, deletedBy: 'author' }),
+      post('reply', 's1', NOW, { rootPostId: 'author-thread', parentPostId: 'author-thread' }),
     ] });
     const result = await getMemberHomeFeed(ctx(), {}, f.deps);
     if (!result.ok) throw new Error('Feed failed');
-    expect(result.value.items.map((item) => item.id).sort()).toEqual(['author-thread', 'moderator-empty']);
-    expect(result.value.items.find((item) => item.id === 'moderator-empty')?.body).toBe('This post was deleted by a moderator.');
+    expect(result.value.items.map((item) => item.id).sort()).toEqual(['author-thread']);
   });
 
   it('masks a deleted root and carries its reaction summary', async () => {
@@ -320,6 +321,7 @@ describe('member home feed', () => {
       posts: [
         post('p-del', 's1', '2026-07-12T10:00:00.000Z', { deletedAt: '2026-07-13T10:00:00.000Z' }),
         post('p-live', 's1', '2026-07-11T10:00:00.000Z'),
+        post('p-del-reply', 's1', NOW, { rootPostId: 'p-del', parentPostId: 'p-del' }),
       ],
       reactions: new Map([['p-live', [{ emoji: '👍', count: 2, viewerReacted: true }]]]),
     });

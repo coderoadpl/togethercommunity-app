@@ -344,3 +344,15 @@ it('requests a product-specific checkout offer without changing the listing quer
     'https://api.example.test/api/public/offer?productRef=direct-product',
   ]);
 });
+
+it('encodes a post purge id and parses its receipt', async () => {
+  const client = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetchImpl: async (url, init) => {
+      expect(url).toBe('https://api.example.test/api/posts/post%2F1/permanent');
+      expect(init?.method).toBe('DELETE');
+      return jsonResponse({ ok: true, data: { id: 'post/1' } });
+    },
+  });
+  expect(await client.purgePost({ id: 'post/1' })).toEqual({ ok: true, value: { id: 'post/1' } });
+});

@@ -277,7 +277,7 @@ export const createPost = async (
       return err(validation('Parent post does not belong to this discussion'));
     }
     const root = parentPost.parentPostId === null ? parentPost : await deps.posts.findById(actor.value.tenantId, parentPost.rootPostId);
-    if (root === null || (root.deletedAt !== null && !isVisiblePostThread(root, (await deps.posts.listReplies(actor.value.tenantId, root.id)).length))) {
+    if (root === null || (root.deletedAt !== null && !isVisiblePostThread(root, (await deps.posts.listReplies(actor.value.tenantId, root.id)).filter((reply) => reply.deletedAt === null).length))) {
       return err(validation('Thread not found'));
     }
     rootPostId = parentPost.rootPostId;
@@ -472,6 +472,28 @@ export const deletePost = async (
     deletedByUserId: actor.value.userId,
   });
   return deleted ? ok(toRenderedPublicPost(deleted, actor.value.userId)) : err(validation('Post not found'));
+};
+
+export const purgePost = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: CommunityDeps,
+): Promise<Result<{ id: string }, AppError>> => {
+  const actor = requireActor(ctx, 'community:moderate');
+  if (!actor.ok) return actor;
+  const parsed = deletePostInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid post purge payload', parsed.error.flatten()));
+  const purged = await deps.posts.purge(actor.value.tenantId, parsed.data.id, {
+    id: deps.ids.nextId(),
+    tenantId: actor.value.tenantId,
+    kind: 'post_purged',
+    actorUserId: actor.value.userId,
+    actorEmail: ctx.identity.email,
+    subjectMemberId: null,
+    reason: parsed.data.id,
+    at: deps.clock.nowIso(),
+  });
+  return purged ? ok({ id: parsed.data.id }) : err(validation('Deleted post not found'));
 };
 
 export const subscribeThread = async (

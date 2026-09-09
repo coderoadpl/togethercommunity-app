@@ -2588,7 +2588,8 @@ describe('post repository', () => {
     await repo.createPost(ACME, visible);
     const replied = { ...post, id: 'post-deletion-replied', rootPostId: 'post-deletion-replied', deletedAt: FUTURE, deletedBy: 'author' as const };
     await repo.createPost(ACME, replied);
-    await repo.createPost(ACME, { ...replied, id: 'post-deletion-reply', parentPostId: replied.id });
+    await repo.createPost(ACME, { ...replied, id: 'post-deletion-reply', parentPostId: replied.id, deletedAt: null });
+    await repo.createPost(ACME, { ...visible, id: 'post-moderator-reply', parentPostId: visible.id, deletedAt: null });
     await repo.createPost(GLOBEX, { ...post, tenantId: GLOBEX, id: 'post-other-tenant-reply', parentPostId: post.id });
     const query = { contextKind: post.contextKind, contextId: post.contextId, limit: 1 };
     const first = await repo.listThreadsForContext(ACME, query);

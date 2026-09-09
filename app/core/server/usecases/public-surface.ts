@@ -347,7 +347,7 @@ export const getPublicSpaceThread = async (
     return err(notFound('Thread not found'));
   }
   const replies = await deps.posts.listReplies(tenant.id, root.rootPostId);
-  if (!isVisiblePostThread(root, replies.length)) return err(notFound('Thread not found'));
+  if (!isVisiblePostThread(root, replies.filter((reply) => reply.deletedAt === null).length)) return err(notFound('Thread not found'));
   return ok({
     threads: [
       {

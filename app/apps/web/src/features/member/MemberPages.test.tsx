@@ -21,6 +21,7 @@ const productsBody = {
       accessItems: [{ level: 'course', courseId: 'c1' }],
       priceCents: 4900,
       currency: 'PLN',
+      purchasable: true,
       grantStatus: 'active',
       grantStartsAt: '1998-07-01T00:00:00.000Z',
       grantExpiresAt: null,
@@ -41,6 +42,27 @@ const renderPage = async (component: () => ReactNode, path: string) => {
 };
 
 describe('member pages', () => {
+  it.each([true, false])('shows renewal only for purchasable expired products: %s', async (purchasable) => {
+    server.use(http.get('/api/my/products', () => HttpResponse.json({
+      ok: true,
+      data: { products: [{
+        ...productsBody.products[0],
+        purchasable,
+        grantStatus: 'expired',
+        grantExpiresAt: '1998-07-02T00:00:00.000Z',
+      }] },
+    })));
+    await renderPage(MyProductsPage, '/my/products');
+    const product = within(await screen.findByTestId('my-product-course-1'));
+    if (purchasable) {
+      expect(product.getByRole('link', { name: en.student.renewAccess })).toHaveAttribute('href', '/checkout/course-1');
+      expect(product.queryByText(en.student.renewalUnavailable)).not.toBeInTheDocument();
+    } else {
+      expect(product.queryByRole('link', { name: en.student.renewAccess })).not.toBeInTheDocument();
+      expect(product.getByText(en.student.renewalUnavailable)).toBeInTheDocument();
+    }
+  });
+
   it('lists my products with course links', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),

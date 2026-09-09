@@ -595,7 +595,7 @@ describe('community pages', () => {
     expect(screen.getByTestId('feed-empty-state')).toBeInTheDocument();
   });
 
-  it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a copy-link menu', async (deletedBy) => {
+  it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a permanent-delete menu', async (deletedBy) => {
     server.use(okMe('admin'), noNotifications(), okSpaces([space({ id: 's1' })]), okSeen(),
       okFeed('s1', [feedItem({ id: 'p1', isOwn: true, replyCount: 2, deletedAt: '2026-07-20T09:00:00.000Z', deletedBy })]));
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
@@ -603,9 +603,19 @@ describe('community pages', () => {
       deletedBy === 'moderator' ? en.discussion.moderatorDeletedPost : en.discussion.deletedPost,
     );
     expect(screen.queryByRole('button', { name: en.community.pin })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('post-menu-p1'));
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
-    expect(screen.getByTestId('copy-link-p1')).toBeInTheDocument();
+    expect(screen.getByTestId('purge-button-p1')).toHaveTextContent(en.discussion.purge);
+    await userEvent.click(screen.getByTestId('purge-button-p1'));
+    expect(await screen.findByText(en.discussion.purgeConfirmBody)).toBeInTheDocument();
+  });
+
+  it('hides a tombstone menu from its member author in the space feed', async () => {
+    server.use(okMe(), noNotifications(), okSpaces([space({ id: 's1' })]), okSeen(),
+      okFeed('s1', [feedItem({ id: 'p1', isOwn: true, replyCount: 1, deletedAt: '2026-07-20T09:00:00.000Z' })]));
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+    await screen.findByTestId('deleted-post-p1');
+    expect(screen.queryByTestId('post-menu-p1')).not.toBeInTheDocument();
   });
 
   it('edits an own feed post and refreshes its body', async () => {

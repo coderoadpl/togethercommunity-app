@@ -9,7 +9,7 @@ import {
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { actions } from '../../api.js';
@@ -25,7 +25,8 @@ export const ForgotPasswordPage = () => {
   const t = useTranslations();
   const { explicitLanguage } = useLanguage();
   useRedirectSignedInWithTenant();
-  const [email, setEmail] = useState('');
+  const search = useRouterState({ select: (state) => state.location.searchStr });
+  const [email, setEmail] = useState(() => new URLSearchParams(search).get('email') ?? '');
   const [localError, setLocalError] = useState<string | null>(null);
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
 

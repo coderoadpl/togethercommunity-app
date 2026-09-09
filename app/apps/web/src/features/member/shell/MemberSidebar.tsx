@@ -10,8 +10,8 @@ import { TenantLogo } from '../../../branding.js';
 import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { ProgressRing } from '../../../components/ui/ProgressRing.js';
 import { useTranslations } from '../../../i18n/index.js';
-import { SidebarProgressPercent } from '../../../theme.js';
-import { MemberAccountIdentityBlock } from '../MemberAccountActions.js';
+import { CountBadge, SidebarProgressPercent, VisuallyHidden } from '../../../theme.js';
+import { MemberAccountIdentityBlock, useMemberAccountActions } from '../MemberAccountActions.js';
 import { coursePercent, isCourseDone } from '../course-progress.js';
 import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { LockClosed } from '../tree-icons.js';
@@ -135,6 +135,8 @@ export const MemberSidebar = ({
   const t = useTranslations();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const active = activeNavEntry(pathname);
+  const account = useMemberAccountActions();
+  const messages = account.actions.find((action) => action.key === 'messages');
 
   return (
     <Box
@@ -190,6 +192,28 @@ export const MemberSidebar = ({
               active={active?.kind === 'search'}
               testId="sidebar-search"
             />
+          </List>
+        ) : null}
+        {messages?.kind === 'link' ? (
+          <List component="div" disablePadding>
+            <NavRow
+              component={Link}
+              to={messages.to}
+              selected={active?.kind === 'messages'}
+              aria-current={active?.kind === 'messages' ? 'page' : undefined}
+              data-testid="sidebar-messages"
+            >
+              <ListItemIcon>{messages.icon}</ListItemIcon>
+              <ListItemText primary={messages.label} />
+              {messages.unread === undefined ? null : (
+                <>
+                  <CountBadge aria-hidden data-testid="sidebar-messages-unread">
+                    {messages.unread.count}
+                  </CountBadge>
+                  <VisuallyHidden>{messages.unread.label}</VisuallyHidden>
+                </>
+              )}
+            </NavRow>
           </List>
         ) : null}
         <Typography

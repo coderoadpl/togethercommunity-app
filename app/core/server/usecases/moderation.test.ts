@@ -309,6 +309,7 @@ const makeDeps = (
         posts[index] = next;
         return next;
       },
+      purge: async () => false,
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,

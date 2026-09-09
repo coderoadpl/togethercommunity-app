@@ -333,6 +333,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/dm-reports` | authenticated | read | dm reports |
 | `POST /api/dm-reports/resolve` | authenticated | mutating | dm report resolve |
 | `POST /api/posts/update` | authenticated | mutating | posts update |
+| `DELETE /api/posts/:postId/permanent` | authenticated | mutating | posts purge |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |
 | `POST /api/discussion/subscribe` | authenticated | mutating | thread subscribe |

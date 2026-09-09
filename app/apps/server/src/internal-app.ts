@@ -206,6 +206,7 @@ import {
   deleteLessonAttachment,
   deleteProductDownloadAsset,
   deletePost,
+  purgePost,
   deleteSpace,
   deleteTenantSecret,
   detachModuleFromCourse,
@@ -1922,6 +1923,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             accessItems: product.accessItems,
             priceCents: product.priceCents,
             currency: product.currency,
+            purchasable: product.purchasable,
             grantStatus: product.grantStatus,
             grantStartsAt: product.grantStartsAt,
             grantExpiresAt: product.grantExpiresAt,
@@ -3053,6 +3055,11 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid post update payload', parsed.error.flatten())));
     const result = await editPost(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ post: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.postsPurge, async (c) => {
+    const result = await purgePost(ctxOf(c), { id: c.req.param('postId') }, deps);
+    return respond(result);
   });
 
   app.delete(API_PATHS.postsDelete, async (c) => {

@@ -527,3 +527,22 @@ describe('DiscussionSection', () => {
     expect(url.searchParams.getAll('lessonId')).toEqual(['l1']);
   });
 });
+
+it.each(['owner', null] as const)('shows tombstone menus on roots and replies only to staff: %s', async (role) => {
+  const deletedAt = '2026-07-15T09:00:00.000Z';
+  server.use(okMe(role), okDiscussion([asThread(post({ id: 'root', deletedAt }), [
+    asThread(post({ id: 'reply', rootPostId: 'root', parentPostId: 'root', deletedAt })),
+  ])]));
+  renderWithProviders(<DiscussionSection lessonId="l1" />);
+  await screen.findByTestId('deleted-post-reply');
+  if (role === null) {
+    expect(screen.queryByTestId('post-menu-root')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('post-menu-reply')).not.toBeInTheDocument();
+  } else {
+    expect(screen.getByTestId('post-menu-root')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('post-menu-reply'));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    await userEvent.click(screen.getByTestId('purge-button-reply'));
+    expect(await screen.findByText(en.discussion.purgeConfirmBody)).toBeInTheDocument();
+  }
+});

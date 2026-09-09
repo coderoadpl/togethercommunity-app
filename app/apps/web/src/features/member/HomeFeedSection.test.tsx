@@ -125,7 +125,7 @@ describe('HomeFeedSection', () => {
     await userEvent.click(screen.getByRole('button', { name: en.common.cancel }));
     expect(deletedIds).toEqual([]);
     expect(screen.getByTestId('home-feed-post-p1')).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('post-menu-p1'));
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
     await userEvent.click(screen.getByTestId('confirm-delete-post'));
     await waitFor(() => expect(screen.queryByTestId('home-feed-post-p1')).not.toBeInTheDocument());
@@ -133,7 +133,7 @@ describe('HomeFeedSection', () => {
     expect(screen.getByTestId('start-feed-empty')).toBeInTheDocument();
   });
 
-  it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a copy-link menu', async (deletedBy) => {
+  it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a permanent-delete menu', async (deletedBy) => {
     server.use(okMe('admin'), okFeed({ '10': {
       items: [item('p1', { isOwn: true, replyCount: 2, deletedAt: '2026-08-12T11:00:00.000Z', deletedBy })],
       nextCursor: null,
@@ -146,9 +146,11 @@ describe('HomeFeedSection', () => {
     );
     expect(screen.queryByTestId('home-feed-body-p1')).not.toBeInTheDocument();
     expect(screen.getByTestId('home-feed-reply-count-p1')).toHaveTextContent(en.discussion.replyCount({ count: 2 }));
-    await userEvent.click(screen.getByTestId('post-menu-p1'));
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
-    expect(screen.getByTestId('copy-link-p1')).toBeInTheDocument();
+    expect(screen.getByTestId('purge-button-p1')).toHaveTextContent(en.discussion.purge);
+    await userEvent.click(screen.getByTestId('purge-button-p1'));
+    expect(await screen.findByText(en.discussion.purgeConfirmBody)).toBeInTheDocument();
   });
 
   it('edits an own feed post and refreshes its body', async () => {
@@ -308,4 +310,37 @@ describe('HomeFeedSection', () => {
 
     expect(await screen.findByRole('button', { name: en.common.retry })).toBeInTheDocument();
   });
+});
+
+it('hides tombstone menus from members, including the author', async () => {
+  server.use(okMe(), okFeed({ '10': {
+    items: [item('p1', { isOwn: true, deletedAt: '2026-08-12T11:00:00.000Z', replyCount: 1 })], nextCursor: null,
+  } }));
+  await renderSection();
+  await screen.findByTestId('home-feed-deleted-p1');
+  expect(screen.queryByTestId('post-menu-p1')).not.toBeInTheDocument();
+});
+
+it('purges a tombstone only after confirmation and refreshes the feed', async () => {
+  const purged: string[] = [];
+  server.use(okMe('admin'),
+    http.get('/api/member/home-feed', () => HttpResponse.json({ ok: true, data: { feed: {
+      items: purged.length === 0 ? [item('p1', { deletedAt: '2026-08-12T11:00:00.000Z', replyCount: 1 })] : [], nextCursor: null,
+    } } })),
+    http.delete('/api/posts/:postId/permanent', ({ params }) => {
+      purged.push(String(params['postId']));
+      return HttpResponse.json({ ok: true, data: { id: params['postId'] } });
+    }),
+  );
+  await renderSection();
+  await userEvent.click(await screen.findByTestId('post-menu-p1'));
+  await userEvent.click(screen.getByTestId('purge-button-p1'));
+  expect(purged).toEqual([]);
+  await userEvent.click(screen.getByRole('button', { name: en.common.cancel }));
+  expect(purged).toEqual([]);
+  await userEvent.click(await screen.findByTestId('post-menu-p1'));
+  await userEvent.click(screen.getByTestId('purge-button-p1'));
+  await userEvent.click(screen.getByTestId('confirm-purge-post'));
+  await screen.findByTestId('start-feed-empty');
+  expect(purged).toEqual(['p1']);
 });

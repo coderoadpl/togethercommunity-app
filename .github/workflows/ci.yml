@@ -49,7 +49,10 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
+      - run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.sources /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/microsoft-edge.sources /etc/apt/sources.list.d/microsoft-edge.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxml2-utils
       - run: pnpm install --frozen-lockfile
       - run: pnpm run db:migrate
       - run: TOGETHER_TEST_SERIAL=1 pnpm run check

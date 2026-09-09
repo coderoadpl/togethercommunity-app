@@ -134,7 +134,8 @@ const settings: TenantSesSettings = {
 const campaign = (overrides: Partial<Campaign> = {}): Campaign => ({
   id: 'campaign-1', tenantId: 'tenant-1', name: 'Weekly', subject: 'Hello {{member.email}}',
   bodyHtml: '<p>Welcome {{member.email}}</p>', bodyText: null, replyTo: null, bodySource: '<p>Welcome {{member.email}}</p>', layoutId: null,
-  consentDefinitionId: definition.id, audienceFilter: null, status: 'running', sendAt: null,
+  consentDefinitionId: definition.id, audienceVersion: 1, audience: null, audienceSnapshotId: null, snapshotMaxContactId: null, cursorContactId: null, candidateCount: 0, skipped: 0,
+  audienceFilter: null, status: 'running', sendAt: null,
   snapshotMaxMemberId: 'member-z', cursorMemberId: null, toSend: 1, sent: 0, failed: 0,
   lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null, audienceNameSnapshot: 'All',
   consentLabelSnapshot: version.label, startedAt: NOW, finishedAt: null, createdAt: NOW, ...overrides,

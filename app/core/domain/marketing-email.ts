@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { contactCampaignAudienceSchema, marketingAudienceSkipReasonSchema } from './marketing-audience.js';
+
 import { normalizeEmail } from './email.js';
 import { validation, type AppError } from './errors.js';
 import { languageOrDefault } from './language.js';
@@ -178,7 +180,9 @@ export type MarketingIneligibilityReason =
   | 'not_consented'
   | 'suppressed'
   | 'unsubscribed'
-  | 'pending_confirmation';
+  | 'pending_confirmation'
+  | 'contact_archived'
+  | 'contact_address_changed';
 
 export const deriveMarketingEligibility = (input: {
   consent: DerivedConsentState;
@@ -387,6 +391,13 @@ export const campaignSchema = z.object({
   replyTo: marketingReplyToSchema.nullable().default(null),
   layoutId: z.string().nullable(),
   consentDefinitionId: z.string().min(1),
+  audienceVersion: z.union([z.literal(1), z.literal(2)]).default(1),
+  audience: contactCampaignAudienceSchema.nullable().default(null),
+  audienceSnapshotId: z.string().nullable().default(null),
+  snapshotMaxContactId: z.string().nullable().default(null),
+  cursorContactId: z.string().nullable().default(null),
+  candidateCount: z.number().int().nonnegative().default(0),
+  skipped: z.number().int().nonnegative().default(0),
   audienceFilter: z.object({ productIds: z.array(z.string()).optional() }).nullable(),
   status: campaignStatusSchema,
   sendAt: isoDateTimeSchema.nullable(),
@@ -447,6 +458,8 @@ export type EmailLayout = z.output<typeof emailLayoutSchema>;
 export const campaignSendSchema = z.object({
   id: z.string().min(1),
   runId: z.string().min(1).nullable().optional(),
+  contactId: z.string().nullable().optional(),
+  audienceSnapshotId: z.string().nullable().optional(),
   tenantId: z.string().min(1),
   campaignId: z.string().nullable(),
   source: z.enum(['broadcast', 'api']),
@@ -456,7 +469,7 @@ export const campaignSendSchema = z.object({
   consentRowId: z.string().min(1).nullable(),
   unsubscribeTokenId: z.string().nullable(),
   status: z.enum(['pending', 'sending', 'sent', 'failed', 'skipped']),
-  skipReason: z.enum(['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation']).nullable(),
+  skipReason: marketingAudienceSkipReasonSchema.nullable(),
   sesMessageId: z.string().nullable(),
   deliveryStatus: z.enum(['delivered', 'bounced', 'complained']).nullable(),
   deliveryOccurredAt: isoDateTimeSchema.nullable(),

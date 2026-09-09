@@ -386,7 +386,7 @@ const capabilityFromBody = (
     ts.forEachChild(node, visit);
   };
   visit(body);
-  const directoryConjunction = subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read';
+  const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
   if (capabilities.length !== 1 && !directoryConjunction) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
@@ -502,7 +502,7 @@ const beforeForUseCase = (
   name: string,
   capability: Capability,
 ): readonly Principal[] => {
-  if (['marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
+  if (['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
@@ -557,7 +557,7 @@ const beforeForUseCase = (
 const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
-    const directory = ['marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
+    const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
     const reachable = directory ? before : before === allHumans
       ? allHumans
       : before === platformOwner

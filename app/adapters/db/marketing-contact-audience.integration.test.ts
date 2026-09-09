@@ -1,0 +1,105 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { createMarketingList, upsertMarketingContact, addMarketingListContacts, previewMarketingContactAudience, createCampaign, scheduleCampaign, updateMarketingCampaign, returnMarketingCampaignToDraft } from '#core/server/index.js';
+import type { ContactCampaignAudience, MarketingListRule } from '#core/domain/index.js';
+import { createContactCampaignFixture } from './marketing-contact-campaign-test-fixture.js';
+import { deliveryCtx, DELIVERY_NOW } from './marketing-delivery-test-fixture.js';
+import { directoryValue } from './marketing-contact-test-fixture.js';
+import { marketingCampaignAudienceContacts, members, products, productGrants } from './schema.js';
+
+let fixture: Awaited<ReturnType<typeof createContactCampaignFixture>>;
+afterEach(async () => { await fixture?.close(); });
+const empty: ContactCampaignAudience = { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false };
+const contact = async (email: string, consent = true, tags: string[] = []) => {
+  const saved = directoryValue(await upsertMarketingContact(deliveryCtx(), { email, tags, displayName: email.split('@')[0] }, fixture.directory)).contact;
+  if (consent) await fixture.consent(email);
+  return saved;
+};
+const list = async (key: string, ids: string[] = [], rule: MarketingListRule | null = null) => {
+  const saved = directoryValue(await createMarketingList(deliveryCtx(), { key, name: key, rule }, fixture.directory)).list;
+  if (ids.length) directoryValue(await addMarketingListContacts(deliveryCtx(), { listId: saved.id, contactIds: ids }, fixture.directory));
+  return saved;
+};
+const preview = (audience: ContactCampaignAudience) => previewMarketingContactAudience(deliveryCtx(), { audience, consentDefinitionId: 'consent' }, fixture.deps.contactAudienceDeps);
+const campaign = async (audience: ContactCampaignAudience) => directoryValue(await createCampaign(deliveryCtx(), { name: 'Snapshot', subject: 'Hello', bodyHtml: '<p>Hello</p>', consentDefinitionId: 'consent', audience }, fixture.deps));
+
+describe('contact audience selection and snapshots', () => {
+  it('deduplicates includes, applies exclusions first and returns exact eligible samples', async () => {
+    fixture = await createContactCampaignFixture();
+    const first = await contact('first@example.test');
+    const second = await contact('second@example.test');
+    const missing = await contact('missing@example.test', false);
+    const withdrawn = await contact('withdrawn@example.test');
+    const row = await fixture.deps.consents.latestByEmail('delivery-a', withdrawn.email, 'consent');
+    if (row === null) throw new Error('Missing consent');
+    await fixture.deps.consents.record('delivery-a', { ...row, id: crypto.randomUUID(), status: 'withdrawn', previousId: row.id, occurredAt: '2026-09-09T10:00:01.000Z' });
+    const a = await list('first-list', [first.id, missing.id, withdrawn.id]);
+    const b = await list('second-list', [first.id, second.id]);
+    const excluded = await list('excluded', [second.id]);
+    const selection = { ...empty, includeLists: [a.id, b.id], excludeLists: [excluded.id] };
+    expect(directoryValue(await preview(selection))).toMatchObject({ count: 1, candidateCount: 3, excludedCount: 1, skipped: { noConsent: 1, withdrawn: 1 }, sample: [{ contactId: first.id }] });
+    expect(directoryValue(await preview(empty))).toMatchObject({ count: 0, candidateCount: 0, sample: [] });
+    expect(await preview({ ...empty, includeLists: ['missing'] })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    const foreign = directoryValue(await createMarketingList(deliveryCtx('delivery-b'), { key: 'foreign', name: 'Foreign' }, fixture.directory)).list;
+    expect(await preview({ ...empty, includeLists: [foreign.id] })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    await fixture.directory.lists.save('delivery-a', { list: { ...a, archivedAt: DELIVERY_NOW, revision: 2 }, expectedRevision: 1 });
+    expect(await preview(selection)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('evaluates dynamic lists, member projections and expired grants without treating contacts as buyers', async () => {
+    fixture = await createContactCampaignFixture();
+    const standalone = await contact('standalone@example.test', true, ['launch']);
+    const linked = await contact('linked@example.test', true, ['launch', 'course']);
+    await fixture.db.insert(members).values({ id: 'member', tenantId: 'delivery-a', userId: 'account', email: linked.email, createdAt: DELIVERY_NOW });
+    await fixture.db.insert(products).values({ id: 'product', tenantId: 'delivery-a', slug: 'product', title: 'Example course', description: '', priceCents: 100, currency: 'PLN', createdAt: DELIVERY_NOW });
+    await fixture.db.insert(productGrants).values({ id: 'grant', tenantId: 'delivery-a', memberId: 'member', productId: 'product', source: 'manual', startsAt: '2024-01-01T00:00:00.000Z', expiresAt: '2025-01-01T00:00:00.000Z', createdAt: DELIVERY_NOW });
+    const tagged = await list('tagged', [], { kind: 'tag', tags: ['launch'], match: 'all' });
+    const granted = await list('granted', [], { kind: 'product_grant', productIds: ['product'], state: 'ever' });
+    const active = await list('active', [], { kind: 'product_grant', productIds: ['product'], state: 'active' });
+    expect(directoryValue(await preview({ ...empty, includeLists: [tagged.id], excludeProductIds: ['product'] }))).toMatchObject({ count: 1, excludedCount: 1, sample: [{ contactId: standalone.id }] });
+    expect(directoryValue(await preview({ ...empty, includeLists: [granted.id] }))).toMatchObject({ count: 1, sample: [{ contactId: linked.id }] });
+    expect(directoryValue(await preview({ ...empty, includeLists: [active.id] })).count).toBe(0);
+    expect(directoryValue(await preview({ ...empty, includeMembersWithConsent: true }))).toMatchObject({ count: 1, sample: [{ contactId: linked.id }] });
+  });
+  it('freezes membership, personalization and skip eligibility and creates a new snapshot only after returning to draft', async () => {
+    fixture = await createContactCampaignFixture();
+    const selected = await contact('frozen@example.test');
+    const skipped = await contact('no-consent@example.test', false);
+    const included = await list('frozen', [selected.id, skipped.id]);
+    const draft = await campaign({ ...empty, includeLists: [included.id] });
+    const scheduled = directoryValue(await scheduleCampaign(deliveryCtx(), { campaignId: draft.id, sendAt: DELIVERY_NOW }, fixture.deps));
+    await fixture.directory.contacts.update('delivery-a', selected.id, { displayName: 'Renamed' });
+    await fixture.directory.lists.removeMembers('delivery-a', { listId: included.id, contactIds: [selected.id] });
+    const added = await contact('added@example.test');
+    await fixture.directory.lists.addMembers('delivery-a', { listId: included.id, contactIds: [added.id] });
+    await fixture.consent(skipped.email);
+    const stored = await fixture.db.select().from(marketingCampaignAudienceContacts);
+    expect(stored).toHaveLength(2);
+    expect(stored.find((row) => row.contactId === selected.id)).toMatchObject({ displayNameSnapshot: 'frozen' });
+    expect(stored.find((row) => row.contactId === skipped.id)).toMatchObject({ eligibilityAtSnapshot: false, skipReason: 'not_consented' });
+    expect(await updateMarketingCampaign(deliveryCtx(), { campaignId: draft.id, name: 'Changed', subject: 'Changed', bodyHtml: '<p>Changed</p>', consentDefinitionId: 'consent', productIds: [], layoutId: null }, fixture.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await scheduleCampaign(deliveryCtx(), { campaignId: draft.id, sendAt: DELIVERY_NOW }, fixture.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    directoryValue(await returnMarketingCampaignToDraft(deliveryCtx(), { campaignId: draft.id }, fixture.deps));
+    const rescheduled = directoryValue(await scheduleCampaign(deliveryCtx(), { campaignId: draft.id, sendAt: DELIVERY_NOW }, fixture.deps));
+    expect(rescheduled.audienceSnapshotId).not.toBe(scheduled.audienceSnapshotId);
+    expect(rescheduled.toSend).toBe(2);
+    expect(await fixture.db.select().from(marketingCampaignAudienceContacts)).toHaveLength(4);
+  });
+  it('caps stable samples at twenty and scopes snapshot pages by tenant', async () => {
+    fixture = await createContactCampaignFixture();
+    const contacts = [];
+    for (let index = 0; index < 22; index += 1) contacts.push(await contact(`sample-${index}@example.test`));
+    const included = await list('sample', contacts.map((row) => row.id));
+    const audience = { ...empty, includeLists: [included.id] };
+    const estimated = directoryValue(await preview(audience));
+    expect(estimated.count).toBe(22);
+    expect(estimated.sample.map((row) => row.contactId)).toEqual(contacts.map((row) => row.id).sort().slice(0, 20));
+    const draft = await campaign(audience);
+    const saved = directoryValue(await scheduleCampaign(deliveryCtx(), { campaignId: draft.id, sendAt: DELIVERY_NOW }, fixture.deps));
+    if (saved.audienceSnapshotId === null || saved.snapshotMaxContactId === null) throw new Error('Missing snapshot');
+    const input = { snapshotId: saved.audienceSnapshotId, afterContactId: null, maxContactId: saved.snapshotMaxContactId, limit: 10 };
+    expect(await fixture.deps.contactAudience.fetchSnapshotPage('delivery-b', input)).toEqual([]);
+    const first = await fixture.deps.contactAudience.fetchSnapshotPage('delivery-a', input);
+    const next = await fixture.deps.contactAudience.fetchSnapshotPage('delivery-a', { ...input, afterContactId: first.at(-1)?.contactId ?? null });
+    expect(first).toHaveLength(10); expect(next).toHaveLength(10);
+    expect(new Set([...first, ...next].map((row) => row.contactId)).size).toBe(20);
+  });
+});

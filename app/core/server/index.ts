@@ -116,3 +116,7 @@ export { enqueueMarketingMessages } from './usecases/marketing-outbox.js';
 export { dispatchMarketingOutbox } from './usecases/marketing-dispatch.js';
 
 export { recordVerifiedMarketingSnsEnvelope, processMarketingSnsInbox, retryMarketingSnsInbox, listMarketingSnsInbox } from './usecases/marketing-sns-inbox.js';
+
+export * from './marketing-audience-ports.js';
+export * from './usecases/marketing-contact-audience.js';
+export * from './usecases/marketing-contact-campaigns.js';

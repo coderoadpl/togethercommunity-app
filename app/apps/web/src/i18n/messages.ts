@@ -2220,6 +2220,20 @@ export interface Messages {
     loading: string;
   };
   marketing: {
+    contactProgress: (input: { candidates: number; skipped: number; queued: number; unresolved: number }) => string;
+    contactAudience: string;
+    frozenAudience: string;
+    audienceEstimateHint: string;
+    includeLists: string;
+    excludeLists: string;
+    includeConsentedMembers: string;
+    excludeProductGrants: string;
+    excludeProductGrantsHint: string;
+    previewContacts: string;
+    switchToLists: string;
+    returnToDraft: string;
+    contactSends: string;
+    audienceBreakdown: (input: { candidates: number; excluded: number; suppressed: number; withdrawn: number; pending: number; noConsent: number }) => string;
     sendsTitle: string;
     sendsDescription: string;
     sendsLoading: string;

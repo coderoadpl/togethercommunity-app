@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(366);
-    expect(inventory.useCases).toHaveLength(282);
+    expect(inventory.routes).toHaveLength(367);
+    expect(inventory.useCases).toHaveLength(286);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
@@ -48,6 +48,10 @@ describe('permission inventory', () => {
     );
     expect(useCases.get('marketing-contacts.ts#listMarketingContacts')?.capability).toBe('marketing:contact:read');
     expect(useCases.get('marketing-contact-imports.ts#commitMarketingContactImport')?.capability).toBe('marketing:import:write');
+    expect(useCases.get('marketing-contact-campaigns.ts#setMarketingCampaignAudience')?.capability).toBe('marketing:campaign:write');
+    expect(useCases.get('marketing-contact-campaigns.ts#scheduleMarketingContactCampaign')?.capability).toBe('marketing:campaign:send');
+    expect(useCases.get('marketing-contact-campaigns.ts#returnMarketingCampaignToDraft')?.capability).toBe('marketing:campaign:write');
+    expect(useCases.get('marketing-contact-audience.ts#previewMarketingContactAudience')?.capability).toBe('marketing:campaign:read');
     expect(useCases.get('orders.ts#getSalesSummary')?.capability).toBe('sales:read');
     expect(useCases.get('marketing-email.ts#deleteCampaign')?.capability).toBe(
       'marketing:campaign:write',

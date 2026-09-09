@@ -92,6 +92,8 @@ const marketingProjection = (
   deliveryStatus: send.deliveryStatus,
   deliveryOccurredAt: send.deliveryOccurredAt === null ? null : new Date(send.deliveryOccurredAt).toISOString(),
   campaignId: send.campaignId,
+  contactId: send.contactId,
+  audienceSnapshotId: send.audienceSnapshotId,
   campaignName,
     sesMessageId: send.sesMessageId,
     transport: 'tenant-ses',
@@ -106,7 +108,7 @@ const transactionalRows = async (
   cursor: Cursor | undefined,
   sendId?: string,
 ): Promise<EmailSendProjection[]> => {
-  if (query.kind === 'marketing' || (query.status !== undefined && !transactionalStatus(query.status)) || query.campaignId !== undefined) return [];
+  if (query.kind === 'marketing' || (query.status !== undefined && !transactionalStatus(query.status)) || query.campaignId !== undefined || query.contactId !== undefined) return [];
   const filters: SQL[] = [eq(emailOutbox.tenantId, tenantId)];
   if (sendId !== undefined) filters.push(eq(emailOutbox.id, sendId));
   if (query.status !== undefined) filters.push(eq(emailOutbox.status, query.status));
@@ -146,6 +148,7 @@ const marketingRows = async (
   if (sendId !== undefined) filters.push(eq(campaignSends.id, sendId));
   if (query.status !== undefined) filters.push(eq(campaignSends.status, query.status));
   if (query.deliveryStatus !== undefined) filters.push(eq(campaignSends.deliveryStatus, query.deliveryStatus));
+  if (query.contactId !== undefined) filters.push(eq(campaignSends.contactId, query.contactId));
   if (query.campaignId !== undefined) filters.push(eq(campaignSends.campaignId, query.campaignId));
   if (query.runId !== undefined) filters.push(eq(campaignSends.runId, query.runId));
   if (query.search !== undefined) filters.push(ilike(campaignSends.email, `%${normalizeEmail(query.search)}%`));

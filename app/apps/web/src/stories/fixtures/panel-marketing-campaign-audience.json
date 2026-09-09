@@ -1,40 +1,23 @@
 {
   "calls": {
-    "getMarketingContact:[{\"contactId\":\"contact-a3bf86238a1c\"}]": {
+    "getMarketingReputation:[]": {
       "ok": true,
       "value": {
-        "contact": {
-          "archivedAt": null,
-          "createdAt": "2026-07-01T12:00:00.000Z",
-          "displayName": "Anna Example",
-          "email": "anna@example.org",
-          "firstName": null,
-          "id": "contact-a3bf86238a1c",
-          "lastName": null,
-          "memberId": null,
-          "source": "import",
-          "tags": [
-            "launch",
-            "news"
-          ],
-          "tenantId": "tenant-studio",
-          "updatedAt": "2026-07-01T12:00:00.000Z"
+        "complaint": {
+          "count": 0,
+          "rate": null,
+          "sends": 1,
+          "status": "insufficient_data"
         },
-        "events": [
-          {
-            "actor": "directory",
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "event-contact-a3bf86238a1c-1",
-            "importId": null,
-            "occurredAt": "2026-07-01T12:00:00.000Z",
-            "payload": {},
-            "sequence": 1,
-            "subjectId": "contact-a3bf86238a1c",
-            "subjectKind": "contact",
-            "tenantId": "tenant-studio",
-            "type": "contact_created"
-          }
-        ]
+        "hardBounce": {
+          "count": 0,
+          "rate": null,
+          "sends": 1,
+          "status": "insufficient_data"
+        },
+        "overallStatus": "insufficient_data",
+        "windowEnd": "2026-07-01T12:00:00.000Z",
+        "windowStart": "2026-06-24T12:00:00.000Z"
       }
     },
     "getTenantSettings:[]": {
@@ -84,6 +67,48 @@
         "reports": []
       }
     },
+    "listMarketingCampaigns:[]": {
+      "ok": true,
+      "value": {
+        "campaigns": [
+          {
+            "audienceFilter": null,
+            "audienceNameSnapshot": "Wszyscy uprawnieni",
+            "bodyHtml": "<p>Plan nauki</p>",
+            "bodySource": "<p>Plan nauki</p>",
+            "bodyText": null,
+            "consentDefinitionId": "consent-definition-studio-news",
+            "consentLabelSnapshot": "Chcę otrzymywać aktualności e-mailem",
+            "createdAt": "2026-06-26T12:00:00.000Z",
+            "cursorMemberId": "member-studio-aktywny",
+            "engagement": {
+              "totalClicks": 0,
+              "totalOpens": 0,
+              "uniqueClicks": 0,
+              "uniqueOpens": 0
+            },
+            "errorCount": 0,
+            "failed": 0,
+            "finishedAt": "2026-06-27T12:00:00.000Z",
+            "id": "campaign-studio-observability",
+            "layoutId": null,
+            "lockedBy": null,
+            "lockedUntil": null,
+            "name": "Premiera kursu",
+            "pausedReason": null,
+            "replyTo": null,
+            "sendAt": "2026-06-27T12:00:00.000Z",
+            "sent": 1,
+            "snapshotMaxMemberId": "member-studio-aktywny",
+            "startedAt": "2026-06-27T12:00:00.000Z",
+            "status": "finished",
+            "subject": "Twój plan nauki na lipiec",
+            "tenantId": "tenant-studio",
+            "toSend": 1
+          }
+        ]
+      }
+    },
     "listMarketingConsentDefinitions:[]": {
       "ok": true,
       "value": {
@@ -102,125 +127,8 @@
             "status": "active",
             "tenantId": "tenant-studio",
             "updatedAt": "2026-06-06T12:00:00.000Z"
-          },
-          {
-            "channel": "email",
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "documentRef": {
-              "mode": "url",
-              "url": "https://courses.example.org/privacy"
-            },
-            "doubleOptIn": false,
-            "id": "definition-directory-news",
-            "key": "directory-news",
-            "kind": "optional_marketing",
-            "status": "active",
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
           }
         ]
-      }
-    },
-    "listMarketingContacts:[{\"archived\":false,\"id\":\"contact-a3bf86238a1c\",\"limit\":1}]": {
-      "ok": true,
-      "value": {
-        "contacts": [
-          {
-            "archivedAt": null,
-            "consentState": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "displayName": "Anna Example",
-            "email": "anna@example.org",
-            "firstName": null,
-            "id": "contact-a3bf86238a1c",
-            "lastName": null,
-            "listKeys": [
-              "newsletter"
-            ],
-            "memberId": null,
-            "source": "import",
-            "suppressionReason": null,
-            "tags": [
-              "launch",
-              "news"
-            ],
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          }
-        ],
-        "nextCursor": null
-      }
-    },
-    "listMarketingLists:[{\"limit\":100}]": {
-      "ok": true,
-      "value": {
-        "lists": [
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-consent_definition",
-            "key": "consent_definition",
-            "kind": "dynamic",
-            "name": "Active permission",
-            "revision": 1,
-            "rule": {
-              "definitionId": "definition-directory-news",
-              "kind": "consent_definition",
-              "state": "active"
-            },
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          },
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-launch",
-            "key": "launch",
-            "kind": "dynamic",
-            "name": "Launch contacts",
-            "revision": 1,
-            "rule": {
-              "kind": "tag",
-              "match": "any",
-              "tags": [
-                "launch"
-              ]
-            },
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          },
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-newsletter",
-            "key": "newsletter",
-            "kind": "static",
-            "name": "Newsletter",
-            "revision": 1,
-            "rule": null,
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          },
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-product_grant",
-            "key": "product_grant",
-            "kind": "dynamic",
-            "name": "Product access",
-            "revision": 1,
-            "rule": {
-              "kind": "product_grant",
-              "productIds": [
-                "product-studio-kurs-101"
-              ],
-              "state": "ever"
-            },
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          }
-        ],
-        "nextCursor": null
       }
     },
     "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
@@ -473,16 +381,146 @@
         "unread": 0
       }
     },
-    "listEmailSends:[{\"contactId\":\"contact-a3bf86238a1c\",\"kind\":\"marketing\"}]": {
+    "listMarketingLists:[{\"limit\":100}]": {
       "ok": true,
       "value": {
-        "sends": [],
+        "lists": [
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "id": "list-launch",
+            "key": "launch",
+            "kind": "dynamic",
+            "name": "Launch contacts",
+            "revision": 1,
+            "rule": {
+              "kind": "tag",
+              "match": "any",
+              "tags": [
+                "launch"
+              ]
+            },
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          },
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "id": "list-newsletter",
+            "key": "newsletter",
+            "kind": "static",
+            "name": "Newsletter",
+            "revision": 1,
+            "rule": null,
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-07-01T12:00:00.000Z"
+          }
+        ],
         "nextCursor": null
+      }
+    },
+    "getMarketingCampaign:[\"campaign-list-audience\"]": {
+      "ok": true,
+      "value": {
+        "campaign": {
+          "audienceFilter": null,
+          "audienceNameSnapshot": "Wszyscy uprawnieni",
+          "bodyHtml": "<p>Latest updates for our contacts.</p>",
+          "bodySource": "Latest updates for our contacts.",
+          "bodyText": null,
+          "consentDefinitionId": "consent-definition-studio-news",
+          "consentLabelSnapshot": "Chcę otrzymywać aktualności e-mailem",
+          "createdAt": "2026-06-26T12:00:00.000Z",
+          "cursorMemberId": null,
+          "engagement": {
+            "totalClicks": 0,
+            "totalOpens": 0,
+            "uniqueClicks": 0,
+            "uniqueOpens": 0
+          },
+          "errorCount": 0,
+          "failed": 0,
+          "finishedAt": null,
+          "id": "campaign-list-audience",
+          "layoutId": null,
+          "lockedBy": null,
+          "lockedUntil": null,
+          "name": "Newsletter launch",
+          "pausedReason": null,
+          "replyTo": null,
+          "sendAt": null,
+          "sent": 0,
+          "snapshotMaxMemberId": null,
+          "startedAt": null,
+          "status": "draft",
+          "subject": "Updates for newsletter contacts",
+          "tenantId": "tenant-studio",
+          "toSend": 0,
+          "audienceVersion": 2,
+          "audience": {
+            "version": 2,
+            "includeLists": [
+              "list-launch"
+            ],
+            "excludeLists": [],
+            "excludeProductIds": [],
+            "includeMembersWithConsent": false
+          },
+          "audienceSnapshotId": null,
+          "snapshotMaxContactId": null,
+          "cursorContactId": null,
+          "candidateCount": 0,
+          "skipped": 0,
+          "queued": 0,
+          "unresolved": 0
+        }
+      }
+    },
+    "listMarketingLayouts:[]": {
+      "ok": true,
+      "value": {
+        "layouts": []
+      }
+    },
+    "listProducts:[]": {
+      "ok": true,
+      "value": {
+        "products": []
+      }
+    },
+    "previewMarketingAudience:[{\"audience\":{\"excludeLists\":[],\"excludeProductIds\":[],\"includeLists\":[\"list-launch\"],\"includeMembersWithConsent\":false,\"version\":2},\"consentDefinitionId\":\"consent-definition-studio-news\"}]": {
+      "ok": true,
+      "value": {
+        "count": 2,
+        "candidateCount": 3,
+        "excludedCount": 1,
+        "skipped": {
+          "suppressed": 1,
+          "withdrawn": 0,
+          "pendingConfirmation": 0,
+          "noConsent": 0
+        },
+        "sample": [
+          {
+            "contactId": "contact-example-1",
+            "email": "first@example.test",
+            "displayName": "First Contact",
+            "memberId": null
+          },
+          {
+            "contactId": "contact-example-2",
+            "email": "second@example.test",
+            "displayName": "Second Contact",
+            "memberId": null
+          }
+        ],
+        "computedAt": "2026-07-01T12:00:00.000Z",
+        "audienceHash": "example-hash"
       }
     }
   },
   "principal": "creator@together.dev",
-  "route": "/panel/marketing/contacts/contact-a3bf86238a1c",
-  "scenario": "panel-marketing-contact-detail",
+  "route": "/panel/marketing/campaigns/campaign-list-audience",
+  "scenario": "panel-marketing-campaign-audience",
   "tenant": "studio"
 }

@@ -308,6 +308,10 @@ export const LessonPlayerPage = ({
 
   const lastViewed = useMutation({
     ...actions.updateLastViewed,
+    onSettled: (_data, _error, input) => Promise.all([
+      queryClient.invalidateQueries(actions.studentProgressInvalidates(input.courseId)),
+      queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+    ]),
     meta: { background: true },
   });
   const lastViewedRef = useRef<string | null>(null);
@@ -536,9 +540,9 @@ export const LessonPlayerPage = ({
 
         {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }}>
           <Stack
-            direction="row"
+            direction={{ xs: 'column', md: 'row' }}
             useFlexGap
-            sx={{ flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', '& > .MuiButton-root, & > span': { flex: { xs: '1 1 40%', md: '0 1 auto' } }, '& > span > .MuiButton-root': { width: '100%' } }}
+            sx={{ flexWrap: 'wrap', alignItems: { md: 'center' }, gap: '0.75rem', '& > span > .MuiButton-root': { width: '100%' } }}
           >
             {neighbours !== null && (
               previousLesson === null || previousLesson.locked ? (

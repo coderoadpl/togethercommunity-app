@@ -7,7 +7,7 @@ import {
   useParams,
   useSearch,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
@@ -23,7 +23,10 @@ import type {
   PlayableLessonBlock,
 } from '#core/domain/index.js';
 
+import { updateLastViewedInputSchema } from '#core/domain/index.js';
+
 import { actions } from '../../api.js';
+import { StartPage } from './StartPage.js';
 import { pl } from '../../i18n/pl.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -138,6 +141,19 @@ const stubDesktopViewport = () => {
   }));
 };
 
+const stubMobileViewport = () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('max-width'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
 const renderPage = async (node: ReactNode) => {
   const rootRoute = createRootRoute({ component: () => node });
   const router = createRouter({
@@ -199,6 +215,84 @@ describe('LessonPlayerPage', () => {
         HttpResponse.json({ ok: true, data: { progress: progress([]) } }),
       ),
     );
+  });
+
+  it('refreshes Start after visits A, B, then A, including a visit settled after unmount', async () => {
+    let lastViewedLessonId = 'l1';
+    let releaseVisit: () => void = () => undefined;
+    const visitResponse = new Promise<void>((resolve) => { releaseVisit = resolve; });
+    const recorded: string[] = [];
+    const lessonReads: string[] = [];
+    let structureReads = 0;
+    const names: Record<string, string> = { l1: 'Lesson A', l2: 'Lesson B' };
+    server.use(
+      http.get('/api/student/courses/:courseId/structure', () => {
+        structureReads += 1;
+        return HttpResponse.json({ ok: true, data: { structure } });
+      }),
+      http.get('/api/student/lessons/:lessonId', ({ params }) => {
+        lessonReads.push(String(params.lessonId));
+        return HttpResponse.json({
+          ok: true, data: { lesson: { ...lesson([]), id: String(params.lessonId), name: names[String(params.lessonId)] }, authenticated: true },
+        });
+      }),
+      http.get('/api/student/progress', () => HttpResponse.json({
+        ok: true, data: { progress: { ...progress([]), lastViewedLessonId, resume: {
+          target: { id: lastViewedLessonId, name: names[lastViewedLessonId] },
+          firstIncomplete: { id: 'l1', name: 'Lesson A' }, isReview: false,
+        } } },
+      })),
+      http.get('/api/member/navigation', () => HttpResponse.json({
+        ok: true, data: { navigation: { spaces: [], lockedSpaces: [], courses: [{
+          courseId: 'course-1', courseName: 'Course', completedLessonCount: 0,
+          accessibleLessonCount: 2, lastViewedLessonId, lastActivityAt: '2026-09-01T00:00:00.000Z',
+        }] } },
+      })),
+      http.get('/api/student/courses', () => HttpResponse.json({ ok: true, data: { courses: [{
+        id: 'course-1', tenantId: 't1', name: 'Course', description: '', imageUrl: null,
+        moduleOrder: [], publiclyVisible: false, legacyId: null, createdAt: '2026-09-01T00:00:00.000Z',
+      }] } })),
+      http.post('/api/student/progress/last-viewed', async ({ request }) => {
+        const input = updateLastViewedInputSchema.parse(await request.json());
+        if (input.lessonId === 'l2') await visitResponse;
+        lastViewedLessonId = input.lessonId ?? 'l1';
+        recorded.push(lastViewedLessonId);
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress([]), lastViewedLessonId } } });
+      }),
+    );
+    const root = createRootRoute();
+    const startRoute = createRoute({ getParentRoute: () => root, path: '/start', component: StartPage });
+    const lessonRoute = createRoute({
+      getParentRoute: () => root, path: '/my/courses/$courseId/lessons/$lessonId',
+      component: function VisitedLesson() {
+        const params = useParams({ strict: false });
+        return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+      },
+    });
+    const router = createRouter({ routeTree: root.addChildren([startRoute, lessonRoute]), history: createMemoryHistory({ initialEntries: ['/start'] }) });
+    await router.load();
+    const { queryClient } = renderWithProviders(<RouterProvider router={router} />);
+    queryClient.setDefaultOptions({ queries: { retry: false, gcTime: Infinity, staleTime: Infinity } });
+    const invalidates = vi.spyOn(queryClient, 'invalidateQueries');
+    await screen.findByTestId('start-continue');
+    await act(() => router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l1' } }));
+    await waitFor(() => expect(recorded).toEqual(['l1']));
+    await waitFor(() => expect(invalidates).toHaveBeenCalledWith(actions.studentProgressInvalidates('course-1')));
+    expect(invalidates).toHaveBeenCalledWith(actions.memberNavigationInvalidates());
+    await act(() => router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l2' } }));
+    await screen.findByRole('heading', { name: 'Lesson B' });
+    await act(() => router.navigate({ to: '/start' }));
+    await screen.findByTestId('start-continue');
+    releaseVisit();
+    await waitFor(() => expect(screen.getByTestId('start-continue')).toHaveTextContent(pl.start.continueLabel({ lesson: 'Lesson B' })));
+    expect(screen.getByTestId('start-continue-cta')).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    await act(() => router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l1' } }));
+    await waitFor(() => expect(recorded).toEqual(['l1', 'l2', 'l1']));
+    await act(() => router.navigate({ to: '/start' }));
+    await waitFor(() => expect(screen.getByTestId('start-continue')).toHaveTextContent(pl.start.continueLabel({ lesson: 'Lesson A' })));
+    expect(screen.getByTestId('start-continue-cta')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    expect(lessonReads).toEqual(['l1', 'l2']);
+    expect(structureReads).toBe(1);
   });
 
   it('uses the in-shell skeleton while lesson data loads', async () => {
@@ -972,6 +1066,43 @@ describe('LessonPlayerPage', () => {
       'margin-inline': '0px',
       'text-align': 'left',
     });
+  });
+
+  it('renders outlined mobile lesson actions and keeps continue primary', async () => {
+    stubMobileViewport();
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const complete = await screen.findByRole('button', { name: pl.lesson.markCompleted });
+    const previous = screen.getByRole('button', { name: pl.lesson.previousLesson });
+    const next = screen.getByRole('link', { name: pl.lesson.nextLesson });
+    for (const action of [previous, next, complete]) {
+      expect(action).toHaveClass('MuiButton-outlined');
+    }
+    expect(previous).toBeDisabled();
+    expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    const primary = screen.getByRole('button', { name: pl.lesson.completeContinue });
+    expect(primary).toHaveClass('MuiButton-contained');
+    for (const width of [375, 390, 899]) {
+      for (const action of [previous, next, complete, primary]) {
+        const styles = stylesAt(action, width);
+        expect(styles).toMatchObject({ width: '100%', 'min-height': '48px' });
+        expect(Number.parseFloat(styles['min-width'] ?? '0')).toBeGreaterThanOrEqual(44);
+      }
+      expect(stylesAt(complete.parentElement, width)).toMatchObject({ 'flex-direction': 'column', gap: '0.75rem' });
+    }
+    expect(stylesAt(complete.parentElement, 900)).toMatchObject({ 'flex-direction': 'row' });
+    expect(stylesAt(complete.closest('footer'), 390)).toMatchObject({ position: 'sticky' });
+  });
+
+  it('keeps marking the final lesson complete primary on mobile', async () => {
+    stubMobileViewport();
+    server.use(okStructureOf(structureOf([entry('l1', 'Final lesson')])), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('mark-complete')).toHaveClass('MuiButton-contained');
+    expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
   });
 
   it('makes continue the primary action and demotes marking the lesson complete', async () => {

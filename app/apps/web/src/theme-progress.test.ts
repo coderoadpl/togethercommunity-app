@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { contrastRatio, deriveBrandPalette, toHex } from './theme-branding.js';
+import { contrastRatio } from '#core/domain/index.js';
+import { deriveBrandPalette, toHex } from './theme-branding.js';
 import { progressTokens } from './theme-progress.js';
 import { createThemeForMode, MODES } from './theme.js';
 

@@ -187,7 +187,7 @@ const okStructure = () =>
   http.get('/api/student/courses/:courseId/structure', () =>
     HttpResponse.json({ ok: true, data: { structure: courseStructure } }));
 
-const okOffer = (withSocialLinks = false) =>
+const okOffer = (withSocialLinks = false, logoUrl: string | null = null) =>
   http.get('/api/public/offer', () =>
     HttpResponse.json({
       ok: true,
@@ -195,7 +195,7 @@ const okOffer = (withSocialLinks = false) =>
         tenant: {
           slug: 'acme',
           name: 'Acme',
-          branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+          branding: { logoUrl, accentColor: null, faviconUrl: null },
           socialLinks: withSocialLinks ? [{ label: 'Community', url: 'https://courses.example.org/community' }] : [],
         },
         contentVersion: 1,
@@ -325,7 +325,7 @@ describe('MemberShell', () => {
 
   it.each(['/my/courses/c1', '/my/courses/c1/lessons/l1'])('keeps the sidebar beside the app bar with internal scrolling on %s', async (path) => {
     stubViewport(true);
-    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(false, 'https://courses.example.org/logo.svg'), noNotifications());
 
     await renderShell(path);
 
@@ -338,6 +338,12 @@ describe('MemberShell', () => {
       maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
     });
     expect(sidebar).toHaveStyle({ overflowY: 'auto' });
+    const brand = screen.getByTestId('shell-brand');
+    expect(brand.closest('aside')).toBeNull();
+    expect(brand.parentElement).toHaveStyle({ position: 'sticky', top: '0', height: 'var(--member-app-bar-height)' });
+    expect(brand).toHaveAttribute('href', '/start');
+    expect(await within(brand).findByRole('img', { name: 'Acme' })).toHaveAttribute('src', 'https://courses.example.org/logo.svg');
+    expect(screen.getByTestId('course-sidebar-back')).toHaveAttribute('href', '/start');
   });
 
   it('carries the lesson breadcrumb in the app bar', async () => {
@@ -846,7 +852,8 @@ describe('MemberShell', () => {
     const Composer = () => (
       <PostComposer
         label="Question"
-        collapsedPrompt="Write a question"
+        compact
+        placeholder="Write a question"
         submitLabel="Send"
         pendingLabel="Sending"
         busy={false}
@@ -857,7 +864,7 @@ describe('MemberShell', () => {
 
     await renderShell('/my/courses/c1/lessons/l1', Composer);
     scrollIntoView.mockClear();
-    await user.click(await screen.findByTestId('keyboard-composer-open'));
+    await user.click(await screen.findByTestId('keyboard-composer-input'));
 
     const input = await screen.findByTestId('keyboard-composer-input');
     expect(input).toHaveFocus();

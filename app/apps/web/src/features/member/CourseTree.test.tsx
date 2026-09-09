@@ -226,6 +226,14 @@ describe('CourseTree', () => {
     }
   });
 
+  it('offsets lesson scroll targets below the sticky module header', async () => {
+    await renderTree();
+
+    expect(await screen.findByTestId('lesson-button-l1')).toHaveStyle({
+      scrollMarginTop: 'calc(46px + 0.5rem)',
+    });
+  });
+
   it('exposes module disclosure state and toggles it from the keyboard', async () => {
     const user = userEvent.setup();
     await renderTree();
@@ -332,6 +340,39 @@ describe('CourseTree', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
     expect(scrollIntoView.mock.instances).toEqual([focused]);
     scrollIntoView.mockRestore();
+  });
+
+  it('scrolls the focused lesson when the sticky module header covers it', async () => {
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute('data-course-tree-scroll') ? 400 : 44;
+      },
+    });
+    const rects = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: Element) {
+      if (this.hasAttribute('data-course-tree-scroll')) return new DOMRect(0, 0, 320, 400);
+      if (this.getAttribute('data-testid') === 'module-toggle-m1') return new DOMRect(0, 8, 320, 46);
+      if (this.getAttribute('data-testid') === 'lesson-button-l3') return new DOMRect(0, 40, 320, 44);
+      return new DOMRect(0, 0, 320, 44);
+    });
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    try {
+      await renderFocusedTree('l3');
+
+      const focused = await screen.findByTestId('lesson-button-l3');
+      expect(scrollIntoView.mock.instances).toEqual([focused]);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    } finally {
+      scrollIntoView.mockRestore();
+      rects.mockRestore();
+      if (originalClientHeight === undefined) {
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+      } else {
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight);
+      }
+    }
   });
 
   it('leaves scrolling to callers that own a scroll container', async () => {

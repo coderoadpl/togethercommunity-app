@@ -29,11 +29,11 @@ import type {
   CouponRedemptionRepository,
   CouponRepository,
   ProductPriceHistoryRepository,
-  CheckoutConsentCaptureRepository,
   EmailOutboxRepository,
   PaymentProvider,
   PaymentTransactionPort,
 } from '../ports.js';
+import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
@@ -47,7 +47,7 @@ import {
   type SubscriptionLifecycleDeps,
 } from './subscription-lifecycle.js';
 
-export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps {
+export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps {
   emailOutbox: EmailOutboxRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   paymentRefunds: PaymentRefundRepository;
@@ -55,10 +55,9 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
   couponRedemptions?: CouponRedemptionRepository;
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
   priceHistory?: ProductPriceHistoryRepository;
-  checkoutConsentCaptures?: CheckoutConsentCaptureRepository;
   payment: Pick<PaymentProvider, 'cancelSubscription'>;
   paymentTransaction: PaymentTransactionPort;
-  logger: { warn(message: string): void };
+  logger: { warn(message: string): void; error(message: string): void };
 }
 
 const WEBHOOK_CLAIM_LEASE_MS = 5 * 60 * 1000;
@@ -72,6 +71,8 @@ export const CHECKOUT_SESSION_EVENT_TYPES = new Set<string>([
 interface EventApplication {
   processed: boolean;
   consumed?: boolean;
+  paidOrder?: Order;
+  pendingConsent?: string;
 }
 
 const enqueueAutoInvoice = async (
@@ -460,10 +461,10 @@ const applyCheckoutCompleted = async (
       },
       deps,
     );
-    return ok({ processed: true });
+    return ok({ processed: true, paidOrder });
   }
 
-  return ok({ processed: true });
+  return ok({ processed: true, paidOrder });
 };
 
 const applyInvoiceEvent = async (
@@ -713,6 +714,35 @@ const applySubscriptionEvent = async (
   return ok({ processed: true });
 };
 
+const logPaymentFailure = (tenant: Tenant, event: PaymentWebhookEvent, deps: StripeWebhookDeps, error: AppError): void => {
+  deps.logger.error(`[stripe-webhook] tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${error.code}:${error.message}`);
+};
+
+const processCheckoutConsent = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  order: Pick<Order, 'id' | 'productId'>,
+  deps: StripeWebhookDeps,
+  transaction: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
+): Promise<Result<string | null, AppError>> => {
+  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok(null);
+  const consent = await transaction.consentTransaction.run((repositories) =>
+    recordFulfilledCheckoutConsents(tenant, event, order, deps, repositories));
+  if (consent.ok) return ok(null);
+  if (consent.error.code !== 'validation' && consent.error.code !== 'not_found' && consent.error.code !== 'forbidden') return consent;
+  const checkout = event.checkoutSession;
+  const captureId = checkout?.metadata.checkoutConsentCaptureId;
+  const email = checkout?.email ?? checkout?.metadata.memberEmail;
+  if (!event.objectId || !captureId || !email) return consent;
+  const reason = `${consent.error.code}:${consent.error.message}`;
+  await transaction.checkoutConsentJobs.enqueue(tenant.id, {
+    tenantId: tenant.id, checkoutSessionId: event.objectId, webhookEventId: event.id,
+    captureId, email, orderId: order.id, productId: order.productId,
+    reason, createdAt: deps.clock.nowIso(), completedAt: null,
+  });
+  return ok(reason);
+};
+
 export const fulfillStripeWebhook = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
@@ -736,7 +766,30 @@ export const fulfillStripeWebhook = async (
     now: claimedAt,
     leaseExpiresAt: new Date(Date.parse(claimedAt) + WEBHOOK_CLAIM_LEASE_MS).toISOString(),
   });
-  if (claimed === 'processed') return ok({ processed: false });
+  if (claimed === 'processed') {
+    if (!CHECKOUT_SESSION_EVENT_TYPES.has(event.type)) return ok({ processed: false });
+    const retried = await deps.paymentTransaction.run(async (transaction) => {
+      const job = await transaction.checkoutConsentJobs.lockPending(tenant.id, event.objectId ?? '');
+      if (job === null) return ok({ processed: false });
+      const consent = await processCheckoutConsent(tenant, {
+        ...event,
+        checkoutSession: {
+          email: job.email, subscriptionId: null, paymentIntentId: null,
+          metadata: {
+            tenantId: tenant.id, productId: job.productId, priceId: null,
+            memberEmail: job.email, language: null, checkoutConsentCaptureId: job.captureId,
+          },
+        },
+      }, { id: job.orderId, productId: job.productId }, deps, transaction);
+      if (!consent.ok) return consent;
+      if (consent.value === null) {
+        await transaction.checkoutConsentJobs.complete(tenant.id, job.checkoutSessionId, deps.clock.nowIso());
+      }
+      return ok({ processed: false });
+    });
+    if (!retried.ok) logPaymentFailure(tenant, event, deps, retried.error);
+    return retried;
+  }
   if (claimed === 'in_progress') {
     return err(appError('conflict', 'Payment event is being processed'));
   }
@@ -763,20 +816,31 @@ export const fulfillStripeWebhook = async (
           workerId,
           deps.clock.nowIso(),
         );
+        if (result.value.paidOrder !== undefined) {
+          const consent = await processCheckoutConsent(tenant, event, result.value.paidOrder, deps, transactionDeps);
+          if (!consent.ok) return consent;
+          if (consent.value !== null) return ok({ ...result.value, pendingConsent: consent.value });
+        }
       }
       return result;
     });
-  } catch {
+  } catch (cause) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
-    return err(internal('Payment fulfillment failed'));
+    const error = internal(`Payment fulfillment failed: ${String(cause)}`);
+    logPaymentFailure(tenant, event, deps, error);
+    return err(error);
   }
 
   if (!applied.ok) {
+    logPaymentFailure(tenant, event, deps, applied.error);
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
     return applied;
   }
   if (!applied.value.processed && applied.value.consumed !== true) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
+  }
+  if (applied.value.pendingConsent !== undefined) {
+    deps.logger.error(`[checkout-consent] pending tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${applied.value.pendingConsent}`);
   }
   return ok({ processed: applied.value.processed });
 };

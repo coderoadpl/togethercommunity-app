@@ -298,6 +298,19 @@ describe('member home feed', () => {
     expect(second.value.nextCursor).toBeNull();
   });
 
+  it('omits empty author deletions and retains moderator and replied-to tombstones', async () => {
+    const f = fixture({ spaces: [space('s1')], posts: [
+      post('author-empty', 's1', NOW, { deletedAt: NOW, deletedBy: 'author' }),
+      post('moderator-empty', 's1', NOW, { deletedAt: NOW, deletedBy: 'moderator' }),
+      post('author-thread', 's1', NOW, { deletedAt: NOW, deletedBy: 'author' }),
+      post('reply', 's1', NOW, { rootPostId: 'author-thread', parentPostId: 'author-thread', deletedAt: NOW, deletedBy: 'author' }),
+    ] });
+    const result = await getMemberHomeFeed(ctx(), {}, f.deps);
+    if (!result.ok) throw new Error('Feed failed');
+    expect(result.value.items.map((item) => item.id).sort()).toEqual(['author-thread', 'moderator-empty']);
+    expect(result.value.items.find((item) => item.id === 'moderator-empty')?.body).toBe('Wpis usunięty przez moderatora.');
+  });
+
   it('masks a deleted root and carries its reaction summary', async () => {
     const f = fixture({
       spaces: [space('s1', { name: 'Ogólna' })],

@@ -102,7 +102,7 @@ const tokenCtx = (tenant: Tenant): Ctx => ({
 
 export const authenticateMarketingApiKey = async (
   headers: Headers,
-  deps: AppDeps,
+  deps: Pick<AppDeps, 'tenantDomains' | 'tenants' | 'baseDomain' | 'platformHost' | 'singleTenantMode' | 'tenantApiKeys' | 'apiKeyCrypto' | 'clock'>,
 ): Promise<Result<{ tenant: Tenant; apiKey: TenantApiKey; ctx: Ctx }, AppError>> => {
   const resolved = await resolveTenant(headers.get('host') ?? '', headers.get(TENANT_HEADER), deps);
   if (!resolved.ok) return resolved;

@@ -1,3 +1,4 @@
+import { registerMarketingCommands } from './marketing-commands.js';
 import { readFile, writeFile } from 'node:fs/promises';
 
 import { Command, CommanderError } from 'commander';
@@ -52,6 +53,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { emit } from './output.js';
+import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
 
@@ -137,6 +139,10 @@ const changePasswordOptionsSchema = z.object({
 });
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
 const tenantSettingsOptionsSchema = z.object({
+  accentColor: z.string().optional(),
+  accentLight: z.string().optional(),
+  clearAccentColor: z.boolean().optional(),
+  clearAccentLight: z.boolean().optional(),
   billingPortalUrl: z.string().url().optional(),
   clearBillingPortalUrl: z.boolean().optional(),
   videoAutoplayDefault: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
@@ -604,6 +610,8 @@ const cliCtx = (): Result<CliCtx, AppError> => {
   });
 };
 
+registerMarketingCommands(program, cliCtx);
+
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
     updateOriginProfile(ctx.config, ctx.origin, patch, ctx.originSource !== 'repo'),
@@ -876,6 +884,8 @@ tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
       [
+        `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
+        `light accent: ${data.settings.accentLight ?? '(automatic)'}`,
         `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
         `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
         `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
@@ -887,14 +897,21 @@ tenant.command('settings').description('Show tenant settings').action(
 tenant
   .command('settings-set')
   .description('Update tenant settings (owner only)')
+  .option('--accent-color <hex>', 'dark-scheme accent (#RRGGBB)')
+  .option('--accent-light <hex>', 'optional light-scheme accent (#RRGGBB)')
+  .option('--clear-accent-color', 'use the platform accent')
+  .option('--clear-accent-light', 'derive the light accent automatically')
   .option('--billing-portal-url <url>', 'billing portal URL shown to members')
   .option('--clear-billing-portal-url', 'remove the billing portal URL')
   .option('--video-autoplay-default <value>', "'true' or 'false' — default lesson video autoplay")
   .option('--member-video-autoplay-override <value>', "'true' or 'false' — let members override autoplay")
   .action(
     withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
+      const accentColor = options.clearAccentColor === true ? null : options.accentColor;
+      const accentLight = options.clearAccentLight === true ? null : options.accentLight;
       const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
       if (
+        accentColor === undefined && accentLight === undefined &&
         billingPortalUrl === undefined &&
         options.videoAutoplayDefault === undefined &&
         options.memberVideoAutoplayOverride === undefined
@@ -907,6 +924,8 @@ tenant
         return;
       }
       emit(await ctx.api.updateTenantSettings({
+        ...(accentColor === undefined ? {} : { accentColor }),
+        ...(accentLight === undefined ? {} : { accentLight }),
         ...(billingPortalUrl === undefined ? {} : { billingPortalUrl }),
         ...(options.videoAutoplayDefault === undefined
           ? {}
@@ -916,6 +935,8 @@ tenant
           : { memberVideoAutoplayOverride: options.memberVideoAutoplayOverride }),
       }), ctx.json, (data) =>
         [
+          `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
+          `light accent: ${data.settings.accentLight ?? '(automatic)'}`,
           `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
           `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
           `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
@@ -1801,8 +1822,10 @@ lesson
   .description('Update a lesson (contents via --data inline JSON or --json-file)')
   .option('--data <json>', 'inline JSON lesson payload (must include id)')
   .option('--json-file <path>', 'path to a JSON file with the lesson payload')
+  .option('--preview', 'make the lesson a preview (overrides the payload)')
+  .option('--no-preview', 'disable lesson preview (overrides the payload)')
   .action(
-    withInput(z.tuple([jsonSourceOptionsSchema]), async (ctx, [options]) => {
+    withInput(z.tuple([jsonSourceOptionsSchema.extend({ preview: z.boolean().optional() })]), async (ctx, [options]) => {
       const payload = await readJsonPayload(options.data, options.jsonFile);
       if (!payload.ok) {
         emit(payload, ctx.json, () => '');
@@ -1813,11 +1836,56 @@ lesson
         emit(input, ctx.json, () => '');
         return;
       }
-      emit(await ctx.api.updateLesson(input.value), ctx.json, (data) =>
+      emit(await ctx.api.updateLesson({
+        ...input.value,
+        ...(options.preview === undefined ? {} : { isPreview: options.preview }),
+      }), ctx.json, (data) =>
         `updated lesson: ${data.lesson.name} (${data.lesson.id.slice(0, 8)})`,
       );
     }),
   );
+
+lesson.command('preview').description('Manage course lesson previews')
+  .command('set')
+  .description('Replace the preview selection for a course (shared lessons change everywhere)')
+  .requiredOption('--course <courseId>')
+  .option('--lessons <ids>', 'comma-separated lesson IDs to enable; disable all other course lessons')
+  .option('--first-per-module', 'enable the first lesson across chapters of each nonempty module')
+  .option('--all', 'enable every course lesson')
+  .option('--none', 'disable every course lesson')
+  .option('--dry-run', 'print the plan without updating lessons')
+  .action(withInput(z.tuple([lessonPreviewOptionsSchema]), async (ctx, [options]) => {
+    const courses = await ctx.api.listCourses();
+    if (!courses.ok) return emit(courses, ctx.json, () => '');
+    const selectedCourse = courses.value.courses.find((item) => item.id === options.course);
+    if (selectedCourse === undefined) return emit(err(notFound('Course not found')), ctx.json, () => '');
+    const modules = await ctx.api.listModules();
+    if (!modules.ok) return emit(modules, ctx.json, () => '');
+    const lessons = await ctx.api.listLessons();
+    if (!lessons.ok) return emit(lessons, ctx.json, () => '');
+    const plan = planLessonPreviews(selectedCourse, modules.value.modules, lessons.value.lessons, options);
+    if (!plan.ok) return emit(plan, ctx.json, () => '');
+    const changes = new Map(plan.value.filter((row) => row.currentIsPreview !== row.isPreview)
+      .map((row) => [row.lessonId, row.isPreview]));
+    if (!ctx.json) console.log(formatLessonPreviews(plan.value));
+    const updatedLessonIds: string[] = [];
+    if (!options.dryRun) {
+      for (const [id, isPreview] of changes) {
+        const result = await ctx.api.updateLesson({ id, isPreview });
+        if (!result.ok) {
+          emit(err({ ...result.error,
+            message: `${result.error.message} (lesson ${id}; ${updatedLessonIds.length} updates applied)`,
+            details: { cause: result.error.details, failedLessonId: id, updatedLessonIds },
+          }), ctx.json, () => '');
+          return;
+        }
+        updatedLessonIds.push(id);
+      }
+    }
+    emit(ok({ courseId: options.course, dryRun: options.dryRun, lessons: plan.value,
+      changedLessonCount: changes.size, updatedLessonIds }), ctx.json,
+    () => options.dryRun ? `dry run: ${changes.size} lesson(s) would change` : `updated ${updatedLessonIds.length} lesson(s)`);
+  }));
 
 const describeLessonReferences = (references: LessonReferences): string => {
   const lines = [`lesson ${references.lessonName} (${references.lessonId.slice(0, 8)})`];
@@ -1940,7 +2008,7 @@ student
   .action(
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [courseId]) => {
       emit(await ctx.api.studentProgress(courseId), ctx.json, (data) =>
-        `${data.progress.completedLessonIds.length} completed; last lesson ${data.progress.lastViewedLessonId ?? 'none'}`,
+        `${data.progress.completedLessonIds.length} completed; last lesson ${data.progress.lastViewedLessonId ?? 'none'}; ${data.progress.resume?.isReview === true ? 'review' : 'resume'} ${data.progress.resume?.target?.name ?? 'none'}`,
       );
     }),
   );

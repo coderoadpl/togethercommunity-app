@@ -1,19 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TenantBranding } from '#core/domain/index.js';
-
-import {
-  accentGradient,
-  accentOnSurface,
-  applyBranding,
-  contrastRatio,
-  deriveBrandPalette,
-  deterministicAccent,
-} from './theme-branding.js';
+import { contrastRatio, deriveLightAccent, type TenantBranding } from '#core/domain/index.js';
+import { toHex, accentGradient, accentOnSurface, applyBranding, deriveBrandPalette, deterministicAccent } from './theme-branding.js';
 import { createThemeForMode, MODES } from './theme.js';
 
 const ACCENT = '#0E7490';
-const ACCENTS = [ACCENT, '#F5C842', '#4F46E5', '#E8682A', '#000000', '#ffffff'];
+const ACCENTS = [ACCENT, '#F5C842', '#4F46E5', '#E8682A', '#000000', '#ffffff', '#7c3aed', '#172554', '#0000ff', '#ff0000'];
 const SCHEMES = ['light', 'dark'] as const;
 const SURFACES = ['member', 'studio'] as const;
 const AA_MIN = 4.5;
@@ -23,10 +15,36 @@ const branding = (accentColor: string | null): TenantBranding => ({
   logoUrl: null,
   logoDarkUrl: null,
   accentColor,
+  accentLight: null,
   faviconUrl: null,
 });
 
 describe('applyBranding', () => {
+  it('resolves independent accents and purchase CTA tokens in each scheme', () => {
+    for (const scheme of SCHEMES) {
+      const theme = createThemeForMode('shadcn', undefined, scheme, 'member');
+      const result = applyBranding(theme, { ...branding('#F5C842'), accentLight: '#786000' });
+      expect(result.palette.primary.main).toBe(scheme === 'light' ? '#786000' : '#F5C842');
+      expect(result.emberCta).toEqual({ main: result.palette.primary.main, hover: result.palette.primary.light, active: result.primaryActive, contrastText: result.accentInk });
+      expect(contrastRatio(result.accentText ?? '', theme.palette.background.paper)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('derives light fills that meet text and control contrast on page and card surfaces', () => {
+    for (const mode of MODES) {
+      for (const surface of SURFACES) {
+        const theme = createThemeForMode(mode.id, undefined, 'light', surface);
+        for (const accent of ACCENTS) {
+          const result = applyBranding(theme, branding(accent));
+          expect(result.palette.primary.main).toBe(deriveLightAccent(accent, [toHex(theme.palette.background.default), toHex(theme.palette.background.paper), ...(/^#[0-9a-f]{6}$/i.test(theme.palette.action.hover) ? [theme.palette.action.hover] : [])]));
+          for (const background of [theme.palette.background.default, theme.palette.background.paper]) {
+            expect(contrastRatio(result.palette.primary.main, toHex(background))).toBeGreaterThanOrEqual(4.5);
+          }
+        }
+      }
+    }
+  });
+
   it('leaves the palette alone for every mode when there is no branding', () => {
     for (const mode of MODES) {
       const theme = createThemeForMode(mode.id);
@@ -49,7 +67,7 @@ describe('applyBranding', () => {
       expect(branded.palette.primary.dark).toBe(derived.dark);
       expect(branded.palette.primary.contrastText).toBe(derived.contrastText);
       expect(branded.palette.secondary).toBe(theme.palette.secondary);
-      expect(branded.primaryActive).toBe(mode.id === 'shadcn' ? derived.light : undefined);
+      expect(branded.primaryActive).toBe(mode.id === 'shadcn' ? derived.dark : undefined);
     }
   });
 
@@ -113,18 +131,40 @@ describe('applyBranding', () => {
     }
   });
 
-  it('pairs every accent with a label ink and a page ink that clear AA', () => {
-    for (const scheme of SCHEMES) {
-      const member = createThemeForMode('shadcn', undefined, scheme, 'member');
-      for (const accent of ACCENTS) {
-        const branded = applyBranding(member, branding(accent));
-        expect([accent, contrastRatio(branded.palette.primary.main, branded.accentInk ?? '') >= AA_MIN])
-          .toEqual([accent, true]);
-        expect([accent, contrastRatio(branded.accentText ?? '', branded.palette.background.default) >= AA_MIN])
-          .toEqual([accent, true]);
+  it('keeps the domain default derivation aligned with member theme surfaces', () => {
+    const theme = createThemeForMode('shadcn', undefined, 'light', 'member');
+    const backgrounds = [theme.palette.background.default, theme.palette.background.paper, theme.palette.action.hover];
+    for (const accent of ACCENTS) {
+      expect(deriveLightAccent(accent)).toBe(deriveLightAccent(accent, backgrounds));
+    }
+  });
+
+  it('pairs every accent with readable ink on pages, cards and interactive fills', () => {
+    for (const mode of MODES) {
+      for (const scheme of SCHEMES) {
+        for (const surface of SURFACES) {
+          const theme = createThemeForMode(mode.id, undefined, scheme, surface);
+          for (const accent of ACCENTS) {
+            const branded = applyBranding(theme, branding(accent));
+            for (const background of [branded.palette.background.default, branded.palette.background.paper]) {
+              expect(contrastRatio(branded.accentText ?? '', toHex(background))).toBeGreaterThanOrEqual(AA_MIN);
+            }
+            const cta = branded.emberCta;
+            expect(cta).toBeDefined();
+            if (cta === undefined) throw new Error('Missing branded purchase CTA');
+            for (const fill of [cta.main, cta.hover, cta.active]) {
+              expect(contrastRatio(fill, cta.contrastText)).toBeGreaterThanOrEqual(AA_MIN);
+            }
+            expect(contrastRatio(cta.main, cta.hover)).toBeGreaterThanOrEqual(1.05);
+            expect(contrastRatio(cta.hover, cta.active)).toBeGreaterThanOrEqual(1.05);
+            expect(branded.palette.primary.light).toBe(cta.hover);
+            if (branded.primaryActive !== undefined) expect(branded.primaryActive).toBe(cta.active);
+          }
+        }
       }
     }
   });
+
 });
 
 describe('accentGradient', () => {
@@ -153,6 +193,7 @@ describe('deriveBrandPalette', () => {
       const palette = deriveBrandPalette(accent);
       expect(contrastRatio(palette.main, palette.contrastText)).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(palette.dark, palette.contrastText)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(palette.light, palette.contrastText)).toBeGreaterThanOrEqual(4.5);
     }
   });
 

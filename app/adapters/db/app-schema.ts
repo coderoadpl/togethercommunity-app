@@ -267,7 +267,7 @@ export const members = pgTable(
 export const memberEvents = pgTable(
   'member_events',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     sequence: bigserial('sequence', { mode: 'number' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     memberId: text('member_id').notNull(),
@@ -276,6 +276,7 @@ export const memberEvents = pgTable(
     occurredAt: text('occurred_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     foreignKey({
       name: 'member_events_tenant_member_fk',
       columns: [table.tenantId, table.memberId],
@@ -289,7 +290,7 @@ export const memberEvents = pgTable(
 export const erasedMemberImports = pgTable(
   'erased_member_imports',
   {
-    memberId: text('member_id').primaryKey(),
+    memberId: text('member_id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -298,6 +299,7 @@ export const erasedMemberImports = pgTable(
     erasedAt: text('erased_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.memberId] }),
     index('erased_member_imports_tenant_email_hmac_idx').on(table.tenantId, table.emailHmac),
     uniqueIndex('erased_member_imports_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
@@ -1009,7 +1011,7 @@ export const tenantSecrets = pgTable(
 export const processedPaymentEvents = pgTable(
   'processed_events',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -1022,6 +1024,7 @@ export const processedPaymentEvents = pgTable(
     workerId: text('worker_id'),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     index('processed_events_tenantId_idx').on(table.tenantId),
     uniqueIndex('processed_events_fulfillment_uidx')
       .on(table.tenantId, table.objectId, table.type)

@@ -1,6 +1,6 @@
 {
-  "hash": "e365fa6082dc1e8f57438e26d36e2f6e56155329849f99c3d17553ecd6b90b71",
-  "shortId": "e365fa6082dc",
+  "hash": "5ed588398eace1c456ba052ef65adb609ed69e91003daa96da451c1d0e89908d",
+  "shortId": "5ed588398eac",
   "schema": {
     "constraints": [
       {
@@ -1090,11 +1090,6 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
-        "name": "member_events_pkey",
-        "table": "member_events"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
         "name": "member_subscriptions_pkey",
         "table": "member_subscriptions"
       },
@@ -1137,11 +1132,6 @@
         "definition": "PRIMARY KEY (id)",
         "name": "posts_pkey",
         "table": "posts"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
-        "name": "processed_events_pkey",
-        "table": "processed_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1269,11 +1259,6 @@
         "table": "fiscal_artifacts"
       },
       {
-        "definition": "PRIMARY KEY (member_id)",
-        "name": "erased_member_imports_pkey",
-        "table": "erased_member_imports"
-      },
-      {
         "definition": "PRIMARY KEY (scope, key)",
         "name": "rate_limit_buckets_scope_key_pk",
         "table": "rate_limit_buckets"
@@ -1335,8 +1320,18 @@
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
+        "name": "member_events_tenant_id_id_pk",
+        "table": "member_events"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, id)",
         "name": "members_tenant_id_id_pk",
         "table": "members"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, id)",
+        "name": "processed_events_tenant_id_id_pk",
+        "table": "processed_events"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
@@ -1357,6 +1352,11 @@
         "definition": "PRIMARY KEY (tenant_id, list_id, contact_id)",
         "name": "marketing_list_memberships_tenant_id_list_id_contact_id_pk",
         "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, member_id)",
+        "name": "erased_member_imports_tenant_id_member_id_pk",
+        "table": "erased_member_imports"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, member_id)",

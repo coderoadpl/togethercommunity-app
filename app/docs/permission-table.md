@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 367. Exported `Ctx` use-case rows: 286.
+Closed capability count: 115. Route rows: 368. Exported `Ctx` use-case rows: 287.
 
 ## Human-readable diff
 
@@ -356,6 +356,7 @@ no changes
 | `GET /api/dm-reports` | community:report:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/dm-reports/resolve` | community:moderate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/posts/update` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `DELETE /api/posts/:postId/permanent` | community:moderate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/posts/:postId` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/discussion` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/discussion/subscribe` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -419,6 +420,7 @@ no changes
 | `community.ts#listDiscussion` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#editPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#deletePost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
+| `community.ts#purgePost` | community:moderate | owner, admin | owner, admin | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#subscribeThread` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#muteThread` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#searchPosts` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
@@ -697,10 +699,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:174` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1065` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1067` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1568` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1568` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1066` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1068` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1569` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1569` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

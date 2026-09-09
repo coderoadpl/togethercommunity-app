@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(367);
-    expect(inventory.useCases).toHaveLength(286);
+    expect(inventory.routes).toHaveLength(368);
+    expect(inventory.useCases).toHaveLength(287);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
@@ -40,6 +40,16 @@ describe('permission inventory', () => {
       expect(routes.get(subject)?.after, subject).toEqual(['owner', 'admin', 'member']);
     }
     expect(routes.get('POST /api/student/lessons/uncomplete')?.capability).toBe('member:progress:self-write');
+  });
+
+  it('restricts permanent post deletion to staff in both inventories', () => {
+    const inventory = collectPermissionInventory();
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'DELETE /api/posts/:postId/permanent'),
+      inventory.useCases.find((entry) => entry.subject === 'community.ts#purgePost'),
+    ]) {
+      expect(row).toMatchObject({ capability: 'community:moderate', before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
   });
 
   it('reads use-case capabilities from their authorization calls', () => {

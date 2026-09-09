@@ -45,6 +45,7 @@ import type {
 import {
   createPost,
   deletePost,
+  purgePost,
   editPost,
   listDiscussion,
   listNotifications,
@@ -290,7 +291,7 @@ class FakePosts implements PostRepository {
     return {
       threads: roots.map((post) => ({
         post,
-        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id).length,
+        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id && reply.deletedAt === null).length,
       })),
       nextCursor: null,
     };
@@ -312,7 +313,7 @@ class FakePosts implements PostRepository {
     return {
       threads: roots.map((post) => ({
         post,
-        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id).length,
+        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id && reply.deletedAt === null).length,
       })),
       nextCursor: null,
     };
@@ -336,6 +337,24 @@ class FakePosts implements PostRepository {
     const next = { ...post, deletedAt: input.deletedAt, deletedBy: input.deletedBy, deletedByUserId: input.deletedByUserId, pinnedAt: null };
     this.replace(next);
     return next;
+  }
+
+  async purge(tenantId: string, id: string): Promise<boolean> {
+    const post = await this.findById(tenantId, id);
+    if (post === null || post.deletedAt === null) return false;
+    const ids = new Set([id]);
+    let previousSize = 0;
+    while (previousSize !== ids.size) {
+      previousSize = ids.size;
+      for (const row of this.rows) {
+        if (row.tenantId === tenantId && (row.rootPostId === id || (row.parentPostId !== null && ids.has(row.parentPostId)))) ids.add(row.id);
+      }
+    }
+    for (let index = this.rows.length - 1; index >= 0; index -= 1) {
+      const row = this.rows[index];
+      if (row !== undefined && row.tenantId === tenantId && ids.has(row.id)) this.rows.splice(index, 1);
+    }
+    return true;
   }
 
   async setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null> {
@@ -1084,6 +1103,39 @@ describe('community use-cases', () => {
     expect(d.notifications.rows.map((notification) => notification.recipientUserId)).toEqual(['u3']);
   });
 
+  it.each([false, true])('hides legacy deleted roots with only deleted replies: %s', async (withReply) => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const created = await createPost(ctx(), { ...input, body: 'Legacy content' }, d);
+    if (!created.ok) throw new Error('Root failed');
+    if (withReply) {
+      const reply = await createPost(ctx(), { ...input, parentPostId: created.value.id, body: 'Reply' }, d);
+      if (!reply.ok) throw new Error('Reply failed');
+      await deletePost(ctx(), { id: reply.value.id }, d);
+    }
+    const stored = await d.posts.findById('t1', created.value.id);
+    if (stored === null) throw new Error('Root missing');
+    stored.deletedAt = NOW;
+    delete stored.deletedBy;
+    delete stored.deletedByUserId;
+    expect(await listDiscussion(ctx(), input, d)).toMatchObject({ ok: true, value: { threads: [] } });
+  });
+
+  it('denies author purge and lets staff remove a tombstone and its descendants', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const root = await createPost(ctx(), { ...input, body: 'Root' }, d);
+    if (!root.ok) throw new Error('Root failed');
+    const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
+    if (!reply.ok) throw new Error('Reply failed');
+    await createPost(ctx(), { ...input, parentPostId: reply.value.id, body: 'Nested' }, d);
+    await deletePost(ctx(), { id: root.value.id }, d);
+    expect(await purgePost(ctx(), { id: root.value.id }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await purgePost(ctx({ staffRole: 'admin' }), { id: root.value.id }, d)).toEqual({ ok: true, value: { id: root.value.id } });
+    expect(await d.posts.findById('t1', root.value.id)).toBeNull();
+    expect(await d.posts.listReplies('t1', root.value.id)).toEqual([]);
+  });
+
   it('renders soft-deleted posts with replies as placeholders', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'secret' }, d);
@@ -1098,7 +1150,7 @@ describe('community use-cases', () => {
     { own: true, staffRole: null, replies: false, visible: false, deletedBy: 'author' },
     { own: true, staffRole: 'admin', replies: false, visible: false, deletedBy: 'author' },
     { own: true, staffRole: null, replies: true, visible: true, deletedBy: 'author' },
-    { own: false, staffRole: 'owner', replies: false, visible: true, deletedBy: 'moderator' },
+    { own: false, staffRole: 'owner', replies: false, visible: false, deletedBy: 'moderator' },
     { own: false, staffRole: 'admin', replies: true, visible: true, deletedBy: 'moderator' },
   ] as const)('preserves deletion provenance and thread visibility: $deletedBy, replies=$replies, staff=$staffRole', async ({ own, staffRole, replies, visible, deletedBy }) => {
     const d = deps([allAccess], [grant('m1', 'all')]);
@@ -1108,7 +1160,6 @@ describe('community use-cases', () => {
     if (replies) {
       const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
       if (!reply.ok) throw new Error('Reply failed');
-      await deletePost(ctx(), { id: reply.value.id }, d);
     }
     const actor = ctx({ userId: own ? 'u1' : 'staff', staffRole });
     const deleted = await deletePost(actor, { id: root.value.id }, d);
@@ -1125,7 +1176,7 @@ describe('community use-cases', () => {
     expect(listed.value.threads).toHaveLength(visible ? 1 : 0);
     if (visible) {
       expect(listed.value.threads[0]).toMatchObject({ deletedBy, replyCount: replies ? 1 : 0 });
-      if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedBy: 'author' });
+      if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedAt: null });
     } else {
       expect(await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
     }

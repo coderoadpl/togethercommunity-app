@@ -274,7 +274,7 @@ class FakePosts implements PostRepository {
       threads: page.map((post) => ({
         post,
         replyCount: this.rows.filter(
-          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id,
+          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id && reply.deletedAt === null,
         ).length,
       })),
       nextCursor: overflow && last ? cursorOf(last) : null,
@@ -303,7 +303,7 @@ class FakePosts implements PostRepository {
       threads: page.map((post) => ({
         post,
         replyCount: this.rows.filter(
-          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id,
+          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id && reply.deletedAt === null,
         ).length,
       })),
       nextCursor: overflow && last ? cursorOf(last) : null,
@@ -327,6 +327,10 @@ class FakePosts implements PostRepository {
     const index = this.rows.findIndex((item) => item.id === post.id);
     this.rows[index] = next;
     return next;
+  }
+
+  async purge(): Promise<boolean> {
+    return false;
   }
 
   async setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null> {
@@ -1073,6 +1077,23 @@ describe('space feed', () => {
     });
   });
 
+  it('hides legacy space roots after their last live reply is deleted', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const input = { contextKind: 'space', contextId: 's-open' } as const;
+    const root = await createPost(ctx(), { ...input, body: 'Legacy root' }, f.deps);
+    if (!root.ok) throw new Error('Root failed');
+    const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, f.deps);
+    if (!reply.ok) throw new Error('Reply failed');
+    const stored = await f.posts.findById('t1', root.value.id);
+    if (stored === null) throw new Error('Root missing');
+    stored.deletedAt = NOW;
+    delete stored.deletedBy;
+    delete stored.deletedByUserId;
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({ ok: true, value: { items: [{ id: root.value.id }] } });
+    await deletePost(ctx(), { id: reply.value.id }, f.deps);
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({ ok: true, value: { items: [] } });
+  });
+
   it('frees the pin slot and removes a pinned post from the feed when its author deletes it', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const created = await createPost(
@@ -1107,7 +1128,7 @@ describe('space feed', () => {
 
   it.each([
     { moderator: false, reply: true, deletedBy: 'author' },
-    { moderator: true, reply: false, deletedBy: 'moderator' },
+    { moderator: true, reply: true, deletedBy: 'moderator' },
   ] as const)('keeps $deletedBy tombstones in the space feed with reply=$reply', async ({ moderator, reply, deletedBy }) => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const input = { contextKind: 'space', contextId: 's-open' } as const;

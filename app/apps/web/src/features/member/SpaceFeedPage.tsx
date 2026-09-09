@@ -31,6 +31,7 @@ import { LockedSpaceCard, SpaceVisibilityChip } from './SpaceCards.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { DeletePostDialog } from './DeletePostDialog.js';
 import { usePostMutations } from './usePostMutations.js';
+import { TombstonePostMenu } from './TombstonePostMenu.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
 import { useImpersonation, useViewerKind } from './viewer.js';
@@ -148,7 +149,7 @@ const FeedPost = ({
               {item.pinnedAt === null ? t.community.pin : t.community.unpin}
             </PostMetaButton>
           ) : null}
-          <FeedPostMenu
+          {deleted ? (canPin ? <TombstonePostMenu postId={item.id} writeDisabled={writeDisabled} /> : null) : <FeedPostMenu
             postId={item.id}
             postPath={postPath}
             canContactAuthor={!item.isOwn && !deleted}
@@ -157,7 +158,7 @@ const FeedPost = ({
             writeDisabled={writeDisabled}
             onEdit={() => setEditing(true)}
             onDelete={() => setDeleting(true)}
-          />
+          />}
         </Stack>
         {mutationError !== null ? <Alert severity="error">{localizeError(mutationError, t)}</Alert> : null}
       </Stack>

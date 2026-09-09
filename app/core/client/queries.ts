@@ -1242,6 +1242,12 @@ export const updatePostMutation = (api: ApiClient) =>
     call: (input: PostUpdateInput) => api.updatePost(input),
   });
 
+export const purgePostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...discussionScopes.all(), 'purge-post'],
+    call: (input: PostDeleteInput) => api.purgePost(input),
+  });
+
 export const deletePostMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...discussionScopes.all(), 'delete-post'],

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Theme } from '@mui/material/styles';
 
-import { contrastRatio } from './theme-branding.js';
+import { contrastRatio } from '#core/domain/index.js';
 import {
   BORDER_INPUT,
   createThemeForMode,

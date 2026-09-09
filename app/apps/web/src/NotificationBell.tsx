@@ -103,6 +103,7 @@ export const NotificationBell = ({
           <IconButton
             aria-label={t.shell.closeSheet}
             data-testid="notifications-panel-close"
+            sx={{ minHeight: 44, minWidth: 44 }}
             onClick={close}
           >
             <CloseIcon />

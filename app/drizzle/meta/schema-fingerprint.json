@@ -1,6 +1,6 @@
 {
-  "hash": "95a6e6a27a8fb12739571827b5aeb6a3954d6703e24bc42a648ae6f6df5c89f6",
-  "shortId": "95a6e6a27a8f",
+  "hash": "af70ae901e94631ff944c578811235e4ab25340ee61b86649a1cde3751ed8753",
+  "shortId": "af70ae901e94",
   "schema": {
     "constraints": [
       {
@@ -9,14 +9,34 @@
         "table": "coupons"
       },
       {
+        "definition": "CHECK ((((kind = 'static'::text) AND (rule IS NULL)) OR ((kind = 'dynamic'::text) AND (rule IS NOT NULL) AND ((rule ->> 'kind'::text) = ANY (ARRAY['tag'::text, 'product_grant'::text, 'consent_definition'::text])))))",
+        "name": "marketing_lists_rule_check",
+        "table": "marketing_lists"
+      },
+      {
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
         "name": "orders_discount_check",
         "table": "orders"
       },
       {
+        "definition": "CHECK (((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 50)))",
+        "name": "marketing_contacts_tags_check",
+        "table": "marketing_contacts"
+      },
+      {
         "definition": "CHECK (((language IS NULL) OR (language = ANY (ARRAY['pl'::text, 'en'::text]))))",
         "name": "members_language_check",
         "table": "members"
+      },
+      {
+        "definition": "CHECK (((length(display_name) <= 200) AND (length(first_name) <= 200) AND (length(last_name) <= 200) AND ((length(source) >= 1) AND (length(source) <= 120))))",
+        "name": "marketing_contacts_names_check",
+        "table": "marketing_contacts"
+      },
+      {
+        "definition": "CHECK (((row_count >= 1) AND (row_count <= 10000)))",
+        "name": "marketing_contact_imports_row_count_check",
+        "table": "marketing_contact_imports"
       },
       {
         "definition": "CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at < ends_at)))",
@@ -32,6 +52,11 @@
         "definition": "CHECK ((default_language = ANY (ARRAY['pl'::text, 'en'::text])))",
         "name": "tenants_default_language_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((email = lower(btrim(email))))",
+        "name": "marketing_contacts_normalized_email_check",
+        "table": "marketing_contacts"
       },
       {
         "definition": "CHECK ((invoice_vat_mode = ANY (ARRAY['rate'::text, 'exempt'::text])))",
@@ -470,8 +495,43 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_contact_import_rows_tenant_id_tenants_id_fk",
+        "table": "marketing_contact_import_rows"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_contact_imports_tenant_id_tenants_id_fk",
+        "table": "marketing_contact_imports"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_contacts_tenant_id_tenants_id_fk",
+        "table": "marketing_contacts"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_directory_events_tenant_id_tenants_id_fk",
+        "table": "marketing_directory_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "marketing_idempotency_keys_tenant_id_tenants_id_fk",
         "table": "marketing_idempotency_keys"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_list_memberships_tenant_id_tenants_id_fk",
+        "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_lists_tenant_id_tenants_id_fk",
+        "table": "marketing_lists"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_member_sync_jobs_tenant_id_tenants_id_fk",
+        "table": "marketing_member_sync_jobs"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -689,14 +749,44 @@
         "table": "unsubscribe_tokens"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, contact_id) REFERENCES marketing_contacts(tenant_id, id) ON DELETE CASCADE",
+        "name": "marketing_membership_contact_fk",
+        "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, contact_id) REFERENCES marketing_contacts(tenant_id, id)",
+        "name": "marketing_import_row_contact_fk",
+        "table": "marketing_contact_import_rows"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, course_id) REFERENCES courses(tenant_id, id) ON DELETE CASCADE",
         "name": "member_course_progress_tenant_course_fk",
         "table": "member_course_progress"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, import_id) REFERENCES marketing_contact_imports(tenant_id, id) ON DELETE CASCADE",
+        "name": "marketing_import_row_batch_fk",
+        "table": "marketing_contact_import_rows"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, import_id) REFERENCES marketing_contact_imports(tenant_id, id)",
+        "name": "marketing_membership_import_fk",
+        "table": "marketing_list_memberships"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, lesson_id) REFERENCES course_lessons(tenant_id, id) ON DELETE CASCADE",
         "name": "lesson_attachments_tenant_lesson_fk",
         "table": "lesson_attachments"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, list_id) REFERENCES marketing_lists(tenant_id, id) ON DELETE CASCADE",
+        "name": "marketing_membership_list_fk",
+        "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id) ON DELETE CASCADE",
+        "name": "marketing_member_sync_member_fk",
+        "table": "marketing_member_sync_jobs"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id) ON DELETE CASCADE",
@@ -727,6 +817,11 @@
         "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
         "name": "coupon_redemptions_tenant_member_fk",
         "table": "coupon_redemptions"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
+        "name": "marketing_contacts_tenant_id_member_id_members_tenant_id_id_fk",
+        "table": "marketing_contacts"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
@@ -960,8 +1055,28 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "marketing_contact_imports_pkey",
+        "table": "marketing_contact_imports"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_contacts_pkey",
+        "table": "marketing_contacts"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_directory_events_pkey",
+        "table": "marketing_directory_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "marketing_idempotency_keys_pkey",
         "table": "marketing_idempotency_keys"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_lists_pkey",
+        "table": "marketing_lists"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -972,11 +1087,6 @@
         "definition": "PRIMARY KEY (id)",
         "name": "member_erasure_requests_pkey",
         "table": "member_erasure_requests"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
-        "name": "member_events_pkey",
-        "table": "member_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1022,11 +1132,6 @@
         "definition": "PRIMARY KEY (id)",
         "name": "posts_pkey",
         "table": "posts"
-      },
-      {
-        "definition": "PRIMARY KEY (id)",
-        "name": "processed_events_pkey",
-        "table": "processed_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1154,11 +1259,6 @@
         "table": "fiscal_artifacts"
       },
       {
-        "definition": "PRIMARY KEY (member_id)",
-        "name": "erased_member_imports_pkey",
-        "table": "erased_member_imports"
-      },
-      {
         "definition": "PRIMARY KEY (scope, key)",
         "name": "rate_limit_buckets_scope_key_pk",
         "table": "rate_limit_buckets"
@@ -1220,8 +1320,18 @@
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
+        "name": "member_events_tenant_id_id_pk",
+        "table": "member_events"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, id)",
         "name": "members_tenant_id_id_pk",
         "table": "members"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, id)",
+        "name": "processed_events_tenant_id_id_pk",
+        "table": "processed_events"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
@@ -1232,6 +1342,26 @@
         "definition": "PRIMARY KEY (tenant_id, id)",
         "name": "products_tenant_id_id_pk",
         "table": "products"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, import_id, row_number)",
+        "name": "marketing_contact_import_rows_tenant_id_import_id_row_number_pk",
+        "table": "marketing_contact_import_rows"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, list_id, contact_id)",
+        "name": "marketing_list_memberships_tenant_id_list_id_contact_id_pk",
+        "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, member_id)",
+        "name": "erased_member_imports_tenant_id_member_id_pk",
+        "table": "erased_member_imports"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, member_id)",
+        "name": "marketing_member_sync_jobs_tenant_id_member_id_pk",
+        "table": "marketing_member_sync_jobs"
       },
       {
         "definition": "UNIQUE (email)",
@@ -1269,6 +1399,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION append_product_price_history() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF TG_OP = 'INSERT' THEN INSERT INTO product_price_history (tenant_id, product_id, price_id, amount_cents, effective_from) VALUES (NEW.tenant_id, NEW.product_id, NEW.id, NEW.amount_cents, NEW.created_at); ELSIF NEW.amount_cents IS DISTINCT FROM OLD.amount_cents THEN INSERT INTO product_price_history (tenant_id, product_id, price_id, amount_cents, effective_from) VALUES ( NEW.tenant_id, NEW.product_id, NEW.id, NEW.amount_cents, to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') ); END IF; RETURN NEW; END; $function$",
         "name": "append_product_price_history"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION marketing_member_directory_changed() RETURNS trigger LANGUAGE plpgsql AS $function$ DECLARE address text; contact record; now_iso text := to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'); BEGIN FOR address IN SELECT DISTINCT value COLLATE \"C\" AS value FROM unnest(ARRAY[lower(btrim(NEW.email)), CASE WHEN TG_OP = 'UPDATE' THEN lower(btrim(OLD.email)) ELSE NULL END]) value WHERE value IS NOT NULL ORDER BY value COLLATE \"C\" LOOP PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id || ':' || address, 0)); END LOOP; FOR contact IN SELECT * FROM marketing_contacts WHERE tenant_id = NEW.tenant_id AND member_id = NEW.id AND (NEW.deleted_at IS NOT NULL OR email <> lower(btrim(NEW.email))) FOR UPDATE LOOP UPDATE marketing_contacts SET member_id = NULL, updated_at = now_iso WHERE tenant_id = NEW.tenant_id AND id = contact.id; PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id || ':contact:' || contact.id, 1)); INSERT INTO marketing_directory_events (id, tenant_id, subject_kind, subject_id, sequence, type, actor, import_id, payload, occurred_at, created_at) SELECT gen_random_uuid()::text, NEW.tenant_id, 'contact', contact.id, coalesce(max(sequence), 0) + 1, 'member_unlinked', 'member_projection', NULL, '{}'::jsonb, now_iso, now_iso FROM marketing_directory_events WHERE tenant_id = NEW.tenant_id AND subject_kind = 'contact' AND subject_id = contact.id; END LOOP; IF NEW.deleted_at IS NULL THEN FOR contact IN SELECT * FROM marketing_contacts WHERE tenant_id = NEW.tenant_id AND email = lower(btrim(NEW.email)) AND member_id IS NULL FOR UPDATE LOOP UPDATE marketing_contacts SET member_id = NEW.id, updated_at = now_iso WHERE tenant_id = NEW.tenant_id AND id = contact.id; PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id || ':contact:' || contact.id, 1)); INSERT INTO marketing_directory_events (id, tenant_id, subject_kind, subject_id, sequence, type, actor, import_id, payload, occurred_at, created_at) SELECT gen_random_uuid()::text, NEW.tenant_id, 'contact', contact.id, coalesce(max(sequence), 0) + 1, 'member_linked', 'member_projection', NULL, '{}'::jsonb, now_iso, now_iso FROM marketing_directory_events WHERE tenant_id = NEW.tenant_id AND subject_kind = 'contact' AND subject_id = contact.id; END LOOP; END IF; INSERT INTO marketing_member_sync_jobs (tenant_id, member_id, revision, status, attempts, next_attempt_at, updated_at) VALUES (NEW.tenant_id, NEW.id, 1, CASE WHEN NEW.deleted_at IS NULL THEN 'pending' ELSE 'completed' END, 0, now_iso, now_iso) ON CONFLICT (tenant_id, member_id) DO UPDATE SET revision = marketing_member_sync_jobs.revision + 1, status = EXCLUDED.status, attempts = 0, next_attempt_at = now_iso, locked_by = NULL, locked_until = NULL, last_error = NULL, updated_at = now_iso; RETURN NEW; END; $function$",
+        "name": "marketing_member_directory_changed"
       },
       {
         "arguments": "",
@@ -1618,9 +1753,44 @@
         "table": "marketing_consents"
       },
       {
+        "definition": "CREATE INDEX marketing_contact_imports_work_idx ON marketing_contact_imports USING btree (status, next_attempt_at)",
+        "name": "marketing_contact_imports_work_idx",
+        "table": "marketing_contact_imports"
+      },
+      {
+        "definition": "CREATE INDEX marketing_contacts_page_idx ON marketing_contacts USING btree (tenant_id, archived_at, id)",
+        "name": "marketing_contacts_page_idx",
+        "table": "marketing_contacts"
+      },
+      {
+        "definition": "CREATE INDEX marketing_contacts_tags_idx ON marketing_contacts USING gin (tags)",
+        "name": "marketing_contacts_tags_idx",
+        "table": "marketing_contacts"
+      },
+      {
         "definition": "CREATE INDEX marketing_idempotency_keys_expiry_idx ON marketing_idempotency_keys USING btree (expires_at)",
         "name": "marketing_idempotency_keys_expiry_idx",
         "table": "marketing_idempotency_keys"
+      },
+      {
+        "definition": "CREATE INDEX marketing_import_rows_pending_idx ON marketing_contact_import_rows USING btree (tenant_id, import_id, row_number) WHERE (processed_at IS NULL)",
+        "name": "marketing_import_rows_pending_idx",
+        "table": "marketing_contact_import_rows"
+      },
+      {
+        "definition": "CREATE INDEX marketing_member_sync_work_idx ON marketing_member_sync_jobs USING btree (status, next_attempt_at)",
+        "name": "marketing_member_sync_work_idx",
+        "table": "marketing_member_sync_jobs"
+      },
+      {
+        "definition": "CREATE INDEX marketing_memberships_contact_idx ON marketing_list_memberships USING btree (tenant_id, contact_id, removed_at, list_id)",
+        "name": "marketing_memberships_contact_idx",
+        "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "CREATE INDEX marketing_memberships_list_idx ON marketing_list_memberships USING btree (tenant_id, list_id, removed_at, contact_id)",
+        "name": "marketing_memberships_list_idx",
+        "table": "marketing_list_memberships"
       },
       {
         "definition": "CREATE INDEX member_blocks_tenant_blocked_idx ON member_blocks USING btree (tenant_id, blocked_user_id)",
@@ -1943,9 +2113,39 @@
         "table": "lesson_attachments"
       },
       {
+        "definition": "CREATE UNIQUE INDEX marketing_contact_imports_idempotency_uidx ON marketing_contact_imports USING btree (tenant_id, idempotency_key)",
+        "name": "marketing_contact_imports_idempotency_uidx",
+        "table": "marketing_contact_imports"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_contacts_tenant_email_uidx ON marketing_contacts USING btree (tenant_id, email)",
+        "name": "marketing_contacts_tenant_email_uidx",
+        "table": "marketing_contacts"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_contacts_tenant_hmac_uidx ON marketing_contacts USING btree (tenant_id, email_hmac)",
+        "name": "marketing_contacts_tenant_hmac_uidx",
+        "table": "marketing_contacts"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_contacts_tenant_member_uidx ON marketing_contacts USING btree (tenant_id, member_id) WHERE (member_id IS NOT NULL)",
+        "name": "marketing_contacts_tenant_member_uidx",
+        "table": "marketing_contacts"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_directory_events_sequence_uidx ON marketing_directory_events USING btree (tenant_id, subject_kind, subject_id, sequence)",
+        "name": "marketing_directory_events_sequence_uidx",
+        "table": "marketing_directory_events"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX marketing_idempotency_keys_tenant_key_uidx ON marketing_idempotency_keys USING btree (tenant_id, key)",
         "name": "marketing_idempotency_keys_tenant_key_uidx",
         "table": "marketing_idempotency_keys"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_lists_tenant_key_uidx ON marketing_lists USING btree (tenant_id, key)",
+        "name": "marketing_lists_tenant_key_uidx",
+        "table": "marketing_lists"
       },
       {
         "definition": "CREATE UNIQUE INDEX member_blocks_tenant_blocker_blocked_uidx ON member_blocks USING btree (tenant_id, blocker_user_id, blocked_user_id)",
@@ -3112,6 +3312,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "accent_light",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "billing_portal_url",
             "notNull": false,
             "type": "text"
@@ -3310,6 +3518,115 @@
           }
         ],
         "name": "tenants"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "tags",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'import'::text",
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "archived_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "display_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "email_hmac",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "first_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_contacts"
       },
       {
         "columns": [
@@ -5021,6 +5338,91 @@
             "default": "0",
             "generated": "",
             "identity": "",
+            "name": "event_revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'::text)",
+            "generated": "",
+            "identity": "",
+            "name": "starts_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legacy_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "product_grants"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
             "name": "failed_verification_count",
             "notNull": false,
             "type": "integer"
@@ -5184,6 +5586,22 @@
             "generated": "",
             "identity": "",
             "name": "deleted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_by_user_id",
             "notNull": false,
             "type": "text"
           },
@@ -5915,83 +6333,6 @@
       {
         "columns": [
           {
-            "default": "to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'::text)",
-            "generated": "",
-            "identity": "",
-            "name": "starts_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "expires_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "legacy_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "source",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "product_grants"
-      },
-      {
-        "columns": [
-          {
             "default": "true",
             "generated": "",
             "identity": "",
@@ -6396,6 +6737,99 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "actor",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "import_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payload",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "subject_kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_directory_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "actor_email",
             "notNull": true,
             "type": "text"
@@ -6779,6 +7213,469 @@
           }
         ],
         "name": "api_key_rate_limit_buckets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "archived_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "rule",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_lists"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attestation_locale",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attestation_note",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attestation_text",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attestation_version",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attested_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attested_by",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_definition_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "content_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "dataset_version",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "defaults",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "definition_hash",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "definition_version",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "delimiter",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_sha256",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "finished_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "idempotency_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invalid_rows",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_until",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "mapping",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_attempt_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "raw_csv",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "request_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "result_counts",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "row_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "staged_data_purged_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "started_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "validation_hash",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_contact_imports"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_until",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_attempt_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_member_sync_jobs"
       },
       {
         "columns": [
@@ -7631,6 +8528,200 @@
           }
         ],
         "name": "marketing_idempotency_keys"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_row_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "contact_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "counts",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "duplicate_of",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "errors",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "import_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "normalized_email_hmac",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "normalized_payload",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "outcome",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "processed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "row_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "row_number",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "staged_payload",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "suppression_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "warnings",
+            "notNull": true,
+            "type": "jsonb"
+          }
+        ],
+        "name": "marketing_contact_import_rows"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "contact_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "import_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "list_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "removed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_list_memberships"
       },
       {
         "columns": [
@@ -9786,6 +10877,11 @@
       }
     ],
     "triggers": [
+      {
+        "definition": "CREATE TRIGGER marketing_member_directory_trigger AFTER INSERT OR UPDATE OF email, deleted_at ON members FOR EACH ROW EXECUTE FUNCTION marketing_member_directory_changed()",
+        "name": "marketing_member_directory_trigger",
+        "table": "members"
+      },
       {
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",
         "name": "orders_paid_billing_immutable",

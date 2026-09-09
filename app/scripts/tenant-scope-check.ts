@@ -49,6 +49,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'PlatformAuditRepository.record': 'Platform audit entries record operator actions taken outside any tenant boundary.',
   'PlatformDataResetPort.run': 'The disposable-environment reset rebuilds every demo tenant, so it spans all of them by definition.',
   'SmokeTenantReseedPort.run': 'The smoke-tenant reseed owns its tenant ID; the caller cannot choose which tenant is rebuilt.',
+  'MarketingDirectoryJobs.tenantIds': 'A platform worker discovers tenants with import or member synchronization work.',
   'MarketingJobRepository.listRetentionTenantIds': 'A platform worker discovers tenants due for retention work.',
   'MarketingJobRepository.listRunnableCampaigns': 'A platform worker discovers runnable campaigns with their tenant IDs.',
   'MarketingJobRepository.listSesIdentityRefreshTenantIds': 'A platform worker discovers tenants due for identity refresh.',

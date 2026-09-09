@@ -26,6 +26,8 @@ export const isPublicFormPath = (path: string): boolean =>
 
 export const requestBodyLimit = (method: string, path: string): number | undefined => {
   if (!['POST', 'PUT', 'PATCH'].includes(method)) return undefined;
+  if (path === API_PATHS.marketingContactImportUpload) return 4 * 1024 * 1024;
+  if (/^\/api\/(?:m2m\/)?marketing\/contact-imports\/[^/]+\/rows$/.test(path)) return 1024 * 1024;
   if (isWebhookPath(path)) return WEBHOOK_BODY_LIMIT;
   if (path === API_PATHS.m2mTransactionalMessagesCreate) return M2M_TRANSACTIONAL_BODY_LIMIT;
   if (path === API_PATHS.m2mImportValidate) return M2M_IMPORT_VALIDATE_BODY_LIMIT;

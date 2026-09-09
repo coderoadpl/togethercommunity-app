@@ -3,6 +3,7 @@ import {
   createSpaceInputSchema,
   deleteSpaceInputSchema,
   err,
+  isVisiblePostThread,
   followSpaceInputSchema,
   listSpaceFeedInputSchema,
   markSpaceSeenInputSchema,
@@ -303,7 +304,7 @@ export const getSpaceFeed = async (
       reactions: reactions.get(post.id) ?? [],
     })),
     items: listed.threads
-      .filter((thread) => !pinnedIds.has(thread.post.id))
+      .filter((thread) => !pinnedIds.has(thread.post.id) && isVisiblePostThread(thread.post, thread.replyCount))
       .map((thread) => ({
         ...toPublicPost(
           renderPost(thread.post),

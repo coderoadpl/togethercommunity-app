@@ -319,6 +319,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       sx={{
         textUnderlineOffset: '0.15em',
         minHeight: 44,
+        minWidth: 44,
+        flexShrink: 0,
         display: 'inline-flex',
         alignItems: 'center',
       }}

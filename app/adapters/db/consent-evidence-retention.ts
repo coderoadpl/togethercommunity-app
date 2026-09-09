@@ -3,6 +3,7 @@ import { lt, sql } from 'drizzle-orm';
 import type { ConsentEvidenceRetentionRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { createMarketingContactImportRepository } from './marketing-contact-import-repository.js';
 import { consents, marketingConsents } from './schema.js';
 
 const rowCount = (result: unknown): number => {
@@ -71,6 +72,7 @@ export const createConsentEvidenceRetentionRepository = (
       `);
       return rowCount(result);
     });
+    if (Date.now() < options.deadlineMs) await createMarketingContactImportRepository(db).purgeStaging(tenantId, new Date().toISOString());
     return marketing + terms;
   },
 });

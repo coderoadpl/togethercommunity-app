@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   NO_DM_BLOCKS,
@@ -20,6 +20,7 @@ import type {
   DmMessage,
   DmReport,
   Member,
+  MemberEvent,
   MemberBlock,
   MemberSubscription,
   Notification,
@@ -85,7 +86,7 @@ import {
   createUserDisplayReader,
 } from './repositories.js';
 import { tenantDomainEvents } from './schema.js';
-import { createMemberEventRepository } from './member-events.js';
+import { appendGrantMemberEvent, createMemberEventRepository } from './member-events.js';
 import { createImportAuditEventRepository } from './import-audit-events.js';
 import {
   createCouponRedemptionRepository,
@@ -114,6 +115,7 @@ import {
   emailEvents,
   invoices,
   erasedMemberImports,
+  marketingMemberSyncJobs,
   memberBlocks,
   memberCourseProgress,
   memberEvents,
@@ -440,6 +442,66 @@ describe('member repository', () => {
 });
 
 describe('member event repository', () => {
+  describe('grant event delivery', () => {
+    const deliveredEvent: Extract<MemberEvent, { type: 'grant' }> = {
+      id: `grant-transition:${JSON.stringify([ACME, 'shared-grant', 0])}`,
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      type: 'grant',
+      payload: {
+        grantId: 'shared-grant',
+        productId: 'prod-acme',
+        source: 'manual',
+        startsAt: PAST,
+        expiresAt: FUTURE,
+      },
+      occurredAt: NOW,
+    };
+
+    afterEach(async () => {
+      await db.delete(memberEvents).where(and(
+        inArray(memberEvents.tenantId, [ACME, GLOBEX]),
+        sql`${memberEvents.payload}->>'grantId' = 'shared-grant'`,
+      ));
+    });
+
+    it('deduplicates concurrent deliveries with the same tenant, key, and content', async () => {
+      const repo = createMemberEventRepository(db);
+      await Promise.all([
+        appendGrantMemberEvent(db, deliveredEvent, 0),
+        appendGrantMemberEvent(db, deliveredEvent, 0),
+      ]);
+      const events = await repo.listForMember(ACME, 'mem-acme');
+      expect(events.filter((event) => event.id === deliveredEvent.id)).toEqual([deliveredEvent]);
+    });
+
+    it('persists the same event key independently in two tenants', async () => {
+      const repo = createMemberEventRepository(db);
+      const otherEvent = {
+        ...deliveredEvent, tenantId: GLOBEX, memberId: 'mem-globex',
+        id: `grant-transition:${JSON.stringify([GLOBEX, 'shared-grant', 0])}`,
+      };
+      await appendGrantMemberEvent(db, deliveredEvent, 0);
+      await appendGrantMemberEvent(db, otherEvent, 0);
+      expect(await repo.listForMember(ACME, 'mem-acme')).toContainEqual(deliveredEvent);
+      expect(await repo.listForMember(GLOBEX, 'mem-globex')).toContainEqual(otherEvent);
+    });
+
+    it.each([
+      { occurredAt: FUTURE },
+      { memberId: 'different-member' },
+      { type: 'revoke' as const, payload: { grantId: 'shared-grant', productId: 'prod-acme', expiresAt: NOW } },
+      { payload: { ...deliveredEvent.payload, expiresAt: null } },
+    ])('rejects conflicting content under an existing event key: %j', async (change) => {
+      const repo = createMemberEventRepository(db);
+      await appendGrantMemberEvent(db, deliveredEvent, 0);
+      await expect(appendGrantMemberEvent(db, { ...deliveredEvent, ...change }, 0)).rejects.toThrow(
+        'Member event idempotency key collision',
+      );
+      expect(await repo.listForMember(ACME, 'mem-acme')).toContainEqual(deliveredEvent);
+    });
+  });
+
   it('merges commerce, access, subscription, and learning events newest-first', async () => {
     await createCourseRepository(db).create(ACME, {
       id: 'course-member-events',
@@ -537,6 +599,7 @@ describe('purchase repository', () => {
     });
 
     expect(result.grantCreated).toBe(true);
+    expect(await db.select().from(marketingMemberSyncJobs).where(and(eq(marketingMemberSyncJobs.tenantId, ACME), eq(marketingMemberSyncJobs.memberId, 'member-simulated-purchase')))).toMatchObject([{ status: 'pending' }]);
     expect(await createMemberEventRepository(db).listForMember(
       ACME,
       'member-simulated-purchase',
@@ -678,6 +741,62 @@ describe('product grant repository', () => {
 
     const named = await repo.listForMemberWithProductNames(ACME, 'mem-acme', NOW);
     expect(named[0]).toMatchObject({ productName: 'Acme Course', active: true });
+  });
+
+  it('preserves repeated grant and revoke transitions even at the same timestamp', async () => {
+    const repo = createProductGrantRepository(db);
+    const events = createMemberEventRepository(db);
+    const before = await events.listForMember(ACME, 'mem-acme');
+    const window = { startsAt: PAST, expiresAt: FUTURE, occurredAt: NOW };
+    await repo.setGrantWindow(ACME, 'grant-acme', window);
+    await repo.revokeGrant(ACME, 'grant-acme', NOW);
+    await repo.revokeGrant(ACME, 'grant-acme', NOW);
+    await repo.setGrantWindow(ACME, 'grant-acme', window);
+    await Promise.all([
+      repo.setGrantWindow(ACME, 'grant-acme', window),
+      repo.setGrantWindow(ACME, 'grant-acme', window),
+    ]);
+    await repo.revokeGrant(ACME, 'grant-acme', NOW);
+    await repo.setGrantWindow(ACME, 'grant-acme', window);
+    const previousIds = new Set(before.map((event) => event.id));
+    const transitions = (await events.listForMember(ACME, 'mem-acme'))
+      .filter((event) => !previousIds.has(event.id));
+    expect(transitions.map((event) => event.type)).toEqual(['grant', 'revoke', 'grant', 'revoke']);
+    expect(new Set(transitions.map((event) => event.id)).size).toBe(4);
+    expect(transitions[0]?.payload).toEqual(transitions[2]?.payload);
+    expect(transitions[1]?.payload).toEqual(transitions[3]?.payload);
+    expect(await repo.findById(ACME, 'grant-acme')).toMatchObject({ startsAt: PAST, expiresAt: FUTURE });
+    expect(await repo.setGrantWindow(GLOBEX, 'grant-acme', window)).toBeNull();
+    expect(await repo.revokeGrant(GLOBEX, 'grant-acme', NOW)).toBeNull();
+  });
+
+  it('rolls back the grant projection when its next revision collides with different history', async () => {
+    const repository = createProductGrantRepository(db);
+    const [current] = await db.select().from(productGrants).where(and(
+      eq(productGrants.tenantId, ACME), eq(productGrants.id, 'grant-acme'),
+    ));
+    if (current === undefined) throw new Error('Missing grant fixture');
+    const revision = current.eventRevision + 1;
+    await appendGrantMemberEvent(db, {
+      tenantId: ACME, memberId: current.memberId, type: 'grant', occurredAt: NOW,
+      payload: {
+        grantId: current.id, productId: current.productId, source: current.source,
+        startsAt: current.startsAt, expiresAt: current.expiresAt,
+      },
+    }, revision);
+    try {
+      await expect(repository.revokeGrant(ACME, current.id, NOW)).rejects.toThrow(
+        'Member event idempotency key collision',
+      );
+      expect(await db.select().from(productGrants).where(and(
+        eq(productGrants.tenantId, ACME), eq(productGrants.id, current.id),
+      ))).toEqual([current]);
+    } finally {
+      await db.delete(memberEvents).where(and(
+        eq(memberEvents.tenantId, ACME),
+        eq(memberEvents.id, `grant-transition:${JSON.stringify([ACME, current.id, revision])}`),
+      ));
+    }
   });
 
   it('revokes a grant by setting its expiry', async () => {
@@ -1114,7 +1233,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
       logoUrl: null,
       logoDarkUrl: null,
-      accentColor: null,
+      accentColor: '#F5C842',
+      accentLight: '#786000',
       faviconUrl: null,
       ogTitle: null,
       ogDescription: null,
@@ -1152,7 +1272,11 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       invoiceExemptionBasisKind: 'other_statute',
       invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
+    expect(await repo.findSettings(ACME)).toMatchObject({ accentColor: '#F5C842', accentLight: '#786000' });
+    expect(await repo.findSettings(GLOBEX)).toMatchObject({ accentLight: null });
     expect((await repo.findById(ACME))?.contentVersion).toBe((previousVersion ?? 0) + 1);
+    await repo.updateSettings(ACME, { ...updated, accentLight: null });
+    expect(await repo.findSettings(ACME)).toMatchObject({ accentColor: '#F5C842', accentLight: null });
   });
 
   it('rejects unsupported persisted VAT modes', async () => {
@@ -2437,13 +2561,35 @@ describe('post repository', () => {
 
     await repo.createPost(ACME, post);
     await repo.setPinned(ACME, { id: post.id, pinnedAt: NOW });
-    await repo.softDelete(ACME, { id: post.id, deletedAt: FUTURE });
+    await repo.softDelete(ACME, { id: post.id, deletedAt: FUTURE, deletedBy: 'author', deletedByUserId: post.authorUserId });
 
     const rows = await db
       .select({ pinnedAt: posts.pinnedAt })
       .from(posts)
       .where(and(eq(posts.tenantId, ACME), eq(posts.id, post.id)));
     expect(rows).toEqual([{ pinnedAt: null }]);
+    await expect(repo.findById(ACME, post.id)).resolves.toMatchObject({
+      body: post.body, deletedBy: 'author', deletedByUserId: post.authorUserId, deletedAt: FUTURE,
+    });
+    await repo.softDelete(ACME, { id: post.id, deletedAt: NOW, deletedBy: 'moderator', deletedByUserId: 'another-staff' });
+    await expect(repo.findById(ACME, post.id)).resolves.toMatchObject({ deletedBy: 'author', deletedByUserId: post.authorUserId, deletedAt: FUTURE });
+    await expect(repo.setPinned(ACME, { id: post.id, pinnedAt: NOW })).resolves.toBeNull();
+    const visible = { ...post, id: 'post-deletion-moderator', rootPostId: 'post-deletion-moderator', deletedAt: FUTURE, deletedBy: 'moderator' as const };
+    await repo.createPost(ACME, visible);
+    const replied = { ...post, id: 'post-deletion-replied', rootPostId: 'post-deletion-replied', deletedAt: FUTURE, deletedBy: 'author' as const };
+    await repo.createPost(ACME, replied);
+    await repo.createPost(ACME, { ...replied, id: 'post-deletion-reply', parentPostId: replied.id });
+    await repo.createPost(GLOBEX, { ...post, tenantId: GLOBEX, id: 'post-other-tenant-reply', parentPostId: post.id });
+    const query = { contextKind: post.contextKind, contextId: post.contextId, limit: 1 };
+    const first = await repo.listThreadsForContext(ACME, query);
+    expect(first.threads.map((thread) => thread.post.id)).toEqual([visible.id]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await repo.listThreadsForContext(ACME, { ...query, cursor: first.nextCursor ?? '' });
+    expect(second.threads.map((thread) => thread.post.id)).toEqual([replied.id]);
+    expect(second.threads[0]?.replyCount).toBe(1);
+    expect(second.nextCursor).toBeNull();
+    const home = await repo.listThreadsForSpaces(ACME, { spaceIds: [post.contextId], limit: 10 });
+    expect(home.threads.map((thread) => thread.post.id)).toEqual([replied.id, visible.id]);
     await expect(repo.listPinnedForContext(ACME, {
       contextKind: post.contextKind,
       contextId: post.contextId,

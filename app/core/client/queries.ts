@@ -1932,3 +1932,19 @@ export const promptGoogleOneTapMutation = (
     mutationKey: [...authScopes.all(), 'google', 'one-tap'],
     call: (input: { clientId: string; callbackURL: string }) => auth.promptGoogleOneTap(input),
   });
+
+export const marketingContactsQuery = (api: ApiClient, input: Parameters<ApiClient['listMarketingContacts']>[0]) => defineQuery({
+  queryKey: ['marketing', 'contacts', input] as const, call: ({ signal }) => api.listMarketingContacts(input, undefined, signal),
+});
+export const marketingContactQuery = (api: ApiClient, contactId: string) => defineQuery({
+  queryKey: ['marketing', 'contact', contactId] as const, call: ({ signal }) => api.getMarketingContact({ contactId }, undefined, signal),
+});
+export const marketingListsQuery = (api: ApiClient, input: Parameters<ApiClient['listMarketingLists']>[0]) => defineQuery({
+  queryKey: ['marketing', 'lists', input] as const, call: ({ signal }) => api.listMarketingLists(input, undefined, signal),
+});
+export const marketingListQuery = (api: ApiClient, listId: string) => defineQuery({
+  queryKey: ['marketing', 'list', listId] as const, call: ({ signal }) => api.getMarketingList({ listId }, undefined, signal),
+});
+export const marketingContactImportQuery = (api: ApiClient, importId: string) => defineQuery({
+  queryKey: ['marketing', 'contact-import', importId] as const, call: ({ signal }) => api.getMarketingContactImport({ importId }, undefined, signal),
+});

@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { TenantBranding } from '#core/domain/index.js';
 
-import { applyBranding, contrastRatio } from '../../theme-branding.js';
+import { contrastRatio } from '#core/domain/index.js';
+import { applyBranding } from '../../theme-branding.js';
 import { createThemeForMode } from '../../theme.js';
 import { authFocusScope } from './auth-chrome.js';
 
@@ -11,7 +12,7 @@ const SCHEMES: PaletteMode[] = ['light', 'dark'];
 const NON_TEXT_MIN = 3;
 const AA_MIN = 4.5;
 
-const ACCENTS = ['#E2632B', '#F5C842', '#4F46E5', '#0F766E', '#E8682A', '#111111', '#FFFFFF'];
+const ACCENTS = ['#E2632B', '#F5C842', '#4F46E5', '#0F766E', '#E8682A', '#111111', '#FFFFFF', '#0E7490', '#172554', '#ff0000'];
 
 const memberTheme = (scheme: PaletteMode): Theme =>
   createThemeForMode('shadcn', undefined, scheme, 'member');
@@ -21,6 +22,7 @@ const brandedTheme = (accentColor: string, scheme: PaletteMode): Theme => {
     logoUrl: null,
     logoDarkUrl: null,
     accentColor,
+    accentLight: null,
     faviconUrl: null,
   };
   return applyBranding(memberTheme(scheme), branding);
@@ -87,8 +89,10 @@ describe('auth surface contrast', () => {
 
   it.each(SCHEMES)('reads accent link ink at AA against the %s surface', (scheme) => {
     for (const [label, theme] of brandingCases(scheme)) {
-      expect([label, contrastRatio(theme.accentText ?? '', backgroundOf(theme)) >= AA_MIN])
-        .toEqual([label, true]);
+      for (const background of [backgroundOf(theme), theme.palette.background.paper]) {
+        expect([label, contrastRatio(theme.accentText ?? '', background) >= AA_MIN])
+          .toEqual([label, true]);
+      }
     }
   });
 

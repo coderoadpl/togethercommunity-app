@@ -194,7 +194,7 @@ export const MemberSidebar = ({
             />
           </List>
         ) : null}
-        {messages?.kind === 'link' ? (
+        {variant === 'drawer' && messages?.kind === 'link' ? (
           <List component="div" disablePadding>
             <NavRow
               component={Link}

@@ -1103,6 +1103,8 @@ export const pl: Messages = {
     newCourse: 'Nowy kurs',
     detailsHeading: 'Dane kursu',
     titleLabel: 'Tytuł',
+    salesUrl: 'Adres strony oferty',
+    salesUrlHint: 'Opcjonalny adres HTTPS. Używany, gdy kurs nie ma opublikowanego produktu.',
     imageUrl: 'Adres URL obrazu',
     imagePreview: 'Podgląd okładki kursu',
     creating: 'Tworzenie…',
@@ -1214,6 +1216,7 @@ export const pl: Messages = {
     versionEmptyList: '— brak pozycji —',
     versionCurrentMissing: 'Element już nie istnieje, więc nie ma z czym porównać tej wersji.',
     versionField: {
+      salesUrl: 'Adres strony oferty',
       title: 'Tytuł',
       description: 'Opis',
       imageUrl: 'Okładka',
@@ -1581,6 +1584,11 @@ export const pl: Messages = {
     emptyBody: 'Dostęp otwiera zakup produktu — sprawdź, co masz już w swoich produktach.',
   },
   anon: {
+    salesCta: 'Zobacz ofertę',
+    contactCreator: 'Napisz do twórcy',
+    previewChip: 'Podgląd',
+    monthlyPrice: (params: { price: string }) => `${params.price} / miesiąc`,
+    yearlyPrice: (params: { price: string }) => `${params.price} / rok`,
     eyebrow: 'Podgląd dla gości',
     homeTitle: 'Zajrzyj do środka',
     coursesSection: 'Kursy',

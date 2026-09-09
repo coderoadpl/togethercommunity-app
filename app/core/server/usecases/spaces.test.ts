@@ -638,6 +638,7 @@ const tenantSettings = (defaultHomeSpaceId: string | null): TenantSettings => ({
   logoUrl: null,
   logoDarkUrl: null,
   accentColor: null,
+  accentLight: null,
   faviconUrl: null,
   ogTitle: null,
   ogDescription: null,

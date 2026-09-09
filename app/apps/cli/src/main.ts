@@ -139,6 +139,10 @@ const changePasswordOptionsSchema = z.object({
 });
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
 const tenantSettingsOptionsSchema = z.object({
+  accentColor: z.string().optional(),
+  accentLight: z.string().optional(),
+  clearAccentColor: z.boolean().optional(),
+  clearAccentLight: z.boolean().optional(),
   billingPortalUrl: z.string().url().optional(),
   clearBillingPortalUrl: z.boolean().optional(),
   videoAutoplayDefault: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
@@ -880,6 +884,8 @@ tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
       [
+        `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
+        `light accent: ${data.settings.accentLight ?? '(automatic)'}`,
         `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
         `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
         `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
@@ -891,14 +897,21 @@ tenant.command('settings').description('Show tenant settings').action(
 tenant
   .command('settings-set')
   .description('Update tenant settings (owner only)')
+  .option('--accent-color <hex>', 'dark-scheme accent (#RRGGBB)')
+  .option('--accent-light <hex>', 'optional light-scheme accent (#RRGGBB)')
+  .option('--clear-accent-color', 'use the platform accent')
+  .option('--clear-accent-light', 'derive the light accent automatically')
   .option('--billing-portal-url <url>', 'billing portal URL shown to members')
   .option('--clear-billing-portal-url', 'remove the billing portal URL')
   .option('--video-autoplay-default <value>', "'true' or 'false' — default lesson video autoplay")
   .option('--member-video-autoplay-override <value>', "'true' or 'false' — let members override autoplay")
   .action(
     withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
+      const accentColor = options.clearAccentColor === true ? null : options.accentColor;
+      const accentLight = options.clearAccentLight === true ? null : options.accentLight;
       const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
       if (
+        accentColor === undefined && accentLight === undefined &&
         billingPortalUrl === undefined &&
         options.videoAutoplayDefault === undefined &&
         options.memberVideoAutoplayOverride === undefined
@@ -911,6 +924,8 @@ tenant
         return;
       }
       emit(await ctx.api.updateTenantSettings({
+        ...(accentColor === undefined ? {} : { accentColor }),
+        ...(accentLight === undefined ? {} : { accentLight }),
         ...(billingPortalUrl === undefined ? {} : { billingPortalUrl }),
         ...(options.videoAutoplayDefault === undefined
           ? {}
@@ -920,6 +935,8 @@ tenant
           : { memberVideoAutoplayOverride: options.memberVideoAutoplayOverride }),
       }), ctx.json, (data) =>
         [
+          `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
+          `light accent: ${data.settings.accentLight ?? '(automatic)'}`,
           `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
           `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
           `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,

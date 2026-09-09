@@ -1,3 +1,4 @@
+import { registerM2mMarketingContactRoutes, registerSessionMarketingContactRoutes, registerMarketingImportWorkerRoute } from './marketing-contact-routes.js';
 import { type Context, type Hono, type HonoRequest } from 'hono';
 import { z } from 'zod';
 
@@ -402,6 +403,7 @@ import {
   type SimulatePurchaseResult
 } from '#core/server/index.js';
 
+import { ctxOf } from './ctx-of.js';
 import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
 import { readJson } from './read-json.js';
@@ -423,13 +425,6 @@ import {
   assertSelfAuthenticatingRouteManifest,
   SELF_AUTHENTICATING_ROUTE_MANIFEST,
 } from './self-authenticating-route-manifest.js';
-
-const ctxOf = (c: Context<AppVars>): Ctx => {
-  const impersonation = c.get('impersonation');
-  return impersonation === undefined
-    ? { identity: c.get('identity') }
-    : { identity: c.get('identity'), impersonation };
-};
 
 const impersonationOf = (
   principal: ImpersonationPrincipal | undefined,
@@ -1079,6 +1074,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   registerAuthenticatedMarketingRoutes(app, deps);
+  registerM2mMarketingContactRoutes(app, deps);
+  registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
 
   assertSelfAuthenticatingRouteManifest(
@@ -1137,6 +1134,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       { runs: deps.marketing.runs },
     ));
   });
+
+  registerSessionMarketingContactRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));

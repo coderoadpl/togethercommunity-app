@@ -2208,6 +2208,8 @@ export const en: Messages = {
     docsLink: 'How custom domains work',
     storageCorsHint: 'Add this address to bucket CORS.',
     storageCorsLink: 'Open the storage wizard',
+    storageCorsUnknown: 'Bucket CORS has not been checked for this address yet.',
+    storageCorsCheck: 'Check',
     redirectsCount: ({ count }) => format('{count} {noun}', {
       count,
       noun: plural(count, 'redirect', 'redirects'),

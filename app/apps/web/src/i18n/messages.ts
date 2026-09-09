@@ -1960,6 +1960,8 @@ export interface Messages {
     docsLink: string;
     storageCorsHint: string;
     storageCorsLink: string;
+    storageCorsUnknown: string;
+    storageCorsCheck: string;
     redirectsCount: (params: { count: number }) => string;
     redirectsManage: string;
   };

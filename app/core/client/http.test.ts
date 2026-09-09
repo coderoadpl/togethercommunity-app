@@ -87,6 +87,43 @@ describe('createApiClient', () => {
     await expect(client.studentLessonPlayback('lesson/one')).resolves.toEqual(ok(output));
   });
 
+  it('posts the tenant domain storage CORS check to the contract route', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/tenant/domains/storage-cors/check');
+      expect(init).toMatchObject({
+        method: 'POST',
+        credentials: 'include',
+        body: JSON.stringify({ domain: 'courses.example.test' }),
+      });
+      return jsonResponse({
+        ok: true,
+        data: {
+          routing: {
+            tenantHost: 'academy.example.test',
+            storageCorsOrigins: ['https://academy.example.test', 'https://courses.example.test'],
+            canonicalOrigin: 'https://courses.example.test',
+            customDomains: [{
+              domain: 'courses.example.test',
+              verified: true,
+              status: 'active',
+              records: [],
+              lastCheckedAt: null,
+              lastError: null,
+              storageCorsStatus: 'ok',
+            }],
+            customDomainTarget: 'target.example.test',
+            apexDomainsSupported: false,
+            canAddCustomDomain: true,
+          },
+        },
+      });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.checkTenantDomainStorageCors({ domain: 'courses.example.test' }))
+      .resolves.toMatchObject({ ok: true, value: { routing: { customDomains: [{ storageCorsStatus: 'ok' }] } } });
+  });
+
   it('sends the shared secret header and parses the dispatch envelope', async () => {
     let seen: Headers | undefined;
     const fetchImpl: typeof fetch = async (input, init) => {

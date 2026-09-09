@@ -826,6 +826,61 @@ describe('fulfillStripeWebhook', () => {
     },
   );
 
+  it('retries pending consent after an outbox failure without rolling back paid access or duplicating consent', async () => {
+    const h = await consentHarness();
+    delete h.deps.marketing;
+    const event = completedEvent({ id: 'evt-pending-retry', checkoutConsentCaptureId: 'capture-pending-retry' });
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    const paidOrders = structuredClone(h.orders);
+    const invoiceJobs = structuredClone(h.autoInvoiceJobs);
+    const paymentEvents = structuredClone(h.events);
+    h.deps.marketing = { definitions: h.definitions };
+    const transaction = h.deps.paymentTransaction;
+    let failEnqueue = true;
+    h.deps.paymentTransaction = {
+      run: (operation) => transaction.run((repositories) => operation({
+        ...repositories,
+        emailOutbox: {
+          ...repositories.emailOutbox,
+          enqueue: async (message) => {
+            const queued = await repositories.emailOutbox.enqueue(message);
+            if (failEnqueue && message.payload.kind === 'marketing-consent-confirmation') {
+              expect(h.marketingConsents.snapshot()).toHaveLength(1);
+              expect(h.confirmations.rows).toHaveLength(1);
+              return err(internal('Confirmation outbox unavailable during replay'));
+            }
+            return queued;
+          },
+        },
+      })),
+    };
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(h.orders).toEqual(paidOrders);
+    expect(h.autoInvoiceJobs).toEqual(invoiceJobs);
+    expect(h.events).toEqual(paymentEvents);
+    expect(h.members.size).toBe(1);
+    expect(h.grants.size).toBe(1);
+    expect(h.consentJobs).toMatchObject([{ completedAt: null }]);
+    expect(h.consents).toHaveLength(0);
+    expect(h.marketingConsents.snapshot()).toHaveLength(0);
+    expect(h.confirmations.rows).toHaveLength(0);
+    expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(0);
+    expect(h.errors.at(-1)).toBe('[stripe-webhook] tenant=tenant-a event=evt-pending-retry capture=capture-pending-retry error=internal:Confirmation outbox unavailable during replay');
+
+    failEnqueue = false;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.consentJobs).toMatchObject([{ completedAt: now }]);
+    expect(h.consents).toHaveLength(1);
+    expect(h.marketingConsents.snapshot()).toHaveLength(1);
+    expect(h.confirmations.rows).toHaveLength(1);
+    expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(1);
+    expect(h.orders).toEqual(paidOrders);
+    expect(h.autoInvoiceJobs).toEqual(invoiceJobs);
+    expect(h.events).toEqual(paymentEvents);
+  });
+
   it('copies captured billing data onto the paid order', async () => {
     const h = harness();
     const billing = {

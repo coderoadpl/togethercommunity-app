@@ -88,4 +88,4 @@ applyDerivedVersion();
 const deploymentVerdict = assertDeploymentDatabase();
 run('pnpm', ['run', 'db:migrate']);
 await seedEmptyStagingDeployment(deploymentVerdict);
-run('pnpm', ['run', 'build']);
+run('pnpm', ['run', 'build:web']);

@@ -10,7 +10,11 @@ import { API_PATHS } from '#core/contract/index.js';
 const workflowSchema = z.object({
   permissions: z.record(z.string()).optional(),
   on: z.object({
-    push: z.object({ branches: z.array(z.string()) }),
+    workflow_run: z.object({
+      workflows: z.array(z.string()),
+      types: z.array(z.string()),
+      branches: z.array(z.string()),
+    }),
     schedule: z.array(z.object({ cron: z.string() })),
     workflow_dispatch: z.object({
       inputs: z.record(z.object({ description: z.string(), default: z.string() })),
@@ -53,21 +57,24 @@ const pollMinutes = Number(job.env['ALIAS_POLL_ATTEMPTS']) * Number(job.env['ALI
   / 60;
 
 describe('staging-smoke workflow', () => {
-  it('runs on every push to staging without waiting for a deployment event', () => {
-    expect(workflow.on.push.branches).toEqual(['staging']);
-    expect(job.if).toBeUndefined();
+  it('runs after a successful deploy to staging', () => {
+    expect(workflow.on.workflow_run).toEqual({
+      workflows: ['deploy'], types: ['completed'], branches: ['staging'],
+    });
+    expect(job.if).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(job.if).toContain("github.event.workflow_run.head_branch == 'staging'");
     expect(JSON.stringify(workflow.on)).not.toContain('deployment_status');
     expect(workflow.concurrency).toEqual({ group: 'staging-smoke', 'cancel-in-progress': true });
   });
 
-  it('also runs on a schedule and on demand, so a missing push cannot silence it', () => {
+  it('also runs on a schedule and on demand, independently of deployment completion', () => {
     expect(workflow.on.schedule.map((entry) => entry.cron)).toEqual(['17 6 * * *']);
     expect(Object.keys(workflow.on.workflow_dispatch.inputs)).toEqual(['base_url', 'expected_sha']);
     expect(workflow.on.workflow_dispatch.inputs['base_url']?.default).toBe('');
     expect(workflow.on.workflow_dispatch.inputs['expected_sha']?.default).toBe('');
   });
 
-  it('smokes the pushed commit and lets a dispatch name its own target', () => {
+  it('smokes the deployed commit and lets a dispatch name its own target', () => {
     const resolve = step('Resolve the deployment under test').run ?? '';
 
     expect(step('Resolve the deployment under test').env)
@@ -75,8 +82,8 @@ describe('staging-smoke workflow', () => {
     expect(step('Resolve the deployment under test').env)
       .toMatchObject({ DISPATCH_SHA: '${{ inputs.expected_sha }}' });
     expect(step('Resolve the deployment under test').env)
-      .toMatchObject({ PUSH_SHA: '${{ github.sha }}' });
-    expect(resolve).toContain('echo "expected_sha=$PUSH_SHA"');
+      .toMatchObject({ DEPLOYMENT_SHA: '${{ github.event.workflow_run.head_sha }}' });
+    expect(resolve).toContain('echo "expected_sha=$DEPLOYMENT_SHA"');
     expect(resolve).toContain('echo "base_url=${DISPATCH_BASE_URL:-$STAGING_HOST_URL}"');
   });
 

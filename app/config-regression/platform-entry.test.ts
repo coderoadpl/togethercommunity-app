@@ -43,6 +43,7 @@ describe('Vercel platform entry boundary', () => {
     expect(rewrites.indexOf(API_PATHS.platformDataReset)).toBeLessThan(rewrites.indexOf('/api/(.*)'));
     expect(platformResetEntry).toContain('export const maxDuration = 300;');
     expect(vercel.functions['api/index.ts']?.maxDuration).toBe(60);
+    expect(vercel.functions['api/platform-reset.ts']?.maxDuration).toBe(300);
   });
 
   it('sends legacy course links to the function ahead of the static fallbacks', () => {

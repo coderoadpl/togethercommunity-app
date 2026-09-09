@@ -156,14 +156,22 @@ decides whether that failure pages.
 
 ## Post-deploy remote smoke
 
-`.github/workflows/prod-smoke.yml` runs on a `deployment_status` event with
-state `success` and environment `Production`, and on `workflow_dispatch`. Both
-the wait and the checks target `$PROD_BASE_URL` — every tenant host serves
-`/api/health`, so the commit attestation holds on the tenant's own host and the
-smoke never signs a member of one tenant in on another's. It waits until that
-host reports the deployment's commit (up to five minutes), reseeds the smoke
-tenant, then runs `pnpm run smoke:remote` (`app/scripts/remote-smoke.ts`) with
-`EXPECTED_SHA` set to that commit.
+`.github/workflows/prod-smoke.yml` runs after a successful `deploy` workflow on
+`main`, using `workflow_run.head_sha` as the expected commit. It accepts completed
+push/manual deploys from this repository only. It also retains `workflow_dispatch`
+and the Git integration's `deployment_status` event with state `success` and
+environment `Production` for transition and rollback. Actions environments are
+named `production-deploy` and `staging-deploy`; their deployment records are not
+the smoke trigger. Disconnecting Git integration therefore does not silence the
+post-deploy checks. During overlap both production triggers may run.
+
+Automatic checks target the smoke tenant's host; a manual dispatch defaults to
+`$PROD_BASE_URL`. Every tenant host serves `/api/health`, so commit attestation holds
+on the tenant's own host. The workflow waits up to five minutes for that host to
+report the deployed commit, reseeds the smoke tenant, then runs `pnpm run
+smoke:remote` (`app/scripts/remote-smoke.ts`) with `EXPECTED_SHA` set to that commit.
+The reseed and SMS alert gates are unchanged. Failed/cancelled deploy workflows do
+not trigger this smoke; investigate the deploy failure itself.
 
 A manual dispatch may point `base_url` at any host; left empty it smokes
 `PROD_BASE_URL`. It may also leave `expected_sha` empty, and the wait and the
@@ -245,7 +253,7 @@ synthetic demo tenant instead of the deployment that matters.
 | --- | --- | --- |
 | `SMOKE_TENANT` | prod-health, prod-smoke | `acme` — the tenant slug the production smoke variables build their default host from. |
 | `PROD_HEALTH_HOST` | prod-health | `<SMOKE_TENANT>.togethercommunity.app` — the host `/api/health` and `/api/health/deep` are probed on. |
-| `PROD_BASE_URL` | prod-smoke | `https://<SMOKE_TENANT>.togethercommunity.app` — the deployment smoked on `deployment` events and on a dispatch that leaves `base_url` empty. |
+| `PROD_BASE_URL` | prod-smoke | `https://<SMOKE_TENANT>.togethercommunity.app` — default target for a dispatch that leaves `base_url` empty; automatic runs resolve the smoke tenant host. |
 | `STAGING_HOST` | staging-links | `acme.staging.togethercommunity.app` — the seeded tenant host published as the deployment's environment URL and pinned on the promotion pull request. |
 | `VERCEL_DEPLOYMENTS_URL` | staging-links | `https://vercel.com/dashboard` — the deployments list linked from the same places. |
 
@@ -256,24 +264,26 @@ checks something else.
 ## Staging smoke
 
 `.github/workflows/staging-smoke.yml` answers the question production's smoke
-cannot: *is staging still its own deployment?* It runs on every `push` to
-`staging`, on a daily `schedule`, and on `workflow_dispatch` with `base_url` and
-`expected_sha` inputs. The push is the primary trigger because it is the one
-event this repository emits itself: the platform's own deployment records name
-the environment and the commit however it currently labels them, so a smoke
-gated on them stops running the moment that labelling changes. It runs
-`pnpm run smoke:staging` (`app/scripts/remote-smoke.ts --staging`) against
-`https://` + the `STAGING_HOST` variable (default
-`acme.staging.togethercommunity.app`) and always sends requests as the seeded
-`acme` tenant.
+cannot: *is staging still its own deployment?* It runs after a successful `deploy`
+workflow on `staging`, daily at 06:17 UTC, and on demand with `base_url` and
+`expected_sha` inputs. Automatic deploy completions must originate from this
+repository and a push or manual dispatch, never a pull request. The smoke workflows
+must be present on the default branch for `workflow_run` to fire. The GitHub build
+and deploy environments may require approval without consuming the smoke timeout.
 
-A push arrives before the deployment it will produce, so the job first waits for
-the host to serve the pushed commit: it polls `/api/health` with the bypass
+It runs `pnpm run smoke:staging` (`app/scripts/remote-smoke.ts --staging`)
+against `https://${STAGING_HOST}`, using the existing fixture host and tenant defaults.
+Keep that host, the staging platform host and every other staging tenant hostname
+in `STAGING_ALIASES` on `staging-deploy`; the deploy job updates all aliases before
+completion. One smoke host passing does not attest other hosts: check every alias
+at cutover and whenever changing the list. See [deployment setup](../../docs/deploy.md).
+
+After deployment and alias updates finish, the job waits for the host to serve
+`github.event.workflow_run.head_sha`: it polls `/api/health` with the bypass
 header every 20 seconds for up to 15 minutes until `data.sha` equals the
-expected commit. A host still serving the previous commit is a build in flight,
-not a regression, so those attempts only wait. When the 15 minutes pass without
-a match the job fails on `deployment-alias` with the commit it observed instead
-and sends no SMS — nothing about staging's health was measured. A dispatch with
+expected commit. The poll allows for alias propagation after deploy completion.
+When the 15 minutes pass without a match, the job fails on `deployment-alias`
+with the observed commit and passes that failure to the existing SMS alert gate. A dispatch with
 an empty `expected_sha`, and the scheduled run, smoke whatever the host serves.
 
 Checks, in order:

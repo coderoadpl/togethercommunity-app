@@ -114,7 +114,9 @@ not alter the post body. Free text may contain the author's or a third party's
 personal data, and mechanically deciding what to redact is not reliable.
 
 Staff can use `deletePost` in `core/server/usecases/community.ts`, which calls
-`posts.softDelete`. Readers then receive `DELETED_POST_PLACEHOLDER` from
+`posts.softDelete`. Readers then receive `MODERATOR_DELETED_POST_PLACEHOLDER`
+when a moderator other than the author deleted the post, or
+`DELETED_POST_PLACEHOLDER` for the author's own deletion. Both are defined in
 `core/domain/community.ts`, and repository search excludes rows whose
 `deletedAt` is set. This is display redaction, not database erasure: the body
 column still contains the original text. There is no product surface for true
@@ -152,7 +154,9 @@ Report rows retain `post_reports.reporter_user_id` and the
 `dm_reports.reporter_user_id` / `dm_reports.reported_user_id` pair after
 erasure, matching the existing retention of `posts.author_user_id`. The
 pseudonymization transaction relabels every display column those rows carry to
-`deletedMemberDisplay()`. A full redesign around non-identifying subject
+`deletedMemberDisplay()`. The `posts.deleted_by_user_id` column also retains
+the moderator's or author's user id after erasure and is not relabelled by
+the pseudonymization transaction. A full redesign around non-identifying subject
 references remains backlog item B1.
 
 The `dm_reports.snapshot` message bodies are moderation evidence and keep their

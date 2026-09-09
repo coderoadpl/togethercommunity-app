@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { MemberHomeFeedItem } from '#core/domain/index.js';
+import { updatePostInputSchema, type MemberHomeFeedItem } from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -52,6 +52,20 @@ const okFeed = (
     return HttpResponse.json({ ok: true, data: { feed: page } });
   });
 
+const okMe = (staffRole: 'owner' | 'admin' | null = null) =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'member@example.com',
+        emailVerified: true,
+        name: 'Member',
+        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole, memberId: 'm1', banned: false },
+      },
+    }),
+  );
+
 const renderSection = async () => {
   const rootRoute = createRootRoute();
   const startRoute = createRoute({
@@ -68,6 +82,100 @@ const renderSection = async () => {
 };
 
 describe('HomeFeedSection', () => {
+  it.each([
+    { staffRole: null, isOwn: true, canDelete: true, canEdit: true },
+    { staffRole: 'owner', isOwn: false, canDelete: true, canEdit: false },
+    { staffRole: 'admin', isOwn: false, canDelete: true, canEdit: false },
+    { staffRole: null, isOwn: false, canDelete: false, canEdit: false },
+  ] as const)('offers feed actions for $staffRole, own=$isOwn', async ({ staffRole, isOwn, canDelete, canEdit }) => {
+    server.use(okMe(staffRole), okFeed({ '10': { items: [item('p1', { isOwn })], nextCursor: null } }));
+
+    await renderSection();
+
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
+    expect(screen.queryByTestId('delete-button-p1') !== null).toBe(canDelete);
+    expect(screen.queryByTestId('edit-button-p1') !== null).toBe(canEdit);
+  });
+
+  it('confirms deletion and removes an empty own root from the feed without reloading', async () => {
+    let post = item('p1', { isOwn: true });
+    const deletedIds: string[] = [];
+    server.use(
+      okMe(),
+      http.get('/api/member/home-feed', () => HttpResponse.json({
+        ok: true,
+        data: { feed: { items: post.deletedAt === null ? [post] : [], nextCursor: null } },
+      })),
+      http.delete('/api/posts/:postId', ({ params }) => {
+        deletedIds.push(String(params['postId']));
+        post = { ...post, body: 'Deleted post', deletedAt: '2026-08-12T11:00:00.000Z', deletedBy: 'author' };
+        return HttpResponse.json({ ok: true, data: { post } });
+      }),
+    );
+
+    await renderSection();
+
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
+    await userEvent.click(screen.getByTestId('delete-button-p1'));
+    expect(await screen.findByText(pl.discussion.deleteConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(pl.discussion.deleteConfirmBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
+    expect(deletedIds).toEqual([]);
+    expect(screen.getByTestId('home-feed-post-p1')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('post-menu-p1'));
+    await userEvent.click(screen.getByTestId('delete-button-p1'));
+    await userEvent.click(screen.getByTestId('confirm-delete-post'));
+    await waitFor(() => expect(screen.queryByTestId('home-feed-post-p1')).not.toBeInTheDocument());
+    expect(deletedIds).toEqual(['p1']);
+    expect(screen.getByTestId('start-feed-empty')).toBeInTheDocument();
+  });
+
+  it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a copy-link menu', async (deletedBy) => {
+    server.use(okMe('admin'), okFeed({ '10': {
+      items: [item('p1', { isOwn: true, replyCount: 2, deletedAt: '2026-08-12T11:00:00.000Z', deletedBy })],
+      nextCursor: null,
+    } }));
+
+    await renderSection();
+
+    expect(await screen.findByTestId('home-feed-deleted-p1')).toHaveTextContent(
+      deletedBy === 'moderator' ? pl.discussion.moderatorDeletedPost : pl.discussion.deletedPost,
+    );
+    expect(screen.queryByTestId('home-feed-body-p1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('home-feed-reply-count-p1')).toHaveTextContent(pl.discussion.replyCount({ count: 2 }));
+    await userEvent.click(screen.getByTestId('post-menu-p1'));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(screen.getByTestId('copy-link-p1')).toBeInTheDocument();
+  });
+
+  it('edits an own feed post and refreshes its body', async () => {
+    let post = item('p1', { isOwn: true });
+    server.use(
+      okMe(),
+      http.get('/api/member/home-feed', () => HttpResponse.json({
+        ok: true,
+        data: { feed: { items: [post], nextCursor: null } },
+      })),
+      http.post('/api/posts/update', async ({ request }) => {
+        const input = updatePostInputSchema.parse(await request.json());
+        expect(input.id).toBe('p1');
+        post = { ...post, body: input.body, editedAt: '2026-08-12T11:00:00.000Z' };
+        return HttpResponse.json({ ok: true, data: { post } });
+      }),
+    );
+
+    await renderSection();
+
+    await userEvent.click(await screen.findByTestId('post-menu-p1'));
+    await userEvent.click(screen.getByTestId('edit-button-p1'));
+    const input = screen.getByTestId('edit-composer-p1-input');
+    expect(input).toHaveValue(post.body);
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Updated post');
+    await userEvent.click(screen.getByTestId('edit-composer-p1-submit'));
+    expect(await screen.findByTestId('home-feed-body-p1')).toHaveTextContent('Updated post');
+  });
+
   it('renders a card per root post with its room, reply count and thread link', async () => {
     server.use(
       okFeed({

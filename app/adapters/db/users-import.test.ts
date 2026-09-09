@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ImportUsersMutation } from '#core/server/index.js';
@@ -10,10 +10,14 @@ import {
   importAuditEvents,
   marketingMemberSyncJobs,
   members,
+  memberEvents,
+  products,
+  productGrants,
   tenantApiKeys,
   tenants,
   user,
 } from './schema.js';
+import { appendMemberEvent, createMemberEventRepository } from './member-events.js';
 import { createImportUsersRepository } from './users-import.js';
 
 const baseDatabaseUrl =
@@ -106,6 +110,48 @@ describe('users import repository', () => {
       hasCredentialAccount: false,
       credentialPassword: null,
     });
+  });
+
+  it('rejects conflicting grant import history and rolls back its projection', async () => {
+    const repository = createImportUsersRepository(db);
+    await db.insert(products).values({
+      id: 'product-import-retry', tenantId: TENANT_ID, slug: 'import-retry',
+      title: 'Import retry', description: '', priceCents: 0, currency: 'PLN', createdAt: NOW,
+    });
+    const mutation: Extract<ImportUsersMutation, { kind: 'grant' }> = {
+      kind: 'grant', action: 'created',
+      resource: {
+        id: 'grant-import-retry', tenantId: TENANT_ID, memberId: 'member-source',
+        productId: 'product-import-retry', source: 'import', startsAt: NOW,
+        expiresAt: null, legacyId: null, createdAt: NOW,
+      },
+      event: {
+        ...memberMutation().event, id: 'audit-grant-retry', kind: 'grant',
+        importKey: 'grant-import-retry', resourceId: 'grant-import-retry',
+      },
+    };
+    await db.insert(productGrants).values(mutation.resource);
+    await appendMemberEvent(db, {
+      id: `import-grant:${mutation.event.id}`, tenantId: TENANT_ID,
+      memberId: mutation.resource.memberId, type: 'grant', occurredAt: NOW,
+      payload: {
+        grantId: mutation.resource.id, productId: mutation.resource.productId,
+        source: mutation.resource.source, startsAt: mutation.resource.startsAt, expiresAt: null,
+      },
+    });
+    const expiresAt = '1999-08-14T10:00:00.000Z';
+    await expect(repository.commit(TENANT_ID, {
+      ...mutation, action: 'updated', resource: { ...mutation.resource, expiresAt },
+      event: { ...mutation.event, action: 'updated', at: '1998-08-15T10:00:00.000Z' },
+    })).rejects.toThrow('Member event idempotency key collision');
+    expect(await repository.findGrantById(TENANT_ID, mutation.resource.id)).toMatchObject({ expiresAt: null });
+    const events = await createMemberEventRepository(db).listForMember(TENANT_ID, 'member-source');
+    expect(events.filter((event) => event.id === 'import-grant:audit-grant-retry')).toEqual([
+      expect.objectContaining({ occurredAt: NOW, payload: expect.objectContaining({ expiresAt: null }) }),
+    ]);
+    await db.delete(memberEvents).where(and(
+      eq(memberEvents.tenantId, TENANT_ID), eq(memberEvents.id, 'import-grant:audit-grant-retry'),
+    ));
   });
 
   it('does not resolve or adopt an auth user that belongs only to another tenant', async () => {

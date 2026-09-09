@@ -1,6 +1,6 @@
 {
-  "hash": "79ccc3fc482a495361bdd668308004f11473f0af3b0ea5dca48acddf22733c0e",
-  "shortId": "79ccc3fc482a",
+  "hash": "bda6fc7a2b4336448371066c6c3b450c8f2b88427af77b7708f7e475bd5f47ab",
+  "shortId": "bda6fc7a2b43",
   "schema": {
     "constraints": [
       {
@@ -5330,6 +5330,91 @@
             "default": "0",
             "generated": "",
             "identity": "",
+            "name": "event_revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'::text)",
+            "generated": "",
+            "identity": "",
+            "name": "starts_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legacy_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "product_grants"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
             "name": "failed_verification_count",
             "notNull": false,
             "type": "integer"
@@ -6236,83 +6321,6 @@
           }
         ],
         "name": "session"
-      },
-      {
-        "columns": [
-          {
-            "default": "to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'::text)",
-            "generated": "",
-            "identity": "",
-            "name": "starts_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "expires_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "legacy_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "source",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "product_grants"
       },
       {
         "columns": [

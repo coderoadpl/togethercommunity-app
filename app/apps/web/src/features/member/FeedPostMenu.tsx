@@ -14,10 +14,20 @@ export const FeedPostMenu = ({
   postId,
   postPath,
   canContactAuthor,
+  canEdit,
+  canDelete,
+  writeDisabled,
+  onEdit,
+  onDelete,
 }: {
   postId: string;
   postPath: string;
   canContactAuthor: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  writeDisabled: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
 }) => {
   const t = useTranslations();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -57,6 +67,30 @@ export const FeedPostMenu = ({
         <MenuItem data-testid={`copy-link-${postId}`} onClick={() => void copyLink()}>
           <ListItemText primary={t.community.copyLink} />
         </MenuItem>
+        {canEdit ? (
+          <MenuItem
+            data-testid={`edit-button-${postId}`}
+            disabled={writeDisabled}
+            onClick={() => {
+              setAnchorEl(null);
+              onEdit();
+            }}
+          >
+            <ListItemText primary={t.discussion.edit} />
+          </MenuItem>
+        ) : null}
+        {canDelete ? (
+          <MenuItem
+            data-testid={`delete-button-${postId}`}
+            disabled={writeDisabled}
+            onClick={() => {
+              setAnchorEl(null);
+              onDelete();
+            }}
+          >
+            <ListItemText primary={t.discussion.delete} />
+          </MenuItem>
+        ) : null}
         {canContactAuthor && conversation.available ? (
           <MenuItem
             data-testid={`start-message-${postId}`}
